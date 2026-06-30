@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/pastor_transcript_extractor/__init__.py
+src/pastor_transcript_extractor/__main__.py
+src/pastor_transcript_extractor/cli.py
+src/pastor_transcript_extractor/config.py
+src/pastor_transcript_extractor/models.py
+src/pastor_transcript_extractor/sources.py
+src/pastor_transcript_extractor/storage.py
+src/pastor_transcript_extractor.egg-info/PKG-INFO
+src/pastor_transcript_extractor.egg-info/SOURCES.txt
+src/pastor_transcript_extractor.egg-info/dependency_links.txt
+src/pastor_transcript_extractor.egg-info/entry_points.txt
+src/pastor_transcript_extractor.egg-info/requires.txt
+src/pastor_transcript_extractor.egg-info/top_level.txt
+tests/test_sources.py

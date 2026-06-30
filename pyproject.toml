@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pastor-transcript-extractor"
+version = "0.1.0"
+description = "Local CLI for extracting pastor-only transcripts from YouTube sermons"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Brian Cummings" }
+]
+dependencies = [
+  "typer>=0.12,<1.0",
+  "rich>=13.7,<14.0",
+  "pydantic>=2.7,<3.0",
+  "yt-dlp>=2024.0.0",
+]
+
+[project.scripts]
+pte = "pastor_transcript_extractor.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

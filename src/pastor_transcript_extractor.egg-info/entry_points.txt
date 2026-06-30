@@ -1,0 +1,2 @@
+[console_scripts]
+pte = pastor_transcript_extractor.cli:app

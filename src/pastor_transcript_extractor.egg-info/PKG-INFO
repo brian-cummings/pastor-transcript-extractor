@@ -1,0 +1,97 @@
+Metadata-Version: 2.4
+Name: pastor-transcript-extractor
+Version: 0.1.0
+Summary: Local CLI for extracting pastor-only transcripts from YouTube sermons
+Author: Brian Cummings
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: typer<1.0,>=0.12
+Requires-Dist: rich<14.0,>=13.7
+Requires-Dist: pydantic<3.0,>=2.7
+
+# Pastor Transcript Extractor
+
+Local-first Python CLI for extracting pastor-only sermon transcripts from YouTube videos, playlists, and channels.
+
+## Current Status
+
+This workspace now has the initial scaffold in place:
+
+- Python package structure
+- CLI entrypoint
+- app data directory initialization
+- SQLite initialization
+- source URL classification
+- source persistence in SQLite
+- `init`, `add`, `status`, `doctor`, `discover`, and `run` command scaffolding
+
+Not implemented yet:
+
+- YouTube discovery via `yt-dlp`
+- caption fetching
+- local transcription
+- transcript chunking
+- pastor-only extraction
+- review workflow
+- Markdown export
+
+## V1 Goal
+
+Given one or more YouTube sources, produce reviewed Markdown transcripts that contain only the pastor's sermon content.
+
+## Stack
+
+- Python 3.11+
+- Typer
+- Rich
+- SQLite
+- Planned next dependencies: `yt-dlp`, `ffmpeg`, `whisper.cpp`
+
+## Default Local Tooling
+
+The scaffold defaults to:
+
+- `whisper_cpp_bin`: `/Users/briancummings/code/whisper.cpp/build/bin/whisper-cli`
+- `whisper_model_path`: `/Users/briancummings/code/whisper.cpp/models/ggml-medium.en.bin`
+- `ffmpeg_bin`: `ffmpeg`
+- `yt_dlp_bin`: `yt-dlp`
+
+## Quick Start
+
+```bash
+cd /Users/briancummings/Documents/PastorTranscriptExtractor
+/opt/homebrew/bin/python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+pte init
+pte add 'https://www.youtube.com/watch?v=abc123'
+pte status
+pte doctor
+```
+
+If you prefer to use `python3` directly, update your shell `PATH` so it resolves to Python 3.11 first.
+
+## App Data
+
+By default the CLI stores local data under:
+
+- `~/.pastor-transcript-extractor/app.db`
+- `~/.pastor-transcript-extractor/artifacts`
+- `~/.pastor-transcript-extractor/exports`
+- `~/.pastor-transcript-extractor/logs`
+
+You can override the data directory with `--base-dir`.
+
+## Commands
+
+- `pte init`
+- `pte add <url>`
+- `pte status`
+- `pte doctor`
+- `pte discover`
+- `pte run <url>`
+
+## Planning Docs
+
+- `docs/V1_SPEC.md`
+- `docs/HANDOFF.md`
