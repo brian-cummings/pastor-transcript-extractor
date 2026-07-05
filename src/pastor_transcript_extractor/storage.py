@@ -124,9 +124,12 @@ class Database:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.database_path)
+        connection = sqlite3.connect(self.database_path, timeout=30.0)
         connection.row_factory = sqlite3.Row
         try:
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = NORMAL")
+            connection.execute("PRAGMA busy_timeout = 30000")
             yield connection
             connection.commit()
         finally:
@@ -418,6 +421,20 @@ class Database:
                 "UPDATE videos SET status = ?, failure_reason = ? WHERE id = ?",
                 (status.value, failure_reason, video_id),
             )
+
+    def update_video_status_if_current(
+        self,
+        video_id: int,
+        current_status: VideoStatus,
+        new_status: VideoStatus,
+        failure_reason: str | None = None,
+    ) -> bool:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE videos SET status = ?, failure_reason = ? WHERE id = ? AND status = ?",
+                (new_status.value, failure_reason, video_id, current_status.value),
+            )
+        return cursor.rowcount > 0
 
     def list_videos(self) -> list[Video]:
         with self.connect() as connection:

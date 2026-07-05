@@ -70,7 +70,13 @@ def _transcript_duration(drafts: list[SegmentDraft]) -> float | None:
     return max(timed_ends) if timed_ends else None
 
 
-def _build_proposed_markdown(title: str, url: str, pastor_slug: str, drafts: list[SegmentDraft]) -> str:
+def _build_proposed_markdown(
+    title: str,
+    url: str,
+    pastor_slug: str,
+    transcript_source: TranscriptSourceKind,
+    drafts: list[SegmentDraft],
+) -> str:
     body = "\n\n".join(draft.text for draft in drafts)
     if not body.strip():
         body = "(no transcript text available)"
@@ -81,6 +87,7 @@ def _build_proposed_markdown(title: str, url: str, pastor_slug: str, drafts: lis
         "",
         f"- Pastor: {pastor_slug}",
         f"- Source: {url}",
+        f"- Transcript Source: {transcript_source.value}",
         f"- Duration: {_format_timestamp(duration)}" if duration is not None else "- Duration: unknown",
         "",
         "## Proposed Transcript",
@@ -128,7 +135,13 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
     drafts = segment_transcript(raw_text, raw_json)
     persisted_segments = [_segment_to_storage(database, video.id, transcript_artifact, draft) for draft in drafts]
 
-    proposed_text = _build_proposed_markdown(video.title, video.url, pastor.slug, drafts)
+    proposed_text = _build_proposed_markdown(
+        video.title,
+        video.url,
+        pastor.slug,
+        transcript_artifact.source_kind,
+        drafts,
+    )
     proposed_text_path = video_paths.extracted / "proposed.md"
     proposed_json_path = video_paths.extracted / "proposed.json"
     segments_path = video_paths.extracted / "segments.json"
@@ -139,6 +152,7 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
         "youtube_video_id": video.youtube_video_id,
         "pastor_slug": pastor.slug,
         "source_url": video.url,
+        "transcript_source": transcript_artifact.source_kind.value,
         "segment_count": len(persisted_segments),
         "segments": [
             {

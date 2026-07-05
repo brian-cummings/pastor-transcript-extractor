@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_pastor_paths
 from pastor_transcript_extractor.models import Video, VideoStatus
@@ -55,6 +56,16 @@ def _build_pastor_review_markdown(
     return "\n".join(lines)
 
 
+def _load_json(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
 def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pastor_slug: str) -> PastorReviewMarkdownResult:
     pastor = database.get_pastor_by_slug(pastor_slug)
     if pastor is None:
@@ -79,11 +90,16 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
             skipped_count += 1
             continue
         proposed_path = Path(extraction_result.proposed_text_path)
+        proposed_json_path = Path(extraction_result.proposed_json_path) if extraction_result.proposed_json_path else None
         if not proposed_path.exists():
             skipped_count += 1
             continue
 
         proposed_text = proposed_path.read_text(encoding="utf-8").rstrip()
+        proposed_json = _load_json(proposed_json_path) if proposed_json_path is not None else None
+        transcript_source = None
+        if proposed_json is not None and isinstance(proposed_json.get("transcript_source"), str):
+            transcript_source = str(proposed_json["transcript_source"])
         published_text = video.published_at.date().isoformat() if video.published_at is not None else "undated"
         sections.extend(
             [
@@ -91,6 +107,7 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
                 "",
                 f"- Video ID: {video.youtube_video_id}",
                 f"- Source: {video.url}",
+                f"- Transcript Source: {transcript_source or 'unknown'}",
                 f"- Status: {video.status.value}",
                 f"- Proposed Markdown: {proposed_path}",
                 "",
@@ -108,6 +125,7 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
                 "published_at": video.published_at.isoformat() if video.published_at is not None else None,
                 "status": video.status.value,
                 "source_url": video.url,
+                "transcript_source": transcript_source,
                 "proposed_text_path": str(proposed_path),
             }
         )

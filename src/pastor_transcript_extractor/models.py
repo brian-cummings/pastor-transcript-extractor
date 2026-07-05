@@ -16,6 +16,7 @@ class VideoStatus(StrEnum):
     QUEUED = "queued"
     DISCOVERED = "discovered"
     TRANSCRIPT_FETCHED = "transcript_fetched"
+    TRANSCRIBING_LOCAL = "transcribing_local"
     TRANSCRIBED_LOCAL = "transcribed_local"
     EXTRACTED = "extracted"
     NEEDS_REVIEW = "needs_review"

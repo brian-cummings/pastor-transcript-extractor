@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -33,6 +35,7 @@ app.add_typer(source_app, name="source")
 app.add_typer(video_app, name="video")
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
+DEFAULT_TRANSCRIBE_JOBS = 2
 
 
 def get_database(base_dir: Path | None = None) -> Database:
@@ -61,6 +64,60 @@ def _is_terminal_unavailable(video_status: VideoStatus, failure_reason: str | No
         return False
     lowered = failure_reason.lower()
     return "video unavailable" in lowered or "not available" in lowered
+
+
+def _default_transcribe_jobs() -> int:
+    cpu_count = os.cpu_count() or 1
+    return min(DEFAULT_TRANSCRIBE_JOBS, max(1, cpu_count))
+
+
+def _should_transcribe_video(
+    database: Database,
+    video_id: int,
+    *,
+    missing_only: bool,
+    captions_missing_only: bool,
+) -> bool:
+    video = database.get_video_by_id(video_id)
+    if video is None or video.pastor_id is None:
+        return False
+    if _is_terminal_unavailable(video.status, video.failure_reason):
+        return False
+
+    latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
+    if missing_only and latest_artifact is not None:
+        return False
+    if captions_missing_only and latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.CAPTIONS:
+        return False
+    if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.LOCAL_ASR and video.status in {
+        VideoStatus.TRANSCRIBING_LOCAL,
+        VideoStatus.TRANSCRIBED_LOCAL,
+        VideoStatus.EXTRACTED,
+        VideoStatus.EXPORTED,
+    }:
+        return False
+    return True
+
+
+def _claim_video_for_transcription(database: Database, video_id: int) -> bool:
+    video = database.get_video_by_id(video_id)
+    if video is None:
+        return False
+    return database.update_video_status_if_current(
+        video_id,
+        current_status=video.status,
+        new_status=VideoStatus.TRANSCRIBING_LOCAL,
+        failure_reason=None,
+    )
+
+
+def _transcribe_video_task(
+    database: Database,
+    paths,
+    tools,
+    video_id: int,
+) -> None:
+    transcribe_video(database, paths, tools, video_id)
 
 
 def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
@@ -542,6 +599,12 @@ def transcribe(
         "--captions-missing-only",
         help="Only transcribe videos that do not already have a captions artifact.",
     ),
+    jobs: int = typer.Option(
+        _default_transcribe_jobs(),
+        "--jobs",
+        min=1,
+        help="Number of videos to transcribe concurrently. Defaults to 2.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -555,38 +618,44 @@ def transcribe(
     processed = 0
     skipped = 0
     failed = 0
+    claimed_videos = []
     for video in videos:
-        if video.pastor_id is None:
+        if not _should_transcribe_video(
+            database,
+            video.id,
+            missing_only=missing_only,
+            captions_missing_only=captions_missing_only,
+        ):
             skipped += 1
             continue
-        if _is_terminal_unavailable(video.status, video.failure_reason):
+        if not _claim_video_for_transcription(database, video.id):
             skipped += 1
             continue
-        latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
-        if missing_only and latest_artifact is not None:
-            skipped += 1
-            continue
-        if captions_missing_only and latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.CAPTIONS:
-            skipped += 1
-            continue
-        if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.LOCAL_ASR and video.status in {
-            VideoStatus.TRANSCRIBED_LOCAL,
-            VideoStatus.EXTRACTED,
-            VideoStatus.EXPORTED,
-        }:
-            skipped += 1
-            continue
+        claimed_videos.append(video)
 
-        try:
+    if not claimed_videos:
+        console.print(f"Transcribed {processed} video(s); skipped {skipped}; failed {failed}.")
+        return
+
+    max_workers = min(jobs, len(claimed_videos))
+    future_to_video: dict[Future[None], object] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for video in claimed_videos:
             console.print(f"Transcribing video #{video.id}: {video.title}")
-            transcribe_video(database, paths, tools, video.id)
-        except Exception as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            console.print(f"[red]Failed to transcribe[/red] video #{video.id}: {error}")
-            failed += 1
-            continue
-        console.print(f"Transcribed video #{video.id}")
-        processed += 1
+            future = executor.submit(_transcribe_video_task, database, paths, tools, video.id)
+            future_to_video[future] = video
+
+        for future in as_completed(future_to_video):
+            video = future_to_video[future]
+            try:
+                future.result()
+            except Exception as error:
+                database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                console.print(f"[red]Failed to transcribe[/red] video #{video.id}: {error}")
+                failed += 1
+                continue
+            console.print(f"Transcribed video #{video.id}")
+            processed += 1
 
     console.print(f"Transcribed {processed} video(s); skipped {skipped}; failed {failed}.")
 
@@ -748,6 +817,12 @@ def run(
         "--transcribe-missing/--no-transcribe-missing",
         help="After fetching captions, only run local transcription for videos that still need it.",
     ),
+    jobs: int = typer.Option(
+        _default_transcribe_jobs(),
+        "--jobs",
+        min=1,
+        help="Number of videos to transcribe concurrently. Defaults to 2.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     console.print(
@@ -764,9 +839,9 @@ def run(
     discover(limit=limit, all_videos=all_videos, base_dir=base_dir)
     fetch(base_dir=base_dir)
     if not captions_only and transcribe_missing:
-        transcribe(missing_only=False, captions_missing_only=True, base_dir=base_dir)
+        transcribe(missing_only=False, captions_missing_only=True, jobs=jobs, base_dir=base_dir)
     elif not captions_only:
-        transcribe(missing_only=False, captions_missing_only=False, base_dir=base_dir)
+        transcribe(missing_only=False, captions_missing_only=False, jobs=jobs, base_dir=base_dir)
     extract(missing_only=False, base_dir=base_dir)
 
 

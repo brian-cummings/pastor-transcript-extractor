@@ -95,6 +95,37 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(excluded.youtube_video_id, listed[0].youtube_video_id)
         self.assertEqual("not a sermon", listed[0].notes)
 
+    def test_update_video_status_if_current_only_updates_matching_status(self) -> None:
+        source = self.database.add_source(
+            "https://www.youtube.com/watch?v=abc123",
+            SourceType.VIDEO,
+            pastor_id=self.pastor.id,
+        )
+        video = self.database.add_video(
+            source_id=source.id,
+            pastor_id=self.pastor.id,
+            youtube_video_id="abc123",
+            title="Sample Sermon",
+            url="https://www.youtube.com/watch?v=abc123",
+            status=VideoStatus.DISCOVERED,
+        )
+
+        claimed = self.database.update_video_status_if_current(
+            video.id,
+            current_status=VideoStatus.DISCOVERED,
+            new_status=VideoStatus.TRANSCRIBING_LOCAL,
+        )
+        stale_claim = self.database.update_video_status_if_current(
+            video.id,
+            current_status=VideoStatus.DISCOVERED,
+            new_status=VideoStatus.TRANSCRIBED_LOCAL,
+        )
+
+        updated_video = self.database.get_video_by_id(video.id)
+        self.assertTrue(claimed)
+        self.assertFalse(stale_claim)
+        self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, updated_video.status)
+
 
 class PathTests(unittest.TestCase):
     def test_pastor_and_video_paths(self) -> None:
@@ -1460,6 +1491,47 @@ class CliTests(unittest.TestCase):
             self.assertIn("skipped 1", result.output)
             mocked_transcribe.assert_not_called()
 
+    def test_transcribe_jobs_option_processes_multiple_videos(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            first_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Queued Sermon 1",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.DISCOVERED,
+            )
+            second_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="xyz987uvw65",
+                title="Queued Sermon 2",
+                url="https://www.youtube.com/watch?v=xyz987uvw65",
+                status=VideoStatus.DISCOVERED,
+            )
+
+            with patch("pastor_transcript_extractor.cli.transcribe_video"):
+                result = runner.invoke(app, ["transcribe", "--jobs", "2", "--base-dir", str(base_dir)])
+
+            first_updated = database.get_video_by_id(first_video.id)
+            second_updated = database.get_video_by_id(second_video.id)
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("Transcribed 2 video(s); skipped 0; failed 0.", result.output)
+            self.assertIn(f"Transcribing video #{first_video.id}: Queued Sermon 1", result.output)
+            self.assertIn(f"Transcribing video #{second_video.id}: Queued Sermon 2", result.output)
+            self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, first_updated.status)
+            self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, second_updated.status)
+
 
 class TranscriptionTests(unittest.TestCase):
     def test_captions_to_plain_text_strips_inline_tags_and_duplicates(self) -> None:
@@ -1755,6 +1827,9 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual("prayer", segments[1].label.value)
             self.assertEqual(2, database.counts_by_table()["extraction_results"])
             proposed_markdown = result.proposed_text_path.read_text(encoding="utf-8")
+            proposed_json = json.loads(result.proposed_json_path.read_text(encoding="utf-8"))
+            self.assertEqual("local_asr", proposed_json["transcript_source"])
+            self.assertIn("- Transcript Source: local_asr", proposed_markdown)
             self.assertIn("- Duration: 00:10", proposed_markdown)
             self.assertIn("Welcome everyone.", proposed_markdown)
             self.assertIn("Today we open with prayer.", proposed_markdown)
@@ -1786,12 +1861,17 @@ class ReviewExportTests(unittest.TestCase):
             video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
             video_dir.extracted.mkdir(parents=True, exist_ok=True)
             proposed_path = video_dir.extracted / "proposed.md"
+            proposed_json_path = video_dir.extracted / "proposed.json"
             proposed_path.write_text("# Sermon\n\nHello world.", encoding="utf-8")
+            proposed_json_path.write_text(
+                json.dumps({"transcript_source": "captions"}),
+                encoding="utf-8",
+            )
             extraction_result = database.add_extraction_result(
                 video_id=video.id,
                 version=1,
                 proposed_text_path=str(proposed_path),
-                proposed_json_path=str(video_dir.extracted / "proposed.json"),
+                proposed_json_path=str(proposed_json_path),
             )
 
             export_result = export_pastor_review_markdown(database, paths, pastor.slug)
@@ -1800,7 +1880,11 @@ class ReviewExportTests(unittest.TestCase):
             self.assertTrue(export_result.export_path.exists())
             self.assertTrue(export_result.manifest_path.exists())
             self.assertEqual(VideoStatus.EXPORTED, exported_video.status)
-            self.assertIn("pastor: sample-church", export_result.export_path.read_text(encoding="utf-8"))
+            export_text = export_result.export_path.read_text(encoding="utf-8")
+            manifest = json.loads(export_result.manifest_path.read_text(encoding="utf-8"))
+            self.assertIn("pastor: sample-church", export_text)
+            self.assertIn("- Transcript Source: captions", export_text)
+            self.assertEqual("captions", manifest["videos"][0]["transcript_source"])
 
 
 if __name__ == "__main__":
