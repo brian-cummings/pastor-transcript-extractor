@@ -6,6 +6,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths, ToolConfig, build_transcript_artifact_paths, build_video_artifact_paths
 from pastor_transcript_extractor.media import download_audio, download_captions, normalize_audio
@@ -36,6 +37,7 @@ _VTT_TAG_RE = re.compile(r"</?[^>]+>")
 _VTT_CUE_TIMESTAMP_RE = re.compile(
     r"(?P<start>\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(?P<end>\d{2}:\d{2}:\d{2}\.\d{3})"
 )
+_WHISPER_PROGRESS_RE = re.compile(r"(?P<percent>\d{1,3})%")
 
 
 def _normalize_caption_line(line: str) -> str:
@@ -118,7 +120,13 @@ def _captions_to_segments(captions_path: Path) -> list[dict[str, float | str]]:
     return segments
 
 
-def run_whisper_cpp(whisper_cpp_bin: Path, model_path: Path, audio_path: Path, output_base: Path) -> tuple[Path, Path]:
+def run_whisper_cpp(
+    whisper_cpp_bin: Path,
+    model_path: Path,
+    audio_path: Path,
+    output_base: Path,
+    progress_callback: Callable[[int], None] | None = None,
+) -> tuple[Path, Path]:
     output_base.parent.mkdir(parents=True, exist_ok=True)
     command = [
         str(whisper_cpp_bin),
@@ -130,13 +138,34 @@ def run_whisper_cpp(whisper_cpp_bin: Path, model_path: Path, audio_path: Path, o
         "-otxt",
         "-of",
         str(output_base),
-        "-np",
         "-nt",
     ]
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip() or f"whisper.cpp exited with status {result.returncode}"
-        raise RuntimeError(detail)
+    if progress_callback is None:
+        result = subprocess.run([*command, "-np"], capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip() or f"whisper.cpp exited with status {result.returncode}"
+            raise RuntimeError(detail)
+    else:
+        process = subprocess.Popen(
+            [*command, "-pp"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        output_lines: list[str] = []
+        assert process.stdout is not None
+        for line in process.stdout:
+            stripped = line.strip()
+            if stripped:
+                output_lines.append(stripped)
+            match = _WHISPER_PROGRESS_RE.search(line)
+            if match:
+                progress_callback(int(match.group("percent")))
+        return_code = process.wait()
+        if return_code != 0:
+            detail = output_lines[-1] if output_lines else f"whisper.cpp exited with status {return_code}"
+            raise RuntimeError(detail)
 
     json_path = output_base.with_suffix(".json")
     txt_path = output_base.with_suffix(".txt")
@@ -231,6 +260,7 @@ def transcribe_video(
     app_paths: AppPaths,
     tools: ToolConfig,
     video_id: int,
+    progress_callback: Callable[[int], None] | None = None,
 ) -> TranscriptResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -256,6 +286,7 @@ def transcribe_video(
         tools.whisper_model_path,
         normalized_audio,
         transcript_paths.whisper_output_base,
+        progress_callback=progress_callback,
     )
 
     metadata = {

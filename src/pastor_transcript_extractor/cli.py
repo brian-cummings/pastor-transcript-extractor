@@ -5,9 +5,12 @@ import os
 from pathlib import Path
 import shutil
 import sys
+from threading import Lock
+from typing import Callable
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from pastor_transcript_extractor.config import (
@@ -116,8 +119,46 @@ def _transcribe_video_task(
     paths,
     tools,
     video_id: int,
+    progress_callback=None,
 ) -> None:
-    transcribe_video(database, paths, tools, video_id)
+    transcribe_video(database, paths, tools, video_id, progress_callback=progress_callback)
+
+
+def _build_transcription_progress_callback(video_id: int) -> Callable[[int], None]:
+    lock = Lock()
+    state = {"last_percent": -1}
+
+    def progress_callback(percent: int) -> None:
+        bounded = max(0, min(percent, 100))
+        with lock:
+            if bounded <= state["last_percent"]:
+                return
+            state["last_percent"] = bounded
+        console.print(f"[video #{video_id} progress] {bounded}%", markup=False)
+
+    return progress_callback
+
+
+def _build_live_transcription_progress_callback(
+    progress: Progress,
+    task_id: TaskID,
+    lock: Lock,
+) -> Callable[[int], None]:
+    state = {"last_percent": -1, "started": False}
+
+    def progress_callback(percent: int) -> None:
+        bounded = max(0, min(percent, 100))
+        with lock:
+            if bounded <= state["last_percent"]:
+                return
+            state["last_percent"] = bounded
+            update_kwargs = {"completed": bounded}
+            if not state["started"]:
+                update_kwargs["fields"] = {"status": "running"}
+                state["started"] = True
+            progress.update(task_id, **update_kwargs)
+
+    return progress_callback
 
 
 def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
@@ -595,9 +636,9 @@ def transcribe(
         help="Only transcribe videos without a local ASR artifact.",
     ),
     captions_missing_only: bool = typer.Option(
-        False,
-        "--captions-missing-only",
-        help="Only transcribe videos that do not already have a captions artifact.",
+        True,
+        "--captions-missing-only/--all-eligible",
+        help="By default, only transcribe videos that do not already have a captions artifact. Use --all-eligible to transcribe all eligible videos.",
     ),
     jobs: int = typer.Option(
         _default_transcribe_jobs(),
@@ -638,24 +679,90 @@ def transcribe(
         return
 
     max_workers = min(jobs, len(claimed_videos))
+    total_claimed = len(claimed_videos)
+    console.print(f"Transcribing {total_claimed} video(s) with {max_workers} worker(s).")
     future_to_video: dict[Future[None], object] = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for video in claimed_videos:
-            console.print(f"Transcribing video #{video.id}: {video.title}")
-            future = executor.submit(_transcribe_video_task, database, paths, tools, video.id)
-            future_to_video[future] = video
+    if console.is_terminal:
+        progress_lock = Lock()
+        progress = Progress(
+            TextColumn("{task.fields[status]:>7}", justify="right"),
+            TextColumn("video #{task.fields[video_id]}"),
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+        )
+        task_ids: dict[int, TaskID] = {}
+        with progress, ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for video in claimed_videos:
+                task_ids[video.id] = progress.add_task(
+                    video.title,
+                    total=100,
+                    completed=0,
+                    status="queued",
+                    video_id=video.id,
+                )
+                future = executor.submit(
+                    _transcribe_video_task,
+                    database,
+                    paths,
+                    tools,
+                    video.id,
+                    _build_live_transcription_progress_callback(progress, task_ids[video.id], progress_lock),
+                )
+                future_to_video[future] = video
 
-        for future in as_completed(future_to_video):
-            video = future_to_video[future]
-            try:
-                future.result()
-            except Exception as error:
-                database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-                console.print(f"[red]Failed to transcribe[/red] video #{video.id}: {error}")
-                failed += 1
-                continue
-            console.print(f"Transcribed video #{video.id}")
-            processed += 1
+            for future in as_completed(future_to_video):
+                video = future_to_video[future]
+                task_id = task_ids[video.id]
+                try:
+                    future.result()
+                except Exception as error:
+                    database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                    failed += 1
+                    with progress_lock:
+                        progress.update(task_id, status="failed", completed=100)
+                    console.print(
+                        f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                        style="red",
+                        markup=False,
+                    )
+                    continue
+                processed += 1
+                with progress_lock:
+                    progress.update(task_id, status="done", completed=100)
+                console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for index, video in enumerate(claimed_videos, start=1):
+                console.print(f"[{index}/{total_claimed} queued] Transcribing video #{video.id}: {video.title}", markup=False)
+                future = executor.submit(
+                    _transcribe_video_task,
+                    database,
+                    paths,
+                    tools,
+                    video.id,
+                    _build_transcription_progress_callback(video.id),
+                )
+                future_to_video[future] = video
+
+            for future in as_completed(future_to_video):
+                video = future_to_video[future]
+                try:
+                    future.result()
+                except Exception as error:
+                    database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                    failed += 1
+                    console.print(
+                        f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                        style="red",
+                        markup=False,
+                    )
+                    continue
+                processed += 1
+                console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
 
     console.print(f"Transcribed {processed} video(s); skipped {skipped}; failed {failed}.")
 

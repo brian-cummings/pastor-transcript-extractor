@@ -7,6 +7,7 @@ from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
+from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.storage import Database
 
@@ -34,6 +35,36 @@ def _read_text(path: Path | None) -> str:
     if path is None or not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _load_window_override(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    payload = _load_json(path)
+    if payload is None:
+        return None, None if not path.exists() else "invalid override ignored: could not parse JSON object"
+    start_seconds = payload.get("start_seconds")
+    end_seconds = payload.get("end_seconds")
+    if not isinstance(start_seconds, (int, float)) or not isinstance(end_seconds, (int, float)):
+        return None, "invalid override ignored: start_seconds and end_seconds must be numbers"
+    start = float(start_seconds)
+    end = float(end_seconds)
+    if end <= start:
+        return None, "invalid override ignored: end_seconds must be greater than start_seconds"
+    notes = payload.get("notes")
+    updated_at = payload.get("updated_at")
+    updated_by = payload.get("updated_by")
+    if notes is not None and not isinstance(notes, str):
+        return None, "invalid override ignored: notes must be a string when provided"
+    if updated_at is not None and not isinstance(updated_at, str):
+        return None, "invalid override ignored: updated_at must be a string when provided"
+    if updated_by is not None and not isinstance(updated_by, str):
+        return None, "invalid override ignored: updated_by must be a string when provided"
+    return {
+        "start_seconds": start,
+        "end_seconds": end,
+        "notes": notes,
+        "updated_at": updated_at,
+        "updated_by": updated_by,
+    }, None
 
 
 def _segment_to_storage(
@@ -70,11 +101,43 @@ def _transcript_duration(drafts: list[SegmentDraft]) -> float | None:
     return max(timed_ends) if timed_ends else None
 
 
+def _effective_sermon_window(
+    detected_window: SermonWindowResult,
+    override: dict[str, Any] | None,
+    override_error: str | None,
+) -> dict[str, Any]:
+    reasons = list(detected_window.reasons)
+    source = "detected"
+    start_seconds = detected_window.start_seconds
+    end_seconds = detected_window.end_seconds
+    if override_error:
+        reasons.append(override_error)
+    if override is not None:
+        source = "override"
+        start_seconds = float(override["start_seconds"])
+        end_seconds = float(override["end_seconds"])
+        reasons = ["manual review override applied"]
+        if override.get("notes"):
+            reasons.append(str(override["notes"]))
+    return {
+        "start_seconds": start_seconds,
+        "end_seconds": end_seconds,
+        "confidence": detected_window.confidence,
+        "reasons": reasons,
+        "method": detected_window.method,
+        "source": source,
+        "included_segment_indexes": detected_window.included_segment_indexes,
+        "excluded_segment_indexes": detected_window.excluded_segment_indexes,
+    }
+
+
 def _build_proposed_markdown(
     title: str,
     url: str,
     pastor_slug: str,
     transcript_source: TranscriptSourceKind,
+    sermon_window: dict[str, Any],
+    guest_flags: GuestSpeakerFlags,
     drafts: list[SegmentDraft],
 ) -> str:
     body = "\n\n".join(draft.text for draft in drafts)
@@ -82,6 +145,9 @@ def _build_proposed_markdown(
         body = "(no transcript text available)"
 
     duration = _transcript_duration(drafts)
+    window_start = _format_timestamp(sermon_window.get("start_seconds"))
+    window_end = _format_timestamp(sermon_window.get("end_seconds"))
+    window_reasons = "; ".join(sermon_window.get("reasons", [])) or "none"
     lines = [
         f"# {title}",
         "",
@@ -89,6 +155,16 @@ def _build_proposed_markdown(
         f"- Source: {url}",
         f"- Transcript Source: {transcript_source.value}",
         f"- Duration: {_format_timestamp(duration)}" if duration is not None else "- Duration: unknown",
+        f"- Likely Sermon Window: {window_start} - {window_end}",
+        f"- Window Confidence: {sermon_window.get('confidence', 0.0):.2f}",
+        f"- Window Source: {sermon_window.get('source', 'detected')}",
+        f"- Window Reasons: {window_reasons}",
+        f"- Guest Speaker Suspected: {'yes' if guest_flags.suspected else 'no'}",
+        (
+            f"- Guest Speaker Reasons: {'; '.join(guest_flags.reasons)}"
+            if guest_flags.reasons
+            else "- Guest Speaker Reasons: none"
+        ),
         "",
         "## Proposed Transcript",
         "",
@@ -134,12 +210,24 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
 
     drafts = segment_transcript(raw_text, raw_json)
     persisted_segments = [_segment_to_storage(database, video.id, transcript_artifact, draft) for draft in drafts]
+    detected_window = detect_sermon_window(drafts)
+    override_path = video_paths.review / "window_override.json"
+    override, override_error = _load_window_override(override_path)
+    sermon_window = _effective_sermon_window(detected_window, override, override_error)
+    guest_flags = detect_guest_speaker_flags(
+        video_title=video.title,
+        drafts=drafts,
+        pastor_name=pastor.display_name,
+        sermon_window=detected_window,
+    )
 
     proposed_text = _build_proposed_markdown(
         video.title,
         video.url,
         pastor.slug,
         transcript_artifact.source_kind,
+        sermon_window,
+        guest_flags,
         drafts,
     )
     proposed_text_path = video_paths.extracted / "proposed.md"
@@ -153,6 +241,10 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
         "pastor_slug": pastor.slug,
         "source_url": video.url,
         "transcript_source": transcript_artifact.source_kind.value,
+        "sermon_window": sermon_window,
+        "guest_speaker_suspected": guest_flags.suspected,
+        "guest_name_candidates": guest_flags.name_candidates,
+        "guest_signal_reasons": guest_flags.reasons,
         "segment_count": len(persisted_segments),
         "segments": [
             {
