@@ -118,7 +118,6 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
 
     video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
     video_paths.extracted.mkdir(parents=True, exist_ok=True)
-    video_paths.review.mkdir(parents=True, exist_ok=True)
     database.delete_transcript_segments_for_video(video.id)
 
     raw_json = _load_json(Path(transcript_artifact.raw_json_path) if transcript_artifact.raw_json_path else None)
@@ -162,7 +161,7 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
         proposed_text_path=str(proposed_text_path),
         proposed_json_path=str(proposed_json_path),
     )
-    database.update_video_status(video.id, VideoStatus.NEEDS_REVIEW)
+    database.update_video_status(video.id, VideoStatus.EXTRACTED)
     return ExtractionRunResult(
         extraction_result=extraction_result,
         segments_path=segments_path,

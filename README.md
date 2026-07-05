@@ -15,14 +15,15 @@ This workspace now has the main pipeline scaffold in place:
 - pastor entity persistence
 - pastor-aware artifact path helpers
 - transcript segmentation and heuristic extraction
-- review and export scaffolding
+- pastor-scoped Markdown review generation
 - caption fetching
-- `init`, `add`, `status`, `doctor`, `discover`, `fetch`, `transcribe`, `extract`, `review`, `export`, and `run` command implementation
+- exclusion-aware incremental reruns
+- `init`, `add`, `status`, `doctor`, `discover`, `fetch`, `transcribe`, `extract`, `review`, and `run` command implementation
 - `pastor add` and `pastor list`
 
 ## V1 Goal
 
-Given one or more YouTube sources, produce reviewed Markdown transcripts that contain only the pastor's sermon content.
+Given one or more YouTube sources, produce pastor-scoped Markdown review files that can be curated by excluding non-sermon videos and regenerating.
 
 ## Stack
 
@@ -72,6 +73,11 @@ By default the CLI stores local data under:
 
 You can override the data directory with `--base-dir`.
 
+## Workflows
+
+- `pte run <url> --pastor <slug>`
+- `pte review <pastor-slug>`
+
 ## Commands
 
 - `pte init`
@@ -82,7 +88,10 @@ You can override the data directory with `--base-dir`.
 - `pte fetch`
 - `pte transcribe`
 - `pte extract`
-- `pte run <url>`
+- `pte review <pastor-slug>`
+- `pte video exclude <video-id>`
+- `pte video unexclude <youtube-video-id>`
+- `pte video excluded`
 - `pte pastor add <slug> <display-name>`
 - `pte pastor list`
 

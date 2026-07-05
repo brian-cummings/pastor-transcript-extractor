@@ -67,7 +67,12 @@ def _pointer_path() -> Path:
 
 def remember_base_dir(base_dir: Path) -> None:
     resolved = base_dir.expanduser().resolve()
-    _pointer_path().write_text(str(resolved), encoding="utf-8")
+    try:
+        _pointer_path().write_text(str(resolved), encoding="utf-8")
+    except PermissionError:
+        # Best-effort persistence: if the home directory is not writable in the
+        # current environment, still honor the explicit base_dir for this run.
+        pass
 
 
 def resolve_base_dir(base_dir: Path | None = None) -> Path:
@@ -87,7 +92,9 @@ def resolve_base_dir(base_dir: Path | None = None) -> Path:
     return (Path.home() / APP_DIR_NAME).expanduser().resolve()
 
 
-def build_paths(base_dir: Path | None = None) -> AppPaths:
+def build_paths(base_dir: Path | None = None, remember: bool = False) -> AppPaths:
+    if remember and base_dir is not None:
+        remember_base_dir(base_dir)
     root = resolve_base_dir(base_dir)
     pastors = root / "pastors"
     return AppPaths(

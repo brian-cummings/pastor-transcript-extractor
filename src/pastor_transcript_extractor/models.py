@@ -118,6 +118,18 @@ class ReviewResult:
     review_notes: Optional[str] = None
 
 
+@dataclass(slots=True)
+class ExcludedVideo:
+    id: int
+    pastor_id: Optional[int]
+    source_id: Optional[int]
+    youtube_video_id: str
+    title: str
+    url: str
+    excluded_at: datetime
+    notes: Optional[str] = None
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 

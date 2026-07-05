@@ -10,19 +10,18 @@ from rich.table import Table
 
 from pastor_transcript_extractor.config import (
     build_paths,
+    build_pastor_paths,
     build_tool_config,
     build_video_artifact_paths,
     ensure_directories,
-    remember_base_dir,
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import extract_video
-from pastor_transcript_extractor.exporting import export_video
+from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.storage import Database
-from pastor_transcript_extractor.reviewing import review_video
 from pastor_transcript_extractor.transcription import fetch_captions_video, transcribe_video
 
 app = typer.Typer(help="Pastor Transcript Extractor CLI")
@@ -37,7 +36,7 @@ DEFAULT_DISCOVER_LIMIT = 26
 
 
 def get_database(base_dir: Path | None = None) -> Database:
-    paths = build_paths(base_dir)
+    paths = build_paths(base_dir, remember=True)
     ensure_directories(paths)
     database = Database(paths.database)
     database.initialize()
@@ -64,49 +63,43 @@ def _is_terminal_unavailable(video_status: VideoStatus, failure_reason: str | No
     return "video unavailable" in lowered or "not available" in lowered
 
 
-def _resolve_pastor_id(database: Database, pastor: str | None) -> int | None:
-    if pastor is None:
-        return None
-    pastor_record = database.get_pastor_by_slug(pastor)
-    if pastor_record is None:
-        raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
-    return pastor_record.id
-
-
-def _find_next_review_video(database: Database, pastor_id: int | None = None) -> object | None:
-    videos = [video for video in database.list_videos() if video.status == VideoStatus.NEEDS_REVIEW]
-    if pastor_id is not None:
-        videos = [video for video in videos if video.pastor_id == pastor_id]
-    return videos[0] if videos else None
-
-
-def _print_review_context(database: Database, video_id: int) -> None:
+def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
     video = database.get_video_by_id(video_id)
     if video is None:
         raise typer.BadParameter(f"Unknown video id: {video_id}")
 
-    segments = database.list_transcript_segments(video_id)
-    extraction_result = database.get_latest_extraction_result_for_video(video_id)
-    if extraction_result is None:
-        raise typer.BadParameter(f"Video {video_id} has no extraction result yet")
+    pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
+    if pastor is not None:
+        video_paths = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+        if video_paths.root.exists():
+            shutil.rmtree(video_paths.root)
+    database.delete_video(video.id)
 
-    console.print(f"Video #{video.id}: {video.title}")
-    console.print(f"Status: {video.status.value}")
-    console.print(f"Proposed transcript: {extraction_result.proposed_text_path}")
-    if segments:
-        table = Table(title="Segments")
-        table.add_column("#", justify="right")
-        table.add_column("Start")
-        table.add_column("End")
-        table.add_column("Label")
-        table.add_column("Text")
-        for index, segment in enumerate(segments, start=1):
-            start_text = "-" if segment.start_seconds is None else f"{segment.start_seconds:.1f}"
-            end_text = "-" if segment.end_seconds is None else f"{segment.end_seconds:.1f}"
-            table.add_row(str(index), start_text, end_text, segment.label.value, segment.text)
-        console.print(table)
-    else:
-        console.print("No segments available.")
+
+def _prepare_review_markdown(database: Database, paths: Path, pastor_slug: str) -> tuple[int, int]:
+    pastor = database.get_pastor_by_slug(pastor_slug)
+    if pastor is None:
+        raise typer.BadParameter(f"Unknown pastor slug: {pastor_slug}")
+
+    processed = 0
+    failed = 0
+    for video in database.list_videos():
+        if video.pastor_id != pastor.id:
+            continue
+        latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
+        latest_extraction = database.get_latest_extraction_result_for_video(video.id)
+        if latest_artifact is None or latest_extraction is not None:
+            continue
+        try:
+            console.print(f"Preparing review markdown for video #{video.id}: {video.title}")
+            extract_video(database, paths, video.id)
+        except Exception as error:
+            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+            console.print(f"[red]Failed to prepare review markdown[/red] video #{video.id}: {error}")
+            failed += 1
+            continue
+        processed += 1
+    return processed, failed
 
 
 def _delete_source_tree(database: Database, paths: Path, source_id: int) -> int:
@@ -133,12 +126,10 @@ def _delete_source_tree(database: Database, paths: Path, source_id: int) -> int:
 def init(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = build_paths(base_dir, remember=True)
     ensure_directories(paths)
     database = Database(paths.database)
     database.initialize()
-    if base_dir is not None:
-        remember_base_dir(base_dir)
     console.print(f"Initialized app data at [bold]{paths.root}[/bold]")
 
 
@@ -182,7 +173,7 @@ def status(
     summary.add_row("Transcripts", str(counts["transcript_artifacts"]))
     summary.add_row("Segments", str(counts["transcript_segments"]))
     summary.add_row("Extraction", str(counts["extraction_results"]))
-    summary.add_row("Reviews", str(counts["review_results"]))
+    summary.add_row("Excluded", str(counts["excluded_videos"]))
     console.print(summary)
 
     if not sources:
@@ -238,7 +229,7 @@ def source_delete(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
-    paths = build_paths(base_dir)
+    paths = build_paths(base_dir, remember=True)
     source = database.get_source_by_id(source_id)
     if source is None:
         raise typer.BadParameter(f"Unknown source id: {source_id}")
@@ -311,6 +302,81 @@ def video_list(
     console.print(table)
 
 
+@video_app.command("exclude", help="Delete a video's local artifacts and prevent it from being rediscovered.")
+def video_exclude(
+    video_id: int = typer.Argument(..., help="Video id to exclude."),
+    notes: str | None = typer.Option(None, help="Optional exclusion notes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir)
+    video = database.get_video_by_id(video_id)
+    if video is None:
+        raise typer.BadParameter(f"Unknown video id: {video_id}")
+
+    database.add_excluded_video(
+        pastor_id=video.pastor_id,
+        source_id=video.source_id,
+        youtube_video_id=video.youtube_video_id,
+        title=video.title,
+        url=video.url,
+        notes=notes,
+    )
+    _delete_video_tree(database, paths, video.id)
+    console.print(f"Excluded video #{video_id}: {video.title} ({video.youtube_video_id})")
+
+
+@video_app.command("unexclude", help="Allow an excluded YouTube video to be rediscovered again.")
+def video_unexclude(
+    youtube_video_id: str = typer.Argument(..., help="YouTube video id to remove from the exclusion list."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    excluded = database.get_excluded_video_by_youtube_id(youtube_video_id)
+    if excluded is None:
+        raise typer.BadParameter(f"Unknown excluded video id: {youtube_video_id}")
+    database.delete_excluded_video(youtube_video_id)
+    console.print(f"Removed exclusion for {youtube_video_id}: {excluded.title}")
+
+
+@video_app.command("excluded", help="List excluded YouTube videos.")
+def video_excluded(
+    pastor: str | None = typer.Option(None, help="Filter by pastor slug."),
+    limit: int = typer.Option(50, min=1, help="Maximum number of excluded videos to show."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    excluded_videos = database.list_excluded_videos()
+
+    if pastor is not None:
+        pastor_record = database.get_pastor_by_slug(pastor)
+        if pastor_record is None:
+            raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
+        excluded_videos = [video for video in excluded_videos if video.pastor_id == pastor_record.id]
+
+    if not excluded_videos:
+        console.print("No excluded videos matched.")
+        return
+
+    table = Table(title="Excluded Videos")
+    table.add_column("Pastor")
+    table.add_column("Excluded")
+    table.add_column("Title")
+    table.add_column("YouTube ID")
+    for video in excluded_videos[:limit]:
+        pastor_name = "-"
+        if video.pastor_id is not None:
+            pastor_record = database.get_pastor_by_id(video.pastor_id)
+            pastor_name = pastor_record.slug if pastor_record is not None else str(video.pastor_id)
+        table.add_row(
+            pastor_name,
+            video.excluded_at.date().isoformat(),
+            video.title,
+            video.youtube_video_id,
+        )
+    console.print(table)
+
+
 @pastor_app.command("add", help="Create a pastor profile and folder namespace.")
 def pastor_add(
     slug: str = typer.Argument(..., help="Slug for this pastor, used in folder paths."),
@@ -347,7 +413,7 @@ def pastor_list(
 def doctor(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
 
     try:
@@ -403,10 +469,14 @@ def discover(
 
     discovered_count = 0
     skipped_count = 0
+    excluded_count = 0
     found_count = 0
     effective_limit = None if all_videos else limit
     existing_ids = {
         video.youtube_video_id for video in database.list_videos()
+    }
+    excluded_ids = {
+        video.youtube_video_id for video in database.list_excluded_videos()
     }
     for source in sources:
         if source.pastor_id is None:
@@ -428,6 +498,9 @@ def discover(
             discovered_videos = discovered_videos[:effective_limit]
 
         for discovered in discovered_videos:
+            if discovered.youtube_video_id in excluded_ids:
+                excluded_count += 1
+                continue
             if discovered.youtube_video_id in existing_ids:
                 skipped_count += 1
                 continue
@@ -446,14 +519,15 @@ def discover(
             existing_ids.add(discovered.youtube_video_id)
 
     if effective_limit is not None:
-        console.print(
+        summary = (
             f"Found {found_count} video(s); queued {discovered_count} new video(s) after limit {effective_limit}; "
             f"skipped {skipped_count} duplicate(s)."
         )
     else:
-        console.print(
-            f"Found {found_count} video(s); queued {discovered_count} new video(s); skipped {skipped_count} duplicate(s)."
-        )
+        summary = f"Found {found_count} video(s); queued {discovered_count} new video(s); skipped {skipped_count} duplicate(s)."
+    if excluded_count:
+        summary = f"{summary[:-1]}; excluded {excluded_count} video(s)."
+    console.print(summary)
 
 
 @app.command(help="Download or prepare local ASR transcripts for discovered videos.")
@@ -471,7 +545,7 @@ def transcribe(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
-    paths = build_paths(base_dir)
+    paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
     videos = database.list_videos()
     if not videos:
@@ -498,8 +572,6 @@ def transcribe(
         if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.LOCAL_ASR and video.status in {
             VideoStatus.TRANSCRIBED_LOCAL,
             VideoStatus.EXTRACTED,
-            VideoStatus.NEEDS_REVIEW,
-            VideoStatus.APPROVED,
             VideoStatus.EXPORTED,
         }:
             skipped += 1
@@ -524,7 +596,7 @@ def fetch(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
-    paths = build_paths(base_dir)
+    paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
     videos = database.list_videos()
     if not videos:
@@ -574,12 +646,12 @@ def extract(
     missing_only: bool = typer.Option(
         False,
         "--missing-only",
-        help="Only extract videos without a review-ready artifact.",
+        help="Only extract videos without a proposed Markdown artifact.",
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
-    paths = build_paths(base_dir)
+    paths = build_paths(base_dir, remember=True)
     videos = database.list_videos()
     if not videos:
         console.print("No videos queued.")
@@ -600,7 +672,7 @@ def extract(
         if missing_only and latest_extraction is not None:
             skipped += 1
             continue
-        if latest_extraction is not None and video.status in {VideoStatus.NEEDS_REVIEW, VideoStatus.APPROVED, VideoStatus.EXPORTED}:
+        if latest_extraction is not None and video.status in {VideoStatus.EXTRACTED, VideoStatus.EXPORTED}:
             skipped += 1
             continue
 
@@ -618,170 +690,32 @@ def extract(
     console.print(f"Extracted {processed} video(s); skipped {skipped}; failed {failed}.")
 
 
-@app.command(help="Inspect extracted transcript segments for a video.")
+@app.command(help="Build or refresh the pastor-scoped Markdown review file from extracted videos.", rich_help_panel="Workflows")
 def review(
-    video_id: int = typer.Argument(..., help="Video id to review."),
-    approve: bool = typer.Option(False, "--approve", help="Mark the extraction as approved after copying it."),
-    notes: str | None = typer.Option(None, help="Optional review notes."),
-    edit: bool = typer.Option(False, "--edit", help="Open the approved transcript in an editor."),
+    pastor: str = typer.Argument(..., help="Pastor slug whose extracted videos should be assembled into review Markdown."),
+    edit: bool = typer.Option(False, "--edit", help="Open the generated review Markdown in an editor."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
-    paths = build_paths(base_dir)
-    _print_review_context(database, video_id)
+    paths = build_paths(base_dir, remember=True)
+    pastor_record = database.get_pastor_by_slug(pastor)
+    if pastor_record is None:
+        raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
+    prepared, failed = _prepare_review_markdown(database, paths, pastor_record.slug)
+    pastor_paths = build_pastor_paths(paths, pastor_record.slug)
+    result = export_pastor_review_markdown(database, paths, pastor_record.slug)
+    if prepared or failed:
+        console.print(f"Prepared {prepared} video(s) for review; failed {failed}.")
+    console.print(f"Wrote pastor review markdown to {result.export_path}")
+    console.print(f"Wrote review manifest to {result.manifest_path}")
+    console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
 
-    if not approve:
-        console.print("Use --approve to persist a review result.")
-        return
-
-    result = review_video(database, paths, video_id, approve=True, review_notes=notes, edit=edit)
-    console.print(f"Approved transcript written to {result.approved_text_path}")
-
-
-@app.command(help="Review the next pending transcript, optionally approve it, export it, and move on.", rich_help_panel="Workflows")
-def review_next(
-    video_id: int | None = typer.Argument(None, help="Specific video id to review. Defaults to the first unreviewed video."),
-    pastor: str | None = typer.Option(None, help="Limit the review queue to a pastor slug."),
-    approve: bool = typer.Option(False, "--approve", help="Approve the current video after review."),
-    edit: bool = typer.Option(False, "--edit", help="Open the approved transcript in an editor before finalizing."),
-    export_after: bool = typer.Option(
-        True,
-        "--export/--no-export",
-        help="Export immediately after approval.",
-    ),
-    notes: str | None = typer.Option(None, help="Optional review notes."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    paths = build_paths(base_dir)
-    pastor_id = _resolve_pastor_id(database, pastor)
-
-    if video_id is None:
-        next_video = _find_next_review_video(database, pastor_id)
-        if next_video is None:
-            console.print("No videos waiting for review.")
-            return
-        video_id = next_video.id
-
-    _print_review_context(database, video_id)
-
-    if not approve:
-        console.print("Use --approve to finalize this item and move to the next one.")
-        return
-
-    review_result = review_video(database, paths, video_id, approve=True, review_notes=notes, edit=edit)
-    console.print(f"Approved transcript written to {review_result.approved_text_path}")
-
-    if export_after:
-        export_result = export_video(database, paths, video_id)
-        console.print(f"Exported video #{video_id} to {export_result.export_path}")
-
-    next_video = _find_next_review_video(database, pastor_id)
-    if next_video is None:
-        console.print("No more videos waiting for review.")
-    else:
-        console.print(f"Next in review queue: video #{next_video.id} - {next_video.title}")
-
-
-@app.command("review-queue", help="List videos waiting for review or already approved.")
-def review_queue(
-    pastor: str | None = typer.Option(None, help="Filter by pastor slug."),
-    status: VideoStatus = typer.Option(
-        VideoStatus.NEEDS_REVIEW,
-        "--status",
-        help="Review workflow status to show.",
-    ),
-    limit: int = typer.Option(50, min=1, help="Maximum number of videos to show."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    videos = [video for video in database.list_videos() if video.status == status]
-
-    if pastor is not None:
-        pastor_record = database.get_pastor_by_slug(pastor)
-        if pastor_record is None:
-            raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
-        videos = [video for video in videos if video.pastor_id == pastor_record.id]
-
-    if not videos:
-        console.print("No videos matched.")
-        return
-
-    table = Table(title="Review Queue")
-    table.add_column("ID", justify="right")
-    table.add_column("Pastor")
-    table.add_column("Status")
-    table.add_column("Title")
-    table.add_column("Proposed")
-    table.add_column("Approved")
-
-    for video in videos[:limit]:
-        pastor_name = "-"
-        if video.pastor_id is not None:
-            pastor_record = database.get_pastor_by_id(video.pastor_id)
-            pastor_name = pastor_record.slug if pastor_record is not None else str(video.pastor_id)
-        extraction_result = database.get_latest_extraction_result_for_video(video.id)
-        review_result = database.get_latest_review_result_for_video(video.id)
-        table.add_row(
-            str(video.id),
-            pastor_name,
-            video.status.value,
-            video.title,
-            extraction_result.proposed_text_path if extraction_result is not None else "-",
-            review_result.approved_text_path if review_result is not None else "-",
-        )
-
-    console.print(table)
-
-
-@app.command(help="Approve a reviewed transcript, optionally edit it first, and optionally export it.")
-def approve(
-    video_id: int = typer.Argument(..., help="Video id to approve."),
-    notes: str | None = typer.Option(None, help="Optional review notes."),
-    edit: bool = typer.Option(False, "--edit", help="Open the approved transcript in an editor before finalizing."),
-    export_after: bool = typer.Option(False, "--export", help="Export immediately after approval."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    paths = build_paths(base_dir)
-    result = review_video(database, paths, video_id, approve=True, review_notes=notes, edit=edit)
-    console.print(f"Approved transcript written to {result.approved_text_path}")
-
-    if export_after:
-        export_result = export_video(database, paths, video_id)
-        console.print(f"Exported video #{video_id} to {export_result.export_path}")
-
-
-@app.command(help="Export approved transcripts to deterministic Markdown files.")
-def export(
-    video_id: int | None = typer.Argument(None, help="Video id to export. Omit to export all approved videos."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    paths = build_paths(base_dir)
-
-    target_ids = [video_id] if video_id is not None else [video.id for video in database.list_videos()]
-    exported = 0
-    skipped = 0
-    failed = 0
-    for target_id in target_ids:
-        video = database.get_video_by_id(target_id)
-        if video is None:
-            skipped += 1
-            continue
-        if database.get_latest_review_result_for_video(video.id) is None:
-            skipped += 1
-            continue
-        try:
-            result = export_video(database, paths, video.id)
-        except Exception as error:
-            console.print(f"[red]Failed to export[/red] video #{video.id}: {error}")
-            failed += 1
-            continue
-        console.print(f"Exported video #{video.id} to {result.export_path}")
-        exported += 1
-
-    console.print(f"Exported {exported} video(s); skipped {skipped}; failed {failed}.")
+    if edit:
+        editor = shutil.which("code") or shutil.which("nano") or shutil.which("vim")
+        if editor is None:
+            raise RuntimeError("No editor found on PATH")
+        import subprocess
+        subprocess.run([editor, str(pastor_paths.exports / "review.md")], check=True)
 
 
 @app.command(help="Run the intake pipeline from source registration through extraction.", rich_help_panel="Workflows")
@@ -818,7 +752,7 @@ def run(
 ) -> None:
     console.print(
         "Run adds the source, discovers videos, fetches captions, optionally transcribes remaining videos, "
-        "and extracts before review/export."
+        "and extracts before pastor Markdown review."
     )
     database = get_database(base_dir)
     if replace_existing:

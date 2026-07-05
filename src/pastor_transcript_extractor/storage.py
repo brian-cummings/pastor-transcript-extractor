@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterator
 
 from pastor_transcript_extractor.models import (
+    ExcludedVideo,
     ExtractionResult,
     Pastor,
     ReviewResult,
@@ -102,6 +103,17 @@ CREATE TABLE IF NOT EXISTS review_results (
     review_notes TEXT NULL,
     FOREIGN KEY(video_id) REFERENCES videos(id),
     FOREIGN KEY(extraction_result_id) REFERENCES extraction_results(id)
+);
+
+CREATE TABLE IF NOT EXISTS excluded_videos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pastor_id INTEGER NULL,
+    source_id INTEGER NULL,
+    youtube_video_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    excluded_at TEXT NOT NULL,
+    notes TEXT NULL
 );
 """
 
@@ -211,6 +223,18 @@ class Database:
             approved_text_path=str(row["approved_text_path"]),
             reviewed_at=parse_datetime(str(row["reviewed_at"])) or utc_now(),
             review_notes=row["review_notes"],
+        )
+
+    def _excluded_video_from_row(self, row: sqlite3.Row) -> ExcludedVideo:
+        return ExcludedVideo(
+            id=int(row["id"]),
+            pastor_id=row["pastor_id"],
+            source_id=row["source_id"],
+            youtube_video_id=str(row["youtube_video_id"]),
+            title=str(row["title"]),
+            url=str(row["url"]),
+            excluded_at=parse_datetime(str(row["excluded_at"])) or utc_now(),
+            notes=row["notes"],
         )
 
     def add_pastor(self, slug: str, display_name: str, notes: str | None = None) -> Pastor:
@@ -507,6 +531,86 @@ class Database:
         with self.connect() as connection:
             connection.execute("DELETE FROM sources WHERE id = ?", (source_id,))
 
+    def add_excluded_video(
+        self,
+        youtube_video_id: str,
+        title: str,
+        url: str,
+        pastor_id: int | None = None,
+        source_id: int | None = None,
+        notes: str | None = None,
+    ) -> ExcludedVideo:
+        excluded_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO excluded_videos (
+                        pastor_id, source_id, youtube_video_id, title, url, excluded_at, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (pastor_id, source_id, youtube_video_id, title, url, excluded_at, notes),
+                )
+            except sqlite3.IntegrityError:
+                connection.execute(
+                    """
+                    UPDATE excluded_videos
+                    SET pastor_id = ?, source_id = ?, title = ?, url = ?, excluded_at = ?, notes = ?
+                    WHERE youtube_video_id = ?
+                    """,
+                    (pastor_id, source_id, title, url, excluded_at, notes, youtube_video_id),
+                )
+                row = connection.execute(
+                    """
+                    SELECT id, pastor_id, source_id, youtube_video_id, title, url, excluded_at, notes
+                    FROM excluded_videos
+                    WHERE youtube_video_id = ?
+                    """,
+                    (youtube_video_id,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._excluded_video_from_row(row)
+        return ExcludedVideo(
+            id=int(cursor.lastrowid),
+            pastor_id=pastor_id,
+            source_id=source_id,
+            youtube_video_id=youtube_video_id,
+            title=title,
+            url=url,
+            excluded_at=parse_datetime(excluded_at) or utc_now(),
+            notes=notes,
+        )
+
+    def list_excluded_videos(self) -> list[ExcludedVideo]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, pastor_id, source_id, youtube_video_id, title, url, excluded_at, notes
+                FROM excluded_videos
+                ORDER BY excluded_at DESC, id DESC
+                """
+            ).fetchall()
+        return [self._excluded_video_from_row(row) for row in rows]
+
+    def get_excluded_video_by_youtube_id(self, youtube_video_id: str) -> ExcludedVideo | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, pastor_id, source_id, youtube_video_id, title, url, excluded_at, notes
+                FROM excluded_videos
+                WHERE youtube_video_id = ?
+                """,
+                (youtube_video_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._excluded_video_from_row(row)
+
+    def delete_excluded_video(self, youtube_video_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM excluded_videos WHERE youtube_video_id = ?", (youtube_video_id,))
+
     def add_transcript_segment(
         self,
         video_id: int,
@@ -709,6 +813,7 @@ class Database:
             segment_count = connection.execute("SELECT COUNT(*) FROM transcript_segments").fetchone()[0]
             extraction_count = connection.execute("SELECT COUNT(*) FROM extraction_results").fetchone()[0]
             review_count = connection.execute("SELECT COUNT(*) FROM review_results").fetchone()[0]
+            excluded_count = connection.execute("SELECT COUNT(*) FROM excluded_videos").fetchone()[0]
         return {
             "sources": int(source_count),
             "pastors": int(pastor_count),
@@ -717,4 +822,5 @@ class Database:
             "transcript_segments": int(segment_count),
             "extraction_results": int(extraction_count),
             "review_results": int(review_count),
+            "excluded_videos": int(excluded_count),
         }

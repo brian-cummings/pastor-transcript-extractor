@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Callable
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -14,8 +16,7 @@ from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.models import SourceType, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.extraction import extract_video
-from pastor_transcript_extractor.exporting import export_video
-from pastor_transcript_extractor.reviewing import review_video
+from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.sources import detect_source_type
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.transcription import _captions_to_plain_text, fetch_captions_video, transcribe_video
@@ -78,6 +79,21 @@ class DatabaseTests(unittest.TestCase):
 
         self.assertEqual(self.pastor.id, source.pastor_id)
         self.assertEqual(self.pastor.id, self.database.list_sources()[0].pastor_id)
+
+    def test_excluded_video_round_trips(self) -> None:
+        excluded = self.database.add_excluded_video(
+            youtube_video_id="abc123def45",
+            title="Excluded Sermon",
+            url="https://www.youtube.com/watch?v=abc123def45",
+            pastor_id=self.pastor.id,
+            notes="not a sermon",
+        )
+
+        listed = self.database.list_excluded_videos()
+
+        self.assertEqual(1, len(listed))
+        self.assertEqual(excluded.youtube_video_id, listed[0].youtube_video_id)
+        self.assertEqual("not a sermon", listed[0].notes)
 
 
 class PathTests(unittest.TestCase):
@@ -385,6 +401,106 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual(VideoStatus.DISCOVERED, videos[0].status)
             self.assertIn("skipped 1 duplicate", result.output)
 
+    def test_discover_skips_excluded_videos(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            database.add_source(
+                "https://www.youtube.com/watch?v=source123",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            database.add_excluded_video(
+                youtube_video_id="abc123def45",
+                title="Excluded Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                pastor_id=pastor.id,
+            )
+
+            discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="abc123def45",
+                    title="Excluded Sermon",
+                    url="https://www.youtube.com/watch?v=abc123def45",
+                    channel_name="Sample Church",
+                    published_at="2024-03-09T16:00:00+00:00",
+                    duration_seconds=1234,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="def456ghijk",
+                    title="Included Sermon",
+                    url="https://www.youtube.com/watch?v=def456ghijk",
+                    channel_name="Sample Church",
+                    published_at="2024-03-09T17:00:00+00:00",
+                    duration_seconds=2345,
+                ),
+            ]
+
+            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+                result = runner.invoke(app, ["discover", "--all", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            videos = database.list_videos()
+            self.assertEqual(["def456ghijk"], [video.youtube_video_id for video in videos])
+            self.assertIn("excluded 1", result.output)
+
+    def test_discover_rerun_only_queues_new_videos(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+
+            first_discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="abc123def45",
+                    title="Sermon 1",
+                    url="https://www.youtube.com/watch?v=abc123def45",
+                    channel_name="Sample Church",
+                    published_at="2024-03-09T16:00:00+00:00",
+                    duration_seconds=1234,
+                )
+            ]
+            second_discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="abc123def45",
+                    title="Sermon 1",
+                    url="https://www.youtube.com/watch?v=abc123def45",
+                    channel_name="Sample Church",
+                    published_at="2024-03-09T16:00:00+00:00",
+                    duration_seconds=1234,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="def456ghijk",
+                    title="Sermon 2",
+                    url="https://www.youtube.com/watch?v=def456ghijk",
+                    channel_name="Sample Church",
+                    published_at="2024-03-10T16:00:00+00:00",
+                    duration_seconds=2345,
+                ),
+            ]
+
+            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=first_discovered):
+                first_result = runner.invoke(app, ["discover", "--all", "--base-dir", str(base_dir)])
+            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=second_discovered):
+                second_result = runner.invoke(app, ["discover", "--all", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, first_result.exit_code, msg=first_result.output)
+            self.assertEqual(0, second_result.exit_code, msg=second_result.output)
+            videos = database.list_videos()
+            self.assertEqual(["abc123def45", "def456ghijk"], [video.youtube_video_id for video in videos])
+            self.assertIn("queued 1 new video", second_result.output)
+            self.assertIn("skipped 1 duplicate", second_result.output)
+
     def test_discover_limit_keeps_first_n_results(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -559,6 +675,35 @@ class DiscoveryTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def _assert_command_persists_base_dir(
+        self,
+        command_args: list[str],
+        setup: Callable[[Path], None] | None = None,
+        extra_patches: list[object] | None = None,
+    ) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp) / "home"
+            fake_home.mkdir(parents=True, exist_ok=True)
+            custom_base_dir = Path(tmp) / "documents-appdata"
+            if setup is not None:
+                setup(custom_base_dir)
+
+            with patch("pastor_transcript_extractor.config.Path.home", return_value=fake_home):
+                with ExitStack() as stack:
+                    for extra_patch in extra_patches or []:
+                        stack.enter_context(extra_patch)
+                    result = runner.invoke(
+                        app,
+                        [*command_args, "--base-dir", str(custom_base_dir)],
+                    )
+                doctor_result = runner.invoke(app, ["doctor"])
+                resolved_root = build_paths().root
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual(0, doctor_result.exit_code, msg=doctor_result.output)
+            self.assertEqual(custom_base_dir.resolve(), resolved_root)
+
     def test_top_level_help_groups_workflows_under_workflow_typer(self) -> None:
         runner = CliRunner()
         result = runner.invoke(app, ["--help"])
@@ -618,6 +763,99 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, init_result.exit_code, msg=init_result.output)
             self.assertEqual(0, doctor_result.exit_code, msg=doctor_result.output)
             self.assertEqual(custom_base_dir.resolve(), resolved_root)
+
+    def test_status_with_base_dir_persists_default_root_for_future_commands(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp) / "home"
+            fake_home.mkdir(parents=True, exist_ok=True)
+            custom_base_dir = Path(tmp) / "documents-appdata"
+
+            with patch("pastor_transcript_extractor.config.Path.home", return_value=fake_home):
+                status_result = runner.invoke(
+                    app,
+                    ["status", "--base-dir", str(custom_base_dir)],
+                )
+                doctor_result = runner.invoke(app, ["doctor"])
+                resolved_root = build_paths().root
+
+            self.assertEqual(0, status_result.exit_code, msg=status_result.output)
+            self.assertEqual(0, doctor_result.exit_code, msg=doctor_result.output)
+            self.assertEqual(custom_base_dir.resolve(), resolved_root)
+
+    def test_command_codepaths_with_base_dir_persist_default_root_for_future_commands(self) -> None:
+        def setup_pastor(base_dir: Path) -> None:
+            base_dir.mkdir(parents=True, exist_ok=True)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            database.add_pastor("sample-church", "Sample Church")
+
+        def setup_source(base_dir: Path) -> None:
+            base_dir.mkdir(parents=True, exist_ok=True)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+
+        def setup_video(base_dir: Path) -> None:
+            base_dir.mkdir(parents=True, exist_ok=True)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.DISCOVERED,
+            )
+
+        def setup_review(base_dir: Path) -> None:
+            base_dir.mkdir(parents=True, exist_ok=True)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            database.add_pastor("sample-church", "Sample Church")
+
+        cases = [
+            ("pastor-add", ["pastor", "add", "sample-church", "Sample Church"], None, None),
+            (
+                "add",
+                ["add", "https://www.youtube.com/watch?v=abc123", "--pastor", "sample-church"],
+                setup_pastor,
+                None,
+            ),
+            (
+                "discover",
+                ["discover", "--all"],
+                setup_source,
+                [patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=[])],
+            ),
+            ("video-list", ["video", "list"], setup_video, None),
+            ("source-delete", ["source", "delete", "1", "--force"], setup_source, None),
+            ("fetch", ["fetch"], None, None),
+            ("transcribe", ["transcribe"], None, None),
+            ("extract", ["extract"], None, None),
+            ("review", ["review", "sample-church"], setup_review, None),
+            ("video-exclude", ["video", "exclude", "1"], setup_video, None),
+        ]
+
+        for label, command_args, setup, extra_patches in cases:
+            with self.subTest(command=label):
+                self._assert_command_persists_base_dir(
+                    command_args=command_args,
+                    setup=setup,
+                    extra_patches=extra_patches,
+                )
 
     def test_run_replace_existing_deletes_source_before_pipeline(self) -> None:
         runner = CliRunner()
@@ -931,10 +1169,12 @@ class CliTests(unittest.TestCase):
             self.assertIn("Sermon", result.output)
             self.assertNotIn("Queued Sermon", result.output)
 
-    def test_review_queue_lists_needs_review_videos(self) -> None:
+    def test_video_exclude_deletes_local_artifacts_and_persists_exclusion(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
             database = Database(base_dir / "app.db")
             database.initialize()
             pastor = database.add_pastor("sample-church", "Sample Church")
@@ -947,26 +1187,23 @@ class CliTests(unittest.TestCase):
                 source_id=source.id,
                 pastor_id=pastor.id,
                 youtube_video_id="abc123def45",
-                title="Queued For Review",
+                title="Exclude Me",
                 url="https://www.youtube.com/watch?v=abc123def45",
                 status=VideoStatus.NEEDS_REVIEW,
             )
-            extraction_result = database.add_extraction_result(
-                video_id=video.id,
-                version=1,
-                proposed_text_path="/tmp/proposed.md",
-                proposed_json_path="/tmp/proposed.json",
-            )
-            del extraction_result
+            video_paths = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            video_paths.review.mkdir(parents=True, exist_ok=True)
+            (video_paths.review / "approved.md").write_text("# test\n", encoding="utf-8")
 
-            result = runner.invoke(app, ["review-queue", "--base-dir", str(base_dir)])
+            result = runner.invoke(app, ["video", "exclude", str(video.id), "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertIn("Review Queue", result.output)
-            self.assertIn("Queued", result.output)
-            self.assertIn("Review", result.output)
+            self.assertIsNone(database.get_video_by_id(video.id))
+            excluded = database.get_excluded_video_by_youtube_id("abc123def45")
+            self.assertIsNotNone(excluded)
+            self.assertFalse(video_paths.root.exists())
 
-    def test_review_next_defaults_to_first_unreviewed_item(self) -> None:
+    def test_review_builds_pastor_markdown_from_extracted_videos(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
@@ -984,67 +1221,17 @@ class CliTests(unittest.TestCase):
                 source_id=source.id,
                 pastor_id=pastor.id,
                 youtube_video_id="abc123def45",
-                title="First Pending",
+                title="First Sermon",
                 url="https://www.youtube.com/watch?v=abc123def45",
-                status=VideoStatus.NEEDS_REVIEW,
+                status=VideoStatus.EXTRACTED,
             )
             second_video = database.add_video(
                 source_id=source.id,
                 pastor_id=pastor.id,
                 youtube_video_id="def456ghijk",
-                title="Second Pending",
+                title="Second Sermon",
                 url="https://www.youtube.com/watch?v=def456ghijk",
-                status=VideoStatus.NEEDS_REVIEW,
-            )
-            del second_video
-            for video in [first_video, database.get_video_by_id(first_video.id + 1)]:
-                assert video is not None
-                video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
-                video_dir.extracted.mkdir(parents=True, exist_ok=True)
-                proposed_path = video_dir.extracted / "proposed.md"
-                proposed_path.write_text(f"# {video.title}\n\nHello world.", encoding="utf-8")
-                database.add_extraction_result(
-                    video_id=video.id,
-                    version=1,
-                    proposed_text_path=str(proposed_path),
-                    proposed_json_path=str(video_dir.extracted / "proposed.json"),
-                )
-
-            result = runner.invoke(app, ["review-next", "--base-dir", str(base_dir)])
-
-            self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertIn("Video #1: First Pending", result.output)
-            self.assertIn("Use --approve to finalize this item and move to the next one.", result.output)
-
-    def test_review_next_approves_exports_and_advances_queue(self) -> None:
-        runner = CliRunner()
-        with tempfile.TemporaryDirectory() as tmp:
-            base_dir = Path(tmp)
-            paths = build_paths(base_dir)
-            ensure_directories(paths)
-            database = Database(paths.database)
-            database.initialize()
-            pastor = database.add_pastor("sample-church", "Sample Church")
-            source = database.add_source(
-                "https://www.youtube.com/watch?v=abc123",
-                SourceType.VIDEO,
-                pastor_id=pastor.id,
-            )
-            first_video = database.add_video(
-                source_id=source.id,
-                pastor_id=pastor.id,
-                youtube_video_id="abc123def45",
-                title="First Pending",
-                url="https://www.youtube.com/watch?v=abc123def45",
-                status=VideoStatus.NEEDS_REVIEW,
-            )
-            second_video = database.add_video(
-                source_id=source.id,
-                pastor_id=pastor.id,
-                youtube_video_id="def456ghijk",
-                title="Second Pending",
-                url="https://www.youtube.com/watch?v=def456ghijk",
-                status=VideoStatus.NEEDS_REVIEW,
+                status=VideoStatus.EXTRACTED,
             )
             for video in [first_video, second_video]:
                 video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
@@ -1058,14 +1245,130 @@ class CliTests(unittest.TestCase):
                     proposed_json_path=str(video_dir.extracted / "proposed.json"),
                 )
 
-            result = runner.invoke(app, ["review-next", "--approve", "--base-dir", str(base_dir)])
+            result = runner.invoke(app, ["review", "sample-church", "--base-dir", str(base_dir)])
 
-            updated_first = database.get_video_by_id(first_video.id)
             self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertEqual(VideoStatus.EXPORTED, updated_first.status)
-            self.assertIn("Approved transcript written", result.output)
-            self.assertIn("Exported video", result.output)
-            self.assertIn(f"Next in review queue: video #{second_video.id} - Second Pending", result.output)
+            review_path = build_pastor_paths(paths, pastor.slug).exports / "review.md"
+            manifest_path = build_pastor_paths(paths, pastor.slug).exports / "review.json"
+            self.assertTrue(review_path.exists())
+            self.assertTrue(manifest_path.exists())
+            review_text = review_path.read_text(encoding="utf-8")
+            self.assertIn("# Sample Church Review", review_text)
+            self.assertIn("## undated - First Sermon", review_text)
+            self.assertIn("## undated - Second Sermon", review_text)
+            self.assertIn("Hello world.", review_text)
+            self.assertIn("Wrote pastor review markdown", result.output)
+
+    def test_review_regenerates_without_excluded_videos(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            kept_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Keep Me",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.EXTRACTED,
+            )
+            excluded_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="def456ghijk",
+                title="Exclude Me",
+                url="https://www.youtube.com/watch?v=def456ghijk",
+                status=VideoStatus.EXTRACTED,
+            )
+            for video in [kept_video, excluded_video]:
+                video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+                video_dir.extracted.mkdir(parents=True, exist_ok=True)
+                proposed_path = video_dir.extracted / "proposed.md"
+                proposed_path.write_text(f"# {video.title}\n\nHello world.", encoding="utf-8")
+                database.add_extraction_result(
+                    video_id=video.id,
+                    version=1,
+                    proposed_text_path=str(proposed_path),
+                    proposed_json_path=str(video_dir.extracted / "proposed.json"),
+                )
+
+            first_result = runner.invoke(app, ["review", "sample-church", "--base-dir", str(base_dir)])
+            exclude_result = runner.invoke(app, ["video", "exclude", str(excluded_video.id), "--base-dir", str(base_dir)])
+            second_result = runner.invoke(app, ["review", "sample-church", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, first_result.exit_code, msg=first_result.output)
+            self.assertEqual(0, exclude_result.exit_code, msg=exclude_result.output)
+            self.assertEqual(0, second_result.exit_code, msg=second_result.output)
+            review_path = build_pastor_paths(paths, pastor.slug).exports / "review.md"
+            review_text = review_path.read_text(encoding="utf-8")
+            self.assertIn("Keep Me", review_text)
+            self.assertNotIn("Exclude Me", review_text)
+
+    def test_review_prepares_missing_extractions_before_building_markdown(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Auto Extract Me",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.TRANSCRIPT_FETCHED,
+            )
+            artifact_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            artifact_dir.raw.mkdir(parents=True, exist_ok=True)
+            raw_json_path = artifact_dir.raw / "whisper.json"
+            raw_text_path = artifact_dir.raw / "whisper.txt"
+            raw_json_path.write_text(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "start": 0.0,
+                                "end": 5.0,
+                                "text": "Welcome everyone.",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            raw_text_path.write_text("Welcome everyone.", encoding="utf-8")
+            database.add_transcript_artifact(
+                video_id=video.id,
+                source_kind=TranscriptSourceKind.CAPTIONS,
+                audio_path=None,
+                raw_json_path=str(raw_json_path),
+                raw_text_path=str(raw_text_path),
+            )
+
+            result = runner.invoke(app, ["review", "sample-church", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("Prepared 1 video(s) for review; failed 0.", result.output)
+            review_path = build_pastor_paths(paths, pastor.slug).exports / "review.md"
+            self.assertTrue(review_path.exists())
+            self.assertIn("Auto Extract Me", review_path.read_text(encoding="utf-8"))
 
     def test_transcribe_prints_progress_for_each_video(self) -> None:
         runner = CliRunner()
@@ -1094,47 +1397,6 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn(f"Transcribing video #{video.id}: Queued Sermon", result.output)
             self.assertIn(f"Transcribed video #{video.id}", result.output)
-
-    def test_approve_command_can_export(self) -> None:
-        runner = CliRunner()
-        with tempfile.TemporaryDirectory() as tmp:
-            base_dir = Path(tmp)
-            paths = build_paths(base_dir)
-            ensure_directories(paths)
-            database = Database(paths.database)
-            database.initialize()
-            pastor = database.add_pastor("sample-church", "Sample Church")
-            source = database.add_source(
-                "https://www.youtube.com/watch?v=abc123",
-                SourceType.VIDEO,
-                pastor_id=pastor.id,
-            )
-            video = database.add_video(
-                source_id=source.id,
-                pastor_id=pastor.id,
-                youtube_video_id="abc123",
-                title="Sermon",
-                url="https://www.youtube.com/watch?v=abc123",
-                status=VideoStatus.NEEDS_REVIEW,
-            )
-            video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
-            video_dir.extracted.mkdir(parents=True, exist_ok=True)
-            proposed_path = video_dir.extracted / "proposed.md"
-            proposed_path.write_text("# Sermon\n\nHello world.", encoding="utf-8")
-            database.add_extraction_result(
-                video_id=video.id,
-                version=1,
-                proposed_text_path=str(proposed_path),
-                proposed_json_path=str(video_dir.extracted / "proposed.json"),
-            )
-
-            result = runner.invoke(app, ["approve", str(video.id), "--export", "--base-dir", str(base_dir)])
-
-            updated_video = database.get_video_by_id(video.id)
-            self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertIn("Approved transcript written", result.output)
-            self.assertIn("Exported video", result.output)
-            self.assertEqual(VideoStatus.EXPORTED, updated_video.status)
 
     def test_fetch_marks_unavailable_video_as_failed(self) -> None:
         runner = CliRunner()
@@ -1483,7 +1745,7 @@ class ExtractionTests(unittest.TestCase):
             segments = database.list_transcript_segments(video.id)
 
             self.assertIsNotNone(latest_result)
-            self.assertEqual(VideoStatus.NEEDS_REVIEW, updated_video.status)
+            self.assertEqual(VideoStatus.EXTRACTED, updated_video.status)
             self.assertEqual(2, result.segment_count)
             self.assertEqual(2, second_result.segment_count)
             self.assertTrue(result.proposed_text_path.exists())
@@ -1499,7 +1761,7 @@ class ExtractionTests(unittest.TestCase):
 
 
 class ReviewExportTests(unittest.TestCase):
-    def test_review_and_export_video_persists_approval_and_file(self) -> None:
+    def test_export_pastor_review_markdown_persists_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
             paths = build_paths(base_dir)
@@ -1518,7 +1780,7 @@ class ReviewExportTests(unittest.TestCase):
                 youtube_video_id="abc123",
                 title="Sermon",
                 url="https://www.youtube.com/watch?v=abc123",
-                status=VideoStatus.NEEDS_REVIEW,
+                status=VideoStatus.EXTRACTED,
             )
 
             video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
@@ -1532,19 +1794,11 @@ class ReviewExportTests(unittest.TestCase):
                 proposed_json_path=str(video_dir.extracted / "proposed.json"),
             )
 
-            review_result = review_video(database, paths, video.id, approve=True, review_notes="Looks good")
-            updated_video = database.get_video_by_id(video.id)
-            latest_review = database.get_latest_review_result_for_video(video.id)
-
-            self.assertTrue(review_result.approved_text_path.exists())
-            self.assertIsNotNone(latest_review)
-            self.assertEqual(extraction_result.id, latest_review.extraction_result_id)
-            self.assertEqual(VideoStatus.APPROVED, updated_video.status)
-
-            export_result = export_video(database, paths, video.id)
+            export_result = export_pastor_review_markdown(database, paths, pastor.slug)
             exported_video = database.get_video_by_id(video.id)
 
             self.assertTrue(export_result.export_path.exists())
+            self.assertTrue(export_result.manifest_path.exists())
             self.assertEqual(VideoStatus.EXPORTED, exported_video.status)
             self.assertIn("pastor: sample-church", export_result.export_path.read_text(encoding="utf-8"))
 
