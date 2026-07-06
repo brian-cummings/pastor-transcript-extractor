@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import os
 from pathlib import Path
 import shutil
@@ -27,7 +27,12 @@ from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.storage import Database
-from pastor_transcript_extractor.transcription import fetch_captions_video, transcribe_video
+from pastor_transcript_extractor.transcription import (
+    PreparedTranscriptInput,
+    complete_transcription_video,
+    fetch_captions_video,
+    prepare_transcription_input,
+)
 
 app = typer.Typer(help="Pastor Transcript Extractor CLI")
 pastor_app = typer.Typer(help="Manage pastors.")
@@ -39,6 +44,23 @@ app.add_typer(video_app, name="video")
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
+DEFAULT_PREP_WORKERS = 1
+STAGE_QUEUED_PREP = "q-prep"
+STAGE_DOWNLOADING = "dl"
+STAGE_NORMALIZING = "norm"
+STAGE_QUEUED_TRANSCRIBE = "q-xcribe"
+STAGE_TRANSCRIBING = "xcribe"
+STAGE_DONE = "done"
+STAGE_FAILED = "failed"
+STAGE_LABELS = {
+    "queued": STAGE_QUEUED_PREP,
+    "downloading": STAGE_DOWNLOADING,
+    "normalizing": STAGE_NORMALIZING,
+    "queued_transcribing": STAGE_QUEUED_TRANSCRIBE,
+    "transcribing": STAGE_TRANSCRIBING,
+    "done": STAGE_DONE,
+    "failed": STAGE_FAILED,
+}
 
 
 def get_database(base_dir: Path | None = None) -> Database:
@@ -114,14 +136,36 @@ def _claim_video_for_transcription(database: Database, video_id: int) -> bool:
     )
 
 
-def _transcribe_video_task(
+def _prepare_transcription_task(
     database: Database,
     paths,
     tools,
     video_id: int,
+    stage_callback=None,
+) -> PreparedTranscriptInput:
+    return prepare_transcription_input(
+        database,
+        paths,
+        tools,
+        video_id,
+        stage_callback=stage_callback,
+    )
+
+
+def _complete_transcription_task(
+    database: Database,
+    tools,
+    prepared: PreparedTranscriptInput,
     progress_callback=None,
+    stage_callback=None,
 ) -> None:
-    transcribe_video(database, paths, tools, video_id, progress_callback=progress_callback)
+    complete_transcription_video(
+        database,
+        tools,
+        prepared,
+        progress_callback=progress_callback,
+        stage_callback=stage_callback,
+    )
 
 
 def _build_transcription_progress_callback(video_id: int) -> Callable[[int], None]:
@@ -137,6 +181,21 @@ def _build_transcription_progress_callback(video_id: int) -> Callable[[int], Non
         console.print(f"[video #{video_id} progress] {bounded}%", markup=False)
 
     return progress_callback
+
+
+def _build_transcription_stage_callback(video_id: int) -> Callable[[str], None]:
+    lock = Lock()
+    state = {"last_stage": STAGE_QUEUED_PREP}
+
+    def stage_callback(stage: str) -> None:
+        label = STAGE_LABELS.get(stage, stage)
+        with lock:
+            if label == state["last_stage"]:
+                return
+            state["last_stage"] = label
+        console.print(f"[video #{video_id} stage] {label}", markup=False)
+
+    return stage_callback
 
 
 def _build_live_transcription_progress_callback(
@@ -159,6 +218,36 @@ def _build_live_transcription_progress_callback(
             progress.update(task_id, **update_kwargs)
 
     return progress_callback
+
+
+def _build_live_transcription_stage_callback(
+    progress: Progress,
+    task_id: TaskID,
+    lock: Lock,
+) -> Callable[[str], None]:
+    valid_statuses = {
+        STAGE_QUEUED_PREP,
+        STAGE_DOWNLOADING,
+        STAGE_NORMALIZING,
+        STAGE_QUEUED_TRANSCRIBE,
+        STAGE_TRANSCRIBING,
+        STAGE_DONE,
+        STAGE_FAILED,
+    }
+
+    def stage_callback(stage: str) -> None:
+        label = STAGE_LABELS.get(stage, stage)
+        if label not in valid_statuses:
+            return
+        with lock:
+            if label == STAGE_TRANSCRIBING:
+                progress.update(task_id, status=label, completed=0)
+            elif label == STAGE_DONE:
+                progress.update(task_id, status=label, completed=100)
+            else:
+                progress.update(task_id, status=label)
+
+    return stage_callback
 
 
 def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
@@ -681,7 +770,7 @@ def transcribe(
     max_workers = min(jobs, len(claimed_videos))
     total_claimed = len(claimed_videos)
     console.print(f"Transcribing {total_claimed} video(s) with {max_workers} worker(s).")
-    future_to_video: dict[Future[None], object] = {}
+    prep_workers = min(DEFAULT_PREP_WORKERS, total_claimed)
     if console.is_terminal:
         progress_lock = Lock()
         progress = Progress(
@@ -695,74 +784,163 @@ def transcribe(
             transient=False,
         )
         task_ids: dict[int, TaskID] = {}
-        with progress, ThreadPoolExecutor(max_workers=max_workers) as executor:
+        prep_future_to_video: dict[Future[PreparedTranscriptInput], object] = {}
+        transcribe_future_to_video: dict[Future[None], object] = {}
+        pending_videos = iter(claimed_videos)
+
+        def submit_prep(executor: ThreadPoolExecutor) -> bool:
+            video = next(pending_videos, None)
+            if video is None:
+                return False
+            prep_future = executor.submit(
+                _prepare_transcription_task,
+                database,
+                paths,
+                tools,
+                video.id,
+                _build_live_transcription_stage_callback(progress, task_ids[video.id], progress_lock),
+            )
+            prep_future_to_video[prep_future] = video
+            return True
+
+        with progress, ThreadPoolExecutor(max_workers=prep_workers) as prep_executor, ThreadPoolExecutor(
+            max_workers=max_workers
+        ) as transcribe_executor:
             for video in claimed_videos:
                 task_ids[video.id] = progress.add_task(
                     video.title,
                     total=100,
                     completed=0,
-                    status="queued",
+                    status=STAGE_QUEUED_PREP,
                     video_id=video.id,
                 )
-                future = executor.submit(
-                    _transcribe_video_task,
-                    database,
-                    paths,
-                    tools,
-                    video.id,
-                    _build_live_transcription_progress_callback(progress, task_ids[video.id], progress_lock),
-                )
-                future_to_video[future] = video
+            for _ in range(prep_workers):
+                if not submit_prep(prep_executor):
+                    break
 
-            for future in as_completed(future_to_video):
-                video = future_to_video[future]
-                task_id = task_ids[video.id]
-                try:
-                    future.result()
-                except Exception as error:
-                    database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-                    failed += 1
-                    with progress_lock:
-                        progress.update(task_id, status="failed", completed=100)
-                    console.print(
-                        f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
-                        style="red",
-                        markup=False,
-                    )
-                    continue
-                processed += 1
-                with progress_lock:
-                    progress.update(task_id, status="done", completed=100)
-                console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
+            while prep_future_to_video or transcribe_future_to_video:
+                if prep_future_to_video:
+                    prep_done, _ = wait(set(prep_future_to_video), timeout=0.05, return_when=FIRST_COMPLETED)
+                    for future in prep_done:
+                        video = prep_future_to_video.pop(future)
+                        try:
+                            prepared = future.result()
+                        except Exception as error:
+                            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                            failed += 1
+                            with progress_lock:
+                                progress.update(task_ids[video.id], status="failed", completed=100)
+                            console.print(
+                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                                style="red",
+                                markup=False,
+                            )
+                        else:
+                            with progress_lock:
+                                progress.update(task_ids[video.id], status=STAGE_QUEUED_TRANSCRIBE)
+                            transcribe_future = transcribe_executor.submit(
+                                _complete_transcription_task,
+                                database,
+                                tools,
+                                prepared,
+                                _build_live_transcription_progress_callback(progress, task_ids[video.id], progress_lock),
+                                _build_live_transcription_stage_callback(progress, task_ids[video.id], progress_lock),
+                            )
+                            transcribe_future_to_video[transcribe_future] = video
+                        submit_prep(prep_executor)
+                if transcribe_future_to_video:
+                    transcribe_done, _ = wait(set(transcribe_future_to_video), timeout=0.05, return_when=FIRST_COMPLETED)
+                    for future in transcribe_done:
+                        video = transcribe_future_to_video.pop(future)
+                        task_id = task_ids[video.id]
+                        try:
+                            future.result()
+                        except Exception as error:
+                            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                            failed += 1
+                            with progress_lock:
+                                progress.update(task_id, status=STAGE_FAILED, completed=100)
+                            console.print(
+                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                                style="red",
+                                markup=False,
+                            )
+                            continue
+                        processed += 1
+                        with progress_lock:
+                            progress.update(task_id, status=STAGE_DONE, completed=100)
+                        console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
     else:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for index, video in enumerate(claimed_videos, start=1):
-                console.print(f"[{index}/{total_claimed} queued] Transcribing video #{video.id}: {video.title}", markup=False)
-                future = executor.submit(
-                    _transcribe_video_task,
-                    database,
-                    paths,
-                    tools,
-                    video.id,
-                    _build_transcription_progress_callback(video.id),
-                )
-                future_to_video[future] = video
+        prep_future_to_video: dict[Future[PreparedTranscriptInput], object] = {}
+        transcribe_future_to_video: dict[Future[None], object] = {}
+        pending_videos = iter(claimed_videos)
+        for index, video in enumerate(claimed_videos, start=1):
+            console.print(f"[{index}/{total_claimed} queued] Transcribing video #{video.id}: {video.title}", markup=False)
 
-            for future in as_completed(future_to_video):
-                video = future_to_video[future]
-                try:
-                    future.result()
-                except Exception as error:
-                    database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-                    failed += 1
-                    console.print(
-                        f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
-                        style="red",
-                        markup=False,
-                    )
-                    continue
-                processed += 1
-                console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
+        def submit_prep(executor: ThreadPoolExecutor) -> bool:
+            video = next(pending_videos, None)
+            if video is None:
+                return False
+            prep_future = executor.submit(
+                _prepare_transcription_task,
+                database,
+                paths,
+                tools,
+                video.id,
+                _build_transcription_stage_callback(video.id),
+            )
+            prep_future_to_video[prep_future] = video
+            return True
+
+        with ThreadPoolExecutor(max_workers=prep_workers) as prep_executor, ThreadPoolExecutor(max_workers=max_workers) as transcribe_executor:
+            for _ in range(prep_workers):
+                if not submit_prep(prep_executor):
+                    break
+
+            while prep_future_to_video or transcribe_future_to_video:
+                if prep_future_to_video:
+                    prep_done, _ = wait(set(prep_future_to_video), timeout=0.05, return_when=FIRST_COMPLETED)
+                    for future in prep_done:
+                        video = prep_future_to_video.pop(future)
+                        try:
+                            prepared = future.result()
+                        except Exception as error:
+                            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                            failed += 1
+                            console.print(
+                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                                style="red",
+                                markup=False,
+                            )
+                        else:
+                            _build_transcription_stage_callback(video.id)(STAGE_QUEUED_TRANSCRIBE)
+                            transcribe_future = transcribe_executor.submit(
+                                _complete_transcription_task,
+                                database,
+                                tools,
+                                prepared,
+                                _build_transcription_progress_callback(video.id),
+                                _build_transcription_stage_callback(video.id),
+                            )
+                            transcribe_future_to_video[transcribe_future] = video
+                        submit_prep(prep_executor)
+                if transcribe_future_to_video:
+                    transcribe_done, _ = wait(set(transcribe_future_to_video), timeout=0.05, return_when=FIRST_COMPLETED)
+                    for future in transcribe_done:
+                        video = transcribe_future_to_video.pop(future)
+                        try:
+                            future.result()
+                        except Exception as error:
+                            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                            failed += 1
+                            console.print(
+                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                                style="red",
+                                markup=False,
+                            )
+                            continue
+                        processed += 1
+                        console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
 
     console.print(f"Transcribed {processed} video(s); skipped {skipped}; failed {failed}.")
 

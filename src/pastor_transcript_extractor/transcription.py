@@ -24,12 +24,28 @@ class TranscriptResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedTranscriptInput:
+    video_id: int
+    youtube_video_id: str
+    pastor_id: int
+    pastor_slug: str
+    source_url: str
+    transcript_root: Path
+    metadata_path: Path
+    normalized_audio_path: Path
+    whisper_output_base: Path
+
+
+@dataclass(frozen=True, slots=True)
 class CaptionResult:
     artifact: TranscriptArtifact
     metadata_path: Path
     captions_path: Path
     raw_json_path: Path
     raw_text_path: Path
+
+
+StageCallback = Callable[[str], None]
 
 
 _VTT_INLINE_TIMESTAMP_RE = re.compile(r"<\d{2}:\d{2}:\d{2}\.\d{3}>")
@@ -261,7 +277,25 @@ def transcribe_video(
     tools: ToolConfig,
     video_id: int,
     progress_callback: Callable[[int], None] | None = None,
+    stage_callback: StageCallback | None = None,
 ) -> TranscriptResult:
+    prepared = prepare_transcription_input(database, app_paths, tools, video_id, stage_callback=stage_callback)
+    return complete_transcription_video(
+        database,
+        tools,
+        prepared,
+        progress_callback=progress_callback,
+        stage_callback=stage_callback,
+    )
+
+
+def prepare_transcription_input(
+    database: Database,
+    app_paths: AppPaths,
+    tools: ToolConfig,
+    video_id: int,
+    stage_callback: StageCallback | None = None,
+) -> PreparedTranscriptInput:
     video = database.get_video_by_id(video_id)
     if video is None:
         raise ValueError(f"Unknown video id: {video_id}")
@@ -274,51 +308,79 @@ def transcribe_video(
     for directory in (video_paths.root, video_paths.audio, video_paths.raw, video_paths.extracted, video_paths.review):
         directory.mkdir(parents=True, exist_ok=True)
 
+    if stage_callback is not None:
+        stage_callback("downloading")
     downloaded_audio = download_audio(
         video.url,
         tools.yt_dlp_bin,
         transcript_paths.audio_download,
         tools.yt_dlp_js_runtimes,
     )
+    if stage_callback is not None:
+        stage_callback("normalizing")
     normalized_audio = normalize_audio(downloaded_audio, transcript_paths.audio_normalized, tools.ffmpeg_bin)
+    return PreparedTranscriptInput(
+        video_id=video.id,
+        youtube_video_id=video.youtube_video_id,
+        pastor_id=pastor.id,
+        pastor_slug=pastor.slug,
+        source_url=video.url,
+        transcript_root=transcript_paths.root,
+        metadata_path=video_paths.metadata,
+        normalized_audio_path=normalized_audio,
+        whisper_output_base=transcript_paths.whisper_output_base,
+    )
+
+
+def complete_transcription_video(
+    database: Database,
+    tools: ToolConfig,
+    prepared: PreparedTranscriptInput,
+    progress_callback: Callable[[int], None] | None = None,
+    stage_callback: StageCallback | None = None,
+) -> TranscriptResult:
+    if stage_callback is not None:
+        stage_callback("transcribing")
     raw_json_path, raw_text_path = run_whisper_cpp(
         tools.whisper_cpp_bin,
         tools.whisper_model_path,
-        normalized_audio,
-        transcript_paths.whisper_output_base,
+        prepared.normalized_audio_path,
+        prepared.whisper_output_base,
         progress_callback=progress_callback,
     )
 
     metadata = {
-        "video_id": video.id,
-        "youtube_video_id": video.youtube_video_id,
-        "pastor_id": pastor.id,
-        "pastor_slug": pastor.slug,
-        "source_url": video.url,
+        "video_id": prepared.video_id,
+        "youtube_video_id": prepared.youtube_video_id,
+        "pastor_id": prepared.pastor_id,
+        "pastor_slug": prepared.pastor_slug,
+        "source_url": prepared.source_url,
         "transcription_backend": "whisper.cpp",
         "yt_dlp_bin": str(tools.yt_dlp_bin),
         "yt_dlp_js_runtimes": tools.yt_dlp_js_runtimes,
         "whisper_cpp_bin": str(tools.whisper_cpp_bin),
         "whisper_model_path": str(tools.whisper_model_path),
-        "normalized_audio_path": str(normalized_audio),
+        "normalized_audio_path": str(prepared.normalized_audio_path),
         "raw_json_path": str(raw_json_path),
         "raw_text_path": str(raw_text_path),
     }
-    transcript_paths.root.mkdir(parents=True, exist_ok=True)
-    video_paths.metadata.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+    prepared.transcript_root.mkdir(parents=True, exist_ok=True)
+    prepared.metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
     artifact = database.add_transcript_artifact(
-        video_id=video.id,
+        video_id=prepared.video_id,
         source_kind=TranscriptSourceKind.LOCAL_ASR,
-        audio_path=str(normalized_audio),
+        audio_path=str(prepared.normalized_audio_path),
         raw_json_path=str(raw_json_path),
         raw_text_path=str(raw_text_path),
     )
-    database.update_video_status(video.id, VideoStatus.TRANSCRIBED_LOCAL)
+    database.update_video_status(prepared.video_id, VideoStatus.TRANSCRIBED_LOCAL)
+    if stage_callback is not None:
+        stage_callback("done")
     return TranscriptResult(
         artifact=artifact,
-        metadata_path=video_paths.metadata,
-        normalized_audio_path=normalized_audio,
+        metadata_path=prepared.metadata_path,
+        normalized_audio_path=prepared.normalized_audio_path,
         raw_json_path=raw_json_path,
         raw_text_path=raw_text_path,
     )

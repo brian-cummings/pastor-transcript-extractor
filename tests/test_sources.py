@@ -21,7 +21,12 @@ from pastor_transcript_extractor.sources import detect_source_type
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.sermon_detection import detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft
-from pastor_transcript_extractor.transcription import _captions_to_plain_text, fetch_captions_video, transcribe_video
+from pastor_transcript_extractor.transcription import (
+    PreparedTranscriptInput,
+    _captions_to_plain_text,
+    fetch_captions_video,
+    transcribe_video,
+)
 from pastor_transcript_extractor.config import ToolConfig
 
 
@@ -1485,17 +1490,48 @@ class CliTests(unittest.TestCase):
                 status=VideoStatus.DISCOVERED,
             )
 
-            def fake_transcribe_video(*args, **kwargs):
+            def fake_prepare_transcription_input(*args, **kwargs):
+                stage_callback = kwargs.get("stage_callback")
+                if stage_callback is not None:
+                    stage_callback("downloading")
+                    stage_callback("normalizing")
+                return PreparedTranscriptInput(
+                    video_id=video.id,
+                    youtube_video_id=video.youtube_video_id,
+                    pastor_id=pastor.id,
+                    pastor_slug="sample-church",
+                    source_url=video.url,
+                    transcript_root=base_dir,
+                    metadata_path=base_dir / "metadata.json",
+                    normalized_audio_path=base_dir / "normalized.wav",
+                    whisper_output_base=base_dir / "whisper",
+                )
+
+            def fake_complete_transcription_video(*args, **kwargs):
                 progress_callback = kwargs.get("progress_callback")
+                stage_callback = kwargs.get("stage_callback")
+                if stage_callback is not None:
+                    stage_callback("transcribing")
                 if progress_callback is not None:
                     progress_callback(42)
+                if stage_callback is not None:
+                    stage_callback("done")
 
-            with patch("pastor_transcript_extractor.cli.transcribe_video", side_effect=fake_transcribe_video):
+            with patch(
+                "pastor_transcript_extractor.cli.prepare_transcription_input",
+                side_effect=fake_prepare_transcription_input,
+            ), patch(
+                "pastor_transcript_extractor.cli.complete_transcription_video",
+                side_effect=fake_complete_transcription_video,
+            ):
                 result = runner.invoke(app, ["transcribe", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("Transcribing 1 video(s) with 1 worker(s).", result.output)
             self.assertIn(f"[1/1 queued] Transcribing video #{video.id}: Queued Sermon", result.output)
+            self.assertIn(f"[video #{video.id} stage] dl", result.output)
+            self.assertIn(f"[video #{video.id} stage] norm", result.output)
+            self.assertIn(f"[video #{video.id} stage] xcribe", result.output)
             self.assertIn(f"[video #{video.id} progress] 42%", result.output)
             self.assertIn(f"[1/1 finished] Transcribed video #{video.id}", result.output)
 
@@ -1554,12 +1590,12 @@ class CliTests(unittest.TestCase):
                 failure_reason="Video unavailable for https://www.youtube.com/watch?v=abc123def45",
             )
 
-            with patch("pastor_transcript_extractor.cli.transcribe_video") as mocked_transcribe:
+            with patch("pastor_transcript_extractor.cli.prepare_transcription_input") as mocked_prepare:
                 result = runner.invoke(app, ["transcribe", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("skipped 1", result.output)
-            mocked_transcribe.assert_not_called()
+            mocked_prepare.assert_not_called()
 
     def test_transcribe_skips_caption_hits_by_default(self) -> None:
         runner = CliRunner()
@@ -1589,12 +1625,12 @@ class CliTests(unittest.TestCase):
                 raw_text_path=str(base_dir / "captions.txt"),
             )
 
-            with patch("pastor_transcript_extractor.cli.transcribe_video") as mocked_transcribe:
+            with patch("pastor_transcript_extractor.cli.prepare_transcription_input") as mocked_prepare:
                 result = runner.invoke(app, ["transcribe", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("Transcribed 0 video(s); skipped 1; failed 0.", result.output)
-            mocked_transcribe.assert_not_called()
+            mocked_prepare.assert_not_called()
 
     def test_transcribe_all_eligible_includes_caption_hits(self) -> None:
         runner = CliRunner()
@@ -1624,11 +1660,25 @@ class CliTests(unittest.TestCase):
                 raw_text_path=str(base_dir / "captions.txt"),
             )
 
-            with patch("pastor_transcript_extractor.cli.transcribe_video"):
+            fake_prepared = PreparedTranscriptInput(
+                video_id=video.id,
+                youtube_video_id=video.youtube_video_id,
+                pastor_id=pastor.id,
+                pastor_slug="sample-church",
+                source_url=video.url,
+                transcript_root=base_dir,
+                metadata_path=base_dir / "metadata.json",
+                normalized_audio_path=base_dir / "normalized.wav",
+                whisper_output_base=base_dir / "whisper",
+            )
+            with patch("pastor_transcript_extractor.cli.prepare_transcription_input", return_value=fake_prepared) as mocked_prepare, patch(
+                "pastor_transcript_extractor.cli.complete_transcription_video"
+            ):
                 result = runner.invoke(app, ["transcribe", "--all-eligible", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("Transcribing 1 video(s) with 1 worker(s).", result.output)
+            mocked_prepare.assert_called_once()
 
     def test_transcribe_jobs_option_processes_multiple_videos(self) -> None:
         runner = CliRunner()
@@ -1659,7 +1709,29 @@ class CliTests(unittest.TestCase):
                 status=VideoStatus.DISCOVERED,
             )
 
-            with patch("pastor_transcript_extractor.cli.transcribe_video"):
+            def fake_prepare_transcription_input(*args, **kwargs):
+                video_id = args[3]
+                stage_callback = kwargs.get("stage_callback")
+                if stage_callback is not None:
+                    stage_callback("downloading")
+                    stage_callback("normalizing")
+                youtube_video_id = "abc123def45" if video_id == first_video.id else "xyz987uvw65"
+                return PreparedTranscriptInput(
+                    video_id=video_id,
+                    youtube_video_id=youtube_video_id,
+                    pastor_id=pastor.id,
+                    pastor_slug="sample-church",
+                    source_url=f"https://www.youtube.com/watch?v={youtube_video_id}",
+                    transcript_root=base_dir,
+                    metadata_path=base_dir / f"{video_id}.json",
+                    normalized_audio_path=base_dir / f"{video_id}.wav",
+                    whisper_output_base=base_dir / f"{video_id}-whisper",
+                )
+
+            with patch(
+                "pastor_transcript_extractor.cli.prepare_transcription_input",
+                side_effect=fake_prepare_transcription_input,
+            ), patch("pastor_transcript_extractor.cli.complete_transcription_video"):
                 result = runner.invoke(app, ["transcribe", "--jobs", "2", "--base-dir", str(base_dir)])
 
             first_updated = database.get_video_by_id(first_video.id)

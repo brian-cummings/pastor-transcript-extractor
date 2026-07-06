@@ -49,9 +49,9 @@ Installed in the project venv:
 ## Quick Start
 
 ```bash
-cd /Users/briancummings/Documents/PastorTranscriptExtractor
+cd /Users/briancummings/code/pastor-transcript-extractor
 /opt/homebrew/bin/python3.11 -m venv .venv
-source .venv/bin/activate
+./venv-shell
 pip install -e .
 pte pastor add sample-church "Sample Church"
 pte init
@@ -61,6 +61,12 @@ pte doctor
 ```
 
 If you prefer to use `python3` directly, update your shell `PATH` so it resolves to Python 3.11 first.
+
+If you already have `.venv` created and just want a shell with it activated, run:
+
+```bash
+./venv-shell
+```
 
 ## App Data
 
@@ -77,6 +83,7 @@ You can override the data directory with `--base-dir`.
 
 - `pte run <url> --pastor <slug>`
 - `pte review <pastor-slug>`
+- `./venv-shell`
 
 ## Commands
 
