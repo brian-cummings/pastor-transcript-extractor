@@ -76,6 +76,34 @@ def _unknown_pastor_error(pastor_slug: str, base_dir: Path | None = None) -> typ
     return typer.BadParameter(f"Unknown pastor slug: {pastor_slug} (app root: {resolved_root})")
 
 
+def _discover_candidate_window(
+    *,
+    discovered_videos,
+    existing_source_videos,
+    effective_limit: int | None,
+):
+    if effective_limit is None:
+        return discovered_videos
+
+    candidates = list(discovered_videos[:effective_limit])
+    candidate_ids = {video.youtube_video_id for video in candidates}
+    retained_published_values = sorted(
+        [video.published_at.isoformat() for video in existing_source_videos if video.published_at is not None]
+    )
+    if not retained_published_values:
+        return candidates
+
+    oldest_retained_published_at = retained_published_values[0]
+    for video in discovered_videos[effective_limit:]:
+        if video.published_at is None or video.published_at < oldest_retained_published_at:
+            continue
+        if video.youtube_video_id in candidate_ids:
+            continue
+        candidates.append(video)
+        candidate_ids.add(video.youtube_video_id)
+    return candidates
+
+
 def _path_status(path: Path) -> str:
     return "ok" if path.exists() else "missing"
 
@@ -139,6 +167,20 @@ def _claim_video_for_transcription(database: Database, video_id: int) -> bool:
         new_status=VideoStatus.TRANSCRIBING_LOCAL,
         failure_reason=None,
     )
+
+
+def _recover_stale_transcribing_videos(database: Database, videos: list) -> None:
+    for video in videos:
+        if video.status != VideoStatus.TRANSCRIBING_LOCAL:
+            continue
+        latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
+        if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.LOCAL_ASR:
+            database.update_video_status(video.id, VideoStatus.TRANSCRIBED_LOCAL)
+            continue
+        if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.CAPTIONS:
+            database.update_video_status(video.id, VideoStatus.TRANSCRIPT_FETCHED)
+            continue
+        database.update_video_status(video.id, VideoStatus.DISCOVERED)
 
 
 def _prepare_transcription_task(
@@ -684,10 +726,17 @@ def discover(
     excluded_ids = {
         video.youtube_video_id for video in database.list_excluded_videos()
     }
-    for source in sources:
+    total_sources = len(sources)
+    for index, source in enumerate(sources, start=1):
         if source.pastor_id is None:
             console.print(f"[yellow]Skipping[/yellow] source #{source.id}: no pastor linked.")
             continue
+        pastor_record = database.get_pastor_by_id(source.pastor_id)
+        pastor_slug = pastor_record.slug if pastor_record is not None else str(source.pastor_id)
+        console.print(
+            f"[{index}/{total_sources}] Discovering source #{source.id} for pastor {pastor_slug}: {source.url}",
+            markup=False,
+        )
         try:
             discovered_videos = extract_discovered_videos(
                 source.url,
@@ -700,15 +749,25 @@ def discover(
 
         discovered_videos = sort_discovered_videos_by_recency(discovered_videos)
         found_count += len(discovered_videos)
-        if effective_limit is not None:
-            discovered_videos = discovered_videos[:effective_limit]
+        source_found_count = len(discovered_videos)
+        existing_source_videos = database.list_videos_by_source_id(source.id)
+        discovered_videos = _discover_candidate_window(
+            discovered_videos=discovered_videos,
+            existing_source_videos=existing_source_videos,
+            effective_limit=effective_limit,
+        )
 
+        source_discovered_count = 0
+        source_skipped_count = 0
+        source_excluded_count = 0
         for discovered in discovered_videos:
             if discovered.youtube_video_id in excluded_ids:
                 excluded_count += 1
+                source_excluded_count += 1
                 continue
             if discovered.youtube_video_id in existing_ids:
                 skipped_count += 1
+                source_skipped_count += 1
                 continue
             database.add_video(
                 source_id=source.id,
@@ -722,7 +781,15 @@ def discover(
                 status=VideoStatus.DISCOVERED,
             )
             discovered_count += 1
+            source_discovered_count += 1
             existing_ids.add(discovered.youtube_video_id)
+        source_summary = (
+            f"[{index}/{total_sources}] Finished source #{source.id}: found {source_found_count}, "
+            f"queued {source_discovered_count}, skipped {source_skipped_count}"
+        )
+        if source_excluded_count:
+            source_summary += f", excluded {source_excluded_count}"
+        console.print(f"{source_summary}.", markup=False)
 
     if effective_limit is not None:
         summary = (
@@ -766,6 +833,8 @@ def transcribe(
     if not videos:
         console.print("No videos queued.")
         return
+    _recover_stale_transcribing_videos(database, videos)
+    videos = [database.get_video_by_id(video.id) or video for video in videos]
 
     processed = 0
     skipped = 0
@@ -1112,8 +1181,13 @@ def review(
 
 @app.command(help="Run the intake pipeline from source registration through extraction.", rich_help_panel="Workflows")
 def run(
-    url: str = typer.Argument(..., help="YouTube video, playlist, or channel URL."),
-    pastor: str = typer.Option(..., help="Pastor slug to associate with this source."),
+    url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
+    pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
+    all_sources: bool = typer.Option(
+        False,
+        "--all",
+        help="Run the workflow across all configured sources instead of adding a single source.",
+    ),
     replace_existing: bool = typer.Option(
         False,
         "--replace-existing",
@@ -1127,7 +1201,7 @@ def run(
     ),
     all_videos: bool = typer.Option(
         False,
-        "--all",
+        "--all-videos",
         help="Process all discovered videos from the source.",
     ),
     captions_only: bool = typer.Option(
@@ -1152,6 +1226,39 @@ def run(
         "Run adds the source, discovers videos, fetches captions, optionally transcribes remaining videos, "
         "and extracts before pastor Markdown review."
     )
+    if all_sources:
+        if url is not None:
+            raise typer.BadParameter("Do not pass a URL when using --all. Run either a global sync or a single-source workflow.")
+        if pastor is not None:
+            raise typer.BadParameter("Do not pass --pastor when using --all.")
+        if replace_existing:
+            raise typer.BadParameter("--replace-existing is only valid for single-source runs.")
+        discover(limit=limit, all_videos=all_videos, source_id=None, base_dir=base_dir)
+        fetch(source_id=None, base_dir=base_dir)
+        if not captions_only and transcribe_missing:
+            transcribe(
+                missing_only=False,
+                captions_missing_only=True,
+                jobs=jobs,
+                source_id=None,
+                base_dir=base_dir,
+            )
+        elif not captions_only:
+            transcribe(
+                missing_only=False,
+                captions_missing_only=False,
+                jobs=jobs,
+                source_id=None,
+                base_dir=base_dir,
+            )
+        extract(missing_only=False, source_id=None, base_dir=base_dir)
+        return
+
+    if url is None:
+        raise typer.BadParameter("A URL is required unless you use --all.")
+    if pastor is None:
+        raise typer.BadParameter("--pastor is required unless you use --all.")
+
     database = get_database(base_dir)
     if replace_existing:
         existing_source = database.get_source_by_url(url)

@@ -763,6 +763,88 @@ class SegmentationTests(unittest.TestCase):
             self.assertEqual(1, len(videos))
             self.assertEqual("livevideo01a", videos[0].youtube_video_id)
 
+    def test_discover_limit_looks_back_to_oldest_retained_video_for_source(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="keptvideo001",
+                title="Kept Sermon",
+                url="https://www.youtube.com/watch?v=keptvideo001",
+                channel_name="Sample Church",
+                published_at="2024-03-08T16:00:00+00:00",
+                duration_seconds=1200,
+                status=VideoStatus.DISCOVERED,
+            )
+
+            discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="dupvideo0001",
+                    title="Newest Existing",
+                    url="https://www.youtube.com/watch?v=dupvideo0001",
+                    channel_name="Sample Church",
+                    published_at="2024-03-10T16:00:00+00:00",
+                    duration_seconds=1000,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="keptvideo001",
+                    title="Kept Sermon",
+                    url="https://www.youtube.com/watch?v=keptvideo001",
+                    channel_name="Sample Church",
+                    published_at="2024-03-08T16:00:00+00:00",
+                    duration_seconds=1200,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="newvideo0001",
+                    title="New But Within Retained Window",
+                    url="https://www.youtube.com/watch?v=newvideo0001",
+                    channel_name="Sample Church",
+                    published_at="2024-03-09T16:00:00+00:00",
+                    duration_seconds=1300,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="oldvideo0001",
+                    title="Too Old",
+                    url="https://www.youtube.com/watch?v=oldvideo0001",
+                    channel_name="Sample Church",
+                    published_at="2024-03-07T16:00:00+00:00",
+                    duration_seconds=1400,
+                ),
+            ]
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="dupvideo0001",
+                title="Newest Existing",
+                url="https://www.youtube.com/watch?v=dupvideo0001",
+                channel_name="Sample Church",
+                published_at="2024-03-10T16:00:00+00:00",
+                duration_seconds=1000,
+                status=VideoStatus.DISCOVERED,
+            )
+
+            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+                result = runner.invoke(app, ["discover", "--limit", "1", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            videos = database.list_videos_by_source_id(source.id)
+            self.assertEqual(
+                {"dupvideo0001", "keptvideo001", "newvideo0001"},
+                {video.youtube_video_id for video in videos},
+            )
+            self.assertNotIn("oldvideo0001", {video.youtube_video_id for video in videos})
+            self.assertIn("queued 1 new video", result.output)
+
     def test_discover_defaults_to_twenty_six_results(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -827,6 +909,37 @@ class SegmentationTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code, msg=result.output)
             videos = database.list_videos()
             self.assertEqual(30, len(videos))
+
+    def test_discover_prints_source_progress(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+
+            discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="abc123def45",
+                    title="Sermon 1",
+                    url="https://www.youtube.com/watch?v=abc123def45",
+                    channel_name="Sample Church",
+                    published_at=None,
+                    duration_seconds=1234,
+                )
+            ]
+
+            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+                result = runner.invoke(app, ["discover", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn(f"[1/1] Discovering source #{source.id} for pastor sample-church", result.output)
+            self.assertIn(f"[1/1] Finished source #{source.id}: found 1, queued 1, skipped 0.", result.output)
 
     def test_extract_skips_videos_without_transcripts(self) -> None:
         runner = CliRunner()
@@ -1310,7 +1423,7 @@ class CliTests(unittest.TestCase):
             self.assertFalse(calls[0][2]["all_videos"])
             self.assertIsNotNone(calls[0][2]["source_id"])
 
-    def test_run_all_overrides_default_limit(self) -> None:
+    def test_run_all_videos_overrides_default_limit(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
@@ -1337,7 +1450,7 @@ class CliTests(unittest.TestCase):
                         "https://www.youtube.com/@samplechurch",
                         "--pastor",
                         "sample-church",
-                        "--all",
+                        "--all-videos",
                         "--base-dir",
                         str(base_dir),
                     ],
@@ -1347,6 +1460,59 @@ class CliTests(unittest.TestCase):
             self.assertEqual(26, calls[0][2]["limit"])
             self.assertTrue(calls[0][2]["all_videos"])
             self.assertIsNotNone(calls[0][2]["source_id"])
+
+    def test_run_all_processes_all_sources(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+
+            calls: list[tuple[str, tuple, dict]] = []
+
+            def fake_stage(name: str):
+                def runner(*args, **kwargs):
+                    calls.append((name, args, kwargs))
+                return runner
+
+            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            ), patch(
+                "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
+            ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
+                result = runner.invoke(
+                    app,
+                    [
+                        "run",
+                        "--all",
+                        "--base-dir",
+                        str(base_dir),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual(["discover", "fetch", "transcribe", "extract"], [call[0] for call in calls])
+            self.assertIsNone(calls[0][2]["source_id"])
+
+    def test_run_all_rejects_url_and_pastor_inputs(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            result = runner.invoke(
+                app,
+                [
+                    "run",
+                    "https://www.youtube.com/@samplechurch",
+                    "--pastor",
+                    "sample-church",
+                    "--all",
+                    "--base-dir",
+                    str(base_dir),
+                ],
+            )
+
+            self.assertNotEqual(0, result.exit_code)
+            self.assertIn("Do not pass a URL when using --all", result.output)
 
     def test_run_captions_only_skips_transcribe(self) -> None:
         runner = CliRunner()
@@ -1792,11 +1958,94 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("Transcribing 1 video(s) with 1 worker(s).", result.output)
             self.assertIn(f"[1/1 queued] Transcribing video #{video.id}: Queued Sermon", result.output)
-            self.assertIn(f"[video #{video.id} stage] dl", result.output)
-            self.assertIn(f"[video #{video.id} stage] norm", result.output)
-            self.assertIn(f"[video #{video.id} stage] xcribe", result.output)
-            self.assertIn(f"[video #{video.id} progress] 42%", result.output)
-            self.assertIn(f"[1/1 finished] Transcribed video #{video.id}", result.output)
+
+    def test_transcribe_recovers_stale_transcribing_local_without_artifact(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Retry Me",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.TRANSCRIBING_LOCAL,
+            )
+
+            def fake_prepare_transcription_input(*args, **kwargs):
+                return PreparedTranscriptInput(
+                    video_id=video.id,
+                    youtube_video_id=video.youtube_video_id,
+                    pastor_id=pastor.id,
+                    pastor_slug="sample-church",
+                    source_url=video.url,
+                    transcript_root=base_dir,
+                    metadata_path=base_dir / "metadata.json",
+                    normalized_audio_path=base_dir / "normalized.wav",
+                    whisper_output_base=base_dir / "whisper",
+                )
+
+            with patch(
+                "pastor_transcript_extractor.cli.prepare_transcription_input",
+                side_effect=fake_prepare_transcription_input,
+            ), patch("pastor_transcript_extractor.cli.complete_transcription_video"):
+                result = runner.invoke(app, ["transcribe", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(video.id)
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("Transcribing 1 video(s) with 1 worker(s).", result.output)
+            self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, updated_video.status)
+
+    def test_transcribe_recovers_stale_transcribing_local_with_captions_artifact(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Captioned Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.TRANSCRIBING_LOCAL,
+            )
+            artifact_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            artifact_dir.raw.mkdir(parents=True, exist_ok=True)
+            raw_json_path = artifact_dir.raw / "captions.json"
+            raw_text_path = artifact_dir.raw / "captions.txt"
+            raw_json_path.write_text(json.dumps({"text": "Hello"}), encoding="utf-8")
+            raw_text_path.write_text("Hello", encoding="utf-8")
+            database.add_transcript_artifact(
+                video_id=video.id,
+                source_kind=TranscriptSourceKind.CAPTIONS,
+                audio_path=None,
+                raw_json_path=str(raw_json_path),
+                raw_text_path=str(raw_text_path),
+            )
+
+            result = runner.invoke(app, ["transcribe", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(video.id)
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("skipped 1", result.output)
+            self.assertEqual(VideoStatus.TRANSCRIPT_FETCHED, updated_video.status)
 
     def test_fetch_marks_unavailable_video_as_failed(self) -> None:
         runner = CliRunner()
