@@ -645,11 +645,14 @@ def discover(
         "--all",
         help="Persist all discovered videos for each source.",
     ),
+    source_id: int | None = typer.Option(None, help="Only discover videos for a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
     tool_config = build_tool_config()
     sources = database.list_sources()
+    if source_id is not None:
+        sources = [source for source in sources if source.id == source_id]
     if not sources:
         console.print("No sources queued.")
         return
@@ -735,12 +738,15 @@ def transcribe(
         min=1,
         help="Number of videos to transcribe concurrently. Defaults to 2.",
     ),
+    source_id: int | None = typer.Option(None, help="Only transcribe videos from a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
     videos = database.list_videos()
+    if source_id is not None:
+        videos = [video for video in videos if video.source_id == source_id]
     if not videos:
         console.print("No videos queued.")
         return
@@ -947,12 +953,15 @@ def transcribe(
 
 @app.command(help="Fetch YouTube captions when available and persist them as transcript artifacts.")
 def fetch(
+    source_id: int | None = typer.Option(None, help="Only fetch captions for videos from a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
     videos = database.list_videos()
+    if source_id is not None:
+        videos = [video for video in videos if video.source_id == source_id]
     if not videos:
         console.print("No videos queued.")
         return
@@ -1002,11 +1011,19 @@ def extract(
         "--missing-only",
         help="Only extract videos without a proposed Markdown artifact.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Rebuild extraction artifacts even when a video is already marked extracted or exported.",
+    ),
+    source_id: int | None = typer.Option(None, help="Only extract videos from a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     videos = database.list_videos()
+    if source_id is not None:
+        videos = [video for video in videos if video.source_id == source_id]
     if not videos:
         console.print("No videos queued.")
         return
@@ -1023,10 +1040,14 @@ def extract(
             skipped += 1
             continue
         latest_extraction = database.get_latest_extraction_result_for_video(video.id)
-        if missing_only and latest_extraction is not None:
+        if missing_only and latest_extraction is not None and not force:
             skipped += 1
             continue
-        if latest_extraction is not None and video.status in {VideoStatus.EXTRACTED, VideoStatus.EXPORTED}:
+        if (
+            not force
+            and latest_extraction is not None
+            and video.status in {VideoStatus.EXTRACTED, VideoStatus.EXPORTED}
+        ):
             skipped += 1
             continue
 
@@ -1121,13 +1142,27 @@ def run(
             source_delete(source_id=existing_source.id, force=True, base_dir=base_dir)
             database = get_database(base_dir)
     add(url=url, pastor=pastor, notes=None, base_dir=base_dir)
-    discover(limit=limit, all_videos=all_videos, base_dir=base_dir)
-    fetch(base_dir=base_dir)
+    source = database.get_source_by_url(url)
+    source_id = source.id if source is not None else None
+    discover(limit=limit, all_videos=all_videos, source_id=source_id, base_dir=base_dir)
+    fetch(source_id=source_id, base_dir=base_dir)
     if not captions_only and transcribe_missing:
-        transcribe(missing_only=False, captions_missing_only=True, jobs=jobs, base_dir=base_dir)
+        transcribe(
+            missing_only=False,
+            captions_missing_only=True,
+            jobs=jobs,
+            source_id=source_id,
+            base_dir=base_dir,
+        )
     elif not captions_only:
-        transcribe(missing_only=False, captions_missing_only=False, jobs=jobs, base_dir=base_dir)
-    extract(missing_only=False, base_dir=base_dir)
+        transcribe(
+            missing_only=False,
+            captions_missing_only=False,
+            jobs=jobs,
+            source_id=source_id,
+            base_dir=base_dir,
+        )
+    extract(missing_only=False, source_id=source_id, base_dir=base_dir)
 
 
 def main() -> int:

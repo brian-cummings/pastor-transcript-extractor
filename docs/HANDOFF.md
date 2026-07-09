@@ -64,3 +64,32 @@ Recommended defaults:
 
 - config file format versus env-only configuration
 - exact SQLite repository pattern
+
+## Follow-Up Note: Base-Dir Persistence Is Fragile
+
+Current behavior persists the selected app-data root through a single pointer file in the home directory:
+
+- `~/.pastor-transcript-extractor-root`
+
+This is brittle. If that file disappears, the CLI silently falls back to:
+
+- `~/.pastor-transcript-extractor`
+
+Observed failure mode:
+
+- the user had been working out of `~/Documents/PastorSearchData`
+- the pointer file was missing
+- commands resolved against the fallback root instead
+- `pte review akorp` then failed with `Unknown pastor slug: akorp`, which looked like missing data rather than a wrong app root
+
+Recommended hardening pass:
+
+1. Add a real config file for the persisted base dir instead of relying only on the pointer file.
+2. Keep lookup precedence explicit:
+   - `--base-dir`
+   - `PTE_BASE_DIR`
+   - config file
+   - pointer file
+   - default root
+3. Include the resolved app root in not-found style errors such as unknown pastor slug.
+4. Consider warning loudly when the resolved root is empty or differs from a previously used non-default root.

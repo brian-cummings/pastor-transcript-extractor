@@ -128,6 +128,8 @@ def _effective_sermon_window(
         "source": source,
         "included_segment_indexes": detected_window.included_segment_indexes,
         "excluded_segment_indexes": detected_window.excluded_segment_indexes,
+        "suspicious_boundary": detected_window.suspicious_boundary,
+        "suspicious_boundary_reasons": detected_window.suspicious_boundary_reasons,
     }
 
 
@@ -159,6 +161,12 @@ def _build_proposed_markdown(
         f"- Window Confidence: {sermon_window.get('confidence', 0.0):.2f}",
         f"- Window Source: {sermon_window.get('source', 'detected')}",
         f"- Window Reasons: {window_reasons}",
+        f"- Suspicious Boundary: {'yes' if sermon_window.get('suspicious_boundary') else 'no'}",
+        (
+            f"- Suspicious Boundary Reasons: {'; '.join(sermon_window.get('suspicious_boundary_reasons', []))}"
+            if sermon_window.get("suspicious_boundary_reasons")
+            else "- Suspicious Boundary Reasons: none"
+        ),
         f"- Guest Speaker Suspected: {'yes' if guest_flags.suspected else 'no'}",
         (
             f"- Guest Speaker Reasons: {'; '.join(guest_flags.reasons)}"
@@ -210,7 +218,7 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
 
     drafts = segment_transcript(raw_text, raw_json)
     persisted_segments = [_segment_to_storage(database, video.id, transcript_artifact, draft) for draft in drafts]
-    detected_window = detect_sermon_window(drafts)
+    detected_window = detect_sermon_window(drafts, transcript_source=transcript_artifact.source_kind)
     override_path = video_paths.review / "window_override.json"
     override, override_error = _load_window_override(override_path)
     sermon_window = _effective_sermon_window(detected_window, override, override_error)

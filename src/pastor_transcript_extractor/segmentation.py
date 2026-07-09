@@ -74,6 +74,33 @@ def _segment_from_entry(entry: dict[str, Any]) -> SegmentDraft | None:
     )
 
 
+def _segment_from_whisper_transcription_entry(entry: dict[str, Any]) -> SegmentDraft | None:
+    text = _normalize_text(str(entry.get("text", "")))
+    if not text:
+        return None
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+
+    offsets = entry.get("offsets")
+    if isinstance(offsets, dict):
+        start_ms = _parse_float(offsets.get("from"))
+        end_ms = _parse_float(offsets.get("to"))
+        if start_ms is not None:
+            start_seconds = start_ms / 1000.0
+        if end_ms is not None:
+            end_seconds = end_ms / 1000.0
+
+    label, confidence = _label_text(text)
+    return SegmentDraft(
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        text=text,
+        speaker_hint=None,
+        label=label,
+        confidence=confidence,
+    )
+
+
 def _chunk_plain_text(raw_text: str, max_chars: int = 320) -> list[str]:
     lines = [_normalize_text(line) for line in raw_text.splitlines()]
     paragraphs: list[str] = []
@@ -104,6 +131,14 @@ def segment_transcript(raw_text: str, raw_json: dict[str, Any] | None = None) ->
         segments = raw_json.get("segments")
         if isinstance(segments, list):
             drafts = [_segment_from_entry(entry) for entry in segments if isinstance(entry, dict)]
+            return [draft for draft in drafts if draft is not None]
+        transcription = raw_json.get("transcription")
+        if isinstance(transcription, list):
+            drafts = [
+                _segment_from_whisper_transcription_entry(entry)
+                for entry in transcription
+                if isinstance(entry, dict)
+            ]
             return [draft for draft in drafts if draft is not None]
         text = raw_json.get("text")
         if isinstance(text, str) and text.strip():

@@ -85,6 +85,57 @@ def _format_window(window: dict[str, Any] | None) -> str:
     return f"{format_timestamp(float(start_seconds))} - {format_timestamp(float(end_seconds))}"
 
 
+def _build_review_transcript_excerpt(
+    proposed_json: dict[str, Any] | None,
+    fallback_text: str,
+) -> str:
+    if proposed_json is None:
+        return fallback_text
+    segments = proposed_json.get("segments")
+    sermon_window = proposed_json.get("sermon_window")
+    if not isinstance(segments, list) or not isinstance(sermon_window, dict):
+        return fallback_text
+
+    excerpt_parts: list[str] = []
+    start_seconds = sermon_window.get("start_seconds")
+    end_seconds = sermon_window.get("end_seconds")
+    if isinstance(start_seconds, (int, float)) and isinstance(end_seconds, (int, float)):
+        start = float(start_seconds)
+        end = float(end_seconds)
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            segment_start = segment.get("start_seconds")
+            segment_end = segment.get("end_seconds")
+            if not isinstance(segment_start, (int, float)) or not isinstance(segment_end, (int, float)):
+                continue
+            segment_start_value = float(segment_start)
+            segment_end_value = float(segment_end)
+            if segment_end_value <= start or segment_start_value >= end:
+                continue
+            text = segment.get("text")
+            if isinstance(text, str) and text.strip():
+                excerpt_parts.append(text.strip())
+
+    if not excerpt_parts:
+        included_indexes_raw = sermon_window.get("included_segment_indexes")
+        included_indexes = {
+            int(index)
+            for index in included_indexes_raw
+            if isinstance(index, int)
+        } if isinstance(included_indexes_raw, list) else set()
+        for index, segment in enumerate(segments):
+            if index not in included_indexes or not isinstance(segment, dict):
+                continue
+            text = segment.get("text")
+            if isinstance(text, str) and text.strip():
+                excerpt_parts.append(text.strip())
+
+    if excerpt_parts:
+        return "\n\n".join(excerpt_parts)
+    return fallback_text
+
+
 def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pastor_slug: str) -> PastorReviewMarkdownResult:
     pastor = database.get_pastor_by_slug(pastor_slug)
     if pastor is None:
@@ -116,6 +167,7 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
 
         proposed_text = proposed_path.read_text(encoding="utf-8").rstrip()
         proposed_json = _load_json(proposed_json_path) if proposed_json_path is not None else None
+        review_excerpt = _build_review_transcript_excerpt(proposed_json, proposed_text)
         transcript_source = None
         sermon_window = None
         guest_speaker_suspected = False
@@ -145,6 +197,16 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
                     if isinstance(sermon_window, dict)
                     else "- Sermon Window Source: unknown"
                 ),
+                (
+                    f"- Suspicious Boundary: {'yes' if sermon_window.get('suspicious_boundary') else 'no'}"
+                    if isinstance(sermon_window, dict)
+                    else "- Suspicious Boundary: unknown"
+                ),
+                (
+                    f"- Suspicious Boundary Reasons: {'; '.join(sermon_window.get('suspicious_boundary_reasons', []))}"
+                    if isinstance(sermon_window, dict) and sermon_window.get("suspicious_boundary_reasons")
+                    else "- Suspicious Boundary Reasons: none"
+                ),
                 f"- Guest Speaker Suspected: {'yes' if guest_speaker_suspected else 'no'}",
                 (
                     f"- Guest Signal Reasons: {'; '.join(guest_signal_reasons)}"
@@ -154,7 +216,9 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
                 f"- Status: {video.status.value}",
                 f"- Proposed Markdown: {proposed_path}",
                 "",
-                proposed_text,
+                "## Sermon Review Excerpt",
+                "",
+                review_excerpt.rstrip(),
                 "",
                 "---",
                 "",

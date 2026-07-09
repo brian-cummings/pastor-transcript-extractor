@@ -20,7 +20,7 @@ from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.sources import detect_source_type
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.sermon_detection import detect_guest_speaker_flags, detect_sermon_window
-from pastor_transcript_extractor.segmentation import SegmentDraft
+from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
     _captions_to_plain_text,
@@ -263,6 +263,7 @@ class SermonDetectionTests(unittest.TestCase):
         self.assertEqual(1320.0, result.end_seconds)
         self.assertGreater(result.confidence, 0.5)
         self.assertIn("expository language detected inside the selected window", result.reasons)
+        self.assertFalse(result.suspicious_boundary)
 
     def test_detect_sermon_window_returns_none_for_non_sermon_content(self) -> None:
         drafts = [
@@ -289,6 +290,63 @@ class SermonDetectionTests(unittest.TestCase):
         self.assertEqual(0.0, result.start_seconds)
         self.assertEqual(1380.0, result.end_seconds)
 
+    def test_detect_sermon_window_trims_leading_music_and_announcements(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 180.0, "Happy Sabbath everyone. Please stand.", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(180.0, 360.0, "Please stand as we begin our worship service.", None, TranscriptSegmentLabel.SERMON, 0.8),
+            SegmentDraft(360.0, 1200.0, "Turn in your Bibles to the Gospel of John. Today I want to show you this passage.", None, TranscriptSegmentLabel.READING, 0.7),
+            SegmentDraft(1200.0, 1980.0, "The word of God teaches us how grace transforms the heart.", None, TranscriptSegmentLabel.SERMON, 0.55),
+        ]
+
+        result = detect_sermon_window(drafts)
+
+        self.assertEqual(360.0, result.start_seconds)
+        self.assertEqual(1980.0, result.end_seconds)
+        self.assertIn("trimmed leading intro, music, or admin segments from the detected window", result.reasons)
+
+    def test_detect_sermon_window_trims_trailing_closing_segments(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 900.0, "Turn in your Bibles to Psalm chapter 56. The scripture says the Lord is faithful.", None, TranscriptSegmentLabel.READING, 0.7),
+            SegmentDraft(900.0, 1800.0, "Today I want to show you what the word of God teaches in this passage.", None, TranscriptSegmentLabel.SERMON, 0.55),
+            SegmentDraft(1800.0, 1920.0, "Thank you so much for being here tonight.", None, TranscriptSegmentLabel.SERMON, 0.7),
+            SegmentDraft(1920.0, 2040.0, "All right, and break.", None, TranscriptSegmentLabel.SERMON, 0.75),
+        ]
+
+        result = detect_sermon_window(drafts)
+
+        self.assertEqual(0.0, result.start_seconds)
+        self.assertEqual(1800.0, result.end_seconds)
+        self.assertIn("trimmed trailing prayer, music, or closing segments from the detected window", result.reasons)
+
+    def test_detect_sermon_window_gates_weak_caption_opening(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 30.0, "Still the miracle that", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(30.0, 60.0, "Still the miracle that", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(60.0, 90.0, "My name is registered in heaven.", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(90.0, 120.0, "This is my testimony from death to life.", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(120.0, 900.0, "Turn in your Bibles to John chapter three. Today I want to show you this passage.", None, TranscriptSegmentLabel.READING, 0.7),
+            SegmentDraft(900.0, 1740.0, "The word of God teaches us how grace transforms the heart.", None, TranscriptSegmentLabel.SERMON, 0.55),
+        ]
+
+        result = detect_sermon_window(drafts, transcript_source=TranscriptSourceKind.CAPTIONS)
+
+        self.assertEqual(120.0, result.start_seconds)
+        self.assertEqual(1740.0, result.end_seconds)
+        self.assertIn("trimmed weak caption opening until a stronger sermon start appeared", result.reasons)
+
+    def test_detect_sermon_window_flags_suspicious_caption_boundary(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 30.0, "My praise belongs to you forever.", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(30.0, 60.0, "This is my testimony from death to life.", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(60.0, 900.0, "Grace rewrote my story and I testify today.", None, TranscriptSegmentLabel.SERMON, 0.75),
+            SegmentDraft(900.0, 1740.0, "God has delivered us and we remember his faithfulness.", None, TranscriptSegmentLabel.SERMON, 0.55),
+        ]
+
+        result = detect_sermon_window(drafts, transcript_source=TranscriptSourceKind.CAPTIONS)
+
+        self.assertTrue(result.suspicious_boundary)
+        self.assertTrue(any("starts near 00:00" in reason for reason in result.suspicious_boundary_reasons))
+
     def test_detect_guest_speaker_flags_detects_non_pastor_title_and_intro(self) -> None:
         drafts = [
             SegmentDraft(0.0, 90.0, "We welcome Elder John Smith to bring the message today.", None, TranscriptSegmentLabel.ANNOUNCEMENTS, 0.75),
@@ -306,6 +364,31 @@ class SermonDetectionTests(unittest.TestCase):
         self.assertTrue(result.suspected)
         self.assertIn("Elder John Smith", result.name_candidates)
         self.assertTrue(any("title names a non-pastor speaker" in reason for reason in result.reasons))
+
+
+class SegmentationTests(unittest.TestCase):
+    def test_segment_transcript_parses_whisper_cpp_transcription_offsets(self) -> None:
+        drafts = segment_transcript(
+            "",
+            {
+                "transcription": [
+                    {
+                        "offsets": {"from": 30000, "to": 60000},
+                        "text": "Turn in your Bibles to John chapter three.",
+                    },
+                    {
+                        "offsets": {"from": 60000, "to": 90000},
+                        "text": "The word of God is before us in this passage.",
+                    },
+                ]
+            },
+        )
+
+        self.assertEqual(2, len(drafts))
+        self.assertEqual(30.0, drafts[0].start_seconds)
+        self.assertEqual(60.0, drafts[0].end_seconds)
+        self.assertEqual(60.0, drafts[1].start_seconds)
+        self.assertEqual(90.0, drafts[1].end_seconds)
 
     def test_extract_discovered_videos_recurses_through_channel_tabs(self) -> None:
         fake_info = {
@@ -1017,9 +1100,6 @@ class CliTests(unittest.TestCase):
 
             calls: list[tuple[str, tuple, dict]] = []
 
-            def fake_add(*args, **kwargs):
-                calls.append(("add", args, kwargs))
-
             def fake_discover(*args, **kwargs):
                 calls.append(("discover", args, kwargs))
 
@@ -1032,9 +1112,9 @@ class CliTests(unittest.TestCase):
             def fake_extract(*args, **kwargs):
                 calls.append(("extract", args, kwargs))
 
-            with patch("pastor_transcript_extractor.cli.add", side_effect=fake_add), patch(
-                "pastor_transcript_extractor.cli.discover", side_effect=fake_discover
-            ), patch("pastor_transcript_extractor.cli.fetch", side_effect=fake_fetch), patch(
+            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_discover), patch(
+                "pastor_transcript_extractor.cli.fetch", side_effect=fake_fetch
+            ), patch(
                 "pastor_transcript_extractor.cli.transcribe", side_effect=fake_transcribe
             ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_extract):
                 result = runner.invoke(
@@ -1052,11 +1132,91 @@ class CliTests(unittest.TestCase):
                 )
 
             self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertEqual("discover", calls[1][0])
-            self.assertEqual(5, calls[1][2]["limit"])
-            self.assertFalse(calls[1][2]["all_videos"])
-            self.assertEqual("transcribe", calls[3][0])
-            self.assertTrue(calls[3][2]["captions_missing_only"])
+            self.assertEqual("discover", calls[0][0])
+            self.assertEqual(5, calls[0][2]["limit"])
+            self.assertFalse(calls[0][2]["all_videos"])
+            self.assertIsNotNone(calls[0][2]["source_id"])
+            self.assertEqual("transcribe", calls[2][0])
+            self.assertTrue(calls[2][2]["captions_missing_only"])
+            self.assertEqual(calls[0][2]["source_id"], calls[1][2]["source_id"])
+            self.assertEqual(calls[0][2]["source_id"], calls[2][2]["source_id"])
+            self.assertEqual(calls[0][2]["source_id"], calls[3][2]["source_id"])
+
+    def test_extract_force_rebuilds_existing_extraction_results(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.EXTRACTED,
+            )
+
+            artifact_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            artifact_dir.raw.mkdir(parents=True, exist_ok=True)
+            raw_json_path = artifact_dir.raw / "captions.json"
+            raw_text_path = artifact_dir.raw / "captions.txt"
+            raw_json_path.write_text(
+                json.dumps(
+                    {
+                        "text": "Turn in your Bibles to John chapter three.",
+                        "segments": [
+                            {
+                                "start": 0.0,
+                                "end": 30.0,
+                                "text": "Turn in your Bibles to John chapter three.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            raw_text_path.write_text("Turn in your Bibles to John chapter three.", encoding="utf-8")
+
+            database.add_transcript_artifact(
+                video_id=video.id,
+                source_kind=TranscriptSourceKind.CAPTIONS,
+                audio_path=None,
+                raw_json_path=str(raw_json_path),
+                raw_text_path=str(raw_text_path),
+            )
+
+            extracted_dir = artifact_dir.extracted
+            extracted_dir.mkdir(parents=True, exist_ok=True)
+            proposed_text_path = extracted_dir / "proposed.md"
+            proposed_json_path = extracted_dir / "proposed.json"
+            proposed_text_path.write_text("# Old Sermon\n", encoding="utf-8")
+            proposed_json_path.write_text(json.dumps({"stale": True}), encoding="utf-8")
+            database.add_extraction_result(
+                video_id=video.id,
+                version=1,
+                proposed_text_path=str(proposed_text_path),
+                proposed_json_path=str(proposed_json_path),
+            )
+
+            default_result = runner.invoke(app, ["extract", "--base-dir", str(base_dir)])
+            forced_result = runner.invoke(app, ["extract", "--force", "--base-dir", str(base_dir)])
+            refreshed_json = json.loads(proposed_json_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(0, default_result.exit_code, msg=default_result.output)
+            self.assertIn("skipped 1", default_result.output)
+            self.assertEqual(0, forced_result.exit_code, msg=forced_result.output)
+            self.assertIn("Extracted 1 video(s); skipped 0; failed 0.", forced_result.output)
+            self.assertEqual("captions", refreshed_json["transcript_source"])
+            self.assertIn("sermon_window", refreshed_json)
 
     def test_run_defaults_to_twenty_six_video_limit(self) -> None:
         runner = CliRunner()
@@ -1073,9 +1233,9 @@ class CliTests(unittest.TestCase):
                     calls.append((name, args, kwargs))
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.add", side_effect=fake_stage("add")), patch(
-                "pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")
-            ), patch("pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")), patch(
+            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            ), patch(
                 "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
             ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
                 result = runner.invoke(
@@ -1091,8 +1251,9 @@ class CliTests(unittest.TestCase):
                 )
 
             self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertEqual(26, calls[1][2]["limit"])
-            self.assertFalse(calls[1][2]["all_videos"])
+            self.assertEqual(26, calls[0][2]["limit"])
+            self.assertFalse(calls[0][2]["all_videos"])
+            self.assertIsNotNone(calls[0][2]["source_id"])
 
     def test_run_all_overrides_default_limit(self) -> None:
         runner = CliRunner()
@@ -1109,9 +1270,9 @@ class CliTests(unittest.TestCase):
                     calls.append((name, args, kwargs))
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.add", side_effect=fake_stage("add")), patch(
-                "pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")
-            ), patch("pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")), patch(
+            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            ), patch(
                 "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
             ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
                 result = runner.invoke(
@@ -1128,8 +1289,9 @@ class CliTests(unittest.TestCase):
                 )
 
             self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertEqual(26, calls[1][2]["limit"])
-            self.assertTrue(calls[1][2]["all_videos"])
+            self.assertEqual(26, calls[0][2]["limit"])
+            self.assertTrue(calls[0][2]["all_videos"])
+            self.assertIsNotNone(calls[0][2]["source_id"])
 
     def test_run_captions_only_skips_transcribe(self) -> None:
         runner = CliRunner()
@@ -1146,9 +1308,9 @@ class CliTests(unittest.TestCase):
                     calls.append((name, args, kwargs))
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.add", side_effect=fake_stage("add")), patch(
-                "pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")
-            ), patch("pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")), patch(
+            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            ), patch(
                 "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
             ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
                 result = runner.invoke(
@@ -1165,7 +1327,8 @@ class CliTests(unittest.TestCase):
                 )
 
             self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertEqual(["add", "discover", "fetch", "extract"], [call[0] for call in calls])
+            self.assertEqual(["discover", "fetch", "extract"], [call[0] for call in calls])
+            self.assertIsNotNone(calls[0][2]["source_id"])
 
     def test_fetch_treats_missing_captions_as_unavailable_not_failure(self) -> None:
         runner = CliRunner()
@@ -1337,11 +1500,32 @@ class CliTests(unittest.TestCase):
                 video_dir.extracted.mkdir(parents=True, exist_ok=True)
                 proposed_path = video_dir.extracted / "proposed.md"
                 proposed_path.write_text(f"# {video.title}\n\nHello world.", encoding="utf-8")
+                proposed_json_path = video_dir.extracted / "proposed.json"
+                proposed_json_path.write_text(
+                    json.dumps(
+                        {
+                            "transcript_source": "captions",
+                            "sermon_window": {
+                                "start_seconds": 60.0,
+                                "end_seconds": 120.0,
+                                "source": "detected",
+                                "included_segment_indexes": [1],
+                                "excluded_segment_indexes": [0, 2],
+                            },
+                            "segments": [
+                                {"start_seconds": 0.0, "end_seconds": 60.0, "text": "Prelude"},
+                                {"start_seconds": 60.0, "end_seconds": 120.0, "text": "Sermon body"},
+                                {"start_seconds": 120.0, "end_seconds": 180.0, "text": "Closing"},
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 database.add_extraction_result(
                     video_id=video.id,
                     version=1,
                     proposed_text_path=str(proposed_path),
-                    proposed_json_path=str(video_dir.extracted / "proposed.json"),
+                    proposed_json_path=str(proposed_json_path),
                 )
 
             result = runner.invoke(app, ["review", "sample-church", "--base-dir", str(base_dir)])
@@ -1355,7 +1539,10 @@ class CliTests(unittest.TestCase):
             self.assertIn("# Sample Church Review", review_text)
             self.assertIn("## undated - First Sermon", review_text)
             self.assertIn("## undated - Second Sermon", review_text)
-            self.assertIn("Hello world.", review_text)
+            self.assertIn("## Sermon Review Excerpt", review_text)
+            self.assertIn("Sermon body", review_text)
+            self.assertNotIn("Prelude", review_text)
+            self.assertNotIn("Closing", review_text)
             self.assertIn("Wrote pastor review markdown", result.output)
 
     def test_review_regenerates_without_excluded_videos(self) -> None:
@@ -1393,11 +1580,32 @@ class CliTests(unittest.TestCase):
                 video_dir.extracted.mkdir(parents=True, exist_ok=True)
                 proposed_path = video_dir.extracted / "proposed.md"
                 proposed_path.write_text(f"# {video.title}\n\nHello world.", encoding="utf-8")
+                proposed_json_path = video_dir.extracted / "proposed.json"
+                proposed_json_path.write_text(
+                    json.dumps(
+                        {
+                            "transcript_source": "captions",
+                            "sermon_window": {
+                                "start_seconds": 60.0,
+                                "end_seconds": 120.0,
+                                "source": "detected",
+                                "included_segment_indexes": [1],
+                                "excluded_segment_indexes": [0, 2],
+                            },
+                            "segments": [
+                                {"start_seconds": 0.0, "end_seconds": 60.0, "text": "Prelude"},
+                                {"start_seconds": 60.0, "end_seconds": 120.0, "text": video.title},
+                                {"start_seconds": 120.0, "end_seconds": 180.0, "text": "Closing"},
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 database.add_extraction_result(
                     video_id=video.id,
                     version=1,
                     proposed_text_path=str(proposed_path),
-                    proposed_json_path=str(video_dir.extracted / "proposed.json"),
+                    proposed_json_path=str(proposed_json_path),
                 )
 
             first_result = runner.invoke(app, ["review", "sample-church", "--base-dir", str(base_dir)])
@@ -2306,10 +2514,18 @@ class ReviewExportTests(unittest.TestCase):
                             "source": "detected",
                             "included_segment_indexes": [0, 1],
                             "excluded_segment_indexes": [2],
+                            "suspicious_boundary": False,
+                            "suspicious_boundary_reasons": [],
                         },
                         "guest_speaker_suspected": True,
                         "guest_name_candidates": ["Elder John Smith"],
                         "guest_signal_reasons": ["video title names a non-pastor speaker"],
+                        "segments": [
+                            {"start_seconds": 0.0, "end_seconds": 120.0, "text": "Prelude"},
+                            {"start_seconds": 120.0, "end_seconds": 480.0, "text": "Sermon opening"},
+                            {"start_seconds": 480.0, "end_seconds": 840.0, "text": "Sermon close"},
+                            {"start_seconds": 840.0, "end_seconds": 960.0, "text": "Closing prayer"},
+                        ],
                     }
                 ),
                 encoding="utf-8",
@@ -2332,6 +2548,9 @@ class ReviewExportTests(unittest.TestCase):
             self.assertIn("pastor: sample-church", export_text)
             self.assertIn("- Transcript Source: captions", export_text)
             self.assertIn("- Likely Sermon Window: 02:00 - 14:00", export_text)
+            self.assertIn("Sermon opening", export_text)
+            self.assertIn("Sermon close", export_text)
+            self.assertNotIn("Closing prayer", export_text)
             self.assertIn("- Guest Speaker Suspected: yes", export_text)
             self.assertEqual("captions", manifest["videos"][0]["transcript_source"])
             self.assertTrue(manifest["videos"][0]["guest_speaker_suspected"])
