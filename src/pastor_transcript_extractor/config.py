@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from pathlib import Path
 
 APP_DIR_NAME = ".pastor-transcript-extractor"
 APP_DIR_POINTER_NAME = ".pastor-transcript-extractor-root"
+APP_CONFIG_DIR_NAME = "pastor-transcript-extractor"
+APP_CONFIG_FILE_NAME = "config.json"
 DEFAULT_WHISPER_CPP_BIN = Path("/Users/briancummings/code/whisper.cpp/build/bin/whisper-cli")
 DEFAULT_WHISPER_MODEL_PATH = Path("/Users/briancummings/code/whisper.cpp/models/ggml-medium.en.bin")
 DEFAULT_FFMPEG_BIN = "ffmpeg"
@@ -65,8 +68,53 @@ def _pointer_path() -> Path:
     return Path.home() / APP_DIR_POINTER_NAME
 
 
+def _config_dir_path() -> Path:
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        return Path(xdg_config_home).expanduser().resolve() / APP_CONFIG_DIR_NAME
+    return (Path.home() / ".config" / APP_CONFIG_DIR_NAME).expanduser().resolve()
+
+
+def _config_path() -> Path:
+    return _config_dir_path() / APP_CONFIG_FILE_NAME
+
+
+def _load_saved_base_dir_from_config() -> Path | None:
+    config_path = _config_path()
+    if not config_path.exists():
+        return None
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    base_dir = payload.get("base_dir")
+    if not isinstance(base_dir, str) or not base_dir.strip():
+        return None
+    return Path(base_dir).expanduser().resolve()
+
+
+def _load_saved_base_dir_from_pointer() -> Path | None:
+    pointer = _pointer_path()
+    if not pointer.exists():
+        return None
+    try:
+        saved = pointer.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not saved:
+        return None
+    return Path(saved).expanduser().resolve()
+
+
 def remember_base_dir(base_dir: Path) -> None:
     resolved = base_dir.expanduser().resolve()
+    try:
+        _config_dir_path().mkdir(parents=True, exist_ok=True)
+        _config_path().write_text(json.dumps({"base_dir": str(resolved)}, indent=2), encoding="utf-8")
+    except PermissionError:
+        pass
     try:
         _pointer_path().write_text(str(resolved), encoding="utf-8")
     except PermissionError:
@@ -83,11 +131,13 @@ def resolve_base_dir(base_dir: Path | None = None) -> Path:
     if env_base_dir:
         return Path(env_base_dir).expanduser().resolve()
 
-    pointer = _pointer_path()
-    if pointer.exists():
-        saved = pointer.read_text(encoding="utf-8").strip()
-        if saved:
-            return Path(saved).expanduser().resolve()
+    config_base_dir = _load_saved_base_dir_from_config()
+    if config_base_dir is not None:
+        return config_base_dir
+
+    pointer_base_dir = _load_saved_base_dir_from_pointer()
+    if pointer_base_dir is not None:
+        return pointer_base_dir
 
     return (Path.home() / APP_DIR_NAME).expanduser().resolve()
 

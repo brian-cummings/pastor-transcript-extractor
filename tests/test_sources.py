@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from pastor_transcript_extractor.config import build_paths, build_pastor_paths, build_video_artifact_paths, ensure_directories
+from pastor_transcript_extractor.config import build_paths, build_pastor_paths, build_video_artifact_paths, ensure_directories, resolve_base_dir
 from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
@@ -945,6 +945,10 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, init_result.exit_code, msg=init_result.output)
             self.assertEqual(0, doctor_result.exit_code, msg=doctor_result.output)
             self.assertEqual(custom_base_dir.resolve(), resolved_root)
+            config_path = fake_home / ".config" / "pastor-transcript-extractor" / "config.json"
+            self.assertTrue(config_path.exists())
+            saved_config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(str(custom_base_dir.resolve()), saved_config["base_dir"])
 
     def test_status_with_base_dir_persists_default_root_for_future_commands(self) -> None:
         runner = CliRunner()
@@ -964,6 +968,57 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, status_result.exit_code, msg=status_result.output)
             self.assertEqual(0, doctor_result.exit_code, msg=doctor_result.output)
             self.assertEqual(custom_base_dir.resolve(), resolved_root)
+
+    def test_resolve_base_dir_prefers_config_file_over_pointer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp) / "home"
+            fake_home.mkdir(parents=True, exist_ok=True)
+            pointer_dir = Path(tmp) / "pointer-root"
+            config_dir = Path(tmp) / "config-root"
+            pointer_dir.mkdir(parents=True, exist_ok=True)
+            config_dir.mkdir(parents=True, exist_ok=True)
+            (fake_home / ".pastor-transcript-extractor-root").write_text(str(pointer_dir.resolve()), encoding="utf-8")
+            config_path = fake_home / ".config" / "pastor-transcript-extractor" / "config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(json.dumps({"base_dir": str(config_dir.resolve())}), encoding="utf-8")
+
+            with patch("pastor_transcript_extractor.config.Path.home", return_value=fake_home):
+                resolved = resolve_base_dir()
+
+            self.assertEqual(config_dir.resolve(), resolved)
+
+    def test_resolve_base_dir_env_overrides_saved_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_home = Path(tmp) / "home"
+            fake_home.mkdir(parents=True, exist_ok=True)
+            config_dir = Path(tmp) / "config-root"
+            env_dir = Path(tmp) / "env-root"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            env_dir.mkdir(parents=True, exist_ok=True)
+            config_path = fake_home / ".config" / "pastor-transcript-extractor" / "config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(json.dumps({"base_dir": str(config_dir.resolve())}), encoding="utf-8")
+
+            with patch("pastor_transcript_extractor.config.Path.home", return_value=fake_home), patch.dict(
+                "os.environ", {"PTE_BASE_DIR": str(env_dir.resolve())}, clear=False
+            ):
+                resolved = resolve_base_dir()
+
+            self.assertEqual(env_dir.resolve(), resolved)
+
+    def test_review_unknown_pastor_includes_resolved_app_root(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp) / "documents-appdata"
+
+            result = runner.invoke(app, ["review", "missing-pastor", "--base-dir", str(base_dir)])
+
+            self.assertNotEqual(0, result.exit_code)
+            self.assertIn("Unknown pastor slug: missing-pastor", result.output)
+            normalized_output = "".join(result.output.split())
+            self.assertIn("approot:", normalized_output)
+            self.assertIn(base_dir.parent.name, normalized_output)
+            self.assertIn("ts-appdata", normalized_output)
 
     def test_command_codepaths_with_base_dir_persist_default_root_for_future_commands(self) -> None:
         def setup_pastor(base_dir: Path) -> None:

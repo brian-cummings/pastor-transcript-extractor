@@ -71,6 +71,11 @@ def get_database(base_dir: Path | None = None) -> Database:
     return database
 
 
+def _unknown_pastor_error(pastor_slug: str, base_dir: Path | None = None) -> typer.BadParameter:
+    resolved_root = build_paths(base_dir).root
+    return typer.BadParameter(f"Unknown pastor slug: {pastor_slug} (app root: {resolved_root})")
+
+
 def _path_status(path: Path) -> str:
     return "ok" if path.exists() else "missing"
 
@@ -234,12 +239,23 @@ def _build_live_transcription_stage_callback(
         STAGE_DONE,
         STAGE_FAILED,
     }
+    active_statuses = {
+        STAGE_DOWNLOADING,
+        STAGE_NORMALIZING,
+        STAGE_QUEUED_TRANSCRIBE,
+        STAGE_TRANSCRIBING,
+        STAGE_DONE,
+        STAGE_FAILED,
+    }
 
     def stage_callback(stage: str) -> None:
         label = STAGE_LABELS.get(stage, stage)
         if label not in valid_statuses:
             return
         with lock:
+            task = progress.tasks[task_id]
+            if label in active_statuses and task.start_time is None:
+                progress.start_task(task_id)
             if label == STAGE_TRANSCRIBING:
                 progress.update(task_id, status=label, completed=0)
             elif label == STAGE_DONE:
@@ -266,7 +282,7 @@ def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
 def _prepare_review_markdown(database: Database, paths: Path, pastor_slug: str) -> tuple[int, int]:
     pastor = database.get_pastor_by_slug(pastor_slug)
     if pastor is None:
-        raise typer.BadParameter(f"Unknown pastor slug: {pastor_slug}")
+        raise _unknown_pastor_error(pastor_slug, paths.root)
 
     processed = 0
     failed = 0
@@ -335,7 +351,7 @@ def add(
 
     pastor_record = database.get_pastor_by_slug(pastor)
     if pastor_record is None:
-        raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
+        raise _unknown_pastor_error(pastor, base_dir)
 
     source = database.add_source(url=url, source_type=source_type, pastor_id=pastor_record.id, notes=notes)
     console.print(
@@ -447,7 +463,7 @@ def video_list(
     if pastor is not None:
         pastor_record = database.get_pastor_by_slug(pastor)
         if pastor_record is None:
-            raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
+            raise _unknown_pastor_error(pastor, base_dir)
         videos = [video for video in videos if video.pastor_id == pastor_record.id]
 
     if source_id is not None:
@@ -538,7 +554,7 @@ def video_excluded(
     if pastor is not None:
         pastor_record = database.get_pastor_by_slug(pastor)
         if pastor_record is None:
-            raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
+            raise _unknown_pastor_error(pastor, base_dir)
         excluded_videos = [video for video in excluded_videos if video.pastor_id == pastor_record.id]
 
     if not excluded_videos:
@@ -819,6 +835,7 @@ def transcribe(
                     completed=0,
                     status=STAGE_QUEUED_PREP,
                     video_id=video.id,
+                    start=False,
                 )
             for _ in range(prep_workers):
                 if not submit_prep(prep_executor):
@@ -1075,7 +1092,7 @@ def review(
     paths = build_paths(base_dir, remember=True)
     pastor_record = database.get_pastor_by_slug(pastor)
     if pastor_record is None:
-        raise typer.BadParameter(f"Unknown pastor slug: {pastor}")
+        raise _unknown_pastor_error(pastor, base_dir)
     prepared, failed = _prepare_review_markdown(database, paths, pastor_record.slug)
     pastor_paths = build_pastor_paths(paths, pastor_record.slug)
     result = export_pastor_review_markdown(database, paths, pastor_record.slug)
