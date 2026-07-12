@@ -9,6 +9,8 @@ from pastor_transcript_extractor.segmentation import SegmentDraft
 
 MIN_WINDOW_DURATION_SECONDS = 12 * 60
 MAX_WINDOW_GAP_SECONDS = 90
+MAX_BRIDGED_INTERRUPTION_SECONDS = 4 * 60
+MAX_BRIDGED_INTERRUPTION_SEGMENTS = 2
 EARLY_SEGMENT_LIMIT = 120
 EARLY_WINDOW_SECONDS = 12 * 60
 
@@ -105,6 +107,15 @@ _INTRO_PATTERNS = (
     "thank you for inviting me",
     "we welcome",
     "welcome to the pulpit",
+)
+_SELF_INTRO_PATTERNS = (
+    "thank you for inviting me",
+    "thank you for having me",
+    "it is good to be with you",
+    "it's good to be with you",
+    "i am honored to be here",
+    "i'm honored to be here",
+    "greetings from",
 )
 _HONORIFIC_NAME_RE = re.compile(
     r"\b(?P<title>Pastor|Elder|Dr\.?|Brother|Sister)\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\b"
@@ -292,6 +303,32 @@ def _timed_segments(drafts: list[SegmentDraft]) -> list[_TimedSegment]:
     return timed
 
 
+def _adjusted_score(segment: _TimedSegment, opening_penalties: dict[int, float]) -> float:
+    return segment.score - opening_penalties.get(segment.index, 0.0)
+
+
+def _is_bridgeable_interruption(segment: _TimedSegment) -> bool:
+    if segment.label in {TranscriptSegmentLabel.PRAYER, TranscriptSegmentLabel.UNKNOWN, TranscriptSegmentLabel.OTHER, TranscriptSegmentLabel.READING}:
+        return True
+    lower = _normalize(segment.text)
+    if segment.label == TranscriptSegmentLabel.SERMON and not _contains_any_pattern(lower, _TRAILING_BOUNDARY_PATTERNS):
+        return True
+    return False
+
+
+def _can_bridge_interruption(
+    interruption_segments: list[_TimedSegment],
+    gap_seconds: float,
+) -> bool:
+    if not interruption_segments:
+        return gap_seconds <= MAX_WINDOW_GAP_SECONDS
+    if len(interruption_segments) > MAX_BRIDGED_INTERRUPTION_SEGMENTS:
+        return False
+    if gap_seconds > MAX_BRIDGED_INTERRUPTION_SECONDS:
+        return False
+    return all(_is_bridgeable_interruption(segment) for segment in interruption_segments)
+
+
 def detect_sermon_window(
     drafts: list[SegmentDraft],
     *,
@@ -312,7 +349,12 @@ def detect_sermon_window(
         )
 
     opening_penalties = _opening_repetition_penalty(timed)
-    candidates = [segment for segment in timed if segment.score - opening_penalties.get(segment.index, 0.0) > 0]
+    candidate_positions = [
+        position
+        for position, segment in enumerate(timed)
+        if _adjusted_score(segment, opening_penalties) > 0
+    ]
+    candidates = [timed[position] for position in candidate_positions]
     if not candidates:
         return SermonWindowResult(
             start_seconds=None,
@@ -328,16 +370,25 @@ def detect_sermon_window(
 
     merged_runs: list[list[_TimedSegment]] = []
     current_run: list[_TimedSegment] = []
-    for segment in candidates:
+    previous_candidate_position: int | None = None
+    for candidate_position in candidate_positions:
+        segment = timed[candidate_position]
         if not current_run:
             current_run = [segment]
+            previous_candidate_position = candidate_position
             continue
-        gap = segment.start_seconds - current_run[-1].end_seconds
-        if gap <= MAX_WINDOW_GAP_SECONDS:
+        assert previous_candidate_position is not None
+        interruption_segments = timed[previous_candidate_position + 1:candidate_position]
+        previous_segment = timed[previous_candidate_position]
+        gap = segment.start_seconds - previous_segment.end_seconds
+        if _can_bridge_interruption(interruption_segments, gap):
+            current_run.extend(interruption_segments)
             current_run.append(segment)
+            previous_candidate_position = candidate_position
             continue
         merged_runs.append(current_run)
         current_run = [segment]
+        previous_candidate_position = candidate_position
     if current_run:
         merged_runs.append(current_run)
 
@@ -362,8 +413,11 @@ def detect_sermon_window(
         total = 0.0
         for segment in run:
             duration = segment.end_seconds - segment.start_seconds
-            adjusted_score = max(segment.score - opening_penalties.get(segment.index, 0.0), 0.0)
-            total += adjusted_score * duration
+            adjusted_score = _adjusted_score(segment, opening_penalties)
+            if adjusted_score > 0:
+                total += adjusted_score * duration
+            elif _is_bridgeable_interruption(segment):
+                total -= min(0.2, abs(adjusted_score)) * duration * 0.35
         return total
 
     best_run = max(valid_runs, key=lambda run: (run_strength(run), run_duration(run), -run[0].start_seconds))
@@ -426,12 +480,20 @@ def detect_guest_speaker_flags(
     sermon_window: SermonWindowResult,
 ) -> GuestSpeakerFlags:
     pastor_lower = _normalize(pastor_name)
+    pastor_tokens = {token for token in re.split(r"[^a-z]+", pastor_lower) if token}
     title_candidates: list[str] = []
     reasons: list[str] = []
 
     def is_not_pastor(candidate: str) -> bool:
-        candidate_normalized = _normalize(re.sub(r"^(pastor|elder|dr\.?|brother|sister)\s+", "", candidate, flags=re.IGNORECASE))
-        return bool(candidate_normalized) and candidate_normalized not in pastor_lower
+        candidate_normalized = _normalize(
+            re.sub(r"^(pastor|elder|dr\.?|brother|sister)\s+", "", candidate, flags=re.IGNORECASE)
+        )
+        if not candidate_normalized or candidate_normalized in pastor_lower:
+            return False
+        candidate_tokens = {token for token in re.split(r"[^a-z]+", candidate_normalized) if token}
+        if candidate_tokens and candidate_tokens.issubset(pastor_tokens):
+            return False
+        return True
 
     for match in _HONORIFIC_NAME_RE.finditer(video_title):
         candidate = match.group(0)
@@ -457,18 +519,36 @@ def detect_guest_speaker_flags(
             if segment not in early_segments:
                 early_segments.append(segment)
 
-    early_text = " ".join(segment.text for segment in early_segments)
-    early_lower = _normalize(early_text)
-    if any(pattern in early_lower for pattern in _INTRO_PATTERNS):
-        reasons.append("introductory guest-speaker language detected in early transcript segments")
-
     segment_candidates: list[str] = []
-    for match in _HONORIFIC_NAME_RE.finditer(early_text):
-        candidate = match.group(0)
-        if is_not_pastor(candidate) and candidate not in segment_candidates:
-            segment_candidates.append(candidate)
-    if segment_candidates and "introductory guest-speaker language detected in early transcript segments" not in reasons:
-        reasons.append("early transcript names a non-pastor speaker")
+    intro_detected = False
+    self_intro_detected = False
+    named_intro_detected = False
+    non_sermon_name_detected = False
+    for segment in early_segments:
+        lower = _normalize(segment.text)
+        segment_intro_detected = any(pattern in lower for pattern in _INTRO_PATTERNS)
+        if segment_intro_detected:
+            intro_detected = True
+        if any(pattern in lower for pattern in _SELF_INTRO_PATTERNS):
+            self_intro_detected = True
+        matches: list[str] = []
+        for match in _HONORIFIC_NAME_RE.finditer(segment.text):
+            candidate = match.group(0)
+            if is_not_pastor(candidate) and candidate not in segment_candidates:
+                segment_candidates.append(candidate)
+            if is_not_pastor(candidate):
+                matches.append(candidate)
+        if matches and segment_intro_detected:
+            named_intro_detected = True
+        if matches and segment.label != TranscriptSegmentLabel.SERMON:
+            non_sermon_name_detected = True
+
+    if intro_detected and named_intro_detected:
+        reasons.append("introductory guest-speaker language detected alongside a non-pastor name")
+    elif self_intro_detected:
+        reasons.append("speaker uses first-person guest-introduction language near the sermon opening")
+    elif non_sermon_name_detected:
+        reasons.append("early non-sermon transcript names a non-pastor speaker")
 
     candidates = title_candidates + [candidate for candidate in segment_candidates if candidate not in title_candidates]
     return GuestSpeakerFlags(

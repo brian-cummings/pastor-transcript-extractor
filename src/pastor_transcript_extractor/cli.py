@@ -347,6 +347,16 @@ def _prepare_review_markdown(database: Database, paths: Path, pastor_slug: str) 
     return processed, failed
 
 
+def _prepare_all_review_markdown(database: Database, paths: Path) -> tuple[int, int]:
+    processed = 0
+    failed = 0
+    for pastor in database.list_pastors():
+        pastor_processed, pastor_failed = _prepare_review_markdown(database, paths, pastor.slug)
+        processed += pastor_processed
+        failed += pastor_failed
+    return processed, failed
+
+
 def _delete_source_tree(database: Database, paths: Path, source_id: int) -> int:
     source = database.get_source_by_id(source_id)
     if source is None:
@@ -1060,8 +1070,8 @@ def fetch(
         if video.pastor_id is None:
             skipped += 1
             continue
-        latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
-        if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.CAPTIONS:
+        transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
+        if any(artifact.source_kind == TranscriptSourceKind.CAPTIONS for artifact in transcript_artifacts):
             skipped += 1
             continue
 
@@ -1153,30 +1163,56 @@ def extract(
 
 @app.command(help="Build or refresh the pastor-scoped Markdown review file from extracted videos.", rich_help_panel="Workflows")
 def review(
-    pastor: str = typer.Argument(..., help="Pastor slug whose extracted videos should be assembled into review Markdown."),
+    pastor: str | None = typer.Argument(None, help="Pastor slug whose extracted videos should be assembled into review Markdown."),
+    all_pastors: bool = typer.Option(False, "--all", help="Build a combined review across all pastors."),
     edit: bool = typer.Option(False, "--edit", help="Open the generated review Markdown in an editor."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
-    pastor_record = database.get_pastor_by_slug(pastor)
-    if pastor_record is None:
-        raise _unknown_pastor_error(pastor, base_dir)
-    prepared, failed = _prepare_review_markdown(database, paths, pastor_record.slug)
-    pastor_paths = build_pastor_paths(paths, pastor_record.slug)
-    result = export_pastor_review_markdown(database, paths, pastor_record.slug)
-    if prepared or failed:
-        console.print(f"Prepared {prepared} video(s) for review; failed {failed}.")
-    console.print(f"Wrote pastor review markdown to {result.export_path}")
-    console.print(f"Wrote review manifest to {result.manifest_path}")
-    console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
+    if all_pastors and pastor is not None:
+        raise typer.BadParameter("Do not pass a pastor slug when using --all.")
+    if not all_pastors and pastor is None:
+        raise typer.BadParameter("A pastor slug is required unless you use --all.")
 
-    if edit:
-        editor = shutil.which("code") or shutil.which("nano") or shutil.which("vim")
-        if editor is None:
-            raise RuntimeError("No editor found on PATH")
-        import subprocess
-        subprocess.run([editor, str(pastor_paths.exports / "review.md")], check=True)
+    if all_pastors:
+        prepared, failed = _prepare_all_review_markdown(database, paths)
+        exported_pastors = 0
+        included_videos = 0
+        skipped_videos = 0
+        for pastor_record in database.list_pastors():
+            result = export_pastor_review_markdown(database, paths, pastor_record.slug)
+            console.print(f"Wrote pastor review markdown to {result.export_path}")
+            console.print(f"Wrote review manifest to {result.manifest_path}")
+            console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
+            exported_pastors += 1
+            included_videos += result.video_count
+            skipped_videos += result.skipped_count
+        if prepared or failed:
+            console.print(f"Prepared {prepared} video(s) for review; failed {failed}.")
+        console.print(f"Built review artifacts for {exported_pastors} pastor(s); included {included_videos} video(s); skipped {skipped_videos}.")
+    else:
+        assert pastor is not None
+        pastor_record = database.get_pastor_by_slug(pastor)
+        if pastor_record is None:
+            raise _unknown_pastor_error(pastor, base_dir)
+        prepared, failed = _prepare_review_markdown(database, paths, pastor_record.slug)
+        result = export_pastor_review_markdown(database, paths, pastor_record.slug)
+        review_path = build_pastor_paths(paths, pastor_record.slug).exports / "review.md"
+        review_label = "pastor review markdown"
+
+        if prepared or failed:
+            console.print(f"Prepared {prepared} video(s) for review; failed {failed}.")
+        console.print(f"Wrote {review_label} to {result.export_path}")
+        console.print(f"Wrote review manifest to {result.manifest_path}")
+        console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
+
+        if edit:
+            editor = shutil.which("code") or shutil.which("nano") or shutil.which("vim")
+            if editor is None:
+                raise RuntimeError("No editor found on PATH")
+            import subprocess
+            subprocess.run([editor, str(review_path)], check=True)
 
 
 @app.command(help="Run the intake pipeline from source registration through extraction.", rich_help_panel="Workflows")

@@ -85,6 +85,35 @@ def _format_window(window: dict[str, Any] | None) -> str:
     return f"{format_timestamp(float(start_seconds))} - {format_timestamp(float(end_seconds))}"
 
 
+def _segment_is_within_window(segment: dict[str, Any], sermon_window: dict[str, Any]) -> bool:
+    start_seconds = sermon_window.get("start_seconds")
+    end_seconds = sermon_window.get("end_seconds")
+    segment_start = segment.get("start_seconds")
+    segment_end = segment.get("end_seconds")
+    if not isinstance(start_seconds, (int, float)) or not isinstance(end_seconds, (int, float)):
+        return False
+    if not isinstance(segment_start, (int, float)) or not isinstance(segment_end, (int, float)):
+        return False
+    return float(segment_end) > float(start_seconds) and float(segment_start) < float(end_seconds)
+
+
+def _window_segments(segments: list[dict[str, Any]], sermon_window: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(sermon_window, dict):
+        return []
+    in_window = [segment for segment in segments if isinstance(segment, dict) and _segment_is_within_window(segment, sermon_window)]
+    if in_window:
+        return in_window
+    included_indexes_raw = sermon_window.get("included_segment_indexes")
+    if not isinstance(included_indexes_raw, list):
+        return []
+    included_indexes = {index for index in included_indexes_raw if isinstance(index, int)}
+    return [
+        segment
+        for index, segment in enumerate(segments)
+        if index in included_indexes and isinstance(segment, dict)
+    ]
+
+
 def _build_review_transcript_excerpt(
     proposed_json: dict[str, Any] | None,
     fallback_text: str,
@@ -96,61 +125,21 @@ def _build_review_transcript_excerpt(
     if not isinstance(segments, list) or not isinstance(sermon_window, dict):
         return fallback_text
 
-    excerpt_parts: list[str] = []
-    start_seconds = sermon_window.get("start_seconds")
-    end_seconds = sermon_window.get("end_seconds")
-    if isinstance(start_seconds, (int, float)) and isinstance(end_seconds, (int, float)):
-        start = float(start_seconds)
-        end = float(end_seconds)
-        for segment in segments:
-            if not isinstance(segment, dict):
-                continue
-            segment_start = segment.get("start_seconds")
-            segment_end = segment.get("end_seconds")
-            if not isinstance(segment_start, (int, float)) or not isinstance(segment_end, (int, float)):
-                continue
-            segment_start_value = float(segment_start)
-            segment_end_value = float(segment_end)
-            if segment_end_value <= start or segment_start_value >= end:
-                continue
-            text = segment.get("text")
-            if isinstance(text, str) and text.strip():
-                excerpt_parts.append(text.strip())
-
-    if not excerpt_parts:
-        included_indexes_raw = sermon_window.get("included_segment_indexes")
-        included_indexes = {
-            int(index)
-            for index in included_indexes_raw
-            if isinstance(index, int)
-        } if isinstance(included_indexes_raw, list) else set()
-        for index, segment in enumerate(segments):
-            if index not in included_indexes or not isinstance(segment, dict):
-                continue
-            text = segment.get("text")
-            if isinstance(text, str) and text.strip():
-                excerpt_parts.append(text.strip())
+    excerpt_parts = [
+        str(segment.get("text")).strip()
+        for segment in _window_segments([segment for segment in segments if isinstance(segment, dict)], sermon_window)
+        if isinstance(segment.get("text"), str) and str(segment.get("text")).strip()
+    ]
 
     if excerpt_parts:
         return "\n\n".join(excerpt_parts)
     return fallback_text
 
 
-def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pastor_slug: str) -> PastorReviewMarkdownResult:
-    pastor = database.get_pastor_by_slug(pastor_slug)
-    if pastor is None:
-        raise ValueError(f"Unknown pastor slug: {pastor_slug}")
-
-    pastor_paths = build_pastor_paths(app_paths, pastor.slug)
-    pastor_paths.exports.mkdir(parents=True, exist_ok=True)
-
-    candidate_videos = [
-        video
-        for video in database.list_videos()
-        if video.pastor_id == pastor.id and database.get_latest_extraction_result_for_video(video.id) is not None
-    ]
-    videos = _sort_videos_for_review(candidate_videos)
-
+def _build_review_sections_for_videos(
+    database: Database,
+    videos: list[Video],
+) -> tuple[list[str], int, list[dict[str, object]]]:
     sections: list[str] = []
     skipped_count = 0
     manifest_videos: list[dict[str, object]] = []
@@ -184,10 +173,12 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
         if proposed_json is not None and isinstance(proposed_json.get("guest_signal_reasons"), list):
             guest_signal_reasons = [str(reason) for reason in proposed_json["guest_signal_reasons"]]
         published_text = video.published_at.date().isoformat() if video.published_at is not None else "undated"
-        sections.extend(
+        section_lines = [
+            f"## {published_text} - {video.title}",
+            "",
+        ]
+        section_lines.extend(
             [
-                f"## {published_text} - {video.title}",
-                "",
                 f"- Video ID: {video.youtube_video_id}",
                 f"- Source: {video.url}",
                 f"- Transcript Source: {transcript_source or 'unknown'}",
@@ -224,6 +215,7 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
                 "",
             ]
         )
+        sections.extend(section_lines)
         manifest_videos.append(
             {
                 "video_id": video.id,
@@ -241,6 +233,28 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
             }
         )
         database.update_video_status(video.id, VideoStatus.EXPORTED)
+
+    return sections, skipped_count, manifest_videos
+
+
+def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pastor_slug: str) -> PastorReviewMarkdownResult:
+    pastor = database.get_pastor_by_slug(pastor_slug)
+    if pastor is None:
+        raise ValueError(f"Unknown pastor slug: {pastor_slug}")
+
+    pastor_paths = build_pastor_paths(app_paths, pastor.slug)
+    pastor_paths.exports.mkdir(parents=True, exist_ok=True)
+
+    candidate_videos = [
+        video
+        for video in database.list_videos()
+        if video.pastor_id == pastor.id and database.get_latest_extraction_result_for_video(video.id) is not None
+    ]
+    videos = _sort_videos_for_review(candidate_videos)
+    sections, skipped_count, manifest_videos = _build_review_sections_for_videos(
+        database,
+        videos,
+    )
 
     generated_at = datetime.now(timezone.utc).isoformat()
     export_path = pastor_paths.exports / "review.md"

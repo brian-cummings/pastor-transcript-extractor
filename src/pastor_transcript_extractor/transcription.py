@@ -210,17 +210,20 @@ def fetch_captions_video(
     for directory in (video_paths.root, video_paths.audio, video_paths.raw, video_paths.extracted, video_paths.review):
         directory.mkdir(parents=True, exist_ok=True)
 
+    captions_download_path = video_paths.raw / "captions.txt"
+    captions_raw_text_path = video_paths.raw / "captions.txt"
+    captions_raw_json_path = video_paths.raw / "captions.json"
     captions_path = download_captions(
         video.url,
         tools.yt_dlp_bin,
-        transcript_paths.raw_text,
+        captions_download_path,
         tools.yt_dlp_js_runtimes,
     )
     raw_text = _captions_to_plain_text(captions_path)
     raw_segments = _captions_to_segments(captions_path)
-    raw_text_path = transcript_paths.raw_text
+    raw_text_path = captions_raw_text_path
     raw_text_path.write_text(raw_text, encoding="utf-8")
-    raw_json_path = transcript_paths.raw_json
+    raw_json_path = captions_raw_json_path
     raw_json_path.write_text(
         json.dumps(
             {
@@ -308,17 +311,23 @@ def prepare_transcription_input(
     for directory in (video_paths.root, video_paths.audio, video_paths.raw, video_paths.extracted, video_paths.review):
         directory.mkdir(parents=True, exist_ok=True)
 
-    if stage_callback is not None:
-        stage_callback("downloading")
-    downloaded_audio = download_audio(
-        video.url,
-        tools.yt_dlp_bin,
-        transcript_paths.audio_download,
-        tools.yt_dlp_js_runtimes,
-    )
-    if stage_callback is not None:
-        stage_callback("normalizing")
-    normalized_audio = normalize_audio(downloaded_audio, transcript_paths.audio_normalized, tools.ffmpeg_bin)
+    downloaded_audio = transcript_paths.audio_download
+    if not downloaded_audio.exists():
+        if stage_callback is not None:
+            stage_callback("downloading")
+        downloaded_audio = download_audio(
+            video.url,
+            tools.yt_dlp_bin,
+            transcript_paths.audio_download,
+            tools.yt_dlp_js_runtimes,
+        )
+
+    normalized_audio = transcript_paths.audio_normalized
+    normalized_is_current = normalized_audio.exists() and normalized_audio.stat().st_mtime >= downloaded_audio.stat().st_mtime
+    if not normalized_is_current:
+        if stage_callback is not None:
+            stage_callback("normalizing")
+        normalized_audio = normalize_audio(downloaded_audio, transcript_paths.audio_normalized, tools.ffmpeg_bin)
     return PreparedTranscriptInput(
         video_id=video.id,
         youtube_video_id=video.youtube_video_id,

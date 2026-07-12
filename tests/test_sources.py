@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,14 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from pastor_transcript_extractor.config import build_paths, build_pastor_paths, build_video_artifact_paths, ensure_directories, resolve_base_dir
+from pastor_transcript_extractor.config import (
+    build_paths,
+    build_pastor_paths,
+    build_transcript_artifact_paths,
+    build_video_artifact_paths,
+    ensure_directories,
+    resolve_base_dir,
+)
 from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
@@ -25,6 +33,7 @@ from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
     _captions_to_plain_text,
     fetch_captions_video,
+    prepare_transcription_input,
     transcribe_video,
 )
 from pastor_transcript_extractor.config import ToolConfig
@@ -290,6 +299,18 @@ class SermonDetectionTests(unittest.TestCase):
         self.assertEqual(0.0, result.start_seconds)
         self.assertEqual(1380.0, result.end_seconds)
 
+    def test_detect_sermon_window_bridges_brief_mid_sermon_prayer(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 540.0, "Turn in your Bibles to Romans chapter eight and consider this passage.", None, TranscriptSegmentLabel.READING, 0.7),
+            SegmentDraft(540.0, 720.0, "Let us pray that the Lord will apply this to our hearts.", None, TranscriptSegmentLabel.PRAYER, 0.7),
+            SegmentDraft(720.0, 1560.0, "Today I want to show you what the word of God teaches about hope.", None, TranscriptSegmentLabel.SERMON, 0.55),
+        ]
+
+        result = detect_sermon_window(drafts)
+
+        self.assertEqual(0.0, result.start_seconds)
+        self.assertEqual(1560.0, result.end_seconds)
+
     def test_detect_sermon_window_trims_leading_music_and_announcements(self) -> None:
         drafts = [
             SegmentDraft(0.0, 180.0, "Happy Sabbath everyone. Please stand.", None, TranscriptSegmentLabel.SERMON, 0.75),
@@ -364,6 +385,24 @@ class SermonDetectionTests(unittest.TestCase):
         self.assertTrue(result.suspected)
         self.assertIn("Elder John Smith", result.name_candidates)
         self.assertTrue(any("title names a non-pastor speaker" in reason for reason in result.reasons))
+
+    def test_detect_guest_speaker_flags_ignores_named_reference_inside_sermon(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 840.0, "Turn in your Bibles to Matthew chapter five. Pastor John Smith once said this text matters.", None, TranscriptSegmentLabel.SERMON, 0.55),
+            SegmentDraft(840.0, 1620.0, "Today I want to show you the word of God in this passage.", None, TranscriptSegmentLabel.SERMON, 0.55),
+        ]
+        sermon_window = detect_sermon_window(drafts)
+
+        result = detect_guest_speaker_flags(
+            video_title='Sample Church - "Blessed Are"',
+            drafts=drafts,
+            pastor_name="Andrew Korp",
+            sermon_window=sermon_window,
+        )
+
+        self.assertFalse(result.suspected)
+        self.assertEqual(["Pastor John Smith"], result.name_candidates)
+        self.assertEqual([], result.reasons)
 
 
 class SegmentationTests(unittest.TestCase):
@@ -1196,6 +1235,7 @@ class CliTests(unittest.TestCase):
             ("transcribe", ["transcribe"], None, None),
             ("extract", ["extract"], None, None),
             ("review", ["review", "sample-church"], setup_review, None),
+            ("review-all", ["review", "--all"], setup_review, None),
             ("video-exclude", ["video", "exclude", "1"], setup_video, None),
         ]
 
@@ -1585,6 +1625,111 @@ class CliTests(unittest.TestCase):
             self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
             self.assertIsNone(updated_video.failure_reason)
 
+    def test_fetch_skips_when_any_captions_artifact_exists(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.TRANSCRIBED_LOCAL,
+            )
+            artifact_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            artifact_dir.raw.mkdir(parents=True, exist_ok=True)
+            captions_json_path = artifact_dir.raw / "captions.json"
+            captions_text_path = artifact_dir.raw / "captions.txt"
+            captions_json_path.write_text(json.dumps({"text": "captions"}), encoding="utf-8")
+            captions_text_path.write_text("captions", encoding="utf-8")
+            asr_json_path = artifact_dir.raw / "whisper.json"
+            asr_text_path = artifact_dir.raw / "whisper.txt"
+            asr_json_path.write_text(json.dumps({"text": "asr"}), encoding="utf-8")
+            asr_text_path.write_text("asr", encoding="utf-8")
+            database.add_transcript_artifact(
+                video_id=video.id,
+                source_kind=TranscriptSourceKind.CAPTIONS,
+                audio_path=None,
+                raw_json_path=str(captions_json_path),
+                raw_text_path=str(captions_text_path),
+            )
+            database.add_transcript_artifact(
+                video_id=video.id,
+                source_kind=TranscriptSourceKind.LOCAL_ASR,
+                audio_path=str(artifact_dir.audio / "normalized.wav"),
+                raw_json_path=str(asr_json_path),
+                raw_text_path=str(asr_text_path),
+            )
+
+            with patch("pastor_transcript_extractor.cli.fetch_captions_video") as mock_fetch:
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("skipped 1", result.output)
+            mock_fetch.assert_not_called()
+
+    def test_fetch_captions_uses_separate_raw_files_from_local_asr(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.DISCOVERED,
+            )
+
+            class FakeCaptionResult:
+                captions_path = Path(tmp) / "downloaded-captions.vtt"
+
+            FakeCaptionResult.captions_path.write_text(
+                "\n".join(
+                    [
+                        "WEBVTT",
+                        "",
+                        "00:00:00.000 --> 00:00:02.000",
+                        "Hello world",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("pastor_transcript_extractor.transcription.download_captions", return_value=FakeCaptionResult.captions_path):
+                caption_result = fetch_captions_video(database, paths, ToolConfig(
+                    whisper_cpp_bin=Path("/tmp/whisper-cli"),
+                    whisper_model_path=Path("/tmp/model.bin"),
+                    ffmpeg_bin="ffmpeg",
+                    yt_dlp_bin="yt-dlp",
+                    yt_dlp_js_runtimes=None,
+                ), video.id)
+
+            self.assertTrue(str(caption_result.raw_text_path).endswith("captions.txt"))
+            self.assertTrue(str(caption_result.raw_json_path).endswith("captions.json"))
+            self.assertFalse(str(caption_result.raw_text_path).endswith("whisper.txt"))
+            self.assertFalse(str(caption_result.raw_json_path).endswith("whisper.json"))
+
     def test_video_list_shows_discovered_videos(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -1897,6 +2042,81 @@ class CliTests(unittest.TestCase):
             review_path = build_pastor_paths(paths, pastor.slug).exports / "review.md"
             self.assertTrue(review_path.exists())
             self.assertIn("Auto Extract Me", review_path.read_text(encoding="utf-8"))
+
+    def test_review_all_builds_one_review_per_pastor(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor_one = database.add_pastor("sample-church", "Sample Church")
+            pastor_two = database.add_pastor("guest-church", "Guest Church")
+
+            for pastor, youtube_id, title in [
+                (pastor_one, "abc123def45", "First Sermon"),
+                (pastor_two, "xyz789lmno0", "Second Sermon"),
+            ]:
+                source = database.add_source(
+                    f"https://www.youtube.com/watch?v={youtube_id}",
+                    SourceType.VIDEO,
+                    pastor_id=pastor.id,
+                )
+                video = database.add_video(
+                    source_id=source.id,
+                    pastor_id=pastor.id,
+                    youtube_video_id=youtube_id,
+                    title=title,
+                    url=f"https://www.youtube.com/watch?v={youtube_id}",
+                    status=VideoStatus.EXTRACTED,
+                )
+                video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+                video_dir.extracted.mkdir(parents=True, exist_ok=True)
+                proposed_path = video_dir.extracted / "proposed.md"
+                proposed_path.write_text(f"# {title}\n\nFull transcript.", encoding="utf-8")
+                proposed_json_path = video_dir.extracted / "proposed.json"
+                proposed_json_path.write_text(
+                    json.dumps(
+                        {
+                            "transcript_source": "captions",
+                            "sermon_window": {
+                                "start_seconds": 60.0,
+                                "end_seconds": 120.0,
+                                "source": "detected",
+                                "included_segment_indexes": [1],
+                                "excluded_segment_indexes": [0, 2],
+                            },
+                            "segments": [
+                                {"start_seconds": 0.0, "end_seconds": 60.0, "text": "Prelude"},
+                                {"start_seconds": 60.0, "end_seconds": 120.0, "text": title},
+                                {"start_seconds": 120.0, "end_seconds": 180.0, "text": "Closing"},
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                database.add_extraction_result(
+                    video_id=video.id,
+                    version=1,
+                    proposed_text_path=str(proposed_path),
+                    proposed_json_path=str(proposed_json_path),
+                )
+
+            result = runner.invoke(app, ["review", "--all", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            review_path_one = build_pastor_paths(paths, pastor_one.slug).exports / "review.md"
+            review_path_two = build_pastor_paths(paths, pastor_two.slug).exports / "review.md"
+            manifest_path_one = build_pastor_paths(paths, pastor_one.slug).exports / "review.json"
+            manifest_path_two = build_pastor_paths(paths, pastor_two.slug).exports / "review.json"
+            self.assertTrue(review_path_one.exists())
+            self.assertTrue(review_path_two.exists())
+            self.assertTrue(manifest_path_one.exists())
+            self.assertTrue(manifest_path_two.exists())
+            self.assertIn("First Sermon", review_path_one.read_text(encoding="utf-8"))
+            self.assertIn("Second Sermon", review_path_two.read_text(encoding="utf-8"))
+            self.assertIn("Built review artifacts for 2 pastor(s)", result.output)
 
     def test_transcribe_prints_progress_for_each_video(self) -> None:
         runner = CliRunner()
@@ -2483,6 +2703,120 @@ class TranscriptionTests(unittest.TestCase):
             self.assertTrue(result.raw_text_path.exists())
             self.assertEqual("hello", result.raw_text_path.read_text(encoding="utf-8"))
             self.assertEqual(1, database.counts_by_table()["transcript_artifacts"])
+
+    def test_prepare_transcription_input_reuses_downloaded_and_normalized_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123",
+                status=VideoStatus.DISCOVERED,
+            )
+            transcript_paths = build_transcript_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            transcript_paths.audio_download.parent.mkdir(parents=True, exist_ok=True)
+            transcript_paths.audio_download.write_bytes(b"audio")
+            transcript_paths.audio_normalized.write_bytes(b"normalized")
+
+            tools = ToolConfig(
+                whisper_cpp_bin=Path("/fake/whisper-cli"),
+                whisper_model_path=Path("/fake/model.bin"),
+                ffmpeg_bin="ffmpeg",
+                yt_dlp_bin="yt-dlp",
+                yt_dlp_js_runtimes=None,
+            )
+            stages: list[str] = []
+
+            with patch("pastor_transcript_extractor.transcription.download_audio") as mocked_download, patch(
+                "pastor_transcript_extractor.transcription.normalize_audio"
+            ) as mocked_normalize:
+                prepared = prepare_transcription_input(
+                    database,
+                    paths,
+                    tools,
+                    video.id,
+                    stage_callback=stages.append,
+                )
+
+            mocked_download.assert_not_called()
+            mocked_normalize.assert_not_called()
+            self.assertEqual([], stages)
+            self.assertEqual(transcript_paths.audio_normalized, prepared.normalized_audio_path)
+
+    def test_prepare_transcription_input_reuses_downloaded_audio_but_renormalizes_when_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123",
+                status=VideoStatus.DISCOVERED,
+            )
+            transcript_paths = build_transcript_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            transcript_paths.audio_download.parent.mkdir(parents=True, exist_ok=True)
+            transcript_paths.audio_download.write_bytes(b"audio-new")
+            transcript_paths.audio_normalized.write_bytes(b"normalized-old")
+            download_stat = transcript_paths.audio_download.stat()
+            os.utime(
+                transcript_paths.audio_normalized,
+                (download_stat.st_atime - 10, download_stat.st_mtime - 10),
+            )
+
+            tools = ToolConfig(
+                whisper_cpp_bin=Path("/fake/whisper-cli"),
+                whisper_model_path=Path("/fake/model.bin"),
+                ffmpeg_bin="ffmpeg",
+                yt_dlp_bin="yt-dlp",
+                yt_dlp_js_runtimes=None,
+            )
+            stages: list[str] = []
+
+            def fake_normalize_audio(input_path: Path, output_path: Path, ffmpeg_bin: str) -> Path:
+                del ffmpeg_bin
+                self.assertEqual(transcript_paths.audio_download, input_path)
+                output_path.write_bytes(b"normalized-new")
+                return output_path
+
+            with patch("pastor_transcript_extractor.transcription.download_audio") as mocked_download, patch(
+                "pastor_transcript_extractor.transcription.normalize_audio",
+                side_effect=fake_normalize_audio,
+            ) as mocked_normalize:
+                prepared = prepare_transcription_input(
+                    database,
+                    paths,
+                    tools,
+                    video.id,
+                    stage_callback=stages.append,
+                )
+
+            mocked_download.assert_not_called()
+            mocked_normalize.assert_called_once()
+            self.assertEqual(["normalizing"], stages)
+            self.assertEqual(b"normalized-new", prepared.normalized_audio_path.read_bytes())
 
 
 class ExtractionTests(unittest.TestCase):
