@@ -10,7 +10,11 @@ from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
-from pastor_transcript_extractor.sermon_classification import HybridSermonResult, classify_sermon_content
+from pastor_transcript_extractor.sermon_classification import (
+    HybridSermonResult,
+    classify_sermon_content,
+    classify_sermon_content_adaptive,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -78,7 +82,7 @@ def _classification_is_current(
 ) -> bool:
     return (
         isinstance(classification, dict)
-        and classification.get("method") == "hybrid_llm_v1"
+        and classification.get("method") in {"hybrid_llm_v1", "adaptive_llm_v2"}
         and classification.get("model") == model
         and classification.get("prompt_version") == prompt_version
     )
@@ -109,6 +113,27 @@ def _drafts_from_proposed_json(payload: dict[str, Any]) -> list[SegmentDraft]:
     return drafts
 
 
+def _saved_window_result(payload: dict[str, Any]) -> SermonWindowResult | None:
+    window = payload.get("sermon_window")
+    if not isinstance(window, dict):
+        return None
+    start = window.get("start_seconds")
+    end = window.get("end_seconds")
+    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or end <= start:
+        return None
+    return SermonWindowResult(
+        start_seconds=float(start),
+        end_seconds=float(end),
+        confidence=float(window.get("confidence", 0.0)),
+        reasons=[str(reason) for reason in window.get("reasons", [])],
+        method=str(window.get("method", "rule_based_v1")),
+        included_segment_indexes=[index for index in window.get("included_segment_indexes", []) if isinstance(index, int)],
+        excluded_segment_indexes=[index for index in window.get("excluded_segment_indexes", []) if isinstance(index, int)],
+        suspicious_boundary=bool(window.get("suspicious_boundary", False)),
+        suspicious_boundary_reasons=[str(reason) for reason in window.get("suspicious_boundary_reasons", [])],
+    )
+
+
 def reclassify_video(
     database: Database,
     app_paths: AppPaths,
@@ -117,6 +142,7 @@ def reclassify_video(
     llm_client: LocalLlmClient,
     prompt_version: str = "sermon-content-v1",
     force: bool = False,
+    progress: Any | None = None,
 ) -> ReclassificationRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -151,9 +177,15 @@ def reclassify_video(
         transcript_source = TranscriptSourceKind(str(payload.get("transcript_source")))
     except ValueError:
         transcript_source = None
-    detected_window = detect_sermon_window(drafts, transcript_source=transcript_source)
-    hybrid = classify_sermon_content(
-        drafts, detected_window, llm_client, prompt_version=prompt_version
+    detected_window = _saved_window_result(payload) or detect_sermon_window(
+        drafts, transcript_source=transcript_source
+    )
+    hybrid = classify_sermon_content_adaptive(
+        drafts,
+        detected_window,
+        llm_client,
+        prompt_version=prompt_version,
+        progress=progress,
     )
     classification = hybrid.to_dict()
     payload["classification"] = classification

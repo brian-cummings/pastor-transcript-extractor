@@ -1236,6 +1236,9 @@ def reclassify(
                 llm_client=client,
                 prompt_version=llm_config.prompt_version,
                 force=force,
+                progress=lambda stage, current, total: console.print(
+                    f"  {stage} block {current}/{total}"
+                ),
             )
         except Exception as error:
             console.print(f"[red]Failed to reclassify[/red] video #{video.id}: {error}")

@@ -17,7 +17,11 @@ from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import TranscriptSegmentLabel
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
+    CoarsePhase,
     ContentLabel,
+    TranscriptBlock,
+    _candidate_strength,
+    _coarse_candidate_ranges,
     build_transcript_blocks,
     classify_sermon_content,
 )
@@ -49,6 +53,24 @@ class FailingLlmClient:
         raise RuntimeError("offline")
 
 
+class FakeAdaptiveLlmClient:
+    model = "fake-sermon-model"
+
+    def __init__(self) -> None:
+        self.phases = iter(["administration", "sermon", "sermon"])
+        self.labels = iter([ContentLabel.ANNOUNCEMENTS, ContentLabel.SERMON, ContentLabel.SERMON])
+
+    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+        del prompt
+        properties = schema.get("properties", {})
+        if isinstance(properties, dict) and "phase" in properties:
+            content = {"phase": next(self.phases), "reason_code": "biblical_exposition"}
+        else:
+            content = {"label": next(self.labels).value, "reason_code": "biblical_exposition"}
+        raw = json.dumps(content)
+        return LocalLlmResponse(content=content, raw_content=raw, model=self.model)
+
+
 def draft(start: float, end: float, text: str) -> SegmentDraft:
     return SegmentDraft(start, end, text, None, TranscriptSegmentLabel.SERMON, 0.55)
 
@@ -67,6 +89,32 @@ class TranscriptBlockTests(unittest.TestCase):
     def test_untimestamped_segments_are_not_fabricated(self) -> None:
         drafts = [SegmentDraft(None, None, "plain text", None, TranscriptSegmentLabel.SERMON, 0.55)]
         self.assertEqual([], build_transcript_blocks(drafts))
+
+    def test_coarse_candidates_bridge_one_uncertain_interruption(self) -> None:
+        blocks = [
+            TranscriptBlock(index, [index], index * 300.0, (index + 1) * 300.0, str(index))
+            for index in range(5)
+        ]
+        phases = [
+            CoarsePhase.ADMINISTRATION,
+            CoarsePhase.SERMON,
+            CoarsePhase.UNCERTAIN,
+            CoarsePhase.SERMON,
+            CoarsePhase.WORSHIP,
+        ]
+
+        self.assertEqual([(300.0, 1200.0)], _coarse_candidate_ranges(blocks, phases))
+
+    def test_explicit_sermon_start_cue_outranks_a_longer_generic_candidate(self) -> None:
+        blocks = [
+            TranscriptBlock(0, [0], 0.0, 900.0, "General religious language"),
+            TranscriptBlock(1, [1], 1200.0, 1500.0, "Our sermon title today is Grace"),
+        ]
+
+        generic = _candidate_strength((0.0, 900.0), blocks)
+        explicit = _candidate_strength((1200.0, 1500.0), blocks)
+
+        self.assertGreater(explicit, generic)
 
 
 class HybridClassificationTests(unittest.TestCase):
@@ -196,7 +244,7 @@ class HybridClassificationTests(unittest.TestCase):
             database.get_latest_extraction_result_for_video.return_value = SimpleNamespace(
                 proposed_json_path=str(proposed_path)
             )
-            client = FakeLlmClient([ContentLabel.ANNOUNCEMENTS, ContentLabel.SERMON, ContentLabel.SERMON])
+            client = FakeAdaptiveLlmClient()
 
             first = reclassify_video(
                 database, paths, video.id, llm_client=client, prompt_version="v1"

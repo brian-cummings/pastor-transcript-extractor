@@ -193,7 +193,7 @@ def build_llm_config() -> LlmConfig:
         base_url=os.environ.get("PTE_LLM_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
         model=os.environ.get("PTE_LLM_MODEL", "gemma3:4b"),
         timeout_seconds=float(os.environ.get("PTE_LLM_TIMEOUT_SECONDS", "60")),
-        prompt_version=os.environ.get("PTE_LLM_PROMPT_VERSION", "sermon-content-v1"),
+        prompt_version=os.environ.get("PTE_LLM_PROMPT_VERSION", "sermon-content-v2"),
     )
 
 
