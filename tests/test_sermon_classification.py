@@ -22,6 +22,7 @@ from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
     _candidate_strength,
     _coarse_candidate_ranges,
+    _refine_retained_boundaries,
     build_transcript_blocks,
     classify_sermon_content,
 )
@@ -116,6 +117,43 @@ class TranscriptBlockTests(unittest.TestCase):
 
         self.assertGreater(explicit, generic)
 
+    def test_refinement_anchors_to_explicit_cue_and_trims_sustained_music_tail(self) -> None:
+        drafts = [
+            draft(0.0, 90.0, "Welcome and register for VBS"),
+            draft(90.0, 180.0, "Our sermon title today is Grace"),
+            draft(180.0, 270.0, "The passage teaches us about Jesus"),
+            draft(270.0, 360.0, "More biblical exposition"),
+            draft(900.0, 990.0, "[music] [singing]"),
+            draft(990.0, 1080.0, "[music] [singing]"),
+        ]
+        blocks = [
+            TranscriptBlock(index, [index], item.start_seconds or 0.0, item.end_seconds or 0.0, item.text)
+            for index, item in enumerate(drafts)
+        ]
+
+        retained, reasons = _refine_retained_boundaries(
+            drafts, blocks, set(range(len(drafts)))
+        )
+
+        self.assertEqual({1, 2, 3}, retained)
+        self.assertTrue(any("explicit sermon" in reason for reason in reasons))
+        self.assertTrue(any("sustained music" in reason for reason in reasons))
+
+    def test_refinement_does_not_trim_single_music_interruption(self) -> None:
+        drafts = [
+            draft(0.0, 90.0, "Our sermon title today is Grace"),
+            draft(700.0, 790.0, "[music] [singing]"),
+            draft(790.0, 880.0, "The sermon continues with the passage"),
+        ]
+        blocks = [
+            TranscriptBlock(index, [index], item.start_seconds or 0.0, item.end_seconds or 0.0, item.text)
+            for index, item in enumerate(drafts)
+        ]
+
+        retained, _ = _refine_retained_boundaries(drafts, blocks, {0, 1, 2})
+
+        self.assertEqual({0, 1, 2}, retained)
+
 
 class HybridClassificationTests(unittest.TestCase):
     def test_retains_only_sermon_related_labels(self) -> None:
@@ -201,7 +239,7 @@ class HybridClassificationTests(unittest.TestCase):
 
     def test_classification_cache_key_includes_model_and_prompt(self) -> None:
         classification = {
-            "method": "hybrid_llm_v1",
+            "method": "adaptive_llm_v3",
             "model": "fixture:4b",
             "prompt_version": "v1",
         }

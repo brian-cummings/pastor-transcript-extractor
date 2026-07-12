@@ -225,6 +225,113 @@ def _candidate_strength(
     return (end - start) + cue_bonus
 
 
+def _explicit_sermon_seed_seconds(
+    drafts: list[SegmentDraft], retained_indexes: set[int]
+) -> float | None:
+    for index in sorted(retained_indexes):
+        draft = drafts[index]
+        lower = draft.text.lower()
+        if any(cue in lower for cue in _SERMON_SEED_CUES):
+            return draft.start_seconds
+    return None
+
+
+def _noise_ratio(block: TranscriptBlock, drafts: list[SegmentDraft]) -> float:
+    if not block.segment_indexes:
+        return 0.0
+    noisy = 0
+    for index in block.segment_indexes:
+        lower = drafts[index].text.lower()
+        if "[music" in lower or "[singing" in lower or lower.strip() in {"music", "singing"}:
+            noisy += 1
+    return noisy / len(block.segment_indexes)
+
+
+def _refine_retained_boundaries(
+    drafts: list[SegmentDraft],
+    fine_blocks: list[TranscriptBlock],
+    retained: set[int],
+) -> tuple[set[int], list[str]]:
+    refined = set(retained)
+    reasons: list[str] = []
+    seed = _explicit_sermon_seed_seconds(drafts, refined)
+    if seed is not None:
+        pre_roll_start = max(0.0, seed - 180.0)
+        for index in list(refined):
+            draft = drafts[index]
+            if draft.end_seconds is None or draft.end_seconds > seed:
+                continue
+            lower = draft.text.lower()
+            integral_pre_roll = (
+                draft.start_seconds is not None
+                and draft.start_seconds >= pre_roll_start
+                and (
+                    draft.label.value in {"prayer", "reading"}
+                    or "scripture reading" in lower
+                    or "our speaker" in lower
+                    or "welcome to the pulpit" in lower
+                )
+            )
+            if not integral_pre_roll:
+                refined.discard(index)
+        reasons.append("anchored candidate start to an explicit sermon-title or message cue")
+
+    retained_blocks = [
+        block for block in fine_blocks if any(index in refined for index in block.segment_indexes)
+    ]
+    for position in range(len(retained_blocks) - 1):
+        current = retained_blocks[position]
+        following = retained_blocks[position + 1]
+        if _noise_ratio(current, drafts) < 0.45 or _noise_ratio(following, drafts) < 0.45:
+            continue
+        if seed is not None and current.start_seconds < seed + 600.0:
+            continue
+        cutoff = current.start_seconds
+        refined = {
+            index
+            for index in refined
+            if drafts[index].start_seconds is None or drafts[index].start_seconds < cutoff
+        }
+        reasons.append("trimmed candidate after a sustained music or singing transition")
+        break
+    return refined, reasons
+
+
+def _central_consistency_warnings(
+    drafts: list[SegmentDraft],
+    retained: set[int],
+    fine_blocks: list[TranscriptBlock],
+    fine_audit: list[BlockClassification],
+    coarse_blocks: list[TranscriptBlock],
+    phases: list[CoarsePhase],
+) -> list[str]:
+    timed = [drafts[index] for index in retained if drafts[index].start_seconds is not None and drafts[index].end_seconds is not None]
+    if not timed:
+        return ["candidate has no timestamped retained content"]
+    start = min(draft.start_seconds for draft in timed if draft.start_seconds is not None)
+    end = max(draft.end_seconds for draft in timed if draft.end_seconds is not None)
+    central_start = start + (end - start) * 0.1
+    central_end = end - (end - start) * 0.1
+    warnings: list[str] = []
+    central_fine = [
+        classification
+        for block, classification in zip(fine_blocks, fine_audit, strict=True)
+        if _overlaps(block, central_start, central_end)
+    ]
+    fine_support = sum(1 for item in central_fine if item.label in RETAINED_LABELS)
+    if not central_fine or fine_support / len(central_fine) < 0.75:
+        warnings.append("fine labels do not show sustained exposition across the candidate center")
+    central_coarse = [
+        phase
+        for block, phase in zip(coarse_blocks, phases, strict=True)
+        if _overlaps(block, central_start, central_end)
+    ]
+    coarse_support = sum(1 for phase in central_coarse if phase == CoarsePhase.SERMON)
+    if not central_coarse or coarse_support / len(central_coarse) < 0.6:
+        warnings.append("coarse and fine labels disagree across the candidate center")
+    return warnings
+
+
 def classify_sermon_content_adaptive(
     drafts: list[SegmentDraft],
     rule_window: SermonWindowResult,
@@ -268,7 +375,7 @@ def classify_sermon_content_adaptive(
         candidates.append((rule_window.start_seconds, rule_window.end_seconds))
     if not candidates:
         return HybridSermonResult(
-            "adaptive_llm_v2", client.model, prompt_version, "low", [],
+            "adaptive_llm_v3", client.model, prompt_version, "low", [],
             [index for block in coarse_blocks for index in block.segment_indexes], [],
             ["no plausible sermon region found during coarse scan"], coarse_blocks, coarse_audit,
         )
@@ -302,6 +409,10 @@ def classify_sermon_content_adaptive(
             uncertain_ids.append(block.block_id)
             retained.update(index for index in block.segment_indexes if index in rule_indexes)
 
+    retained, refinement_reasons = _refine_retained_boundaries(
+        drafts, fine_blocks, retained
+    )
+
     all_timed = {index for block in build_transcript_blocks(drafts) for index in block.segment_indexes}
     agreement = len(retained & rule_indexes) / max(len(retained | rule_indexes), 1)
     warnings: list[str] = []
@@ -309,11 +420,16 @@ def classify_sermon_content_adaptive(
         warnings.append("adaptive LLM and rule-based sermon windows disagree substantially")
     if uncertain_ids:
         warnings.append("one or more refined blocks require boundary review")
+    warnings.extend(refinement_reasons)
+    consistency_warnings = _central_consistency_warnings(
+        drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
+    )
+    warnings.extend(consistency_warnings)
     confidence = "high" if agreement >= 0.8 and not uncertain_ids else "medium"
-    if agreement < 0.5 or not retained:
+    if agreement < 0.5 or not retained or consistency_warnings:
         confidence = "low"
     return HybridSermonResult(
-        "adaptive_llm_v2", client.model, prompt_version, confidence,
+        "adaptive_llm_v3", client.model, prompt_version, confidence,
         sorted(retained), sorted(all_timed - retained), uncertain_ids, warnings,
         coarse_blocks + fine_blocks, coarse_audit + fine_audit,
     )

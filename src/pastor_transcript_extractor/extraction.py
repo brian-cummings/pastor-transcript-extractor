@@ -82,7 +82,7 @@ def _classification_is_current(
 ) -> bool:
     return (
         isinstance(classification, dict)
-        and classification.get("method") in {"hybrid_llm_v1", "adaptive_llm_v2"}
+        and classification.get("method") == "adaptive_llm_v3"
         and classification.get("model") == model
         and classification.get("prompt_version") == prompt_version
     )
