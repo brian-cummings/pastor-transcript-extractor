@@ -15,6 +15,7 @@ This workspace now has the main pipeline scaffold in place:
 - pastor entity persistence
 - pastor-aware artifact path helpers
 - transcript segmentation and heuristic extraction
+- optional local-LLM sermon-content classification with rule-based fallback
 - pastor-scoped Markdown review generation
 - caption fetching
 - exclusion-aware incremental reruns
@@ -84,6 +85,29 @@ You can override the data directory with `--base-dir`.
 - `pte run <url> --pastor <slug>`
 - `pte review <pastor-slug>`
 - `./venv-shell`
+
+## Optional Local LLM Filtering
+
+Extraction remains rule-based by default. To let `pte extract` use a locally
+running Ollama model when available:
+
+```bash
+export PTE_LLM_ENABLED=1
+export PTE_LLM_MODEL=gemma3:4b
+pte doctor
+pte extract --force
+```
+
+Classifier modes:
+
+- `--classifier auto` uses Ollama when enabled and safely falls back to rules.
+- `--classifier rules` never calls a local LLM.
+- `--classifier llm` requires Ollama and fails visibly if classification fails.
+
+The classifier labels contextual transcript blocks but never rewrites their
+text. Results and raw structured responses are saved in each video's
+`extracted/llm-classification-v1.json` artifact. Medium- and low-confidence
+results are marked in the pastor review output.
 
 ## Commands
 

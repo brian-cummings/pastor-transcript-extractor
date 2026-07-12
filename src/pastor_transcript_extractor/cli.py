@@ -14,6 +14,7 @@ from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextC
 from rich.table import Table
 
 from pastor_transcript_extractor.config import (
+    build_llm_config,
     build_paths,
     build_pastor_paths,
     build_tool_config,
@@ -21,10 +22,11 @@ from pastor_transcript_extractor.config import (
     ensure_directories,
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
-from pastor_transcript_extractor.extraction import extract_video
+from pastor_transcript_extractor.extraction import extract_video, reclassify_video
 from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
+from pastor_transcript_extractor.local_llm import OllamaClient
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.transcription import (
@@ -670,6 +672,7 @@ def doctor(
 ) -> None:
     paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
+    llm = build_llm_config()
 
     try:
         ensure_directories(paths)
@@ -690,6 +693,13 @@ def doctor(
     rows.append(("ffmpeg", ffmpeg_resolved, ffmpeg_status))
     rows.append(("yt-dlp", yt_dlp_resolved, yt_dlp_status))
     rows.append(("yt-dlp js runtimes", tools.yt_dlp_js_runtimes or "(default)", "ok"))
+    rows.append(("local LLM", llm.base_url, "enabled" if llm.enabled else "disabled"))
+    rows.append(("local LLM model", llm.model, "configured" if llm.enabled else "inactive"))
+    if llm.enabled:
+        health = OllamaClient(llm).check_health()
+        rows.append(("Ollama connectivity", health.detail, "ok" if health.reachable else "failed"))
+        rows.append(("Ollama model installed", llm.model, "ok" if health.model_available else "failed"))
+        rows.append(("Ollama structured output", health.detail, "ok" if health.structured_output else "failed"))
 
     table = Table(title="Doctor")
     table.add_column("Check")
@@ -1113,10 +1123,24 @@ def extract(
         help="Rebuild extraction artifacts even when a video is already marked extracted or exported.",
     ),
     source_id: int | None = typer.Option(None, help="Only extract videos from a specific source id."),
+    classifier: str = typer.Option(
+        "auto",
+        "--classifier",
+        help="Content classifier: auto, rules, or llm.",
+    ),
+    llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    if classifier not in {"auto", "rules", "llm"}:
+        raise typer.BadParameter("Classifier must be one of: auto, rules, llm")
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
+    llm_config = build_llm_config()
+    if llm_model is not None:
+        from dataclasses import replace
+
+        llm_config = replace(llm_config, model=llm_model)
+    llm_client = OllamaClient(llm_config) if classifier == "llm" or (classifier == "auto" and llm_config.enabled) else None
     videos = database.list_videos()
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]
@@ -1149,7 +1173,14 @@ def extract(
 
         try:
             console.print(f"Extracting video #{video.id}: {video.title}")
-            extract_video(database, paths, video.id)
+            extract_video(
+                database,
+                paths,
+                video.id,
+                classifier=classifier,
+                llm_client=llm_client,
+                prompt_version=llm_config.prompt_version,
+            )
         except Exception as error:
             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
             console.print(f"[red]Failed to extract[/red] video #{video.id}: {error}")
@@ -1159,6 +1190,69 @@ def extract(
         processed += 1
 
     console.print(f"Extracted {processed} video(s); skipped {skipped}; failed {failed}.")
+
+
+@app.command(help="Rerun local-LLM classification using existing extraction segments.")
+def reclassify(
+    video_id: int | None = typer.Option(None, "--video-id", help="Reclassify one database video id."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Reclassify extracted videos from one source id."),
+    llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
+    force: bool = typer.Option(False, "--force", help="Rerun even when model and prompt versions match."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    if (video_id is None) == (source_id is None):
+        raise typer.BadParameter("Pass exactly one of --video-id or --source-id.")
+    database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    llm_config = build_llm_config()
+    if llm_model is not None:
+        from dataclasses import replace
+
+        llm_config = replace(llm_config, model=llm_model)
+    client = OllamaClient(llm_config)
+    if video_id is not None:
+        video = database.get_video_by_id(video_id)
+        videos = [video] if video is not None else []
+    else:
+        assert source_id is not None
+        videos = database.list_videos_by_source_id(source_id)
+    if not videos:
+        raise typer.BadParameter("No matching videos found.")
+
+    processed = 0
+    reused = 0
+    skipped = 0
+    failed = 0
+    for video in videos:
+        if database.get_latest_extraction_result_for_video(video.id) is None:
+            skipped += 1
+            continue
+        try:
+            console.print(f"Reclassifying video #{video.id}: {video.title}")
+            result = reclassify_video(
+                database,
+                paths,
+                video.id,
+                llm_client=client,
+                prompt_version=llm_config.prompt_version,
+                force=force,
+            )
+        except Exception as error:
+            console.print(f"[red]Failed to reclassify[/red] video #{video.id}: {error}")
+            failed += 1
+            continue
+        if result.reused:
+            console.print(f"Reused current classification for video #{video.id}.")
+            reused += 1
+        else:
+            console.print(
+                f"Reclassified video #{video.id}: confidence={result.confidence_tier}, "
+                f"retained_segments={result.retained_segment_count}, audit={result.classification_path}"
+            )
+            processed += 1
+    console.print(
+        f"Reclassified {processed} video(s); reused {reused}; skipped {skipped}; failed {failed}."
+    )
 
 
 @app.command(help="Build or refresh the pastor-scoped Markdown review file from extracted videos.", rich_help_panel="Workflows")

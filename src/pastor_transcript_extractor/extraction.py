@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
+from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
+from pastor_transcript_extractor.sermon_classification import HybridSermonResult, classify_sermon_content
 from pastor_transcript_extractor.storage import Database
 
 
@@ -19,6 +21,176 @@ class ExtractionRunResult:
     proposed_text_path: Path
     proposed_json_path: Path
     segment_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReclassificationRunResult:
+    proposed_json_path: Path
+    classification_path: Path
+    confidence_tier: str
+    retained_segment_count: int
+    reused: bool
+
+
+def _classify_with_fallback(
+    drafts: list[SegmentDraft],
+    detected_window: SermonWindowResult,
+    *,
+    classifier: str,
+    llm_client: LocalLlmClient | None,
+    prompt_version: str,
+) -> tuple[dict[str, Any], HybridSermonResult | None]:
+    classification: dict[str, Any] = {
+        "schema_version": 1,
+        "method": "rule_based_v1",
+        "model": None,
+        "prompt_version": prompt_version,
+        "confidence_tier": "medium" if detected_window.suspicious_boundary else "high",
+        "retained_segment_indexes": detected_window.included_segment_indexes,
+        "excluded_segment_indexes": detected_window.excluded_segment_indexes,
+        "uncertain_block_ids": [],
+        "warnings": list(detected_window.suspicious_boundary_reasons),
+        "blocks": [],
+        "classifications": [],
+    }
+    if classifier not in {"rules", "auto", "llm"}:
+        raise ValueError(f"Unknown classifier mode: {classifier}")
+    if classifier == "llm" and llm_client is None:
+        raise ValueError("LLM classifier requested but no local LLM client is configured")
+    if classifier not in {"auto", "llm"} or llm_client is None:
+        return classification, None
+    try:
+        hybrid_result = classify_sermon_content(
+            drafts, detected_window, llm_client, prompt_version=prompt_version
+        )
+    except Exception as error:
+        if classifier == "llm":
+            raise
+        classification["method"] = "rule_based_fallback"
+        classification["confidence_tier"] = "low"
+        classification["warnings"].append(f"local LLM classification failed: {error}")
+        return classification, None
+    return hybrid_result.to_dict(), hybrid_result
+
+
+def _classification_is_current(
+    classification: object, *, model: str, prompt_version: str
+) -> bool:
+    return (
+        isinstance(classification, dict)
+        and classification.get("method") == "hybrid_llm_v1"
+        and classification.get("model") == model
+        and classification.get("prompt_version") == prompt_version
+    )
+
+
+def _drafts_from_proposed_json(payload: dict[str, Any]) -> list[SegmentDraft]:
+    raw_segments = payload.get("segments")
+    if not isinstance(raw_segments, list):
+        raise ValueError("Proposed extraction has no reusable transcript segments")
+    drafts: list[SegmentDraft] = []
+    for raw in raw_segments:
+        if not isinstance(raw, dict) or not isinstance(raw.get("text"), str):
+            raise ValueError("Proposed extraction contains an invalid transcript segment")
+        try:
+            label = TranscriptSegmentLabel(str(raw.get("label", "unknown")))
+        except ValueError:
+            label = TranscriptSegmentLabel.UNKNOWN
+        drafts.append(
+            SegmentDraft(
+                start_seconds=float(raw["start_seconds"]) if isinstance(raw.get("start_seconds"), (int, float)) else None,
+                end_seconds=float(raw["end_seconds"]) if isinstance(raw.get("end_seconds"), (int, float)) else None,
+                text=str(raw["text"]),
+                speaker_hint=str(raw["speaker_hint"]) if isinstance(raw.get("speaker_hint"), str) else None,
+                label=label,
+                confidence=float(raw["confidence"]) if isinstance(raw.get("confidence"), (int, float)) else None,
+            )
+        )
+    return drafts
+
+
+def reclassify_video(
+    database: Database,
+    app_paths: AppPaths,
+    video_id: int,
+    *,
+    llm_client: LocalLlmClient,
+    prompt_version: str = "sermon-content-v1",
+    force: bool = False,
+) -> ReclassificationRunResult:
+    video = database.get_video_by_id(video_id)
+    if video is None:
+        raise ValueError(f"Unknown video id: {video_id}")
+    pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
+    if pastor is None:
+        raise ValueError(f"Video {video_id} is missing a linked pastor")
+    latest_extraction = database.get_latest_extraction_result_for_video(video.id)
+    if latest_extraction is None or not latest_extraction.proposed_json_path:
+        raise ValueError(f"Video {video_id} has no proposed extraction to reclassify")
+    proposed_json_path = Path(latest_extraction.proposed_json_path)
+    payload = _load_json(proposed_json_path)
+    if payload is None:
+        raise ValueError(f"Video {video_id} has an invalid proposed JSON artifact")
+    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    classification_path = video_paths.extracted / "llm-classification-v1.json"
+    existing = payload.get("classification")
+    if not force and _classification_is_current(
+        existing, model=llm_client.model, prompt_version=prompt_version
+    ):
+        assert isinstance(existing, dict)
+        return ReclassificationRunResult(
+            proposed_json_path,
+            classification_path,
+            str(existing.get("confidence_tier", "unknown")),
+            len(existing.get("retained_segment_indexes", [])),
+            True,
+        )
+
+    drafts = _drafts_from_proposed_json(payload)
+    try:
+        transcript_source = TranscriptSourceKind(str(payload.get("transcript_source")))
+    except ValueError:
+        transcript_source = None
+    detected_window = detect_sermon_window(drafts, transcript_source=transcript_source)
+    hybrid = classify_sermon_content(
+        drafts, detected_window, llm_client, prompt_version=prompt_version
+    )
+    classification = hybrid.to_dict()
+    payload["classification"] = classification
+
+    existing_window = payload.get("sermon_window")
+    override_path = video_paths.review / "window_override.json"
+    override, _ = _load_window_override(override_path)
+    if (
+        override is None
+        and isinstance(existing_window, dict)
+        and hybrid.confidence_tier != "low"
+        and hybrid.retained_segment_indexes
+    ):
+        retained = [drafts[index] for index in hybrid.retained_segment_indexes]
+        starts = [draft.start_seconds for draft in retained if draft.start_seconds is not None]
+        ends = [draft.end_seconds for draft in retained if draft.end_seconds is not None]
+        existing_window.update(
+            {
+                "start_seconds": min(starts) if starts else existing_window.get("start_seconds"),
+                "end_seconds": max(ends) if ends else existing_window.get("end_seconds"),
+                "method": hybrid.method,
+                "source": "hybrid_llm",
+                "included_segment_indexes": hybrid.retained_segment_indexes,
+                "excluded_segment_indexes": hybrid.excluded_segment_indexes,
+                "suspicious_boundary": hybrid.confidence_tier != "high",
+                "suspicious_boundary_reasons": hybrid.warnings,
+            }
+        )
+    proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    classification_path.write_text(json.dumps(classification, indent=2, sort_keys=True), encoding="utf-8")
+    return ReclassificationRunResult(
+        proposed_json_path,
+        classification_path,
+        hybrid.confidence_tier,
+        len(hybrid.retained_segment_indexes),
+        False,
+    )
 
 
 def _load_json(path: Path | None) -> dict[str, Any] | None:
@@ -190,7 +362,15 @@ def _build_proposed_markdown(
     return "\n".join(lines)
 
 
-def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> ExtractionRunResult:
+def extract_video(
+    database: Database,
+    app_paths: AppPaths,
+    video_id: int,
+    *,
+    classifier: str = "rules",
+    llm_client: LocalLlmClient | None = None,
+    prompt_version: str = "sermon-content-v1",
+) -> ExtractionRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
         raise ValueError(f"Unknown video id: {video_id}")
@@ -219,9 +399,37 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
     drafts = segment_transcript(raw_text, raw_json)
     persisted_segments = [_segment_to_storage(database, video.id, transcript_artifact, draft) for draft in drafts]
     detected_window = detect_sermon_window(drafts, transcript_source=transcript_artifact.source_kind)
+    classification, hybrid_result = _classify_with_fallback(
+        drafts,
+        detected_window,
+        classifier=classifier,
+        llm_client=llm_client,
+        prompt_version=prompt_version,
+    )
     override_path = video_paths.review / "window_override.json"
     override, override_error = _load_window_override(override_path)
     sermon_window = _effective_sermon_window(detected_window, override, override_error)
+    if (
+        hybrid_result is not None
+        and override is None
+        and hybrid_result.confidence_tier != "low"
+        and hybrid_result.retained_segment_indexes
+    ):
+        retained_drafts = [drafts[index] for index in hybrid_result.retained_segment_indexes]
+        timed_starts = [draft.start_seconds for draft in retained_drafts if draft.start_seconds is not None]
+        timed_ends = [draft.end_seconds for draft in retained_drafts if draft.end_seconds is not None]
+        sermon_window.update(
+            {
+                "start_seconds": min(timed_starts) if timed_starts else sermon_window["start_seconds"],
+                "end_seconds": max(timed_ends) if timed_ends else sermon_window["end_seconds"],
+                "method": hybrid_result.method,
+                "source": "hybrid_llm",
+                "included_segment_indexes": hybrid_result.retained_segment_indexes,
+                "excluded_segment_indexes": hybrid_result.excluded_segment_indexes,
+                "suspicious_boundary": hybrid_result.confidence_tier != "high",
+                "suspicious_boundary_reasons": hybrid_result.warnings,
+            }
+        )
     guest_flags = detect_guest_speaker_flags(
         video_title=video.title,
         drafts=drafts,
@@ -241,6 +449,7 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
     proposed_text_path = video_paths.extracted / "proposed.md"
     proposed_json_path = video_paths.extracted / "proposed.json"
     segments_path = video_paths.extracted / "segments.json"
+    classification_path = video_paths.extracted / "llm-classification-v1.json"
 
     proposed_text_path.write_text(proposed_text, encoding="utf-8")
     proposed_json = {
@@ -250,6 +459,7 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
         "source_url": video.url,
         "transcript_source": transcript_artifact.source_kind.value,
         "sermon_window": sermon_window,
+        "classification": classification,
         "guest_speaker_suspected": guest_flags.suspected,
         "guest_name_candidates": guest_flags.name_candidates,
         "guest_signal_reasons": guest_flags.reasons,
@@ -268,6 +478,7 @@ def extract_video(database: Database, app_paths: AppPaths, video_id: int) -> Ext
     }
     proposed_json_path.write_text(json.dumps(proposed_json, indent=2, sort_keys=True), encoding="utf-8")
     segments_path.write_text(json.dumps(proposed_json["segments"], indent=2, sort_keys=True), encoding="utf-8")
+    classification_path.write_text(json.dumps(classification, indent=2, sort_keys=True), encoding="utf-8")
 
     extraction_result = database.add_extraction_result(
         video_id=video.id,

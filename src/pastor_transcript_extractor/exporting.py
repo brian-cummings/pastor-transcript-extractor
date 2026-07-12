@@ -100,18 +100,23 @@ def _segment_is_within_window(segment: dict[str, Any], sermon_window: dict[str, 
 def _window_segments(segments: list[dict[str, Any]], sermon_window: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(sermon_window, dict):
         return []
+    included_indexes_raw = sermon_window.get("included_segment_indexes")
+    if sermon_window.get("source") == "hybrid_llm" and isinstance(included_indexes_raw, list):
+        included_indexes = {index for index in included_indexes_raw if isinstance(index, int)}
+        selected = [
+            segment
+            for index, segment in enumerate(segments)
+            if index in included_indexes and isinstance(segment, dict)
+        ]
+        if selected:
+            return selected
     in_window = [segment for segment in segments if isinstance(segment, dict) and _segment_is_within_window(segment, sermon_window)]
     if in_window:
         return in_window
-    included_indexes_raw = sermon_window.get("included_segment_indexes")
-    if not isinstance(included_indexes_raw, list):
-        return []
-    included_indexes = {index for index in included_indexes_raw if isinstance(index, int)}
-    return [
-        segment
-        for index, segment in enumerate(segments)
-        if index in included_indexes and isinstance(segment, dict)
-    ]
+    if isinstance(included_indexes_raw, list):
+        included_indexes = {index for index in included_indexes_raw if isinstance(index, int)}
+        return [segment for index, segment in enumerate(segments) if index in included_indexes]
+    return []
 
 
 def _build_review_transcript_excerpt(
@@ -162,6 +167,7 @@ def _build_review_sections_for_videos(
         guest_speaker_suspected = False
         guest_name_candidates: list[str] = []
         guest_signal_reasons: list[str] = []
+        classification: dict[str, Any] | None = None
         if proposed_json is not None and isinstance(proposed_json.get("transcript_source"), str):
             transcript_source = str(proposed_json["transcript_source"])
         if proposed_json is not None and isinstance(proposed_json.get("sermon_window"), dict):
@@ -172,6 +178,8 @@ def _build_review_sections_for_videos(
             guest_name_candidates = [str(candidate) for candidate in proposed_json["guest_name_candidates"]]
         if proposed_json is not None and isinstance(proposed_json.get("guest_signal_reasons"), list):
             guest_signal_reasons = [str(reason) for reason in proposed_json["guest_signal_reasons"]]
+        if proposed_json is not None and isinstance(proposed_json.get("classification"), dict):
+            classification = dict(proposed_json["classification"])
         published_text = video.published_at.date().isoformat() if video.published_at is not None else "undated"
         section_lines = [
             f"## {published_text} - {video.title}",
@@ -182,6 +190,9 @@ def _build_review_sections_for_videos(
                 f"- Video ID: {video.youtube_video_id}",
                 f"- Source: {video.url}",
                 f"- Transcript Source: {transcript_source or 'unknown'}",
+                f"- Extraction Method: {classification.get('method', 'rule_based_v1') if classification else 'rule_based_v1'}",
+                f"- Extraction Confidence: {classification.get('confidence_tier', 'unknown') if classification else 'unknown'}",
+                f"- Local Model: {classification.get('model') or 'none' if classification else 'none'}",
                 f"- Likely Sermon Window: {_format_window(sermon_window)}",
                 (
                     f"- Sermon Window Source: {sermon_window.get('source', 'detected')}"
@@ -229,6 +240,7 @@ def _build_review_sections_for_videos(
                 "guest_speaker_suspected": guest_speaker_suspected,
                 "guest_name_candidates": guest_name_candidates,
                 "guest_signal_reasons": guest_signal_reasons,
+                "classification": classification,
                 "proposed_text_path": str(proposed_path),
             }
         )

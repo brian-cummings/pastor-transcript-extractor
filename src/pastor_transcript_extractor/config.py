@@ -37,6 +37,15 @@ class ToolConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LlmConfig:
+    enabled: bool
+    base_url: str
+    model: str
+    timeout_seconds: float
+    prompt_version: str
+
+
+@dataclass(frozen=True, slots=True)
 class PastorPaths:
     root: Path
     profile: Path
@@ -174,6 +183,17 @@ def build_tool_config() -> ToolConfig:
         ffmpeg_bin=_resolve_command_path(os.environ.get("PTE_FFMPEG_BIN", DEFAULT_FFMPEG_BIN)),
         yt_dlp_bin=_resolve_command_path(os.environ.get("PTE_YT_DLP_BIN", DEFAULT_YT_DLP_BIN)),
         yt_dlp_js_runtimes=os.environ.get("PTE_YT_DLP_JS_RUNTIMES") or None,
+    )
+
+
+def build_llm_config() -> LlmConfig:
+    enabled = os.environ.get("PTE_LLM_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    return LlmConfig(
+        enabled=enabled,
+        base_url=os.environ.get("PTE_LLM_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
+        model=os.environ.get("PTE_LLM_MODEL", "gemma3:4b"),
+        timeout_seconds=float(os.environ.get("PTE_LLM_TIMEOUT_SECONDS", "60")),
+        prompt_version=os.environ.get("PTE_LLM_PROMPT_VERSION", "sermon-content-v1"),
     )
 
 
