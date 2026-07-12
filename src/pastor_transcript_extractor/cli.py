@@ -23,6 +23,7 @@ from pastor_transcript_extractor.config import (
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import extract_video, reclassify_video
+from pastor_transcript_extractor.fixture_validation import validate_fixture_directory
 from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
@@ -63,6 +64,17 @@ STAGE_LABELS = {
     "done": STAGE_DONE,
     "failed": STAGE_FAILED,
 }
+
+
+@app.command(help="Validate manually reviewed sermon evaluation fixtures.")
+def validate_fixtures(
+    fixture_dir: Path = typer.Argument(
+        Path("evaluation/fixtures"),
+        help="Directory containing manually reviewed fixture JSON files.",
+    ),
+) -> None:
+    fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
+    console.print(f"Validated {len(fixtures)} fixture(s); all video IDs are unique.")
 
 
 def get_database(base_dir: Path | None = None) -> Database:
