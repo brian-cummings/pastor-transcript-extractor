@@ -84,7 +84,23 @@ You can override the data directory with `--base-dir`.
 
 - `pte run <url> --pastor <slug>`
 - `pte review <pastor-slug>`
+- `pte review-ground-truth <youtube-video-id>`
+- `pte validate-fixtures [fixture-directory]`
 - `./venv-shell`
+
+## Ground-Truth Review
+
+Create a detector-assisted draft and review it against the video and timestamped
+transcript before writing a manually approved fixture:
+
+```bash
+pte review-ground-truth l6mZEQvArkE --reviewer "Brian Cummings" --open-video
+pte validate-fixtures evaluation/fixtures
+```
+
+Unreviewed proposals are stored under `evaluation/drafts/`. Only explicitly
+approved fixtures are written under `evaluation/fixtures/`; evaluator code must
+never treat drafts as ground truth.
 
 ## Optional Local LLM Filtering
 

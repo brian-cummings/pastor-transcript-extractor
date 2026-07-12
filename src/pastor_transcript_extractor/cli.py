@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+import json
 import os
 from pathlib import Path
 import shutil
@@ -23,7 +24,17 @@ from pastor_transcript_extractor.config import (
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import extract_video, reclassify_video
-from pastor_transcript_extractor.fixture_validation import validate_fixture_directory
+from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
+from pastor_transcript_extractor.ground_truth_review import (
+    approved_fixture_payload,
+    draft_payload,
+    format_timestamp,
+    parse_interruptions,
+    parse_timestamp,
+    suggested_envelope,
+    transcript_context,
+    write_json,
+)
 from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
@@ -75,6 +86,113 @@ def validate_fixtures(
 ) -> None:
     fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
     console.print(f"Validated {len(fixtures)} fixture(s); all video IDs are unique.")
+
+
+@app.command(help="Review and approve sermon ground truth without treating detector output as truth.")
+def review_ground_truth(
+    youtube_video_id: str = typer.Argument(..., help="YouTube video ID already present in the database."),
+    reviewer: str | None = typer.Option(None, help="Human reviewer name or stable reviewer identifier."),
+    evaluation_dir: Path = typer.Option(Path("evaluation"), help="Root containing drafts/ and fixtures/."),
+    open_video: bool = typer.Option(False, "--open-video", help="Open the YouTube start link in a browser."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    video = database.get_video_by_youtube_id(youtube_video_id)
+    if video is None:
+        raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
+    extraction = database.get_latest_extraction_result_for_video(video.id)
+    if extraction is None or not extraction.proposed_json_path:
+        raise typer.BadParameter(f"Video {youtube_video_id} has no proposed extraction JSON")
+    proposed_path = Path(extraction.proposed_json_path)
+    try:
+        payload = json.loads(proposed_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(f"Could not load proposed extraction: {error}") from error
+    if not isinstance(payload, dict) or not isinstance(payload.get("segments"), list):
+        raise typer.BadParameter("Proposed extraction is missing timestamped segments")
+    segments = [segment for segment in payload["segments"] if isinstance(segment, dict)]
+    suggested_start, suggested_end, proposal_source = suggested_envelope(payload)
+    root = evaluation_dir.expanduser().resolve()
+    draft_path = root / "drafts" / f"{youtube_video_id}.json"
+    fixture_path = root / "fixtures" / f"{youtube_video_id}.json"
+    write_json(
+        draft_path,
+        draft_payload(
+            video_id=youtube_video_id,
+            source_url=video.url,
+            start_seconds=suggested_start,
+            end_seconds=suggested_end,
+            proposal_source=proposal_source,
+        ),
+    )
+    console.print(f"Wrote unreviewed detector-assisted draft to {draft_path}")
+    console.print(f"Video: {video.title}")
+
+    def review_boundary(label: str, initial: float) -> float:
+        current = initial
+        while True:
+            console.print(f"\n[bold]{label} candidate: {format_timestamp(current)}[/bold]")
+            console.print(f"YouTube: {video.url}&t={max(0, int(current))}s")
+            console.print(transcript_context(segments, current))
+            entered = typer.prompt(
+                f"{label} timestamp (HH:MM:SS, or relative +5/-30)",
+                default=format_timestamp(current),
+            )
+            try:
+                candidate = parse_timestamp(entered, current=current)
+            except ValueError as error:
+                console.print(f"[red]{error}[/red]")
+                continue
+            if typer.confirm(f"Use {format_timestamp(candidate)} as the {label.lower()}?", default=True):
+                return candidate
+            current = candidate
+
+    if open_video:
+        import webbrowser
+
+        webbrowser.open(f"{video.url}&t={max(0, int(suggested_start))}s")
+    start = review_boundary("Sermon start", suggested_start)
+    end = review_boundary("Sermon end", suggested_end)
+    if end <= start:
+        raise typer.BadParameter("Approved sermon end must be after its start")
+    while True:
+        entered = typer.prompt(
+            "Allowed interruptions as start-end pairs separated by commas (blank for none)",
+            default="",
+            show_default=False,
+        )
+        try:
+            interruptions = parse_interruptions(entered)
+            break
+        except ValueError as error:
+            console.print(f"[red]{error}[/red]")
+    if not typer.confirm("Have you reviewed the entire sermon envelope for missing sermon content?", default=False):
+        console.print("Review stopped; the unreviewed draft was preserved and no fixture was written.")
+        return
+    if not typer.confirm("Are all listed interruptions genuinely non-sermon content?", default=not interruptions):
+        console.print("Review stopped; adjust interruptions before approving ground truth.")
+        return
+    reviewer_value = reviewer or typer.prompt("Reviewed by")
+    failure_mode = typer.prompt("Failure mode", default="unknown")
+    notes = typer.prompt("Review notes", default="")
+    fixture = approved_fixture_payload(
+        video_id=youtube_video_id,
+        start_seconds=start,
+        end_seconds=end,
+        interruptions=interruptions,
+        reviewer=reviewer_value,
+        failure_mode=failure_mode,
+        notes=notes,
+    )
+    validate_fixture_payload(fixture, path=fixture_path)
+    if fixture_path.exists() and not typer.confirm(f"Overwrite existing fixture {fixture_path}?", default=False):
+        console.print("Existing fixture preserved.")
+        return
+    if not typer.confirm("Write this manually approved ground-truth fixture?", default=False):
+        console.print("Approval cancelled; the unreviewed draft was preserved.")
+        return
+    write_json(fixture_path, fixture)
+    console.print(f"Wrote manually approved fixture to {fixture_path}")
 
 
 def get_database(base_dir: Path | None = None) -> Database:
