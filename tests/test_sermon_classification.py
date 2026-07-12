@@ -19,6 +19,7 @@ from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
     CoarsePhase,
     ContentLabel,
+    RawInferenceCache,
     TranscriptBlock,
     _candidate_strength,
     _coarse_candidate_ranges,
@@ -153,6 +154,33 @@ class TranscriptBlockTests(unittest.TestCase):
         retained, _ = _refine_retained_boundaries(drafts, blocks, {0, 1, 2})
 
         self.assertEqual({0, 1, 2}, retained)
+
+    def test_raw_inference_cache_separates_namespaces_and_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = RawInferenceCache(
+                Path(tmp),
+                transcript_hash="transcript",
+                prompt_version="v1",
+                model_name="fake-sermon-model",
+                model_digest="digest",
+                context_size=4096,
+            )
+            client = FakeLlmClient([ContentLabel.SERMON, ContentLabel.SERMON, ContentLabel.SERMON])
+            block = TranscriptBlock(1, [10, 11], 0.0, 90.0, "current")
+            previous = TranscriptBlock(0, [8, 9], -90.0, 0.0, "previous")
+            changed_previous = TranscriptBlock(0, [8, 9], -90.0, 0.0, "changed")
+            schema = {"type": "object"}
+
+            first = cache.generate("fine", client, "prompt", schema, block, previous)
+            second = cache.generate("fine", client, "prompt", schema, block, previous)
+            cache.generate("fine", client, "prompt", schema, block, changed_previous)
+            cache.generate("coarse", client, "prompt", schema, block)
+
+            self.assertEqual(first.content, second.content)
+            self.assertEqual(1, cache.hits)
+            self.assertEqual(3, cache.misses)
+            self.assertTrue((Path(tmp) / "fine").is_dir())
+            self.assertTrue((Path(tmp) / "coarse").is_dir())
 
 
 class HybridClassificationTests(unittest.TestCase):

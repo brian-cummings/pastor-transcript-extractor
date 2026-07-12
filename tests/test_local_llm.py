@@ -30,6 +30,7 @@ def config() -> LlmConfig:
         model="fixture:4b",
         timeout_seconds=1.0,
         prompt_version="test-v1",
+        context_size=4096,
     )
 
 

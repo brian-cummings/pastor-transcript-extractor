@@ -43,6 +43,7 @@ class LlmConfig:
     model: str
     timeout_seconds: float
     prompt_version: str
+    context_size: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +195,7 @@ def build_llm_config() -> LlmConfig:
         model=os.environ.get("PTE_LLM_MODEL", "gemma3:4b"),
         timeout_seconds=float(os.environ.get("PTE_LLM_TIMEOUT_SECONDS", "60")),
         prompt_version=os.environ.get("PTE_LLM_PROMPT_VERSION", "sermon-content-v2"),
+        context_size=int(os.environ.get("PTE_LLM_CONTEXT_SIZE", "4096")),
     )
 
 

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from enum import StrEnum
+import hashlib
+import json
+from pathlib import Path
 from typing import Any
 
-from pastor_transcript_extractor.local_llm import LocalLlmClient
+from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmResponse
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
@@ -67,6 +70,7 @@ class HybridSermonResult:
     warnings: list[str]
     blocks: list[TranscriptBlock]
     classifications: list[BlockClassification]
+    cache_stats: dict[str, int] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -83,7 +87,85 @@ class HybridSermonResult:
             "classifications": [
                 {**asdict(item), "label": item.label.value} for item in self.classifications
             ],
+            "cache_stats": self.cache_stats or {"hits": 0, "misses": 0},
         }
+
+
+class RawInferenceCache:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        transcript_hash: str,
+        prompt_version: str,
+        model_name: str,
+        model_digest: str,
+        context_size: int,
+    ) -> None:
+        self.root = root
+        self.transcript_hash = transcript_hash
+        self.prompt_version = prompt_version
+        self.model_name = model_name
+        self.model_digest = model_digest
+        self.context_size = context_size
+        self.hits = 0
+        self.misses = 0
+
+    def generate(
+        self,
+        namespace: str,
+        client: LocalLlmClient,
+        prompt: str,
+        schema: dict[str, Any],
+        block: TranscriptBlock,
+        previous: TranscriptBlock | None = None,
+        following: TranscriptBlock | None = None,
+    ) -> LocalLlmResponse:
+        def digest(text: str) -> str:
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+        identity = {
+            "transcript_hash": self.transcript_hash,
+            "block_builder_version": "timestamp-blocks-v1",
+            "block_start_segment": block.segment_indexes[0],
+            "block_end_segment": block.segment_indexes[-1],
+            "block_text_hash": digest(block.text),
+            "context_block_hashes": [
+                digest(previous.text) if previous else None,
+                digest(following.text) if following else None,
+            ],
+            "prompt_version": self.prompt_version,
+            "schema_version": f"{namespace}-v1",
+            "model_name": self.model_name,
+            "model_digest": self.model_digest,
+            "temperature": 0,
+            "context_size": self.context_size,
+        }
+        key = digest(json.dumps(identity, sort_keys=True, separators=(",", ":")))
+        path = self.root / namespace / f"{key}.json"
+        if path.exists():
+            try:
+                cached = json.loads(path.read_text(encoding="utf-8"))
+                content = cached["content"]
+                raw_content = cached["raw_content"]
+                model = cached["model"]
+                if isinstance(content, dict) and isinstance(raw_content, str) and isinstance(model, str):
+                    self.hits += 1
+                    return LocalLlmResponse(content, raw_content, model)
+            except (OSError, json.JSONDecodeError, KeyError):
+                pass
+        response = client.generate_json(prompt, schema)
+        self.misses += 1
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {"identity": identity, "content": response.content, "raw_content": response.raw_content, "model": response.model},
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        return response
 
 
 class CoarsePhase(StrEnum):
@@ -339,17 +421,39 @@ def classify_sermon_content_adaptive(
     *,
     prompt_version: str = "sermon-content-v2",
     progress: Any | None = None,
+    cache_dir: Path | None = None,
+    model_digest: str | None = None,
+    context_size: int = 4096,
 ) -> HybridSermonResult:
     coarse_blocks = build_transcript_blocks(drafts, target_seconds=300.0, max_chars=9000)
     if not coarse_blocks:
         raise ValueError("LLM classification requires timestamped transcript segments")
+    transcript_identity = json.dumps(
+        [(draft.start_seconds, draft.end_seconds, draft.text) for draft in drafts],
+        separators=(",", ":"),
+    )
+    cache = None
+    if cache_dir is not None and model_digest is not None:
+        cache = RawInferenceCache(
+            cache_dir,
+            transcript_hash=hashlib.sha256(transcript_identity.encode("utf-8")).hexdigest(),
+            prompt_version=prompt_version,
+            model_name=client.model,
+            model_digest=model_digest,
+            context_size=context_size,
+        )
     phases: list[CoarsePhase] = []
     coarse_audit: list[BlockClassification] = []
     total_estimate = len(coarse_blocks)
     for position, block in enumerate(coarse_blocks):
         if progress is not None:
             progress("coarse", position + 1, total_estimate)
-        response = client.generate_json(_coarse_prompt(block), _COARSE_SCHEMA)
+        prompt = _coarse_prompt(block)
+        response = (
+            cache.generate("coarse", client, prompt, _COARSE_SCHEMA, block)
+            if cache is not None
+            else client.generate_json(prompt, _COARSE_SCHEMA)
+        )
         try:
             phase = CoarsePhase(str(response.content["phase"]))
         except (KeyError, ValueError) as error:
@@ -394,7 +498,12 @@ def classify_sermon_content_adaptive(
             progress("fine", position + 1, len(fine_blocks))
         previous = fine_blocks[position - 1] if position else None
         following = fine_blocks[position + 1] if position + 1 < len(fine_blocks) else None
-        response = client.generate_json(_prompt(block, previous, following), _SCHEMA)
+        prompt = _prompt(block, previous, following)
+        response = (
+            cache.generate("fine", client, prompt, _SCHEMA, block, previous, following)
+            if cache is not None
+            else client.generate_json(prompt, _SCHEMA)
+        )
         try:
             label = ContentLabel(str(response.content["label"]))
         except (KeyError, ValueError) as error:
@@ -432,6 +541,7 @@ def classify_sermon_content_adaptive(
         "adaptive_llm_v3", client.model, prompt_version, confidence,
         sorted(retained), sorted(all_timed - retained), uncertain_ids, warnings,
         coarse_blocks + fine_blocks, coarse_audit + fine_audit,
+        {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
     )
 
 

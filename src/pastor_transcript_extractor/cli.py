@@ -1239,6 +1239,8 @@ def reclassify(
                 progress=lambda stage, current, total: console.print(
                     f"  {stage} block {current}/{total}"
                 ),
+                model_digest=client.model_digest(),
+                context_size=llm_config.context_size,
             )
         except Exception as error:
             console.print(f"[red]Failed to reclassify[/red] video #{video.id}: {error}")
@@ -1250,7 +1252,9 @@ def reclassify(
         else:
             console.print(
                 f"Reclassified video #{video.id}: confidence={result.confidence_tier}, "
-                f"retained_segments={result.retained_segment_count}, audit={result.classification_path}"
+                f"retained_segments={result.retained_segment_count}, "
+                f"cache_hits={result.cache_hits}, cache_misses={result.cache_misses}, "
+                f"audit={result.classification_path}"
             )
             processed += 1
     console.print(

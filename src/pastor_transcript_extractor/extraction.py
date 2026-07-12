@@ -34,6 +34,8 @@ class ReclassificationRunResult:
     confidence_tier: str
     retained_segment_count: int
     reused: bool
+    cache_hits: int = 0
+    cache_misses: int = 0
 
 
 def _classify_with_fallback(
@@ -143,6 +145,8 @@ def reclassify_video(
     prompt_version: str = "sermon-content-v1",
     force: bool = False,
     progress: Any | None = None,
+    model_digest: str | None = None,
+    context_size: int = 4096,
 ) -> ReclassificationRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -186,6 +190,9 @@ def reclassify_video(
         llm_client,
         prompt_version=prompt_version,
         progress=progress,
+        cache_dir=video_paths.extracted / "inference-cache",
+        model_digest=model_digest,
+        context_size=context_size,
     )
     classification = hybrid.to_dict()
     payload["classification"] = classification
@@ -222,6 +229,8 @@ def reclassify_video(
         hybrid.confidence_tier,
         len(hybrid.retained_segment_indexes),
         False,
+        int(classification.get("cache_stats", {}).get("hits", 0)),
+        int(classification.get("cache_stats", {}).get("misses", 0)),
     )
 
 

@@ -38,6 +38,28 @@ class OllamaClient:
     def __init__(self, config: LlmConfig) -> None:
         self.config = config
         self.model = config.model
+        self._model_digest: str | None = None
+
+    def model_digest(self) -> str:
+        if self._model_digest is not None:
+            return self._model_digest
+        request = Request(f"{self.config.base_url}/api/tags", method="GET")
+        try:
+            with urlopen(request, timeout=min(self.config.timeout_seconds, 5.0)) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
+            raise LocalLlmError(f"Could not resolve Ollama model digest: {error}") from error
+        models = payload.get("models") if isinstance(payload, dict) else None
+        if isinstance(models, list):
+            for item in models:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("model") or item.get("name")
+                digest = item.get("digest")
+                if name == self.model and isinstance(digest, str) and digest:
+                    self._model_digest = digest
+                    return digest
+        raise LocalLlmError(f"Could not find digest for configured model {self.model!r}")
 
     def check_health(self) -> LocalLlmHealth:
         request = Request(f"{self.config.base_url}/api/tags", method="GET")
@@ -81,7 +103,7 @@ class OllamaClient:
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
                 "format": schema,
-                "options": {"temperature": 0, "num_predict": 256},
+                "options": {"temperature": 0, "num_predict": 256, "num_ctx": self.config.context_size},
             }
         ).encode("utf-8")
         request = Request(
