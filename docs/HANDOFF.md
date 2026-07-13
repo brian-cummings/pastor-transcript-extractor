@@ -12,14 +12,14 @@ Implemented:
 - low-confidence classifications preserve the protected rule/manual baseline
 - forced reclassification recomputes the rule-only baseline instead of reusing a prior hybrid result
 - ground-truth review supports positive and negative fixtures
-- 12 manually reviewed fixtures are frozen: 6 positive and 6 negative
+- 12 manually reviewed fixtures are frozen: 5 positive and 7 negative
 - evaluation is segment-based and produces JSON and Markdown reports
 - failure reports show expected, missed, retained, and contaminating ranges with persisted label evidence
 - conservative candidate joining can recover interrupted sermons
 - explicit sermon-title cues can recover up to four minutes of contiguous sermon-like setup before the cue
 - pre-title recovery persists its anchor, duration, reason, and stopping evidence
 - the evaluator replays current, no-overlap, and soft-overlap confidence policies without changing production artifacts
-- 135 tests pass
+- 139 tests pass
 
 ## Local Evaluation Environment
 
@@ -88,8 +88,8 @@ pte validate-fixtures evaluation/fixtures
 The frozen YouTube IDs are:
 
 ```text
-Positive: OBK7fBLTM6o TyNvrFPC5AU fcZNzRYQOtA l6mZEQvArkE qny7TUqNkQU tad-oXefJMQ
-Negative: jJDBYaE33gA NeceoWYZRmg NKNFh_xoDfU QIqMpJfY-fQ WaNsL05AX3A dTDAt941Gf8
+Positive: OBK7fBLTM6o TyNvrFPC5AU fcZNzRYQOtA l6mZEQvArkE tad-oXefJMQ
+Negative: jJDBYaE33gA NeceoWYZRmg NKNFh_xoDfU QIqMpJfY-fQ WaNsL05AX3A dTDAt941Gf8 qny7TUqNkQU
 ```
 
 At the time of this handoff, their local numeric database IDs are:
@@ -102,7 +102,7 @@ At the time of this handoff, their local numeric database IDs are:
 | 71 | `NeceoWYZRmg` | no sermon |
 | 78 | `OBK7fBLTM6o` | sermon |
 | 81 | `tad-oXefJMQ` | sermon |
-| 82 | `qny7TUqNkQU` | sermon |
+| 82 | `qny7TUqNkQU` | no sermon (ambiguous speakers) |
 | 85 | `NKNFh_xoDfU` | no sermon |
 | 89 | `QIqMpJfY-fQ` | no sermon |
 | 148 | `WaNsL05AX3A` | no sermon |
@@ -138,14 +138,14 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 The latest validated 12-fixture report is:
 
-- `evaluation/results/20260713T185623Z/report.md`
+- `evaluation/results/20260713T212047Z/report.md`
 
 Results:
 
-- mean sermon recall: `0.979`
+- mean sermon recall: `0.975`
 - worst sermon recall: `0.917`
 - catastrophic omissions: `0`
-- mean contamination ratio: `0.105`
+- mean contamination ratio: `0.032`
 - correct top-candidate rate: `1.000`
 - high-confidence negative false positives: `0`
 
@@ -165,18 +165,18 @@ The frozen fixtures produced:
 
 | Policy | Positive H/M/L | Negative H/M/L | High-confidence negative false positives |
 |---|---:|---:|---:|
-| current | 0/1/5 | 0/0/6 | 0 |
-| no rule overlap | 6/0/0 | 1/0/5 | 1 (`WaNsL05AX3A`) |
-| soft rule overlap | 1/5/0 | 0/1/5 | 0 |
+| current | 0/1/4 | 0/0/7 | 0 |
+| no rule overlap | 5/0/0 | 2/0/5 | 2 (`WaNsL05AX3A`, `qny7TUqNkQU`) |
+| soft rule overlap | 1/4/0 | 0/2/5 | 0 |
 
-This supports retaining rule overlap as a soft diagnostic penalty. Removing it entirely makes the Sabbath School negative falsely high; the soft policy moves all positive fixtures out of low confidence without making any negative high. This is evaluation evidence only: production confidence behavior has not yet changed.
+This supports retaining rule overlap as a soft diagnostic penalty. Removing it entirely makes both the Sabbath School and ambiguous multi-speaker negatives falsely high; the soft policy moves all positive fixtures out of low confidence without making any negative high. This is evaluation evidence only: production confidence behavior has not yet changed.
 
 ### Interaction-evidence experiment (not shipped)
 
 An evidence-only interaction classifier was tested with `gemma3:4b` on three sentinels:
 
 - `WaNsL05AX3A`: Sabbath School negative
-- `qny7TUqNkQU`: sermon program with many student speakers
+- `qny7TUqNkQU`: ambiguous chaplain-and-students program; reject the whole video
 - `l6mZEQvArkE`: normal single-preacher sermon
 
 The first schema asked directly for interaction mode, audience turn-taking, lesson references, and multiple sustained speakers. It failed badly: the model classified 21 of 22 normal-sermon blocks as facilitated group discussion. Repeated overlapping YouTube caption lines, rhetorical questions, and quoted biblical dialogue were interpreted as speaker changes.
@@ -189,7 +189,7 @@ A grounded second schema required exact current-block evidence and normalized un
 | `qny7TUqNkQU` | 24/33 | 7 | 17 | none |
 | `WaNsL05AX3A` | 21/30 | 2 | 19 | multiple speakers in 1 block only |
 
-Although monologue density differed, the requested explicit signals did not reliably survive grounding, and `qny7TUqNkQU` remained too similar to Sabbath School. The extra diagnostic call also roughly doubled fine-pass latency. The implementation was removed, the three production artifacts were restored from cached production inference, and the frozen benchmark remained unchanged.
+Although monologue density differed, the requested explicit signals did not reliably survive grounding. The extra diagnostic call also roughly doubled fine-pass latency. The implementation was removed, the three production artifacts were restored from cached production inference, and the frozen benchmark remained unchanged.
 
 Do not reintroduce these fields into production confidence with the current transcript representation and `gemma3:4b`. Any future attempt should first address overlapping-caption duplication and should run as an offline sentinel experiment before modifying persisted production schema.
 
@@ -208,7 +208,7 @@ The expected count at this handoff is 139 tests.
 
 ### `qny7TUqNkQU`
 
-Candidate joining restored sermon recall to `1.000`, but contamination remains about `0.472`. The long student-participation interval is still classified as sermon content. The remaining problem is representing and adjudicating mixed discourse inside the selected region.
+This fixture was changed to `no_sermon` in ground-truth version 2. Its title identifies a chaplain and students, and manual review found student sermonettes between presumed primary sermons. Because the retained speech cannot be attributed confidently to the targeted pastor, policy now rejects the entire compound program rather than attempting to isolate individual speakers from transcript text.
 
 ### `WaNsL05AX3A`
 
@@ -236,26 +236,23 @@ The first `gemma3:4b` run is under `evaluation/interaction-diagnostics/20260713T
 
 There were three malformed inference responses. Most other blocks claimed facilitated discussion without the required audience-turn and speaker evidence. Deduplication alone therefore does not make Gemma 3 4B viable for this distinction.
 
+The `gemma3:12b` comparison is under `evaluation/interaction-diagnostics/20260713T211300Z/`. Its raw mode labels were materially better:
+
+| Fixture | Raw facilitated-group blocks | Raw audience-turn blocks | Exact-evidence-valid blocks |
+|---|---:|---:|---:|
+| `WaNsL05AX3A` | 14/15 | 15/15 | 0/15 |
+| `l6mZEQvArkE` | 3/12 | 5/12 | 7/12 |
+| `qny7TUqNkQU` | 11/17 | 13/17 | 2/17 |
+
+The model now separates both negative compound/interactive programs from the normal sermon at the aggregate raw-label level, which is the relevant policy after `qny7TUqNkQU` became negative. It is still not production-ready: it frequently paraphrases, joins, or reformats evidence instead of returning an exact excerpt, so nearly all positive interaction claims fail grounding.
+
 Next:
 
-1. Install `gemma3:12b` and run it through the same harness. The current Ollama Q4 build is about 8.1 GB and is the practical stronger model for this 16 GB M1 Pro; do not run model comparisons concurrently.
-2. Use the exact command:
-
-   ```bash
-   caffeinate -i .venv/bin/pte diagnose-interaction \
-     --model gemma3:4b \
-     --model gemma3:12b \
-     --base-dir /Users/briancummings/Documents/PastorSearchData
-   ```
-
-   The 4B successful responses will be cache hits, so only its prior malformed blocks may retry.
-3. Require the stronger model to:
-   - clear interactive-teaching evidence for `WaNsL05AX3A`
-   - predominantly monologue evidence for `l6mZEQvArkE`
-   - mixed-speaker evidence for `qny7TUqNkQU` without treating it as an automatic non-sermon
-4. Persist interaction evidence or use it in confidence only after those gates pass.
-5. If 12B also fails, stop transcript-only interaction classification and move to speaker-turn structure or diarization.
-6. Only after a passing diagnostic should production confidence combine interaction evidence with the already-supported soft rule-overlap policy.
+1. Keep interaction evidence offline. Replace evidence strings with stable input line IDs so grounding can be checked without fragile exact-text reproduction.
+2. Re-run only the three sentinels with the same 12B model and require aggregate separation of both negatives from `l6mZEQvArkE`, with every positive signal backed by valid line IDs.
+3. Persist interaction evidence or use it in confidence only after that gate passes.
+4. If line-ID grounding still cannot separate the sentinels, stop transcript-only interaction classification and move to speaker-turn structure or diarization.
+5. Only after a passing diagnostic should production confidence combine interaction evidence with the already-supported soft rule-overlap policy.
 
 Speaker diarization or voice recognition may ultimately be required for reliable multiple-speaker evidence. Do not infer speaker identity or turn-taking from duplicated caption text alone.
 
