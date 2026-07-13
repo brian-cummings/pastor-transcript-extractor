@@ -2,94 +2,72 @@
 
 ## Current State
 
-The workspace now has the first executable scaffold in place.
+The sermon-isolation pipeline now has a safe production architecture and a frozen evaluation foundation.
 
 Implemented:
 
-- Python package scaffold
-- CLI entrypoint
-- app data directory initialization
-- SQLite initialization
-- source persistence
-- pastor persistence
-- pastor-aware artifact path helpers
-- YouTube source type detection
-- `init`, `add`, `status`, `doctor`, `discover`, `fetch`, `transcribe`, and `run` command implementation
-- `extract` command implementation
-- `review` and `export` command implementation
-- `pastor add` and `pastor list`
-- `python -m pastor_transcript_extractor` entrypoint
-- transcript artifact persistence
-- caption fetching
-- audio download/prep plus `whisper.cpp` runner
+- normal extraction and reclassification share adaptive V3 classification
+- raw Ollama inference is cached by transcript, prompt, model, schema, and block context
+- candidate ranking, score components, confidence reasons, model identity, and refinement reasons are persisted
+- low-confidence classifications preserve the protected rule/manual baseline
+- ground-truth review supports positive and negative fixtures
+- seven manually reviewed fixtures are frozen
+- evaluation is segment-based and produces JSON and Markdown reports
+- failure reports show expected, missed, retained, and contaminating ranges with persisted label evidence
+- conservative candidate joining can recover interrupted sermons
+- joins require approved gap evidence and an explicit sermon-resumption cue
+- 125 tests pass
 
-## Important Environment Constraint
+## Current Benchmark
 
-The default app-data location under `~/.pastor-transcript-extractor` is not writable inside this sandbox. Use `--base-dir` for local validation runs here.
+The latest seven-fixture report is:
 
-## Recommended Next Coding Pass
+- `evaluation/results/20260713T022657Z/report.md`
 
-### Milestone 6: Workflow Refinement
-1. Improve review UX and editor integration.
-2. Tighten export naming and frontmatter once real sermon batches land.
-3. Decide whether `run` should prefer captions-only mode or keep the current fetch-plus-ASR behavior.
+Results:
 
-Required config values:
+- mean sermon recall: `0.972`
+- worst sermon recall: `0.917`
+- catastrophic omissions: `0`
+- mean contamination ratio: `0.199`
+- correct top-candidate rate: `1.000`
+- high-confidence negative false positives: `1`
 
-- `whisper_cpp_bin`
-- `whisper_model_path`
-- `ffmpeg_bin`
-- `yt_dlp_bin`
+Candidate discovery and assembly are now working well enough to expose the remaining taxonomy and confidence defects.
 
-Recommended defaults:
+## Remaining Defects
 
-- `whisper_cpp_bin = /Users/briancummings/code/whisper.cpp/build/bin/whisper-cli`
-- `whisper_model_path = /Users/briancummings/code/whisper.cpp/models/ggml-medium.en.bin`
-- `ffmpeg_bin = ffmpeg`
-- `yt_dlp_bin = yt-dlp`
+### `qny7TUqNkQU`
 
-## Current Smoke-Test Notes
+Candidate joining restored sermon recall from `0.242` to `1.000`, but contamination remains `0.458`.
 
-- `ffmpeg` resolves on this machine.
-- `yt-dlp` is installed in the project venv.
-- `pte doctor --base-dir .../.appdata` reports local tool status cleanly.
-- `python -m pastor_transcript_extractor --help` works again.
-- `pte fetch --help` is available.
-- `pte transcribe --help` is available.
-- `pte extract --help` is available.
-- `pte review --help` is available.
-- `pte export --help` is available.
+The long student-participation interval is still classified as sermon content. The remaining problem is no longer candidate discovery; it is representing and adjudicating mixed discourse inside the selected region.
 
-## Open Decisions Left For Implementation
+### `WaNsL05AX3A`
 
-- config file format versus env-only configuration
-- exact SQLite repository pattern
+The Sabbath School fixture remains a high-confidence false positive.
 
-## Follow-Up Note: Base-Dir Persistence Is Fragile
+All refined blocks are classified as sermon/biblical exposition because the current schema does not represent interactive or facilitated Bible teaching. Confidence is over-weighting rule/LLM agreement and sustained religious discourse.
 
-Current behavior persists the selected app-data root through a single pointer file in the home directory:
+## Recommended Next Increment
 
-- `~/.pastor-transcript-extractor-root`
+1. Extend fine structured output with evidence fields such as:
+   - `interaction_mode`
+   - `audience_turn_taking`
+   - `lesson_material_references`
+   - `multiple_sustained_speakers`
+2. Persist these signals without initially changing retention or confidence.
+3. Rerun the seven frozen fixtures to establish an evidence-only baseline.
+4. Add a confidence cap when strong interactive-teaching evidence is present.
+5. Rerun the same fixtures unchanged.
+6. Determine whether the same evidence can safely exclude the long `qny7TUqNkQU` interruption or whether interruption-aware retention needs a separate increment.
 
-This is brittle. If that file disappears, the CLI silently falls back to:
+Do not compare a stronger model until the evidence schema and confidence behavior are stable. Model comparisons must keep fixtures, prompt, schema, block construction, ranking logic, and thresholds fixed so only the model changes.
 
-- `~/.pastor-transcript-extractor`
+## Recent Milestones
 
-Observed failure mode:
-
-- the user had been working out of `~/Documents/PastorSearchData`
-- the pointer file was missing
-- commands resolved against the fallback root instead
-- `pte review akorp` then failed with `Unknown pastor slug: akorp`, which looked like missing data rather than a wrong app root
-
-Recommended hardening pass:
-
-1. Add a real config file for the persisted base dir instead of relying only on the pointer file.
-2. Keep lookup precedence explicit:
-   - `--base-dir`
-   - `PTE_BASE_DIR`
-   - config file
-   - pointer file
-   - default root
-3. Include the resolved app root in not-found style errors such as unknown pastor slug.
-4. Consider warning loudly when the resolved root is empty or differs from a previously used non-default root.
+- `190bae6 Join interrupted sermon candidates conservatively`
+- `2f09652 Persist sermon classification diagnostics`
+- `d9e954a Add extraction failure analysis reports`
+- `1732f80 Add segment-based extraction evaluator`
+- `8e3a45f Unify adaptive sermon classification`
