@@ -329,6 +329,71 @@ def _candidate_score_components(
     }
 
 
+_ALLOWED_JOIN_REASON_CODES = {
+    "sermon_transition",
+    "integrated_prayer",
+    "integrated_scripture",
+    "service_prayer",
+    "service_reading",
+    "speaker_handoff",
+}
+
+
+def _joined_candidate(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    blocks: list[TranscriptBlock],
+    audit: list[BlockClassification],
+) -> dict[str, Any] | None:
+    left_end = float(left["end_seconds"])
+    right_start = float(right["start_seconds"])
+    gap_duration = right_start - left_end
+    if gap_duration <= 0.0 or gap_duration > 360.0:
+        return None
+    gap_evidence = [
+        (block, item.evidence.partition(":")[2])
+        for block, item in zip(blocks, audit, strict=True)
+        if block.end_seconds > left_end and block.start_seconds < right_start
+    ]
+    if not gap_evidence or any(reason not in _ALLOWED_JOIN_REASON_CODES for _, reason in gap_evidence):
+        return None
+    start = float(left["start_seconds"])
+    end = float(right["end_seconds"])
+    resumed_text = " ".join(
+        block.text.lower()
+        for block in blocks
+        if _overlaps(block, right_start, float(right["end_seconds"]))
+    )
+    continuity_cues = [cue for cue in _SERMON_SEED_CUES if cue in resumed_text]
+    if not continuity_cues:
+        return None
+    score_components = _candidate_score_components((start, end), blocks)
+    reasons = sorted({reason for _, reason in gap_evidence})
+    score_components["join_gap_duration_seconds"] = round(gap_duration, 3)
+    score_components["join_reason_codes"] = reasons
+    return {
+        "source": "joined_coarse_llm",
+        "start_seconds": start,
+        "end_seconds": end,
+        "score": score_components["total_score"],
+        "score_components": score_components,
+        "coarse_support_block_ids": list(dict.fromkeys(
+            list(left["coarse_support_block_ids"]) + list(right["coarse_support_block_ids"])
+        )),
+        "fine_support_block_ids": [],
+        "refinement_reasons": [
+            f"joined sermon candidates across {gap_duration:.1f}s interruption classified as {', '.join(reasons)}"
+        ],
+        "join": {
+            "gap_start_seconds": left_end,
+            "gap_end_seconds": right_start,
+            "gap_duration_seconds": round(gap_duration, 3),
+            "reason_codes": reasons,
+            "continuity_cues": continuity_cues,
+        },
+    }
+
+
 def _explicit_sermon_seed_seconds(
     drafts: list[SegmentDraft], retained_indexes: set[int]
 ) -> float | None:
@@ -355,11 +420,13 @@ def _refine_retained_boundaries(
     drafts: list[SegmentDraft],
     fine_blocks: list[TranscriptBlock],
     retained: set[int],
+    *,
+    preserve_joined_start: bool = False,
 ) -> tuple[set[int], list[str]]:
     refined = set(retained)
     reasons: list[str] = []
     seed = _explicit_sermon_seed_seconds(drafts, refined)
-    if seed is not None:
+    if seed is not None and not preserve_joined_start:
         pre_roll_start = max(0.0, seed - 180.0)
         for index in list(refined):
             draft = drafts[index]
@@ -512,6 +579,13 @@ def classify_sermon_content_adaptive(
                 "refinement_reasons": [],
             }
         )
+    chronological_candidates = sorted(ranked_candidates, key=lambda candidate: float(candidate["start_seconds"]))
+    joined_candidates = [
+        joined
+        for left, right in zip(chronological_candidates, chronological_candidates[1:], strict=False)
+        if (joined := _joined_candidate(left, right, coarse_blocks, coarse_audit)) is not None
+    ]
+    ranked_candidates.extend(joined_candidates)
     ranked_candidates.sort(key=lambda candidate: (-float(candidate["score"]), float(candidate["start_seconds"])))
     for rank, candidate in enumerate(ranked_candidates, start=1):
         candidate["rank"] = rank
@@ -597,7 +671,10 @@ def classify_sermon_content_adaptive(
             retained.update(index for index in block.segment_indexes if index in rule_indexes)
 
     retained, refinement_reasons = _refine_retained_boundaries(
-        drafts, fine_blocks, retained
+        drafts,
+        fine_blocks,
+        retained,
+        preserve_joined_start=selected_candidate.get("source") == "joined_coarse_llm",
     )
     retained_timed = [
         drafts[index]
@@ -616,7 +693,7 @@ def classify_sermon_content_adaptive(
         for block in fine_blocks
         if any(index in retained for index in block.segment_indexes)
     ]
-    selected_candidate["refinement_reasons"] = list(refinement_reasons)
+    selected_candidate["refinement_reasons"] = list(selected_candidate["refinement_reasons"]) + list(refinement_reasons)
 
     all_timed = {index for block in build_transcript_blocks(drafts) for index in block.segment_indexes}
     agreement = len(retained & rule_indexes) / max(len(retained | rule_indexes), 1)
@@ -625,7 +702,7 @@ def classify_sermon_content_adaptive(
         warnings.append("adaptive LLM and rule-based sermon windows disagree substantially")
     if uncertain_ids:
         warnings.append("one or more refined blocks require boundary review")
-    warnings.extend(refinement_reasons)
+    warnings.extend(selected_candidate["refinement_reasons"])
     consistency_warnings = _central_consistency_warnings(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
     )

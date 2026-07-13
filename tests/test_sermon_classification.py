@@ -23,6 +23,7 @@ from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
     _candidate_strength,
     _coarse_candidate_ranges,
+    _joined_candidate,
     _refine_retained_boundaries,
     build_transcript_blocks,
     classify_sermon_content,
@@ -117,6 +118,38 @@ class TranscriptBlockTests(unittest.TestCase):
         explicit = _candidate_strength((1200.0, 1500.0), blocks)
 
         self.assertGreater(explicit, generic)
+
+    def test_candidate_join_requires_explicit_allowed_gap_evidence(self) -> None:
+        blocks = [
+            TranscriptBlock(0, [0], 0.0, 300.0, "sermon one"),
+            TranscriptBlock(1, [1], 300.0, 450.0, "speaker handoff"),
+            TranscriptBlock(2, [2], 450.0, 750.0, "Turn in your Bibles as the sermon resumes"),
+        ]
+        left = {"start_seconds": 0.0, "end_seconds": 300.0, "coarse_support_block_ids": [0]}
+        right = {"start_seconds": 450.0, "end_seconds": 750.0, "coarse_support_block_ids": [2]}
+        allowed_audit = [
+            SimpleNamespace(evidence="coarse:biblical_exposition"),
+            SimpleNamespace(evidence="coarse:speaker_handoff"),
+            SimpleNamespace(evidence="coarse:biblical_exposition"),
+        ]
+        blocked_audit = [
+            SimpleNamespace(evidence="coarse:biblical_exposition"),
+            SimpleNamespace(evidence="coarse:logistics_or_welcome"),
+            SimpleNamespace(evidence="coarse:biblical_exposition"),
+        ]
+
+        joined = _joined_candidate(left, right, blocks, allowed_audit)
+
+        self.assertIsNotNone(joined)
+        assert joined is not None
+        self.assertEqual(150.0, joined["join"]["gap_duration_seconds"])
+        self.assertEqual(["speaker_handoff"], joined["join"]["reason_codes"])
+        self.assertEqual(["turn in your bibles"], joined["join"]["continuity_cues"])
+        self.assertIn("join_gap_duration_seconds", joined["score_components"])
+        self.assertIsNone(_joined_candidate(left, right, blocks, blocked_audit))
+
+        blocks[2] = TranscriptBlock(2, [2], 450.0, 750.0, "generic religious speech")
+        self.assertIsNone(_joined_candidate(left, right, blocks, allowed_audit))
 
     def test_refinement_anchors_to_explicit_cue_and_trims_sustained_music_tail(self) -> None:
         drafts = [
