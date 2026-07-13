@@ -70,6 +70,9 @@ def _classify_with_fallback(
                 "end_seconds": detected_window.end_seconds,
                 "confidence": detected_window.confidence,
             },
+            "rule_baseline_source": "recomputed_rules",
+            "rule_baseline_algorithm_version": detected_window.method,
+            "manual_override_present": False,
         },
     }
     if classifier not in {"rules", "auto", "llm"}:
@@ -90,6 +93,9 @@ def _classify_with_fallback(
             cache_dir=cache_dir,
             model_digest=model_digest,
             context_size=context_size,
+            rule_baseline_source="recomputed_rules",
+            rule_baseline_algorithm_version=detected_window.method,
+            manual_override_present=False,
         )
     except Exception as error:
         if classifier == "llm":
@@ -137,25 +143,57 @@ def _drafts_from_proposed_json(payload: dict[str, Any]) -> list[SegmentDraft]:
     return drafts
 
 
-def _saved_window_result(payload: dict[str, Any]) -> SermonWindowResult | None:
-    window = payload.get("sermon_window")
-    if not isinstance(window, dict):
-        return None
-    start = window.get("start_seconds")
-    end = window.get("end_seconds")
-    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or end <= start:
-        return None
+def _manual_override_window_result(
+    drafts: list[SegmentDraft],
+    detected_window: SermonWindowResult,
+    override: dict[str, Any],
+) -> SermonWindowResult:
+    start = float(override["start_seconds"])
+    end = float(override["end_seconds"])
+    included = [
+        index
+        for index, draft in enumerate(drafts)
+        if draft.start_seconds is not None
+        and draft.end_seconds is not None
+        and draft.end_seconds > start
+        and draft.start_seconds < end
+    ]
+    included_set = set(included)
+    timed = [
+        index
+        for index, draft in enumerate(drafts)
+        if draft.start_seconds is not None and draft.end_seconds is not None
+    ]
     return SermonWindowResult(
-        start_seconds=float(start),
-        end_seconds=float(end),
-        confidence=float(window.get("confidence", 0.0)),
-        reasons=[str(reason) for reason in window.get("reasons", [])],
-        method=str(window.get("method", "rule_based_v1")),
-        included_segment_indexes=[index for index in window.get("included_segment_indexes", []) if isinstance(index, int)],
-        excluded_segment_indexes=[index for index in window.get("excluded_segment_indexes", []) if isinstance(index, int)],
-        suspicious_boundary=bool(window.get("suspicious_boundary", False)),
-        suspicious_boundary_reasons=[str(reason) for reason in window.get("suspicious_boundary_reasons", [])],
+        start_seconds=start,
+        end_seconds=end,
+        confidence=1.0,
+        reasons=["manual review override applied"],
+        method="manual_override_v1",
+        included_segment_indexes=included,
+        excluded_segment_indexes=[index for index in timed if index not in included_set],
+        suspicious_boundary=False,
+        suspicious_boundary_reasons=[],
     )
+
+
+def _baseline_window_payload(
+    window: SermonWindowResult,
+    *,
+    manual_override_present: bool,
+) -> dict[str, Any]:
+    return {
+        "start_seconds": window.start_seconds,
+        "end_seconds": window.end_seconds,
+        "confidence": window.confidence,
+        "reasons": list(window.reasons),
+        "method": window.method,
+        "source": "override" if manual_override_present else "detected",
+        "included_segment_indexes": list(window.included_segment_indexes),
+        "excluded_segment_indexes": list(window.excluded_segment_indexes),
+        "suspicious_boundary": window.suspicious_boundary,
+        "suspicious_boundary_reasons": list(window.suspicious_boundary_reasons),
+    }
 
 
 def reclassify_video(
@@ -203,8 +241,13 @@ def reclassify_video(
         transcript_source = TranscriptSourceKind(str(payload.get("transcript_source")))
     except ValueError:
         transcript_source = None
-    detected_window = _saved_window_result(payload) or detect_sermon_window(
-        drafts, transcript_source=transcript_source
+    recomputed_window = detect_sermon_window(drafts, transcript_source=transcript_source)
+    override_path = video_paths.review / "window_override.json"
+    override, _ = _load_window_override(override_path)
+    detected_window = (
+        _manual_override_window_result(drafts, recomputed_window, override)
+        if override is not None
+        else recomputed_window
     )
     hybrid = classify_sermon_content_adaptive(
         drafts,
@@ -215,13 +258,18 @@ def reclassify_video(
         cache_dir=video_paths.extracted / "inference-cache",
         model_digest=model_digest,
         context_size=context_size,
+        rule_baseline_source="manual_override" if override is not None else "recomputed_rules",
+        rule_baseline_algorithm_version=detected_window.method,
+        manual_override_present=override is not None,
     )
     classification = hybrid.to_dict()
     payload["classification"] = classification
 
-    existing_window = payload.get("sermon_window")
-    override_path = video_paths.review / "window_override.json"
-    override, _ = _load_window_override(override_path)
+    existing_window = _baseline_window_payload(
+        detected_window,
+        manual_override_present=override is not None,
+    )
+    payload["sermon_window"] = existing_window
     if (
         override is None
         and isinstance(existing_window, dict)

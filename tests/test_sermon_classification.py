@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 from pastor_transcript_extractor.config import build_paths, build_video_artifact_paths, ensure_directories
 from pastor_transcript_extractor.extraction import (
+    _baseline_window_payload,
     _classification_is_current,
     _classify_with_fallback,
     reclassify_video,
@@ -27,6 +28,7 @@ from pastor_transcript_extractor.sermon_classification import (
     _refine_retained_boundaries,
     build_transcript_blocks,
     classify_sermon_content,
+    classify_sermon_content_adaptive,
 )
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
@@ -217,6 +219,26 @@ class TranscriptBlockTests(unittest.TestCase):
 
 
 class HybridClassificationTests(unittest.TestCase):
+    def test_baseline_window_payload_replaces_stale_hybrid_state(self) -> None:
+        recomputed = SermonWindowResult(
+            None,
+            None,
+            0.15,
+            ["no rule window"],
+            "rule_based_v1",
+            [],
+            [0, 1],
+            False,
+            [],
+        )
+
+        payload = _baseline_window_payload(recomputed, manual_override_present=False)
+
+        self.assertEqual("detected", payload["source"])
+        self.assertEqual("rule_based_v1", payload["method"])
+        self.assertIsNone(payload["start_seconds"])
+        self.assertEqual([], payload["included_segment_indexes"])
+
     def test_retains_only_sermon_related_labels(self) -> None:
         drafts = [draft(index * 120.0, (index + 1) * 120.0, f"block {index}") for index in range(4)]
         rule_window = SermonWindowResult(
@@ -392,7 +414,68 @@ class HybridClassificationTests(unittest.TestCase):
             self.assertEqual(1, updated["classification"]["search"]["selected_rank"])
             self.assertEqual(1, updated["classification"]["search"]["candidates"][0]["rank"])
             self.assertTrue(updated["classification"]["search"]["candidates"][0]["coarse_support_block_ids"])
+            first_baseline = updated["classification"]["search"]["rule_baseline"]
+            first_agreement = next(
+                reason["value"]
+                for reason in updated["classification"]["confidence_reasons"]
+                if reason["code"] == "rule_llm_agreement"
+            )
+            self.assertEqual("recomputed_rules", updated["classification"]["search"]["rule_baseline_source"])
+            self.assertFalse(updated["classification"]["search"]["manual_override_present"])
+
+            reclassify_video(
+                database,
+                paths,
+                video.id,
+                llm_client=FakeAdaptiveLlmClient(),
+                prompt_version="v1",
+                force=True,
+            )
+            repeated = json.loads(proposed_path.read_text(encoding="utf-8"))["classification"]
+            repeated_agreement = next(
+                reason["value"]
+                for reason in repeated["confidence_reasons"]
+                if reason["code"] == "rule_llm_agreement"
+            )
+            self.assertEqual(first_baseline, repeated["search"]["rule_baseline"])
+            self.assertEqual(first_agreement, repeated_agreement)
             database.delete_transcript_segments_for_video.assert_not_called()
+
+    def test_manual_override_is_authoritative_reclassification_baseline(self) -> None:
+        drafts = [
+            draft(0.0, 300.0, "opening"),
+            draft(300.0, 600.0, "sermon"),
+            draft(600.0, 900.0, "closing"),
+        ]
+        override_window = SermonWindowResult(
+            300.0,
+            600.0,
+            1.0,
+            ["manual review override applied"],
+            "manual_override_v1",
+            [1],
+            [0, 2],
+            False,
+            [],
+        )
+
+        result = classify_sermon_content_adaptive(
+            drafts,
+            override_window,
+            FakeAdaptiveLlmClient(),
+            prompt_version="v1",
+            rule_baseline_source="manual_override",
+            rule_baseline_algorithm_version="manual_override_v1",
+            manual_override_present=True,
+        ).to_dict()
+
+        self.assertEqual(
+            {"start_seconds": 300.0, "end_seconds": 600.0, "confidence": 1.0},
+            result["search"]["rule_baseline"],
+        )
+        self.assertEqual("manual_override", result["search"]["rule_baseline_source"])
+        self.assertEqual("manual_override_v1", result["search"]["rule_baseline_algorithm_version"])
+        self.assertTrue(result["search"]["manual_override_present"])
 
 
 if __name__ == "__main__":

@@ -513,6 +513,9 @@ def classify_sermon_content_adaptive(
     cache_dir: Path | None = None,
     model_digest: str | None = None,
     context_size: int = 4096,
+    rule_baseline_source: str = "recomputed_rules",
+    rule_baseline_algorithm_version: str | None = None,
+    manual_override_present: bool = False,
 ) -> HybridSermonResult:
     coarse_blocks = build_transcript_blocks(drafts, target_seconds=300.0, max_chars=9000)
     if not coarse_blocks:
@@ -618,6 +621,9 @@ def classify_sermon_content_adaptive(
             "selected_rank": None,
             "rule_baseline": None,
             "model_digest": model_digest,
+            "rule_baseline_source": rule_baseline_source,
+            "rule_baseline_algorithm_version": rule_baseline_algorithm_version or rule_window.method,
+            "manual_override_present": manual_override_present,
         }
         return HybridSermonResult(
             "adaptive_llm_v3", client.model, prompt_version, "low", [],
@@ -751,6 +757,9 @@ def classify_sermon_content_adaptive(
             "confidence": rule_window.confidence,
         },
         "model_digest": model_digest,
+        "rule_baseline_source": rule_baseline_source,
+        "rule_baseline_algorithm_version": rule_baseline_algorithm_version or rule_window.method,
+        "manual_override_present": manual_override_present,
     }
     return HybridSermonResult(
         "adaptive_llm_v3", client.model, prompt_version, confidence,
