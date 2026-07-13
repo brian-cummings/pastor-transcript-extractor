@@ -167,13 +167,36 @@ class TranscriptBlockTests(unittest.TestCase):
             for index, item in enumerate(drafts)
         ]
 
-        retained, reasons = _refine_retained_boundaries(
+        retained, reasons, start_refinement = _refine_retained_boundaries(
             drafts, blocks, set(range(len(drafts)))
         )
 
         self.assertEqual({1, 2, 3}, retained)
         self.assertTrue(any("explicit sermon" in reason for reason in reasons))
         self.assertTrue(any("sustained music" in reason for reason in reasons))
+        self.assertEqual(0.0, start_refinement["pre_anchor_extension_seconds"])
+
+    def test_refinement_recovers_contiguous_sermon_setup_before_anchor(self) -> None:
+        drafts = [
+            draft(0.0, 60.0, "[music] [singing]"),
+            draft(60.0, 120.0, "Our theme is leaving the old life behind in Jesus"),
+            draft(120.0, 180.0, "Bible names reveal identity and God's calling"),
+            draft(180.0, 240.0, "As we open God's word tonight let us pray"),
+            draft(240.0, 300.0, "Genesis teaches us about Abram"),
+        ]
+        blocks = [
+            TranscriptBlock(index, [index], item.start_seconds or 0.0, item.end_seconds or 0.0, item.text)
+            for index, item in enumerate(drafts)
+        ]
+
+        retained, reasons, start_refinement = _refine_retained_boundaries(
+            drafts, blocks, {1, 2, 3, 4}
+        )
+
+        self.assertEqual({1, 2, 3, 4}, retained)
+        self.assertTrue(any("extended explicit sermon anchor" in reason for reason in reasons))
+        self.assertEqual(120.0, start_refinement["pre_anchor_extension_seconds"])
+        self.assertEqual("music", start_refinement["stopped_by"])
 
     def test_refinement_does_not_trim_single_music_interruption(self) -> None:
         drafts = [
@@ -186,9 +209,26 @@ class TranscriptBlockTests(unittest.TestCase):
             for index, item in enumerate(drafts)
         ]
 
-        retained, _ = _refine_retained_boundaries(drafts, blocks, {0, 1, 2})
+        retained, _, _ = _refine_retained_boundaries(drafts, blocks, {0, 1, 2})
 
         self.assertEqual({0, 1, 2}, retained)
+
+    def test_refinement_does_not_treat_leading_music_as_a_trailing_transition(self) -> None:
+        drafts = [
+            draft(0.0, 90.0, "[music] [singing]"),
+            draft(90.0, 180.0, "[music] [singing]"),
+            draft(180.0, 270.0, "Sustained biblical exposition"),
+            draft(270.0, 360.0, "The sermon continues"),
+        ]
+        blocks = [
+            TranscriptBlock(index, [index], item.start_seconds or 0.0, item.end_seconds or 0.0, item.text)
+            for index, item in enumerate(drafts)
+        ]
+
+        retained, reasons, _ = _refine_retained_boundaries(drafts, blocks, {0, 1, 2, 3})
+
+        self.assertEqual({0, 1, 2, 3}, retained)
+        self.assertFalse(any("trimmed candidate" in reason for reason in reasons))
 
     def test_raw_inference_cache_separates_namespaces_and_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

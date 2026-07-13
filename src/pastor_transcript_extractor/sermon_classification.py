@@ -416,18 +416,69 @@ def _noise_ratio(block: TranscriptBlock, drafts: list[SegmentDraft]) -> float:
     return noisy / len(block.segment_indexes)
 
 
+def _strong_pre_anchor_negative(block: TranscriptBlock, drafts: list[SegmentDraft]) -> str | None:
+    if _noise_ratio(block, drafts) >= 0.35:
+        return "music"
+    text = " ".join(drafts[index].text.lower() for index in block.segment_indexes)
+    negative_markers = {
+        "announcements": (
+            "announcement",
+            "register for",
+            "registration",
+            "next week",
+            "offering",
+            "camp meeting",
+            "vbs",
+            "pastor will be away",
+        ),
+        "children_story": ("children's story", "children's corner", "children come forward"),
+        "service_transition": ("our speaker today", "welcome to the pulpit", "special music", "please stand"),
+    }
+    for reason, markers in negative_markers.items():
+        if any(marker in text for marker in markers):
+            return reason
+    return None
+
+
 def _refine_retained_boundaries(
     drafts: list[SegmentDraft],
     fine_blocks: list[TranscriptBlock],
     retained: set[int],
     *,
     preserve_joined_start: bool = False,
-) -> tuple[set[int], list[str]]:
+    default_pre_roll_start: float | None = None,
+) -> tuple[set[int], list[str], dict[str, Any] | None]:
     refined = set(retained)
     reasons: list[str] = []
+    start_refinement: dict[str, Any] | None = None
     seed = _explicit_sermon_seed_seconds(drafts, refined)
+    if (seed is None or preserve_joined_start) and default_pre_roll_start is not None:
+        refined = {
+            index
+            for index in refined
+            if drafts[index].end_seconds is None or drafts[index].end_seconds > default_pre_roll_start
+        }
     if seed is not None and not preserve_joined_start:
-        pre_roll_start = max(0.0, seed - 180.0)
+        pre_roll_start = max(0.0, seed - 240.0)
+        recovered: set[int] = set()
+        stopped_by: str | None = None
+        for block in reversed([item for item in fine_blocks if item.start_seconds < seed]):
+            if block.end_seconds < pre_roll_start:
+                break
+            negative = _strong_pre_anchor_negative(block, drafts)
+            if negative is not None:
+                stopped_by = negative
+                break
+            retained_ratio = len(set(block.segment_indexes) & refined) / max(len(block.segment_indexes), 1)
+            if retained_ratio < 0.75:
+                stopped_by = "non_sermon_fine_label"
+                break
+            recovered.update(block.segment_indexes)
+        recovered_starts = [
+            drafts[index].start_seconds
+            for index in recovered
+            if drafts[index].start_seconds is not None and drafts[index].start_seconds < seed
+        ]
         for index in list(refined):
             draft = drafts[index]
             if draft.end_seconds is None or draft.end_seconds > seed:
@@ -443,17 +494,36 @@ def _refine_retained_boundaries(
                     or "welcome to the pulpit" in lower
                 )
             )
-            if not integral_pre_roll:
+            if index not in recovered and not integral_pre_roll:
                 refined.discard(index)
-        reasons.append("anchored candidate start to an explicit sermon-title or message cue")
+        if recovered_starts:
+            extension = seed - min(recovered_starts)
+            reasons.append("extended explicit sermon anchor backward through contiguous sermon-like exposition")
+            start_refinement = {
+                "start_anchor": "explicit_sermon_title",
+                "pre_anchor_extension_seconds": round(extension, 3),
+                "extension_reason": "contiguous_sermon_like_exposition",
+                "stopped_by": stopped_by or "inspection_limit",
+            }
+        else:
+            reasons.append("anchored candidate start to an explicit sermon-title or message cue")
+            start_refinement = {
+                "start_anchor": "explicit_sermon_title",
+                "pre_anchor_extension_seconds": 0.0,
+                "extension_reason": None,
+                "stopped_by": stopped_by or "no_sermon_like_pre_anchor_block",
+            }
 
     retained_blocks = [
         block for block in fine_blocks if any(index in refined for index in block.segment_indexes)
     ]
+    retained_start = min((block.start_seconds for block in retained_blocks), default=None)
     for position in range(len(retained_blocks) - 1):
         current = retained_blocks[position]
         following = retained_blocks[position + 1]
         if _noise_ratio(current, drafts) < 0.45 or _noise_ratio(following, drafts) < 0.45:
+            continue
+        if retained_start is not None and current.start_seconds < retained_start + 600.0:
             continue
         if seed is not None and current.start_seconds < seed + 600.0:
             continue
@@ -465,7 +535,7 @@ def _refine_retained_boundaries(
         }
         reasons.append("trimmed candidate after a sustained music or singing transition")
         break
-    return refined, reasons
+    return refined, reasons, start_refinement
 
 
 def _central_consistency_warnings(
@@ -642,7 +712,7 @@ def classify_sermon_content_adaptive(
         float(selected_candidate["start_seconds"]),
         float(selected_candidate["end_seconds"]),
     )
-    expanded_candidates = [(max(0.0, selected_range[0] - 120.0), selected_range[1] + 120.0)]
+    expanded_candidates = [(max(0.0, selected_range[0] - 360.0), selected_range[1] + 120.0)]
     fine_blocks = [
         block for block in build_transcript_blocks(drafts)
         if any(_overlaps(block, start, end) for start, end in expanded_candidates)
@@ -676,11 +746,12 @@ def classify_sermon_content_adaptive(
             uncertain_ids.append(block.block_id)
             retained.update(index for index in block.segment_indexes if index in rule_indexes)
 
-    retained, refinement_reasons = _refine_retained_boundaries(
+    retained, refinement_reasons, start_refinement = _refine_retained_boundaries(
         drafts,
         fine_blocks,
         retained,
         preserve_joined_start=selected_candidate.get("source") == "joined_coarse_llm",
+        default_pre_roll_start=max(0.0, selected_range[0] - 120.0),
     )
     retained_timed = [
         drafts[index]
@@ -700,6 +771,7 @@ def classify_sermon_content_adaptive(
         if any(index in retained for index in block.segment_indexes)
     ]
     selected_candidate["refinement_reasons"] = list(selected_candidate["refinement_reasons"]) + list(refinement_reasons)
+    selected_candidate["start_refinement"] = start_refinement
 
     all_timed = {index for block in build_transcript_blocks(drafts) for index in block.segment_indexes}
     agreement = len(retained & rule_indexes) / max(len(retained | rule_indexes), 1)
