@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -44,6 +45,14 @@ from pastor_transcript_extractor.ground_truth_review import (
     transcript_context,
     write_json,
     youtube_timestamp_url,
+)
+from pastor_transcript_extractor.interaction_diagnostics import (
+    DEFAULT_SENTINELS,
+    DiagnosticInferenceCache,
+    build_diagnostic_report,
+    create_diagnostic_run,
+    load_sentinel_blocks,
+    run_model_diagnostics,
 )
 from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
@@ -181,6 +190,58 @@ def evaluate(
         f"Evaluated {aggregate['evaluated_fixture_count']}/{aggregate['fixture_count']} fixture(s); "
         f"missing artifacts {aggregate['missing_artifact_count']}."
     )
+
+
+@app.command(
+    "diagnose-interaction",
+    help="Compare local models on deduplicated interaction evidence without changing production artifacts.",
+)
+def diagnose_interaction(
+    models: list[str] | None = typer.Option(
+        None, "--model", help="Ollama model to compare; repeat for multiple models."
+    ),
+    output_root: Path = typer.Option(
+        Path("evaluation/interaction-diagnostics"), help="Generated diagnostic result root."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    selected_models = models or [build_llm_config().model]
+    sentinels = [
+        (video_id, *load_sentinel_blocks(database, video_id))
+        for video_id in DEFAULT_SENTINELS
+    ]
+    root = output_root.expanduser().resolve()
+    cache = DiagnosticInferenceCache(root / "cache")
+    llm_config = build_llm_config()
+    model_results: list[dict[str, object]] = []
+    for model in selected_models:
+        client = OllamaClient(replace(llm_config, enabled=True, model=model))
+        try:
+            digest = client.model_digest()
+        except Exception as error:
+            raise typer.BadParameter(
+                f"Could not use Ollama model {model!r}; install it before comparison: {error}"
+            ) from error
+        console.print(f"Running offline interaction diagnostics with {model}")
+        model_results.append(run_model_diagnostics(
+            client,
+            model_digest=digest,
+            sentinels=sentinels,
+            cache=cache,
+            progress=lambda current_model, video_id, current, total: console.print(
+                f"  {current_model} {video_id} block {current}/{total}"
+            ),
+        ))
+    run = create_diagnostic_run(model_results)
+    output_dir = root / str(run["run_id"])
+    output_dir.mkdir(parents=True, exist_ok=False)
+    json_path = output_dir / "results.json"
+    report_path = output_dir / "report.md"
+    json_path.write_text(json.dumps(run, indent=2, sort_keys=True), encoding="utf-8")
+    report_path.write_text(build_diagnostic_report(run), encoding="utf-8")
+    console.print(f"Wrote interaction diagnostic JSON to {json_path}")
+    console.print(f"Wrote interaction diagnostic report to {report_path}")
 
 
 @app.command(help="Review and approve sermon ground truth without treating detector output as truth.")

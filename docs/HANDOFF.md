@@ -202,7 +202,7 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 135 tests.
+The expected count at this handoff is 139 tests.
 
 ## Remaining Defects
 
@@ -216,15 +216,46 @@ The Sabbath School fixture is now low confidence and baseline-protected, but the
 
 ## Recommended Next Increment
 
-1. Build an offline interaction-diagnostic harness that does not add calls to production reclassification.
-2. Normalize overlapping caption text for diagnostic input while preserving original segments for evaluation and extraction.
-3. Rerun only the three sentinels above and require:
+The offline harness is now implemented as `pte diagnose-interaction`. It:
+
+- reads the selected production candidate but never writes production artifacts
+- creates fixed 180-second excerpts
+- removes repeated and incrementally growing adjacent caption lines
+- applies one shared prompt and schema to every model
+- requires exact current-excerpt evidence for positive signals
+- records raw responses, validation failures, malformed output, and per-block evidence
+- caches successful inference by model digest, prompt, schema, and excerpt
+
+The first `gemma3:4b` run is under `evaluation/interaction-diagnostics/20260713T194751Z/`. It failed the sentinel test:
+
+| Fixture | Valid blocks | Result |
+|---|---:|---|
+| `WaNsL05AX3A` | 3/15 | all mixed/unclear; no grounded interaction signals |
+| `l6mZEQvArkE` | 1/12 | mixed/unclear; no grounded interaction signals |
+| `qny7TUqNkQU` | 4/17 | all mixed/unclear; no grounded interaction signals |
+
+There were three malformed inference responses. Most other blocks claimed facilitated discussion without the required audience-turn and speaker evidence. Deduplication alone therefore does not make Gemma 3 4B viable for this distinction.
+
+Next:
+
+1. Install `gemma3:12b` and run it through the same harness. The current Ollama Q4 build is about 8.1 GB and is the practical stronger model for this 16 GB M1 Pro; do not run model comparisons concurrently.
+2. Use the exact command:
+
+   ```bash
+   caffeinate -i .venv/bin/pte diagnose-interaction \
+     --model gemma3:4b \
+     --model gemma3:12b \
+     --base-dir /Users/briancummings/Documents/PastorSearchData
+   ```
+
+   The 4B successful responses will be cache hits, so only its prior malformed blocks may retry.
+3. Require the stronger model to:
    - clear interactive-teaching evidence for `WaNsL05AX3A`
    - predominantly monologue evidence for `l6mZEQvArkE`
    - mixed-speaker evidence for `qny7TUqNkQU` without treating it as an automatic non-sermon
-4. If `gemma3:4b` still fails, compare a stronger local model using the exact same diagnostic prompt, schema, normalized blocks, and sentinels.
-5. Persist interaction evidence or use it in confidence only after the sentinel gates pass.
-6. Then combine validated interaction evidence with the already-supported soft rule-overlap policy and rerun all 12 frozen fixtures.
+4. Persist interaction evidence or use it in confidence only after those gates pass.
+5. If 12B also fails, stop transcript-only interaction classification and move to speaker-turn structure or diarization.
+6. Only after a passing diagnostic should production confidence combine interaction evidence with the already-supported soft rule-overlap policy.
 
 Speaker diarization or voice recognition may ultimately be required for reliable multiple-speaker evidence. Do not infer speaker identity or turn-taking from duplicated caption text alone.
 

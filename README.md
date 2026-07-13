@@ -150,6 +150,23 @@ Run the repository tests with the standard-library runner:
 .venv/bin/python -m unittest discover -s tests -q
 ```
 
+## Offline Interaction Diagnostics
+
+Compare models on fixed, deduplicated excerpts from the Sabbath School, normal-sermon,
+and multi-speaker sermon sentinels without changing database records or production
+extraction artifacts:
+
+```bash
+pte diagnose-interaction \
+  --model gemma3:4b \
+  --model gemma3:12b \
+  --base-dir /path/to/app-data
+```
+
+Raw structured responses, exact evidence, validation failures, and a Markdown
+comparison report are written under `evaluation/interaction-diagnostics/`. Inference
+is cached by model digest, prompt, schema, and deduplicated excerpt.
+
 ## Optional Local LLM Filtering
 
 Extraction remains rule-based by default. To let `pte extract` use a locally
@@ -189,6 +206,7 @@ results are marked in the pastor review output.
 - `pte review-ground-truth <youtube-video-id>`
 - `pte validate-fixtures evaluation/fixtures`
 - `pte evaluate --base-dir <app-data>`
+- `pte diagnose-interaction --model <ollama-model>`
 - `pte video exclude <video-id>`
 - `pte video unexclude <youtube-video-id>`
 - `pte video excluded`
