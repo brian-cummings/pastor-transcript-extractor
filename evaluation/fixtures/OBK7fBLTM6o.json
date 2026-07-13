@@ -1,0 +1,17 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 4634.0,
+      "start_seconds": 1825.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "Proposed end was during music",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-13T12:33:25.824742+00:00",
+  "reviewed_by": "Brian Cummings",
+  "video_id": "OBK7fBLTM6o"
+}

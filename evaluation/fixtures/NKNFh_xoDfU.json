@@ -1,0 +1,12 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "multiple_short_devotionals",
+  "ground_truth_version": 1,
+  "notes": "Graduation or student-led program containing multiple short sermon-like talks by different students, but no single sustained worship-service sermon.",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-13T12:40:45.345814+00:00",
+  "reviewed_by": "Brian Cummings",
+  "video_id": "NKNFh_xoDfU"
+}
