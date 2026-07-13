@@ -3,7 +3,12 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from pastor_transcript_extractor.evaluation import aggregate_results, evaluate_fixture_payload
+from pastor_transcript_extractor.evaluation import (
+    aggregate_results,
+    build_failure_analysis,
+    build_failure_markdown,
+    evaluate_fixture_payload,
+)
 
 
 def segments() -> list[dict[str, object]]:
@@ -40,6 +45,34 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_failure_analysis_attributes_duplicate_block_ids_by_phase_order(self) -> None:
+        fixture = {
+            "video_id": "failure",
+            "expected_outcome": "sermon",
+            "expected_spans": [{"start_seconds": 10.0, "end_seconds": 30.0}],
+            "allowed_interruptions": [],
+        }
+        payload = proposed([2, 3])
+        classification = payload["classification"]
+        assert isinstance(classification, dict)
+        classification["blocks"] = [
+            {"block_id": 1, "start_seconds": 0.0, "end_seconds": 30.0, "segment_indexes": [0, 1, 2]},
+            {"block_id": 1, "start_seconds": 10.0, "end_seconds": 20.0, "segment_indexes": [1]},
+        ]
+        classification["classifications"] = [
+            {"block_id": 1, "label": "sermon", "evidence": "coarse:exposition"},
+            {"block_id": 1, "label": "music", "evidence": "fine:music_or_lyrics"},
+        ]
+
+        analysis = build_failure_analysis(fixture, payload)
+
+        self.assertEqual(1, len(analysis["missed_segment_ranges"]))
+        evidence = analysis["missed_range_classifications"]
+        self.assertEqual(["coarse", "fine"], [item["phase"] for item in evidence])
+        self.assertEqual(["sermon", "music"], [item["label"] for item in evidence])
+        self.assertEqual("not_persisted", analysis["candidate_score_components_status"])
+        self.assertIn("Failure Analysis: failure", build_failure_markdown(analysis))
+
     def test_rule_only_artifact_is_not_counted_as_production_path_evidence(self) -> None:
         fixture = {
             "video_id": "stale",

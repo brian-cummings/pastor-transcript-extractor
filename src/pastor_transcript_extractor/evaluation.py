@@ -79,6 +79,169 @@ def _candidate_ground_truth_rank(
     return max(scored, key=lambda item: (item[0], -item[1]))[1]
 
 
+def _segment_runs(indexes: set[int], segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    runs: list[list[int]] = []
+    for index in sorted(indexes):
+        if not runs or index != runs[-1][-1] + 1:
+            runs.append([index])
+        else:
+            runs[-1].append(index)
+    result: list[dict[str, Any]] = []
+    for run in runs:
+        first, last = segments[run[0]], segments[run[-1]]
+        texts = [str(segments[index].get("text", "")).strip() for index in run]
+        result.append({
+            "start_segment": run[0],
+            "end_segment": run[-1],
+            "segment_count": len(run),
+            "start_seconds": first.get("start_seconds"),
+            "end_seconds": last.get("end_seconds"),
+            "text_preview": " ".join(text for text in texts if text)[:240],
+        })
+    return result
+
+
+def _classification_ranges(
+    classification: dict[str, Any], target_indexes: set[int]
+) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    # Coarse and fine namespaces may reuse block IDs. The audit persists both
+    # lists in corresponding order, so positional pairing is unambiguous.
+    for block, item in zip(
+        classification.get("blocks", []), classification.get("classifications", []), strict=False
+    ):
+        if not isinstance(block, dict) or not isinstance(item, dict):
+            continue
+        if block.get("block_id") != item.get("block_id"):
+            continue
+        block_indexes = {index for index in block.get("segment_indexes", []) if isinstance(index, int)}
+        overlap = block_indexes & target_indexes
+        if not overlap:
+            continue
+        evidence = str(item.get("evidence", ""))
+        phase, _, reason = evidence.partition(":")
+        details.append({
+            "phase": phase or "unknown",
+            "block_id": item.get("block_id"),
+            "start_seconds": block.get("start_seconds"),
+            "end_seconds": block.get("end_seconds"),
+            "label": item.get("label"),
+            "reason_code": reason or None,
+            "overlapping_segment_count": len(overlap),
+        })
+    return details
+
+
+def build_failure_analysis(fixture: dict[str, Any], proposed: dict[str, Any]) -> dict[str, Any]:
+    """Explain a failed result using only frozen truth and persisted inference evidence."""
+    segments = [item if isinstance(item, dict) else {} for item in proposed.get("segments", [])]
+    classification = proposed.get("classification") if isinstance(proposed.get("classification"), dict) else {}
+    retained = {
+        index for index in classification.get("retained_segment_indexes", [])
+        if isinstance(index, int) and 0 <= index < len(segments)
+    }
+    timed = _timed_segment_indexes(segments)
+    expected_ranges = _ranges(fixture, "expected_spans")
+    expected = _segments_matching_ranges(segments, expected_ranges)
+    missed = expected - retained
+    contaminating = (retained - expected) & timed
+    search = classification.get("search") if isinstance(classification.get("search"), dict) else {}
+    candidates = search.get("candidates") if isinstance(search.get("candidates"), list) else []
+    selected_rank = search.get("selected_rank")
+    selected = next(
+        (candidate for candidate in candidates if isinstance(candidate, dict) and candidate.get("rank") == selected_rank),
+        None,
+    )
+    coarse = _classification_ranges(classification, timed)
+    coarse = [item for item in coarse if item["phase"] == "coarse"]
+    fine = _classification_ranges(classification, timed)
+    fine = [item for item in fine if item["phase"] == "fine"]
+    disagreements: list[dict[str, Any]] = []
+    for coarse_item in coarse:
+        for fine_item in fine:
+            if not all(isinstance(item.get(key), (int, float)) for item in (coarse_item, fine_item) for key in ("start_seconds", "end_seconds")):
+                continue
+            start = max(float(coarse_item["start_seconds"]), float(fine_item["start_seconds"]))
+            end = min(float(coarse_item["end_seconds"]), float(fine_item["end_seconds"]))
+            if end > start and coarse_item["label"] != fine_item["label"]:
+                disagreements.append({
+                    "start_seconds": start,
+                    "end_seconds": end,
+                    "coarse_label": coarse_item["label"],
+                    "fine_label": fine_item["label"],
+                })
+    return {
+        "schema_version": 1,
+        "video_id": fixture.get("video_id"),
+        "expected_outcome": fixture.get("expected_outcome"),
+        "expected_spans": fixture.get("expected_spans", []),
+        "allowed_interruptions": fixture.get("allowed_interruptions", []),
+        "detected_retained_ranges": _segment_runs(retained, segments),
+        "missed_segment_ranges": _segment_runs(missed, segments),
+        "contaminating_segment_ranges": _segment_runs(contaminating, segments),
+        "missed_range_classifications": _classification_ranges(classification, missed),
+        "contaminating_range_classifications": _classification_ranges(classification, contaminating),
+        "candidate": selected,
+        "candidate_score_components": selected.get("score_components") if isinstance(selected, dict) else None,
+        "candidate_score_components_status": (
+            "available" if isinstance(selected, dict) and isinstance(selected.get("score_components"), dict)
+            else "not_persisted"
+        ),
+        "confidence_tier": classification.get("confidence_tier"),
+        "confidence_reasons": classification.get("confidence_reasons"),
+        "confidence_reasons_status": (
+            "available" if isinstance(classification.get("confidence_reasons"), list) else "not_persisted"
+        ),
+        "warnings": classification.get("warnings", []),
+        "coarse_fine_disagreements": disagreements,
+        "coarse_label_ranges": coarse,
+        "fine_label_ranges": fine,
+    }
+
+
+def build_failure_markdown(analysis: dict[str, Any]) -> str:
+    lines = [
+        f"# Failure Analysis: {analysis['video_id']}",
+        "",
+        f"- Expected outcome: {analysis['expected_outcome']}",
+        f"- Confidence: {analysis.get('confidence_tier', '—')}",
+        f"- Candidate score components: {analysis['candidate_score_components_status']}",
+        f"- Confidence reasons: {analysis['confidence_reasons_status']}",
+        f"- Coarse/fine disagreements: {len(analysis['coarse_fine_disagreements'])}",
+        "",
+    ]
+    for title, key in (
+        ("Expected spans", "expected_spans"),
+        ("Detected retained ranges", "detected_retained_ranges"),
+        ("Missed sermon ranges", "missed_segment_ranges"),
+        ("Contaminating ranges", "contaminating_segment_ranges"),
+    ):
+        lines.extend([f"## {title}", ""])
+        values = analysis.get(key, [])
+        if not values:
+            lines.append("None.")
+        for item in values:
+            lines.append(
+                f"- {item.get('start_seconds')}s–{item.get('end_seconds')}s"
+                + (f" ({item.get('segment_count')} segments): {item.get('text_preview', '')}" if "segment_count" in item else "")
+            )
+        lines.append("")
+    lines.extend(["## Persisted label evidence", "", "| Phase | Block | Time | Label | Reason | Overlap |", "|---|---:|---:|---|---|---:|"])
+    evidence = analysis.get("missed_range_classifications", []) + analysis.get("contaminating_range_classifications", [])
+    for item in evidence:
+        lines.append(
+            f"| {item['phase']} | {item['block_id']} | {item['start_seconds']}–{item['end_seconds']} | "
+            f"{item['label']} | {item.get('reason_code') or '—'} | {item['overlapping_segment_count']} |"
+        )
+    lines.extend(["", "## Candidate and confidence evidence", "", "```json", json.dumps({
+        "candidate": analysis.get("candidate"),
+        "candidate_score_components": analysis.get("candidate_score_components"),
+        "confidence_reasons": analysis.get("confidence_reasons"),
+        "warnings": analysis.get("warnings"),
+    }, indent=2, sort_keys=True), "```", ""])
+    return "\n".join(lines)
+
+
 def evaluate_fixture_payload(
     fixture: dict[str, Any],
     proposed: dict[str, Any],

@@ -25,6 +25,8 @@ from pastor_transcript_extractor.config import (
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import extract_video, reclassify_video
 from pastor_transcript_extractor.evaluation import (
+    build_failure_analysis,
+    build_failure_markdown,
     build_markdown_report,
     create_evaluation_run,
     evaluate_fixture_payload,
@@ -106,6 +108,7 @@ def evaluate(
     fixture_root = fixture_dir.expanduser().resolve()
     fixtures = validate_fixture_directory(fixture_root)
     results: list[dict[str, object]] = []
+    failure_inputs: dict[str, tuple[dict[str, object], dict[str, object]]] = {}
     for validated in fixtures:
         fixture_path = validated.path
         fixture_payload = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -142,14 +145,15 @@ def evaluate(
                 }
             )
             continue
-        results.append(
-            evaluate_fixture_payload(
-                fixture_payload,
-                proposed_payload,
-                fixture_path=fixture_path,
-                proposed_path=proposed_path,
-            )
+        result = evaluate_fixture_payload(
+            fixture_payload,
+            proposed_payload,
+            fixture_path=fixture_path,
+            proposed_path=proposed_path,
         )
+        results.append(result)
+        if result.get("catastrophic_omission") or result.get("false_high_confidence_acceptance"):
+            failure_inputs[validated.video_id] = (fixture_payload, proposed_payload)
     run = create_evaluation_run(results)
     output_dir = results_dir.expanduser().resolve() / str(run["run_id"])
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -157,9 +161,22 @@ def evaluate(
     markdown_path = output_dir / "report.md"
     json_path.write_text(json.dumps(run, indent=2, sort_keys=True), encoding="utf-8")
     markdown_path.write_text(build_markdown_report(run), encoding="utf-8")
+    if failure_inputs:
+        failure_dir = output_dir / "failures"
+        failure_dir.mkdir()
+        for video_id, (fixture_payload, proposed_payload) in failure_inputs.items():
+            analysis = build_failure_analysis(fixture_payload, proposed_payload)
+            (failure_dir / f"{video_id}.json").write_text(
+                json.dumps(analysis, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            (failure_dir / f"{video_id}.md").write_text(
+                build_failure_markdown(analysis), encoding="utf-8"
+            )
     aggregate = run["aggregate"]
     console.print(f"Wrote evaluation JSON to {json_path}")
     console.print(f"Wrote evaluation report to {markdown_path}")
+    if failure_inputs:
+        console.print(f"Wrote {len(failure_inputs)} failure analysis report(s) to {output_dir / 'failures'}")
     console.print(
         f"Evaluated {aggregate['evaluated_fixture_count']}/{aggregate['fixture_count']} fixture(s); "
         f"missing artifacts {aggregate['missing_artifact_count']}."
