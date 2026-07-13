@@ -18,7 +18,8 @@ Implemented:
 - conservative candidate joining can recover interrupted sermons
 - explicit sermon-title cues can recover up to four minutes of contiguous sermon-like setup before the cue
 - pre-title recovery persists its anchor, duration, reason, and stopping evidence
-- 130 tests pass
+- the evaluator replays current, no-overlap, and soft-overlap confidence policies without changing production artifacts
+- 135 tests pass
 
 ## Local Evaluation Environment
 
@@ -137,7 +138,7 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 The latest validated 12-fixture report is:
 
-- `evaluation/results/20260713T132331Z/report.md`
+- `evaluation/results/20260713T174250Z/report.md`
 
 Results:
 
@@ -152,6 +153,24 @@ The pre-title recovery increment raised `fcZNzRYQOtA` recall from `0.891` to `1.
 
 When evaluating a behavior change, compare every positive fixture to the preceding accepted result. In addition to the main recall and negative-confidence gates, reject a positive fixture's contamination increase above `+0.02` absolute unless sermon recall materially improves.
 
+### Confidence ablation result
+
+The evaluator replays three policies from persisted evidence:
+
+- `current`: production confidence, where rule overlap below `0.5` forces low
+- `no_rule_overlap`: confidence from retained content, uncertainty, and central consistency only
+- `soft_rule_overlap`: the same evidence, with low overlap downgrading an otherwise-high result by one tier but never forcing low
+
+The frozen fixtures produced:
+
+| Policy | Positive H/M/L | Negative H/M/L | High-confidence negative false positives |
+|---|---:|---:|---:|
+| current | 0/1/5 | 0/0/6 | 0 |
+| no rule overlap | 6/0/0 | 1/0/5 | 1 (`WaNsL05AX3A`) |
+| soft rule overlap | 1/5/0 | 0/1/5 | 0 |
+
+This supports retaining rule overlap as a soft diagnostic penalty. Removing it entirely makes the Sabbath School negative falsely high; the soft policy moves all positive fixtures out of low confidence without making any negative high. This is evaluation evidence only: production confidence behavior has not yet changed.
+
 ## Test Workflow
 
 This project uses the standard-library `unittest` runner; `pytest` is not installed in the existing virtual environment:
@@ -161,7 +180,7 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 130 tests.
+The expected count at this handoff is 135 tests.
 
 ## Remaining Defects
 
@@ -183,13 +202,15 @@ The Sabbath School fixture is now low confidence and baseline-protected, but the
 2. Persist these signals without initially changing retention or confidence.
 3. Rerun the 12 frozen fixtures to establish an evidence-only baseline.
 4. Add a confidence cap when strong interactive-teaching evidence is present.
-5. Rerun the same fixtures unchanged.
-6. Determine whether the same evidence can safely exclude the long `qny7TUqNkQU` interruption or whether interruption-aware retention needs a separate increment.
+5. Introduce a production confidence policy that uses the validated soft-overlap treatment plus the new interactive evidence.
+6. Rerun the same fixtures unchanged and require zero high-confidence negative false positives.
+7. Determine whether the same evidence can safely exclude the long `qny7TUqNkQU` interruption or whether interruption-aware retention needs a separate increment.
 
 Do not compare a stronger model until the evidence schema and confidence behavior are stable. Model comparisons must keep fixtures, prompt, schema, block construction, ranking logic, and thresholds fixed so only the model changes.
 
 ## Recent Milestones
 
+- confidence ablation evaluator: current vs no-overlap vs soft-overlap
 - `a2ea8f0 Recover sermon setup before explicit anchors`
 - `4aa8fd7 Recompute stable rule baselines on reclassification`
 - `0835616 Expand sermon evaluation fixtures`

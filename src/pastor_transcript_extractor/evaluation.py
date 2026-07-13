@@ -8,6 +8,130 @@ from typing import Any
 
 
 CATASTROPHIC_RECALL_THRESHOLD = 0.90
+CONFIDENCE_POLICIES = ("current", "no_rule_overlap", "soft_rule_overlap")
+
+
+def build_confidence_ablations(classification: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Replay persisted confidence evidence without changing production output."""
+    current = str(classification.get("confidence_tier", "unknown"))
+    reasons = classification.get("confidence_reasons")
+    reasons = reasons if isinstance(reasons, list) else []
+    retained = classification.get("retained_segment_indexes")
+    retained_count = len(retained) if isinstance(retained, list) else 0
+    if retained_count == 0:
+        return {
+            "current": {"tier": current, "status": "persisted", "base_reason": "empty_retention"},
+            "no_rule_overlap": {
+                "tier": "low",
+                "status": "replayed",
+                "base_reason": "empty_retention",
+                "rule_overlap_effect": "not_applicable",
+            },
+            "soft_rule_overlap": {
+                "tier": "low",
+                "status": "replayed",
+                "base_reason": "empty_retention",
+                "rule_overlap_effect": "not_applicable",
+            },
+        }
+    agreement_reason = next(
+        (item for item in reasons if isinstance(item, dict) and item.get("code") == "rule_llm_agreement"),
+        None,
+    )
+    agreement = agreement_reason.get("value") if isinstance(agreement_reason, dict) else None
+    if not isinstance(agreement, (int, float)):
+        return {
+            "current": {"tier": current, "status": "persisted"},
+            "no_rule_overlap": {"tier": None, "status": "missing_rule_overlap_evidence"},
+            "soft_rule_overlap": {"tier": None, "status": "missing_rule_overlap_evidence"},
+        }
+
+    uncertain = classification.get("uncertain_block_ids")
+    uncertain_count = len(uncertain) if isinstance(uncertain, list) else 0
+    consistency_reason = next(
+        (item for item in reasons if isinstance(item, dict) and item.get("code") == "central_consistency"),
+        None,
+    )
+    consistency_warnings = (
+        consistency_reason.get("warnings") if isinstance(consistency_reason, dict) else []
+    )
+    consistency_failed = bool(consistency_warnings)
+
+    if consistency_failed:
+        evidence_tier = "low"
+        base_reason = "central_consistency"
+    elif uncertain_count:
+        evidence_tier = "medium"
+        base_reason = "uncertain_blocks"
+    else:
+        evidence_tier = "high"
+        base_reason = "clean_candidate_evidence"
+
+    soft_tier = evidence_tier
+    soft_effect = "neutral"
+    if float(agreement) < 0.5 and soft_tier == "high":
+        soft_tier = "medium"
+        soft_effect = "downgrade_one_tier"
+    elif float(agreement) >= 0.8:
+        soft_effect = "small_positive"
+
+    common = {
+        "rule_llm_agreement": round(float(agreement), 6),
+        "base_reason": base_reason,
+    }
+    return {
+        "current": {
+            "tier": current,
+            "status": "persisted",
+            "rule_overlap_effect": agreement_reason.get("effect"),
+            **common,
+        },
+        "no_rule_overlap": {
+            "tier": evidence_tier,
+            "status": "replayed",
+            "rule_overlap_effect": "removed",
+            **common,
+        },
+        "soft_rule_overlap": {
+            "tier": soft_tier,
+            "status": "replayed",
+            "rule_overlap_effect": soft_effect,
+            **common,
+        },
+    }
+
+
+def aggregate_confidence_ablations(results: list[dict[str, Any]]) -> dict[str, Any]:
+    evaluated = [result for result in results if result.get("status") == "evaluated"]
+
+    def counts(items: list[dict[str, Any]], policy: str) -> dict[str, int]:
+        values = [
+            result.get("confidence_ablations", {}).get(policy, {}).get("tier")
+            for result in items
+        ]
+        result = {tier: values.count(tier) for tier in ("high", "medium", "low") if values.count(tier)}
+        unavailable = values.count(None)
+        if unavailable:
+            result["unavailable"] = unavailable
+        return result
+
+    positives = [result for result in evaluated if result.get("expected_outcome") == "sermon"]
+    negatives = [result for result in evaluated if result.get("expected_outcome") == "no_sermon"]
+    aggregate: dict[str, Any] = {}
+    for policy in CONFIDENCE_POLICIES:
+        negative_high = [
+            result for result in negatives
+            if result.get("candidate_produced")
+            and result.get("confidence_ablations", {}).get(policy, {}).get("tier") == "high"
+        ]
+        aggregate[policy] = {
+            "all_tiers": counts(evaluated, policy),
+            "positive_tiers": counts(positives, policy),
+            "negative_tiers": counts(negatives, policy),
+            "negative_high_confidence_false_positives": len(negative_high),
+            "negative_high_confidence_video_ids": [result.get("video_id") for result in negative_high],
+        }
+    return aggregate
 
 
 def _canonical_hash(value: object) -> str:
@@ -312,6 +436,7 @@ def evaluate_fixture_payload(
         "candidate_search_artifact": str(proposed_path),
         "selected_candidate_rank": selected_rank,
         "confidence_tier": confidence,
+        "confidence_ablations": build_confidence_ablations(classification),
         "cache_hits": int(cache_stats.get("hits", 0)),
         "cache_misses": int(cache_stats.get("misses", 0)),
     }
@@ -373,7 +498,7 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     recalls = [float(result["sermon_recall"]) for result in positives]
     contamination = [float(result["contamination_ratio"]) for result in positives]
     top_candidates = [bool(result.get("correct_top_candidate")) for result in positives]
-    return {
+    aggregate = {
         "fixture_count": len(results),
         "evaluated_fixture_count": len(evaluated),
         "missing_artifact_count": len(results) - len(evaluated),
@@ -387,6 +512,8 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "negative_high_confidence_false_positives": sum(bool(result.get("false_high_confidence_acceptance")) for result in negatives),
         "correct_top_candidate_rate": sum(top_candidates) / len(top_candidates) if top_candidates else None,
     }
+    aggregate["confidence_ablations"] = aggregate_confidence_ablations(results)
+    return aggregate
 
 
 def build_markdown_report(run: dict[str, Any]) -> str:
@@ -408,11 +535,45 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         f"- Catastrophic omissions: {aggregate['catastrophic_omissions']}",
         f"- Negative high-confidence false positives: {aggregate['negative_high_confidence_false_positives']}",
         "",
+        "## Confidence ablations",
+        "",
+        "These policies replay persisted evidence and do not change production classification artifacts.",
+        "",
+        "| Policy | All tiers H/M/L | Positive tiers H/M/L | Negative tiers H/M/L | Negative high-confidence false positives |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for policy in CONFIDENCE_POLICIES:
+        ablation = aggregate["confidence_ablations"][policy]
+        def tiers(key: str) -> str:
+            values = ablation[key]
+            return f"{values.get('high', 0)}/{values.get('medium', 0)}/{values.get('low', 0)}"
+        lines.append(
+            f"| {policy} | {tiers('all_tiers')} | {tiers('positive_tiers')} | "
+            f"{tiers('negative_tiers')} | {ablation['negative_high_confidence_false_positives']} |"
+        )
+    lines.extend([
+        "",
+        "### Per-fixture tier transitions",
+        "",
+        "| Video | Expected | Current | No rule overlap | Soft rule overlap |",
+        "|---|---|---:|---:|---:|",
+    ])
+    for result in run["results"]:
+        ablations = result.get("confidence_ablations", {})
+        def ablated_tier(policy: str) -> str:
+            return ablations.get(policy, {}).get("tier") or "—"
+        lines.append(
+            f"| {result.get('video_id')} | {result.get('expected_outcome', '—')} | "
+            f"{ablated_tier('current')} | {ablated_tier('no_rule_overlap')} | "
+            f"{ablated_tier('soft_rule_overlap')} |"
+        )
+    lines.extend([
+        "",
         "## Positive fixtures",
         "",
         "| Video | Confidence | Recall | Contam. | Start error | End error | Selected / best rank | Rule overlap | Cache H/M | Status |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
-    ]
+    ])
     positives = [result for result in run["results"] if result.get("expected_outcome") == "sermon"]
     negatives = [result for result in run["results"] if result.get("expected_outcome") == "no_sermon"]
     unknown = [result for result in run["results"] if result.get("expected_outcome") not in {"sermon", "no_sermon"}]

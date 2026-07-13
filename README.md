@@ -136,7 +136,9 @@ pte evaluate --base-dir /path/to/app-data
 Evaluation creates `results.json`, a human-readable `report.md`, and relevant
 failure-analysis files under `evaluation/results/<timestamp>/`. Metrics are
 computed against original transcript segments rather than timestamp overlap
-alone. Never promote generated drafts or detector boundaries to ground truth;
+alone. The report also replays persisted confidence evidence under the current,
+no-rule-overlap, and soft-rule-overlap policies without changing production
+artifacts. Never promote generated drafts or detector boundaries to ground truth;
 only manually approved files under `evaluation/fixtures/` are authoritative.
 
 For the current local data path, frozen fixture list, accepted benchmark, and

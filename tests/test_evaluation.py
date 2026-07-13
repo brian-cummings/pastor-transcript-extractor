@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 
 from pastor_transcript_extractor.evaluation import (
+    aggregate_confidence_ablations,
     aggregate_results,
+    build_markdown_report,
+    build_confidence_ablations,
     build_failure_analysis,
     build_failure_markdown,
     evaluate_fixture_payload,
@@ -28,6 +32,19 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
             "prompt_version": "v2",
             "confidence_tier": confidence,
             "retained_segment_indexes": retained,
+            "uncertain_block_ids": [],
+            "confidence_reasons": [
+                {
+                    "code": "rule_llm_agreement",
+                    "value": 0.0,
+                    "effect": "forces_low",
+                },
+                {
+                    "code": "central_consistency",
+                    "warnings": [],
+                    "effect": "passed",
+                },
+            ],
             "cache_stats": {"hits": 3, "misses": 0},
             "search": {
                 "schema_version": 1,
@@ -45,6 +62,44 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_confidence_ablations_remove_veto_without_making_low_overlap_high(self) -> None:
+        classification = proposed([1])["classification"]
+        assert isinstance(classification, dict)
+
+        ablations = build_confidence_ablations(classification)
+
+        self.assertEqual("low", ablations["current"]["tier"])
+        self.assertEqual("high", ablations["no_rule_overlap"]["tier"])
+        self.assertEqual("medium", ablations["soft_rule_overlap"]["tier"])
+        self.assertEqual("downgrade_one_tier", ablations["soft_rule_overlap"]["rule_overlap_effect"])
+
+    def test_confidence_ablations_preserve_non_rule_safety_caps(self) -> None:
+        classification = proposed([1])["classification"]
+        assert isinstance(classification, dict)
+        classification["uncertain_block_ids"] = [3]
+        uncertain = build_confidence_ablations(classification)
+        self.assertEqual("medium", uncertain["no_rule_overlap"]["tier"])
+        self.assertEqual("medium", uncertain["soft_rule_overlap"]["tier"])
+
+        reasons = classification["confidence_reasons"]
+        assert isinstance(reasons, list)
+        consistency = next(item for item in reasons if item["code"] == "central_consistency")
+        consistency["warnings"] = ["center lacks sustained exposition"]
+        failed = build_confidence_ablations(classification)
+        self.assertEqual("low", failed["no_rule_overlap"]["tier"])
+        self.assertEqual("low", failed["soft_rule_overlap"]["tier"])
+
+    def test_confidence_ablations_keep_empty_candidate_low_without_overlap_evidence(self) -> None:
+        classification = proposed([])["classification"]
+        assert isinstance(classification, dict)
+        classification["confidence_reasons"] = []
+
+        ablations = build_confidence_ablations(classification)
+
+        self.assertEqual("low", ablations["no_rule_overlap"]["tier"])
+        self.assertEqual("low", ablations["soft_rule_overlap"]["tier"])
+        self.assertEqual("not_applicable", ablations["soft_rule_overlap"]["rule_overlap_effect"])
+
     def test_failure_analysis_attributes_duplicate_block_ids_by_phase_order(self) -> None:
         fixture = {
             "video_id": "failure",
@@ -172,6 +227,57 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(1, aggregate["catastrophic_omissions"])
         self.assertEqual(1, aggregate["negative_candidates_produced"])
         self.assertEqual(0, aggregate["negative_high_confidence_false_positives"])
+
+    def test_ablation_aggregate_reports_negative_promotions_per_policy(self) -> None:
+        result = {
+            "video_id": "negative",
+            "status": "evaluated",
+            "expected_outcome": "no_sermon",
+            "candidate_produced": True,
+            "confidence_ablations": {
+                "current": {"tier": "low"},
+                "no_rule_overlap": {"tier": "high"},
+                "soft_rule_overlap": {"tier": "medium"},
+            },
+        }
+
+        aggregate = aggregate_confidence_ablations([result])
+
+        self.assertEqual(0, aggregate["current"]["negative_high_confidence_false_positives"])
+        self.assertEqual(1, aggregate["no_rule_overlap"]["negative_high_confidence_false_positives"])
+        self.assertEqual(["negative"], aggregate["no_rule_overlap"]["negative_high_confidence_video_ids"])
+        self.assertEqual(0, aggregate["soft_rule_overlap"]["negative_high_confidence_false_positives"])
+        json.dumps(aggregate, sort_keys=True)
+
+    def test_markdown_report_includes_per_fixture_ablation_transitions(self) -> None:
+        result = {
+            "video_id": "fixture",
+            "status": "evaluated",
+            "expected_outcome": "no_sermon",
+            "candidate_produced": True,
+            "false_high_confidence_acceptance": False,
+            "confidence_tier": "low",
+            "retained_segment_count": 1,
+            "false_positive_ratio": 0.1,
+            "baseline_protection_prevented_replacement": True,
+            "confidence_ablations": {
+                "current": {"tier": "low"},
+                "no_rule_overlap": {"tier": "high"},
+                "soft_rule_overlap": {"tier": "medium"},
+            },
+        }
+        run = {
+            "run_id": "run",
+            "results": [result],
+            "aggregate": {
+                **aggregate_results([result]),
+                "confidence_ablations": aggregate_confidence_ablations([result]),
+            },
+        }
+
+        report = build_markdown_report(run)
+
+        self.assertIn("| fixture | no_sermon | low | high | medium |", report)
 
 
 if __name__ == "__main__":
