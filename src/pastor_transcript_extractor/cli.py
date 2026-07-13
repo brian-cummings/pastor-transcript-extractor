@@ -232,7 +232,7 @@ def review_ground_truth(
     console.print(f"Wrote unreviewed detector-assisted draft to {draft_path}")
     console.print(f"Video: {video.title}")
     if open_video:
-        open_video_url(youtube_timestamp_url(video.url, 0.0))
+        open_video_url(youtube_timestamp_url(video.url, suggested_start))
 
     def review_boundary(label: str, initial: float) -> float:
         current = initial

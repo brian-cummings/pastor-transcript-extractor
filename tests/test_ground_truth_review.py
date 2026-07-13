@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from pastor_transcript_extractor.cli import review_ground_truth
 from pastor_transcript_extractor.fixture_validation import validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
     approved_negative_fixture_payload,
@@ -19,6 +23,56 @@ from pastor_transcript_extractor.ground_truth_review import (
 
 
 class GroundTruthReviewTests(unittest.TestCase):
+    def test_review_opens_at_candidate_start_or_zero_when_no_candidate_exists(self) -> None:
+        cases = [
+            (
+                {
+                    "classification": {
+                        "method": "adaptive_llm_v3",
+                        "retained_segment_indexes": [1],
+                    },
+                    "segments": [
+                        {"start_seconds": 0.0, "end_seconds": 10.0, "text": "noise"},
+                        {"start_seconds": 100.0, "end_seconds": 200.0, "text": "sermon"},
+                    ],
+                },
+                "https://www.youtube.com/watch?v=abc123&t=100s",
+            ),
+            (
+                {"segments": [{"start_seconds": 0.0, "end_seconds": 69.0, "text": "test"}]},
+                "https://www.youtube.com/watch?v=abc123&t=0s",
+            ),
+        ]
+        for payload, expected_url in cases:
+            with self.subTest(expected_url=expected_url), tempfile.TemporaryDirectory() as tmp:
+                proposed_path = Path(tmp) / "proposed.json"
+                proposed_path.write_text(json.dumps(payload), encoding="utf-8")
+                database = SimpleNamespace(
+                    get_video_by_youtube_id=lambda _: SimpleNamespace(
+                        id=1,
+                        url="https://www.youtube.com/watch?v=abc123&t=99s",
+                        title="Fixture",
+                        duration_seconds=200,
+                    ),
+                    get_latest_extraction_result_for_video=lambda _: SimpleNamespace(
+                        proposed_json_path=str(proposed_path)
+                    ),
+                )
+                with (
+                    patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                    patch("pastor_transcript_extractor.cli.open_video_url") as open_url,
+                    patch("pastor_transcript_extractor.cli.typer.confirm", side_effect=RuntimeError("stop")),
+                    self.assertRaisesRegex(RuntimeError, "stop"),
+                ):
+                    review_ground_truth(
+                        "abc123",
+                        reviewer="reviewer",
+                        evaluation_dir=Path(tmp) / "evaluation",
+                        open_video=True,
+                        base_dir=None,
+                    )
+                open_url.assert_called_once_with(expected_url)
+
     def test_parses_absolute_and_relative_timestamps(self) -> None:
         self.assertEqual(5926.0, parse_timestamp("1:38:46"))
         self.assertEqual(105.0, parse_timestamp("+5", current=100.0))
