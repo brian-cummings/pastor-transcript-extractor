@@ -148,14 +148,19 @@ def review_ground_truth(
                 return candidate
             current = candidate
 
-    if open_video:
-        import webbrowser
-
-        webbrowser.open(f"{video.url}&t={max(0, int(suggested_start))}s")
     contains_sermon = typer.confirm(
         "Does this video contain a worship-service sermon?",
         default=True,
     )
+    if open_video:
+        import webbrowser
+
+        target_url = (
+            f"{video.url}&t={max(0, int(suggested_start))}s"
+            if contains_sermon
+            else video.url
+        )
+        webbrowser.open(target_url)
     if not contains_sermon:
         if not typer.confirm(
             "Have you reviewed the entire video and confirmed there is no worship-service sermon?",
