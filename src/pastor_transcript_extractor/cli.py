@@ -1352,6 +1352,10 @@ def extract(
                 classifier=classifier,
                 llm_client=llm_client,
                 prompt_version=llm_config.prompt_version,
+                context_size=llm_config.context_size,
+                progress=lambda stage, current, total: console.print(
+                    f"  {stage} block {current}/{total}"
+                ),
             )
         except Exception as error:
             database.update_video_status(video.id, VideoStatus.FAILED, str(error))

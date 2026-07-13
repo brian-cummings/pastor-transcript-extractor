@@ -265,6 +265,28 @@ class HybridClassificationTests(unittest.TestCase):
                 prompt_version="test-v1",
             )
 
+    def test_shared_classification_service_uses_adaptive_search(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 600.0, "Welcome and announcements", None, TranscriptSegmentLabel.ANNOUNCEMENTS, 0.7),
+            draft(600.0, 1200.0, "Our sermon title today is Grace"),
+            draft(1200.0, 1800.0, "Sustained biblical exposition"),
+        ]
+        rule_window = SermonWindowResult(
+            600.0, 1800.0, 0.8, [], "rule_based_v1", [1, 2], [0], False, []
+        )
+
+        classification, result = _classify_with_fallback(
+            drafts,
+            rule_window,
+            classifier="llm",
+            llm_client=FakeAdaptiveLlmClient(),
+            prompt_version="test-v2",
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual("adaptive_llm_v3", classification["method"])
+        self.assertEqual(1, classification["search"]["selected_rank"])
+
     def test_classification_cache_key_includes_model_and_prompt(self) -> None:
         classification = {
             "method": "adaptive_llm_v3",
@@ -325,6 +347,10 @@ class HybridClassificationTests(unittest.TestCase):
             updated = json.loads(proposed_path.read_text(encoding="utf-8"))
             self.assertEqual([1, 2], updated["classification"]["retained_segment_indexes"])
             self.assertEqual("hybrid_llm", updated["sermon_window"]["source"])
+            self.assertEqual("adaptive_llm_v3", updated["classification"]["method"])
+            self.assertEqual(1, updated["classification"]["search"]["selected_rank"])
+            self.assertEqual(1, updated["classification"]["search"]["candidates"][0]["rank"])
+            self.assertTrue(updated["classification"]["search"]["candidates"][0]["coarse_support_block_ids"])
             database.delete_transcript_segments_for_video.assert_not_called()
 
 

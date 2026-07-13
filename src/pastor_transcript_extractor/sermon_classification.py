@@ -71,6 +71,7 @@ class HybridSermonResult:
     blocks: list[TranscriptBlock]
     classifications: list[BlockClassification]
     cache_stats: dict[str, int] | None = None
+    search: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +89,12 @@ class HybridSermonResult:
                 {**asdict(item), "label": item.label.value} for item in self.classifications
             ],
             "cache_stats": self.cache_stats or {"hits": 0, "misses": 0},
+            "search": self.search or {
+                "schema_version": 1,
+                "algorithm_version": self.method,
+                "candidates": [],
+                "selected_rank": None,
+            },
         }
 
 
@@ -472,19 +479,60 @@ def classify_sermon_content_adaptive(
         coarse_audit.append(BlockClassification(block.block_id, mapped_label, f"coarse:{reason}", response.raw_content))
 
     coarse_candidates = _coarse_candidate_ranges(coarse_blocks, phases)
-    candidates: list[tuple[float, float]] = []
-    if coarse_candidates:
-        candidates.append(max(coarse_candidates, key=lambda item: _candidate_strength(item, coarse_blocks)))
+    ranked_candidates: list[dict[str, Any]] = []
+    for start, end in coarse_candidates:
+        supporting_blocks = [
+            block.block_id for block in coarse_blocks if _overlaps(block, start, end)
+        ]
+        ranked_candidates.append(
+            {
+                "source": "coarse_llm",
+                "start_seconds": start,
+                "end_seconds": end,
+                "score": round(_candidate_strength((start, end), coarse_blocks), 3),
+                "coarse_support_block_ids": supporting_blocks,
+                "fine_support_block_ids": [],
+                "refinement_reasons": [],
+            }
+        )
+    ranked_candidates.sort(key=lambda candidate: (-float(candidate["score"]), float(candidate["start_seconds"])))
+    for rank, candidate in enumerate(ranked_candidates, start=1):
+        candidate["rank"] = rank
+    if ranked_candidates:
+        selected_candidate = ranked_candidates[0]
     elif rule_window.start_seconds is not None and rule_window.end_seconds is not None:
-        candidates.append((rule_window.start_seconds, rule_window.end_seconds))
-    if not candidates:
+        selected_candidate = {
+            "rank": 1,
+            "source": "rule_fallback",
+            "start_seconds": rule_window.start_seconds,
+            "end_seconds": rule_window.end_seconds,
+            "score": 0.0,
+            "coarse_support_block_ids": [],
+            "fine_support_block_ids": [],
+            "refinement_reasons": ["no coarse LLM candidate; refined the rule-based fallback"],
+        }
+        ranked_candidates = [selected_candidate]
+    else:
+        search = {
+            "schema_version": 1,
+            "algorithm_version": "adaptive_llm_v3",
+            "candidates": [],
+            "selected_rank": None,
+            "rule_baseline": None,
+        }
         return HybridSermonResult(
             "adaptive_llm_v3", client.model, prompt_version, "low", [],
             [index for block in coarse_blocks for index in block.segment_indexes], [],
             ["no plausible sermon region found during coarse scan"], coarse_blocks, coarse_audit,
+            {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
+            search,
         )
 
-    expanded_candidates = [(max(0.0, start - 120.0), end + 120.0) for start, end in candidates]
+    selected_range = (
+        float(selected_candidate["start_seconds"]),
+        float(selected_candidate["end_seconds"]),
+    )
+    expanded_candidates = [(max(0.0, selected_range[0] - 120.0), selected_range[1] + 120.0)]
     fine_blocks = [
         block for block in build_transcript_blocks(drafts)
         if any(_overlaps(block, start, end) for start, end in expanded_candidates)
@@ -521,6 +569,24 @@ def classify_sermon_content_adaptive(
     retained, refinement_reasons = _refine_retained_boundaries(
         drafts, fine_blocks, retained
     )
+    retained_timed = [
+        drafts[index]
+        for index in retained
+        if drafts[index].start_seconds is not None and drafts[index].end_seconds is not None
+    ]
+    if retained_timed:
+        selected_candidate["start_seconds"] = min(
+            draft.start_seconds for draft in retained_timed if draft.start_seconds is not None
+        )
+        selected_candidate["end_seconds"] = max(
+            draft.end_seconds for draft in retained_timed if draft.end_seconds is not None
+        )
+    selected_candidate["fine_support_block_ids"] = [
+        block.block_id
+        for block in fine_blocks
+        if any(index in retained for index in block.segment_indexes)
+    ]
+    selected_candidate["refinement_reasons"] = list(refinement_reasons)
 
     all_timed = {index for block in build_transcript_blocks(drafts) for index in block.segment_indexes}
     agreement = len(retained & rule_indexes) / max(len(retained | rule_indexes), 1)
@@ -537,11 +603,23 @@ def classify_sermon_content_adaptive(
     confidence = "high" if agreement >= 0.8 and not uncertain_ids else "medium"
     if agreement < 0.5 or not retained or consistency_warnings:
         confidence = "low"
+    search = {
+        "schema_version": 1,
+        "algorithm_version": "adaptive_llm_v3",
+        "candidates": ranked_candidates,
+        "selected_rank": int(selected_candidate["rank"]),
+        "rule_baseline": {
+            "start_seconds": rule_window.start_seconds,
+            "end_seconds": rule_window.end_seconds,
+            "confidence": rule_window.confidence,
+        },
+    }
     return HybridSermonResult(
         "adaptive_llm_v3", client.model, prompt_version, confidence,
         sorted(retained), sorted(all_timed - retained), uncertain_ids, warnings,
         coarse_blocks + fine_blocks, coarse_audit + fine_audit,
         {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
+        search,
     )
 
 

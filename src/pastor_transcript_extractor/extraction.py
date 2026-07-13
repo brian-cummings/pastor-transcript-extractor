@@ -12,7 +12,6 @@ from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, Serm
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.sermon_classification import (
     HybridSermonResult,
-    classify_sermon_content,
     classify_sermon_content_adaptive,
 )
 from pastor_transcript_extractor.storage import Database
@@ -45,6 +44,9 @@ def _classify_with_fallback(
     classifier: str,
     llm_client: LocalLlmClient | None,
     prompt_version: str,
+    cache_dir: Path | None = None,
+    context_size: int = 4096,
+    progress: Any | None = None,
 ) -> tuple[dict[str, Any], HybridSermonResult | None]:
     classification: dict[str, Any] = {
         "schema_version": 1,
@@ -58,6 +60,17 @@ def _classify_with_fallback(
         "warnings": list(detected_window.suspicious_boundary_reasons),
         "blocks": [],
         "classifications": [],
+        "search": {
+            "schema_version": 1,
+            "algorithm_version": "rule_based_v1",
+            "candidates": [],
+            "selected_rank": None,
+            "rule_baseline": {
+                "start_seconds": detected_window.start_seconds,
+                "end_seconds": detected_window.end_seconds,
+                "confidence": detected_window.confidence,
+            },
+        },
     }
     if classifier not in {"rules", "auto", "llm"}:
         raise ValueError(f"Unknown classifier mode: {classifier}")
@@ -66,8 +79,17 @@ def _classify_with_fallback(
     if classifier not in {"auto", "llm"} or llm_client is None:
         return classification, None
     try:
-        hybrid_result = classify_sermon_content(
-            drafts, detected_window, llm_client, prompt_version=prompt_version
+        digest_method = getattr(llm_client, "model_digest", None)
+        model_digest = digest_method() if callable(digest_method) else None
+        hybrid_result = classify_sermon_content_adaptive(
+            drafts,
+            detected_window,
+            llm_client,
+            prompt_version=prompt_version,
+            progress=progress,
+            cache_dir=cache_dir,
+            model_digest=model_digest,
+            context_size=context_size,
         )
     except Exception as error:
         if classifier == "llm":
@@ -411,6 +433,8 @@ def extract_video(
     classifier: str = "rules",
     llm_client: LocalLlmClient | None = None,
     prompt_version: str = "sermon-content-v1",
+    context_size: int = 4096,
+    progress: Any | None = None,
 ) -> ExtractionRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -446,6 +470,9 @@ def extract_video(
         classifier=classifier,
         llm_client=llm_client,
         prompt_version=prompt_version,
+        cache_dir=video_paths.extracted / "inference-cache",
+        context_size=context_size,
+        progress=progress,
     )
     override_path = video_paths.review / "window_override.json"
     override, override_error = _load_window_override(override_path)
