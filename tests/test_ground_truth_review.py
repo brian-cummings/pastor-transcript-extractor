@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from pastor_transcript_extractor.fixture_validation import validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
     approved_negative_fixture_payload,
+    open_video_url,
     approved_fixture_payload,
     parse_interruptions,
     parse_timestamp,
@@ -55,6 +57,13 @@ class GroundTruthReviewTests(unittest.TestCase):
         }
         self.assertEqual((100.0, 220.0, "adaptive_llm_v3"), suggested_envelope(payload))
 
+    def test_suggestion_uses_full_video_when_no_candidate_exists(self) -> None:
+        payload = {"segments": [{"start_seconds": 0.0, "end_seconds": 69.0, "text": "test"}]}
+        self.assertEqual(
+            (0.0, 69.0, "no_candidate_full_video"),
+            suggested_envelope(payload, fallback_end_seconds=69.0),
+        )
+
     def test_context_marks_segment_containing_boundary(self) -> None:
         context = transcript_context(
             [
@@ -84,6 +93,18 @@ class GroundTruthReviewTests(unittest.TestCase):
         self.assertEqual(
             "https://youtu.be/abc123?t=65s",
             youtube_timestamp_url("https://youtu.be/abc123", 65.9),
+        )
+
+    def test_open_video_url_uses_cross_platform_browser_launcher(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.ground_truth_review.webbrowser.open",
+            return_value=True,
+        ) as browser_open:
+            open_video_url("https://www.youtube.com/watch?v=abc&t=0s")
+        browser_open.assert_called_once_with(
+            "https://www.youtube.com/watch?v=abc&t=0s",
+            new=2,
+            autoraise=True,
         )
 
 

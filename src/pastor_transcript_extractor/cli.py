@@ -30,6 +30,7 @@ from pastor_transcript_extractor.ground_truth_review import (
     approved_fixture_payload,
     draft_payload,
     format_timestamp,
+    open_video_url,
     parse_interruptions,
     parse_timestamp,
     suggested_envelope,
@@ -113,7 +114,16 @@ def review_ground_truth(
     if not isinstance(payload, dict) or not isinstance(payload.get("segments"), list):
         raise typer.BadParameter("Proposed extraction is missing timestamped segments")
     segments = [segment for segment in payload["segments"] if isinstance(segment, dict)]
-    suggested_start, suggested_end, proposal_source = suggested_envelope(payload)
+    segment_ends = [
+        segment.get("end_seconds")
+        for segment in segments
+        if isinstance(segment.get("end_seconds"), (int, float))
+    ]
+    fallback_end = float(video.duration_seconds or (max(segment_ends) if segment_ends else 0.0))
+    suggested_start, suggested_end, proposal_source = suggested_envelope(
+        payload,
+        fallback_end_seconds=fallback_end,
+    )
     root = evaluation_dir.expanduser().resolve()
     draft_path = root / "drafts" / f"{youtube_video_id}.json"
     fixture_path = root / "fixtures" / f"{youtube_video_id}.json"
@@ -129,6 +139,8 @@ def review_ground_truth(
     )
     console.print(f"Wrote unreviewed detector-assisted draft to {draft_path}")
     console.print(f"Video: {video.title}")
+    if open_video:
+        open_video_url(youtube_timestamp_url(video.url, 0.0))
 
     def review_boundary(label: str, initial: float) -> float:
         current = initial
@@ -153,14 +165,6 @@ def review_ground_truth(
         "Does this video contain a worship-service sermon?",
         default=True,
     )
-    if open_video:
-        import webbrowser
-
-        target_url = youtube_timestamp_url(
-            video.url,
-            suggested_start if contains_sermon else 0.0,
-        )
-        webbrowser.open(target_url, new=2)
     if not contains_sermon:
         if not typer.confirm(
             "Have you reviewed the entire video and confirmed there is no worship-service sermon?",

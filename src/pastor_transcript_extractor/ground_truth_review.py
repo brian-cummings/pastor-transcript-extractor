@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,12 @@ def youtube_timestamp_url(url: str, seconds: float) -> str:
     query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key not in {"t", "start"}]
     query.append(("t", f"{max(0, int(seconds))}s"))
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+
+
+def open_video_url(url: str) -> None:
+    opened = webbrowser.open(url, new=2, autoraise=True)
+    if not opened:
+        raise RuntimeError(f"Could not open video URL: {url}")
 
 
 def parse_timestamp(value: str, *, current: float | None = None) -> float:
@@ -109,7 +116,9 @@ def transcript_context(
     return "\n".join(lines) or "(no timestamped transcript context available)"
 
 
-def suggested_envelope(payload: dict[str, Any]) -> tuple[float, float, str]:
+def suggested_envelope(
+    payload: dict[str, Any], *, fallback_end_seconds: float | None = None
+) -> tuple[float, float, str]:
     classification = payload.get("classification")
     segments = payload.get("segments")
     if isinstance(classification, dict) and isinstance(segments, list):
@@ -123,6 +132,8 @@ def suggested_envelope(payload: dict[str, Any]) -> tuple[float, float, str]:
     window = payload.get("sermon_window")
     if isinstance(window, dict) and isinstance(window.get("start_seconds"), (int, float)) and isinstance(window.get("end_seconds"), (int, float)):
         return float(window["start_seconds"]), float(window["end_seconds"]), str(window.get("method", "rule_window"))
+    if fallback_end_seconds is not None and fallback_end_seconds > 0:
+        return 0.0, fallback_end_seconds, "no_candidate_full_video"
     raise ValueError("extraction has no suggested sermon boundary")
 
 

@@ -1,0 +1,12 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "music_event_no_sermon",
+  "ground_truth_version": 1,
+  "notes": "No worship-service sermon found.",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-13T00:34:40.194304+00:00",
+  "reviewed_by": "Brian Cummings",
+  "video_id": "QIqMpJfY-fQ"
+}
