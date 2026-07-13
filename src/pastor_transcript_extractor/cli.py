@@ -24,6 +24,11 @@ from pastor_transcript_extractor.config import (
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import extract_video, reclassify_video
+from pastor_transcript_extractor.evaluation import (
+    build_markdown_report,
+    create_evaluation_run,
+    evaluate_fixture_payload,
+)
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
     approved_negative_fixture_payload,
@@ -89,6 +94,76 @@ def validate_fixtures(
 ) -> None:
     fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
     console.print(f"Validated {len(fixtures)} fixture(s); all video IDs are unique.")
+
+
+@app.command(help="Evaluate existing production classification artifacts against frozen fixtures.")
+def evaluate(
+    fixture_dir: Path = typer.Option(Path("evaluation/fixtures"), help="Approved fixture directory."),
+    results_dir: Path = typer.Option(Path("evaluation/results"), help="Generated result root."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    fixture_root = fixture_dir.expanduser().resolve()
+    fixtures = validate_fixture_directory(fixture_root)
+    results: list[dict[str, object]] = []
+    for validated in fixtures:
+        fixture_path = validated.path
+        fixture_payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+        video = database.get_video_by_youtube_id(validated.video_id)
+        if video is None:
+            results.append(
+                {
+                    "video_id": validated.video_id,
+                    "status": "video_not_in_database",
+                    "fixture_path": str(fixture_path),
+                }
+            )
+            continue
+        extraction = database.get_latest_extraction_result_for_video(video.id)
+        if extraction is None or not extraction.proposed_json_path:
+            results.append(
+                {
+                    "video_id": validated.video_id,
+                    "status": "missing_extraction_artifact",
+                    "fixture_path": str(fixture_path),
+                }
+            )
+            continue
+        proposed_path = Path(extraction.proposed_json_path)
+        try:
+            proposed_payload = json.loads(proposed_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            results.append(
+                {
+                    "video_id": validated.video_id,
+                    "status": "invalid_extraction_artifact",
+                    "fixture_path": str(fixture_path),
+                    "proposed_path": str(proposed_path),
+                }
+            )
+            continue
+        results.append(
+            evaluate_fixture_payload(
+                fixture_payload,
+                proposed_payload,
+                fixture_path=fixture_path,
+                proposed_path=proposed_path,
+            )
+        )
+    run = create_evaluation_run(results)
+    output_dir = results_dir.expanduser().resolve() / str(run["run_id"])
+    output_dir.mkdir(parents=True, exist_ok=False)
+    json_path = output_dir / "results.json"
+    markdown_path = output_dir / "report.md"
+    json_path.write_text(json.dumps(run, indent=2, sort_keys=True), encoding="utf-8")
+    markdown_path.write_text(build_markdown_report(run), encoding="utf-8")
+    aggregate = run["aggregate"]
+    console.print(f"Wrote evaluation JSON to {json_path}")
+    console.print(f"Wrote evaluation report to {markdown_path}")
+    console.print(
+        f"Evaluated {aggregate['evaluated_fixture_count']}/{aggregate['fixture_count']} fixture(s); "
+        f"missing artifacts {aggregate['missing_artifact_count']}."
+    )
 
 
 @app.command(help="Review and approve sermon ground truth without treating detector output as truth.")

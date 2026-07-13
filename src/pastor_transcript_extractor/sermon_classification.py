@@ -519,6 +519,7 @@ def classify_sermon_content_adaptive(
             "candidates": [],
             "selected_rank": None,
             "rule_baseline": None,
+            "model_digest": model_digest,
         }
         return HybridSermonResult(
             "adaptive_llm_v3", client.model, prompt_version, "low", [],
@@ -613,6 +614,7 @@ def classify_sermon_content_adaptive(
             "end_seconds": rule_window.end_seconds,
             "confidence": rule_window.confidence,
         },
+        "model_digest": model_digest,
     }
     return HybridSermonResult(
         "adaptive_llm_v3", client.model, prompt_version, confidence,

@@ -86,6 +86,7 @@ You can override the data directory with `--base-dir`.
 - `pte review <pastor-slug>`
 - `pte review-ground-truth <youtube-video-id>`
 - `pte validate-fixtures [fixture-directory]`
+- `pte evaluate [--fixture-dir PATH] [--results-dir PATH] [--base-dir PATH]`
 - `./venv-shell`
 
 ## Ground-Truth Review
@@ -96,6 +97,7 @@ transcript before writing a manually approved fixture:
 ```bash
 pte review-ground-truth l6mZEQvArkE --reviewer "Brian Cummings" --open-video
 pte validate-fixtures evaluation/fixtures
+pte evaluate --base-dir /path/to/app-data
 ```
 
 Unreviewed proposals are stored under `evaluation/drafts/`. Only explicitly
