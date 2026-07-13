@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 def format_timestamp(seconds: float) -> str:
@@ -11,6 +12,13 @@ def format_timestamp(seconds: float) -> str:
     hours, remainder = divmod(total, 3600)
     minutes, seconds_value = divmod(remainder, 60)
     return f"{hours:d}:{minutes:02d}:{seconds_value:02d}"
+
+
+def youtube_timestamp_url(url: str, seconds: float) -> str:
+    parsed = urlsplit(url)
+    query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key not in {"t", "start"}]
+    query.append(("t", f"{max(0, int(seconds))}s"))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
 def parse_timestamp(value: str, *, current: float | None = None) -> float:

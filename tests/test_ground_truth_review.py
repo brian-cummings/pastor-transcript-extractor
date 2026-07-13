@@ -12,6 +12,7 @@ from pastor_transcript_extractor.ground_truth_review import (
     retained_spans,
     suggested_envelope,
     transcript_context,
+    youtube_timestamp_url,
 )
 
 
@@ -74,6 +75,16 @@ class GroundTruthReviewTests(unittest.TestCase):
         validated = validate_fixture_payload(fixture, path=Path("negative.json"))
         self.assertEqual("no_sermon", validated.expected_outcome)
         self.assertEqual([], validated.expected_spans)
+
+    def test_youtube_timestamp_url_replaces_existing_time_and_supports_zero(self) -> None:
+        self.assertEqual(
+            "https://www.youtube.com/watch?v=abc123&t=0s",
+            youtube_timestamp_url("https://www.youtube.com/watch?v=abc123&t=99s", 0.0),
+        )
+        self.assertEqual(
+            "https://youtu.be/abc123?t=65s",
+            youtube_timestamp_url("https://youtu.be/abc123", 65.9),
+        )
 
 
 if __name__ == "__main__":

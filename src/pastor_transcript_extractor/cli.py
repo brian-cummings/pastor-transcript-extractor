@@ -35,6 +35,7 @@ from pastor_transcript_extractor.ground_truth_review import (
     suggested_envelope,
     transcript_context,
     write_json,
+    youtube_timestamp_url,
 )
 from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
@@ -133,7 +134,7 @@ def review_ground_truth(
         current = initial
         while True:
             console.print(f"\n[bold]{label} candidate: {format_timestamp(current)}[/bold]")
-            console.print(f"YouTube: {video.url}&t={max(0, int(current))}s")
+            console.print(f"YouTube: {youtube_timestamp_url(video.url, current)}")
             console.print(transcript_context(segments, current))
             entered = typer.prompt(
                 f"{label} timestamp (HH:MM:SS, or relative +5/-30)",
@@ -155,12 +156,11 @@ def review_ground_truth(
     if open_video:
         import webbrowser
 
-        target_url = (
-            f"{video.url}&t={max(0, int(suggested_start))}s"
-            if contains_sermon
-            else video.url
+        target_url = youtube_timestamp_url(
+            video.url,
+            suggested_start if contains_sermon else 0.0,
         )
-        webbrowser.open(target_url)
+        webbrowser.open(target_url, new=2)
     if not contains_sermon:
         if not typer.confirm(
             "Have you reviewed the entire video and confirmed there is no worship-service sermon?",
