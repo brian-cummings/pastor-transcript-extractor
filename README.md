@@ -104,6 +104,50 @@ Unreviewed proposals are stored under `evaluation/drafts/`. Only explicitly
 approved fixtures are written under `evaluation/fixtures/`; evaluator code must
 never treat drafts as ground truth.
 
+## Reclassification and Regression Evaluation
+
+Use `reclassify` to rerun adaptive sermon detection against existing timestamped
+transcript segments. It does not download or transcribe the video again. The
+`--video-id` value is the numeric database ID shown by `pte video list`, not the
+YouTube video ID.
+
+```bash
+./venv-shell
+export PTE_LLM_ENABLED=1
+export PTE_LLM_MODEL=gemma3:4b
+
+pte doctor --base-dir /path/to/app-data
+pte video list --limit 250 --base-dir /path/to/app-data
+pte reclassify --video-id 46 --force --base-dir /path/to/app-data
+pte reclassify --source-id 3 --force --base-dir /path/to/app-data
+```
+
+Use `--force` while testing algorithm, prompt, or adjudication changes. Raw LLM
+responses are cached separately from ranking and adjudication, so an unchanged
+second pass should normally report zero cache misses.
+
+Run the frozen regression set after reclassifying its videos:
+
+```bash
+pte validate-fixtures evaluation/fixtures
+pte evaluate --base-dir /path/to/app-data
+```
+
+Evaluation creates `results.json`, a human-readable `report.md`, and relevant
+failure-analysis files under `evaluation/results/<timestamp>/`. Metrics are
+computed against original transcript segments rather than timestamp overlap
+alone. Never promote generated drafts or detector boundaries to ground truth;
+only manually approved files under `evaluation/fixtures/` are authoritative.
+
+For the current local data path, frozen fixture list, accepted benchmark, and
+exact comparison gates, see `docs/HANDOFF.md`.
+
+Run the repository tests with the standard-library runner:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -q
+```
+
 ## Optional Local LLM Filtering
 
 Extraction remains rule-based by default. To let `pte extract` use a locally
@@ -137,7 +181,12 @@ results are marked in the pastor review output.
 - `pte fetch`
 - `pte transcribe`
 - `pte extract`
+- `pte reclassify --video-id <database-id>`
+- `pte reclassify --source-id <source-id>`
 - `pte review <pastor-slug>`
+- `pte review-ground-truth <youtube-video-id>`
+- `pte validate-fixtures evaluation/fixtures`
+- `pte evaluate --base-dir <app-data>`
 - `pte video exclude <video-id>`
 - `pte video unexclude <youtube-video-id>`
 - `pte video excluded`
