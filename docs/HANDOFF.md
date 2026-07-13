@@ -138,7 +138,7 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 The latest validated 12-fixture report is:
 
-- `evaluation/results/20260713T174250Z/report.md`
+- `evaluation/results/20260713T185623Z/report.md`
 
 Results:
 
@@ -171,6 +171,28 @@ The frozen fixtures produced:
 
 This supports retaining rule overlap as a soft diagnostic penalty. Removing it entirely makes the Sabbath School negative falsely high; the soft policy moves all positive fixtures out of low confidence without making any negative high. This is evaluation evidence only: production confidence behavior has not yet changed.
 
+### Interaction-evidence experiment (not shipped)
+
+An evidence-only interaction classifier was tested with `gemma3:4b` on three sentinels:
+
+- `WaNsL05AX3A`: Sabbath School negative
+- `qny7TUqNkQU`: sermon program with many student speakers
+- `l6mZEQvArkE`: normal single-preacher sermon
+
+The first schema asked directly for interaction mode, audience turn-taking, lesson references, and multiple sustained speakers. It failed badly: the model classified 21 of 22 normal-sermon blocks as facilitated group discussion. Repeated overlapping YouTube caption lines, rhetorical questions, and quoted biblical dialogue were interpreted as speaker changes.
+
+A grounded second schema required exact current-block evidence and normalized unsupported positive claims. It produced these candidate-level mode counts:
+
+| Fixture | Available blocks | Sermon monologue | Mixed/unclear | Grounded positive interaction signals |
+|---|---:|---:|---:|---|
+| `l6mZEQvArkE` | 16/22 | 10 | 6 | none |
+| `qny7TUqNkQU` | 24/33 | 7 | 17 | none |
+| `WaNsL05AX3A` | 21/30 | 2 | 19 | multiple speakers in 1 block only |
+
+Although monologue density differed, the requested explicit signals did not reliably survive grounding, and `qny7TUqNkQU` remained too similar to Sabbath School. The extra diagnostic call also roughly doubled fine-pass latency. The implementation was removed, the three production artifacts were restored from cached production inference, and the frozen benchmark remained unchanged.
+
+Do not reintroduce these fields into production confidence with the current transcript representation and `gemma3:4b`. Any future attempt should first address overlapping-caption duplication and should run as an offline sentinel experiment before modifying persisted production schema.
+
 ## Test Workflow
 
 This project uses the standard-library `unittest` runner; `pytest` is not installed in the existing virtual environment:
@@ -194,19 +216,17 @@ The Sabbath School fixture is now low confidence and baseline-protected, but the
 
 ## Recommended Next Increment
 
-1. Extend fine structured output with evidence fields such as:
-   - `interaction_mode`
-   - `audience_turn_taking`
-   - `lesson_material_references`
-   - `multiple_sustained_speakers`
-2. Persist these signals without initially changing retention or confidence.
-3. Rerun the 12 frozen fixtures to establish an evidence-only baseline.
-4. Add a confidence cap when strong interactive-teaching evidence is present.
-5. Introduce a production confidence policy that uses the validated soft-overlap treatment plus the new interactive evidence.
-6. Rerun the same fixtures unchanged and require zero high-confidence negative false positives.
-7. Determine whether the same evidence can safely exclude the long `qny7TUqNkQU` interruption or whether interruption-aware retention needs a separate increment.
+1. Build an offline interaction-diagnostic harness that does not add calls to production reclassification.
+2. Normalize overlapping caption text for diagnostic input while preserving original segments for evaluation and extraction.
+3. Rerun only the three sentinels above and require:
+   - clear interactive-teaching evidence for `WaNsL05AX3A`
+   - predominantly monologue evidence for `l6mZEQvArkE`
+   - mixed-speaker evidence for `qny7TUqNkQU` without treating it as an automatic non-sermon
+4. If `gemma3:4b` still fails, compare a stronger local model using the exact same diagnostic prompt, schema, normalized blocks, and sentinels.
+5. Persist interaction evidence or use it in confidence only after the sentinel gates pass.
+6. Then combine validated interaction evidence with the already-supported soft rule-overlap policy and rerun all 12 frozen fixtures.
 
-Do not compare a stronger model until the evidence schema and confidence behavior are stable. Model comparisons must keep fixtures, prompt, schema, block construction, ranking logic, and thresholds fixed so only the model changes.
+Speaker diarization or voice recognition may ultimately be required for reliable multiple-speaker evidence. Do not infer speaker identity or turn-taking from duplicated caption text alone.
 
 ## Recent Milestones
 
