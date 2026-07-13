@@ -147,6 +147,7 @@ def approved_fixture_payload(
     spans = retained_spans(start_seconds, end_seconds, interruptions)
     return {
         "video_id": video_id,
+        "expected_outcome": "sermon",
         "expected_spans": [
             {"start_seconds": start, "end_seconds": end} for start, end in spans
         ],
@@ -157,6 +158,23 @@ def approved_fixture_payload(
         "reviewed_by": reviewer,
         "reviewed_at": datetime.now(timezone.utc).isoformat(),
         "review_method": "video_and_timestamped_transcript",
+        "failure_mode": failure_mode,
+        "notes": notes,
+    }
+
+
+def approved_negative_fixture_payload(
+    *, video_id: str, reviewer: str, failure_mode: str, notes: str
+) -> dict[str, Any]:
+    return {
+        "video_id": video_id,
+        "expected_outcome": "no_sermon",
+        "expected_spans": [],
+        "allowed_interruptions": [],
+        "ground_truth_version": 1,
+        "reviewed_by": reviewer,
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        "review_method": "full_video_and_timestamped_transcript",
         "failure_mode": failure_mode,
         "notes": notes,
     }

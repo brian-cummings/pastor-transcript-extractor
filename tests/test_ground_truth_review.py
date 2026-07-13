@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.fixture_validation import validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
+    approved_negative_fixture_payload,
     approved_fixture_payload,
     parse_interruptions,
     parse_timestamp,
@@ -62,6 +63,17 @@ class GroundTruthReviewTests(unittest.TestCase):
             100.0,
         )
         self.assertIn("> [0:01:30] Our sermon title today", context)
+
+    def test_negative_payload_passes_fixture_validation(self) -> None:
+        fixture = approved_negative_fixture_payload(
+            video_id="negative123",
+            reviewer="reviewer",
+            failure_mode="non_sermon_event",
+            notes="Reviewed the complete graduation ceremony.",
+        )
+        validated = validate_fixture_payload(fixture, path=Path("negative.json"))
+        self.assertEqual("no_sermon", validated.expected_outcome)
+        self.assertEqual([], validated.expected_spans)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ from pastor_transcript_extractor.discovery import extract_discovered_videos, sor
 from pastor_transcript_extractor.extraction import extract_video, reclassify_video
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
+    approved_negative_fixture_payload,
     approved_fixture_payload,
     draft_payload,
     format_timestamp,
@@ -151,6 +152,38 @@ def review_ground_truth(
         import webbrowser
 
         webbrowser.open(f"{video.url}&t={max(0, int(suggested_start))}s")
+    contains_sermon = typer.confirm(
+        "Does this video contain a worship-service sermon?",
+        default=True,
+    )
+    if not contains_sermon:
+        if not typer.confirm(
+            "Have you reviewed the entire video and confirmed there is no worship-service sermon?",
+            default=False,
+        ):
+            console.print("Review stopped; no negative fixture was written.")
+            return
+        reviewer_value = reviewer or typer.prompt("Reviewed by")
+        failure_mode = typer.prompt("Failure mode", default="non_sermon_event")
+        notes = typer.prompt("Review notes", default="No worship-service sermon found.")
+        fixture = approved_negative_fixture_payload(
+            video_id=youtube_video_id,
+            reviewer=reviewer_value,
+            failure_mode=failure_mode,
+            notes=notes,
+        )
+        validate_fixture_payload(fixture, path=fixture_path)
+        if fixture_path.exists() and not typer.confirm(
+            f"Overwrite existing fixture {fixture_path}?", default=False
+        ):
+            console.print("Existing fixture preserved.")
+            return
+        if not typer.confirm("Write this manually approved negative fixture?", default=False):
+            console.print("Approval cancelled; the unreviewed draft was preserved.")
+            return
+        write_json(fixture_path, fixture)
+        console.print(f"Wrote manually approved negative fixture to {fixture_path}")
+        return
     start = review_boundary("Sermon start", suggested_start)
     end = review_boundary("Sermon end", suggested_end)
     if end <= start:

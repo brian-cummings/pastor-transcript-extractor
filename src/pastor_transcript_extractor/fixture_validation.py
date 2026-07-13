@@ -18,6 +18,7 @@ class ValidatedFixture:
     allowed_interruptions: list[tuple[float, float]]
     ground_truth_version: int
     reviewed_by: str
+    expected_outcome: str
 
 
 def _validated_ranges(payload: dict[str, Any], field: str, *, required: bool) -> list[tuple[float, float]]:
@@ -62,8 +63,27 @@ def validate_fixture_payload(payload: object, *, path: Path) -> ValidatedFixture
     if not isinstance(reviewed_by, str) or not reviewed_by.strip():
         raise FixtureValidationError("reviewed_by must be a non-empty string")
 
-    expected = _validated_ranges(payload, "expected_spans", required=True)
+    expected_outcome = payload.get("expected_outcome")
+    if expected_outcome not in {"sermon", "no_sermon"}:
+        raise FixtureValidationError("expected_outcome must be 'sermon' or 'no_sermon'")
+    expected = _validated_ranges(
+        payload, "expected_spans", required=expected_outcome == "sermon"
+    )
     interruptions = _validated_ranges(payload, "allowed_interruptions", required=False)
+    if expected_outcome == "no_sermon":
+        if expected:
+            raise FixtureValidationError("no_sermon fixtures must have empty expected_spans")
+        if interruptions:
+            raise FixtureValidationError("no_sermon fixtures must have empty allowed_interruptions")
+        return ValidatedFixture(
+            path=path,
+            video_id=video_id.strip(),
+            expected_spans=[],
+            allowed_interruptions=[],
+            ground_truth_version=version,
+            reviewed_by=reviewed_by.strip(),
+            expected_outcome=expected_outcome,
+        )
     sermon_start = expected[0][0]
     sermon_end = expected[-1][1]
     for interruption in interruptions:
@@ -78,6 +98,7 @@ def validate_fixture_payload(payload: object, *, path: Path) -> ValidatedFixture
         allowed_interruptions=interruptions,
         ground_truth_version=version,
         reviewed_by=reviewed_by.strip(),
+        expected_outcome=expected_outcome,
     )
 
 

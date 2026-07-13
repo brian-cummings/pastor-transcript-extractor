@@ -1,0 +1,17 @@
+{
+  "allowed_interruptions": [],
+  "expected_spans": [
+    {
+      "end_seconds": 7581.0,
+      "start_seconds": 5927.0
+    }
+  ],
+  "expected_outcome": "sermon",
+  "failure_mode": "incorrect_rule_window",
+  "ground_truth_version": 1,
+  "notes": "Start was spot on, original end was in the middle of a closing song which separated the sermon from the closing prayer",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-12T23:57:05.928299+00:00",
+  "reviewed_by": "Brian Cummings",
+  "video_id": "l6mZEQvArkE"
+}

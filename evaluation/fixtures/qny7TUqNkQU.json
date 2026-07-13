@@ -1,0 +1,26 @@
+{
+  "allowed_interruptions": [
+    {
+      "end_seconds": 5891.0,
+      "start_seconds": 4814.0
+    }
+  ],
+  "expected_spans": [
+    {
+      "end_seconds": 4814.0,
+      "start_seconds": 3895.0
+    },
+    {
+      "end_seconds": 6225.0,
+      "start_seconds": 5891.0
+    }
+  ],
+  "expected_outcome": "sermon",
+  "failure_mode": "compound_multi_speaker_service",
+  "ground_truth_version": 1,
+  "notes": "AAA video with student sermonettes in between the primary sermons - not the pastor",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-13T00:09:33.555949+00:00",
+  "reviewed_by": "Brian Cummings",
+  "video_id": "qny7TUqNkQU"
+}
