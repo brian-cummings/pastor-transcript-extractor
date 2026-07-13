@@ -72,6 +72,7 @@ class HybridSermonResult:
     classifications: list[BlockClassification]
     cache_stats: dict[str, int] | None = None
     search: dict[str, Any] | None = None
+    confidence_reasons: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,6 +90,7 @@ class HybridSermonResult:
                 {**asdict(item), "label": item.label.value} for item in self.classifications
             ],
             "cache_stats": self.cache_stats or {"hits": 0, "misses": 0},
+            "confidence_reasons": self.confidence_reasons or [],
             "search": self.search or {
                 "schema_version": 1,
                 "algorithm_version": self.method,
@@ -308,10 +310,23 @@ _SERMON_SEED_CUES = (
 def _candidate_strength(
     candidate: tuple[float, float], blocks: list[TranscriptBlock]
 ) -> float:
+    return float(_candidate_score_components(candidate, blocks)["total_score"])
+
+
+def _candidate_score_components(
+    candidate: tuple[float, float], blocks: list[TranscriptBlock]
+) -> dict[str, Any]:
     start, end = candidate
     text = " ".join(block.text.lower() for block in blocks if _overlaps(block, start, end))
-    cue_bonus = sum(1800.0 for cue in _SERMON_SEED_CUES if cue in text)
-    return (end - start) + cue_bonus
+    matched_cues = [cue for cue in _SERMON_SEED_CUES if cue in text]
+    duration = end - start
+    cue_bonus = len(matched_cues) * 1800.0
+    return {
+        "duration_seconds": round(duration, 3),
+        "matched_sermon_cues": matched_cues,
+        "cue_bonus": round(cue_bonus, 3),
+        "total_score": round(duration + cue_bonus, 3),
+    }
 
 
 def _explicit_sermon_seed_seconds(
@@ -481,6 +496,7 @@ def classify_sermon_content_adaptive(
     coarse_candidates = _coarse_candidate_ranges(coarse_blocks, phases)
     ranked_candidates: list[dict[str, Any]] = []
     for start, end in coarse_candidates:
+        score_components = _candidate_score_components((start, end), coarse_blocks)
         supporting_blocks = [
             block.block_id for block in coarse_blocks if _overlaps(block, start, end)
         ]
@@ -489,7 +505,8 @@ def classify_sermon_content_adaptive(
                 "source": "coarse_llm",
                 "start_seconds": start,
                 "end_seconds": end,
-                "score": round(_candidate_strength((start, end), coarse_blocks), 3),
+                "score": score_components["total_score"],
+                "score_components": score_components,
                 "coarse_support_block_ids": supporting_blocks,
                 "fine_support_block_ids": [],
                 "refinement_reasons": [],
@@ -507,6 +524,13 @@ def classify_sermon_content_adaptive(
             "start_seconds": rule_window.start_seconds,
             "end_seconds": rule_window.end_seconds,
             "score": 0.0,
+            "score_components": {
+                "duration_seconds": round(rule_window.end_seconds - rule_window.start_seconds, 3),
+                "matched_sermon_cues": [],
+                "cue_bonus": 0.0,
+                "total_score": 0.0,
+                "source_note": "rule fallback candidates are not coarse-ranked",
+            },
             "coarse_support_block_ids": [],
             "fine_support_block_ids": [],
             "refinement_reasons": ["no coarse LLM candidate; refined the rule-based fallback"],
@@ -527,6 +551,11 @@ def classify_sermon_content_adaptive(
             ["no plausible sermon region found during coarse scan"], coarse_blocks, coarse_audit,
             {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
             search,
+            [{
+                "code": "no_plausible_candidate",
+                "effect": "low_confidence",
+                "message": "No plausible sermon region was found during coarse scan.",
+            }],
         )
 
     selected_range = (
@@ -604,6 +633,36 @@ def classify_sermon_content_adaptive(
     confidence = "high" if agreement >= 0.8 and not uncertain_ids else "medium"
     if agreement < 0.5 or not retained or consistency_warnings:
         confidence = "low"
+    confidence_reasons = [
+        {
+            "code": "rule_llm_agreement",
+            "value": round(agreement, 6),
+            "high_threshold": 0.8,
+            "low_threshold": 0.5,
+            "effect": "supports_high" if agreement >= 0.8 else "forces_low" if agreement < 0.5 else "supports_medium",
+        },
+        {
+            "code": "uncertain_blocks",
+            "count": len(uncertain_ids),
+            "block_ids": list(uncertain_ids),
+            "effect": "caps_medium" if uncertain_ids else "no_cap",
+        },
+        {
+            "code": "retained_content",
+            "segment_count": len(retained),
+            "effect": "forces_low" if not retained else "present",
+        },
+        {
+            "code": "central_consistency",
+            "warnings": list(consistency_warnings),
+            "effect": "forces_low" if consistency_warnings else "passed",
+        },
+        {
+            "code": "confidence_decision",
+            "tier": confidence,
+            "message": "Persisted explanation of the existing adaptive_llm_v3 confidence rules.",
+        },
+    ]
     search = {
         "schema_version": 1,
         "algorithm_version": "adaptive_llm_v3",
@@ -622,6 +681,7 @@ def classify_sermon_content_adaptive(
         coarse_blocks + fine_blocks, coarse_audit + fine_audit,
         {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
         search,
+        confidence_reasons,
     )
 
 

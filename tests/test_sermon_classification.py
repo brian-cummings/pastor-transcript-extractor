@@ -286,6 +286,14 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual("adaptive_llm_v3", classification["method"])
         self.assertEqual(1, classification["search"]["selected_rank"])
+        candidate = classification["search"]["candidates"][0]
+        self.assertEqual(candidate["score"], candidate["score_components"]["total_score"])
+        self.assertIn("duration_seconds", candidate["score_components"])
+        self.assertTrue(classification["confidence_reasons"])
+        self.assertEqual(
+            classification["confidence_tier"],
+            classification["confidence_reasons"][-1]["tier"],
+        )
 
     def test_classification_cache_key_includes_model_and_prompt(self) -> None:
         classification = {
