@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_pastor_paths
+from pastor_transcript_extractor.disposition import build_final_disposition
 from pastor_transcript_extractor.models import Video, VideoStatus
 from pastor_transcript_extractor.storage import Database
 
@@ -127,8 +128,19 @@ def _build_review_transcript_excerpt(
         return fallback_text
     segments = proposed_json.get("segments")
     sermon_window = proposed_json.get("sermon_window")
+    classification = proposed_json.get("classification")
+    disposition = proposed_json.get("final_disposition")
+    if not isinstance(disposition, dict):
+        disposition = build_final_disposition(
+            classification,
+            sermon_window,
+            guest_speaker_suspected=proposed_json.get("guest_speaker_suspected") is True,
+        )
+    status = str(disposition.get("status", "unknown"))
+    if status.startswith("rejected_"):
+        return f"(No sermon excerpt retained; final disposition: {status}.)"
     if not isinstance(segments, list) or not isinstance(sermon_window, dict):
-        return fallback_text
+        return "(No effective sermon excerpt is available; manual review is required.)"
 
     excerpt_parts = [
         str(segment.get("text")).strip()
@@ -138,7 +150,7 @@ def _build_review_transcript_excerpt(
 
     if excerpt_parts:
         return "\n\n".join(excerpt_parts)
-    return fallback_text
+    return "(No effective sermon excerpt is available; manual review is required.)"
 
 
 def _build_review_sections_for_videos(
@@ -168,6 +180,7 @@ def _build_review_sections_for_videos(
         guest_name_candidates: list[str] = []
         guest_signal_reasons: list[str] = []
         classification: dict[str, Any] | None = None
+        final_disposition: dict[str, Any] | None = None
         if proposed_json is not None and isinstance(proposed_json.get("transcript_source"), str):
             transcript_source = str(proposed_json["transcript_source"])
         if proposed_json is not None and isinstance(proposed_json.get("sermon_window"), dict):
@@ -180,6 +193,14 @@ def _build_review_sections_for_videos(
             guest_signal_reasons = [str(reason) for reason in proposed_json["guest_signal_reasons"]]
         if proposed_json is not None and isinstance(proposed_json.get("classification"), dict):
             classification = dict(proposed_json["classification"])
+        if proposed_json is not None and isinstance(proposed_json.get("final_disposition"), dict):
+            final_disposition = dict(proposed_json["final_disposition"])
+        if proposed_json is not None and final_disposition is None:
+            final_disposition = build_final_disposition(
+                classification,
+                sermon_window,
+                guest_speaker_suspected=guest_speaker_suspected,
+            )
         published_text = video.published_at.date().isoformat() if video.published_at is not None else "undated"
         section_lines = [
             f"## {published_text} - {video.title}",
@@ -192,6 +213,12 @@ def _build_review_sections_for_videos(
                 f"- Transcript Source: {transcript_source or 'unknown'}",
                 f"- Extraction Method: {classification.get('method', 'rule_based_v1') if classification else 'rule_based_v1'}",
                 f"- Extraction Confidence: {classification.get('confidence_tier', 'unknown') if classification else 'unknown'}",
+                f"- Final Disposition: {final_disposition.get('status', 'unknown') if final_disposition else 'unknown'}",
+                (
+                    f"- Disposition Reasons: {'; '.join(final_disposition.get('reason_codes', []))}"
+                    if final_disposition and final_disposition.get("reason_codes")
+                    else "- Disposition Reasons: none"
+                ),
                 f"- Local Model: {classification.get('model') or 'none' if classification else 'none'}",
                 f"- Likely Sermon Window: {_format_window(sermon_window)}",
                 (
@@ -241,6 +268,7 @@ def _build_review_sections_for_videos(
                 "guest_name_candidates": guest_name_candidates,
                 "guest_signal_reasons": guest_signal_reasons,
                 "classification": classification,
+                "final_disposition": final_disposition,
                 "proposed_text_path": str(proposed_path),
             }
         )

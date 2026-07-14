@@ -58,6 +58,10 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
                 ],
             },
         },
+        "final_disposition": {
+            "status": "accepted_sermon" if confidence == "high" else "rejected_no_sermon",
+            "reason_codes": [],
+        },
     }
 
 
@@ -203,7 +207,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertTrue(low["candidate_produced"])
         self.assertFalse(low["false_high_confidence_acceptance"])
         self.assertTrue(low["baseline_protection_prevented_replacement"])
+        self.assertFalse(low["false_accepted_disposition"])
         self.assertTrue(high["false_high_confidence_acceptance"])
+        self.assertTrue(high["false_accepted_disposition"])
 
     def test_aggregate_keeps_positive_and_negative_failure_gates_separate(self) -> None:
         aggregate = aggregate_results(

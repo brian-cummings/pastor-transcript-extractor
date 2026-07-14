@@ -19,7 +19,10 @@ Implemented:
 - explicit sermon-title cues can recover up to four minutes of contiguous sermon-like setup before the cue
 - pre-title recovery persists its anchor, duration, reason, and stopping evidence
 - the evaluator replays current, no-overlap, and soft-overlap confidence policies without changing production artifacts
-- 139 tests pass
+- extraction and reclassification persist an explicit final disposition separately from diagnostic candidates
+- rejected videos never fall back to a full-transcript excerpt in pastor review exports
+- the offline interaction harness uses stable current-excerpt line IDs for grounded evidence
+- 149 tests pass
 
 ## Local Evaluation Environment
 
@@ -70,6 +73,18 @@ pte reclassify \
 ```
 
 Use `--force` for algorithm, prompt, or adjudication experiments. This path reuses existing timestamped transcript segments and raw inference cache entries; it does not download or transcribe the video again. The command reports cache hits and misses. An unchanged second pass should normally have zero misses.
+
+Every new or refreshed artifact also persists `final_disposition` at the top
+level and inside the classification audit:
+
+- `accepted_sermon`: high-confidence effective window or authoritative manual override
+- `review_required`: plausible candidate, medium/low confidence, or guest-speaker concern
+- `rejected_no_sermon`: no effective window and no diagnostic candidate
+- `rejected_ambiguous_speakers`: reserved for grounded multi-speaker ambiguity evidence
+
+Candidates remain in the search audit regardless of disposition. Pastor review
+exports include content only from the effective window; rejected results and
+candidate-only review results never fall back to the complete transcript.
 
 The classification audit for each video is written to:
 
@@ -138,7 +153,7 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 The latest validated 12-fixture report is:
 
-- `evaluation/results/20260713T212047Z/report.md`
+- `evaluation/results/20260714T133247Z/report.md`
 
 Results:
 
@@ -148,6 +163,7 @@ Results:
 - mean contamination ratio: `0.032`
 - correct top-candidate rate: `1.000`
 - high-confidence negative false positives: `0`
+- negative `accepted_sermon` dispositions: `0`
 
 The pre-title recovery increment raised `fcZNzRYQOtA` recall from `0.891` to `1.000`, with contamination increasing by only `0.0006` absolute. Its persisted diagnostic records a `168.04`-second extension stopped by music.
 
@@ -202,7 +218,7 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 139 tests.
+The expected count at this handoff is 149 tests.
 
 ## Remaining Defects
 
@@ -236,7 +252,7 @@ The first `gemma3:4b` run is under `evaluation/interaction-diagnostics/20260713T
 
 There were three malformed inference responses. Most other blocks claimed facilitated discussion without the required audience-turn and speaker evidence. Deduplication alone therefore does not make Gemma 3 4B viable for this distinction.
 
-The `gemma3:12b` comparison is under `evaluation/interaction-diagnostics/20260713T211300Z/`. Its raw mode labels were materially better:
+The first `gemma3:12b` comparison is under `evaluation/interaction-diagnostics/20260713T211300Z/`. Its raw mode labels were materially better:
 
 | Fixture | Raw facilitated-group blocks | Raw audience-turn blocks | Exact-evidence-valid blocks |
 |---|---:|---:|---:|
@@ -244,15 +260,24 @@ The `gemma3:12b` comparison is under `evaluation/interaction-diagnostics/2026071
 | `l6mZEQvArkE` | 3/12 | 5/12 | 7/12 |
 | `qny7TUqNkQU` | 11/17 | 13/17 | 2/17 |
 
-The model now separates both negative compound/interactive programs from the normal sermon at the aggregate raw-label level, which is the relevant policy after `qny7TUqNkQU` became negative. It is still not production-ready: it frequently paraphrases, joins, or reformats evidence instead of returning an exact excerpt, so nearly all positive interaction claims fail grounding.
+The model separated both negative compound/interactive programs from the normal sermon at the aggregate raw-label level, which is the relevant policy after `qny7TUqNkQU` became negative. It was not production-ready: it frequently paraphrased, joined, or reformatted evidence instead of returning an exact excerpt, so nearly all positive interaction claims failed grounding.
+
+The line-ID follow-up is under `evaluation/interaction-diagnostics/20260714T133117Z/` and used `interaction-diagnostic-line-evidence-v3`. Its schema constrained evidence to actual current-block IDs such as `L001`; a 180-second Ollama timeout was required for 12B.
+
+| Fixture | Valid blocks | Group discussion | Audience turns | Multiple speakers | Consistency warnings |
+|---|---:|---:|---:|---:|---:|
+| `WaNsL05AX3A` | 12/15 | 10 | 10 | 0 | 10 |
+| `l6mZEQvArkE` | 11/12 | 0 | 2 | 0 | 0 |
+| `qny7TUqNkQU` | 13/17 | 8 | 3 | 1 | 8 |
+
+The raw mode distribution separates both negatives from the normal sermon, but the production evidence gate still fails. Every negative `facilitated_group_discussion` result lacked the required combination of grounded audience-turn and multiple-speaker evidence. The qny ambiguity signal in particular is mostly an unsupported aggregate judgment, not transcript-grounded speaker evidence. Six of 44 calls also failed inference despite the longer timeout. Production artifacts were not modified.
 
 Next:
 
-1. Keep interaction evidence offline. Replace evidence strings with stable input line IDs so grounding can be checked without fragile exact-text reproduction.
-2. Re-run only the three sentinels with the same 12B model and require aggregate separation of both negatives from `l6mZEQvArkE`, with every positive signal backed by valid line IDs.
-3. Persist interaction evidence or use it in confidence only after that gate passes.
-4. If line-ID grounding still cannot separate the sentinels, stop transcript-only interaction classification and move to speaker-turn structure or diarization.
-5. Only after a passing diagnostic should production confidence combine interaction evidence with the already-supported soft rule-overlap policy.
+1. Do not add transcript-only interaction evidence to production confidence and do not replace the production 4B model with 12B.
+2. Use the new explicit disposition as the safety boundary: candidate-only and ambiguous results remain `review_required` and never fall back to a full transcript in review exports.
+3. If automatic rejection of ambiguous programs is still required, run the next experiment on speaker-turn structure or diarization rather than another prompt/schema iteration.
+4. Adopt soft rule overlap only after the disposition-aware benchmark confirms that no negative receives `accepted_sermon`.
 
 Speaker diarization or voice recognition may ultimately be required for reliable multiple-speaker evidence. Do not infer speaker identity or turn-taking from duplicated caption text alone.
 

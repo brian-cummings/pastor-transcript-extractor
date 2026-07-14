@@ -1576,11 +1576,15 @@ def reclassify(
             failed += 1
             continue
         if result.reused:
-            console.print(f"Reused current classification for video #{video.id}.")
+            console.print(
+                f"Reused current classification for video #{video.id}: "
+                f"disposition={result.disposition_status}."
+            )
             reused += 1
         else:
             console.print(
                 f"Reclassified video #{video.id}: confidence={result.confidence_tier}, "
+                f"disposition={result.disposition_status}, "
                 f"retained_segments={result.retained_segment_count}, "
                 f"cache_hits={result.cache_hits}, cache_misses={result.cache_misses}, "
                 f"audit={result.classification_path}"

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
+from pastor_transcript_extractor.disposition import build_final_disposition
 from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
@@ -33,6 +34,7 @@ class ReclassificationRunResult:
     confidence_tier: str
     retained_segment_count: int
     reused: bool
+    disposition_status: str = "unknown"
     cache_hits: int = 0
     cache_misses: int = 0
 
@@ -228,12 +230,23 @@ def reclassify_video(
         existing, model=llm_client.model, prompt_version=prompt_version
     ):
         assert isinstance(existing, dict)
+        disposition = build_final_disposition(
+            existing,
+            payload.get("sermon_window"),
+            guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+        )
+        if payload.get("final_disposition") != disposition or existing.get("final_disposition") != disposition:
+            payload["final_disposition"] = disposition
+            existing["final_disposition"] = disposition
+            proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+            classification_path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
         return ReclassificationRunResult(
             proposed_json_path,
             classification_path,
             str(existing.get("confidence_tier", "unknown")),
             len(existing.get("retained_segment_indexes", [])),
             True,
+            str(disposition["status"]),
         )
 
     drafts = _drafts_from_proposed_json(payload)
@@ -291,6 +304,13 @@ def reclassify_video(
                 "suspicious_boundary_reasons": hybrid.warnings,
             }
         )
+    disposition = build_final_disposition(
+        classification,
+        existing_window,
+        guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+    )
+    classification["final_disposition"] = disposition
+    payload["final_disposition"] = disposition
     proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     classification_path.write_text(json.dumps(classification, indent=2, sort_keys=True), encoding="utf-8")
     return ReclassificationRunResult(
@@ -299,6 +319,7 @@ def reclassify_video(
         hybrid.confidence_tier,
         len(hybrid.retained_segment_indexes),
         False,
+        str(disposition["status"]),
         int(classification.get("cache_stats", {}).get("hits", 0)),
         int(classification.get("cache_stats", {}).get("misses", 0)),
     )
@@ -422,6 +443,7 @@ def _build_proposed_markdown(
     pastor_slug: str,
     transcript_source: TranscriptSourceKind,
     sermon_window: dict[str, Any],
+    final_disposition: dict[str, Any],
     guest_flags: GuestSpeakerFlags,
     drafts: list[SegmentDraft],
 ) -> str:
@@ -444,6 +466,8 @@ def _build_proposed_markdown(
         f"- Window Confidence: {sermon_window.get('confidence', 0.0):.2f}",
         f"- Window Source: {sermon_window.get('source', 'detected')}",
         f"- Window Reasons: {window_reasons}",
+        f"- Final Disposition: {final_disposition.get('status', 'unknown')}",
+        f"- Disposition Reasons: {'; '.join(final_disposition.get('reason_codes', [])) or 'none'}",
         f"- Suspicious Boundary: {'yes' if sermon_window.get('suspicious_boundary') else 'no'}",
         (
             f"- Suspicious Boundary Reasons: {'; '.join(sermon_window.get('suspicious_boundary_reasons', []))}"
@@ -552,6 +576,12 @@ def extract_video(
         pastor_name=pastor.display_name,
         sermon_window=detected_window,
     )
+    final_disposition = build_final_disposition(
+        classification,
+        sermon_window,
+        guest_speaker_suspected=guest_flags.suspected,
+    )
+    classification["final_disposition"] = final_disposition
 
     proposed_text = _build_proposed_markdown(
         video.title,
@@ -559,6 +589,7 @@ def extract_video(
         pastor.slug,
         transcript_artifact.source_kind,
         sermon_window,
+        final_disposition,
         guest_flags,
         drafts,
     )
@@ -576,6 +607,7 @@ def extract_video(
         "transcript_source": transcript_artifact.source_kind.value,
         "sermon_window": sermon_window,
         "classification": classification,
+        "final_disposition": final_disposition,
         "guest_speaker_suspected": guest_flags.suspected,
         "guest_name_candidates": guest_flags.name_candidates,
         "guest_signal_reasons": guest_flags.reasons,

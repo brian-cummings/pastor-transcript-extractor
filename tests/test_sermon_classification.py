@@ -451,6 +451,11 @@ class HybridClassificationTests(unittest.TestCase):
             self.assertEqual([1, 2], updated["classification"]["retained_segment_indexes"])
             self.assertEqual("hybrid_llm", updated["sermon_window"]["source"])
             self.assertEqual("adaptive_llm_v3", updated["classification"]["method"])
+            self.assertEqual("accepted_sermon", updated["final_disposition"]["status"])
+            self.assertEqual(
+                updated["final_disposition"],
+                updated["classification"]["final_disposition"],
+            )
             self.assertEqual(1, updated["classification"]["search"]["selected_rank"])
             self.assertEqual(1, updated["classification"]["search"]["candidates"][0]["rank"])
             self.assertTrue(updated["classification"]["search"]["candidates"][0]["coarse_support_block_ids"])

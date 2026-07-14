@@ -12,7 +12,7 @@ from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmRespon
 from pastor_transcript_extractor.storage import Database
 
 
-PROMPT_VERSION = "interaction-diagnostic-v1"
+PROMPT_VERSION = "interaction-diagnostic-line-evidence-v3"
 BLOCK_BUILDER_VERSION = "deduplicated-caption-blocks-v1"
 DEFAULT_SENTINELS = ("WaNsL05AX3A", "l6mZEQvArkE", "qny7TUqNkQU")
 INTERACTION_MODES = (
@@ -21,30 +21,6 @@ INTERACTION_MODES = (
     "facilitated_group_discussion",
     "mixed_or_unclear",
 )
-INTERACTION_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "interaction_mode": {"type": "string", "enum": list(INTERACTION_MODES)},
-        "audience_turn_taking": {"type": "boolean"},
-        "audience_turn_taking_evidence": {"type": "string"},
-        "lesson_material_references": {"type": "boolean"},
-        "lesson_material_references_evidence": {"type": "string"},
-        "multiple_sustained_speakers": {"type": "boolean"},
-        "multiple_sustained_speakers_evidence": {"type": "string"},
-    },
-    "required": [
-        "interaction_mode",
-        "audience_turn_taking",
-        "audience_turn_taking_evidence",
-        "lesson_material_references",
-        "lesson_material_references_evidence",
-        "multiple_sustained_speakers",
-        "multiple_sustained_speakers_evidence",
-    ],
-    "additionalProperties": False,
-}
-
-
 @dataclass(frozen=True, slots=True)
 class DiagnosticBlock:
     block_id: int
@@ -79,6 +55,72 @@ def deduplicate_caption_text(text: str) -> str:
         kept.append(line)
         normalized.append(current)
     return "\n".join(kept)
+
+
+def numbered_evidence_lines(text: str) -> str:
+    return "\n".join(
+        f"[L{line_id:03d}] {line}"
+        for line_id, line in enumerate(text.splitlines(), start=1)
+        if line.strip()
+    )
+
+
+def evidence_line_ids(text: str) -> list[str]:
+    return [
+        f"L{line_id:03d}"
+        for line_id, line in enumerate(text.splitlines(), start=1)
+        if line.strip()
+    ]
+
+
+def interaction_schema(block_text: str) -> dict[str, Any]:
+    allowed_ids = evidence_line_ids(block_text)
+    evidence_array = {
+        "type": "array",
+        "items": {"type": "string", "enum": allowed_ids},
+        "uniqueItems": True,
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "interaction_mode": {"type": "string", "enum": list(INTERACTION_MODES)},
+            "audience_turn_taking": {"type": "boolean"},
+            "audience_turn_taking_evidence_line_ids": evidence_array,
+            "lesson_material_references": {"type": "boolean"},
+            "lesson_material_references_evidence_line_ids": evidence_array,
+            "multiple_sustained_speakers": {"type": "boolean"},
+            "multiple_sustained_speakers_evidence_line_ids": evidence_array,
+        },
+        "required": [
+            "interaction_mode",
+            "audience_turn_taking",
+            "audience_turn_taking_evidence_line_ids",
+            "lesson_material_references",
+            "lesson_material_references_evidence_line_ids",
+            "multiple_sustained_speakers",
+            "multiple_sustained_speakers_evidence_line_ids",
+        ],
+        "additionalProperties": False,
+    }
+
+
+def resolve_evidence_lines(content: dict[str, Any], block_text: str) -> dict[str, list[dict[str, str]]]:
+    lines = [line for line in block_text.splitlines() if line.strip()]
+    line_map = {f"L{line_id:03d}": line for line_id, line in enumerate(lines, start=1)}
+    resolved: dict[str, list[dict[str, str]]] = {}
+    for field in (
+        "audience_turn_taking",
+        "lesson_material_references",
+        "multiple_sustained_speakers",
+    ):
+        raw_ids = content.get(f"{field}_evidence_line_ids")
+        ids = raw_ids if isinstance(raw_ids, list) else []
+        resolved[field] = [
+            {"line_id": line_id, "text": line_map[line_id]}
+            for line_id in ids
+            if isinstance(line_id, str) and line_id in line_map
+        ]
+    return resolved
 
 
 def _selected_candidate(classification: dict[str, Any]) -> dict[str, Any]:
@@ -164,14 +206,14 @@ PARTICIPATORY_SERMON: one primary preacher remains in control but the excerpt co
 FACILITATED_GROUP_DISCUSSION: a leader solicits answers and at least two real participants make substantive alternating contributions.
 MIXED_OR_UNCLEAR: the interaction structure cannot be established from the text.
 Set lesson_material_references only for explicit curriculum material such as a quarterly, study guide, numbered lesson, or memory text; a Bible passage or generic use of the word lesson is insufficient.
-For every true boolean, provide a short exact excerpt from CURRENT proving it. Return an empty evidence string for false. If exact evidence is absent, use false.
+CURRENT lines have stable IDs such as L001. For every true boolean, return the IDs of the CURRENT lines that prove it. Return an empty ID array for false. Never cite PREVIOUS or FOLLOWING. If no CURRENT line IDs prove the signal, use false.
 Do not infer turns from repeated ideas, punctuation, religious vocabulary, church names, service titles, or topic keywords. Return only the required JSON.
 
 PREVIOUS:
 {previous.deduplicated_text if previous else '(none)'}
 
 CURRENT:
-{block.deduplicated_text}
+{numbered_evidence_lines(block.deduplicated_text)}
 
 FOLLOWING:
 {following.deduplicated_text if following else '(none)'}"""
@@ -179,7 +221,7 @@ FOLLOWING:
 
 def validate_interaction_evidence(content: dict[str, Any], block_text: str) -> list[str]:
     errors: list[str] = []
-    normalized_text = _normalized_line(block_text)
+    allowed_ids = set(evidence_line_ids(block_text))
     mode = content.get("interaction_mode")
     if mode not in INTERACTION_MODES:
         errors.append("invalid_interaction_mode")
@@ -188,26 +230,32 @@ def validate_interaction_evidence(content: dict[str, Any], block_text: str) -> l
         "lesson_material_references",
         "multiple_sustained_speakers",
     ):
-        evidence_field = f"{field}_evidence"
+        evidence_field = f"{field}_evidence_line_ids"
         enabled = content.get(field)
         evidence = content.get(evidence_field)
         if not isinstance(enabled, bool):
             errors.append(f"invalid_{field}")
             continue
-        if not isinstance(evidence, str):
+        if not isinstance(evidence, list):
             errors.append(f"invalid_{evidence_field}")
             continue
-        normalized_evidence = _normalized_line(evidence)
-        if enabled and (not normalized_evidence or normalized_evidence not in normalized_text):
+        valid_ids = all(isinstance(line_id, str) and line_id in allowed_ids for line_id in evidence)
+        if not valid_ids or len(evidence) != len(set(evidence)):
             errors.append(f"ungrounded_{field}")
-        if not enabled and normalized_evidence:
+        elif enabled and not evidence:
+            errors.append(f"ungrounded_{field}")
+        if not enabled and evidence:
             errors.append(f"evidence_present_for_false_{field}")
-    if mode == "facilitated_group_discussion" and not (
+    return errors
+
+
+def interaction_consistency_warnings(content: dict[str, Any]) -> list[str]:
+    if content.get("interaction_mode") == "facilitated_group_discussion" and not (
         content.get("audience_turn_taking") is True
         and content.get("multiple_sustained_speakers") is True
     ):
-        errors.append("inconsistent_facilitated_group_discussion")
-    return errors
+        return ["inconsistent_facilitated_group_discussion"]
+    return []
 
 
 class DiagnosticInferenceCache:
@@ -220,6 +268,7 @@ class DiagnosticInferenceCache:
         *,
         model_digest: str,
         prompt: str,
+        schema: dict[str, Any],
     ) -> tuple[LocalLlmResponse, bool]:
         identity = {
             "prompt_version": PROMPT_VERSION,
@@ -228,7 +277,7 @@ class DiagnosticInferenceCache:
             "model_digest": model_digest,
             "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
             "schema_hash": hashlib.sha256(
-                json.dumps(INTERACTION_SCHEMA, sort_keys=True).encode("utf-8")
+                json.dumps(schema, sort_keys=True).encode("utf-8")
             ).hexdigest(),
             "temperature": 0,
         }
@@ -247,7 +296,7 @@ class DiagnosticInferenceCache:
                     return LocalLlmResponse(content, raw_content, model), True
             except (OSError, json.JSONDecodeError, KeyError):
                 pass
-        response = client.generate_json(prompt, INTERACTION_SCHEMA)
+        response = client.generate_json(prompt, schema)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({
             "identity": identity,
@@ -295,8 +344,9 @@ def run_model_diagnostics(
                 blocks[position + 1] if position + 1 < len(blocks) else None,
             )
             try:
+                schema = interaction_schema(block.deduplicated_text)
                 response, cached = cache.generate(
-                    client, model_digest=model_digest, prompt=prompt
+                    client, model_digest=model_digest, prompt=prompt, schema=schema
                 )
                 hits += int(cached)
                 misses += int(not cached)
@@ -306,6 +356,7 @@ def run_model_diagnostics(
                 validation_errors = validate_interaction_evidence(
                     content, block.deduplicated_text
                 )
+                consistency_warnings = interaction_consistency_warnings(content)
             except Exception as error:
                 failures += 1
                 cached = False
@@ -313,6 +364,7 @@ def run_model_diagnostics(
                 raw_response = None
                 inference_error = f"{type(error).__name__}: {error}"
                 validation_errors = ["inference_failed"]
+                consistency_warnings = []
             block_results.append({
                 "block_id": block.block_id,
                 "start_seconds": block.start_seconds,
@@ -320,11 +372,14 @@ def run_model_diagnostics(
                 "segment_indexes": block.segment_indexes,
                 "raw_text_hash": hashlib.sha256(block.raw_text.encode("utf-8")).hexdigest(),
                 "deduplicated_text": block.deduplicated_text,
+                "numbered_evidence_lines": numbered_evidence_lines(block.deduplicated_text),
                 "deduplication_ratio": len(block.deduplicated_text) / max(len(block.raw_text), 1),
                 "content": content,
+                "resolved_evidence": resolve_evidence_lines(content, block.deduplicated_text),
                 "raw_response": raw_response,
                 "inference_error": inference_error,
                 "validation_errors": validation_errors,
+                "consistency_warnings": consistency_warnings,
                 "cache_hit": cached,
             })
         valid = [item for item in block_results if not item["validation_errors"]]
@@ -388,7 +443,7 @@ def build_diagnostic_report(run: dict[str, Any]) -> str:
         "",
         "## Review guidance",
         "",
-        "Inspect block-level excerpts and exact evidence in `results.json`. A model passes only if it separates Sabbath School, a normal sermon, and the multi-speaker sermon without relying on topic keywords alone.",
+        "Inspect block-level excerpts and line-ID evidence in `results.json`. A model passes only if it separates the Sabbath School and ambiguous multi-speaker negatives from the normal sermon without relying on topic keywords alone.",
         "",
     ])
     return "\n".join(lines)
@@ -397,7 +452,7 @@ def build_diagnostic_report(run: dict[str, Any]) -> str:
 def create_diagnostic_run(model_results: list[dict[str, Any]]) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_id": now.strftime("%Y%m%dT%H%M%SZ"),
         "generated_at": now.isoformat(),
         "prompt_version": PROMPT_VERSION,

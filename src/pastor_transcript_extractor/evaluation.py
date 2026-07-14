@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pastor_transcript_extractor.disposition import ACCEPTED_SERMON, build_final_disposition
+
 
 CATASTROPHIC_RECALL_THRESHOLD = 0.90
 CONFIDENCE_POLICIES = ("current", "no_rule_overlap", "soft_rule_overlap")
@@ -417,6 +419,18 @@ def evaluate_fixture_payload(
     confidence = str(classification.get("confidence_tier", "unknown"))
     cache_stats = classification.get("cache_stats") if isinstance(classification.get("cache_stats"), dict) else {}
     sermon_window = proposed.get("sermon_window") if isinstance(proposed.get("sermon_window"), dict) else {}
+    final_disposition = proposed.get("final_disposition")
+    if not isinstance(final_disposition, dict):
+        candidate_disposition = classification.get("final_disposition")
+        final_disposition = (
+            candidate_disposition
+            if isinstance(candidate_disposition, dict)
+            else build_final_disposition(
+                classification,
+                sermon_window,
+                guest_speaker_suspected=proposed.get("guest_speaker_suspected") is True,
+            )
+        )
     common = {
         "video_id": str(fixture.get("video_id")),
         "status": "evaluated",
@@ -436,6 +450,8 @@ def evaluate_fixture_payload(
         "candidate_search_artifact": str(proposed_path),
         "selected_candidate_rank": selected_rank,
         "confidence_tier": confidence,
+        "final_disposition": final_disposition,
+        "disposition_status": final_disposition.get("status"),
         "confidence_ablations": build_confidence_ablations(classification),
         "cache_hits": int(cache_stats.get("hits", 0)),
         "cache_misses": int(cache_stats.get("misses", 0)),
@@ -450,6 +466,7 @@ def evaluate_fixture_payload(
             "timed_segment_count": len(timed),
             "false_positive_ratio": len(detected) / max(len(timed), 1),
             "false_high_confidence_acceptance": candidate_produced and confidence == "high",
+            "false_accepted_disposition": final_disposition.get("status") == ACCEPTED_SERMON,
             "baseline_protection_prevented_replacement": baseline_protected,
         }
 
@@ -510,6 +527,7 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "catastrophic_omissions": sum(bool(result.get("catastrophic_omission")) for result in positives),
         "negative_candidates_produced": sum(bool(result.get("candidate_produced")) for result in negatives),
         "negative_high_confidence_false_positives": sum(bool(result.get("false_high_confidence_acceptance")) for result in negatives),
+        "negative_accepted_dispositions": sum(bool(result.get("false_accepted_disposition")) for result in negatives),
         "correct_top_candidate_rate": sum(top_candidates) / len(top_candidates) if top_candidates else None,
     }
     aggregate["confidence_ablations"] = aggregate_confidence_ablations(results)
@@ -534,6 +552,7 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         f"- Correct top-candidate rate: {metric(aggregate['correct_top_candidate_rate'])}",
         f"- Catastrophic omissions: {aggregate['catastrophic_omissions']}",
         f"- Negative high-confidence false positives: {aggregate['negative_high_confidence_false_positives']}",
+        f"- Negative accepted dispositions: {aggregate['negative_accepted_dispositions']}",
         "",
         "## Confidence ablations",
         "",
@@ -571,8 +590,8 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         "",
         "## Positive fixtures",
         "",
-        "| Video | Confidence | Recall | Contam. | Start error | End error | Selected / best rank | Rule overlap | Cache H/M | Status |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| Video | Confidence | Disposition | Recall | Contam. | Start error | End error | Selected / best rank | Rule overlap | Cache H/M | Status |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ])
     positives = [result for result in run["results"] if result.get("expected_outcome") == "sermon"]
     negatives = [result for result in run["results"] if result.get("expected_outcome") == "no_sermon"]
@@ -580,6 +599,7 @@ def build_markdown_report(run: dict[str, Any]) -> str:
     for result in positives:
         lines.append(
             f"| {result.get('video_id')} | {result.get('confidence_tier', '—')} | "
+            f"{result.get('disposition_status', '—')} | "
             f"{metric(result.get('sermon_recall'))} | {metric(result.get('contamination_ratio'))} | "
             f"{metric(result.get('start_boundary_error_seconds'), 1)} | {metric(result.get('end_boundary_error_seconds'), 1)} | "
             f"{result.get('selected_candidate_rank', '—')} / {result.get('ground_truth_best_candidate_rank', '—')} | "
@@ -590,13 +610,14 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         "",
         "## Negative fixtures",
         "",
-        "| Video | Candidate | Confidence | Retained | False-positive ratio | Baseline protected | Cache H/M | Status |",
-        "|---|---:|---:|---:|---:|---:|---:|---|",
+        "| Video | Candidate | Confidence | Disposition | Retained | False-positive ratio | Baseline protected | Cache H/M | Status |",
+        "|---|---:|---:|---|---:|---:|---:|---:|---|",
     ])
     for result in negatives:
         lines.append(
             f"| {result.get('video_id')} | {'yes' if result.get('candidate_produced') else 'no'} | "
-            f"{result.get('confidence_tier', '—')} | {result.get('retained_segment_count', '—')} | "
+            f"{result.get('confidence_tier', '—')} | {result.get('disposition_status', '—')} | "
+            f"{result.get('retained_segment_count', '—')} | "
             f"{metric(result.get('false_positive_ratio'))} | "
             f"{'yes' if result.get('baseline_protection_prevented_replacement') else 'no'} | "
             f"{result.get('cache_hits', 0)}/{result.get('cache_misses', 0)} | {result.get('status')} |"
@@ -611,6 +632,7 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         if result.get("status") != "evaluated"
         or result.get("catastrophic_omission")
         or result.get("false_high_confidence_acceptance")
+        or result.get("false_accepted_disposition")
     ]
     if failures:
         lines.extend(["## Failures requiring review", ""])

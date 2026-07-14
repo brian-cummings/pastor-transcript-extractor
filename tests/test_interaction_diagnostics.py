@@ -9,6 +9,10 @@ from pastor_transcript_extractor.interaction_diagnostics import (
     DiagnosticInferenceCache,
     build_diagnostic_blocks,
     deduplicate_caption_text,
+    interaction_schema,
+    interaction_prompt,
+    interaction_consistency_warnings,
+    numbered_evidence_lines,
     run_model_diagnostics,
     validate_interaction_evidence,
 )
@@ -56,23 +60,60 @@ The widow gave two coins"""
         self.assertEqual([1, 2], blocks[0].segment_indexes)
         self.assertEqual("sermon\ncontinues", blocks[0].deduplicated_text)
 
-    def test_requires_exact_grounding_for_positive_signals(self) -> None:
+    def test_numbers_deduplicated_lines_for_stable_evidence(self) -> None:
+        self.assertEqual(
+            "[L001] First line\n[L002] Second line",
+            numbered_evidence_lines("First line\nSecond line"),
+        )
+
+        schema = interaction_schema("First line\nSecond line")
+        evidence_items = schema["properties"]["audience_turn_taking_evidence_line_ids"]["items"]
+        self.assertEqual(["L001", "L002"], evidence_items["enum"])
+
+    def test_prompt_numbers_only_current_evidence_lines(self) -> None:
+        block = DiagnosticBlock(1, [1], 10.0, 20.0, "current", "Current evidence")
+        previous = DiagnosticBlock(0, [0], 0.0, 10.0, "previous", "Previous context")
+
+        prompt = interaction_prompt(block, previous, None)
+
+        self.assertIn("CURRENT:\n[L001] Current evidence", prompt)
+        self.assertIn("PREVIOUS:\nPrevious context", prompt)
+        self.assertNotIn("[L001] Previous context", prompt)
+
+    def test_requires_valid_line_ids_for_positive_signals(self) -> None:
         content = {
             "interaction_mode": "facilitated_group_discussion",
             "audience_turn_taking": True,
-            "audience_turn_taking_evidence": "What do you think? I think it means grace.",
+            "audience_turn_taking_evidence_line_ids": ["L001", "L002"],
             "lesson_material_references": False,
-            "lesson_material_references_evidence": "",
+            "lesson_material_references_evidence_line_ids": [],
             "multiple_sustained_speakers": True,
-            "multiple_sustained_speakers_evidence": "I think it means grace.",
+            "multiple_sustained_speakers_evidence_line_ids": ["L002"],
         }
-        text = "What do you think? I think it means grace. Let us continue."
+        text = "What do you think?\nI think it means grace."
         self.assertEqual([], validate_interaction_evidence(content, text))
 
-        content["multiple_sustained_speakers_evidence"] = "A missing quote"
+        content["multiple_sustained_speakers_evidence_line_ids"] = ["L003"]
         self.assertIn(
             "ungrounded_multiple_sustained_speakers",
             validate_interaction_evidence(content, text),
+        )
+
+    def test_mode_inconsistency_is_a_warning_without_erasing_grounded_signals(self) -> None:
+        content = {
+            "interaction_mode": "facilitated_group_discussion",
+            "audience_turn_taking": True,
+            "audience_turn_taking_evidence_line_ids": ["L001"],
+            "lesson_material_references": False,
+            "lesson_material_references_evidence_line_ids": [],
+            "multiple_sustained_speakers": False,
+            "multiple_sustained_speakers_evidence_line_ids": [],
+        }
+
+        self.assertEqual([], validate_interaction_evidence(content, "Audience answer"))
+        self.assertEqual(
+            ["inconsistent_facilitated_group_discussion"],
+            interaction_consistency_warnings(content),
         )
 
     def test_model_failure_is_recorded_without_aborting_other_evidence(self) -> None:

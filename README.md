@@ -163,7 +163,15 @@ pte diagnose-interaction \
   --base-dir /path/to/app-data
 ```
 
-Raw structured responses, exact evidence, validation failures, and a Markdown
+The constrained 12B diagnostic may require a longer request timeout:
+
+```bash
+PTE_LLM_TIMEOUT_SECONDS=180 pte diagnose-interaction \
+  --model gemma3:12b \
+  --base-dir /path/to/app-data
+```
+
+Raw structured responses, stable current-excerpt evidence line IDs, validation failures, and a Markdown
 comparison report are written under `evaluation/interaction-diagnostics/`. Inference
 is cached by model digest, prompt, schema, and deduplicated excerpt.
 
@@ -187,8 +195,10 @@ Classifier modes:
 
 The classifier labels contextual transcript blocks but never rewrites their
 text. Results and raw structured responses are saved in each video's
-`extracted/llm-classification-v1.json` artifact. Medium- and low-confidence
-results are marked in the pastor review output.
+`extracted/llm-classification-v1.json` artifact. Extraction also persists a
+final disposition: `accepted_sermon`, `review_required`, `rejected_no_sermon`,
+or `rejected_ambiguous_speakers`. Diagnostic candidates remain auditable, but
+rejected videos do not fall back to the full transcript in pastor review output.
 
 ## Commands
 

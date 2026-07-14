@@ -3112,6 +3112,55 @@ class ExtractionTests(unittest.TestCase):
 
 
 class ReviewExportTests(unittest.TestCase):
+    def test_rejected_video_does_not_fall_back_to_full_transcript(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = build_paths(Path(tmp))
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123",
+                title="Ambiguous Program",
+                url="https://www.youtube.com/watch?v=abc123",
+                status=VideoStatus.EXTRACTED,
+            )
+            video_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            video_dir.extracted.mkdir(parents=True, exist_ok=True)
+            proposed_path = video_dir.extracted / "proposed.md"
+            proposed_json_path = video_dir.extracted / "proposed.json"
+            proposed_path.write_text("SECRET FULL TRANSCRIPT", encoding="utf-8")
+            proposed_json_path.write_text(json.dumps({
+                "transcript_source": "captions",
+                "sermon_window": {"start_seconds": None, "end_seconds": None, "included_segment_indexes": []},
+                "classification": {"confidence_tier": "low", "retained_segment_indexes": [0]},
+                "final_disposition": {
+                    "status": "rejected_no_sermon",
+                    "reason_codes": ["low_confidence_candidate_not_promoted"],
+                },
+                "segments": [{"start_seconds": 0.0, "end_seconds": 60.0, "text": "SECRET FULL TRANSCRIPT"}],
+            }), encoding="utf-8")
+            database.add_extraction_result(
+                video_id=video.id,
+                version=1,
+                proposed_text_path=str(proposed_path),
+                proposed_json_path=str(proposed_json_path),
+            )
+
+            result = export_pastor_review_markdown(database, paths, pastor.slug)
+            export_text = result.export_path.read_text(encoding="utf-8")
+
+            self.assertIn("Final Disposition: rejected_no_sermon", export_text)
+            self.assertIn("No sermon excerpt retained", export_text)
+            self.assertNotIn("SECRET FULL TRANSCRIPT", export_text)
+
     def test_export_pastor_review_markdown_persists_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
