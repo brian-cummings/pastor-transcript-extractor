@@ -21,8 +21,11 @@ Implemented:
 - production confidence uses versioned soft rule overlap; the evaluator also replays the legacy hard-veto and no-overlap policies
 - extraction and reclassification persist an explicit final disposition separately from diagnostic candidates
 - rejected videos never fall back to a full-transcript excerpt in pastor review exports
+- `extract`, review preparation, and `run` share one adaptive extraction batch service
+- Typer commands delegate to plain service functions with ordinary Python defaults
+- `run` writes disposition-aware `review.md` and `review.json` exports by default
 - the offline interaction harness uses stable current-excerpt line IDs for grounded evidence
-- 150 tests pass
+- 153 tests pass
 
 ## Local Evaluation Environment
 
@@ -45,6 +48,59 @@ pte doctor --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
 `pte doctor` should report Ollama connectivity, the installed model, and structured output as ready.
+
+## Normal End-to-End Workflow
+
+The normal single-source command now runs through pastor review export. With
+Gemma 3 4B enabled, `--classifier auto` selects Ollama; without
+`PTE_LLM_ENABLED=1`, auto safely uses rules.
+
+```bash
+export PTE_LLM_ENABLED=1
+export PTE_LLM_MODEL=gemma3:4b
+
+pte run 'YOUTUBE_URL' \
+  --pastor PASTOR_SLUG \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The generated files are:
+
+```text
+/Users/briancummings/Documents/PastorSearchData/pastors/PASTOR_SLUG/exports/review.md
+/Users/briancummings/Documents/PastorSearchData/pastors/PASTOR_SLUG/exports/review.json
+```
+
+Run every configured source with the same adaptive extraction and per-pastor
+review behavior:
+
+```bash
+pte run --all \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+To intentionally stop after extraction:
+
+```bash
+pte run 'YOUTUBE_URL' \
+  --pastor PASTOR_SLUG \
+  --skip-review \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The standalone entry points use the same extraction service:
+
+```bash
+pte extract --classifier auto \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+pte review PASTOR_SLUG --classifier auto \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Classifier behavior is unchanged: `rules` never calls Ollama, `auto` calls it
+only when enabled and falls back safely, and `llm` reports an extraction failure
+when Ollama is unavailable. An unchanged forced extraction reuses the raw
+inference cache keyed by transcript, prompt, model digest, schema, and context.
 
 ## Repeatable Classification Workflow
 
@@ -220,7 +276,7 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 150 tests.
+The expected count at this handoff is 153 tests.
 
 ## Remaining Defects
 

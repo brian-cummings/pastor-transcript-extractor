@@ -6,11 +6,13 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable
 from unittest.mock import patch
 
 from typer.testing import CliRunner
 
+from pastor_transcript_extractor.application import ExtractionBatchResult
 from pastor_transcript_extractor.config import (
     build_paths,
     build_pastor_paths,
@@ -22,6 +24,7 @@ from pastor_transcript_extractor.config import (
 from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
+from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import SourceType, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.extraction import extract_video
 from pastor_transcript_extractor.exporting import export_pastor_review_markdown
@@ -1009,6 +1012,172 @@ class SegmentationTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    @staticmethod
+    def _fake_caption_fetch(database, paths, tools, video_id):
+        del tools
+        video = database.get_video_by_id(video_id)
+        pastor = database.get_pastor_by_id(video.pastor_id)
+        artifact_dir = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+        artifact_dir.raw.mkdir(parents=True, exist_ok=True)
+        raw_text_path = artifact_dir.raw / "captions.txt"
+        raw_json_path = artifact_dir.raw / "captions.json"
+        segments = [
+            {"start": 0.0, "end": 300.0, "text": "SECRET_REJECTED_CONTENT registration and schedule details."},
+            {"start": 300.0, "end": 600.0, "text": "Community notices and volunteer assignments."},
+            {"start": 600.0, "end": 900.0, "text": "Closing logistics for next week's gathering."},
+        ]
+        raw_text_path.write_text("\n".join(item["text"] for item in segments), encoding="utf-8")
+        raw_json_path.write_text(json.dumps({"segments": segments}), encoding="utf-8")
+        artifact = database.add_transcript_artifact(
+            video_id=video.id,
+            source_kind=TranscriptSourceKind.CAPTIONS,
+            audio_path=None,
+            raw_json_path=str(raw_json_path),
+            raw_text_path=str(raw_text_path),
+        )
+        database.update_video_status(video.id, VideoStatus.TRANSCRIPT_FETCHED)
+        return SimpleNamespace(raw_text_path=raw_text_path, artifact=artifact)
+
+    def test_run_end_to_end_uses_adaptive_extraction_and_writes_safe_review(self) -> None:
+        class FakeOllamaClient:
+            model = "fixture-model"
+            inference_calls = 0
+
+            def __init__(self, config) -> None:
+                self.model = config.model
+
+            def model_digest(self) -> str:
+                return "fixture-digest"
+
+            def generate_json(self, prompt, schema):
+                del prompt
+                type(self).inference_calls += 1
+                properties = schema.get("properties", {})
+                content = (
+                    {"phase": "administration", "reason_code": "logistics_or_welcome"}
+                    if "phase" in properties
+                    else {"label": "announcements", "reason_code": "logistics_or_welcome"}
+                )
+                return LocalLlmResponse(content, json.dumps(content), self.model)
+
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            discovered = [DiscoveredVideo(
+                youtube_video_id="reject12345",
+                title="Administrative Program",
+                url="https://www.youtube.com/watch?v=reject12345",
+                channel_name="Sample Church",
+                published_at=None,
+                duration_seconds=900,
+            )]
+
+            with patch.dict(os.environ, {"PTE_LLM_ENABLED": "1", "PTE_LLM_MODEL": "fixture-model"}, clear=False), patch(
+                "pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered
+            ), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video", side_effect=self._fake_caption_fetch
+            ), patch("pastor_transcript_extractor.application.OllamaClient", FakeOllamaClient):
+                result = runner.invoke(app, [
+                    "run", "https://www.youtube.com/watch?v=reject12345",
+                    "--pastor", pastor.slug, "--captions-only", "--base-dir", str(base_dir),
+                ])
+                first_call_count = FakeOllamaClient.inference_calls
+                rerun = runner.invoke(app, [
+                    "run", "https://www.youtube.com/watch?v=reject12345",
+                    "--pastor", pastor.slug, "--captions-only", "--base-dir", str(base_dir),
+                ])
+                forced = runner.invoke(app, ["extract", "--force", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual(0, rerun.exit_code, msg=rerun.output)
+            self.assertEqual(0, forced.exit_code, msg=forced.output)
+            self.assertIn("Extracted 0 video(s); skipped 1; failed 0.", rerun.output)
+            self.assertGreater(first_call_count, 0)
+            self.assertEqual(first_call_count, FakeOllamaClient.inference_calls)
+            video = database.get_video_by_youtube_id("reject12345")
+            extraction = database.get_latest_extraction_result_for_video(video.id)
+            payload = json.loads(Path(extraction.proposed_json_path).read_text(encoding="utf-8"))
+            self.assertEqual("adaptive_llm_v3", payload["classification"]["method"])
+            self.assertEqual("rejected_no_sermon", payload["final_disposition"]["status"])
+            review_dir = build_pastor_paths(build_paths(base_dir), pastor.slug).exports
+            review_text = (review_dir / "review.md").read_text(encoding="utf-8")
+            review_json = json.loads((review_dir / "review.json").read_text(encoding="utf-8"))
+            self.assertNotIn("SECRET_REJECTED_CONTENT", review_text)
+            self.assertIn("Final Disposition: rejected_no_sermon", review_text)
+            self.assertEqual("rejected_no_sermon", review_json["videos"][0]["final_disposition"]["status"])
+
+    def test_run_skip_review_stops_after_extraction(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            discovered = [DiscoveredVideo(
+                youtube_video_id="skip1234567",
+                title="Skip Review Program",
+                url="https://www.youtube.com/watch?v=skip1234567",
+                channel_name="Sample Church",
+                published_at=None,
+                duration_seconds=900,
+            )]
+            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video", side_effect=self._fake_caption_fetch
+            ), patch("pastor_transcript_extractor.application.OllamaClient", side_effect=AssertionError("rules called Ollama")):
+                result = runner.invoke(app, [
+                    "run", "https://www.youtube.com/watch?v=skip1234567", "--pastor", pastor.slug,
+                    "--captions-only", "--classifier", "rules", "--skip-review", "--base-dir", str(base_dir),
+                ])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            video = database.get_video_by_youtube_id("skip1234567")
+            self.assertIsNotNone(database.get_latest_extraction_result_for_video(video.id))
+            review_dir = build_pastor_paths(build_paths(base_dir), pastor.slug).exports
+            self.assertFalse((review_dir / "review.md").exists())
+            self.assertFalse((review_dir / "review.json").exists())
+
+    def test_run_all_writes_a_review_for_each_pastor(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastors = [
+                database.add_pastor("first-church", "First Church"),
+                database.add_pastor("second-church", "Second Church"),
+            ]
+            for index, pastor in enumerate(pastors, start=1):
+                source = database.add_source(
+                    f"https://www.youtube.com/watch?v=alltest{index}",
+                    SourceType.VIDEO,
+                    pastor_id=pastor.id,
+                )
+                video = database.add_video(
+                    source_id=source.id,
+                    pastor_id=pastor.id,
+                    youtube_video_id=f"alltest{index}",
+                    title=f"Program {index}",
+                    url=source.url,
+                    status=VideoStatus.DISCOVERED,
+                )
+                self._fake_caption_fetch(database, paths, None, video.id)
+
+            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=[]):
+                result = runner.invoke(app, [
+                    "run", "--all", "--captions-only", "--classifier", "rules", "--base-dir", str(base_dir),
+                ])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            for pastor in pastors:
+                review_dir = build_pastor_paths(paths, pastor.slug).exports
+                self.assertTrue((review_dir / "review.md").exists())
+                self.assertTrue((review_dir / "review.json").exists())
+
     def _assert_command_persists_base_dir(
         self,
         command_args: list[str],
@@ -1270,13 +1439,14 @@ class CliTests(unittest.TestCase):
 
             def fake_stage(*args, **kwargs):
                 calls.append(("stage", args, kwargs))
+                return ExtractionBatchResult(0, 0, 0)
 
-            with patch("pastor_transcript_extractor.cli.source_delete", side_effect=fake_source_delete), patch(
-                "pastor_transcript_extractor.cli.add", side_effect=fake_add
-            ), patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage), patch(
-                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage
-            ), patch("pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage), patch(
-                "pastor_transcript_extractor.cli.extract", side_effect=fake_stage
+            with patch("pastor_transcript_extractor.cli.delete_source_service", side_effect=fake_source_delete), patch(
+                "pastor_transcript_extractor.cli.add_source_service", side_effect=fake_add
+            ), patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage
+            ), patch("pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage), patch(
+                "pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage
             ):
                 result = runner.invoke(
                     app,
@@ -1319,12 +1489,13 @@ class CliTests(unittest.TestCase):
 
             def fake_extract(*args, **kwargs):
                 calls.append(("extract", args, kwargs))
+                return ExtractionBatchResult(0, 0, 0)
 
-            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_discover), patch(
-                "pastor_transcript_extractor.cli.fetch", side_effect=fake_fetch
+            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_discover), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_fetch
             ), patch(
-                "pastor_transcript_extractor.cli.transcribe", side_effect=fake_transcribe
-            ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_extract):
+                "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_transcribe
+            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_extract):
                 result = runner.invoke(
                     app,
                     [
@@ -1439,13 +1610,15 @@ class CliTests(unittest.TestCase):
             def fake_stage(name: str):
                 def runner(*args, **kwargs):
                     calls.append((name, args, kwargs))
+                    if name == "extract":
+                        return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
-                "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
-            ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
+                "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
+            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")):
                 result = runner.invoke(
                     app,
                     [
@@ -1476,13 +1649,15 @@ class CliTests(unittest.TestCase):
             def fake_stage(name: str):
                 def runner(*args, **kwargs):
                     calls.append((name, args, kwargs))
+                    if name == "extract":
+                        return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
-                "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
-            ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
+                "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
+            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")):
                 result = runner.invoke(
                     app,
                     [
@@ -1513,13 +1688,15 @@ class CliTests(unittest.TestCase):
             def fake_stage(name: str):
                 def runner(*args, **kwargs):
                     calls.append((name, args, kwargs))
+                    if name == "extract":
+                        return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
-                "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
-            ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
+                "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
+            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")):
                 result = runner.invoke(
                     app,
                     [
@@ -1567,13 +1744,15 @@ class CliTests(unittest.TestCase):
             def fake_stage(name: str):
                 def runner(*args, **kwargs):
                     calls.append((name, args, kwargs))
+                    if name == "extract":
+                        return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
-                "pastor_transcript_extractor.cli.transcribe", side_effect=fake_stage("transcribe")
-            ), patch("pastor_transcript_extractor.cli.extract", side_effect=fake_stage("extract")):
+                "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
+            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")):
                 result = runner.invoke(
                     app,
                     [

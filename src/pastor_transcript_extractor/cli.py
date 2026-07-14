@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from pastor_transcript_extractor.application import ReviewBatchResult, extract_batch, prepare_review_exports
 from pastor_transcript_extractor.config import (
     build_llm_config,
     build_paths,
@@ -24,7 +25,7 @@ from pastor_transcript_extractor.config import (
     ensure_directories,
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
-from pastor_transcript_extractor.extraction import extract_video, reclassify_video
+from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.evaluation import (
     build_failure_analysis,
     build_failure_markdown,
@@ -54,7 +55,6 @@ from pastor_transcript_extractor.interaction_diagnostics import (
     load_sentinel_blocks,
     run_model_diagnostics,
 )
-from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.local_llm import OllamaClient
@@ -648,42 +648,6 @@ def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
     database.delete_video(video.id)
 
 
-def _prepare_review_markdown(database: Database, paths: Path, pastor_slug: str) -> tuple[int, int]:
-    pastor = database.get_pastor_by_slug(pastor_slug)
-    if pastor is None:
-        raise _unknown_pastor_error(pastor_slug, paths.root)
-
-    processed = 0
-    failed = 0
-    for video in database.list_videos():
-        if video.pastor_id != pastor.id:
-            continue
-        latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
-        latest_extraction = database.get_latest_extraction_result_for_video(video.id)
-        if latest_artifact is None or latest_extraction is not None:
-            continue
-        try:
-            console.print(f"Preparing review markdown for video #{video.id}: {video.title}")
-            extract_video(database, paths, video.id)
-        except Exception as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            console.print(f"[red]Failed to prepare review markdown[/red] video #{video.id}: {error}")
-            failed += 1
-            continue
-        processed += 1
-    return processed, failed
-
-
-def _prepare_all_review_markdown(database: Database, paths: Path) -> tuple[int, int]:
-    processed = 0
-    failed = 0
-    for pastor in database.list_pastors():
-        pastor_processed, pastor_failed = _prepare_review_markdown(database, paths, pastor.slug)
-        processed += pastor_processed
-        failed += pastor_failed
-    return processed, failed
-
-
 def _delete_source_tree(database: Database, paths: Path, source_id: int) -> int:
     source = database.get_source_by_id(source_id)
     if source is None:
@@ -715,6 +679,28 @@ def init(
     console.print(f"Initialized app data at [bold]{paths.root}[/bold]")
 
 
+def add_source_service(
+    url: str,
+    pastor: str,
+    notes: str | None = None,
+    base_dir: Path | None = None,
+) -> None:
+    database = get_database(base_dir)
+    try:
+        source_type = detect_source_type(url)
+    except UnsupportedSourceError as error:
+        raise ValueError(str(error)) from error
+
+    pastor_record = database.get_pastor_by_slug(pastor)
+    if pastor_record is None:
+        raise ValueError(f"Unknown pastor slug: {pastor} (app root: {build_paths(base_dir).root})")
+
+    source = database.add_source(url=url, source_type=source_type, pastor_id=pastor_record.id, notes=notes)
+    console.print(
+        f"Added source #{source.id}: {source.source_type.value} -> {source.url} (pastor: {pastor_record.slug})"
+    )
+
+
 @app.command(help="Add a YouTube video, playlist, or channel source for a pastor.")
 def add(
     url: str = typer.Argument(..., help="YouTube video, playlist, or channel URL."),
@@ -722,20 +708,10 @@ def add(
     notes: str | None = typer.Option(None, help="Optional notes for this source."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
     try:
-        source_type = detect_source_type(url)
-    except UnsupportedSourceError as error:
+        add_source_service(url, pastor, notes, base_dir)
+    except ValueError as error:
         raise typer.BadParameter(str(error)) from error
-
-    pastor_record = database.get_pastor_by_slug(pastor)
-    if pastor_record is None:
-        raise _unknown_pastor_error(pastor, base_dir)
-
-    source = database.add_source(url=url, source_type=source_type, pastor_id=pastor_record.id, notes=notes)
-    console.print(
-        f"Added source #{source.id}: {source.source_type.value} -> {source.url} (pastor: {pastor_record.slug})"
-    )
 
 
 @app.command(help="Show database counts and queued sources.")
@@ -804,21 +780,20 @@ def source_list(
     console.print(table)
 
 
-@source_app.command("delete", help="Delete a source and optionally all dependent videos and artifacts.")
-def source_delete(
-    source_id: int = typer.Argument(..., help="Source id to delete."),
-    force: bool = typer.Option(False, "--force", help="Delete dependent videos and all related artifacts."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+def delete_source_service(
+    source_id: int,
+    force: bool = False,
+    base_dir: Path | None = None,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     source = database.get_source_by_id(source_id)
     if source is None:
-        raise typer.BadParameter(f"Unknown source id: {source_id}")
+        raise ValueError(f"Unknown source id: {source_id}")
 
     videos = database.list_videos_by_source_id(source_id)
     if videos and not force:
-        raise typer.BadParameter(
+        raise ValueError(
             f"Source #{source_id} has {len(videos)} linked video(s). Use --force to delete them too."
         )
 
@@ -826,6 +801,18 @@ def source_delete(
     console.print(
         f"Deleted source #{source_id} ({source.url}); removed {deleted_videos} linked video(s) and artifacts."
     )
+
+
+@source_app.command("delete", help="Delete a source and optionally all dependent videos and artifacts.")
+def source_delete(
+    source_id: int = typer.Argument(..., help="Source id to delete."),
+    force: bool = typer.Option(False, "--force", help="Delete dependent videos and all related artifacts."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        delete_source_service(source_id, force, base_dir)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
 
 @video_app.command("list", help="List discovered videos.")
@@ -1035,21 +1022,11 @@ def doctor(
     console.print(table)
 
 
-@app.command(help="Discover videos from queued sources with yt-dlp metadata.")
-def discover(
-    limit: int | None = typer.Option(
-        DEFAULT_DISCOVER_LIMIT,
-        "--limit",
-        min=1,
-        help="Only persist the first N discovered videos per source. Defaults to 26.",
-    ),
-    all_videos: bool = typer.Option(
-        False,
-        "--all",
-        help="Persist all discovered videos for each source.",
-    ),
-    source_id: int | None = typer.Option(None, help="Only discover videos for a specific source id."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+def discover_sources_service(
+    limit: int | None = DEFAULT_DISCOVER_LIMIT,
+    all_videos: bool = False,
+    source_id: int | None = None,
+    base_dir: Path | None = None,
 ) -> None:
     database = get_database(base_dir)
     tool_config = build_tool_config()
@@ -1148,26 +1125,27 @@ def discover(
     console.print(summary)
 
 
-@app.command(help="Download or prepare local ASR transcripts for discovered videos.")
-def transcribe(
-    missing_only: bool = typer.Option(
-        False,
-        "--missing-only",
-        help="Only transcribe videos without a local ASR artifact.",
-    ),
-    captions_missing_only: bool = typer.Option(
-        True,
-        "--captions-missing-only/--all-eligible",
-        help="By default, only transcribe videos that do not already have a captions artifact. Use --all-eligible to transcribe all eligible videos.",
-    ),
-    jobs: int = typer.Option(
-        _default_transcribe_jobs(),
-        "--jobs",
+@app.command(help="Discover videos from queued sources with yt-dlp metadata.")
+def discover(
+    limit: int | None = typer.Option(
+        DEFAULT_DISCOVER_LIMIT,
+        "--limit",
         min=1,
-        help="Number of videos to transcribe concurrently. Defaults to 2.",
+        help="Only persist the first N discovered videos per source. Defaults to 26.",
     ),
-    source_id: int | None = typer.Option(None, help="Only transcribe videos from a specific source id."),
+    all_videos: bool = typer.Option(False, "--all", help="Persist all discovered videos for each source."),
+    source_id: int | None = typer.Option(None, help="Only discover videos for a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    discover_sources_service(limit, all_videos, source_id, base_dir)
+
+
+def transcribe_videos_service(
+    missing_only: bool = False,
+    captions_missing_only: bool = True,
+    jobs: int = DEFAULT_TRANSCRIBE_JOBS,
+    source_id: int | None = None,
+    base_dir: Path | None = None,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -1382,10 +1360,29 @@ def transcribe(
     console.print(f"Transcribed {processed} video(s); skipped {skipped}; failed {failed}.")
 
 
-@app.command(help="Fetch YouTube captions when available and persist them as transcript artifacts.")
-def fetch(
-    source_id: int | None = typer.Option(None, help="Only fetch captions for videos from a specific source id."),
+@app.command(help="Download or prepare local ASR transcripts for discovered videos.")
+def transcribe(
+    missing_only: bool = typer.Option(False, "--missing-only", help="Only transcribe videos without a local ASR artifact."),
+    captions_missing_only: bool = typer.Option(
+        True,
+        "--captions-missing-only/--all-eligible",
+        help="By default, only transcribe videos that do not already have a captions artifact. Use --all-eligible to transcribe all eligible videos.",
+    ),
+    jobs: int = typer.Option(
+        _default_transcribe_jobs(),
+        "--jobs",
+        min=1,
+        help="Number of videos to transcribe concurrently. Defaults to 2.",
+    ),
+    source_id: int | None = typer.Option(None, help="Only transcribe videos from a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    transcribe_videos_service(missing_only, captions_missing_only, jobs, source_id, base_dir)
+
+
+def fetch_captions_service(
+    source_id: int | None = None,
+    base_dir: Path | None = None,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -1435,6 +1432,14 @@ def fetch(
     )
 
 
+@app.command(help="Fetch YouTube captions when available and persist them as transcript artifacts.")
+def fetch(
+    source_id: int | None = typer.Option(None, help="Only fetch captions for videos from a specific source id."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    fetch_captions_service(source_id, base_dir)
+
+
 @app.command(help="Chunk transcript artifacts into reviewable segments and proposed Markdown.")
 def extract(
     missing_only: bool = typer.Option(
@@ -1456,69 +1461,25 @@ def extract(
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    if classifier not in {"auto", "rules", "llm"}:
-        raise typer.BadParameter("Classifier must be one of: auto, rules, llm")
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
-    llm_config = build_llm_config()
-    if llm_model is not None:
-        from dataclasses import replace
-
-        llm_config = replace(llm_config, model=llm_model)
-    llm_client = OllamaClient(llm_config) if classifier == "llm" or (classifier == "auto" and llm_config.enabled) else None
-    videos = database.list_videos()
-    if source_id is not None:
-        videos = [video for video in videos if video.source_id == source_id]
-    if not videos:
-        console.print("No videos queued.")
-        return
-
-    processed = 0
-    skipped = 0
-    failed = 0
-    for video in videos:
-        if video.pastor_id is None:
-            skipped += 1
-            continue
-        latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
-        if latest_artifact is None:
-            skipped += 1
-            continue
-        latest_extraction = database.get_latest_extraction_result_for_video(video.id)
-        if missing_only and latest_extraction is not None and not force:
-            skipped += 1
-            continue
-        if (
-            not force
-            and latest_extraction is not None
-            and video.status in {VideoStatus.EXTRACTED, VideoStatus.EXPORTED}
-        ):
-            skipped += 1
-            continue
-
-        try:
-            console.print(f"Extracting video #{video.id}: {video.title}")
-            extract_video(
-                database,
-                paths,
-                video.id,
-                classifier=classifier,
-                llm_client=llm_client,
-                prompt_version=llm_config.prompt_version,
-                context_size=llm_config.context_size,
-                progress=lambda stage, current, total: console.print(
-                    f"  {stage} block {current}/{total}"
-                ),
-            )
-        except Exception as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            console.print(f"[red]Failed to extract[/red] video #{video.id}: {error}")
-            failed += 1
-            continue
-        console.print(f"Extracted video #{video.id}")
-        processed += 1
-
-    console.print(f"Extracted {processed} video(s); skipped {skipped}; failed {failed}.")
+    try:
+        result = extract_batch(
+            database,
+            paths,
+            missing_only=missing_only,
+            force=force,
+            source_id=source_id,
+            classifier=classifier,
+            llm_model=llm_model,
+            event_callback=lambda message: console.print(message, markup=False),
+            progress_callback=lambda stage, current, total: console.print(
+                f"  {stage} block {current}/{total}"
+            ),
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Extracted {result.processed} video(s); skipped {result.skipped}; failed {result.failed}.")
 
 
 @app.command(help="Rerun local-LLM classification using existing extraction segments.")
@@ -1600,6 +1561,8 @@ def review(
     pastor: str | None = typer.Argument(None, help="Pastor slug whose extracted videos should be assembled into review Markdown."),
     all_pastors: bool = typer.Option(False, "--all", help="Build a combined review across all pastors."),
     edit: bool = typer.Option(False, "--edit", help="Open the generated review Markdown in an editor."),
+    classifier: str = typer.Option("auto", "--classifier", help="Content classifier for missing extractions: auto, rules, or llm."),
+    llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -1609,154 +1572,190 @@ def review(
     if not all_pastors and pastor is None:
         raise typer.BadParameter("A pastor slug is required unless you use --all.")
 
-    if all_pastors:
-        prepared, failed = _prepare_all_review_markdown(database, paths)
-        exported_pastors = 0
-        included_videos = 0
-        skipped_videos = 0
-        for pastor_record in database.list_pastors():
-            result = export_pastor_review_markdown(database, paths, pastor_record.slug)
-            console.print(f"Wrote pastor review markdown to {result.export_path}")
-            console.print(f"Wrote review manifest to {result.manifest_path}")
-            console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
-            exported_pastors += 1
-            included_videos += result.video_count
-            skipped_videos += result.skipped_count
-        if prepared or failed:
-            console.print(f"Prepared {prepared} video(s) for review; failed {failed}.")
-        console.print(f"Built review artifacts for {exported_pastors} pastor(s); included {included_videos} video(s); skipped {skipped_videos}.")
-    else:
-        assert pastor is not None
-        pastor_record = database.get_pastor_by_slug(pastor)
-        if pastor_record is None:
-            raise _unknown_pastor_error(pastor, base_dir)
-        prepared, failed = _prepare_review_markdown(database, paths, pastor_record.slug)
-        result = export_pastor_review_markdown(database, paths, pastor_record.slug)
-        review_path = build_pastor_paths(paths, pastor_record.slug).exports / "review.md"
-        review_label = "pastor review markdown"
+    if pastor is not None and database.get_pastor_by_slug(pastor) is None:
+        raise _unknown_pastor_error(pastor, base_dir)
+    try:
+        batch = prepare_review_exports(
+            database,
+            paths,
+            pastor_slug=pastor,
+            all_pastors=all_pastors,
+            classifier=classifier,
+            llm_model=llm_model,
+            event_callback=lambda message: console.print(message, markup=False),
+            progress_callback=lambda stage, current, total: console.print(
+                f"  {stage} block {current}/{total}"
+            ),
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
-        if prepared or failed:
-            console.print(f"Prepared {prepared} video(s) for review; failed {failed}.")
-        console.print(f"Wrote {review_label} to {result.export_path}")
+    for pastor_result in batch.pastors:
+        result = pastor_result.export
+        console.print(f"Wrote pastor review markdown to {result.export_path}")
         console.print(f"Wrote review manifest to {result.manifest_path}")
         console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
+    if batch.prepared or batch.failed:
+        console.print(f"Prepared {batch.prepared} video(s) for review; failed {batch.failed}.")
+    if all_pastors:
+        console.print(
+            f"Built review artifacts for {len(batch.pastors)} pastor(s); "
+            f"included {sum(item.export.video_count for item in batch.pastors)} video(s); "
+            f"skipped {sum(item.export.skipped_count for item in batch.pastors)}."
+        )
 
-        if edit:
-            editor = shutil.which("code") or shutil.which("nano") or shutil.which("vim")
-            if editor is None:
-                raise RuntimeError("No editor found on PATH")
-            import subprocess
-            subprocess.run([editor, str(review_path)], check=True)
+    if edit:
+        assert pastor is not None
+        review_path = build_pastor_paths(paths, pastor).exports / "review.md"
+        editor = shutil.which("code") or shutil.which("nano") or shutil.which("vim")
+        if editor is None:
+            raise RuntimeError("No editor found on PATH")
+        import subprocess
+        subprocess.run([editor, str(review_path)], check=True)
 
 
-@app.command(help="Run the intake pipeline from source registration through extraction.", rich_help_panel="Workflows")
-def run(
-    url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
-    pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
-    all_sources: bool = typer.Option(
-        False,
-        "--all",
-        help="Run the workflow across all configured sources instead of adding a single source.",
-    ),
-    replace_existing: bool = typer.Option(
-        False,
-        "--replace-existing",
-        help="Delete an existing source with the same URL before re-running the pipeline.",
-    ),
-    limit: int | None = typer.Option(
-        DEFAULT_DISCOVER_LIMIT,
-        "--limit",
-        min=1,
-        help="Only process the first N discovered videos from the source. Defaults to 26.",
-    ),
-    all_videos: bool = typer.Option(
-        False,
-        "--all-videos",
-        help="Process all discovered videos from the source.",
-    ),
-    captions_only: bool = typer.Option(
-        False,
-        "--captions-only",
-        help="Stop after caption fetch and extraction; do not run local transcription.",
-    ),
-    transcribe_missing: bool = typer.Option(
-        True,
-        "--transcribe-missing/--no-transcribe-missing",
-        help="After fetching captions, only run local transcription for videos that still need it.",
-    ),
-    jobs: int = typer.Option(
-        _default_transcribe_jobs(),
-        "--jobs",
-        min=1,
-        help="Number of videos to transcribe concurrently. Defaults to 2.",
-    ),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+def run_workflow_service(
+    url: str | None = None,
+    pastor: str | None = None,
+    all_sources: bool = False,
+    replace_existing: bool = False,
+    limit: int | None = DEFAULT_DISCOVER_LIMIT,
+    all_videos: bool = False,
+    captions_only: bool = False,
+    transcribe_missing: bool = True,
+    jobs: int = DEFAULT_TRANSCRIBE_JOBS,
+    classifier: str = "auto",
+    llm_model: str | None = None,
+    skip_review: bool = False,
+    base_dir: Path | None = None,
 ) -> None:
-    console.print(
-        "Run adds the source, discovers videos, fetches captions, optionally transcribes remaining videos, "
-        "and extracts before pastor Markdown review."
-    )
     if all_sources:
         if url is not None:
-            raise typer.BadParameter("Do not pass a URL when using --all. Run either a global sync or a single-source workflow.")
+            raise ValueError("Do not pass a URL when using --all. Run either a global sync or a single-source workflow.")
         if pastor is not None:
-            raise typer.BadParameter("Do not pass --pastor when using --all.")
+            raise ValueError("Do not pass --pastor when using --all.")
         if replace_existing:
-            raise typer.BadParameter("--replace-existing is only valid for single-source runs.")
-        discover(limit=limit, all_videos=all_videos, source_id=None, base_dir=base_dir)
-        fetch(source_id=None, base_dir=base_dir)
+            raise ValueError("--replace-existing is only valid for single-source runs.")
+        discover_sources_service(limit=limit, all_videos=all_videos, source_id=None, base_dir=base_dir)
+        fetch_captions_service(source_id=None, base_dir=base_dir)
         if not captions_only and transcribe_missing:
-            transcribe(
-                missing_only=False,
-                captions_missing_only=True,
-                jobs=jobs,
-                source_id=None,
-                base_dir=base_dir,
-            )
+            transcribe_videos_service(missing_only=False, captions_missing_only=True, jobs=jobs, source_id=None, base_dir=base_dir)
         elif not captions_only:
-            transcribe(
-                missing_only=False,
-                captions_missing_only=False,
-                jobs=jobs,
-                source_id=None,
-                base_dir=base_dir,
+            transcribe_videos_service(missing_only=False, captions_missing_only=False, jobs=jobs, source_id=None, base_dir=base_dir)
+        database = get_database(base_dir)
+        paths = build_paths(base_dir, remember=True)
+        extraction = extract_batch(
+            database,
+            paths,
+            classifier=classifier,
+            llm_model=llm_model,
+            event_callback=lambda message: console.print(message, markup=False),
+            progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
+        )
+        console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
+        if not skip_review:
+            reviews = prepare_review_exports(
+                database,
+                paths,
+                all_pastors=True,
+                classifier=classifier,
+                llm_model=llm_model,
+                event_callback=lambda message: console.print(message, markup=False),
             )
-        extract(missing_only=False, source_id=None, base_dir=base_dir)
+            _print_review_batch(reviews)
         return
 
     if url is None:
-        raise typer.BadParameter("A URL is required unless you use --all.")
+        raise ValueError("A URL is required unless you use --all.")
     if pastor is None:
-        raise typer.BadParameter("--pastor is required unless you use --all.")
+        raise ValueError("--pastor is required unless you use --all.")
 
     database = get_database(base_dir)
     if replace_existing:
         existing_source = database.get_source_by_url(url)
         if existing_source is not None:
-            source_delete(source_id=existing_source.id, force=True, base_dir=base_dir)
+            delete_source_service(source_id=existing_source.id, force=True, base_dir=base_dir)
             database = get_database(base_dir)
-    add(url=url, pastor=pastor, notes=None, base_dir=base_dir)
+    add_source_service(url=url, pastor=pastor, notes=None, base_dir=base_dir)
     source = database.get_source_by_url(url)
     source_id = source.id if source is not None else None
-    discover(limit=limit, all_videos=all_videos, source_id=source_id, base_dir=base_dir)
-    fetch(source_id=source_id, base_dir=base_dir)
+    discover_sources_service(limit=limit, all_videos=all_videos, source_id=source_id, base_dir=base_dir)
+    fetch_captions_service(source_id=source_id, base_dir=base_dir)
     if not captions_only and transcribe_missing:
-        transcribe(
-            missing_only=False,
-            captions_missing_only=True,
-            jobs=jobs,
-            source_id=source_id,
-            base_dir=base_dir,
-        )
+        transcribe_videos_service(missing_only=False, captions_missing_only=True, jobs=jobs, source_id=source_id, base_dir=base_dir)
     elif not captions_only:
-        transcribe(
-            missing_only=False,
-            captions_missing_only=False,
+        transcribe_videos_service(missing_only=False, captions_missing_only=False, jobs=jobs, source_id=source_id, base_dir=base_dir)
+    paths = build_paths(base_dir, remember=True)
+    extraction = extract_batch(
+        database,
+        paths,
+        source_id=source_id,
+        classifier=classifier,
+        llm_model=llm_model,
+        event_callback=lambda message: console.print(message, markup=False),
+        progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
+    )
+    console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
+    if not skip_review:
+        reviews = prepare_review_exports(
+            database,
+            paths,
+            pastor_slug=pastor,
+            classifier=classifier,
+            llm_model=llm_model,
+            event_callback=lambda message: console.print(message, markup=False),
+        )
+        _print_review_batch(reviews)
+
+
+def _print_review_batch(batch: ReviewBatchResult) -> None:
+    for pastor_result in batch.pastors:
+        result = pastor_result.export
+        console.print(f"Wrote pastor review markdown to {result.export_path}")
+        console.print(f"Wrote review manifest to {result.manifest_path}")
+        console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
+    if batch.prepared or batch.failed:
+        console.print(f"Prepared {batch.prepared} video(s) for review; failed {batch.failed}.")
+
+
+@app.command(help="Run intake through disposition-aware pastor review export.", rich_help_panel="Workflows")
+def run(
+    url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
+    pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
+    all_sources: bool = typer.Option(False, "--all", help="Run across all configured sources."),
+    replace_existing: bool = typer.Option(False, "--replace-existing", help="Replace a matching source first."),
+    limit: int | None = typer.Option(DEFAULT_DISCOVER_LIMIT, "--limit", min=1, help="Videos per source; defaults to 26."),
+    all_videos: bool = typer.Option(False, "--all-videos", help="Process all discovered videos."),
+    captions_only: bool = typer.Option(False, "--captions-only", help="Do not run local transcription."),
+    transcribe_missing: bool = typer.Option(True, "--transcribe-missing/--no-transcribe-missing", help="Only transcribe caption misses by default."),
+    jobs: int = typer.Option(_default_transcribe_jobs(), "--jobs", min=1, help="Concurrent transcription jobs."),
+    classifier: str = typer.Option("auto", "--classifier", help="Content classifier: auto, rules, or llm."),
+    llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured Ollama model."),
+    skip_review: bool = typer.Option(False, "--skip-review", help="Stop after extraction without writing review exports."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    console.print(
+        "Run adds the source, discovers videos, fetches captions, optionally transcribes, extracts, "
+        "and writes disposition-aware pastor review artifacts."
+    )
+    try:
+        run_workflow_service(
+            url=url,
+            pastor=pastor,
+            all_sources=all_sources,
+            replace_existing=replace_existing,
+            limit=limit,
+            all_videos=all_videos,
+            captions_only=captions_only,
+            transcribe_missing=transcribe_missing,
             jobs=jobs,
-            source_id=source_id,
+            classifier=classifier,
+            llm_model=llm_model,
+            skip_review=skip_review,
             base_dir=base_dir,
         )
-    extract(missing_only=False, source_id=source_id, base_dir=base_dir)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
 
 def main() -> int:

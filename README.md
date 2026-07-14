@@ -82,7 +82,12 @@ You can override the data directory with `--base-dir`.
 
 ## Workflows
 
-- `pte run <url> --pastor <slug>`
+- `pte run <url> --pastor <slug>` runs discovery, caption fetch, optional local
+  transcription, adaptive extraction, and pastor review export.
+- `pte run --all` performs the same workflow for every configured source and
+  writes one review per pastor.
+- `pte run <url> --pastor <slug> --skip-review` intentionally stops after
+  extraction.
 - `pte review <pastor-slug>`
 - `pte review-ground-truth <youtube-video-id>`
 - `pte validate-fixtures [fixture-directory]`
@@ -177,14 +182,18 @@ is cached by model digest, prompt, schema, and deduplicated excerpt.
 
 ## Optional Local LLM Filtering
 
-Extraction remains rule-based by default. To let `pte extract` use a locally
-running Ollama model when available:
+The normal extraction path defaults to `--classifier auto`. It uses a locally
+running Ollama model only when `PTE_LLM_ENABLED=1`; otherwise it uses rules. To
+enable the production Gemma 3 4B model for `pte extract`, `pte review`, and
+`pte run`:
 
 ```bash
 export PTE_LLM_ENABLED=1
 export PTE_LLM_MODEL=gemma3:4b
 pte doctor
 pte extract --force
+pte review sample-church
+pte run 'https://www.youtube.com/watch?v=abc123' --pastor sample-church
 ```
 
 Classifier modes:
@@ -192,6 +201,39 @@ Classifier modes:
 - `--classifier auto` uses Ollama when enabled and safely falls back to rules.
 - `--classifier rules` never calls a local LLM.
 - `--classifier llm` requires Ollama and fails visibly if classification fails.
+
+`pte extract`, review preparation, and the extraction stage inside `pte run`
+all call the same adaptive extraction batch service. Review preparation never
+silently switches to rules-only extraction.
+
+## End-to-End CLI
+
+Run one source and produce both `review.md` and `review.json` under the pastor's
+exports directory:
+
+```bash
+export PTE_LLM_ENABLED=1
+export PTE_LLM_MODEL=gemma3:4b
+pte run 'https://www.youtube.com/watch?v=abc123' \
+  --pastor sample-church \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Run all configured sources with the same extraction and review behavior:
+
+```bash
+pte run --all \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+To stop after extraction without creating or refreshing review exports:
+
+```bash
+pte run 'https://www.youtube.com/watch?v=abc123' \
+  --pastor sample-church \
+  --skip-review \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
 
 The classifier labels contextual transcript blocks but never rewrites their
 text. Results and raw structured responses are saved in each video's
@@ -220,6 +262,9 @@ Uncertainty, empty retention, and central-consistency failures remain safety cap
 - `pte validate-fixtures evaluation/fixtures`
 - `pte evaluate --base-dir <app-data>`
 - `pte diagnose-interaction --model <ollama-model>`
+- `pte run <url> --pastor <pastor-slug>`
+- `pte run --all`
+- `pte run <url> --pastor <pastor-slug> --skip-review`
 - `pte video exclude <video-id>`
 - `pte video unexclude <youtube-video-id>`
 - `pte video excluded`
