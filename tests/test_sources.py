@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 
 from pastor_transcript_extractor.application import ExtractionBatchResult
 from pastor_transcript_extractor.config import (
+    build_llm_config,
     build_paths,
     build_pastor_paths,
     build_transcript_artifact_paths,
@@ -147,6 +148,15 @@ class DatabaseTests(unittest.TestCase):
 
 
 class PathTests(unittest.TestCase):
+    def test_llm_is_enabled_by_default_and_can_be_disabled_explicitly(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            default_config = build_llm_config()
+        with patch.dict(os.environ, {"PTE_LLM_ENABLED": "0"}, clear=True):
+            disabled_config = build_llm_config()
+
+        self.assertTrue(default_config.enabled)
+        self.assertFalse(disabled_config.enabled)
+
     def test_pastor_and_video_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = build_paths(Path(tmp))

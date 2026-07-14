@@ -188,7 +188,8 @@ def build_tool_config() -> ToolConfig:
 
 
 def build_llm_config() -> LlmConfig:
-    enabled = os.environ.get("PTE_LLM_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    enabled_value = os.environ.get("PTE_LLM_ENABLED", "1").strip().lower()
+    enabled = enabled_value not in {"0", "false", "no", "off"}
     return LlmConfig(
         enabled=enabled,
         base_url=os.environ.get("PTE_LLM_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),

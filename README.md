@@ -118,7 +118,6 @@ YouTube video ID.
 
 ```bash
 ./venv-shell
-export PTE_LLM_ENABLED=1
 export PTE_LLM_MODEL=gemma3:4b
 
 pte doctor --base-dir /path/to/app-data
@@ -182,13 +181,12 @@ is cached by model digest, prompt, schema, and deduplicated excerpt.
 
 ## Optional Local LLM Filtering
 
-The normal extraction path defaults to `--classifier auto`. It uses a locally
-running Ollama model only when `PTE_LLM_ENABLED=1`; otherwise it uses rules. To
-enable the production Gemma 3 4B model for `pte extract`, `pte review`, and
-`pte run`:
+The normal extraction path defaults to `--classifier auto`. Ollama is enabled by
+default with the production Gemma 3 4B model, and auto safely falls back to
+rules when Ollama is unavailable. No enable flag is required for `pte extract`,
+`pte review`, or `pte run`:
 
 ```bash
-export PTE_LLM_ENABLED=1
 export PTE_LLM_MODEL=gemma3:4b
 pte doctor
 pte extract --force
@@ -198,9 +196,12 @@ pte run 'https://www.youtube.com/watch?v=abc123' --pastor sample-church
 
 Classifier modes:
 
-- `--classifier auto` uses Ollama when enabled and safely falls back to rules.
+- `--classifier auto` tries Ollama by default and safely falls back to rules.
 - `--classifier rules` never calls a local LLM.
 - `--classifier llm` requires Ollama and fails visibly if classification fails.
+
+Set `PTE_LLM_ENABLED=0` only when you want `auto` to skip Ollama globally. For
+an individual command, prefer the explicit `--classifier rules` opt-out.
 
 `pte extract`, review preparation, and the extraction stage inside `pte run`
 all call the same adaptive extraction batch service. Review preparation never
@@ -212,7 +213,6 @@ Run one source and produce both `review.md` and `review.json` under the pastor's
 exports directory:
 
 ```bash
-export PTE_LLM_ENABLED=1
 export PTE_LLM_MODEL=gemma3:4b
 pte run 'https://www.youtube.com/watch?v=abc123' \
   --pastor sample-church \

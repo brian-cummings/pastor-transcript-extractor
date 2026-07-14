@@ -64,6 +64,15 @@ def _build_classifier_client(
     return llm_config, client
 
 
+def _classifier_summary(classifier: str, llm_config: LlmConfig, llm_client: LocalLlmClient | None) -> str:
+    if classifier == "rules":
+        return "Classifier: rules (Ollama will not be called)."
+    if llm_client is None:
+        return "Classifier: auto -> rules (Ollama disabled by PTE_LLM_ENABLED)."
+    fallback = "rules fallback enabled" if classifier == "auto" else "strict; no rules fallback"
+    return f"Classifier: {classifier} -> Ollama {llm_config.model} ({fallback})."
+
+
 def extract_batch(
     database: Database,
     paths: AppPaths,
@@ -79,6 +88,7 @@ def extract_batch(
 ) -> ExtractionBatchResult:
     """Extract eligible videos through the single adaptive production path."""
     llm_config, llm_client = _build_classifier_client(classifier, llm_model)
+    _emit(event_callback, _classifier_summary(classifier, llm_config, llm_client))
     videos = database.list_videos()
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]

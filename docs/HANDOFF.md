@@ -42,7 +42,6 @@ Activate the existing environment and enable Ollama:
 ```bash
 cd /Users/briancummings/code/pastor-transcript-extractor
 ./venv-shell
-export PTE_LLM_ENABLED=1
 export PTE_LLM_MODEL=gemma3:4b
 pte doctor --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
@@ -51,12 +50,12 @@ pte doctor --base-dir /Users/briancummings/Documents/PastorSearchData
 
 ## Normal End-to-End Workflow
 
-The normal single-source command now runs through pastor review export. With
-Gemma 3 4B enabled, `--classifier auto` selects Ollama; without
-`PTE_LLM_ENABLED=1`, auto safely uses rules.
+The normal single-source command now runs through pastor review export.
+`--classifier auto` tries Ollama with Gemma 3 4B by default and safely falls
+back to rules when Ollama is unavailable. No enable flag is required. Set
+`PTE_LLM_ENABLED=0` or pass `--classifier rules` only to opt out deliberately.
 
 ```bash
-export PTE_LLM_ENABLED=1
 export PTE_LLM_MODEL=gemma3:4b
 
 pte run 'YOUTUBE_URL' \
@@ -97,9 +96,9 @@ pte review PASTOR_SLUG --classifier auto \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Classifier behavior is unchanged: `rules` never calls Ollama, `auto` calls it
-only when enabled and falls back safely, and `llm` reports an extraction failure
-when Ollama is unavailable. An unchanged forced extraction reuses the raw
+Classifier behavior: `rules` never calls Ollama, `auto` tries it by default and
+falls back safely, and `llm` reports an extraction failure when Ollama is
+unavailable. An unchanged forced extraction reuses the raw
 inference cache keyed by transcript, prompt, model digest, schema, and context.
 
 ## Repeatable Classification Workflow
