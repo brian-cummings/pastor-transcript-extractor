@@ -73,6 +73,7 @@ class EvaluationTests(unittest.TestCase):
         ablations = build_confidence_ablations(classification)
 
         self.assertEqual("low", ablations["current"]["tier"])
+        self.assertEqual("low", ablations["legacy_hard_rule_overlap"]["tier"])
         self.assertEqual("high", ablations["no_rule_overlap"]["tier"])
         self.assertEqual("medium", ablations["soft_rule_overlap"]["tier"])
         self.assertEqual("downgrade_one_tier", ablations["soft_rule_overlap"]["rule_overlap_effect"])
@@ -242,6 +243,7 @@ class EvaluationTests(unittest.TestCase):
             "candidate_produced": True,
             "confidence_ablations": {
                 "current": {"tier": "low"},
+                "legacy_hard_rule_overlap": {"tier": "low"},
                 "no_rule_overlap": {"tier": "high"},
                 "soft_rule_overlap": {"tier": "medium"},
             },
@@ -250,6 +252,7 @@ class EvaluationTests(unittest.TestCase):
         aggregate = aggregate_confidence_ablations([result])
 
         self.assertEqual(0, aggregate["current"]["negative_high_confidence_false_positives"])
+        self.assertEqual(0, aggregate["legacy_hard_rule_overlap"]["negative_high_confidence_false_positives"])
         self.assertEqual(1, aggregate["no_rule_overlap"]["negative_high_confidence_false_positives"])
         self.assertEqual(["negative"], aggregate["no_rule_overlap"]["negative_high_confidence_video_ids"])
         self.assertEqual(0, aggregate["soft_rule_overlap"]["negative_high_confidence_false_positives"])
@@ -268,6 +271,7 @@ class EvaluationTests(unittest.TestCase):
             "baseline_protection_prevented_replacement": True,
             "confidence_ablations": {
                 "current": {"tier": "low"},
+                "legacy_hard_rule_overlap": {"tier": "low"},
                 "no_rule_overlap": {"tier": "high"},
                 "soft_rule_overlap": {"tier": "medium"},
             },
@@ -283,7 +287,7 @@ class EvaluationTests(unittest.TestCase):
 
         report = build_markdown_report(run)
 
-        self.assertIn("| fixture | no_sermon | low | high | medium |", report)
+        self.assertIn("| fixture | no_sermon | low | low | high | medium |", report)
 
 
 if __name__ == "__main__":

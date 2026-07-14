@@ -18,11 +18,11 @@ Implemented:
 - conservative candidate joining can recover interrupted sermons
 - explicit sermon-title cues can recover up to four minutes of contiguous sermon-like setup before the cue
 - pre-title recovery persists its anchor, duration, reason, and stopping evidence
-- the evaluator replays current, no-overlap, and soft-overlap confidence policies without changing production artifacts
+- production confidence uses versioned soft rule overlap; the evaluator also replays the legacy hard-veto and no-overlap policies
 - extraction and reclassification persist an explicit final disposition separately from diagnostic candidates
 - rejected videos never fall back to a full-transcript excerpt in pastor review exports
 - the offline interaction harness uses stable current-excerpt line IDs for grounded evidence
-- 149 tests pass
+- 150 tests pass
 
 ## Local Evaluation Environment
 
@@ -153,7 +153,7 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 The latest validated 12-fixture report is:
 
-- `evaluation/results/20260714T133247Z/report.md`
+- `evaluation/results/20260714T135722Z/report.md`
 
 Results:
 
@@ -171,9 +171,10 @@ When evaluating a behavior change, compare every positive fixture to the precedi
 
 ### Confidence ablation result
 
-The evaluator replays three policies from persisted evidence:
+The evaluator replays four policies from persisted evidence:
 
-- `current`: production confidence, where rule overlap below `0.5` forces low
+- `current`: production `soft_rule_overlap_v1`
+- `legacy_hard_rule_overlap`: the former policy, where rule overlap below `0.5` forced low
 - `no_rule_overlap`: confidence from retained content, uncertainty, and central consistency only
 - `soft_rule_overlap`: the same evidence, with low overlap downgrading an otherwise-high result by one tier but never forcing low
 
@@ -181,11 +182,12 @@ The frozen fixtures produced:
 
 | Policy | Positive H/M/L | Negative H/M/L | High-confidence negative false positives |
 |---|---:|---:|---:|
-| current | 0/1/4 | 0/0/7 | 0 |
+| current | 1/4/0 | 0/2/5 | 0 |
+| legacy hard overlap | 0/1/4 | 0/0/7 | 0 |
 | no rule overlap | 5/0/0 | 2/0/5 | 2 (`WaNsL05AX3A`, `qny7TUqNkQU`) |
 | soft rule overlap | 1/4/0 | 0/2/5 | 0 |
 
-This supports retaining rule overlap as a soft diagnostic penalty. Removing it entirely makes both the Sabbath School and ambiguous multi-speaker negatives falsely high; the soft policy moves all positive fixtures out of low confidence without making any negative high. This is evaluation evidence only: production confidence behavior has not yet changed.
+Production now uses the supported soft policy. All five positive fixtures are high or medium, while every negative remains medium or low and none receives `accepted_sermon`. Removing overlap entirely still makes both the Sabbath School and ambiguous multi-speaker negatives falsely high. Classification artifacts persist `confidence_policy_version`, so old hard-veto results are invalidated without invalidating raw inference cache entries.
 
 ### Interaction-evidence experiment (not shipped)
 
@@ -218,7 +220,7 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 149 tests.
+The expected count at this handoff is 150 tests.
 
 ## Remaining Defects
 
@@ -277,7 +279,6 @@ Next:
 1. Do not add transcript-only interaction evidence to production confidence and do not replace the production 4B model with 12B.
 2. Use the new explicit disposition as the safety boundary: candidate-only and ambiguous results remain `review_required` and never fall back to a full transcript in review exports.
 3. If automatic rejection of ambiguous programs is still required, run the next experiment on speaker-turn structure or diarization rather than another prompt/schema iteration.
-4. Adopt soft rule overlap only after the disposition-aware benchmark confirms that no negative receives `accepted_sermon`.
 
 Speaker diarization or voice recognition may ultimately be required for reliable multiple-speaker evidence. Do not infer speaker identity or turn-taking from duplicated caption text alone.
 

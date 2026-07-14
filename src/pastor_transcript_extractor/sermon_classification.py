@@ -12,6 +12,9 @@ from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
+CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v1"
+
+
 class ContentLabel(StrEnum):
     SERMON = "sermon"
     SERMON_PRAYER = "sermon_prayer"
@@ -73,6 +76,7 @@ class HybridSermonResult:
     cache_stats: dict[str, int] | None = None
     search: dict[str, Any] | None = None
     confidence_reasons: list[dict[str, Any]] | None = None
+    confidence_policy_version: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,6 +95,7 @@ class HybridSermonResult:
             ],
             "cache_stats": self.cache_stats or {"hits": 0, "misses": 0},
             "confidence_reasons": self.confidence_reasons or [],
+            "confidence_policy_version": self.confidence_policy_version,
             "search": self.search or {
                 "schema_version": 1,
                 "algorithm_version": self.method,
@@ -573,6 +578,20 @@ def _central_consistency_warnings(
     return warnings
 
 
+def _adaptive_confidence_tier(
+    *,
+    agreement: float,
+    retained: bool,
+    uncertain: bool,
+    consistency_failed: bool,
+) -> str:
+    if not retained or consistency_failed:
+        return "low"
+    if uncertain:
+        return "medium"
+    return "medium" if agreement < 0.5 else "high"
+
+
 def classify_sermon_content_adaptive(
     drafts: list[SegmentDraft],
     rule_window: SermonWindowResult,
@@ -785,16 +804,19 @@ def classify_sermon_content_adaptive(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
     )
     warnings.extend(consistency_warnings)
-    confidence = "high" if agreement >= 0.8 and not uncertain_ids else "medium"
-    if agreement < 0.5 or not retained or consistency_warnings:
-        confidence = "low"
+    confidence = _adaptive_confidence_tier(
+        agreement=agreement,
+        retained=bool(retained),
+        uncertain=bool(uncertain_ids),
+        consistency_failed=bool(consistency_warnings),
+    )
     confidence_reasons = [
         {
             "code": "rule_llm_agreement",
             "value": round(agreement, 6),
-            "high_threshold": 0.8,
-            "low_threshold": 0.5,
-            "effect": "supports_high" if agreement >= 0.8 else "forces_low" if agreement < 0.5 else "supports_medium",
+            "strong_support_threshold": 0.8,
+            "soft_penalty_threshold": 0.5,
+            "effect": "small_positive" if agreement >= 0.8 else "downgrades_high_to_medium" if agreement < 0.5 else "neutral",
         },
         {
             "code": "uncertain_blocks",
@@ -815,7 +837,7 @@ def classify_sermon_content_adaptive(
         {
             "code": "confidence_decision",
             "tier": confidence,
-            "message": "Persisted explanation of the existing adaptive_llm_v3 confidence rules.",
+            "message": "Persisted explanation of the soft-rule-overlap confidence policy.",
         },
     ]
     search = {
@@ -840,6 +862,7 @@ def classify_sermon_content_adaptive(
         {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
         search,
         confidence_reasons,
+        CONFIDENCE_POLICY_VERSION,
     )
 
 

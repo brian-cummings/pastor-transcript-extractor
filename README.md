@@ -199,6 +199,9 @@ text. Results and raw structured responses are saved in each video's
 final disposition: `accepted_sermon`, `review_required`, `rejected_no_sermon`,
 or `rejected_ambiguous_speakers`. Diagnostic candidates remain auditable, but
 rejected videos do not fall back to the full transcript in pastor review output.
+Production confidence uses soft rule overlap: low rule/LLM agreement can reduce
+an otherwise-high result to medium, but cannot force it to low by itself.
+Uncertainty, empty retention, and central-consistency failures remain safety caps.
 
 ## Commands
 

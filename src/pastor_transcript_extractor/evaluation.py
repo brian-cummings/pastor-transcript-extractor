@@ -10,7 +10,12 @@ from pastor_transcript_extractor.disposition import ACCEPTED_SERMON, build_final
 
 
 CATASTROPHIC_RECALL_THRESHOLD = 0.90
-CONFIDENCE_POLICIES = ("current", "no_rule_overlap", "soft_rule_overlap")
+CONFIDENCE_POLICIES = (
+    "current",
+    "legacy_hard_rule_overlap",
+    "no_rule_overlap",
+    "soft_rule_overlap",
+)
 
 
 def build_confidence_ablations(classification: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -23,6 +28,12 @@ def build_confidence_ablations(classification: dict[str, Any]) -> dict[str, dict
     if retained_count == 0:
         return {
             "current": {"tier": current, "status": "persisted", "base_reason": "empty_retention"},
+            "legacy_hard_rule_overlap": {
+                "tier": "low",
+                "status": "replayed",
+                "base_reason": "empty_retention",
+                "rule_overlap_effect": "not_applicable",
+            },
             "no_rule_overlap": {
                 "tier": "low",
                 "status": "replayed",
@@ -44,6 +55,10 @@ def build_confidence_ablations(classification: dict[str, Any]) -> dict[str, dict
     if not isinstance(agreement, (int, float)):
         return {
             "current": {"tier": current, "status": "persisted"},
+            "legacy_hard_rule_overlap": {
+                "tier": None,
+                "status": "missing_rule_overlap_evidence",
+            },
             "no_rule_overlap": {"tier": None, "status": "missing_rule_overlap_evidence"},
             "soft_rule_overlap": {"tier": None, "status": "missing_rule_overlap_evidence"},
         }
@@ -81,11 +96,27 @@ def build_confidence_ablations(classification: dict[str, Any]) -> dict[str, dict
         "rule_llm_agreement": round(float(agreement), 6),
         "base_reason": base_reason,
     }
+    if consistency_failed:
+        legacy_hard_tier = "low"
+    elif float(agreement) < 0.5:
+        legacy_hard_tier = "low"
+    elif uncertain_count:
+        legacy_hard_tier = "medium"
+    elif float(agreement) >= 0.8:
+        legacy_hard_tier = "high"
+    else:
+        legacy_hard_tier = "medium"
     return {
         "current": {
             "tier": current,
             "status": "persisted",
             "rule_overlap_effect": agreement_reason.get("effect"),
+            **common,
+        },
+        "legacy_hard_rule_overlap": {
+            "tier": legacy_hard_tier,
+            "status": "replayed",
+            "rule_overlap_effect": "forces_low" if float(agreement) < 0.5 else "legacy_thresholds",
             **common,
         },
         "no_rule_overlap": {
@@ -574,8 +605,8 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         "",
         "### Per-fixture tier transitions",
         "",
-        "| Video | Expected | Current | No rule overlap | Soft rule overlap |",
-        "|---|---|---:|---:|---:|",
+        "| Video | Expected | Current | Legacy hard overlap | No rule overlap | Soft rule overlap |",
+        "|---|---|---:|---:|---:|---:|",
     ])
     for result in run["results"]:
         ablations = result.get("confidence_ablations", {})
@@ -583,7 +614,8 @@ def build_markdown_report(run: dict[str, Any]) -> str:
             return ablations.get(policy, {}).get("tier") or "—"
         lines.append(
             f"| {result.get('video_id')} | {result.get('expected_outcome', '—')} | "
-            f"{ablated_tier('current')} | {ablated_tier('no_rule_overlap')} | "
+            f"{ablated_tier('current')} | {ablated_tier('legacy_hard_rule_overlap')} | "
+            f"{ablated_tier('no_rule_overlap')} | "
             f"{ablated_tier('soft_rule_overlap')} |"
         )
     lines.extend([

@@ -18,11 +18,13 @@ from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import TranscriptSegmentLabel
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
+    CONFIDENCE_POLICY_VERSION,
     CoarsePhase,
     ContentLabel,
     RawInferenceCache,
     TranscriptBlock,
     _candidate_strength,
+    _adaptive_confidence_tier,
     _coarse_candidate_ranges,
     _joined_candidate,
     _refine_retained_boundaries,
@@ -395,10 +397,42 @@ class HybridClassificationTests(unittest.TestCase):
             "method": "adaptive_llm_v3",
             "model": "fixture:4b",
             "prompt_version": "v1",
+            "confidence_policy_version": CONFIDENCE_POLICY_VERSION,
         }
         self.assertTrue(_classification_is_current(classification, model="fixture:4b", prompt_version="v1"))
         self.assertFalse(_classification_is_current(classification, model="other:4b", prompt_version="v1"))
         self.assertFalse(_classification_is_current(classification, model="fixture:4b", prompt_version="v2"))
+        classification["confidence_policy_version"] = "hard_rule_overlap_v1"
+        self.assertFalse(_classification_is_current(classification, model="fixture:4b", prompt_version="v1"))
+
+    def test_adaptive_confidence_treats_rule_overlap_as_a_soft_penalty(self) -> None:
+        self.assertEqual(
+            "medium",
+            _adaptive_confidence_tier(
+                agreement=0.0,
+                retained=True,
+                uncertain=False,
+                consistency_failed=False,
+            ),
+        )
+        self.assertEqual(
+            "high",
+            _adaptive_confidence_tier(
+                agreement=0.6,
+                retained=True,
+                uncertain=False,
+                consistency_failed=False,
+            ),
+        )
+        self.assertEqual(
+            "low",
+            _adaptive_confidence_tier(
+                agreement=1.0,
+                retained=True,
+                uncertain=False,
+                consistency_failed=True,
+            ),
+        )
 
     def test_reclassify_updates_only_existing_extraction_artifacts_and_reuses_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
