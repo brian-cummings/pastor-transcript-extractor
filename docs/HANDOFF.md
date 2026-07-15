@@ -31,8 +31,73 @@ Implemented:
 - identity increment 2 extracts exact metadata and spoken-attribution evidence with correlation grouping
 - grounded attribution remains shadow-only and never uses sermon topic, style, or theology
 - identity increment 3 separates neutral speaker observations, claims, profiles, and target-policy projection
-- profile membership and naming require explicit review events; clusters and acoustic matching remain unimplemented
-- 185 tests pass
+- profile membership and naming require explicit review events; clustering and acoustic-driven registry matching remain unimplemented
+- acoustic increment 4 adds a read-only, local pairwise speaker diagnostic with exact cached audio spans and pinned model provenance
+- acoustic outcomes remain non-gating; no default threshold exists and uncalibrated comparisons abstain
+- reviewed pair fixtures pin observation fingerprints and exact WAV hashes; evaluation separates recognition errors, abstention, and analysis failure
+- a blinded pair-review workflow now qualifies each observation before allowing a binary same/different judgment
+- review submissions are append-only; indeterminate reviews never become fixtures and re-reviews never overwrite frozen truth
+- no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
+- 200 tests pass
+
+## Acoustic Pair Experiment
+
+The next recognition question is intentionally limited to whether two reviewed
+principal-speaker observations contain the same person. The implementation and
+evaluation contract are documented in
+`evaluation/speaker-pairs/README.md`.
+
+The provisional local backend is sherpa-onnx 1.13.1 with an English CAMPPlus
+ONNX model whose SHA-256 is pinned by the CLI. Model files and all generated
+audio/embedding caches are ignored. There is no production dependency on this
+optional package.
+
+Run a read-only diagnostic with:
+
+```bash
+pte identity compare-speakers VIDEO_A VIDEO_B \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Without an explicitly approved policy, the expected result is
+`insufficient_evidence: decision_policy_unavailable` with raw within- and
+cross-observation similarity distributions preserved. This is deliberate.
+
+The first real sentinel used the two videos whose titles attribute Samuel
+Bulgin (`qwsZHo-S87A` and `wVw7LzIICRE`). It replayed byte-identically from
+cache, but the within/cross distributions were not clean enough to treat the
+title attribution as acoustic ground truth. No threshold or reviewed fixture
+was created from it. Registry counts before and after were identical:
+
+```text
+speaker_profiles                  7
+speaker_observations            135
+profile_observation_events        0
+speaker_name_claims              32
+profile_name_claim_events         0
+speaker_profile_redirect_events   0
+```
+
+Before any policy can be promoted, humans must review exact cached spans for a
+stratified same/different fixture set spanning dates, microphones, rooms, and
+audio quality. The evaluator defaults to a demanding evidence gate: zero
+observed errors and at least 300 decisions in each direction, which corresponds
+to an approximate rule-of-three 95% upper error bound near 1%.
+
+Create a blinded listening packet and submit a review with:
+
+```bash
+pte identity review-speaker-pair VIDEO_A VIDEO_B \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The packet hides source identity and requires both observations to qualify as
+one consistent principal speaker before accepting `same` or `different`.
+`different` remains a binary pair judgment, not a selection from known speaker
+profiles. All submissions are content-addressed review events. An existing
+fixture is immutable; consistent and conflicting re-reviews are preserved
+without overwriting it.
 
 ## Local Evaluation Environment
 

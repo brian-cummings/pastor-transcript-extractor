@@ -1,4 +1,5 @@
 .appdata/
+.DS_Store
 .venv/
 __pycache__/
 *.pyc
@@ -6,3 +7,8 @@ __pycache__/
 evaluation/drafts/
 evaluation/results/
 evaluation/interaction-diagnostics/
+evaluation/speaker-pairs/cache/
+evaluation/speaker-pairs/drafts/
+evaluation/speaker-pairs/models/
+evaluation/speaker-pairs/reports/
+evaluation/speaker-pairs/runs/

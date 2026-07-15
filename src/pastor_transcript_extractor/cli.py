@@ -6,9 +6,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 from threading import Lock
 from typing import Callable
+import webbrowser
 
 import typer
 from rich.console import Console
@@ -60,6 +62,22 @@ from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.local_llm import OllamaClient
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
+from pastor_transcript_extractor.speaker_pair_diagnostics import (
+    AudioSpanCache,
+    DecisionPolicy,
+    EmbeddingCache,
+    SherpaOnnxEmbeddingBackend,
+    analyze_observation_pair,
+    evaluate_reviewed_pair_results,
+    validate_reviewed_pair_fixture,
+    write_pair_result,
+)
+from pastor_transcript_extractor.speaker_pair_review import (
+    ObservationQualification,
+    PairJudgment,
+    create_review_draft,
+    submit_review,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
@@ -97,6 +115,8 @@ STAGE_LABELS = {
     "done": STAGE_DONE,
     "failed": STAGE_FAILED,
 }
+
+DEFAULT_SPEAKER_MODEL_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
 
 
 @app.command(help="Validate manually reviewed sermon evaluation fixtures.")
@@ -399,6 +419,271 @@ def get_database(base_dir: Path | None = None) -> Database:
     database = Database(paths.database)
     database.initialize()
     return database
+
+
+@identity_app.command(
+    "compare-speakers",
+    help="Run a read-only, abstention-first acoustic comparison of two speaker observations.",
+)
+def compare_speakers(
+    video_a: str = typer.Argument(..., help="First YouTube video ID."),
+    video_b: str = typer.Argument(..., help="Second YouTube video ID."),
+    model_path: Path = typer.Option(
+        Path("evaluation/speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"),
+        help="Local ONNX speaker-embedding model.",
+    ),
+    model_sha256: str = typer.Option(
+        DEFAULT_SPEAKER_MODEL_SHA256,
+        help="Required checksum for the local model.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"), help="Ignored cache for exact WAV spans and embeddings."
+    ),
+    output_path: Path | None = typer.Option(
+        None, help="Result JSON path; defaults to the ignored speaker-pair run directory."
+    ),
+    policy_path: Path | None = typer.Option(
+        None,
+        help="Explicitly approved decision policy; without one the comparison always abstains.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    videos = [database.get_video_by_youtube_id(value) for value in (video_a, video_b)]
+    missing = [value for value, video in zip((video_a, video_b), videos) if video is None]
+    if missing:
+        raise typer.BadParameter(f"Unknown YouTube video ID(s): {', '.join(missing)}")
+    observations = [database.get_latest_speaker_observation_for_video(video.id) for video in videos]
+    transcript_artifacts = [
+        database.get_latest_audio_transcript_artifact_for_video(video.id) for video in videos
+    ]
+    audio_paths = [
+        Path(artifact.audio_path) if artifact is not None and artifact.audio_path else None
+        for artifact in transcript_artifacts
+    ]
+    try:
+        backend = SherpaOnnxEmbeddingBackend(
+            model_path.expanduser().resolve(), expected_sha256=model_sha256
+        )
+        policy = DecisionPolicy.from_path(policy_path.expanduser().resolve()) if policy_path else None
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    cache_root = cache_dir.expanduser().resolve()
+    result = analyze_observation_pair(
+        observation_a=observations[0],
+        observation_b=observations[1],
+        audio_path_a=audio_paths[0],
+        audio_path_b=audio_paths[1],
+        span_cache=AudioSpanCache(cache_root),
+        embedding_cache=EmbeddingCache(cache_root),
+        backend=backend,
+        policy=policy,
+    )
+    result["videos"] = {"a": video_a, "b": video_b}
+    destination = (
+        output_path.expanduser().resolve()
+        if output_path
+        else Path("evaluation/speaker-pairs/runs").resolve() / f"{video_a}--{video_b}.json"
+    )
+    write_pair_result(destination, result)
+    console.print(f"{result['outcome']}: {result['reason']}")
+    console.print(f"Wrote deterministic diagnostic evidence to {destination}")
+
+
+@identity_app.command(
+    "validate-pair-fixtures",
+    help="Validate explicitly reviewed same/different-speaker evaluation fixtures.",
+)
+def validate_pair_fixtures(
+    fixture_dir: Path = typer.Argument(Path("evaluation/speaker-pairs/fixtures")),
+) -> None:
+    root = fixture_dir.expanduser().resolve()
+    paths = sorted(root.glob("*.json"))
+    if not paths:
+        raise typer.BadParameter(f"No speaker-pair fixtures found in {root}")
+    pair_ids: set[str] = set()
+    for path in paths:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            validate_reviewed_pair_fixture(payload)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            raise typer.BadParameter(f"{path}: {error}") from error
+        pair_id = str(payload.get("pair_id", ""))
+        if not pair_id or pair_id in pair_ids:
+            raise typer.BadParameter(f"{path}: pair_id must be present and unique")
+        pair_ids.add(pair_id)
+    console.print(f"Validated {len(paths)} reviewed speaker-pair fixture(s).")
+
+
+@identity_app.command(
+    "evaluate-pair-results",
+    help="Measure pairwise errors and abstention against exact reviewed audio spans.",
+)
+def evaluate_pair_results(
+    fixture_dir: Path = typer.Option(Path("evaluation/speaker-pairs/fixtures")),
+    result_dir: Path = typer.Option(Path("evaluation/speaker-pairs/runs")),
+    output_path: Path = typer.Option(Path("evaluation/speaker-pairs/reports/latest.json")),
+) -> None:
+    try:
+        fixture_paths = sorted(fixture_dir.expanduser().resolve().glob("*.json"))
+        result_paths = sorted(result_dir.expanduser().resolve().glob("*.json"))
+        fixtures = [json.loads(path.read_text(encoding="utf-8")) for path in fixture_paths]
+        results = [json.loads(path.read_text(encoding="utf-8")) for path in result_paths]
+        if not fixtures:
+            raise ValueError("no reviewed pair fixtures found")
+        report = evaluate_reviewed_pair_results(fixtures, results)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    destination = output_path.expanduser().resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    counts = report["counts"]
+    console.print(
+        f"false_same={counts['false_same']} false_different={counts['false_different']} "
+        f"abstained={counts['insufficient_evidence']} failed={counts['analysis_failed']}"
+    )
+    console.print(f"promotion_ready={report['gates']['promotion_ready']}; report={destination}")
+
+
+def _prompt_review_choice(prompt: str, choices: dict[str, object]) -> object:
+    choice_text = "/".join(choices)
+    while True:
+        value = typer.prompt(f"{prompt} [{choice_text}]").strip().lower()
+        if value in choices:
+            return choices[value]
+        console.print(f"Choose one of: {', '.join(choices)}")
+
+
+@identity_app.command(
+    "review-speaker-pair",
+    help="Prepare and adjudicate a blinded, exact-span speaker-pair fixture.",
+)
+def review_speaker_pair(
+    video_a: str = typer.Argument(..., help="First candidate YouTube video ID."),
+    video_b: str = typer.Argument(..., help="Second candidate YouTube video ID."),
+    reviewer: str | None = typer.Option(None, help="Stable human reviewer identifier."),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"), help="Speaker-pair drafts, reviews, and fixtures root."
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"), help="Ignored exact-span audio cache."
+    ),
+    open_packet: bool = typer.Option(
+        True, "--open-packet/--no-open-packet", help="Open the blinded local HTML listening packet."
+    ),
+    prepare_only: bool = typer.Option(
+        False, "--prepare-only", help="Create the packet without prompting for adjudication."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    videos = [database.get_video_by_youtube_id(value) for value in (video_a, video_b)]
+    missing = [value for value, video in zip((video_a, video_b), videos) if video is None]
+    if missing:
+        raise typer.BadParameter(f"Unknown YouTube video ID(s): {', '.join(missing)}")
+    observations = [database.get_latest_speaker_observation_for_video(video.id) for video in videos]
+    if observations[0] is None or observations[1] is None:
+        raise typer.BadParameter("Both videos require immutable speaker observations")
+    artifacts = [
+        database.get_latest_audio_transcript_artifact_for_video(video.id) for video in videos
+    ]
+    if any(artifact is None or not artifact.audio_path for artifact in artifacts):
+        raise typer.BadParameter("Both observations require local audio")
+    try:
+        draft = create_review_draft(
+            observation_a=observations[0],
+            observation_b=observations[1],
+            video_id_a=video_a,
+            video_id_b=video_b,
+            audio_path_a=Path(artifacts[0].audio_path),
+            audio_path_b=Path(artifacts[1].audio_path),
+            span_cache=AudioSpanCache(cache_dir.expanduser().resolve()),
+            evaluation_root=evaluation_root.expanduser().resolve(),
+        )
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Prepared blinded packet: {draft.packet_path}")
+    if open_packet:
+        webbrowser.open(draft.packet_path.resolve().as_uri())
+    if prepare_only:
+        console.print("Draft preserved; rerun without --prepare-only to adjudicate it.")
+        return
+
+    qualification_choices = {
+        "single": ObservationQualification.QUALIFIED_SINGLE_SPEAKER,
+        "multiple": ObservationQualification.MULTIPLE_SPEAKERS,
+        "invalid": ObservationQualification.INVALID_AUDIO,
+        "cannot": ObservationQualification.CANNOT_DETERMINE,
+    }
+    qualification_a = _prompt_review_choice(
+        "Does every clip in Observation A contain one consistent principal speaker?",
+        qualification_choices,
+    )
+    qualification_b = _prompt_review_choice(
+        "Does every clip in Observation B contain one consistent principal speaker?",
+        qualification_choices,
+    )
+    both_qualified = (
+        qualification_a == ObservationQualification.QUALIFIED_SINGLE_SPEAKER
+        and qualification_b == ObservationQualification.QUALIFIED_SINGLE_SPEAKER
+    )
+    if both_qualified:
+        pair_judgment = _prompt_review_choice(
+            "Pair judgment",
+            {
+                "same": PairJudgment.SAME_SPEAKER,
+                "different": PairJudgment.DIFFERENT_SPEAKER,
+                "cannot": PairJudgment.CANNOT_DETERMINE,
+            },
+        )
+    else:
+        pair_judgment = PairJudgment.CANNOT_DETERMINE
+        console.print("At least one observation is unqualified; pair judgment is cannot_determine.")
+    reviewer_value = reviewer or typer.prompt("Reviewed by").strip()
+    tags_text = typer.prompt(
+        "Variation tags (comma-separated; blank is allowed)",
+        default="",
+        show_default=False,
+    )
+    notes = typer.prompt("Review notes", default="", show_default=False)
+    fixture_eligible = both_qualified and pair_judgment in {
+        PairJudgment.SAME_SPEAKER,
+        PairJudgment.DIFFERENT_SPEAKER,
+    }
+    approval_confirmed = fixture_eligible and typer.confirm(
+        "Freeze this exact-span binary judgment as an approved fixture?",
+        default=False,
+    )
+    try:
+        submission = submit_review(
+            draft=draft.payload,
+            qualification_a=qualification_a,
+            qualification_b=qualification_b,
+            pair_judgment=pair_judgment,
+            reviewer=reviewer_value,
+            reviewed_at=None,
+            variation_tags=tags_text.split(","),
+            notes=notes,
+            approval_confirmed=approval_confirmed,
+            evaluation_root=evaluation_root.expanduser().resolve(),
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Wrote append-only review event: {submission.event_path}")
+    if submission.fixture_status == "created":
+        console.print(f"Created frozen fixture: {submission.fixture_path}")
+    elif submission.fixture_status == "existing_consistent":
+        console.print("Existing frozen fixture agrees; it was not overwritten.")
+    elif submission.fixture_status == "existing_conflict_preserved":
+        console.print("Review conflicts with the frozen fixture; both were preserved for adjudication.")
+    else:
+        console.print("Review was preserved but did not create a fixture.")
 
 
 def _unknown_pastor_error(pastor_slug: str, base_dir: Path | None = None) -> typer.BadParameter:
@@ -1647,7 +1932,6 @@ def review(
         editor = shutil.which("code") or shutil.which("nano") or shutil.which("vim")
         if editor is None:
             raise RuntimeError("No editor found on PATH")
-        import subprocess
         subprocess.run([editor, str(review_path)], check=True)
 
 

@@ -281,19 +281,28 @@ ON speaker_profile_redirect_events(from_profile_id, id);
 
 
 class Database:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, *, readonly: bool = False) -> None:
         self.database_path = database_path
+        self.readonly = readonly
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.database_path, timeout=30.0)
+        if self.readonly:
+            uri = f"{self.database_path.expanduser().resolve().as_uri()}?mode=ro"
+            connection = sqlite3.connect(uri, timeout=30.0, uri=True)
+        else:
+            connection = sqlite3.connect(self.database_path, timeout=30.0)
         connection.row_factory = sqlite3.Row
         try:
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute("PRAGMA synchronous = NORMAL")
+            if self.readonly:
+                connection.execute("PRAGMA query_only = ON")
+            else:
+                connection.execute("PRAGMA journal_mode = WAL")
+                connection.execute("PRAGMA synchronous = NORMAL")
             connection.execute("PRAGMA busy_timeout = 30000")
             yield connection
-            connection.commit()
+            if not self.readonly:
+                connection.commit()
         finally:
             connection.close()
 
@@ -992,6 +1001,24 @@ class Database:
             return None
         return self._transcript_artifact_from_row(row)
 
+    def get_latest_audio_transcript_artifact_for_video(
+        self, video_id: int
+    ) -> TranscriptArtifact | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, source_kind, raw_json_path, raw_text_path, audio_path, created_at
+                FROM transcript_artifacts
+                WHERE video_id = ? AND audio_path IS NOT NULL AND audio_path != ''
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (video_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._transcript_artifact_from_row(row)
+
     def add_extraction_result(
         self,
         video_id: int,
@@ -1509,6 +1536,21 @@ class Database:
                 FROM speaker_observations WHERE id = ?
                 """,
                 (observation_id,),
+            ).fetchone()
+        return self._speaker_observation_from_row(row) if row is not None else None
+
+    def get_latest_speaker_observation_for_video(
+        self, video_id: int
+    ) -> SpeakerObservation | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, extraction_result_id, role, multiplicity_state,
+                       start_seconds, end_seconds, artifact_path, content_sha256,
+                       extractor_version, input_fingerprint, created_at
+                FROM speaker_observations WHERE video_id = ? ORDER BY id DESC LIMIT 1
+                """,
+                (video_id,),
             ).fetchone()
         return self._speaker_observation_from_row(row) if row is not None else None
 

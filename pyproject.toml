@@ -18,6 +18,11 @@ dependencies = [
   "yt-dlp>=2024.0.0",
 ]
 
+[project.optional-dependencies]
+acoustic-experiment = [
+  "sherpa-onnx==1.13.1",
+]
+
 [project.scripts]
 pte = "pastor_transcript_extractor.cli:app"
 
