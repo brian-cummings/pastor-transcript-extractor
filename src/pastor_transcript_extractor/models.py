@@ -193,6 +193,50 @@ class IdentityAssessment:
     created_at: datetime
 
 
+@dataclass(slots=True)
+class SpeakerProfile:
+    id: int
+    stable_key: str
+    display_label: Optional[str]
+    lifecycle_state: str
+    created_reason: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class SpeakerObservation:
+    id: int
+    video_id: int
+    extraction_result_id: int
+    role: str
+    multiplicity_state: str
+    start_seconds: float
+    end_seconds: float
+    artifact_path: str
+    content_sha256: str
+    extractor_version: str
+    input_fingerprint: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class SpeakerNameClaim:
+    id: int
+    video_id: int
+    observation_id: Optional[int]
+    display_name: str
+    normalized_name: str
+    claim_kind: str
+    channel: str
+    explicit_speaker_attribution: bool
+    correlation_group_id: str
+    provenance_json: str
+    artifact_path: str
+    claim_fingerprint: str
+    extractor_version: str
+    created_at: datetime
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 

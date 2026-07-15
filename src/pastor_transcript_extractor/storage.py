@@ -14,6 +14,9 @@ from pastor_transcript_extractor.models import (
     IdentityState,
     MetadataArtifact,
     Pastor,
+    SpeakerNameClaim,
+    SpeakerObservation,
+    SpeakerProfile,
     ReviewResult,
     Source,
     SourceType,
@@ -168,8 +171,112 @@ CREATE TABLE IF NOT EXISTS identity_assessments (
     FOREIGN KEY(extraction_result_id) REFERENCES extraction_results(id)
 );
 
+CREATE TABLE IF NOT EXISTS speaker_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stable_key TEXT NOT NULL UNIQUE,
+    display_label TEXT NULL,
+    lifecycle_state TEXT NOT NULL,
+    created_reason TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pastor_speaker_bindings (
+    pastor_id INTEGER PRIMARY KEY,
+    profile_id INTEGER NOT NULL UNIQUE,
+    binding_kind TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(pastor_id) REFERENCES pastors(id),
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    extraction_result_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    multiplicity_state TEXT NOT NULL,
+    start_seconds REAL NOT NULL,
+    end_seconds REAL NOT NULL,
+    artifact_path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    extractor_version TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    FOREIGN KEY(extraction_result_id) REFERENCES extraction_results(id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_name_claims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    observation_id INTEGER NULL,
+    display_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    claim_kind TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    explicit_speaker_attribution INTEGER NOT NULL,
+    correlation_group_id TEXT NOT NULL,
+    provenance_json TEXT NOT NULL,
+    artifact_path TEXT NOT NULL,
+    claim_fingerprint TEXT NOT NULL UNIQUE,
+    extractor_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    FOREIGN KEY(observation_id) REFERENCES speaker_observations(id)
+);
+
+CREATE TABLE IF NOT EXISTS profile_observation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    observation_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('attach', 'detach')),
+    reviewer TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id),
+    FOREIGN KEY(observation_id) REFERENCES speaker_observations(id)
+);
+
+CREATE TABLE IF NOT EXISTS profile_name_claim_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NULL,
+    claim_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('attach', 'reject')),
+    reviewer TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id),
+    FOREIGN KEY(claim_id) REFERENCES speaker_name_claims(id),
+    CHECK((action = 'attach' AND profile_id IS NOT NULL) OR action = 'reject')
+);
+
+CREATE TABLE IF NOT EXISTS speaker_profile_redirect_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_profile_id INTEGER NOT NULL,
+    to_profile_id INTEGER NULL,
+    action TEXT NOT NULL CHECK(action IN ('redirect', 'clear')),
+    reviewer TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(from_profile_id) REFERENCES speaker_profiles(id),
+    FOREIGN KEY(to_profile_id) REFERENCES speaker_profiles(id),
+    CHECK((action = 'redirect' AND to_profile_id IS NOT NULL) OR action = 'clear')
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_evidence_artifact
 ON identity_evidence(video_id, target_pastor_id, evidence_type, artifact_path);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_claims_video
+ON speaker_name_claims(video_id, observation_id);
+
+CREATE INDEX IF NOT EXISTS idx_profile_observation_events_pair
+ON profile_observation_events(profile_id, observation_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_profile_redirect_events_source
+ON speaker_profile_redirect_events(from_profile_id, id);
 """
 
 
@@ -335,6 +442,50 @@ class Database:
             evidence_ledger_path=str(row["evidence_ledger_path"]),
             assessment_path=str(row["assessment_path"]),
             input_fingerprint=str(row["input_fingerprint"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _speaker_profile_from_row(self, row: sqlite3.Row) -> SpeakerProfile:
+        return SpeakerProfile(
+            id=int(row["id"]),
+            stable_key=str(row["stable_key"]),
+            display_label=row["display_label"],
+            lifecycle_state=str(row["lifecycle_state"]),
+            created_reason=str(row["created_reason"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _speaker_observation_from_row(self, row: sqlite3.Row) -> SpeakerObservation:
+        return SpeakerObservation(
+            id=int(row["id"]),
+            video_id=int(row["video_id"]),
+            extraction_result_id=int(row["extraction_result_id"]),
+            role=str(row["role"]),
+            multiplicity_state=str(row["multiplicity_state"]),
+            start_seconds=float(row["start_seconds"]),
+            end_seconds=float(row["end_seconds"]),
+            artifact_path=str(row["artifact_path"]),
+            content_sha256=str(row["content_sha256"]),
+            extractor_version=str(row["extractor_version"]),
+            input_fingerprint=str(row["input_fingerprint"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _speaker_name_claim_from_row(self, row: sqlite3.Row) -> SpeakerNameClaim:
+        return SpeakerNameClaim(
+            id=int(row["id"]),
+            video_id=int(row["video_id"]),
+            observation_id=int(row["observation_id"]) if row["observation_id"] is not None else None,
+            display_name=str(row["display_name"]),
+            normalized_name=str(row["normalized_name"]),
+            claim_kind=str(row["claim_kind"]),
+            channel=str(row["channel"]),
+            explicit_speaker_attribution=bool(row["explicit_speaker_attribution"]),
+            correlation_group_id=str(row["correlation_group_id"]),
+            provenance_json=str(row["provenance_json"]),
+            artifact_path=str(row["artifact_path"]),
+            claim_fingerprint=str(row["claim_fingerprint"]),
+            extractor_version=str(row["extractor_version"]),
             created_at=parse_datetime(str(row["created_at"])) or utc_now(),
         )
 
@@ -629,6 +780,7 @@ class Database:
     def delete_extraction_results_for_video(self, video_id: int) -> None:
         with self.connect() as connection:
             connection.execute("DELETE FROM identity_assessments WHERE video_id = ?", (video_id,))
+            self._delete_speaker_records_for_video(connection, video_id)
             connection.execute("DELETE FROM extraction_results WHERE video_id = ?", (video_id,))
 
     def delete_transcript_artifacts_for_video(self, video_id: int) -> None:
@@ -640,6 +792,27 @@ class Database:
             connection.execute("DELETE FROM identity_assessments WHERE video_id = ?", (video_id,))
             connection.execute("DELETE FROM identity_evidence WHERE video_id = ?", (video_id,))
             connection.execute("DELETE FROM metadata_artifacts WHERE video_id = ?", (video_id,))
+            self._delete_speaker_records_for_video(connection, video_id)
+
+    def _delete_speaker_records_for_video(
+        self, connection: sqlite3.Connection, video_id: int
+    ) -> None:
+        connection.execute(
+            """
+            DELETE FROM profile_name_claim_events
+            WHERE claim_id IN (SELECT id FROM speaker_name_claims WHERE video_id = ?)
+            """,
+            (video_id,),
+        )
+        connection.execute(
+            """
+            DELETE FROM profile_observation_events
+            WHERE observation_id IN (SELECT id FROM speaker_observations WHERE video_id = ?)
+            """,
+            (video_id,),
+        )
+        connection.execute("DELETE FROM speaker_name_claims WHERE video_id = ?", (video_id,))
+        connection.execute("DELETE FROM speaker_observations WHERE video_id = ?", (video_id,))
 
     def delete_video(self, video_id: int) -> None:
         self.delete_identity_records_for_video(video_id)
@@ -1175,6 +1348,383 @@ class Database:
             ).fetchone()
         return self._identity_assessment_from_row(row) if row is not None else None
 
+    def ensure_speaker_profile(
+        self,
+        *,
+        stable_key: str,
+        display_label: str | None,
+        lifecycle_state: str,
+        created_reason: str,
+    ) -> SpeakerProfile:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO speaker_profiles (
+                        stable_key, display_label, lifecycle_state, created_reason, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (stable_key, display_label, lifecycle_state, created_reason, created_at),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, stable_key, display_label, lifecycle_state, created_reason, created_at
+                    FROM speaker_profiles WHERE stable_key = ?
+                    """,
+                    (stable_key,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._speaker_profile_from_row(row)
+        return SpeakerProfile(
+            id=int(cursor.lastrowid),
+            stable_key=stable_key,
+            display_label=display_label,
+            lifecycle_state=lifecycle_state,
+            created_reason=created_reason,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def get_speaker_profile(self, profile_id: int) -> SpeakerProfile | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, stable_key, display_label, lifecycle_state, created_reason, created_at
+                FROM speaker_profiles WHERE id = ?
+                """,
+                (profile_id,),
+            ).fetchone()
+        return self._speaker_profile_from_row(row) if row is not None else None
+
+    def ensure_pastor_speaker_binding(self, pastor_id: int, profile_id: int) -> int:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO pastor_speaker_bindings (
+                    pastor_id, profile_id, binding_kind, created_at
+                ) VALUES (?, ?, 'configured_requested_identity', ?)
+                """,
+                (pastor_id, profile_id, created_at),
+            )
+            row = connection.execute(
+                "SELECT profile_id FROM pastor_speaker_bindings WHERE pastor_id = ?",
+                (pastor_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Pastor speaker binding was not persisted")
+        return int(row["profile_id"])
+
+    def add_speaker_observation(
+        self,
+        *,
+        video_id: int,
+        extraction_result_id: int,
+        role: str,
+        multiplicity_state: str,
+        start_seconds: float,
+        end_seconds: float,
+        artifact_path: str,
+        content_sha256: str,
+        extractor_version: str,
+        input_fingerprint: str,
+    ) -> SpeakerObservation:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO speaker_observations (
+                        video_id, extraction_result_id, role, multiplicity_state,
+                        start_seconds, end_seconds, artifact_path, content_sha256,
+                        extractor_version, input_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        video_id,
+                        extraction_result_id,
+                        role,
+                        multiplicity_state,
+                        start_seconds,
+                        end_seconds,
+                        artifact_path,
+                        content_sha256,
+                        extractor_version,
+                        input_fingerprint,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, video_id, extraction_result_id, role, multiplicity_state,
+                           start_seconds, end_seconds, artifact_path, content_sha256,
+                           extractor_version, input_fingerprint, created_at
+                    FROM speaker_observations WHERE input_fingerprint = ?
+                    """,
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._speaker_observation_from_row(row)
+        return SpeakerObservation(
+            id=int(cursor.lastrowid),
+            video_id=video_id,
+            extraction_result_id=extraction_result_id,
+            role=role,
+            multiplicity_state=multiplicity_state,
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+            artifact_path=artifact_path,
+            content_sha256=content_sha256,
+            extractor_version=extractor_version,
+            input_fingerprint=input_fingerprint,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def get_speaker_observation_by_fingerprint(
+        self, input_fingerprint: str
+    ) -> SpeakerObservation | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, extraction_result_id, role, multiplicity_state,
+                       start_seconds, end_seconds, artifact_path, content_sha256,
+                       extractor_version, input_fingerprint, created_at
+                FROM speaker_observations WHERE input_fingerprint = ?
+                """,
+                (input_fingerprint,),
+            ).fetchone()
+        return self._speaker_observation_from_row(row) if row is not None else None
+
+    def get_speaker_observation(self, observation_id: int) -> SpeakerObservation | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, extraction_result_id, role, multiplicity_state,
+                       start_seconds, end_seconds, artifact_path, content_sha256,
+                       extractor_version, input_fingerprint, created_at
+                FROM speaker_observations WHERE id = ?
+                """,
+                (observation_id,),
+            ).fetchone()
+        return self._speaker_observation_from_row(row) if row is not None else None
+
+    def add_speaker_name_claim(
+        self,
+        *,
+        video_id: int,
+        observation_id: int | None,
+        display_name: str,
+        normalized_name: str,
+        claim_kind: str,
+        channel: str,
+        explicit_speaker_attribution: bool,
+        correlation_group_id: str,
+        provenance_json: str,
+        artifact_path: str,
+        claim_fingerprint: str,
+        extractor_version: str,
+    ) -> SpeakerNameClaim:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO speaker_name_claims (
+                        video_id, observation_id, display_name, normalized_name, claim_kind,
+                        channel, explicit_speaker_attribution, correlation_group_id,
+                        provenance_json, artifact_path, claim_fingerprint, extractor_version,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        video_id,
+                        observation_id,
+                        display_name,
+                        normalized_name,
+                        claim_kind,
+                        channel,
+                        1 if explicit_speaker_attribution else 0,
+                        correlation_group_id,
+                        provenance_json,
+                        artifact_path,
+                        claim_fingerprint,
+                        extractor_version,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, video_id, observation_id, display_name, normalized_name,
+                           claim_kind, channel, explicit_speaker_attribution,
+                           correlation_group_id, provenance_json, artifact_path,
+                           claim_fingerprint, extractor_version, created_at
+                    FROM speaker_name_claims WHERE claim_fingerprint = ?
+                    """,
+                    (claim_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._speaker_name_claim_from_row(row)
+        return SpeakerNameClaim(
+            id=int(cursor.lastrowid),
+            video_id=video_id,
+            observation_id=observation_id,
+            display_name=display_name,
+            normalized_name=normalized_name,
+            claim_kind=claim_kind,
+            channel=channel,
+            explicit_speaker_attribution=explicit_speaker_attribution,
+            correlation_group_id=correlation_group_id,
+            provenance_json=provenance_json,
+            artifact_path=artifact_path,
+            claim_fingerprint=claim_fingerprint,
+            extractor_version=extractor_version,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def list_speaker_name_claims_for_video(self, video_id: int) -> list[SpeakerNameClaim]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, video_id, observation_id, display_name, normalized_name,
+                       claim_kind, channel, explicit_speaker_attribution,
+                       correlation_group_id, provenance_json, artifact_path,
+                       claim_fingerprint, extractor_version, created_at
+                FROM speaker_name_claims WHERE video_id = ? ORDER BY id
+                """,
+                (video_id,),
+            ).fetchall()
+        return [self._speaker_name_claim_from_row(row) for row in rows]
+
+    def get_speaker_name_claim(self, claim_id: int) -> SpeakerNameClaim | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, observation_id, display_name, normalized_name,
+                       claim_kind, channel, explicit_speaker_attribution,
+                       correlation_group_id, provenance_json, artifact_path,
+                       claim_fingerprint, extractor_version, created_at
+                FROM speaker_name_claims WHERE id = ?
+                """,
+                (claim_id,),
+            ).fetchone()
+        return self._speaker_name_claim_from_row(row) if row is not None else None
+
+    def add_profile_observation_event(
+        self,
+        *,
+        profile_id: int,
+        observation_id: int,
+        action: str,
+        reviewer: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="profile_observation_events",
+            columns=("profile_id", "observation_id", "action", "reviewer", "reason"),
+            values=(profile_id, observation_id, action, reviewer, reason),
+            event_fingerprint=event_fingerprint,
+        )
+
+    def add_profile_name_claim_event(
+        self,
+        *,
+        profile_id: int | None,
+        claim_id: int,
+        action: str,
+        reviewer: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="profile_name_claim_events",
+            columns=("profile_id", "claim_id", "action", "reviewer", "reason"),
+            values=(profile_id, claim_id, action, reviewer, reason),
+            event_fingerprint=event_fingerprint,
+        )
+
+    def add_profile_redirect_event(
+        self,
+        *,
+        from_profile_id: int,
+        to_profile_id: int | None,
+        action: str,
+        reviewer: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="speaker_profile_redirect_events",
+            columns=("from_profile_id", "to_profile_id", "action", "reviewer", "reason"),
+            values=(from_profile_id, to_profile_id, action, reviewer, reason),
+            event_fingerprint=event_fingerprint,
+        )
+
+    def _add_registry_event(
+        self,
+        *,
+        table: str,
+        columns: tuple[str, ...],
+        values: tuple[object, ...],
+        event_fingerprint: str,
+    ) -> int:
+        allowed_tables = {
+            "profile_observation_events",
+            "profile_name_claim_events",
+            "speaker_profile_redirect_events",
+        }
+        if table not in allowed_tables:
+            raise ValueError(f"Unsupported registry event table: {table}")
+        created_at = utc_now().isoformat()
+        column_sql = ", ".join((*columns, "event_fingerprint", "created_at"))
+        placeholders = ", ".join("?" for _ in range(len(columns) + 2))
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    f"INSERT INTO {table} ({column_sql}) VALUES ({placeholders})",
+                    (*values, event_fingerprint, created_at),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    f"SELECT id FROM {table} WHERE event_fingerprint = ?",
+                    (event_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return int(row["id"])
+        return int(cursor.lastrowid)
+
+    def get_effective_profile_redirect(self, from_profile_id: int) -> int | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action, to_profile_id
+                FROM speaker_profile_redirect_events
+                WHERE from_profile_id = ? ORDER BY id DESC LIMIT 1
+                """,
+                (from_profile_id,),
+            ).fetchone()
+        if row is None or str(row["action"]) == "clear":
+            return None
+        return int(row["to_profile_id"])
+
+    def is_observation_attached(self, profile_id: int, observation_id: int) -> bool:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action FROM profile_observation_events
+                WHERE profile_id = ? AND observation_id = ? ORDER BY id DESC LIMIT 1
+                """,
+                (profile_id, observation_id),
+            ).fetchone()
+        return row is not None and str(row["action"]) == "attach"
+
     def counts_by_table(self) -> dict[str, int]:
         with self.connect() as connection:
             source_count = connection.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
@@ -1188,6 +1738,9 @@ class Database:
             metadata_count = connection.execute("SELECT COUNT(*) FROM metadata_artifacts").fetchone()[0]
             identity_evidence_count = connection.execute("SELECT COUNT(*) FROM identity_evidence").fetchone()[0]
             identity_assessment_count = connection.execute("SELECT COUNT(*) FROM identity_assessments").fetchone()[0]
+            speaker_profile_count = connection.execute("SELECT COUNT(*) FROM speaker_profiles").fetchone()[0]
+            speaker_observation_count = connection.execute("SELECT COUNT(*) FROM speaker_observations").fetchone()[0]
+            speaker_name_claim_count = connection.execute("SELECT COUNT(*) FROM speaker_name_claims").fetchone()[0]
         return {
             "sources": int(source_count),
             "pastors": int(pastor_count),
@@ -1200,4 +1753,7 @@ class Database:
             "metadata_artifacts": int(metadata_count),
             "identity_evidence": int(identity_evidence_count),
             "identity_assessments": int(identity_assessment_count),
+            "speaker_profiles": int(speaker_profile_count),
+            "speaker_observations": int(speaker_observation_count),
+            "speaker_name_claims": int(speaker_name_claim_count),
         }

@@ -21,13 +21,14 @@ from pastor_transcript_extractor.models import (
     Video,
     utc_now,
 )
+from pastor_transcript_extractor.speaker_registry import persist_neutral_speaker_evidence
 from pastor_transcript_extractor.storage import Database
 
 
 METADATA_SCHEMA_VERSION = 1
 METADATA_EXTRACTOR_VERSION = "source_metadata_v1"
-IDENTITY_EVIDENCE_VERSION = "identity_evidence_v3"
-IDENTITY_POLICY_VERSION = "identity_shadow_v3"
+IDENTITY_EVIDENCE_VERSION = "identity_evidence_v4"
+IDENTITY_POLICY_VERSION = "identity_shadow_v4"
 DECISION_POLICY_VERSION = "content_identity_coordinator_v1"
 
 
@@ -213,6 +214,17 @@ def record_shadow_identity_assessment(
         metadata_content_sha256=metadata_artifact.content_sha256,
     )
     attribution_payload = attribution.to_dict()
+    neutral_evidence = persist_neutral_speaker_evidence(
+        database,
+        app_paths,
+        video=video,
+        pastor=pastor,
+        extraction_result=extraction_result,
+        proposed_payload=proposed_payload,
+        attribution=attribution,
+    )
+    if tuple(attribution.outcomes) != neutral_evidence.compatibility_outcomes:
+        raise ValueError("Neutral speaker claims did not reproduce target attribution outcomes")
 
     state = IdentityState.PROFILE_UNAVAILABLE
     action = recommended_action_for_state(state)
@@ -226,6 +238,7 @@ def record_shadow_identity_assessment(
         "metadata_content_sha256": metadata_artifact.content_sha256,
         "attribution_extractor_version": ATTRIBUTION_EXTRACTOR_VERSION,
         "attribution": attribution_payload,
+        "speaker_evidence_content_sha256": neutral_evidence.artifact_content_sha256,
         "state": state.value,
         "shadow_mode": True,
     }
@@ -241,9 +254,9 @@ def record_shadow_identity_assessment(
 
     video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
     evidence_ledger_path = (
-        video_paths.identity / f"evidence-ledger-v3-{input_fingerprint[:12]}.json"
+        video_paths.identity / f"evidence-ledger-v4-{input_fingerprint[:12]}.json"
     )
-    assessment_path = video_paths.identity / f"assessment-v3-{input_fingerprint[:12]}.json"
+    assessment_path = video_paths.identity / f"assessment-v4-{input_fingerprint[:12]}.json"
     observation = {
         "evidence_type": "source_target_assignment",
         "source_family": "source_context",
@@ -256,7 +269,7 @@ def record_shadow_identity_assessment(
         "metadata_content_sha256": metadata_artifact.content_sha256,
     }
     ledger_payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "extractor_version": IDENTITY_EVIDENCE_VERSION,
         "video_id": video.id,
         "youtube_video_id": video.youtube_video_id,
@@ -267,6 +280,14 @@ def record_shadow_identity_assessment(
         "attribution_outcomes": attribution_payload["outcomes"],
         "correlation_groups": attribution_payload["correlation_groups"],
         "independent_attribution_group_count": attribution_payload["independent_attribution_group_count"],
+        "neutral_speaker_evidence": {
+            "artifact_path": str(neutral_evidence.artifact_path),
+            "content_sha256": neutral_evidence.artifact_content_sha256,
+            "configured_profile_id": neutral_evidence.configured_profile.id,
+            "observation_id": neutral_evidence.observation.id if neutral_evidence.observation is not None else None,
+            "name_claim_ids": [claim.id for claim in neutral_evidence.claims],
+            "automatic_profile_membership": False,
+        },
         "limitations": [
             "No voice profile or recognition backend is active.",
             "Source assignment and recurring-channel expectation are not identity proof.",
@@ -318,7 +339,7 @@ def record_shadow_identity_assessment(
         )
         evidence_ids.append(outcome_evidence.id)
     assessment_payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "policy_version": IDENTITY_POLICY_VERSION,
         "input_fingerprint": input_fingerprint,
         "video_id": video.id,
@@ -331,6 +352,7 @@ def record_shadow_identity_assessment(
         "shadow_mode": True,
         "reason_codes": ["target_voice_profile_unavailable"],
         "attribution_outcomes": attribution_payload["outcomes"],
+        "speaker_evidence_artifact_path": str(neutral_evidence.artifact_path),
         "evidence_ids": evidence_ids,
         "evidence_ledger_path": str(evidence_ledger_path),
         "coordination": coordination,

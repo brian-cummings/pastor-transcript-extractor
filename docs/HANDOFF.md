@@ -30,7 +30,9 @@ Implemented:
 - manual sermon-window overrides are authoritative for content boundaries only and no longer suppress guest-speaker review
 - identity increment 2 extracts exact metadata and spoken-attribution evidence with correlation grouping
 - grounded attribution remains shadow-only and never uses sermon topic, style, or theology
-- 177 tests pass
+- identity increment 3 separates neutral speaker observations, claims, profiles, and target-policy projection
+- profile membership and naming require explicit review events; clusters and acoustic matching remain unimplemented
+- 185 tests pass
 
 ## Local Evaluation Environment
 
@@ -214,7 +216,7 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 The latest validated 12-fixture report, rerun after the final identity increment
 2 production shadow backfill, is:
 
-- `evaluation/results/20260715T144713Z/report.md`
+- `evaluation/results/20260715T173039Z/report.md`
 
 Results:
 
@@ -281,7 +283,7 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 177 tests.
+The expected count at this handoff is 185 tests.
 
 ## Identity Increment 1
 
@@ -373,6 +375,82 @@ Production shadow verification of the final matcher on 2026-07-15:
 An earlier v2 diagnostic pass remains in the append-only audit history. The
 final v3 matcher prevents a nearby non-credit mention (for example, “thanks to
 Andrew Korp”) from inheriting another named person's speaker credit.
+
+## Identity Architecture Decision
+
+Identity is now speaker-centered rather than target-centered. The permanent
+vocabulary distinguishes four concepts:
+
+- an **observation** is one occurrence of a principal-speaker candidate in an isolated sermon
+- a **cluster** is a versioned, disposable hypothesis produced by a future matching experiment
+- a **profile** is a durable, curated speaker identity
+- a **name claim** is grounded evidence associating a name with an observation or profile
+
+The requested pastor remains a configured query identity. Target/non-target and
+guest-speaker results are downstream policy projections, not properties stored
+on neutral observations or claims.
+
+Safety invariants:
+
+- predictions never become profile exemplars automatically
+- clusters never become profiles automatically
+- metadata names never name acoustic profiles automatically
+- profile membership and name attachment require explicit review events
+- merges use append-only redirects and can be cleared by a later event
+- fragmentation is preferred to false merging
+- identity remains shadow-only and cannot modify sermon isolation or exports
+
+## Identity Increment 3
+
+Increment 3 implements only the neutral registry substrate. It does not extract
+audio, compute embeddings, compare voices, create clusters, or attach any sermon
+to a profile automatically.
+
+New additive tables:
+
+- `speaker_profiles`
+- `pastor_speaker_bindings`
+- `speaker_observations`
+- `speaker_name_claims`
+- `profile_observation_events`
+- `profile_name_claim_events`
+- `speaker_profile_redirect_events`
+
+Configured pastors seed named but `unprofiled` identities. This records the
+requested person without asserting that any video contains that person's voice.
+A `principal_speaker_candidate` observation is created only when the persisted
+extraction has a valid sermon window; its multiplicity remains `unknown`.
+Attribution claims can remain video-scoped when no valid speaker observation can
+honestly be created. Exact metadata and transcript provenance is retained.
+
+The minimal curated operations are create profile, attach or detach a reviewed
+observation, attach or reject a reviewed name claim, create a merge redirect,
+and clear a redirect. Each operation is append-only and keyed for idempotent
+replay. A sophisticated split workflow is intentionally deferred.
+
+Neutral claims are projected through `speaker_registry_shadow_v1` into the same
+eight target-centered attribution outcomes from Increment 2. Assessment creation
+fails safely if that compatibility projection diverges. Identity state remains
+`profile_unavailable`; the coordinator continues to preserve the existing
+content disposition.
+
+Production shadow verification on 2026-07-15:
+
+- pre-migration SQLite backup: `/tmp/PastorSearchData-pre-identity-increment3.db`
+- first v4 backfill: 178 created, 5 skipped, 0 failed
+- replay: 0 created, 178 reused, 5 skipped, 0 failed
+- registry substrate: 7 configured profiles, 7 bindings, 135 valid-window observations, and 32 grounded name claims
+- all 7 configured profiles remain `unprofiled`
+- membership events: 0; name-review events: 0; redirects: 0
+- v3-only compatibility outcomes: 0; v4-only compatibility outcomes: 0
+- all 178 v4 assessments remain `profile_unavailable`, review-only, and shadow-mode
+- all 534 Increment 3 artifacts retained aggregate SHA-256 `de59fe41e5cbff85690bb20e88be197737622eee7be2359856aa1341fb17d4b2` across replay
+- all existing `proposed.json` files retained aggregate SHA-256 `67a86ee366391f3ab399b2341f04eaa09dfe94c9259d0bded35a4c83e336af50`
+- the frozen 12-fixture sermon metrics remain identical to the accepted benchmark
+
+The next acoustic increment should answer only: “Do these two independently
+isolated sermons contain the same principal speaker?” It should run offline and
+must not name speakers, mutate profiles, or gate production.
 
 ## Remaining Defects
 

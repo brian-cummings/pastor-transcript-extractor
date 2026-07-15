@@ -72,7 +72,7 @@ app = typer.Typer(help="Pastor Transcript Extractor CLI")
 pastor_app = typer.Typer(help="Manage pastors.")
 source_app = typer.Typer(help="Manage queued sources.")
 video_app = typer.Typer(help="Manage discovered videos.")
-identity_app = typer.Typer(help="Manage pastor identity shadow artifacts.")
+identity_app = typer.Typer(help="Manage speaker identity shadow artifacts.")
 app.add_typer(pastor_app, name="pastor")
 app.add_typer(source_app, name="source")
 app.add_typer(video_app, name="video")
@@ -737,6 +737,9 @@ def status(
     summary.add_row("Metadata Snapshots", str(counts["metadata_artifacts"]))
     summary.add_row("Identity Evidence", str(counts["identity_evidence"]))
     summary.add_row("Identity Assessments", str(counts["identity_assessments"]))
+    summary.add_row("Speaker Profiles", str(counts["speaker_profiles"]))
+    summary.add_row("Speaker Observations", str(counts["speaker_observations"]))
+    summary.add_row("Speaker Name Claims", str(counts["speaker_name_claims"]))
     summary.add_row("Excluded", str(counts["excluded_videos"]))
     console.print(summary)
 
@@ -954,7 +957,7 @@ def video_excluded(
 
 @identity_app.command(
     "backfill",
-    help="Create missing shadow identity artifacts from existing extractions without reclassification.",
+    help="Create missing shadow identity and neutral speaker artifacts without reclassification.",
 )
 def identity_backfill(
     video_id: int | None = typer.Option(None, "--video-id", help="Only backfill one database video id."),

@@ -21,6 +21,7 @@ This workspace now has the main pipeline scaffold in place:
 - exclusion-aware incremental reruns
 - versioned discovery metadata snapshots for future identity evidence
 - shadow-mode identity evidence ledgers and assessments
+- identity-neutral speaker observations, name claims, and curated profile registry contracts
 - independent content/identity decision coordination without export gating
 - `init`, `add`, `status`, `doctor`, `discover`, `fetch`, `transcribe`, `extract`, `review`, and `run` command implementation
 - `pastor add` and `pastor list`
@@ -277,6 +278,13 @@ and count as one independent attribution source.
 Attribution outcomes are diagnostic only: they do not promote the identity
 state beyond `profile_unavailable`, alter the coordinator's effective status,
 or use sermon topic, style, or theology as evidence.
+
+The neutral registry separates speaker observations, disposable future cluster
+hypotheses, curated profiles, and grounded name claims. Configured pastors are
+created as named but unprofiled query identities. Sermon observations and names
+are never attached to profiles automatically; membership, naming, and merge
+redirects require append-only review events. No acoustic recognition or
+clustering backend is active.
 
 ## Commands
 
