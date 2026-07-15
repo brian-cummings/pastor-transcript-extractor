@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
+from pastor_transcript_extractor.identity_attribution import (
+    ATTRIBUTION_EXTRACTOR_VERSION,
+    extract_grounded_attributions,
+)
 from pastor_transcript_extractor.models import (
     ExtractionResult,
     IdentityAction,
@@ -22,8 +26,8 @@ from pastor_transcript_extractor.storage import Database
 
 METADATA_SCHEMA_VERSION = 1
 METADATA_EXTRACTOR_VERSION = "source_metadata_v1"
-IDENTITY_EVIDENCE_VERSION = "identity_evidence_v1"
-IDENTITY_POLICY_VERSION = "identity_shadow_v1"
+IDENTITY_EVIDENCE_VERSION = "identity_evidence_v3"
+IDENTITY_POLICY_VERSION = "identity_shadow_v3"
 DECISION_POLICY_VERSION = "content_identity_coordinator_v1"
 
 
@@ -195,6 +199,21 @@ def record_shadow_identity_assessment(
             source_kind="database_backfill",
         )
 
+    if not extraction_result.proposed_json_path:
+        raise ValueError("Identity assessment requires a proposed JSON artifact")
+    metadata_payload = json.loads(Path(metadata_artifact.artifact_path).read_text(encoding="utf-8"))
+    proposed_payload = json.loads(Path(extraction_result.proposed_json_path).read_text(encoding="utf-8"))
+    if not isinstance(metadata_payload, dict) or not isinstance(proposed_payload, dict):
+        raise ValueError("Identity inputs must be JSON objects")
+    attribution = extract_grounded_attributions(
+        metadata_payload=metadata_payload,
+        proposed_payload=proposed_payload,
+        target_name=pastor.display_name,
+        metadata_artifact_id=metadata_artifact.id,
+        metadata_content_sha256=metadata_artifact.content_sha256,
+    )
+    attribution_payload = attribution.to_dict()
+
     state = IdentityState.PROFILE_UNAVAILABLE
     action = recommended_action_for_state(state)
     coordination = coordinate_decision(content_disposition, state, shadow_mode=True)
@@ -205,6 +224,8 @@ def record_shadow_identity_assessment(
         "extraction_result_id": extraction_result.id,
         "content_disposition": content_disposition,
         "metadata_content_sha256": metadata_artifact.content_sha256,
+        "attribution_extractor_version": ATTRIBUTION_EXTRACTOR_VERSION,
+        "attribution": attribution_payload,
         "state": state.value,
         "shadow_mode": True,
     }
@@ -220,9 +241,9 @@ def record_shadow_identity_assessment(
 
     video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
     evidence_ledger_path = (
-        video_paths.identity / f"evidence-ledger-v1-{input_fingerprint[:12]}.json"
+        video_paths.identity / f"evidence-ledger-v3-{input_fingerprint[:12]}.json"
     )
-    assessment_path = video_paths.identity / f"assessment-v1-{input_fingerprint[:12]}.json"
+    assessment_path = video_paths.identity / f"assessment-v3-{input_fingerprint[:12]}.json"
     observation = {
         "evidence_type": "source_target_assignment",
         "source_family": "source_context",
@@ -235,17 +256,22 @@ def record_shadow_identity_assessment(
         "metadata_content_sha256": metadata_artifact.content_sha256,
     }
     ledger_payload = {
-        "schema_version": 1,
+        "schema_version": 3,
         "extractor_version": IDENTITY_EVIDENCE_VERSION,
         "video_id": video.id,
         "youtube_video_id": video.youtube_video_id,
         "target_pastor_id": pastor.id,
         "target_pastor_slug": pastor.slug,
         "extraction_result_id": extraction_result.id,
-        "observations": [observation],
+        "observations": [observation, *attribution_payload["observations"]],
+        "attribution_outcomes": attribution_payload["outcomes"],
+        "correlation_groups": attribution_payload["correlation_groups"],
+        "independent_attribution_group_count": attribution_payload["independent_attribution_group_count"],
         "limitations": [
             "No voice profile or recognition backend is active.",
             "Source assignment and recurring-channel expectation are not identity proof.",
+            "Grounded attribution evidence is shadow-only and does not change identity state or effective disposition.",
+            "Sermon topic, style, and theology are not identity evidence.",
         ],
         "created_at": utc_now().isoformat(),
     }
@@ -261,8 +287,38 @@ def record_shadow_identity_assessment(
         artifact_path=str(evidence_ledger_path),
         extractor_version=IDENTITY_EVIDENCE_VERSION,
     )
+    evidence_ids = [evidence.id]
+    polarity_by_outcome = {
+        "explicit_guest_attribution": "contradicts_target",
+        "explicit_target_attribution": "supports_target",
+        "metadata_target_match": "supports_target",
+        "metadata_non_target_match": "context_only",
+        "spoken_introduction_target": "supports_target",
+        "spoken_introduction_guest": "contradicts_target",
+        "conflicting_attribution": "mixed",
+        "no_attribution_evidence": "neutral",
+    }
+    for outcome in attribution.outcomes:
+        if outcome == "no_attribution_evidence":
+            strength = "none"
+        elif outcome == "conflicting_attribution" or outcome.startswith("explicit_") or outcome.startswith("spoken_"):
+            strength = "explicit"
+        else:
+            strength = "contextual"
+        outcome_evidence = database.add_identity_evidence(
+            video_id=video.id,
+            target_pastor_id=pastor.id,
+            evidence_type=outcome,
+            source_family="grounded_attribution",
+            polarity=polarity_by_outcome[outcome],
+            strength=strength,
+            scope="sermon_speaker_attribution",
+            artifact_path=str(evidence_ledger_path),
+            extractor_version=IDENTITY_EVIDENCE_VERSION,
+        )
+        evidence_ids.append(outcome_evidence.id)
     assessment_payload = {
-        "schema_version": 1,
+        "schema_version": 3,
         "policy_version": IDENTITY_POLICY_VERSION,
         "input_fingerprint": input_fingerprint,
         "video_id": video.id,
@@ -274,7 +330,8 @@ def record_shadow_identity_assessment(
         "recommended_action": action.value,
         "shadow_mode": True,
         "reason_codes": ["target_voice_profile_unavailable"],
-        "evidence_ids": [evidence.id],
+        "attribution_outcomes": attribution_payload["outcomes"],
+        "evidence_ids": evidence_ids,
         "evidence_ledger_path": str(evidence_ledger_path),
         "coordination": coordination,
         "created_at": utc_now().isoformat(),

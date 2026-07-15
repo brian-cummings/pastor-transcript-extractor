@@ -267,6 +267,17 @@ classification or rewriting sermon artifacts:
 pte identity backfill --base-dir /path/to/app-data
 ```
 
+The grounded-attribution shadow pass extracts only exact names from title,
+description, chapter, introduction, and handoff evidence. Metadata observations
+retain their artifact hash, source kind, field path, and exact excerpt. Spoken
+observations retain a stable transcript segment line ID, timestamp range, and
+exact excerpt. Repeated credits for the same person share one correlation group
+and count as one independent attribution source.
+
+Attribution outcomes are diagnostic only: they do not promote the identity
+state beyond `profile_unavailable`, alter the coordinator's effective status,
+or use sermon topic, style, or theology as evidence.
+
 ## Commands
 
 - `pte init`

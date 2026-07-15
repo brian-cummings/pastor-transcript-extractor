@@ -28,7 +28,9 @@ Implemented:
 - identity increment 1 persists content-addressed metadata snapshots, context-only evidence ledgers, and shadow assessments
 - identity and content decisions are composed by an independent, versioned coordinator; shadow results do not gate exports
 - manual sermon-window overrides are authoritative for content boundaries only and no longer suppress guest-speaker review
-- 162 tests pass
+- identity increment 2 extracts exact metadata and spoken-attribution evidence with correlation grouping
+- grounded attribution remains shadow-only and never uses sermon topic, style, or theology
+- 177 tests pass
 
 ## Local Evaluation Environment
 
@@ -209,10 +211,10 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 ## Current Benchmark
 
-The latest validated 12-fixture report, rerun after the identity increment 1
-production migration, is:
+The latest validated 12-fixture report, rerun after the final identity increment
+2 production shadow backfill, is:
 
-- `evaluation/results/20260715T130306Z/report.md`
+- `evaluation/results/20260715T144713Z/report.md`
 
 Results:
 
@@ -279,7 +281,7 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 162 tests.
+The expected count at this handoff is 177 tests.
 
 ## Identity Increment 1
 
@@ -323,6 +325,54 @@ Production migration verification on 2026-07-15:
 - all 12 pre-migration `proposed.json` SHA-256 hashes remained unchanged
 - all 36 frozen identity artifact hashes remained unchanged across replay
 - evaluator metrics remained identical to the accepted benchmark
+
+## Identity Increment 2
+
+The second identity increment adds deterministic, grounded attribution
+extraction without acoustic dependencies. It reads titles plus any available raw
+descriptions and chapter titles, and scans exact transcript segments around the
+sermon handoff. If no effective sermon window exists, it scans for the same
+strict handoff patterns across the transcript so compound programs can still
+surface explicit speaker introductions.
+
+Supported shadow outcomes:
+
+- `explicit_guest_attribution`
+- `explicit_target_attribution`
+- `metadata_target_match`
+- `metadata_non_target_match`
+- `spoken_introduction_target`
+- `spoken_introduction_guest`
+- `conflicting_attribution`
+- `no_attribution_evidence`
+
+Every metadata observation includes the metadata artifact id/hash, source kind,
+field path, exact excerpt, and match offsets. Every spoken observation includes
+a stable segment line ID such as `S000883`, segment index, timestamps, exact
+excerpt, and match offsets. Overlapping caption repetitions are collapsed.
+Credits repeated across title, description, chapters, or transcript use a shared
+person-scoped correlation group and count as one independent attribution source.
+
+The assessment remains `profile_unavailable`, recommends review, and runs in
+shadow mode regardless of attribution outcome. Explicit target evidence supports
+the target hypothesis; explicit guest evidence contradicts it; non-explicit
+non-target metadata matches remain context-only. A name appearing in a prayer,
+sermon example, memorial title, topic, style, or theology never becomes an
+explicit speaker attribution without grounded credit syntax.
+
+Production shadow verification of the final matcher on 2026-07-15:
+
+- first v3 backfill: 178 created, 5 skipped, 0 failed
+- replay: 0 created, 178 reused, 5 skipped, 0 failed
+- outcomes: 148 no evidence, 18 metadata target matches, 11 metadata non-target matches, 16 explicit target attributions, 10 explicit guest attributions, 1 spoken guest introduction
+- all 178 v3 assessments remained `profile_unavailable`, review-only, and shadow-mode
+- all 356 v3 identity artifacts retained aggregate SHA-256 `7ebccd80420a7640172f3b3cc38696cd7c10c575bc6c462572a59121297aa2f8` across replay
+- all 12 frozen `proposed.json` hashes remained unchanged
+- sermon evaluation metrics remained identical to the accepted benchmark
+
+An earlier v2 diagnostic pass remains in the append-only audit history. The
+final v3 matcher prevents a nearby non-credit mention (for example, “thanks to
+Andrew Korp”) from inheriting another named person's speaker credit.
 
 ## Remaining Defects
 

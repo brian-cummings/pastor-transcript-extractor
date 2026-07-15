@@ -60,7 +60,7 @@ class IdentityPersistenceTests(unittest.TestCase):
         ensure_directories(self.paths)
         self.database = Database(self.paths.database)
         self.database.initialize()
-        self.pastor = self.database.add_pastor("sample-pastor", "Pastor Sample")
+        self.pastor = self.database.add_pastor("sample-pastor", "Andrew Korp")
         self.source = self.database.add_source(
             "https://www.youtube.com/@samplechurch",
             SourceType.CHANNEL,
@@ -159,11 +159,43 @@ class IdentityPersistenceTests(unittest.TestCase):
         self.assertTrue(first.evidence_ledger_path.exists())
         self.assertTrue(first.assessment_path.exists())
         assessment_payload = json.loads(first.assessment_path.read_text(encoding="utf-8"))
+        self.assertEqual(["no_attribution_evidence"], assessment_payload["attribution_outcomes"])
         self.assertEqual("review_required", assessment_payload["coordination"]["proposed_status"])
         self.assertEqual("accepted_sermon", assessment_payload["coordination"]["effective_status"])
         counts = self.database.counts_by_table()
-        self.assertEqual(1, counts["identity_evidence"])
+        self.assertEqual(2, counts["identity_evidence"])
         self.assertEqual(1, counts["identity_assessments"])
+
+    def test_grounded_target_credit_is_persisted_without_promoting_identity_state(self) -> None:
+        persist_metadata_snapshot(
+            self.database,
+            self.paths,
+            video=self.video,
+            pastor=self.pastor,
+            source_kind="yt_dlp_flat_playlist",
+            raw_metadata={"description": "Today's sermon is presented by Andrew Korp."},
+        )
+
+        result = record_shadow_identity_assessment(
+            self.database,
+            self.paths,
+            video=self.video,
+            pastor=self.pastor,
+            extraction_result=self.extraction,
+            content_disposition={"status": "accepted_sermon"},
+        )
+
+        payload = json.loads(result.assessment_path.read_text(encoding="utf-8"))
+        self.assertIn("metadata_target_match", payload["attribution_outcomes"])
+        self.assertIn("explicit_target_attribution", payload["attribution_outcomes"])
+        self.assertEqual("profile_unavailable", payload["state"])
+        self.assertEqual("review", payload["recommended_action"])
+        self.assertEqual("accepted_sermon", payload["coordination"]["effective_status"])
+        evidence = self.database.list_identity_evidence_for_video(self.video.id)
+        outcomes = {item.evidence_type: item for item in evidence}
+        self.assertEqual("supports_target", outcomes["metadata_target_match"].polarity)
+        self.assertEqual("supports_target", outcomes["explicit_target_attribution"].polarity)
+        self.assertEqual("explicit", outcomes["explicit_target_attribution"].strength)
 
     def test_deleting_video_removes_identity_records(self) -> None:
         record_shadow_identity_assessment(
