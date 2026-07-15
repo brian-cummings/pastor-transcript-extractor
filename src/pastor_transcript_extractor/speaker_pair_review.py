@@ -20,6 +20,12 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 
 
 REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v1"
+STANDARD_VARIATION_TAGS = (
+    "different_date",
+    "different_microphone",
+    "different_room",
+    "varied_audio_quality",
+)
 
 
 class ObservationQualification(StrEnum):

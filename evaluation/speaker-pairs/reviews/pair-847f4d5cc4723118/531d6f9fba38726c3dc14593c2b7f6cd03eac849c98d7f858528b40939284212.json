@@ -1,0 +1,21 @@
+{
+  "approval_confirmed": true,
+  "draft_id": "07c45365b083b4c685b2906b5eeeeeba88ed2709d17a68764a6f2b6433ab9ebc",
+  "event_kind": "speaker_pair_human_review",
+  "fixture_eligible": true,
+  "notes": "",
+  "pair_id": "pair-847f4d5cc4723118",
+  "pair_judgment": "same_speaker",
+  "qualification": {
+    "A": "qualified_single_speaker",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "531d6f9fba38726c3dc14593c2b7f6cd03eac849c98d7f858528b40939284212",
+  "reviewed_at": "2026-07-15T23:00:23.303068+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "variation_tags": [
+    "different_microphone"
+  ],
+  "workflow_version": "speaker_pair_review_v1"
+}

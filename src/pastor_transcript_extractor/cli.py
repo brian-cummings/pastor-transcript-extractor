@@ -75,6 +75,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
     PairJudgment,
+    STANDARD_VARIATION_TAGS,
     create_review_draft,
     submit_review,
 )
@@ -621,12 +622,19 @@ def review_speaker_pair(
         "invalid": ObservationQualification.INVALID_AUDIO,
         "cannot": ObservationQualification.CANNOT_DETERMINE,
     }
+    console.print(
+        "Observation classifications:\n"
+        "  single   every clip contains one consistent principal speaker\n"
+        "  multiple clips contain different principal speakers\n"
+        "  invalid  audio is unusable or lacks reviewable speech\n"
+        "  cannot   insufficient confidence to classify"
+    )
     qualification_a = _prompt_review_choice(
-        "Does every clip in Observation A contain one consistent principal speaker?",
+        "Classify Observation A",
         qualification_choices,
     )
     qualification_b = _prompt_review_choice(
-        "Does every clip in Observation B contain one consistent principal speaker?",
+        "Classify Observation B",
         qualification_choices,
     )
     both_qualified = (
@@ -646,8 +654,12 @@ def review_speaker_pair(
         pair_judgment = PairJudgment.CANNOT_DETERMINE
         console.print("At least one observation is unqualified; pair judgment is cannot_determine.")
     reviewer_value = reviewer or typer.prompt("Reviewed by").strip()
+    console.print(
+        "Standard variation tags (use only when known): "
+        + ", ".join(STANDARD_VARIATION_TAGS)
+    )
     tags_text = typer.prompt(
-        "Variation tags (comma-separated; blank is allowed)",
+        "Variation tags (comma-separated, or blank when unknown)",
         default="",
         show_default=False,
     )
