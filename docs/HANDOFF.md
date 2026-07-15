@@ -25,7 +25,10 @@ Implemented:
 - Typer commands delegate to plain service functions with ordinary Python defaults
 - `run` writes disposition-aware `review.md` and `review.json` exports by default
 - the offline interaction harness uses stable current-excerpt line IDs for grounded evidence
-- 153 tests pass
+- identity increment 1 persists content-addressed metadata snapshots, context-only evidence ledgers, and shadow assessments
+- identity and content decisions are composed by an independent, versioned coordinator; shadow results do not gate exports
+- manual sermon-window overrides are authoritative for content boundaries only and no longer suppress guest-speaker review
+- 162 tests pass
 
 ## Local Evaluation Environment
 
@@ -206,9 +209,10 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 ## Current Benchmark
 
-The latest validated 12-fixture report is:
+The latest validated 12-fixture report, rerun after the identity increment 1
+production migration, is:
 
-- `evaluation/results/20260714T135722Z/report.md`
+- `evaluation/results/20260715T130306Z/report.md`
 
 Results:
 
@@ -275,7 +279,50 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 153 tests.
+The expected count at this handoff is 162 tests.
+
+## Identity Increment 1
+
+The first pastor-recognition increment is intentionally non-recognizing and
+non-gating. It establishes the persistence and policy seams needed by later
+metadata, clustering, and voice-verification work without modifying sermon
+isolation artifacts.
+
+New SQLite tables:
+
+- `metadata_artifacts`
+- `identity_evidence`
+- `identity_assessments`
+
+New per-video artifacts are written under `identity/`. Discovery metadata is
+content-addressed and immutable. Existing videos receive a normalized database
+backfill when their first shadow assessment is created. The initial evidence
+ledger records source assignment as `context_only` / `prior_only`; it never
+confirms the assigned pastor as speaker. Every initial assessment therefore has
+state `profile_unavailable` and recommends review.
+
+The decision coordinator persists both a proposed identity-aware outcome and an
+effective outcome. In shadow mode, the effective outcome remains the existing
+content disposition, so review exports continue to use the stable production
+path. Extraction and unchanged reclassification inputs generate identity
+assessments idempotently through a content-derived fingerprint.
+
+Use the dedicated backfill path for historical extractions. It reads the latest
+`proposed.json`, creates identity-only artifacts, and does not invoke the local
+LLM or rewrite extraction output:
+
+```bash
+pte identity backfill --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Production migration verification on 2026-07-15:
+
+- first backfill: 178 created, 5 skipped, 0 failed
+- replay: 0 created, 178 reused, 5 skipped, 0 failed
+- all 12 frozen videos: `profile_unavailable`, shadow mode, `database_backfill` provenance
+- all 12 pre-migration `proposed.json` SHA-256 hashes remained unchanged
+- all 36 frozen identity artifact hashes remained unchanged across replay
+- evaluator metrics remained identical to the accepted benchmark
 
 ## Remaining Defects
 

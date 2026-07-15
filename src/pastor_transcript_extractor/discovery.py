@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -16,6 +16,7 @@ class DiscoveredVideo:
     channel_name: str | None
     published_at: str | None
     duration_seconds: int | None
+    metadata: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
 def sort_discovered_videos_by_recency(videos: list[DiscoveredVideo]) -> list[DiscoveredVideo]:
@@ -93,6 +94,7 @@ def _normalize_entry(entry: dict[str, Any]) -> DiscoveredVideo | None:
         channel_name=entry.get("channel") or entry.get("uploader"),
         published_at=_published_at_from_info(entry),
         duration_seconds=entry.get("duration"),
+        metadata=dict(entry),
     )
 
 

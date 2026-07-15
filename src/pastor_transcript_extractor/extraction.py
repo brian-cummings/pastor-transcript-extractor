@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
 from pastor_transcript_extractor.disposition import build_final_disposition
+from pastor_transcript_extractor.identity import record_shadow_identity_assessment
 from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
@@ -38,6 +40,39 @@ class ReclassificationRunResult:
     disposition_status: str = "unknown"
     cache_hits: int = 0
     cache_misses: int = 0
+
+
+def _record_identity_shadow_safely(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    video: Any,
+    pastor: Any,
+    extraction_result: ExtractionResult,
+    content_disposition: dict[str, Any],
+) -> None:
+    """Keep shadow identity instrumentation from becoming a content-path dependency."""
+    if (
+        not isinstance(getattr(video, "id", None), int)
+        or not isinstance(getattr(pastor, "id", None), int)
+        or not isinstance(getattr(extraction_result, "id", None), int)
+    ):
+        return
+    try:
+        record_shadow_identity_assessment(
+            database,
+            app_paths,
+            video=video,
+            pastor=pastor,
+            extraction_result=extraction_result,
+            content_disposition=content_disposition,
+        )
+    except Exception as error:  # pragma: no cover - defensive production isolation
+        warnings.warn(
+            f"Shadow identity assessment failed for video {video.id}: {error}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def _classify_with_fallback(
@@ -242,6 +277,14 @@ def reclassify_video(
             existing["final_disposition"] = disposition
             proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
             classification_path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
+        _record_identity_shadow_safely(
+            database,
+            app_paths,
+            video=video,
+            pastor=pastor,
+            extraction_result=latest_extraction,
+            content_disposition=disposition,
+        )
         return ReclassificationRunResult(
             proposed_json_path,
             classification_path,
@@ -315,6 +358,14 @@ def reclassify_video(
     payload["final_disposition"] = disposition
     proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     classification_path.write_text(json.dumps(classification, indent=2, sort_keys=True), encoding="utf-8")
+    _record_identity_shadow_safely(
+        database,
+        app_paths,
+        video=video,
+        pastor=pastor,
+        extraction_result=latest_extraction,
+        content_disposition=disposition,
+    )
     return ReclassificationRunResult(
         proposed_json_path,
         classification_path,
@@ -637,6 +688,14 @@ def extract_video(
         proposed_json_path=str(proposed_json_path),
     )
     database.update_video_status(video.id, VideoStatus.EXTRACTED)
+    _record_identity_shadow_safely(
+        database,
+        app_paths,
+        video=video,
+        pastor=pastor,
+        extraction_result=extraction_result,
+        content_disposition=final_disposition,
+    )
     return ExtractionRunResult(
         extraction_result=extraction_result,
         segments_path=segments_path,

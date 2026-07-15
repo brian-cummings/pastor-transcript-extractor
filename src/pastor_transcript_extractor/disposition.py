@@ -39,12 +39,14 @@ def build_final_disposition(
     if ambiguous_speakers:
         status = REJECTED_AMBIGUOUS_SPEAKERS
         reasons = ["multiple_sustained_speakers_cannot_be_attributed_to_target_pastor"]
-    elif manual_override and has_window:
-        status = ACCEPTED_SERMON
-        reasons = ["manual_override_is_authoritative"]
     elif guest_speaker_suspected:
         status = REVIEW_REQUIRED
         reasons = ["guest_speaker_suspected"]
+        if manual_override and has_window:
+            reasons.append("manual_override_applies_to_content_boundary_only")
+    elif manual_override and has_window:
+        status = ACCEPTED_SERMON
+        reasons = ["manual_content_boundary_override_is_authoritative"]
     elif not has_window and diagnostic_candidate_present:
         status = REVIEW_REQUIRED
         reasons = ["low_confidence_candidate_not_promoted"]
@@ -70,4 +72,5 @@ def build_final_disposition(
         "effective_window_present": has_window,
         "diagnostic_candidate_present": diagnostic_candidate_present,
         "guest_speaker_suspected": guest_speaker_suspected,
+        "manual_content_override_present": manual_override,
     }

@@ -55,6 +55,7 @@ from pastor_transcript_extractor.interaction_diagnostics import (
     load_sentinel_blocks,
     run_model_diagnostics,
 )
+from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.local_llm import OllamaClient
@@ -71,9 +72,11 @@ app = typer.Typer(help="Pastor Transcript Extractor CLI")
 pastor_app = typer.Typer(help="Manage pastors.")
 source_app = typer.Typer(help="Manage queued sources.")
 video_app = typer.Typer(help="Manage discovered videos.")
+identity_app = typer.Typer(help="Manage pastor identity shadow artifacts.")
 app.add_typer(pastor_app, name="pastor")
 app.add_typer(source_app, name="source")
 app.add_typer(video_app, name="video")
+app.add_typer(identity_app, name="identity")
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
@@ -731,6 +734,9 @@ def status(
     summary.add_row("Transcripts", str(counts["transcript_artifacts"]))
     summary.add_row("Segments", str(counts["transcript_segments"]))
     summary.add_row("Extraction", str(counts["extraction_results"]))
+    summary.add_row("Metadata Snapshots", str(counts["metadata_artifacts"]))
+    summary.add_row("Identity Evidence", str(counts["identity_evidence"]))
+    summary.add_row("Identity Assessments", str(counts["identity_assessments"]))
     summary.add_row("Excluded", str(counts["excluded_videos"]))
     console.print(summary)
 
@@ -946,6 +952,24 @@ def video_excluded(
     console.print(table)
 
 
+@identity_app.command(
+    "backfill",
+    help="Create missing shadow identity artifacts from existing extractions without reclassification.",
+)
+def identity_backfill(
+    video_id: int | None = typer.Option(None, "--video-id", help="Only backfill one database video id."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    result = backfill_shadow_identity_assessments(database, paths, video_id=video_id)
+    console.print(
+        "Identity shadow backfill: "
+        f"created {result.created}, reused {result.reused}, "
+        f"skipped {result.skipped}, failed {result.failed}."
+    )
+
+
 @pastor_app.command("add", help="Create a pastor profile and folder namespace.")
 def pastor_add(
     slug: str = typer.Argument(..., help="Slug for this pastor, used in folder paths."),
@@ -1029,6 +1053,7 @@ def discover_sources_service(
     base_dir: Path | None = None,
 ) -> None:
     database = get_database(base_dir)
+    app_paths = build_paths(base_dir)
     tool_config = build_tool_config()
     sources = database.list_sources()
     if source_id is not None:
@@ -1091,7 +1116,7 @@ def discover_sources_service(
                 skipped_count += 1
                 source_skipped_count += 1
                 continue
-            database.add_video(
+            video = database.add_video(
                 source_id=source.id,
                 pastor_id=source.pastor_id,
                 youtube_video_id=discovered.youtube_video_id,
@@ -1102,6 +1127,15 @@ def discover_sources_service(
                 duration_seconds=discovered.duration_seconds,
                 status=VideoStatus.DISCOVERED,
             )
+            if pastor_record is not None:
+                persist_metadata_snapshot(
+                    database,
+                    app_paths,
+                    video=video,
+                    pastor=pastor_record,
+                    source_kind="yt_dlp_flat_playlist",
+                    raw_metadata=discovered.metadata,
+                )
             discovered_count += 1
             source_discovered_count += 1
             existing_ids.add(discovered.youtube_video_id)

@@ -61,6 +61,7 @@ class VideoArtifactPaths:
     audio: Path
     raw: Path
     extracted: Path
+    identity: Path
     review: Path
 
 
@@ -223,6 +224,7 @@ def build_video_artifact_paths(paths: AppPaths, pastor_slug: str, youtube_video_
         audio=video_root / "audio",
         raw=video_root / "raw",
         extracted=video_root / "extracted",
+        identity=video_root / "identity",
         review=video_root / "review",
     )
 

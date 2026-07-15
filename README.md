@@ -19,6 +19,9 @@ This workspace now has the main pipeline scaffold in place:
 - pastor-scoped Markdown review generation
 - caption fetching
 - exclusion-aware incremental reruns
+- versioned discovery metadata snapshots for future identity evidence
+- shadow-mode identity evidence ledgers and assessments
+- independent content/identity decision coordination without export gating
 - `init`, `add`, `status`, `doctor`, `discover`, `fetch`, `transcribe`, `extract`, `review`, and `run` command implementation
 - `pastor add` and `pastor list`
 
@@ -244,6 +247,25 @@ rejected videos do not fall back to the full transcript in pastor review output.
 Production confidence uses soft rule overlap: low rule/LLM agreement can reduce
 an otherwise-high result to medium, but cannot force it to low by itself.
 Uncertainty, empty retention, and central-consistency failures remain safety caps.
+
+## Pastor Identity Shadow Mode
+
+Pastor recognition is being added as an independent identity-assurance layer.
+The current increment records source metadata, a context-only evidence ledger,
+and a `profile_unavailable` identity assessment under each video's `identity/`
+directory. These assessments run in shadow mode: they show that identity would
+require review, but do not change existing extraction or review exports.
+
+Source-to-pastor assignment is explicitly recorded as an expectation, not proof
+that the assigned pastor delivered the sermon. Manual sermon-window overrides
+apply only to content boundaries and do not suppress guest-speaker concerns.
+
+Backfill shadow identity artifacts for existing extractions without invoking
+classification or rewriting sermon artifacts:
+
+```bash
+pte identity backfill --base-dir /path/to/app-data
+```
 
 ## Commands
 

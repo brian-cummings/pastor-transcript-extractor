@@ -633,6 +633,10 @@ class SegmentationTests(unittest.TestCase):
             videos = database.list_videos()
             self.assertEqual(1, len(videos))
             self.assertEqual(VideoStatus.DISCOVERED, videos[0].status)
+            self.assertEqual(1, database.counts_by_table()["metadata_artifacts"])
+            metadata = database.get_latest_metadata_artifact_for_video(videos[0].id)
+            self.assertIsNotNone(metadata)
+            self.assertTrue(Path(metadata.artifact_path).exists())
             self.assertIn("skipped 1 duplicate", result.output)
 
     def test_discover_skips_excluded_videos(self) -> None:
@@ -3069,6 +3073,7 @@ class ExtractionTests(unittest.TestCase):
             second_result = extract_video(database, paths, video.id)
             updated_video = database.get_video_by_id(video.id)
             latest_result = database.get_latest_extraction_result_for_video(video.id)
+            identity_assessment = database.get_latest_identity_assessment_for_video(video.id)
             segments = database.list_transcript_segments(video.id)
 
             self.assertIsNotNone(latest_result)
@@ -3081,6 +3086,9 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual("announcements", segments[0].label.value)
             self.assertEqual("prayer", segments[1].label.value)
             self.assertEqual(2, database.counts_by_table()["extraction_results"])
+            self.assertIsNotNone(identity_assessment)
+            self.assertEqual("profile_unavailable", identity_assessment.state.value)
+            self.assertTrue(identity_assessment.shadow_mode)
             proposed_markdown = result.proposed_text_path.read_text(encoding="utf-8")
             proposed_json = json.loads(result.proposed_json_path.read_text(encoding="utf-8"))
             self.assertEqual("local_asr", proposed_json["transcript_source"])

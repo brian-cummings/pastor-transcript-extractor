@@ -8,6 +8,11 @@ from typing import Iterator
 from pastor_transcript_extractor.models import (
     ExcludedVideo,
     ExtractionResult,
+    IdentityAction,
+    IdentityAssessment,
+    IdentityEvidence,
+    IdentityState,
+    MetadataArtifact,
     Pastor,
     ReviewResult,
     Source,
@@ -115,6 +120,56 @@ CREATE TABLE IF NOT EXISTS excluded_videos (
     excluded_at TEXT NOT NULL,
     notes TEXT NULL
 );
+
+CREATE TABLE IF NOT EXISTS metadata_artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    schema_version INTEGER NOT NULL,
+    source_kind TEXT NOT NULL,
+    artifact_path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    extractor_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    UNIQUE(video_id, content_sha256, extractor_version)
+);
+
+CREATE TABLE IF NOT EXISTS identity_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    target_pastor_id INTEGER NOT NULL,
+    evidence_type TEXT NOT NULL,
+    source_family TEXT NOT NULL,
+    polarity TEXT NOT NULL,
+    strength TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    artifact_path TEXT NOT NULL,
+    extractor_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    FOREIGN KEY(target_pastor_id) REFERENCES pastors(id)
+);
+
+CREATE TABLE IF NOT EXISTS identity_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    target_pastor_id INTEGER NOT NULL,
+    extraction_result_id INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    recommended_action TEXT NOT NULL,
+    shadow_mode INTEGER NOT NULL,
+    policy_version TEXT NOT NULL,
+    evidence_ledger_path TEXT NOT NULL,
+    assessment_path TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    FOREIGN KEY(target_pastor_id) REFERENCES pastors(id),
+    FOREIGN KEY(extraction_result_id) REFERENCES extraction_results(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_evidence_artifact
+ON identity_evidence(video_id, target_pastor_id, evidence_type, artifact_path);
 """
 
 
@@ -238,6 +293,49 @@ class Database:
             url=str(row["url"]),
             excluded_at=parse_datetime(str(row["excluded_at"])) or utc_now(),
             notes=row["notes"],
+        )
+
+    def _metadata_artifact_from_row(self, row: sqlite3.Row) -> MetadataArtifact:
+        return MetadataArtifact(
+            id=int(row["id"]),
+            video_id=int(row["video_id"]),
+            schema_version=int(row["schema_version"]),
+            source_kind=str(row["source_kind"]),
+            artifact_path=str(row["artifact_path"]),
+            content_sha256=str(row["content_sha256"]),
+            extractor_version=str(row["extractor_version"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _identity_evidence_from_row(self, row: sqlite3.Row) -> IdentityEvidence:
+        return IdentityEvidence(
+            id=int(row["id"]),
+            video_id=int(row["video_id"]),
+            target_pastor_id=int(row["target_pastor_id"]),
+            evidence_type=str(row["evidence_type"]),
+            source_family=str(row["source_family"]),
+            polarity=str(row["polarity"]),
+            strength=str(row["strength"]),
+            scope=str(row["scope"]),
+            artifact_path=str(row["artifact_path"]),
+            extractor_version=str(row["extractor_version"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _identity_assessment_from_row(self, row: sqlite3.Row) -> IdentityAssessment:
+        return IdentityAssessment(
+            id=int(row["id"]),
+            video_id=int(row["video_id"]),
+            target_pastor_id=int(row["target_pastor_id"]),
+            extraction_result_id=int(row["extraction_result_id"]),
+            state=IdentityState(str(row["state"])),
+            recommended_action=IdentityAction(str(row["recommended_action"])),
+            shadow_mode=bool(row["shadow_mode"]),
+            policy_version=str(row["policy_version"]),
+            evidence_ledger_path=str(row["evidence_ledger_path"]),
+            assessment_path=str(row["assessment_path"]),
+            input_fingerprint=str(row["input_fingerprint"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
         )
 
     def add_pastor(self, slug: str, display_name: str, notes: str | None = None) -> Pastor:
@@ -530,13 +628,21 @@ class Database:
 
     def delete_extraction_results_for_video(self, video_id: int) -> None:
         with self.connect() as connection:
+            connection.execute("DELETE FROM identity_assessments WHERE video_id = ?", (video_id,))
             connection.execute("DELETE FROM extraction_results WHERE video_id = ?", (video_id,))
 
     def delete_transcript_artifacts_for_video(self, video_id: int) -> None:
         with self.connect() as connection:
             connection.execute("DELETE FROM transcript_artifacts WHERE video_id = ?", (video_id,))
 
+    def delete_identity_records_for_video(self, video_id: int) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM identity_assessments WHERE video_id = ?", (video_id,))
+            connection.execute("DELETE FROM identity_evidence WHERE video_id = ?", (video_id,))
+            connection.execute("DELETE FROM metadata_artifacts WHERE video_id = ?", (video_id,))
+
     def delete_video(self, video_id: int) -> None:
+        self.delete_identity_records_for_video(video_id)
         self.delete_review_results_for_video(video_id)
         self.delete_extraction_results_for_video(video_id)
         self.delete_transcript_segments_for_video(video_id)
@@ -821,6 +927,254 @@ class Database:
             return None
         return self._review_result_from_row(row)
 
+    def add_metadata_artifact(
+        self,
+        *,
+        video_id: int,
+        schema_version: int,
+        source_kind: str,
+        artifact_path: str,
+        content_sha256: str,
+        extractor_version: str,
+    ) -> MetadataArtifact:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO metadata_artifacts (
+                        video_id, schema_version, source_kind, artifact_path, content_sha256,
+                        extractor_version, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        video_id,
+                        schema_version,
+                        source_kind,
+                        artifact_path,
+                        content_sha256,
+                        extractor_version,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, video_id, schema_version, source_kind, artifact_path, content_sha256,
+                           extractor_version, created_at
+                    FROM metadata_artifacts
+                    WHERE video_id = ? AND content_sha256 = ? AND extractor_version = ?
+                    """,
+                    (video_id, content_sha256, extractor_version),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._metadata_artifact_from_row(row)
+        return MetadataArtifact(
+            id=int(cursor.lastrowid),
+            video_id=video_id,
+            schema_version=schema_version,
+            source_kind=source_kind,
+            artifact_path=artifact_path,
+            content_sha256=content_sha256,
+            extractor_version=extractor_version,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def get_latest_metadata_artifact_for_video(self, video_id: int) -> MetadataArtifact | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, schema_version, source_kind, artifact_path, content_sha256,
+                       extractor_version, created_at
+                FROM metadata_artifacts
+                WHERE video_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (video_id,),
+            ).fetchone()
+        return self._metadata_artifact_from_row(row) if row is not None else None
+
+    def add_identity_evidence(
+        self,
+        *,
+        video_id: int,
+        target_pastor_id: int,
+        evidence_type: str,
+        source_family: str,
+        polarity: str,
+        strength: str,
+        scope: str,
+        artifact_path: str,
+        extractor_version: str,
+    ) -> IdentityEvidence:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO identity_evidence (
+                        video_id, target_pastor_id, evidence_type, source_family, polarity,
+                        strength, scope, artifact_path, extractor_version, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        video_id,
+                        target_pastor_id,
+                        evidence_type,
+                        source_family,
+                        polarity,
+                        strength,
+                        scope,
+                        artifact_path,
+                        extractor_version,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, video_id, target_pastor_id, evidence_type, source_family, polarity,
+                           strength, scope, artifact_path, extractor_version, created_at
+                    FROM identity_evidence
+                    WHERE video_id = ? AND target_pastor_id = ? AND evidence_type = ?
+                      AND artifact_path = ?
+                    """,
+                    (video_id, target_pastor_id, evidence_type, artifact_path),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._identity_evidence_from_row(row)
+        return IdentityEvidence(
+            id=int(cursor.lastrowid),
+            video_id=video_id,
+            target_pastor_id=target_pastor_id,
+            evidence_type=evidence_type,
+            source_family=source_family,
+            polarity=polarity,
+            strength=strength,
+            scope=scope,
+            artifact_path=artifact_path,
+            extractor_version=extractor_version,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def list_identity_evidence_for_video(self, video_id: int) -> list[IdentityEvidence]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, video_id, target_pastor_id, evidence_type, source_family, polarity,
+                       strength, scope, artifact_path, extractor_version, created_at
+                FROM identity_evidence
+                WHERE video_id = ?
+                ORDER BY id
+                """,
+                (video_id,),
+            ).fetchall()
+        return [self._identity_evidence_from_row(row) for row in rows]
+
+    def get_identity_assessment_by_fingerprint(self, input_fingerprint: str) -> IdentityAssessment | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, target_pastor_id, extraction_result_id, state,
+                       recommended_action, shadow_mode, policy_version, evidence_ledger_path,
+                       assessment_path, input_fingerprint, created_at
+                FROM identity_assessments
+                WHERE input_fingerprint = ?
+                """,
+                (input_fingerprint,),
+            ).fetchone()
+        return self._identity_assessment_from_row(row) if row is not None else None
+
+    def add_identity_assessment(
+        self,
+        *,
+        video_id: int,
+        target_pastor_id: int,
+        extraction_result_id: int,
+        state: IdentityState,
+        recommended_action: IdentityAction,
+        shadow_mode: bool,
+        policy_version: str,
+        evidence_ledger_path: str,
+        assessment_path: str,
+        input_fingerprint: str,
+    ) -> IdentityAssessment:
+        existing = self.get_identity_assessment_by_fingerprint(input_fingerprint)
+        if existing is not None:
+            return existing
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO identity_assessments (
+                        video_id, target_pastor_id, extraction_result_id, state, recommended_action,
+                        shadow_mode, policy_version, evidence_ledger_path, assessment_path,
+                        input_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        video_id,
+                        target_pastor_id,
+                        extraction_result_id,
+                        state.value,
+                        recommended_action.value,
+                        1 if shadow_mode else 0,
+                        policy_version,
+                        evidence_ledger_path,
+                        assessment_path,
+                        input_fingerprint,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, video_id, target_pastor_id, extraction_result_id, state,
+                           recommended_action, shadow_mode, policy_version, evidence_ledger_path,
+                           assessment_path, input_fingerprint, created_at
+                    FROM identity_assessments
+                    WHERE input_fingerprint = ?
+                    """,
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._identity_assessment_from_row(row)
+        return IdentityAssessment(
+            id=int(cursor.lastrowid),
+            video_id=video_id,
+            target_pastor_id=target_pastor_id,
+            extraction_result_id=extraction_result_id,
+            state=state,
+            recommended_action=recommended_action,
+            shadow_mode=shadow_mode,
+            policy_version=policy_version,
+            evidence_ledger_path=evidence_ledger_path,
+            assessment_path=assessment_path,
+            input_fingerprint=input_fingerprint,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def get_latest_identity_assessment_for_video(self, video_id: int) -> IdentityAssessment | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, target_pastor_id, extraction_result_id, state,
+                       recommended_action, shadow_mode, policy_version, evidence_ledger_path,
+                       assessment_path, input_fingerprint, created_at
+                FROM identity_assessments
+                WHERE video_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (video_id,),
+            ).fetchone()
+        return self._identity_assessment_from_row(row) if row is not None else None
+
     def counts_by_table(self) -> dict[str, int]:
         with self.connect() as connection:
             source_count = connection.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
@@ -831,6 +1185,9 @@ class Database:
             extraction_count = connection.execute("SELECT COUNT(*) FROM extraction_results").fetchone()[0]
             review_count = connection.execute("SELECT COUNT(*) FROM review_results").fetchone()[0]
             excluded_count = connection.execute("SELECT COUNT(*) FROM excluded_videos").fetchone()[0]
+            metadata_count = connection.execute("SELECT COUNT(*) FROM metadata_artifacts").fetchone()[0]
+            identity_evidence_count = connection.execute("SELECT COUNT(*) FROM identity_evidence").fetchone()[0]
+            identity_assessment_count = connection.execute("SELECT COUNT(*) FROM identity_assessments").fetchone()[0]
         return {
             "sources": int(source_count),
             "pastors": int(pastor_count),
@@ -840,4 +1197,7 @@ class Database:
             "extraction_results": int(extraction_count),
             "review_results": int(review_count),
             "excluded_videos": int(excluded_count),
+            "metadata_artifacts": int(metadata_count),
+            "identity_evidence": int(identity_evidence_count),
+            "identity_assessments": int(identity_assessment_count),
         }

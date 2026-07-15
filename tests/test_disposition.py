@@ -40,14 +40,25 @@ class FinalDispositionTests(unittest.TestCase):
 
         self.assertEqual("rejected_no_sermon", result["status"])
 
-    def test_manual_override_remains_authoritative(self) -> None:
+    def test_manual_override_is_authoritative_only_for_content_boundaries(self) -> None:
         result = build_final_disposition(
             {"confidence_tier": "low", "retained_segment_indexes": []},
             {"start_seconds": 60.0, "end_seconds": 600.0, "source": "override"},
             guest_speaker_suspected=True,
         )
 
+        self.assertEqual("review_required", result["status"])
+        self.assertIn("manual_override_applies_to_content_boundary_only", result["reason_codes"])
+        self.assertTrue(result["manual_content_override_present"])
+
+    def test_manual_content_override_can_accept_when_no_identity_concern_exists(self) -> None:
+        result = build_final_disposition(
+            {"confidence_tier": "low", "retained_segment_indexes": []},
+            {"start_seconds": 60.0, "end_seconds": 600.0, "source": "override"},
+        )
+
         self.assertEqual("accepted_sermon", result["status"])
+        self.assertEqual(["manual_content_boundary_override_is_authoritative"], result["reason_codes"])
 
     def test_ambiguous_speakers_can_be_rejected_without_erasing_candidate(self) -> None:
         result = build_final_disposition(

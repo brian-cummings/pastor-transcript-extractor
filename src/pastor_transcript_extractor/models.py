@@ -40,6 +40,25 @@ class TranscriptSegmentLabel(StrEnum):
     OTHER = "other"
 
 
+class IdentityState(StrEnum):
+    TARGET_CONFIRMED = "target_confirmed"
+    TARGET_PLAUSIBLE = "target_plausible"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    CONFLICTING_EVIDENCE = "conflicting_evidence"
+    NON_TARGET_CONFIRMED = "non_target_confirmed"
+    MIXED_OR_COMPOUND = "mixed_or_compound"
+    PROFILE_UNAVAILABLE = "profile_unavailable"
+    ANALYSIS_FAILED = "analysis_failed"
+
+
+class IdentityAction(StrEnum):
+    ACCEPT = "accept"
+    REVIEW = "review"
+    REJECT_NON_TARGET = "reject_non_target"
+    REJECT_COMPOUND = "reject_compound"
+    RETRY = "retry"
+
+
 @dataclass(slots=True)
 class Source:
     id: int
@@ -129,6 +148,49 @@ class ExcludedVideo:
     url: str
     excluded_at: datetime
     notes: Optional[str] = None
+
+
+@dataclass(slots=True)
+class MetadataArtifact:
+    id: int
+    video_id: int
+    schema_version: int
+    source_kind: str
+    artifact_path: str
+    content_sha256: str
+    extractor_version: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class IdentityEvidence:
+    id: int
+    video_id: int
+    target_pastor_id: int
+    evidence_type: str
+    source_family: str
+    polarity: str
+    strength: str
+    scope: str
+    artifact_path: str
+    extractor_version: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class IdentityAssessment:
+    id: int
+    video_id: int
+    target_pastor_id: int
+    extraction_result_id: int
+    state: IdentityState
+    recommended_action: IdentityAction
+    shadow_mode: bool
+    policy_version: str
+    evidence_ledger_path: str
+    assessment_path: str
+    input_fingerprint: str
+    created_at: datetime
 
 
 def utc_now() -> datetime:
