@@ -60,6 +60,14 @@ from pastor_transcript_extractor.interaction_diagnostics import (
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
+from pastor_transcript_extractor.media_artifacts import (
+    audit_media_coverage,
+    backfill_existing_media_artifacts,
+    ensure_audio_for_video,
+    get_verified_normalized_media_artifact,
+    resolve_normalized_audio_path,
+    video_has_isolated_sermon,
+)
 from pastor_transcript_extractor.local_llm import OllamaClient
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
@@ -92,10 +100,12 @@ pastor_app = typer.Typer(help="Manage pastors.")
 source_app = typer.Typer(help="Manage queued sources.")
 video_app = typer.Typer(help="Manage discovered videos.")
 identity_app = typer.Typer(help="Manage speaker identity shadow artifacts.")
+media_app = typer.Typer(help="Manage transcript-independent local media artifacts.")
 app.add_typer(pastor_app, name="pastor")
 app.add_typer(source_app, name="source")
 app.add_typer(video_app, name="video")
 app.add_typer(identity_app, name="identity")
+app.add_typer(media_app, name="media")
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
@@ -458,13 +468,7 @@ def compare_speakers(
     if missing:
         raise typer.BadParameter(f"Unknown YouTube video ID(s): {', '.join(missing)}")
     observations = [database.get_latest_speaker_observation_for_video(video.id) for video in videos]
-    transcript_artifacts = [
-        database.get_latest_audio_transcript_artifact_for_video(video.id) for video in videos
-    ]
-    audio_paths = [
-        Path(artifact.audio_path) if artifact is not None and artifact.audio_path else None
-        for artifact in transcript_artifacts
-    ]
+    audio_paths = [resolve_normalized_audio_path(database, video.id) for video in videos]
     try:
         backend = SherpaOnnxEmbeddingBackend(
             model_path.expanduser().resolve(), expected_sha256=model_sha256
@@ -591,10 +595,8 @@ def review_speaker_pair(
     observations = [database.get_latest_speaker_observation_for_video(video.id) for video in videos]
     if observations[0] is None or observations[1] is None:
         raise typer.BadParameter("Both videos require immutable speaker observations")
-    artifacts = [
-        database.get_latest_audio_transcript_artifact_for_video(video.id) for video in videos
-    ]
-    if any(artifact is None or not artifact.audio_path for artifact in artifacts):
+    audio_paths = [resolve_normalized_audio_path(database, video.id) for video in videos]
+    if any(path is None for path in audio_paths):
         raise typer.BadParameter("Both observations require local audio")
     try:
         draft = create_review_draft(
@@ -602,8 +604,8 @@ def review_speaker_pair(
             observation_b=observations[1],
             video_id_a=video_a,
             video_id_b=video_b,
-            audio_path_a=Path(artifacts[0].audio_path),
-            audio_path_b=Path(artifacts[1].audio_path),
+            audio_path_a=audio_paths[0],
+            audio_path_b=audio_paths[1],
             span_cache=AudioSpanCache(cache_dir.expanduser().resolve()),
             evaluation_root=evaluation_root.expanduser().resolve(),
         )
@@ -696,6 +698,108 @@ def review_speaker_pair(
         console.print("Review conflicts with the frozen fixture; both were preserved for adjudication.")
     else:
         console.print("Review was preserved but did not create a fixture.")
+
+
+@media_app.command(
+    "backfill",
+    help="Register existing audio as reconstructed immutable media artifacts without moving files.",
+)
+def media_backfill(
+    video_id: int | None = typer.Option(None, help="Only migrate one database video id."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    result = backfill_existing_media_artifacts(
+        database,
+        build_paths(base_dir),
+        video_id=video_id,
+    )
+    console.print(
+        f"Examined {result.videos_examined} video(s); registered "
+        f"{result.artifacts_registered} media artifact(s) and "
+        f"{result.attempts_registered} acquisition result(s); "
+        f"missing historical paths={result.missing_paths}."
+    )
+
+
+@media_app.command(
+    "ensure-audio",
+    help="Ensure isolated sermons have verified audio without running local ASR.",
+)
+def media_ensure_audio(
+    video_id: int | None = typer.Option(None, help="Only process one database video id."),
+    all_eligible: bool = typer.Option(
+        False,
+        "--all-eligible",
+        help="Process unresolved videos with a valid isolated sermon window.",
+    ),
+    limit: int | None = typer.Option(None, min=1, help="Maximum eligible videos to process."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    if (video_id is None) == (not all_eligible):
+        raise typer.BadParameter("Pass exactly one of --video-id or --all-eligible.")
+    database = get_database(base_dir)
+    paths = build_paths(base_dir)
+    tools = build_tool_config()
+    if video_id is not None:
+        videos = [database.get_video_by_id(video_id)]
+        if videos[0] is None:
+            raise typer.BadParameter(f"Unknown video id: {video_id}")
+    else:
+        videos = []
+        for video in database.list_videos():
+            if not video_has_isolated_sermon(database, video.id)[0]:
+                continue
+            if get_verified_normalized_media_artifact(database, video.id) is not None:
+                continue
+            videos.append(video)
+        if limit is not None:
+            videos = videos[:limit]
+    counts = {"verified": 0, "unavailable": 0, "failed": 0, "skipped": 0}
+    downloaded = 0
+    for index, video in enumerate(videos, start=1):
+        result = ensure_audio_for_video(
+            database,
+            paths,
+            tools,
+            video_id=video.id,
+        )
+        counts[result.outcome] += 1
+        downloaded += int(result.downloaded)
+        console.print(
+            f"[{index}/{len(videos)}] {video.youtube_video_id}: "
+            f"{result.outcome} ({result.reason_code})"
+        )
+    console.print(
+        "Audio ensure complete: "
+        f"verified={counts['verified']} (downloaded={downloaded}), "
+        f"unavailable={counts['unavailable']}, failed={counts['failed']}, "
+        f"skipped={counts['skipped']}."
+    )
+
+
+@media_app.command(
+    "audit",
+    help="Report isolated-sermon audio coverage without downloading or modifying media.",
+)
+def media_audit(
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    report = audit_media_coverage(database)
+    console.print(
+        f"Isolated sermons={report.isolated_sermons}; verified={len(report.verified)}; "
+        f"unavailable={len(report.unavailable)}; failed={len(report.failed)}; "
+        f"corrupt={len(report.corrupt)}; missing={len(report.missing)}."
+    )
+    for label, values in (
+        ("unavailable", report.unavailable),
+        ("failed", report.failed),
+        ("corrupt", report.corrupt),
+        ("missing", report.missing),
+    ):
+        if values:
+            console.print(f"{label}: {', '.join(values)}")
 
 
 def _unknown_pastor_error(pastor_slug: str, base_dir: Path | None = None) -> typer.BadParameter:
@@ -1029,6 +1133,8 @@ def status(
     summary.add_row("Pastors", str(counts["pastors"]))
     summary.add_row("Videos", str(counts["videos"]))
     summary.add_row("Transcripts", str(counts["transcript_artifacts"]))
+    summary.add_row("Media Artifacts", str(counts["media_artifacts"]))
+    summary.add_row("Media Acquisition Attempts", str(counts["media_acquisition_attempts"]))
     summary.add_row("Segments", str(counts["transcript_segments"]))
     summary.add_row("Extraction", str(counts["extraction_results"]))
     summary.add_row("Metadata Snapshots", str(counts["metadata_artifacts"]))

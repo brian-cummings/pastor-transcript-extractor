@@ -105,6 +105,41 @@ class TranscriptArtifact:
 
 
 @dataclass(slots=True)
+class MediaArtifact:
+    id: int
+    video_id: int
+    parent_media_artifact_id: Optional[int]
+    artifact_kind: str
+    provenance_kind: str
+    artifact_path: str
+    manifest_path: str
+    content_sha256: str
+    byte_size: int
+    duration_seconds: Optional[float]
+    format_name: Optional[str]
+    sample_rate_hz: Optional[int]
+    channel_count: Optional[int]
+    acquisition_tool: str
+    acquisition_tool_version: str
+    input_fingerprint: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class MediaAcquisitionAttempt:
+    id: int
+    video_id: int
+    target_kind: str
+    outcome: str
+    reason_code: str
+    detail: Optional[str]
+    media_artifact_id: Optional[int]
+    service_version: str
+    input_fingerprint: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
 class TranscriptSegment:
     id: Optional[int]
     video_id: int

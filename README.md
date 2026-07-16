@@ -317,3 +317,4 @@ clustering backend is active.
 - `docs/V1_SPEC.md`
 - `docs/HANDOFF.md`
 - `evaluation/speaker-pairs/README.md` for the offline, abstention-first acoustic pair experiment
+- `docs/MEDIA_FOUNDATION.md` for transcript-independent audio acquisition and migration

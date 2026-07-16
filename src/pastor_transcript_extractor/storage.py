@@ -12,6 +12,8 @@ from pastor_transcript_extractor.models import (
     IdentityAssessment,
     IdentityEvidence,
     IdentityState,
+    MediaAcquisitionAttempt,
+    MediaArtifact,
     MetadataArtifact,
     Pastor,
     SpeakerNameClaim,
@@ -75,6 +77,43 @@ CREATE TABLE IF NOT EXISTS transcript_artifacts (
     audio_path TEXT NULL,
     created_at TEXT NOT NULL,
     FOREIGN KEY(video_id) REFERENCES videos(id)
+);
+
+CREATE TABLE IF NOT EXISTS media_artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    parent_media_artifact_id INTEGER NULL,
+    artifact_kind TEXT NOT NULL CHECK(artifact_kind IN ('source_audio', 'normalized_audio')),
+    provenance_kind TEXT NOT NULL CHECK(provenance_kind IN ('original_download', 'derived', 'reconstructed_existing')),
+    artifact_path TEXT NOT NULL,
+    manifest_path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    byte_size INTEGER NOT NULL,
+    duration_seconds REAL NULL,
+    format_name TEXT NULL,
+    sample_rate_hz INTEGER NULL,
+    channel_count INTEGER NULL,
+    acquisition_tool TEXT NOT NULL,
+    acquisition_tool_version TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    FOREIGN KEY(parent_media_artifact_id) REFERENCES media_artifacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS media_acquisition_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    target_kind TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN ('verified', 'unavailable', 'failed')),
+    reason_code TEXT NOT NULL,
+    detail TEXT NULL,
+    media_artifact_id INTEGER NULL,
+    service_version TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    FOREIGN KEY(media_artifact_id) REFERENCES media_artifacts(id)
 );
 
 CREATE TABLE IF NOT EXISTS transcript_segments (
@@ -272,6 +311,12 @@ ON identity_evidence(video_id, target_pastor_id, evidence_type, artifact_path);
 CREATE INDEX IF NOT EXISTS idx_speaker_claims_video
 ON speaker_name_claims(video_id, observation_id);
 
+CREATE INDEX IF NOT EXISTS idx_media_artifacts_video_kind
+ON media_artifacts(video_id, artifact_kind, id);
+
+CREATE INDEX IF NOT EXISTS idx_media_attempts_video
+ON media_acquisition_attempts(video_id, id);
+
 CREATE INDEX IF NOT EXISTS idx_profile_observation_events_pair
 ON profile_observation_events(profile_id, observation_id, id);
 
@@ -362,6 +407,57 @@ class Database:
             raw_json_path=row["raw_json_path"],
             raw_text_path=row["raw_text_path"],
             audio_path=row["audio_path"],
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _media_artifact_from_row(self, row: sqlite3.Row) -> MediaArtifact:
+        return MediaArtifact(
+            id=int(row["id"]),
+            video_id=int(row["video_id"]),
+            parent_media_artifact_id=(
+                int(row["parent_media_artifact_id"])
+                if row["parent_media_artifact_id"] is not None
+                else None
+            ),
+            artifact_kind=str(row["artifact_kind"]),
+            provenance_kind=str(row["provenance_kind"]),
+            artifact_path=str(row["artifact_path"]),
+            manifest_path=str(row["manifest_path"]),
+            content_sha256=str(row["content_sha256"]),
+            byte_size=int(row["byte_size"]),
+            duration_seconds=(
+                float(row["duration_seconds"]) if row["duration_seconds"] is not None else None
+            ),
+            format_name=row["format_name"],
+            sample_rate_hz=(
+                int(row["sample_rate_hz"]) if row["sample_rate_hz"] is not None else None
+            ),
+            channel_count=(
+                int(row["channel_count"]) if row["channel_count"] is not None else None
+            ),
+            acquisition_tool=str(row["acquisition_tool"]),
+            acquisition_tool_version=str(row["acquisition_tool_version"]),
+            input_fingerprint=str(row["input_fingerprint"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _media_acquisition_attempt_from_row(
+        self, row: sqlite3.Row
+    ) -> MediaAcquisitionAttempt:
+        return MediaAcquisitionAttempt(
+            id=int(row["id"]),
+            video_id=int(row["video_id"]),
+            target_kind=str(row["target_kind"]),
+            outcome=str(row["outcome"]),
+            reason_code=str(row["reason_code"]),
+            detail=row["detail"],
+            media_artifact_id=(
+                int(row["media_artifact_id"])
+                if row["media_artifact_id"] is not None
+                else None
+            ),
+            service_version=str(row["service_version"]),
+            input_fingerprint=str(row["input_fingerprint"]),
             created_at=parse_datetime(str(row["created_at"])) or utc_now(),
         )
 
@@ -778,6 +874,191 @@ class Database:
             created_at=parse_datetime(created_at) or utc_now(),
         )
 
+    def add_media_artifact(
+        self,
+        *,
+        video_id: int,
+        parent_media_artifact_id: int | None,
+        artifact_kind: str,
+        provenance_kind: str,
+        artifact_path: str,
+        manifest_path: str,
+        content_sha256: str,
+        byte_size: int,
+        duration_seconds: float | None,
+        format_name: str | None,
+        sample_rate_hz: int | None,
+        channel_count: int | None,
+        acquisition_tool: str,
+        acquisition_tool_version: str,
+        input_fingerprint: str,
+    ) -> MediaArtifact:
+        created_at = utc_now().isoformat()
+        values = (
+            video_id,
+            parent_media_artifact_id,
+            artifact_kind,
+            provenance_kind,
+            artifact_path,
+            manifest_path,
+            content_sha256,
+            byte_size,
+            duration_seconds,
+            format_name,
+            sample_rate_hz,
+            channel_count,
+            acquisition_tool,
+            acquisition_tool_version,
+            input_fingerprint,
+            created_at,
+        )
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO media_artifacts (
+                        video_id, parent_media_artifact_id, artifact_kind, provenance_kind,
+                        artifact_path, manifest_path, content_sha256, byte_size,
+                        duration_seconds, format_name, sample_rate_hz, channel_count,
+                        acquisition_tool, acquisition_tool_version, input_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    values,
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    "SELECT * FROM media_artifacts WHERE input_fingerprint = ?",
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._media_artifact_from_row(row)
+        return MediaArtifact(
+            id=int(cursor.lastrowid),
+            video_id=video_id,
+            parent_media_artifact_id=parent_media_artifact_id,
+            artifact_kind=artifact_kind,
+            provenance_kind=provenance_kind,
+            artifact_path=artifact_path,
+            manifest_path=manifest_path,
+            content_sha256=content_sha256,
+            byte_size=byte_size,
+            duration_seconds=duration_seconds,
+            format_name=format_name,
+            sample_rate_hz=sample_rate_hz,
+            channel_count=channel_count,
+            acquisition_tool=acquisition_tool,
+            acquisition_tool_version=acquisition_tool_version,
+            input_fingerprint=input_fingerprint,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def list_media_artifacts_for_video(self, video_id: int) -> list[MediaArtifact]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM media_artifacts WHERE video_id = ? ORDER BY id",
+                (video_id,),
+            ).fetchall()
+        return [self._media_artifact_from_row(row) for row in rows]
+
+    def get_latest_media_artifact(
+        self, video_id: int, artifact_kind: str
+    ) -> MediaArtifact | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM media_artifacts
+                WHERE video_id = ? AND artifact_kind = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (video_id, artifact_kind),
+            ).fetchone()
+        return self._media_artifact_from_row(row) if row is not None else None
+
+    def add_media_acquisition_attempt(
+        self,
+        *,
+        video_id: int,
+        target_kind: str,
+        outcome: str,
+        reason_code: str,
+        detail: str | None,
+        media_artifact_id: int | None,
+        service_version: str,
+        input_fingerprint: str,
+    ) -> MediaAcquisitionAttempt:
+        created_at = utc_now().isoformat()
+        values = (
+            video_id,
+            target_kind,
+            outcome,
+            reason_code,
+            detail,
+            media_artifact_id,
+            service_version,
+            input_fingerprint,
+            created_at,
+        )
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO media_acquisition_attempts (
+                        video_id, target_kind, outcome, reason_code, detail,
+                        media_artifact_id, service_version, input_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    values,
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    "SELECT * FROM media_acquisition_attempts WHERE input_fingerprint = ?",
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._media_acquisition_attempt_from_row(row)
+        return MediaAcquisitionAttempt(
+            id=int(cursor.lastrowid),
+            video_id=video_id,
+            target_kind=target_kind,
+            outcome=outcome,
+            reason_code=reason_code,
+            detail=detail,
+            media_artifact_id=media_artifact_id,
+            service_version=service_version,
+            input_fingerprint=input_fingerprint,
+            created_at=parse_datetime(created_at) or utc_now(),
+        )
+
+    def list_media_acquisition_attempts(
+        self, video_id: int | None = None
+    ) -> list[MediaAcquisitionAttempt]:
+        with self.connect() as connection:
+            if video_id is None:
+                rows = connection.execute(
+                    "SELECT * FROM media_acquisition_attempts ORDER BY id"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM media_acquisition_attempts WHERE video_id = ? ORDER BY id",
+                    (video_id,),
+                ).fetchall()
+        return [self._media_acquisition_attempt_from_row(row) for row in rows]
+
+    def get_latest_media_acquisition_attempt(
+        self, video_id: int
+    ) -> MediaAcquisitionAttempt | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM media_acquisition_attempts
+                WHERE video_id = ? ORDER BY id DESC LIMIT 1
+                """,
+                (video_id,),
+            ).fetchone()
+        return self._media_acquisition_attempt_from_row(row) if row is not None else None
+
     def delete_transcript_segments_for_video(self, video_id: int) -> None:
         with self.connect() as connection:
             connection.execute("DELETE FROM transcript_segments WHERE video_id = ?", (video_id,))
@@ -830,6 +1111,8 @@ class Database:
         self.delete_transcript_segments_for_video(video_id)
         self.delete_transcript_artifacts_for_video(video_id)
         with self.connect() as connection:
+            connection.execute("DELETE FROM media_acquisition_attempts WHERE video_id = ?", (video_id,))
+            connection.execute("DELETE FROM media_artifacts WHERE video_id = ?", (video_id,))
             connection.execute("DELETE FROM videos WHERE id = ?", (video_id,))
 
     def delete_source(self, source_id: int) -> None:
@@ -1783,6 +2066,8 @@ class Database:
             speaker_profile_count = connection.execute("SELECT COUNT(*) FROM speaker_profiles").fetchone()[0]
             speaker_observation_count = connection.execute("SELECT COUNT(*) FROM speaker_observations").fetchone()[0]
             speaker_name_claim_count = connection.execute("SELECT COUNT(*) FROM speaker_name_claims").fetchone()[0]
+            media_artifact_count = connection.execute("SELECT COUNT(*) FROM media_artifacts").fetchone()[0]
+            media_attempt_count = connection.execute("SELECT COUNT(*) FROM media_acquisition_attempts").fetchone()[0]
         return {
             "sources": int(source_count),
             "pastors": int(pastor_count),
@@ -1798,4 +2083,6 @@ class Database:
             "speaker_profiles": int(speaker_profile_count),
             "speaker_observations": int(speaker_observation_count),
             "speaker_name_claims": int(speaker_name_claim_count),
+            "media_artifacts": int(media_artifact_count),
+            "media_acquisition_attempts": int(media_attempt_count),
         }

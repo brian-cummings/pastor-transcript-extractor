@@ -37,8 +37,92 @@ Implemented:
 - reviewed pair fixtures pin observation fingerprints and exact WAV hashes; evaluation separates recognition errors, abstention, and analysis failure
 - a blinded pair-review workflow now qualifies each observation before allowing a binary same/different judgment
 - review submissions are append-only; indeterminate reviews never become fixtures and re-reviews never overwrite frozen truth
+- media foundation separates immutable source/normalized audio from transcript artifacts
+- caption-backed isolated sermons can acquire verified audio without invoking local ASR
+- historical local-ASR audio migrates as reconstructed provenance without file modification
+- media acquisition outcomes distinguish verified, unavailable, and failed; they remain non-gating for sermon content
+- universal acquisition is an explicit shadow command and has not been inserted into the stable `run` workflow
 - no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
-- 200 tests pass
+- 208 tests pass
+
+## Transcript-Independent Media
+
+Audio is now modeled independently from transcript artifacts. The architecture,
+provenance rules, commands, and replay guarantees are documented in
+`docs/MEDIA_FOUNDATION.md`.
+
+Register historical audio without moving or rewriting it:
+
+```bash
+pte media backfill \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Measure current isolated-sermon coverage without downloading:
+
+```bash
+pte media audit \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Acquire audio explicitly, without ASR, for one video or a bounded universal
+batch:
+
+```bash
+pte media ensure-audio --video-id DATABASE_VIDEO_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+pte media ensure-audio --all-eligible --limit 10 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The existing `run` workflow remains unchanged. Media acquisition failures are
+persisted separately and do not alter `proposed.json`, extraction metrics,
+content dispositions, profiles, memberships, or name claims.
+
+### Production media verification (2026-07-15)
+
+The historical backfill examined 183 videos and produced 78 reconstructed media
+artifacts plus 39 initial acquisition outcomes. An immediate full replay
+created zero artifacts and zero outcomes. The reviewed `qwsZHo-S87A` sentinel
+retained identical `proposed.json` and normalized-audio SHA-256 values and an
+identical audio modification time.
+
+Two caption-backed sermons then exercised the real no-ASR acquisition path.
+Both replayed without redownload. The final sentinel retained native WebM source
+audio (15,559,845 bytes) and derived mono 16 kHz WAV audio (39,911,758 bytes),
+with yt-dlp and ffmpeg versions persisted. Transcript count remained 178 and
+speaker profile, observation, and claim counts remained 7, 135, and 32.
+The post-migration sermon evaluator processed 13 available fixtures with zero
+missing artifacts; all 12 fixtures from the preceding accepted benchmark had
+exactly unchanged per-fixture result payloads. The additional fixture was new
+ground truth, not a media-induced classification change.
+
+A bounded acquisition batch processed ten previously unresolved sermons: nine
+were verified and one yt-dlp HTTP 403 was persisted as `failed`, without being
+converted into an identity conclusion. Duration validation then rejected 16
+reconstructed audio candidates that were hash-valid but ended before their
+isolated sermon boundary. Twelve affected videos also have another verified
+artifact; four have no valid alternative and are conservatively reported as
+`corrupt` and eligible for reacquisition. Replaying the stricter historical
+backfill created no media artifacts and recorded those 16 classifications; a
+second replay created zero artifacts and zero acquisition outcomes.
+
+Current coverage is:
+
+```text
+isolated sermons  135
+verified audio     34
+unavailable         0
+failed              1
+corrupt             4
+missing             96
+```
+
+Acquiring the remaining 96 missing sermons and reacquiring the four incomplete
+ones is intentionally not part of the normal workflow yet. It is a substantial
+external download/storage job and should be run in bounded batches with
+`pte media ensure-audio --all-eligible --limit N`, auditing between batches.
 
 ## Acoustic Pair Experiment
 

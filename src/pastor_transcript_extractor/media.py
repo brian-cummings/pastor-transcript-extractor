@@ -103,6 +103,47 @@ def download_audio(url: str, yt_dlp_bin: str, output_path: Path, yt_dlp_js_runti
     return candidates[0]
 
 
+def download_source_audio(
+    url: str,
+    yt_dlp_bin: str,
+    output_path: Path,
+    yt_dlp_js_runtimes: str | None = None,
+) -> Path:
+    """Download native best audio without decoding it to a second WAV."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    base = output_path.with_suffix("")
+    command = [
+        yt_dlp_bin,
+        "--no-playlist",
+        "-f",
+        "bestaudio/best",
+    ]
+    if yt_dlp_js_runtimes:
+        command.extend(["--js-runtimes", yt_dlp_js_runtimes])
+    command.extend(
+        [
+            "--no-warnings",
+            "--no-progress",
+            "-o",
+            f"{base}.%(ext)s",
+            url,
+        ]
+    )
+    _run_yt_dlp(command, url=url)
+    candidates = sorted(
+        (
+            path
+            for path in base.parent.glob(f"{base.name}.*")
+            if path.suffix not in {".part", ".ytdl"}
+        ),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        raise FileNotFoundError(f"yt-dlp did not create source audio for {url}")
+    return candidates[0]
+
+
 def normalize_audio(input_path: Path, output_path: Path, ffmpeg_bin: str) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
