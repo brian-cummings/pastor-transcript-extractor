@@ -138,9 +138,15 @@ def suggested_envelope(
 
 
 def draft_payload(
-    *, video_id: str, source_url: str, start_seconds: float, end_seconds: float, proposal_source: str
+    *,
+    video_id: str,
+    source_url: str,
+    start_seconds: float,
+    end_seconds: float,
+    proposal_source: str,
+    selection_manifest: dict[str, object] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "video_id": video_id,
         "source_url": source_url,
         "review_status": "unreviewed",
@@ -151,6 +157,9 @@ def draft_payload(
             "suggested_interruptions": [],
         },
     }
+    if selection_manifest is not None:
+        payload["selection_manifest"] = dict(selection_manifest)
+    return payload
 
 
 def approved_fixture_payload(
@@ -162,9 +171,10 @@ def approved_fixture_payload(
     reviewer: str,
     failure_mode: str,
     notes: str,
+    selection_manifest: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     spans = retained_spans(start_seconds, end_seconds, interruptions)
-    return {
+    payload: dict[str, Any] = {
         "video_id": video_id,
         "expected_outcome": "sermon",
         "expected_spans": [
@@ -180,12 +190,20 @@ def approved_fixture_payload(
         "failure_mode": failure_mode,
         "notes": notes,
     }
+    if selection_manifest is not None:
+        payload["selection_manifest"] = dict(selection_manifest)
+    return payload
 
 
 def approved_negative_fixture_payload(
-    *, video_id: str, reviewer: str, failure_mode: str, notes: str
+    *,
+    video_id: str,
+    reviewer: str,
+    failure_mode: str,
+    notes: str,
+    selection_manifest: dict[str, object] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "video_id": video_id,
         "expected_outcome": "no_sermon",
         "expected_spans": [],
@@ -197,6 +215,9 @@ def approved_negative_fixture_payload(
         "failure_mode": failure_mode,
         "notes": notes,
     }
+    if selection_manifest is not None:
+        payload["selection_manifest"] = dict(selection_manifest)
+    return payload
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:

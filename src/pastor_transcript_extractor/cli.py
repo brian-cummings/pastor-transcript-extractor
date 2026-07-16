@@ -93,6 +93,12 @@ from pastor_transcript_extractor.speaker_pair_selector import (
     select_next_speaker_pair,
     selection_history_from_artifacts,
 )
+from pastor_transcript_extractor.sermon_fixture_selector import (
+    SermonSelectionHistory,
+    select_next_sermon_fixture,
+    sermon_candidate_from_proposal,
+    sermon_duration_bucket,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
@@ -291,6 +297,7 @@ def review_ground_truth(
     evaluation_dir: Path = typer.Option(Path("evaluation"), help="Root containing drafts/ and fixtures/."),
     open_video: bool = typer.Option(False, "--open-video", help="Open the YouTube start link in a browser."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+    selection_manifest_json: str | None = typer.Option(None, hidden=True),
 ) -> None:
     database = get_database(base_dir)
     video = database.get_video_by_youtube_id(youtube_video_id)
@@ -320,6 +327,25 @@ def review_ground_truth(
     root = evaluation_dir.expanduser().resolve()
     draft_path = root / "drafts" / f"{youtube_video_id}.json"
     fixture_path = root / "fixtures" / f"{youtube_video_id}.json"
+    try:
+        selection_manifest = (
+            json.loads(selection_manifest_json)
+            if isinstance(selection_manifest_json, str)
+            else None
+        )
+        if selection_manifest is not None and not isinstance(selection_manifest, dict):
+            raise ValueError("selection manifest must be a JSON object")
+        if selection_manifest is None and draft_path.exists():
+            existing_draft = json.loads(draft_path.read_text(encoding="utf-8"))
+            existing_manifest = (
+                existing_draft.get("selection_manifest")
+                if isinstance(existing_draft, dict)
+                else None
+            )
+            if isinstance(existing_manifest, dict):
+                selection_manifest = existing_manifest
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
     write_json(
         draft_path,
         draft_payload(
@@ -328,6 +354,7 @@ def review_ground_truth(
             start_seconds=suggested_start,
             end_seconds=suggested_end,
             proposal_source=proposal_source,
+            selection_manifest=selection_manifest,
         ),
     )
     console.print(f"Wrote unreviewed detector-assisted draft to {draft_path}")
@@ -373,6 +400,7 @@ def review_ground_truth(
             reviewer=reviewer_value,
             failure_mode=failure_mode,
             notes=notes,
+            selection_manifest=selection_manifest,
         )
         validate_fixture_payload(fixture, path=fixture_path)
         if fixture_path.exists() and not typer.confirm(
@@ -418,6 +446,7 @@ def review_ground_truth(
         reviewer=reviewer_value,
         failure_mode=failure_mode,
         notes=notes,
+        selection_manifest=selection_manifest,
     )
     validate_fixture_payload(fixture, path=fixture_path)
     if fixture_path.exists() and not typer.confirm(f"Overwrite existing fixture {fixture_path}?", default=False):
@@ -428,6 +457,104 @@ def review_ground_truth(
         return
     write_json(fixture_path, fixture)
     console.print(f"Wrote manually approved fixture to {fixture_path}")
+
+
+@app.command(
+    "review-next-ground-truth",
+    help="Deterministically nominate and review the next sermon-segment fixture.",
+)
+def review_next_ground_truth(
+    reviewer: str | None = typer.Option(None, help="Human reviewer name or stable identifier."),
+    evaluation_dir: Path = typer.Option(Path("evaluation"), help="Root containing drafts/ and fixtures/."),
+    open_video: bool = typer.Option(True, "--open-video/--no-open-video", help="Open the selected video."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    root = evaluation_dir.expanduser().resolve()
+    try:
+        drafts = _load_json_artifacts(sorted((root / "drafts").glob("*.json")))
+        fixtures = _load_json_artifacts(sorted((root / "fixtures").glob("*.json")))
+        excluded_ids = {
+            str(payload["video_id"])
+            for payload in (*drafts, *fixtures)
+            if payload.get("video_id")
+        }
+        automatic_ids = {
+            str(payload["video_id"])
+            for payload in (*drafts, *fixtures)
+            if payload.get("video_id")
+            and isinstance(payload.get("selection_manifest"), dict)
+            and payload["selection_manifest"].get("selection_origin") == "automatic"
+        }
+
+        candidates = []
+        candidates_by_id = {}
+        for video in database.list_videos():
+            extraction = database.get_latest_extraction_result_for_video(video.id)
+            if extraction is None or not extraction.proposed_json_path:
+                continue
+            proposed_path = Path(extraction.proposed_json_path)
+            try:
+                proposal = json.loads(proposed_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(proposal, dict) or not isinstance(proposal.get("segments"), list):
+                continue
+            candidate = sermon_candidate_from_proposal(
+                video_id=video.youtube_video_id,
+                corpus_group=(
+                    f"pastor:{video.pastor_id}"
+                    if video.pastor_id is not None
+                    else f"source:{video.source_id}"
+                ),
+                recording_date=video.published_at,
+                duration_seconds=float(video.duration_seconds) if video.duration_seconds else None,
+                proposal=proposal,
+            )
+            candidates.append(candidate)
+            candidates_by_id[candidate.video_id] = candidate
+
+        group_use: dict[str, int] = {}
+        source_use: dict[str, int] = {}
+        bucket_use: dict[str, int] = {}
+        prior_dates = []
+        for fixture in fixtures:
+            candidate = candidates_by_id.get(str(fixture.get("video_id", "")))
+            if candidate is None:
+                continue
+            group_use[candidate.corpus_group] = group_use.get(candidate.corpus_group, 0) + 1
+            source_use[candidate.proposal_source] = source_use.get(candidate.proposal_source, 0) + 1
+            bucket = sermon_duration_bucket(candidate.duration_seconds)
+            bucket_use[bucket] = bucket_use.get(bucket, 0) + 1
+            if candidate.recording_date is not None:
+                prior_dates.append(candidate.recording_date)
+        selection = select_next_sermon_fixture(
+            candidates,
+            SermonSelectionHistory(
+                excluded_video_ids=frozenset(excluded_ids),
+                automatic_selection_count=len(automatic_ids),
+                corpus_group_use=group_use,
+                proposal_source_use=source_use,
+                duration_bucket_use=bucket_use,
+                prior_recording_dates=tuple(prior_dates),
+            ),
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    console.print(
+        f"Selected {selection.candidate.video_id} from "
+        f"{selection.manifest['selection_stratum']}; "
+        f"reasons={','.join(selection.manifest['reason_codes'])}"
+    )
+    review_ground_truth(
+        youtube_video_id=selection.candidate.video_id,
+        reviewer=reviewer,
+        evaluation_dir=evaluation_dir,
+        open_video=open_video,
+        base_dir=base_dir,
+        selection_manifest_json=json.dumps(selection.manifest, sort_keys=True),
+    )
 
 
 def get_database(base_dir: Path | None = None) -> Database:

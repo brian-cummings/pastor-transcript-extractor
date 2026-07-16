@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from pastor_transcript_extractor.cli import review_ground_truth
+from pastor_transcript_extractor.cli import review_ground_truth, review_next_ground_truth
 from pastor_transcript_extractor.fixture_validation import validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
     approved_negative_fixture_payload,
@@ -84,6 +84,13 @@ class GroundTruthReviewTests(unittest.TestCase):
         self.assertEqual([(60.0, 120.0), (150.0, 240.0), (250.0, 300.0)], spans)
 
     def test_approved_payload_passes_fixture_validation(self) -> None:
+        manifest = {
+            "selector_version": "sermon_fixture_selector_v1",
+            "selection_origin": "automatic",
+            "selection_stratum": "no_candidate",
+            "corpus_snapshot_fingerprint": "f" * 64,
+            "reason_codes": ["stratum_no_candidate"],
+        }
         fixture = approved_fixture_payload(
             video_id="abc123",
             start_seconds=60.0,
@@ -92,9 +99,13 @@ class GroundTruthReviewTests(unittest.TestCase):
             reviewer="reviewer",
             failure_mode="incorrect_rule_window",
             notes="Reviewed against video.",
+            selection_manifest=manifest,
         )
         validated = validate_fixture_payload(fixture, path=Path("abc123.json"))
         self.assertEqual([(60.0, 120.0), (150.0, 300.0)], validated.expected_spans)
+        self.assertEqual("sermon", fixture["expected_outcome"])
+        self.assertEqual(manifest, fixture["selection_manifest"])
+        self.assertNotIn("expected_outcome", manifest)
 
     def test_suggestion_prefers_classification_candidate_over_rule_window(self) -> None:
         payload = {
@@ -160,6 +171,112 @@ class GroundTruthReviewTests(unittest.TestCase):
             new=2,
             autoraise=True,
         )
+
+    def test_review_next_ground_truth_excludes_existing_draft_and_delegates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evaluation = root / "evaluation"
+            (evaluation / "drafts").mkdir(parents=True)
+            (evaluation / "drafts" / "video1.json").write_text(
+                json.dumps({"video_id": "video1", "review_status": "unreviewed"}),
+                encoding="utf-8",
+            )
+            videos = []
+            extractions = {}
+            for index in (1, 2):
+                proposed = root / f"proposed-{index}.json"
+                proposed.write_text(
+                    json.dumps(
+                        {
+                            "segments": [{"start_seconds": 0, "end_seconds": 100, "text": "text"}],
+                            "classification": {
+                                "method": "adaptive_llm_v3",
+                                "retained_segment_indexes": [0],
+                                "confidence_tier": "medium",
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                videos.append(
+                    SimpleNamespace(
+                        id=index,
+                        youtube_video_id=f"video{index}",
+                        pastor_id=1,
+                        source_id=1,
+                        published_at=None,
+                        duration_seconds=100,
+                    )
+                )
+                extractions[index] = SimpleNamespace(proposed_json_path=str(proposed))
+            database = SimpleNamespace(
+                list_videos=lambda: videos,
+                get_latest_extraction_result_for_video=lambda video_id: extractions[video_id],
+            )
+
+            with (
+                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch("pastor_transcript_extractor.cli.review_ground_truth") as review,
+            ):
+                review_next_ground_truth(
+                    reviewer="reviewer",
+                    evaluation_dir=evaluation,
+                    open_video=False,
+                    base_dir=None,
+                )
+
+            self.assertEqual("video2", review.call_args.kwargs["youtube_video_id"])
+            manifest = json.loads(review.call_args.kwargs["selection_manifest_json"])
+            self.assertEqual("automatic", manifest["selection_origin"])
+            self.assertNotIn("expected_outcome", manifest)
+
+    def test_manual_resume_preserves_automatic_selection_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path = root / "proposed.json"
+            proposed_path.write_text(
+                json.dumps({"segments": [{"start_seconds": 0, "end_seconds": 69, "text": "test"}]}),
+                encoding="utf-8",
+            )
+            evaluation = root / "evaluation"
+            (evaluation / "drafts").mkdir(parents=True)
+            manifest = {
+                "selector_version": "sermon_fixture_selector_v1",
+                "selection_origin": "automatic",
+                "selection_stratum": "no_candidate",
+                "corpus_snapshot_fingerprint": "f" * 64,
+                "reason_codes": ["stratum_no_candidate"],
+            }
+            (evaluation / "drafts" / "abc123.json").write_text(
+                json.dumps({"video_id": "abc123", "selection_manifest": manifest}),
+                encoding="utf-8",
+            )
+            database = SimpleNamespace(
+                get_video_by_youtube_id=lambda _: SimpleNamespace(
+                    id=1,
+                    url="https://www.youtube.com/watch?v=abc123",
+                    title="Fixture",
+                    duration_seconds=69,
+                ),
+                get_latest_extraction_result_for_video=lambda _: SimpleNamespace(
+                    proposed_json_path=str(proposed_path)
+                ),
+            )
+            with (
+                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch("pastor_transcript_extractor.cli.typer.confirm", side_effect=RuntimeError("stop")),
+                self.assertRaisesRegex(RuntimeError, "stop"),
+            ):
+                review_ground_truth(
+                    "abc123",
+                    reviewer="reviewer",
+                    evaluation_dir=evaluation,
+                    open_video=False,
+                    base_dir=None,
+                )
+
+            rewritten = json.loads((evaluation / "drafts" / "abc123.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest, rewritten["selection_manifest"])
 
 
 if __name__ == "__main__":

@@ -94,6 +94,7 @@ You can override the data directory with `--base-dir`.
   extraction.
 - `pte review <pastor-slug>`
 - `pte review-ground-truth <youtube-video-id>`
+- `pte review-next-ground-truth --reviewer "Reviewer Name"`
 - `pte validate-fixtures [fixture-directory]`
 - `pte evaluate [--fixture-dir PATH] [--results-dir PATH] [--base-dir PATH]`
 - `./venv-shell`
@@ -105,6 +106,7 @@ transcript before writing a manually approved fixture:
 
 ```bash
 pte review-ground-truth l6mZEQvArkE --reviewer "Brian Cummings" --open-video
+pte review-next-ground-truth --reviewer "Brian Cummings" --base-dir /path/to/app-data
 pte validate-fixtures evaluation/fixtures
 pte evaluate --base-dir /path/to/app-data
 ```
@@ -112,6 +114,14 @@ pte evaluate --base-dir /path/to/app-data
 Unreviewed proposals are stored under `evaluation/drafts/`. Only explicitly
 approved fixtures are written under `evaluation/fixtures/`; evaluator code must
 never treat drafts as ground truth.
+
+`review-next-ground-truth` deterministically rotates through boundary-risk,
+no-candidate, and standard-candidate proposal strata. It excludes videos that
+already have a draft or fixture, favors underrepresented corpus and objective
+conditions, and then runs the unchanged human review. Proposal strata are
+selection hints only: they never assign `sermon`, `no_sermon`, or approved
+boundaries. Selection provenance is retained in the draft and approved fixture,
+including when an interrupted automatic draft is resumed manually.
 
 ## Reclassification and Regression Evaluation
 
