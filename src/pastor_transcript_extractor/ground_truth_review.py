@@ -8,6 +8,28 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
+POSITIVE_FAILURE_MODES = {
+    "unknown": "No specific detector failure was identified.",
+    "incorrect_rule_window": "The proposed sermon boundaries were incorrect.",
+    "generic_metadata_suspicious_boundary": (
+        "Generic metadata contributed to a suspicious proposed boundary."
+    ),
+}
+
+NEGATIVE_FAILURE_MODES = {
+    "non_sermon_event": "The video is an event that contains no worship-service sermon.",
+    "music_event_no_sermon": "The video is primarily music and contains no sermon.",
+    "technical_test_no_sermon": "The video is a stream or recording test with no sermon.",
+    "religious_education_not_worship_sermon": (
+        "The content is religious education rather than a worship-service sermon."
+    ),
+    "multiple_short_devotionals": "The program contains short devotionals but no sustained sermon.",
+    "ambiguous_multi_speaker_program": (
+        "Multiple speakers cannot be resolved into one reviewable sermon."
+    ),
+}
+
+
 def format_timestamp(seconds: float) -> str:
     total = max(0, int(round(seconds)))
     hours, remainder = divmod(total, 3600)

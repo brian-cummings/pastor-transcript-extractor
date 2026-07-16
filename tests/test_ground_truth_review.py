@@ -7,7 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from pastor_transcript_extractor.cli import review_ground_truth, review_next_ground_truth
+from pastor_transcript_extractor.cli import (
+    _prompt_failure_mode,
+    review_ground_truth,
+    review_next_ground_truth,
+)
 from pastor_transcript_extractor.fixture_validation import validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
     approved_negative_fixture_payload,
@@ -23,6 +27,21 @@ from pastor_transcript_extractor.ground_truth_review import (
 
 
 class GroundTruthReviewTests(unittest.TestCase):
+    def test_failure_mode_prompt_lists_conventional_options_and_supports_other(self) -> None:
+        with patch("pastor_transcript_extractor.cli.typer.prompt", return_value="incorrect_rule_window"):
+            self.assertEqual(
+                "incorrect_rule_window",
+                _prompt_failure_mode(contains_sermon=True),
+            )
+        with patch(
+            "pastor_transcript_extractor.cli.typer.prompt",
+            side_effect=["other", "compound_service_edge_case"],
+        ):
+            self.assertEqual(
+                "compound_service_edge_case",
+                _prompt_failure_mode(contains_sermon=False),
+            )
+
     def test_review_opens_at_candidate_start_or_zero_when_no_candidate_exists(self) -> None:
         cases = [
             (

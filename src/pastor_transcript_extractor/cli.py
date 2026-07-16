@@ -37,6 +37,8 @@ from pastor_transcript_extractor.evaluation import (
 )
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
+    NEGATIVE_FAILURE_MODES,
+    POSITIVE_FAILURE_MODES,
     approved_negative_fixture_payload,
     approved_fixture_payload,
     draft_payload,
@@ -290,6 +292,26 @@ def diagnose_interaction(
     console.print(f"Wrote interaction diagnostic report to {report_path}")
 
 
+def _prompt_failure_mode(*, contains_sermon: bool) -> str:
+    options = POSITIVE_FAILURE_MODES if contains_sermon else NEGATIVE_FAILURE_MODES
+    default = "unknown" if contains_sermon else "non_sermon_event"
+    console.print("Failure mode options:")
+    for code, description in options.items():
+        console.print(f"  {code:<42} {description}")
+    console.print("  other                                      Enter a custom failure mode.")
+    while True:
+        selected = typer.prompt("Failure mode", default=default).strip()
+        if selected in options:
+            return selected
+        if selected == "other":
+            custom = typer.prompt("Custom failure mode").strip()
+            if custom:
+                return custom
+            console.print("[red]Custom failure mode cannot be blank.[/red]")
+            continue
+        console.print(f"[red]Choose one of: {', '.join((*options, 'other'))}[/red]")
+
+
 @app.command(help="Review and approve sermon ground truth without treating detector output as truth.")
 def review_ground_truth(
     youtube_video_id: str = typer.Argument(..., help="YouTube video ID already present in the database."),
@@ -393,7 +415,7 @@ def review_ground_truth(
             console.print("Review stopped; no negative fixture was written.")
             return
         reviewer_value = reviewer or typer.prompt("Reviewed by")
-        failure_mode = typer.prompt("Failure mode", default="non_sermon_event")
+        failure_mode = _prompt_failure_mode(contains_sermon=False)
         notes = typer.prompt("Review notes", default="No worship-service sermon found.")
         fixture = approved_negative_fixture_payload(
             video_id=youtube_video_id,
@@ -436,7 +458,7 @@ def review_ground_truth(
         console.print("Review stopped; adjust interruptions before approving ground truth.")
         return
     reviewer_value = reviewer or typer.prompt("Reviewed by")
-    failure_mode = typer.prompt("Failure mode", default="unknown")
+    failure_mode = _prompt_failure_mode(contains_sermon=True)
     notes = typer.prompt("Review notes", default="")
     fixture = approved_fixture_payload(
         video_id=youtube_video_id,
