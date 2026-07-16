@@ -68,6 +68,7 @@ def create_review_draft(
     evaluation_root: Path,
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
+    selection_manifest: dict[str, object] | None = None,
 ) -> ReviewDraft:
     if observation_a.input_fingerprint == observation_b.input_fingerprint:
         raise ValueError("a pair review requires two distinct observations")
@@ -137,6 +138,11 @@ def create_review_draft(
         "observations": observations,
         "presentation": presentation,
     }
+    if selection_manifest is not None:
+        stable_payload["selection_manifest"] = _selection_manifest_for_presentation(
+            selection_manifest,
+            presentation,
+        )
     draft_id = _sha256_json(stable_payload)
     payload = {**stable_payload, "draft_id": draft_id}
     draft_path = evaluation_root / "drafts" / f"{pair_id}.json"
@@ -194,6 +200,8 @@ def submit_review(
             and approval_confirmed
         ),
     }
+    if "selection_manifest" in draft:
+        event_without_id["selection_manifest"] = draft["selection_manifest"]
     event_id = _sha256_json(event_without_id)
     event = {**event_without_id, "review_event_id": event_id}
     event_path = (
@@ -237,7 +245,7 @@ def _fixture_from_review(draft: dict[str, Any], event: dict[str, Any]) -> dict[s
                 for clip in source["clips"]
             ],
         }
-    return {
+    fixture = {
         "schema_version": 1,
         "workflow_version": REVIEW_WORKFLOW_VERSION,
         "pair_id": draft["pair_id"],
@@ -251,6 +259,9 @@ def _fixture_from_review(draft: dict[str, Any], event: dict[str, Any]) -> dict[s
         "qualification": event["qualification"],
         "observations": observations,
     }
+    if "selection_manifest" in draft:
+        fixture["selection_manifest"] = draft["selection_manifest"]
+    return fixture
 
 
 def _review_packet(draft: dict[str, Any]) -> str:
@@ -318,6 +329,23 @@ def _fixture_evidence_identity(fixture: dict[str, Any]) -> object:
         }
         for side in ("a", "b")
     }
+
+
+def _selection_manifest_for_presentation(
+    selection_manifest: dict[str, object],
+    presentation: dict[str, Any],
+) -> dict[str, object]:
+    """Align canonical selector a/b reuse counts with blinded packet A/B sides."""
+    manifest = dict(selection_manifest)
+    prior_use = selection_manifest.get("observation_prior_use")
+    if not isinstance(prior_use, dict) or set(prior_use) != {"a", "b"}:
+        return manifest
+    canonical = {"source_a": prior_use["a"], "source_b": prior_use["b"]}
+    manifest["observation_prior_use"] = {
+        "a": canonical[presentation["A"]["source_key"]],
+        "b": canonical[presentation["B"]["source_key"]],
+    }
+    return manifest
 
 
 def _validate_draft(draft: dict[str, Any]) -> None:

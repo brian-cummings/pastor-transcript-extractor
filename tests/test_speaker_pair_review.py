@@ -131,18 +131,48 @@ class SpeakerPairReviewTests(unittest.TestCase):
         self.assertEqual(5, len(first.payload["presentation"]["B"]["clips"]))
 
     def test_qualified_explicit_review_creates_exact_frozen_fixture(self):
-        draft = self._draft()
-        result = self._submit(draft)
+        manifest = {
+            "selector_version": "speaker_pair_selector_v1",
+            "selection_origin": "automatic",
+            "selection_stratum": "shared_attribution",
+            "corpus_snapshot_fingerprint": "f" * 64,
+            "observation_prior_use": {"a": 3, "b": 7},
+            "reason_codes": ["both_observations_unused"],
+        }
+        draft = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+            selection_manifest=manifest,
+        )
+        result = self._submit(draft, pair_judgment=PairJudgment.DIFFERENT_SPEAKER)
 
         self.assertEqual("created", result.fixture_status)
         self.assertIsNotNone(result.fixture_path)
         fixture = json.loads(result.fixture_path.read_text(encoding="utf-8"))
         event = json.loads(result.event_path.read_text(encoding="utf-8"))
-        self.assertEqual("same_speaker", fixture["expected_outcome"])
+        self.assertEqual("different_speaker", fixture["expected_outcome"])
         self.assertEqual(event["review_event_id"], fixture["review_event_id"])
         self.assertEqual(5, len(fixture["observations"]["a"]["reviewed_spans"]))
         self.assertEqual(5, len(fixture["observations"]["b"]["reviewed_spans"]))
         self.assertNotIn("wav_path", fixture["observations"]["a"]["reviewed_spans"][0])
+        canonical_prior_use = {"source_a": 3, "source_b": 7}
+        expected_prior_use = {
+            "a": canonical_prior_use[draft.payload["presentation"]["A"]["source_key"]],
+            "b": canonical_prior_use[draft.payload["presentation"]["B"]["source_key"]],
+        }
+        self.assertEqual(expected_prior_use, event["selection_manifest"]["observation_prior_use"])
+        self.assertEqual(event["selection_manifest"], fixture["selection_manifest"])
+        self.assertEqual({"a": 3, "b": 7}, manifest["observation_prior_use"])
+        self.assertNotIn("expected_outcome", manifest)
+        packet = draft.packet_path.read_text(encoding="utf-8")
+        self.assertNotIn("shared_attribution", packet)
+        self.assertNotIn("selector_version", packet)
 
     def test_unqualified_or_indeterminate_review_remains_append_only_without_fixture(self):
         draft = self._draft()

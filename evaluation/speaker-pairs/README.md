@@ -110,6 +110,21 @@ pte identity review-speaker-pair VIDEO_A VIDEO_B \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
+For deterministic corpus expansion, let the selector nominate the next pair:
+
+```bash
+pte identity review-next-speaker-pair \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+It rotates through shared-attribution, contradicting-attribution, and
+unattributed nomination strata; excludes drafted and reviewed pairs; favors
+unused observations; and prepares audio only after selection. Attribution is
+selection metadata only. It is hidden from the packet and never supplies the
+fixture outcome or speaker-profile membership. Repeating the command advances
+because the prior draft is part of the derived selection history.
+
 The command extracts the same deterministic spans used by diagnostics and
 opens a local HTML packet. The packet labels the groups only as Observation A
 and Observation B, randomizes their presentation deterministically, and hides

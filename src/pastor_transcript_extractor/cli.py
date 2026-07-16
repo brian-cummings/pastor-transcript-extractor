@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 from threading import Lock
-from typing import Callable
+from typing import Callable, Sequence
 import webbrowser
 
 import typer
@@ -77,6 +77,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     SherpaOnnxEmbeddingBackend,
     analyze_observation_pair,
     evaluate_reviewed_pair_results,
+    select_diagnostic_spans,
     validate_reviewed_pair_fixture,
     write_pair_result,
 )
@@ -86,6 +87,11 @@ from pastor_transcript_extractor.speaker_pair_review import (
     STANDARD_VARIATION_TAGS,
     create_review_draft,
     submit_review,
+)
+from pastor_transcript_extractor.speaker_pair_selector import (
+    PairCandidateObservation,
+    select_next_speaker_pair,
+    selection_history_from_artifacts,
 )
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.transcription import (
@@ -583,6 +589,7 @@ def review_speaker_pair(
         False, "--prepare-only", help="Create the packet without prompting for adjudication."
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+    selection_manifest_json: str | None = typer.Option(None, hidden=True),
 ) -> None:
     paths = build_paths(base_dir)
     if not paths.database.exists():
@@ -599,6 +606,11 @@ def review_speaker_pair(
     if any(path is None for path in audio_paths):
         raise typer.BadParameter("Both observations require local audio")
     try:
+        selection_manifest = (
+            json.loads(selection_manifest_json) if selection_manifest_json is not None else None
+        )
+        if selection_manifest is not None and not isinstance(selection_manifest, dict):
+            raise ValueError("selection manifest must be a JSON object")
         draft = create_review_draft(
             observation_a=observations[0],
             observation_b=observations[1],
@@ -608,6 +620,7 @@ def review_speaker_pair(
             audio_path_b=audio_paths[1],
             span_cache=AudioSpanCache(cache_dir.expanduser().resolve()),
             evaluation_root=evaluation_root.expanduser().resolve(),
+            selection_manifest=selection_manifest,
         )
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -698,6 +711,101 @@ def review_speaker_pair(
         console.print("Review conflicts with the frozen fixture; both were preserved for adjudication.")
     else:
         console.print("Review was preserved but did not create a fixture.")
+
+
+def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
+    payloads: list[dict[str, object]] = []
+    for path in paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"{path}: expected a JSON object")
+        payloads.append(payload)
+    return payloads
+
+
+@identity_app.command(
+    "review-next-speaker-pair",
+    help="Deterministically nominate and adjudicate the next unseen blinded speaker pair.",
+)
+def review_next_speaker_pair(
+    reviewer: str | None = typer.Option(None, help="Stable human reviewer identifier."),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"), help="Speaker-pair drafts, reviews, and fixtures root."
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"), help="Ignored exact-span audio cache."
+    ),
+    open_packet: bool = typer.Option(
+        True, "--open-packet/--no-open-packet", help="Open the blinded local HTML listening packet."
+    ),
+    prepare_only: bool = typer.Option(
+        False, "--prepare-only", help="Create the selected packet without prompting for adjudication."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    root = evaluation_root.expanduser().resolve()
+    try:
+        drafts = _load_json_artifacts(sorted((root / "drafts").glob("*.json")))
+        reviews = _load_json_artifacts(sorted((root / "reviews").glob("*/*.json")))
+        fixtures = _load_json_artifacts(sorted((root / "fixtures").glob("*.json")))
+        history = selection_history_from_artifacts(
+            drafts=drafts,
+            reviews=reviews,
+            fixtures=fixtures,
+        )
+
+        candidates: list[PairCandidateObservation] = []
+        for video in database.list_videos():
+            observation = database.get_latest_speaker_observation_for_video(video.id)
+            if observation is None or not select_diagnostic_spans(observation):
+                continue
+            media = get_verified_normalized_media_artifact(database, video.id)
+            if media is None:
+                continue
+            claims = database.list_speaker_name_claims_for_video(video.id)
+            names = frozenset(
+                claim.normalized_name
+                for claim in claims
+                if claim.observation_id == observation.id
+                and claim.explicit_speaker_attribution
+                and claim.normalized_name.strip()
+            )
+            candidate = PairCandidateObservation(
+                input_fingerprint=observation.input_fingerprint,
+                video_id=video.youtube_video_id,
+                recording_date=video.published_at,
+                explicit_attributions=names,
+                quality_signature=(
+                    media.format_name,
+                    media.sample_rate_hz,
+                    media.channel_count,
+                ),
+            )
+            candidates.append(candidate)
+        selection = select_next_speaker_pair(candidates, history)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    console.print(
+        f"Selected {selection.manifest['selection_stratum']} pair "
+        f"({selection.observation_a.video_id}, {selection.observation_b.video_id}); "
+        f"reasons={','.join(selection.manifest['reason_codes'])}"
+    )
+    review_speaker_pair(
+        video_a=selection.observation_a.video_id,
+        video_b=selection.observation_b.video_id,
+        reviewer=reviewer,
+        evaluation_root=evaluation_root,
+        cache_dir=cache_dir,
+        open_packet=open_packet,
+        prepare_only=prepare_only,
+        base_dir=base_dir,
+        selection_manifest_json=json.dumps(selection.manifest, sort_keys=True),
+    )
 
 
 @media_app.command(
