@@ -71,18 +71,20 @@ class FakeAdaptiveLlmClient:
     model = "fake-sermon-model"
 
     def __init__(self) -> None:
-        self.decisions = iter([
-            "not_sermon_administration",
-            "sermon_biblical_exposition",
-            "sermon_biblical_exposition",
+        self.phases = iter([
+            CoarsePhase.ADMINISTRATION,
+            CoarsePhase.SERMON,
+            CoarsePhase.SERMON,
         ])
         self.labels = iter([ContentLabel.ANNOUNCEMENTS, ContentLabel.SERMON, ContentLabel.SERMON])
 
     def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
         del prompt
         properties = schema.get("properties", {})
-        if isinstance(properties, dict) and "decision" in properties:
-            content = {"decision": next(self.decisions)}
+        if isinstance(properties, dict) and "phase" in properties:
+            content = {"phase": next(self.phases).value, "reason_code": "biblical_exposition"}
+        elif isinstance(properties, dict) and "decision" in properties:
+            content = {"decision": "sermon_biblical_exposition"}
         else:
             content = {"label": next(self.labels).value, "reason_code": "biblical_exposition"}
         raw = json.dumps(content)
@@ -94,13 +96,15 @@ class BoundaryAwareLlmClient:
 
     def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
         properties = schema.get("properties", {})
-        if isinstance(properties, dict) and "decision" in properties:
+        if isinstance(properties, dict) and "phase" in properties:
             value = (
-                "sermon_biblical_exposition"
+                CoarsePhase.SERMON.value
                 if "COARSE_TARGET" in prompt
-                else "not_sermon_administration"
+                else CoarsePhase.ADMINISTRATION.value
             )
-            content = {"decision": value}
+            content = {"phase": value, "reason_code": "biblical_exposition"}
+        elif isinstance(properties, dict) and "decision" in properties:
+            content = {"decision": "sermon_biblical_exposition"}
         else:
             current = prompt.split("CURRENT BLOCK:\n", 1)[1].split("\n\nFOLLOWING CONTEXT:", 1)[0]
             value = ContentLabel.SERMON if "SUSTAINED" in current else ContentLabel.ANNOUNCEMENTS
@@ -114,11 +118,54 @@ class AllSermonLlmClient:
     def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
         del prompt
         properties = schema.get("properties", {})
-        content = (
-            {"decision": "sermon_biblical_exposition"}
-            if isinstance(properties, dict) and "decision" in properties
-            else {"label": "sermon", "reason_code": "biblical_exposition"}
-        )
+        if isinstance(properties, dict) and "phase" in properties:
+            content = {"phase": "sermon", "reason_code": "biblical_exposition"}
+        elif isinstance(properties, dict) and "decision" in properties:
+            content = {"decision": "sermon_biblical_exposition"}
+        else:
+            content = {"label": "sermon", "reason_code": "biblical_exposition"}
+        return LocalLlmResponse(content, json.dumps(content), self.model)
+
+
+class PrecisionPrimaryLlmClient:
+    model = "fake-precision-primary-model"
+
+    def __init__(self) -> None:
+        self.primary_calls = 0
+        self.rescue_calls = 0
+
+    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+        del prompt
+        properties = schema.get("properties", {})
+        if isinstance(properties, dict) and "phase" in properties:
+            self.primary_calls += 1
+            content = {"phase": "sermon", "reason_code": "biblical_exposition"}
+        elif isinstance(properties, dict) and "decision" in properties:
+            self.rescue_calls += 1
+            raise AssertionError("likelihood rescue must not run when primary finds a candidate")
+        else:
+            content = {"label": "sermon", "reason_code": "biblical_exposition"}
+        return LocalLlmResponse(content, json.dumps(content), self.model)
+
+
+class RecallRescueLlmClient:
+    model = "fake-recall-rescue-model"
+
+    def __init__(self) -> None:
+        self.primary_calls = 0
+        self.rescue_calls = 0
+
+    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+        del prompt
+        properties = schema.get("properties", {})
+        if isinstance(properties, dict) and "phase" in properties:
+            self.primary_calls += 1
+            content = {"phase": "administration", "reason_code": "logistics_or_welcome"}
+        elif isinstance(properties, dict) and "decision" in properties:
+            self.rescue_calls += 1
+            content = {"decision": "sermon_biblical_exposition"}
+        else:
+            content = {"label": "sermon", "reason_code": "biblical_exposition"}
         return LocalLlmResponse(content, json.dumps(content), self.model)
 
 
@@ -166,11 +213,11 @@ class TranscriptBlockTests(unittest.TestCase):
             for index in range(5)
         ]
         phases = [
-            CoarsePhase.SERMON_UNLIKELY,
-            CoarsePhase.SERMON_LIKELY,
+            CoarsePhase.ADMINISTRATION,
+            CoarsePhase.SERMON,
             CoarsePhase.UNCERTAIN,
-            CoarsePhase.SERMON_LIKELY,
-            CoarsePhase.SERMON_UNLIKELY,
+            CoarsePhase.SERMON,
+            CoarsePhase.ADMINISTRATION,
         ]
 
         self.assertEqual([(300.0, 1200.0)], _coarse_candidate_ranges(blocks, phases))
@@ -324,6 +371,51 @@ class TranscriptBlockTests(unittest.TestCase):
 
 
 class HybridClassificationTests(unittest.TestCase):
+    def test_primary_discovery_skips_likelihood_rescue_when_it_finds_a_candidate(self) -> None:
+        drafts = [
+            draft(index * 300.0, (index + 1) * 300.0, "sustained biblical exposition")
+            for index in range(3)
+        ]
+        rule_window = SermonWindowResult(
+            None, None, 0.0, [], "rule_based_v1", [], list(range(3)), False, []
+        )
+        client = PrecisionPrimaryLlmClient()
+
+        result = classify_sermon_content_adaptive(drafts, rule_window, client).to_dict()
+
+        self.assertEqual(3, client.primary_calls)
+        self.assertEqual(0, client.rescue_calls)
+        self.assertEqual("coarse_llm", result["search"]["candidates"][0]["source"])
+        self.assertEqual(
+            {
+                "primary_version": "multiclass-phase-v1",
+                "rescue_version": "sermon-likelihood-v1",
+                "rescue_triggered": False,
+                "selected_mode": "primary",
+            },
+            result["search"]["discovery"],
+        )
+
+    def test_likelihood_rescue_runs_only_when_primary_finds_no_candidate(self) -> None:
+        drafts = [
+            draft(index * 300.0, (index + 1) * 300.0, "sustained biblical exposition")
+            for index in range(3)
+        ]
+        rule_window = SermonWindowResult(
+            None, None, 0.0, [], "rule_based_v1", [], list(range(3)), False, []
+        )
+        client = RecallRescueLlmClient()
+
+        result = classify_sermon_content_adaptive(drafts, rule_window, client).to_dict()
+
+        self.assertEqual(3, client.primary_calls)
+        self.assertEqual(3, client.rescue_calls)
+        self.assertEqual(
+            "coarse_likelihood_rescue", result["search"]["candidates"][0]["source"]
+        )
+        self.assertTrue(result["search"]["discovery"]["rescue_triggered"])
+        self.assertEqual("likelihood_rescue", result["search"]["discovery"]["selected_mode"])
+
     def test_adaptive_search_splits_objective_noise_and_selects_stronger_component(self) -> None:
         drafts = [
             draft(index * 90.0, (index + 1) * 90.0, (
@@ -369,10 +461,12 @@ class HybridClassificationTests(unittest.TestCase):
         recovery = candidate["boundary_recovery"]
         self.assertEqual([8, 9, 10], recovery["anchored_component_block_ids"])
         self.assertIn([5, 6], recovery["discarded_component_block_ids"])
-        self.assertFalse(recovery["start"]["saturated"])
-        self.assertTrue(recovery["end"]["saturated"])
+        self.assertFalse(recovery["start"]["initially_saturated"])
+        self.assertTrue(recovery["end"]["initially_saturated"])
+        self.assertTrue(recovery["end"]["probe_performed"])
+        self.assertEqual("announcements", recovery["end"]["stopping_label"])
 
-    def test_adaptive_search_records_saturated_boundaries_without_expanding(self) -> None:
+    def test_adaptive_search_probes_saturated_boundaries_until_semantic_transition(self) -> None:
         drafts = [
             draft(index * 90.0, (index + 1) * 90.0, (
                 "opening transition" if index == 0
@@ -390,16 +484,18 @@ class HybridClassificationTests(unittest.TestCase):
             drafts, rule_window, BoundaryAwareLlmClient(), prompt_version="boundary-test-v1"
         ).to_dict()
 
-        self.assertEqual(list(range(2, 11)), result["retained_segment_indexes"])
+        self.assertEqual(list(range(1, 15)), result["retained_segment_indexes"])
         candidate = result["search"]["candidates"][0]
         recovery = candidate["boundary_recovery"]
-        self.assertTrue(recovery["start"]["saturated"])
-        self.assertTrue(recovery["end"]["saturated"])
-        self.assertEqual("continuity_probe_required", recovery["start"]["status"])
-        self.assertEqual("continuity_probe_required", recovery["end"]["status"])
-        self.assertEqual("diagnostic_only", recovery["mode"])
-        self.assertNotIn("boundary_saturated_start", candidate["refinement_reasons"])
-        self.assertNotIn("boundary_saturated_end", candidate["refinement_reasons"])
+        self.assertTrue(recovery["start"]["initially_saturated"])
+        self.assertTrue(recovery["end"]["initially_saturated"])
+        self.assertEqual("semantic_transition", recovery["start"]["status"])
+        self.assertEqual("semantic_transition", recovery["end"]["status"])
+        self.assertEqual([1, 0], recovery["start"]["probed_block_ids"])
+        self.assertEqual([11, 12, 13, 14, 15], recovery["end"]["probed_block_ids"])
+        self.assertEqual("announcements", recovery["start"]["stopping_label"])
+        self.assertEqual("announcements", recovery["end"]["stopping_label"])
+        self.assertEqual("active", recovery["mode"])
 
     def test_baseline_window_payload_replaces_stale_hybrid_state(self) -> None:
         recomputed = SermonWindowResult(

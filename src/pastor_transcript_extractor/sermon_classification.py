@@ -18,8 +18,8 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v1"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
-COARSE_DISCOVERY_VERSION = "sermon-likelihood-v1"
-FINE_COMPONENT_VERSION = "objective-noise-components-v1"
+COARSE_DISCOVERY_VERSION = "phase-primary-likelihood-rescue-v1"
+FINE_COMPONENT_VERSION = "objective-noise-components+continuity-probe-v2"
 
 
 class ContentLabel(StrEnum):
@@ -195,31 +195,39 @@ class RawInferenceCache:
 
 
 class CoarsePhase(StrEnum):
+    SERMON = "sermon"
+    WORSHIP = "worship"
+    ADMINISTRATION = "administration"
+    TRANSITION = "transition"
+    UNCERTAIN = "uncertain"
+
+
+class LikelihoodPhase(StrEnum):
     SERMON_LIKELY = "sermon_likely"
     SERMON_UNLIKELY = "sermon_unlikely"
     UNCERTAIN = "uncertain"
 
 
-_COARSE_DECISIONS: dict[str, tuple[CoarsePhase, str, ContentLabel]] = {
+_LIKELIHOOD_DECISIONS: dict[str, tuple[LikelihoodPhase, str, ContentLabel]] = {
     "sermon_biblical_exposition": (
-        CoarsePhase.SERMON_LIKELY, "biblical_exposition", ContentLabel.SERMON
+        LikelihoodPhase.SERMON_LIKELY, "biblical_exposition", ContentLabel.SERMON
     ),
     "sermon_sustained_preaching": (
-        CoarsePhase.SERMON_LIKELY, "biblical_exposition", ContentLabel.SERMON
+        LikelihoodPhase.SERMON_LIKELY, "biblical_exposition", ContentLabel.SERMON
     ),
     "not_sermon_music_or_lyrics": (
-        CoarsePhase.SERMON_UNLIKELY, "music_or_lyrics", ContentLabel.MUSIC
+        LikelihoodPhase.SERMON_UNLIKELY, "music_or_lyrics", ContentLabel.MUSIC
     ),
     "not_sermon_extended_prayer": (
-        CoarsePhase.SERMON_UNLIKELY, "service_prayer", ContentLabel.SERVICE_PRAYER
+        LikelihoodPhase.SERMON_UNLIKELY, "service_prayer", ContentLabel.SERVICE_PRAYER
     ),
     "not_sermon_administration": (
-        CoarsePhase.SERMON_UNLIKELY, "logistics_or_welcome", ContentLabel.ANNOUNCEMENTS
+        LikelihoodPhase.SERMON_UNLIKELY, "logistics_or_welcome", ContentLabel.ANNOUNCEMENTS
     ),
     "not_sermon_transition": (
-        CoarsePhase.SERMON_UNLIKELY, "sermon_transition", ContentLabel.SPEAKER_INTRODUCTION
+        LikelihoodPhase.SERMON_UNLIKELY, "sermon_transition", ContentLabel.SPEAKER_INTRODUCTION
     ),
-    "uncertain": (CoarsePhase.UNCERTAIN, "insufficient_context", ContentLabel.UNCERTAIN),
+    "uncertain": (LikelihoodPhase.UNCERTAIN, "insufficient_context", ContentLabel.UNCERTAIN),
 }
 
 
@@ -275,7 +283,17 @@ _SCHEMA: dict[str, Any] = {
 _COARSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "decision": {"type": "string", "enum": list(_COARSE_DECISIONS)},
+        "phase": {"type": "string", "enum": [phase.value for phase in CoarsePhase]},
+        "reason_code": {"type": "string", "enum": list(REASON_CODES)},
+    },
+    "required": ["phase", "reason_code"],
+    "additionalProperties": False,
+}
+
+_LIKELIHOOD_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "decision": {"type": "string", "enum": list(_LIKELIHOOD_DECISIONS)},
     },
     "required": ["decision"],
     "additionalProperties": False,
@@ -298,6 +316,19 @@ FOLLOWING CONTEXT:
 
 
 def _coarse_prompt(block: TranscriptBlock) -> str:
+    return f"""Identify the dominant phase of this five-minute excerpt from a complete Christian worship service.
+SERMON means sustained preaching or biblical exposition, not merely religious words, prayer, song lyrics, welcomes, or a speaker introduction.
+WORSHIP means music, congregational singing, or extended devotional prayer.
+ADMINISTRATION means welcomes, announcements, offerings, logistics, or community features.
+TRANSITION means a handoff, Scripture introduction, speaker introduction, or movement between phases.
+UNCERTAIN means there is not enough coherent evidence.
+Return only one phase and one reason_code from the schema. Do not generate prose.
+
+EXCERPT:
+{block.text}"""
+
+
+def _likelihood_prompt(block: TranscriptBlock) -> str:
     return f"""Decide whether this five-minute transcript excerpt contains sustained sermon preaching.
 Choose sermon_biblical_exposition or sermon_sustained_preaching when a preacher develops a message, explains Scripture, applies a biblical theme, or continues a sermon. A sermon may include an integrated prayer, illustration, or Communion teaching.
 Choose a not_sermon decision only when the excerpt is dominated by music or lyrics, a standalone extended prayer, administration or logistics, or a transition without sustained preaching.
@@ -319,20 +350,49 @@ def _coarse_candidate_ranges(
     ranges: list[tuple[float, float]] = []
     position = 0
     while position < len(blocks):
-        if phases[position] != CoarsePhase.SERMON_LIKELY:
+        if phases[position] != CoarsePhase.SERMON:
             position += 1
             continue
         start_position = position
         end_position = position
         while end_position + 1 < len(blocks):
             next_phase = phases[end_position + 1]
-            if next_phase == CoarsePhase.SERMON_LIKELY:
+            if next_phase == CoarsePhase.SERMON:
                 end_position += 1
                 continue
             if (
-                next_phase == CoarsePhase.UNCERTAIN
+                next_phase in {CoarsePhase.WORSHIP, CoarsePhase.TRANSITION, CoarsePhase.UNCERTAIN}
                 and end_position + 2 < len(blocks)
-                and phases[end_position + 2] == CoarsePhase.SERMON_LIKELY
+                and phases[end_position + 2] == CoarsePhase.SERMON
+            ):
+                end_position += 2
+                continue
+            break
+        ranges.append((blocks[start_position].start_seconds, blocks[end_position].end_seconds))
+        position = end_position + 1
+    return ranges
+
+
+def _likelihood_candidate_ranges(
+    blocks: list[TranscriptBlock], phases: list[LikelihoodPhase]
+) -> list[tuple[float, float]]:
+    ranges: list[tuple[float, float]] = []
+    position = 0
+    while position < len(blocks):
+        if phases[position] != LikelihoodPhase.SERMON_LIKELY:
+            position += 1
+            continue
+        start_position = position
+        end_position = position
+        while end_position + 1 < len(blocks):
+            next_phase = phases[end_position + 1]
+            if next_phase == LikelihoodPhase.SERMON_LIKELY:
+                end_position += 1
+                continue
+            if (
+                next_phase == LikelihoodPhase.UNCERTAIN
+                and end_position + 2 < len(blocks)
+                and phases[end_position + 2] == LikelihoodPhase.SERMON_LIKELY
             ):
                 end_position += 2
                 continue
@@ -595,7 +655,7 @@ def _central_consistency_warnings(
         for block, phase in zip(coarse_blocks, phases, strict=True)
         if _overlaps(block, central_start, central_end)
     ]
-    coarse_support = sum(1 for phase in central_coarse if phase == CoarsePhase.SERMON_LIKELY)
+    coarse_support = sum(1 for phase in central_coarse if phase == CoarsePhase.SERMON)
     if not central_coarse or coarse_support / len(central_coarse) < 0.6:
         warnings.append("coarse and fine labels disagree across the candidate center")
     return warnings
@@ -654,18 +714,74 @@ def classify_sermon_content_adaptive(
             progress("coarse", position + 1, total_estimate)
         prompt = _coarse_prompt(block)
         response = (
-            cache.generate("coarse-likelihood", client, prompt, _COARSE_SCHEMA, block)
+            cache.generate("coarse", client, prompt, _COARSE_SCHEMA, block)
             if cache is not None
             else client.generate_json(prompt, _COARSE_SCHEMA)
         )
         try:
-            phase, reason, mapped_label = _COARSE_DECISIONS[str(response.content["decision"])]
+            phase = CoarsePhase(str(response.content["phase"]))
         except (KeyError, ValueError) as error:
-            raise ValueError("Local LLM returned an unsupported coarse sermon decision") from error
+            raise ValueError("Local LLM returned an unsupported coarse worship-service phase") from error
+        reason = response.content.get("reason_code")
+        if not isinstance(reason, str) or reason not in REASON_CODES:
+            raise ValueError("Local LLM did not return a supported coarse reason code")
+        mapped_label = {
+            CoarsePhase.SERMON: ContentLabel.SERMON,
+            CoarsePhase.WORSHIP: ContentLabel.MUSIC,
+            CoarsePhase.ADMINISTRATION: ContentLabel.ANNOUNCEMENTS,
+            CoarsePhase.TRANSITION: ContentLabel.SPEAKER_INTRODUCTION,
+            CoarsePhase.UNCERTAIN: ContentLabel.UNCERTAIN,
+        }[phase]
         phases.append(phase)
         coarse_audit.append(BlockClassification(block.block_id, mapped_label, f"coarse:{reason}", response.raw_content))
 
     coarse_candidates = _coarse_candidate_ranges(coarse_blocks, phases)
+    rescue_triggered = not coarse_candidates
+    selected_discovery_mode = "primary"
+    candidate_source = "coarse_llm"
+    if rescue_triggered:
+        likelihood_phases: list[LikelihoodPhase] = []
+        rescue_audit: list[BlockClassification] = []
+        for position, block in enumerate(coarse_blocks):
+            if progress is not None:
+                progress("coarse-rescue", position + 1, total_estimate)
+            prompt = _likelihood_prompt(block)
+            response = (
+                cache.generate("coarse-likelihood", client, prompt, _LIKELIHOOD_SCHEMA, block)
+                if cache is not None
+                else client.generate_json(prompt, _LIKELIHOOD_SCHEMA)
+            )
+            try:
+                phase, reason, mapped_label = _LIKELIHOOD_DECISIONS[
+                    str(response.content["decision"])
+                ]
+            except (KeyError, ValueError) as error:
+                raise ValueError("Local LLM returned an unsupported sermon-likelihood decision") from error
+            likelihood_phases.append(phase)
+            rescue_audit.append(BlockClassification(
+                block.block_id,
+                mapped_label,
+                f"coarse-rescue:{reason}",
+                response.raw_content,
+            ))
+        coarse_candidates = _likelihood_candidate_ranges(coarse_blocks, likelihood_phases)
+        phases = [
+            CoarsePhase.SERMON
+            if phase == LikelihoodPhase.SERMON_LIKELY
+            else CoarsePhase.UNCERTAIN
+            if phase == LikelihoodPhase.UNCERTAIN
+            else CoarsePhase.WORSHIP
+            for phase in likelihood_phases
+        ]
+        coarse_audit = rescue_audit
+        selected_discovery_mode = "likelihood_rescue"
+        candidate_source = "coarse_likelihood_rescue"
+    discovery = {
+        "primary_version": "multiclass-phase-v1",
+        "rescue_version": "sermon-likelihood-v1",
+        "rescue_triggered": rescue_triggered,
+        "selected_mode": selected_discovery_mode,
+    }
     ranked_candidates: list[dict[str, Any]] = []
     for start, end in coarse_candidates:
         score_components = _candidate_score_components((start, end), coarse_blocks)
@@ -674,7 +790,7 @@ def classify_sermon_content_adaptive(
         ]
         ranked_candidates.append(
             {
-                "source": "coarse_llm",
+                "source": candidate_source,
                 "start_seconds": start,
                 "end_seconds": end,
                 "score": score_components["total_score"],
@@ -726,6 +842,7 @@ def classify_sermon_content_adaptive(
             "rule_baseline_source": rule_baseline_source,
             "rule_baseline_algorithm_version": rule_baseline_algorithm_version or rule_window.method,
             "manual_override_present": manual_override_present,
+            "discovery": discovery,
         }
         return HybridSermonResult(
             "adaptive_llm_v3", client.model, prompt_version, "low", [],
@@ -790,24 +907,6 @@ def classify_sermon_content_adaptive(
     for position in initial_positions:
         classify_fine_position(position)
 
-    raw_retained_positions = [
-        position
-        for position in initial_positions
-        if any(index in retained for index in all_fine_blocks[position].segment_indexes)
-    ]
-    separator_positions = _sustained_noise_separator_positions(
-        raw_retained_positions, all_fine_blocks, drafts
-    )
-    retained_positions = [
-        position for position in raw_retained_positions if position not in separator_positions
-    ]
-    components: list[list[int]] = []
-    for position in retained_positions:
-        if components and position == components[-1][-1] + 1:
-            components[-1].append(position)
-        else:
-            components.append([position])
-
     def component_overlap(component: list[int]) -> float:
         return sum(
             max(
@@ -818,21 +917,107 @@ def classify_sermon_content_adaptive(
             for position in component
         )
 
-    overlapping_components = [
-        component for component in components if component_overlap(component) > 0.0
-    ]
-    anchored_component = max(
-        overlapping_components,
-        key=lambda component: (
-            component_overlap(component),
-            sum(
-                all_fine_blocks[position].end_seconds
-                - all_fine_blocks[position].start_seconds
-                for position in component
+    def retained_components(
+        positions: set[int],
+    ) -> tuple[set[int], list[list[int]], list[int]]:
+        raw_positions = [
+            position
+            for position in sorted(positions)
+            if any(index in retained for index in all_fine_blocks[position].segment_indexes)
+        ]
+        separators = _sustained_noise_separator_positions(
+            raw_positions, all_fine_blocks, drafts
+        )
+        component_positions = [
+            position for position in raw_positions if position not in separators
+        ]
+        found: list[list[int]] = []
+        for position in component_positions:
+            if found and position == found[-1][-1] + 1:
+                found[-1].append(position)
+            else:
+                found.append([position])
+        overlapping = [
+            component for component in found if component_overlap(component) > 0.0
+        ]
+        anchored = max(
+            overlapping,
+            key=lambda component: (
+                component_overlap(component),
+                sum(
+                    all_fine_blocks[position].end_seconds
+                    - all_fine_blocks[position].start_seconds
+                    for position in component
+                ),
+                -component[0],
             ),
-            -component[0],
-        ),
-        default=[],
+            default=[],
+        )
+        return separators, found, anchored
+
+    separator_positions, components, anchored_component = retained_components(
+        inspected_positions
+    )
+    probe_outcomes: dict[str, dict[str, Any]] = {}
+    for direction, step in (("start", -1), ("end", 1)):
+        component_edge = (
+            anchored_component[0]
+            if direction == "start" and anchored_component
+            else anchored_component[-1]
+            if anchored_component
+            else None
+        )
+        inspection_edge = (
+            min(initial_positions)
+            if direction == "start" and initial_positions
+            else max(initial_positions)
+            if initial_positions
+            else None
+        )
+        initially_saturated = (
+            component_edge is not None and component_edge == inspection_edge
+        )
+        probed_block_ids: list[int] = []
+        stopping_block_id: int | None = None
+        stopping_label: str | None = None
+        status = "no_anchored_component" if not anchored_component else "semantic_transition"
+        adjacent = component_edge + step if component_edge is not None else None
+        if initially_saturated and adjacent is not None:
+            while 0 <= adjacent < len(all_fine_blocks):
+                inspected_positions.add(adjacent)
+                classify_fine_position(adjacent)
+                block = all_fine_blocks[adjacent]
+                classification = fine_audit_by_position[adjacent]
+                probed_block_ids.append(block.block_id)
+                if _noise_ratio(block, drafts) >= 0.45:
+                    retained.difference_update(block.segment_indexes)
+                    stopping_block_id = block.block_id
+                    stopping_label = "objective_noise"
+                    status = "objective_noise"
+                    break
+                if classification.label not in RETAINED_LABELS:
+                    stopping_block_id = block.block_id
+                    stopping_label = classification.label.value
+                    status = "semantic_transition"
+                    break
+                if direction == "start":
+                    anchored_component.insert(0, adjacent)
+                else:
+                    anchored_component.append(adjacent)
+                adjacent += step
+            else:
+                status = "recording_edge"
+        probe_outcomes[direction] = {
+            "initially_saturated": initially_saturated,
+            "probe_performed": bool(probed_block_ids),
+            "probed_block_ids": probed_block_ids,
+            "stopping_block_id": stopping_block_id,
+            "stopping_label": stopping_label,
+            "status": status,
+        }
+
+    separator_positions, components, anchored_component = retained_components(
+        inspected_positions
     )
     anchored_indexes = {
         index
@@ -847,8 +1032,8 @@ def classify_sermon_content_adaptive(
     retained.intersection_update(anchored_indexes)
 
     boundary_recovery: dict[str, Any] = {
-        "algorithm_version": "fine-boundary-saturation-v3",
-        "mode": "diagnostic_only",
+        "algorithm_version": "fine-continuity-probe-v1",
+        "mode": "active",
         "anchored_component_block_ids": [
             all_fine_blocks[position].block_id for position in anchored_component
         ],
@@ -858,34 +1043,7 @@ def classify_sermon_content_adaptive(
         ],
     }
     boundary_probe_required = False
-    for direction, component_edge, inspection_edge, step in (
-        ("start", anchored_component[0] if anchored_component else None, min(initial_positions) if initial_positions else None, -1),
-        ("end", anchored_component[-1] if anchored_component else None, max(initial_positions) if initial_positions else None, 1),
-    ):
-        saturated = component_edge is not None and component_edge == inspection_edge
-        adjacent = component_edge + step if component_edge is not None else None
-        recording_edge = adjacent is not None and not (0 <= adjacent < len(all_fine_blocks))
-        status = (
-            "recording_edge"
-            if saturated and recording_edge
-            else "continuity_probe_required"
-            if saturated
-            else "semantic_transition"
-            if anchored_component
-            else "no_anchored_component"
-        )
-        if status == "continuity_probe_required":
-            boundary_probe_required = True
-        boundary_recovery[direction] = {
-            "saturated": saturated,
-            "reason_code": f"boundary_saturated_{direction}" if saturated else None,
-            "status": status,
-            "adjacent_block_id": (
-                all_fine_blocks[adjacent].block_id
-                if status == "continuity_probe_required" and adjacent is not None
-                else None
-            ),
-        }
+    boundary_recovery.update(probe_outcomes)
 
     fine_positions = sorted(inspected_positions)
     fine_blocks = [all_fine_blocks[position] for position in fine_positions]
@@ -993,6 +1151,7 @@ def classify_sermon_content_adaptive(
         "rule_baseline_source": rule_baseline_source,
         "rule_baseline_algorithm_version": rule_baseline_algorithm_version or rule_window.method,
         "manual_override_present": manual_override_present,
+        "discovery": discovery,
     }
     return HybridSermonResult(
         "adaptive_llm_v3", client.model, prompt_version, confidence,

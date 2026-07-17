@@ -1067,11 +1067,12 @@ class CliTests(unittest.TestCase):
                 del prompt
                 type(self).inference_calls += 1
                 properties = schema.get("properties", {})
-                content = (
-                    {"decision": "not_sermon_administration"}
-                    if "decision" in properties
-                    else {"label": "announcements", "reason_code": "logistics_or_welcome"}
-                )
+                if "phase" in properties:
+                    content = {"phase": "administration", "reason_code": "logistics_or_welcome"}
+                elif "decision" in properties:
+                    content = {"decision": "not_sermon_administration"}
+                else:
+                    content = {"label": "announcements", "reason_code": "logistics_or_welcome"}
                 return LocalLlmResponse(content, json.dumps(content), self.model)
 
         runner = CliRunner()
