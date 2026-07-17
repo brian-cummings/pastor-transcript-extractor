@@ -8,12 +8,16 @@ from pathlib import Path
 import re
 from typing import Any
 
+from pastor_transcript_extractor.caption_normalization import (
+    NORMALIZER_VERSION,
+    normalize_caption_text,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmResponse
 from pastor_transcript_extractor.storage import Database
 
 
 PROMPT_VERSION = "interaction-diagnostic-line-evidence-v3"
-BLOCK_BUILDER_VERSION = "deduplicated-caption-blocks-v1"
+BLOCK_BUILDER_VERSION = f"deduplicated-caption-blocks-v2+{NORMALIZER_VERSION}"
 DEFAULT_SENTINELS = ("WaNsL05AX3A", "l6mZEQvArkE", "qny7TUqNkQU")
 INTERACTION_MODES = (
     "sermon_monologue",
@@ -31,30 +35,9 @@ class DiagnosticBlock:
     deduplicated_text: str
 
 
-def _normalized_line(value: str) -> str:
-    return " ".join(value.lower().split())
-
-
 def deduplicate_caption_text(text: str) -> str:
-    """Collapse repeated and incrementally growing adjacent caption lines."""
-    kept: list[str] = []
-    normalized: list[str] = []
-    for raw_line in text.splitlines():
-        line = " ".join(raw_line.split())
-        current = _normalized_line(line)
-        if not current:
-            continue
-        if normalized and current == normalized[-1]:
-            continue
-        if normalized and len(current) >= 12 and current in normalized[-1]:
-            continue
-        if normalized and len(normalized[-1]) >= 12 and normalized[-1] in current:
-            kept[-1] = line
-            normalized[-1] = current
-            continue
-        kept.append(line)
-        normalized.append(current)
-    return "\n".join(kept)
+    """Collapse rolling captions using the shared prompt-only normalizer."""
+    return normalize_caption_text(text).text
 
 
 def numbered_evidence_lines(text: str) -> str:

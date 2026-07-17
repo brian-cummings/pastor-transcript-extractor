@@ -7,12 +7,18 @@ import json
 from pathlib import Path
 from typing import Any
 
+from pastor_transcript_extractor.caption_normalization import (
+    NORMALIZER_VERSION,
+    normalize_caption_fragments,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmResponse
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
 CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v1"
+BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
+MAX_FINE_BOUNDARY_EXPANSION_SECONDS = 1800.0
 
 
 class ContentLabel(StrEnum):
@@ -51,6 +57,8 @@ class TranscriptBlock:
     start_seconds: float
     end_seconds: float
     text: str
+    raw_text: str | None = None
+    normalization: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +90,7 @@ class HybridSermonResult:
         return {
             "schema_version": 1,
             "method": self.method,
+            "block_builder_version": BLOCK_BUILDER_VERSION,
             "model": self.model,
             "prompt_version": self.prompt_version,
             "confidence_tier": self.confidence_tier,
@@ -140,7 +149,7 @@ class RawInferenceCache:
 
         identity = {
             "transcript_hash": self.transcript_hash,
-            "block_builder_version": "timestamp-blocks-v1",
+            "block_builder_version": BLOCK_BUILDER_VERSION,
             "block_start_segment": block.segment_indexes[0],
             "block_end_segment": block.segment_indexes[-1],
             "block_text_hash": digest(block.text),
@@ -202,13 +211,23 @@ def build_transcript_blocks(
     def flush() -> None:
         nonlocal indexes, texts, start, end
         if indexes and start is not None and end is not None:
-            blocks.append(TranscriptBlock(len(blocks), indexes, start, end, "\n".join(texts)))
+            raw_text = "\n".join(texts)
+            normalized = normalize_caption_fragments(zip(indexes, texts, strict=True))
+            blocks.append(TranscriptBlock(
+                len(blocks), list(indexes), start, end, normalized.text,
+                raw_text, normalized.diagnostics,
+            ))
         indexes, texts, start, end = [], [], None, None
 
     for index, draft in enumerate(drafts):
         if draft.start_seconds is None or draft.end_seconds is None or draft.end_seconds <= draft.start_seconds:
             continue
-        if start is not None and ((draft.end_seconds - start) > target_seconds or len("\n".join(texts + [draft.text])) > max_chars):
+        prospective = normalize_caption_fragments(
+            zip([*indexes, index], [*texts, draft.text], strict=True)
+        ).text
+        if start is not None and (
+            (draft.end_seconds - start) > target_seconds or len(prospective) > max_chars
+        ):
             flush()
         if start is None:
             start = draft.start_seconds
@@ -457,19 +476,10 @@ def _refine_retained_boundaries(
     reasons: list[str] = []
     start_refinement: dict[str, Any] | None = None
     seed = _explicit_sermon_seed_seconds(drafts, refined)
-    if (seed is None or preserve_joined_start) and default_pre_roll_start is not None:
-        refined = {
-            index
-            for index in refined
-            if drafts[index].end_seconds is None or drafts[index].end_seconds > default_pre_roll_start
-        }
     if seed is not None and not preserve_joined_start:
-        pre_roll_start = max(0.0, seed - 240.0)
         recovered: set[int] = set()
         stopped_by: str | None = None
         for block in reversed([item for item in fine_blocks if item.start_seconds < seed]):
-            if block.end_seconds < pre_roll_start:
-                break
             negative = _strong_pre_anchor_negative(block, drafts)
             if negative is not None:
                 stopped_by = negative
@@ -490,9 +500,7 @@ def _refine_retained_boundaries(
                 continue
             lower = draft.text.lower()
             integral_pre_roll = (
-                draft.start_seconds is not None
-                and draft.start_seconds >= pre_roll_start
-                and (
+                draft.start_seconds is not None and (
                     draft.label.value in {"prayer", "reading"}
                     or "scripture reading" in lower
                     or "our speaker" in lower
@@ -732,19 +740,27 @@ def classify_sermon_content_adaptive(
         float(selected_candidate["end_seconds"]),
     )
     expanded_candidates = [(max(0.0, selected_range[0] - 360.0), selected_range[1] + 120.0)]
-    fine_blocks = [
-        block for block in build_transcript_blocks(drafts)
+    all_fine_blocks = build_transcript_blocks(drafts)
+    initial_positions = [
+        position
+        for position, block in enumerate(all_fine_blocks)
         if any(_overlaps(block, start, end) for start, end in expanded_candidates)
     ]
-    fine_audit: list[BlockClassification] = []
+    inspected_positions = set(initial_positions)
+    fine_audit_by_position: dict[int, BlockClassification] = {}
+    fine_labels: dict[int, ContentLabel] = {}
     retained: set[int] = set()
     uncertain_ids: list[int] = []
     rule_indexes = set(rule_window.included_segment_indexes)
-    for position, block in enumerate(fine_blocks):
+
+    def classify_fine_position(position: int) -> None:
+        if position in fine_audit_by_position:
+            return
+        block = all_fine_blocks[position]
         if progress is not None:
-            progress("fine", position + 1, len(fine_blocks))
-        previous = fine_blocks[position - 1] if position else None
-        following = fine_blocks[position + 1] if position + 1 < len(fine_blocks) else None
+            progress("fine", len(fine_audit_by_position) + 1, len(all_fine_blocks))
+        previous = all_fine_blocks[position - 1] if position else None
+        following = all_fine_blocks[position + 1] if position + 1 < len(all_fine_blocks) else None
         prompt = _prompt(block, previous, following)
         response = (
             cache.generate("fine", client, prompt, _SCHEMA, block, previous, following)
@@ -758,12 +774,88 @@ def classify_sermon_content_adaptive(
         reason = response.content.get("reason_code")
         if not isinstance(reason, str):
             raise ValueError("Local LLM did not return a reason code")
-        fine_audit.append(BlockClassification(block.block_id, label, f"fine:{reason}", response.raw_content))
+        fine_labels[position] = label
+        fine_audit_by_position[position] = BlockClassification(
+            block.block_id, label, f"fine:{reason}", response.raw_content
+        )
         if label in RETAINED_LABELS:
             retained.update(block.segment_indexes)
         elif label == ContentLabel.UNCERTAIN:
             uncertain_ids.append(block.block_id)
             retained.update(index for index in block.segment_indexes if index in rule_indexes)
+
+    for position in initial_positions:
+        classify_fine_position(position)
+
+    boundary_recovery: dict[str, Any] = {
+        "algorithm_version": "fine-boundary-saturation-v1",
+        "maximum_expansion_seconds_per_direction": MAX_FINE_BOUNDARY_EXPANSION_SECONDS,
+    }
+    boundary_refinement_reasons: list[str] = []
+    boundary_limit_reached = False
+
+    def expand_saturated_boundary(direction: str) -> None:
+        nonlocal boundary_limit_reached
+        if not inspected_positions:
+            boundary_recovery[direction] = {"saturated": False, "status": "no_fine_blocks"}
+            return
+        step = -1 if direction == "start" else 1
+        edge = min(inspected_positions) if direction == "start" else max(inspected_positions)
+        if fine_labels.get(edge) not in RETAINED_LABELS:
+            boundary_recovery[direction] = {"saturated": False, "status": "semantic_transition"}
+            return
+
+        reason_code = f"boundary_saturated_{direction}"
+        boundary_refinement_reasons.append(reason_code)
+        initial_edge_seconds = (
+            all_fine_blocks[edge].start_seconds
+            if direction == "start"
+            else all_fine_blocks[edge].end_seconds
+        )
+        expanded_block_ids: list[int] = []
+        status = "recording_edge"
+        while True:
+            adjacent = edge + step
+            if adjacent < 0 or adjacent >= len(all_fine_blocks):
+                status = "recording_edge"
+                break
+            adjacent_block = all_fine_blocks[adjacent]
+            expansion_seconds = (
+                initial_edge_seconds - adjacent_block.start_seconds
+                if direction == "start"
+                else adjacent_block.end_seconds - initial_edge_seconds
+            )
+            if expansion_seconds > MAX_FINE_BOUNDARY_EXPANSION_SECONDS:
+                status = "expansion_limit"
+                boundary_limit_reached = True
+                uncertain_ids.append(all_fine_blocks[edge].block_id)
+                break
+            inspected_positions.add(adjacent)
+            classify_fine_position(adjacent)
+            expanded_block_ids.append(adjacent_block.block_id)
+            edge = adjacent
+            if fine_labels[adjacent] not in RETAINED_LABELS:
+                status = "semantic_transition"
+                break
+
+        final_edge_seconds = (
+            all_fine_blocks[edge].start_seconds
+            if direction == "start"
+            else all_fine_blocks[edge].end_seconds
+        )
+        boundary_recovery[direction] = {
+            "saturated": True,
+            "reason_code": reason_code,
+            "status": status,
+            "expanded_block_ids": expanded_block_ids,
+            "expansion_seconds": round(abs(final_edge_seconds - initial_edge_seconds), 3),
+        }
+
+    expand_saturated_boundary("start")
+    expand_saturated_boundary("end")
+    fine_positions = sorted(inspected_positions)
+    fine_blocks = [all_fine_blocks[position] for position in fine_positions]
+    fine_audit = [fine_audit_by_position[position] for position in fine_positions]
 
     retained, refinement_reasons, start_refinement = _refine_retained_boundaries(
         drafts,
@@ -789,8 +881,13 @@ def classify_sermon_content_adaptive(
         for block in fine_blocks
         if any(index in retained for index in block.segment_indexes)
     ]
-    selected_candidate["refinement_reasons"] = list(selected_candidate["refinement_reasons"]) + list(refinement_reasons)
+    selected_candidate["refinement_reasons"] = (
+        list(selected_candidate["refinement_reasons"])
+        + boundary_refinement_reasons
+        + list(refinement_reasons)
+    )
     selected_candidate["start_refinement"] = start_refinement
+    selected_candidate["boundary_recovery"] = boundary_recovery
 
     all_timed = {index for block in build_transcript_blocks(drafts) for index in block.segment_indexes}
     agreement = len(retained & rule_indexes) / max(len(retained | rule_indexes), 1)
@@ -799,6 +896,8 @@ def classify_sermon_content_adaptive(
         warnings.append("adaptive LLM and rule-based sermon windows disagree substantially")
     if uncertain_ids:
         warnings.append("one or more refined blocks require boundary review")
+    if boundary_limit_reached:
+        warnings.append("fine boundary expansion reached its deterministic inspection limit")
     warnings.extend(selected_candidate["refinement_reasons"])
     consistency_warnings = _central_consistency_warnings(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
@@ -807,7 +906,7 @@ def classify_sermon_content_adaptive(
     confidence = _adaptive_confidence_tier(
         agreement=agreement,
         retained=bool(retained),
-        uncertain=bool(uncertain_ids),
+        uncertain=bool(uncertain_ids) or boundary_limit_reached,
         consistency_failed=bool(consistency_warnings),
     )
     confidence_reasons = [

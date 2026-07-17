@@ -14,6 +14,7 @@ from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtif
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.sermon_classification import (
+    BLOCK_BUILDER_VERSION,
     CONFIDENCE_POLICY_VERSION,
     HybridSermonResult,
     classify_sermon_content_adaptive,
@@ -151,6 +152,7 @@ def _classification_is_current(
     return (
         isinstance(classification, dict)
         and classification.get("method") == "adaptive_llm_v3"
+        and classification.get("block_builder_version") == BLOCK_BUILDER_VERSION
         and classification.get("model") == model
         and classification.get("prompt_version") == prompt_version
         and classification.get("confidence_policy_version") == CONFIDENCE_POLICY_VERSION

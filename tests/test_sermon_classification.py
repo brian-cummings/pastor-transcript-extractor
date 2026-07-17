@@ -8,6 +8,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from pastor_transcript_extractor.config import build_paths, build_video_artifact_paths, ensure_directories
+from pastor_transcript_extractor.caption_normalization import (
+    NORMALIZER_VERSION,
+    normalize_caption_fragments,
+)
 from pastor_transcript_extractor.extraction import (
     _baseline_window_payload,
     _classification_is_current,
@@ -18,6 +22,7 @@ from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import TranscriptSegmentLabel
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
+    BLOCK_BUILDER_VERSION,
     CONFIDENCE_POLICY_VERSION,
     CoarsePhase,
     ContentLabel,
@@ -78,11 +83,43 @@ class FakeAdaptiveLlmClient:
         return LocalLlmResponse(content=content, raw_content=raw, model=self.model)
 
 
+class BoundaryAwareLlmClient:
+    model = "fake-boundary-model"
+
+    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+        properties = schema.get("properties", {})
+        if isinstance(properties, dict) and "phase" in properties:
+            value = "sermon" if "COARSE_TARGET" in prompt else "administration"
+            content = {"phase": value, "reason_code": "biblical_exposition"}
+        else:
+            current = prompt.split("CURRENT BLOCK:\n", 1)[1].split("\n\nFOLLOWING CONTEXT:", 1)[0]
+            value = ContentLabel.SERMON if "SUSTAINED" in current else ContentLabel.ANNOUNCEMENTS
+            content = {"label": value.value, "reason_code": "biblical_exposition"}
+        return LocalLlmResponse(content, json.dumps(content), self.model)
+
+
 def draft(start: float, end: float, text: str) -> SegmentDraft:
     return SegmentDraft(start, end, text, None, TranscriptSegmentLabel.SERMON, 0.55)
 
 
 class TranscriptBlockTests(unittest.TestCase):
+    def test_prompt_normalizer_collapses_rolling_caption_overlap_with_provenance(self) -> None:
+        normalized = normalize_caption_fragments([
+            (4, "Father in heaven"),
+            (5, "Father in heaven thank you"),
+            (6, "thank you for grace"),
+            (7, "for grace"),
+        ])
+
+        self.assertEqual("Father in heaven thank you for grace", normalized.text)
+        self.assertEqual(NORMALIZER_VERSION, normalized.diagnostics["normalizer_version"])
+        self.assertGreater(normalized.diagnostics["deduplication_ratio"], 0.0)
+        self.assertEqual([4, 5, 6, 7], normalized.diagnostics["source_segment_indexes"])
+        self.assertEqual(
+            [4, 5, 6, 7],
+            normalized.diagnostics["normalized_units"][0]["source_segment_indexes"],
+        )
+
     def test_blocks_map_losslessly_to_timestamped_segments(self) -> None:
         drafts = [draft(index * 30.0, (index + 1) * 30.0, f"segment {index}") for index in range(7)]
 
@@ -92,6 +129,8 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual(list(range(7)), mapped)
         self.assertEqual(len(mapped), len(set(mapped)))
         self.assertEqual("segment 0\nsegment 1\nsegment 2", blocks[0].text)
+        self.assertEqual("segment 0\nsegment 1\nsegment 2", blocks[0].raw_text)
+        self.assertEqual(NORMALIZER_VERSION, blocks[0].normalization["normalizer_version"])
 
     def test_untimestamped_segments_are_not_fabricated(self) -> None:
         drafts = [SegmentDraft(None, None, "plain text", None, TranscriptSegmentLabel.SERMON, 0.55)]
@@ -261,6 +300,34 @@ class TranscriptBlockTests(unittest.TestCase):
 
 
 class HybridClassificationTests(unittest.TestCase):
+    def test_adaptive_search_expands_saturated_fine_boundaries_symmetrically(self) -> None:
+        drafts = [
+            draft(index * 90.0, (index + 1) * 90.0, (
+                "opening transition" if index == 0
+                else "closing transition" if index == 15
+                else "COARSE_TARGET SUSTAINED exposition" if index == 8
+                else "SUSTAINED exposition"
+            ))
+            for index in range(16)
+        ]
+        rule_window = SermonWindowResult(
+            None, None, 0.0, [], "rule_based_v1", [], list(range(16)), False, []
+        )
+
+        result = classify_sermon_content_adaptive(
+            drafts, rule_window, BoundaryAwareLlmClient(), prompt_version="boundary-test-v1"
+        ).to_dict()
+
+        self.assertEqual(list(range(1, 15)), result["retained_segment_indexes"])
+        candidate = result["search"]["candidates"][0]
+        recovery = candidate["boundary_recovery"]
+        self.assertTrue(recovery["start"]["saturated"])
+        self.assertTrue(recovery["end"]["saturated"])
+        self.assertEqual("semantic_transition", recovery["start"]["status"])
+        self.assertEqual("semantic_transition", recovery["end"]["status"])
+        self.assertIn("boundary_saturated_start", candidate["refinement_reasons"])
+        self.assertIn("boundary_saturated_end", candidate["refinement_reasons"])
+
     def test_baseline_window_payload_replaces_stale_hybrid_state(self) -> None:
         recomputed = SermonWindowResult(
             None,
@@ -395,6 +462,7 @@ class HybridClassificationTests(unittest.TestCase):
     def test_classification_cache_key_includes_model_and_prompt(self) -> None:
         classification = {
             "method": "adaptive_llm_v3",
+            "block_builder_version": BLOCK_BUILDER_VERSION,
             "model": "fixture:4b",
             "prompt_version": "v1",
             "confidence_policy_version": CONFIDENCE_POLICY_VERSION,
