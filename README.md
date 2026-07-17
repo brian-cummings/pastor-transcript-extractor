@@ -147,6 +147,11 @@ second pass should normally report zero cache misses.
 Run the frozen regression set after reclassifying its videos:
 
 ```bash
+pte reclassify \
+  --fixture-dir evaluation/fixtures \
+  --force \
+  --base-dir /path/to/app-data
+
 pte validate-fixtures evaluation/fixtures
 pte evaluate --base-dir /path/to/app-data
 ```

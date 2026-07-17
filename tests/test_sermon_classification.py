@@ -27,6 +27,7 @@ from pastor_transcript_extractor.sermon_classification import (
     CONFIDENCE_POLICY_VERSION,
     CoarsePhase,
     ContentLabel,
+    FINE_COMPONENT_VERSION,
     RawInferenceCache,
     TranscriptBlock,
     _candidate_strength,
@@ -104,6 +105,20 @@ class BoundaryAwareLlmClient:
             current = prompt.split("CURRENT BLOCK:\n", 1)[1].split("\n\nFOLLOWING CONTEXT:", 1)[0]
             value = ContentLabel.SERMON if "SUSTAINED" in current else ContentLabel.ANNOUNCEMENTS
             content = {"label": value.value, "reason_code": "biblical_exposition"}
+        return LocalLlmResponse(content, json.dumps(content), self.model)
+
+
+class AllSermonLlmClient:
+    model = "fake-all-sermon-model"
+
+    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+        del prompt
+        properties = schema.get("properties", {})
+        content = (
+            {"decision": "sermon_biblical_exposition"}
+            if isinstance(properties, dict) and "decision" in properties
+            else {"label": "sermon", "reason_code": "biblical_exposition"}
+        )
         return LocalLlmResponse(content, json.dumps(content), self.model)
 
 
@@ -203,7 +218,7 @@ class TranscriptBlockTests(unittest.TestCase):
         blocks[2] = TranscriptBlock(2, [2], 450.0, 750.0, "generic religious speech")
         self.assertIsNone(_joined_candidate(left, right, blocks, allowed_audit))
 
-    def test_refinement_anchors_to_explicit_cue_and_trims_sustained_music_tail(self) -> None:
+    def test_refinement_anchors_to_explicit_cue_without_asymmetric_tail_trim(self) -> None:
         drafts = [
             draft(0.0, 90.0, "Welcome and register for VBS"),
             draft(90.0, 180.0, "Our sermon title today is Grace"),
@@ -221,9 +236,9 @@ class TranscriptBlockTests(unittest.TestCase):
             drafts, blocks, set(range(len(drafts)))
         )
 
-        self.assertEqual({1, 2, 3}, retained)
+        self.assertEqual({1, 2, 3, 4, 5}, retained)
         self.assertTrue(any("explicit sermon" in reason for reason in reasons))
-        self.assertTrue(any("sustained music" in reason for reason in reasons))
+        self.assertFalse(any("sustained music" in reason for reason in reasons))
         self.assertEqual(0.0, start_refinement["pre_anchor_extension_seconds"])
 
     def test_refinement_recovers_contiguous_sermon_setup_before_anchor(self) -> None:
@@ -309,6 +324,27 @@ class TranscriptBlockTests(unittest.TestCase):
 
 
 class HybridClassificationTests(unittest.TestCase):
+    def test_adaptive_search_splits_objective_noise_and_selects_stronger_component(self) -> None:
+        drafts = [
+            draft(index * 90.0, (index + 1) * 90.0, (
+                "[music] [singing]" if index in {4, 5}
+                else "sustained biblical teaching"
+            ))
+            for index in range(12)
+        ]
+        rule_window = SermonWindowResult(
+            None, None, 0.0, [], "rule_based_v1", [], list(range(12)), False, []
+        )
+
+        result = classify_sermon_content_adaptive(
+            drafts, rule_window, AllSermonLlmClient(), prompt_version="noise-split-v1"
+        ).to_dict()
+
+        self.assertEqual(list(range(6, 12)), result["retained_segment_indexes"])
+        recovery = result["search"]["candidates"][0]["boundary_recovery"]
+        self.assertEqual([4, 5], recovery["objective_separator_block_ids"])
+        self.assertIn([0, 1, 2, 3], recovery["discarded_component_block_ids"])
+
     def test_adaptive_search_anchors_to_candidate_overlapping_fine_component(self) -> None:
         texts = ["administration" for _ in range(16)]
         texts[5] = "SUSTAINED disconnected teaching"
@@ -501,6 +537,7 @@ class HybridClassificationTests(unittest.TestCase):
             "method": "adaptive_llm_v3",
             "block_builder_version": BLOCK_BUILDER_VERSION,
             "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
+            "fine_component_version": FINE_COMPONENT_VERSION,
             "model": "fixture:4b",
             "prompt_version": "v1",
             "confidence_policy_version": CONFIDENCE_POLICY_VERSION,

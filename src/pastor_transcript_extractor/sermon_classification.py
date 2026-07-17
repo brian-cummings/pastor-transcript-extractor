@@ -19,6 +19,7 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v1"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "sermon-likelihood-v1"
+FINE_COMPONENT_VERSION = "objective-noise-components-v1"
 
 
 class ContentLabel(StrEnum):
@@ -92,6 +93,7 @@ class HybridSermonResult:
             "method": self.method,
             "block_builder_version": BLOCK_BUILDER_VERSION,
             "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
+            "fine_component_version": FINE_COMPONENT_VERSION,
             "model": self.model,
             "prompt_version": self.prompt_version,
             "confidence_tier": self.confidence_tier,
@@ -547,28 +549,21 @@ def _refine_retained_boundaries(
                 "stopped_by": stopped_by or "no_sermon_like_pre_anchor_block",
             }
 
-    retained_blocks = [
-        block for block in fine_blocks if any(index in refined for index in block.segment_indexes)
-    ]
-    retained_start = min((block.start_seconds for block in retained_blocks), default=None)
-    for position in range(len(retained_blocks) - 1):
-        current = retained_blocks[position]
-        following = retained_blocks[position + 1]
-        if _noise_ratio(current, drafts) < 0.45 or _noise_ratio(following, drafts) < 0.45:
-            continue
-        if retained_start is not None and current.start_seconds < retained_start + 600.0:
-            continue
-        if seed is not None and current.start_seconds < seed + 600.0:
-            continue
-        cutoff = current.start_seconds
-        refined = {
-            index
-            for index in refined
-            if drafts[index].start_seconds is None or drafts[index].start_seconds < cutoff
-        }
-        reasons.append("trimmed candidate after a sustained music or singing transition")
-        break
     return refined, reasons, start_refinement
+
+
+def _sustained_noise_separator_positions(
+    positions: list[int], blocks: list[TranscriptBlock], drafts: list[SegmentDraft]
+) -> set[int]:
+    position_set = set(positions)
+    noisy = {
+        position for position in positions if _noise_ratio(blocks[position], drafts) >= 0.45
+    }
+    separators: set[int] = set()
+    for position in noisy:
+        if position + 1 in noisy and position + 1 in position_set:
+            separators.update({position, position + 1})
+    return separators
 
 
 def _central_consistency_warnings(
@@ -795,10 +790,16 @@ def classify_sermon_content_adaptive(
     for position in initial_positions:
         classify_fine_position(position)
 
-    retained_positions = [
+    raw_retained_positions = [
         position
         for position in initial_positions
         if any(index in retained for index in all_fine_blocks[position].segment_indexes)
+    ]
+    separator_positions = _sustained_noise_separator_positions(
+        raw_retained_positions, all_fine_blocks, drafts
+    )
+    retained_positions = [
+        position for position in raw_retained_positions if position not in separator_positions
     ]
     components: list[list[int]] = []
     for position in retained_positions:
@@ -846,12 +847,15 @@ def classify_sermon_content_adaptive(
     retained.intersection_update(anchored_indexes)
 
     boundary_recovery: dict[str, Any] = {
-        "algorithm_version": "fine-boundary-saturation-v2",
+        "algorithm_version": "fine-boundary-saturation-v3",
         "mode": "diagnostic_only",
         "anchored_component_block_ids": [
             all_fine_blocks[position].block_id for position in anchored_component
         ],
         "discarded_component_block_ids": discarded_component_block_ids,
+        "objective_separator_block_ids": [
+            all_fine_blocks[position].block_id for position in sorted(separator_positions)
+        ],
     }
     boundary_probe_required = False
     for direction, component_edge, inspection_edge, step in (

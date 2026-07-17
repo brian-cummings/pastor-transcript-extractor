@@ -2183,28 +2183,57 @@ def extract(
 def reclassify(
     video_id: int | None = typer.Option(None, "--video-id", help="Reclassify one database video id."),
     source_id: int | None = typer.Option(None, "--source-id", help="Reclassify extracted videos from one source id."),
+    fixture_dir: Path | None = typer.Option(
+        None,
+        "--fixture-dir",
+        help="Reclassify every approved fixture in this directory.",
+    ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     force: bool = typer.Option(False, "--force", help="Rerun even when model and prompt versions match."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    if (video_id is None) == (source_id is None):
-        raise typer.BadParameter("Pass exactly one of --video-id or --source-id.")
+    selector_count = sum(
+        (video_id is not None, source_id is not None, fixture_dir is not None)
+    )
+    if selector_count != 1:
+        raise typer.BadParameter(
+            "Pass exactly one of --video-id, --source-id, or --fixture-dir."
+        )
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
+    if video_id is not None:
+        video = database.get_video_by_id(video_id)
+        videos = [video] if video is not None else []
+    elif source_id is not None:
+        videos = database.list_videos_by_source_id(source_id)
+    else:
+        assert fixture_dir is not None
+        fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
+        resolved = [
+            (fixture, database.get_video_by_youtube_id(fixture.video_id))
+            for fixture in fixtures
+        ]
+        missing_fixture_ids = [
+            fixture.video_id for fixture, video in resolved if video is None
+        ]
+        if missing_fixture_ids:
+            raise typer.BadParameter(
+                "Fixture videos are missing from the database: "
+                + ", ".join(missing_fixture_ids)
+            )
+        videos = [video for _, video in resolved if video is not None]
+        console.print(
+            f"Discovered {len(videos)} fixture video(s) in "
+            f"{fixture_dir.expanduser().resolve()}."
+        )
+    if not videos:
+        raise typer.BadParameter("No matching videos found.")
     llm_config = build_llm_config()
     if llm_model is not None:
         from dataclasses import replace
 
         llm_config = replace(llm_config, model=llm_model)
     client = OllamaClient(llm_config)
-    if video_id is not None:
-        video = database.get_video_by_id(video_id)
-        videos = [video] if video is not None else []
-    else:
-        assert source_id is not None
-        videos = database.list_videos_by_source_id(source_id)
-    if not videos:
-        raise typer.BadParameter("No matching videos found.")
 
     processed = 0
     reused = 0
