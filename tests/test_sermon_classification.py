@@ -23,6 +23,7 @@ from pastor_transcript_extractor.models import TranscriptSegmentLabel
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
     BLOCK_BUILDER_VERSION,
+    COARSE_DISCOVERY_VERSION,
     CONFIDENCE_POLICY_VERSION,
     CoarsePhase,
     ContentLabel,
@@ -69,14 +70,18 @@ class FakeAdaptiveLlmClient:
     model = "fake-sermon-model"
 
     def __init__(self) -> None:
-        self.phases = iter(["administration", "sermon", "sermon"])
+        self.decisions = iter([
+            "not_sermon_administration",
+            "sermon_biblical_exposition",
+            "sermon_biblical_exposition",
+        ])
         self.labels = iter([ContentLabel.ANNOUNCEMENTS, ContentLabel.SERMON, ContentLabel.SERMON])
 
     def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
         del prompt
         properties = schema.get("properties", {})
-        if isinstance(properties, dict) and "phase" in properties:
-            content = {"phase": next(self.phases), "reason_code": "biblical_exposition"}
+        if isinstance(properties, dict) and "decision" in properties:
+            content = {"decision": next(self.decisions)}
         else:
             content = {"label": next(self.labels).value, "reason_code": "biblical_exposition"}
         raw = json.dumps(content)
@@ -88,9 +93,13 @@ class BoundaryAwareLlmClient:
 
     def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
         properties = schema.get("properties", {})
-        if isinstance(properties, dict) and "phase" in properties:
-            value = "sermon" if "COARSE_TARGET" in prompt else "administration"
-            content = {"phase": value, "reason_code": "biblical_exposition"}
+        if isinstance(properties, dict) and "decision" in properties:
+            value = (
+                "sermon_biblical_exposition"
+                if "COARSE_TARGET" in prompt
+                else "not_sermon_administration"
+            )
+            content = {"decision": value}
         else:
             current = prompt.split("CURRENT BLOCK:\n", 1)[1].split("\n\nFOLLOWING CONTEXT:", 1)[0]
             value = ContentLabel.SERMON if "SUSTAINED" in current else ContentLabel.ANNOUNCEMENTS
@@ -142,11 +151,11 @@ class TranscriptBlockTests(unittest.TestCase):
             for index in range(5)
         ]
         phases = [
-            CoarsePhase.ADMINISTRATION,
-            CoarsePhase.SERMON,
+            CoarsePhase.SERMON_UNLIKELY,
+            CoarsePhase.SERMON_LIKELY,
             CoarsePhase.UNCERTAIN,
-            CoarsePhase.SERMON,
-            CoarsePhase.WORSHIP,
+            CoarsePhase.SERMON_LIKELY,
+            CoarsePhase.SERMON_UNLIKELY,
         ]
 
         self.assertEqual([(300.0, 1200.0)], _coarse_candidate_ranges(blocks, phases))
@@ -300,7 +309,34 @@ class TranscriptBlockTests(unittest.TestCase):
 
 
 class HybridClassificationTests(unittest.TestCase):
-    def test_adaptive_search_expands_saturated_fine_boundaries_symmetrically(self) -> None:
+    def test_adaptive_search_anchors_to_candidate_overlapping_fine_component(self) -> None:
+        texts = ["administration" for _ in range(16)]
+        texts[5] = "SUSTAINED disconnected teaching"
+        texts[6] = "SUSTAINED disconnected teaching continues"
+        texts[8] = "COARSE_TARGET SUSTAINED candidate sermon"
+        texts[9] = "SUSTAINED candidate sermon continues"
+        texts[10] = "SUSTAINED candidate sermon conclusion"
+        drafts = [
+            draft(index * 90.0, (index + 1) * 90.0, text)
+            for index, text in enumerate(texts)
+        ]
+        rule_window = SermonWindowResult(
+            None, None, 0.0, [], "rule_based_v1", [], list(range(16)), False, []
+        )
+
+        result = classify_sermon_content_adaptive(
+            drafts, rule_window, BoundaryAwareLlmClient(), prompt_version="component-test-v1"
+        ).to_dict()
+
+        self.assertEqual([8, 9, 10], result["retained_segment_indexes"])
+        candidate = result["search"]["candidates"][0]
+        recovery = candidate["boundary_recovery"]
+        self.assertEqual([8, 9, 10], recovery["anchored_component_block_ids"])
+        self.assertIn([5, 6], recovery["discarded_component_block_ids"])
+        self.assertFalse(recovery["start"]["saturated"])
+        self.assertTrue(recovery["end"]["saturated"])
+
+    def test_adaptive_search_records_saturated_boundaries_without_expanding(self) -> None:
         drafts = [
             draft(index * 90.0, (index + 1) * 90.0, (
                 "opening transition" if index == 0
@@ -318,15 +354,16 @@ class HybridClassificationTests(unittest.TestCase):
             drafts, rule_window, BoundaryAwareLlmClient(), prompt_version="boundary-test-v1"
         ).to_dict()
 
-        self.assertEqual(list(range(1, 15)), result["retained_segment_indexes"])
+        self.assertEqual(list(range(2, 11)), result["retained_segment_indexes"])
         candidate = result["search"]["candidates"][0]
         recovery = candidate["boundary_recovery"]
         self.assertTrue(recovery["start"]["saturated"])
         self.assertTrue(recovery["end"]["saturated"])
-        self.assertEqual("semantic_transition", recovery["start"]["status"])
-        self.assertEqual("semantic_transition", recovery["end"]["status"])
-        self.assertIn("boundary_saturated_start", candidate["refinement_reasons"])
-        self.assertIn("boundary_saturated_end", candidate["refinement_reasons"])
+        self.assertEqual("continuity_probe_required", recovery["start"]["status"])
+        self.assertEqual("continuity_probe_required", recovery["end"]["status"])
+        self.assertEqual("diagnostic_only", recovery["mode"])
+        self.assertNotIn("boundary_saturated_start", candidate["refinement_reasons"])
+        self.assertNotIn("boundary_saturated_end", candidate["refinement_reasons"])
 
     def test_baseline_window_payload_replaces_stale_hybrid_state(self) -> None:
         recomputed = SermonWindowResult(
@@ -463,6 +500,7 @@ class HybridClassificationTests(unittest.TestCase):
         classification = {
             "method": "adaptive_llm_v3",
             "block_builder_version": BLOCK_BUILDER_VERSION,
+            "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
             "model": "fixture:4b",
             "prompt_version": "v1",
             "confidence_policy_version": CONFIDENCE_POLICY_VERSION,

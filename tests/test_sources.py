@@ -1068,8 +1068,8 @@ class CliTests(unittest.TestCase):
                 type(self).inference_calls += 1
                 properties = schema.get("properties", {})
                 content = (
-                    {"phase": "administration", "reason_code": "logistics_or_welcome"}
-                    if "phase" in properties
+                    {"decision": "not_sermon_administration"}
+                    if "decision" in properties
                     else {"label": "announcements", "reason_code": "logistics_or_welcome"}
                 )
                 return LocalLlmResponse(content, json.dumps(content), self.model)

@@ -18,7 +18,7 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v1"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
-MAX_FINE_BOUNDARY_EXPANSION_SECONDS = 1800.0
+COARSE_DISCOVERY_VERSION = "sermon-likelihood-v1"
 
 
 class ContentLabel(StrEnum):
@@ -91,6 +91,7 @@ class HybridSermonResult:
             "schema_version": 1,
             "method": self.method,
             "block_builder_version": BLOCK_BUILDER_VERSION,
+            "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
             "model": self.model,
             "prompt_version": self.prompt_version,
             "confidence_tier": self.confidence_tier,
@@ -192,11 +193,32 @@ class RawInferenceCache:
 
 
 class CoarsePhase(StrEnum):
-    SERMON = "sermon"
-    WORSHIP = "worship"
-    ADMINISTRATION = "administration"
-    TRANSITION = "transition"
+    SERMON_LIKELY = "sermon_likely"
+    SERMON_UNLIKELY = "sermon_unlikely"
     UNCERTAIN = "uncertain"
+
+
+_COARSE_DECISIONS: dict[str, tuple[CoarsePhase, str, ContentLabel]] = {
+    "sermon_biblical_exposition": (
+        CoarsePhase.SERMON_LIKELY, "biblical_exposition", ContentLabel.SERMON
+    ),
+    "sermon_sustained_preaching": (
+        CoarsePhase.SERMON_LIKELY, "biblical_exposition", ContentLabel.SERMON
+    ),
+    "not_sermon_music_or_lyrics": (
+        CoarsePhase.SERMON_UNLIKELY, "music_or_lyrics", ContentLabel.MUSIC
+    ),
+    "not_sermon_extended_prayer": (
+        CoarsePhase.SERMON_UNLIKELY, "service_prayer", ContentLabel.SERVICE_PRAYER
+    ),
+    "not_sermon_administration": (
+        CoarsePhase.SERMON_UNLIKELY, "logistics_or_welcome", ContentLabel.ANNOUNCEMENTS
+    ),
+    "not_sermon_transition": (
+        CoarsePhase.SERMON_UNLIKELY, "sermon_transition", ContentLabel.SPEAKER_INTRODUCTION
+    ),
+    "uncertain": (CoarsePhase.UNCERTAIN, "insufficient_context", ContentLabel.UNCERTAIN),
+}
 
 
 def build_transcript_blocks(
@@ -251,10 +273,9 @@ _SCHEMA: dict[str, Any] = {
 _COARSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "phase": {"type": "string", "enum": [phase.value for phase in CoarsePhase]},
-        "reason_code": {"type": "string", "enum": list(REASON_CODES)},
+        "decision": {"type": "string", "enum": list(_COARSE_DECISIONS)},
     },
-    "required": ["phase", "reason_code"],
+    "required": ["decision"],
     "additionalProperties": False,
 }
 
@@ -275,13 +296,12 @@ FOLLOWING CONTEXT:
 
 
 def _coarse_prompt(block: TranscriptBlock) -> str:
-    return f"""Identify the dominant phase of this five-minute excerpt from a complete Christian worship service.
-SERMON means sustained preaching or biblical exposition, not merely religious words, prayer, song lyrics, welcomes, or a speaker introduction.
-WORSHIP means music, congregational singing, or extended devotional prayer.
-ADMINISTRATION means welcomes, announcements, offerings, logistics, or community features.
-TRANSITION means a handoff, Scripture introduction, speaker introduction, or movement between phases.
-UNCERTAIN means there is not enough coherent evidence.
-Return only one phase and one reason_code from the schema. Do not generate prose.
+    return f"""Decide whether this five-minute transcript excerpt contains sustained sermon preaching.
+Choose sermon_biblical_exposition or sermon_sustained_preaching when a preacher develops a message, explains Scripture, applies a biblical theme, or continues a sermon. A sermon may include an integrated prayer, illustration, or Communion teaching.
+Choose a not_sermon decision only when the excerpt is dominated by music or lyrics, a standalone extended prayer, administration or logistics, or a transition without sustained preaching.
+Do not use not_sermon merely because the excerpt comes from a worship service. Religious education and other sustained biblical teaching still count as sermon-likely during discovery; program-type verification happens later.
+Choose uncertain only when the text is too fragmentary to decide.
+Return exactly one decision from the schema and no prose.
 
 EXCERPT:
 {block.text}"""
@@ -297,20 +317,20 @@ def _coarse_candidate_ranges(
     ranges: list[tuple[float, float]] = []
     position = 0
     while position < len(blocks):
-        if phases[position] != CoarsePhase.SERMON:
+        if phases[position] != CoarsePhase.SERMON_LIKELY:
             position += 1
             continue
         start_position = position
         end_position = position
         while end_position + 1 < len(blocks):
             next_phase = phases[end_position + 1]
-            if next_phase == CoarsePhase.SERMON:
+            if next_phase == CoarsePhase.SERMON_LIKELY:
                 end_position += 1
                 continue
             if (
-                next_phase in {CoarsePhase.WORSHIP, CoarsePhase.TRANSITION, CoarsePhase.UNCERTAIN}
+                next_phase == CoarsePhase.UNCERTAIN
                 and end_position + 2 < len(blocks)
-                and phases[end_position + 2] == CoarsePhase.SERMON
+                and phases[end_position + 2] == CoarsePhase.SERMON_LIKELY
             ):
                 end_position += 2
                 continue
@@ -580,7 +600,7 @@ def _central_consistency_warnings(
         for block, phase in zip(coarse_blocks, phases, strict=True)
         if _overlaps(block, central_start, central_end)
     ]
-    coarse_support = sum(1 for phase in central_coarse if phase == CoarsePhase.SERMON)
+    coarse_support = sum(1 for phase in central_coarse if phase == CoarsePhase.SERMON_LIKELY)
     if not central_coarse or coarse_support / len(central_coarse) < 0.6:
         warnings.append("coarse and fine labels disagree across the candidate center")
     return warnings
@@ -639,25 +659,15 @@ def classify_sermon_content_adaptive(
             progress("coarse", position + 1, total_estimate)
         prompt = _coarse_prompt(block)
         response = (
-            cache.generate("coarse", client, prompt, _COARSE_SCHEMA, block)
+            cache.generate("coarse-likelihood", client, prompt, _COARSE_SCHEMA, block)
             if cache is not None
             else client.generate_json(prompt, _COARSE_SCHEMA)
         )
         try:
-            phase = CoarsePhase(str(response.content["phase"]))
+            phase, reason, mapped_label = _COARSE_DECISIONS[str(response.content["decision"])]
         except (KeyError, ValueError) as error:
-            raise ValueError("Local LLM returned an unsupported coarse service phase") from error
-        reason = response.content.get("reason_code")
-        if not isinstance(reason, str):
-            raise ValueError("Local LLM did not return a coarse reason code")
+            raise ValueError("Local LLM returned an unsupported coarse sermon decision") from error
         phases.append(phase)
-        mapped_label = {
-            CoarsePhase.SERMON: ContentLabel.SERMON,
-            CoarsePhase.WORSHIP: ContentLabel.MUSIC,
-            CoarsePhase.ADMINISTRATION: ContentLabel.ANNOUNCEMENTS,
-            CoarsePhase.TRANSITION: ContentLabel.SPEAKER_INTRODUCTION,
-            CoarsePhase.UNCERTAIN: ContentLabel.UNCERTAIN,
-        }[phase]
         coarse_audit.append(BlockClassification(block.block_id, mapped_label, f"coarse:{reason}", response.raw_content))
 
     coarse_candidates = _coarse_candidate_ranges(coarse_blocks, phases)
@@ -748,7 +758,6 @@ def classify_sermon_content_adaptive(
     ]
     inspected_positions = set(initial_positions)
     fine_audit_by_position: dict[int, BlockClassification] = {}
-    fine_labels: dict[int, ContentLabel] = {}
     retained: set[int] = set()
     uncertain_ids: list[int] = []
     rule_indexes = set(rule_window.included_segment_indexes)
@@ -774,7 +783,6 @@ def classify_sermon_content_adaptive(
         reason = response.content.get("reason_code")
         if not isinstance(reason, str):
             raise ValueError("Local LLM did not return a reason code")
-        fine_labels[position] = label
         fine_audit_by_position[position] = BlockClassification(
             block.block_id, label, f"fine:{reason}", response.raw_content
         )
@@ -787,72 +795,94 @@ def classify_sermon_content_adaptive(
     for position in initial_positions:
         classify_fine_position(position)
 
-    boundary_recovery: dict[str, Any] = {
-        "algorithm_version": "fine-boundary-saturation-v1",
-        "maximum_expansion_seconds_per_direction": MAX_FINE_BOUNDARY_EXPANSION_SECONDS,
-    }
-    boundary_refinement_reasons: list[str] = []
-    boundary_limit_reached = False
+    retained_positions = [
+        position
+        for position in initial_positions
+        if any(index in retained for index in all_fine_blocks[position].segment_indexes)
+    ]
+    components: list[list[int]] = []
+    for position in retained_positions:
+        if components and position == components[-1][-1] + 1:
+            components[-1].append(position)
+        else:
+            components.append([position])
 
-    def expand_saturated_boundary(direction: str) -> None:
-        nonlocal boundary_limit_reached
-        if not inspected_positions:
-            boundary_recovery[direction] = {"saturated": False, "status": "no_fine_blocks"}
-            return
-        step = -1 if direction == "start" else 1
-        edge = min(inspected_positions) if direction == "start" else max(inspected_positions)
-        if fine_labels.get(edge) not in RETAINED_LABELS:
-            boundary_recovery[direction] = {"saturated": False, "status": "semantic_transition"}
-            return
-
-        reason_code = f"boundary_saturated_{direction}"
-        boundary_refinement_reasons.append(reason_code)
-        initial_edge_seconds = (
-            all_fine_blocks[edge].start_seconds
-            if direction == "start"
-            else all_fine_blocks[edge].end_seconds
-        )
-        expanded_block_ids: list[int] = []
-        status = "recording_edge"
-        while True:
-            adjacent = edge + step
-            if adjacent < 0 or adjacent >= len(all_fine_blocks):
-                status = "recording_edge"
-                break
-            adjacent_block = all_fine_blocks[adjacent]
-            expansion_seconds = (
-                initial_edge_seconds - adjacent_block.start_seconds
-                if direction == "start"
-                else adjacent_block.end_seconds - initial_edge_seconds
+    def component_overlap(component: list[int]) -> float:
+        return sum(
+            max(
+                0.0,
+                min(all_fine_blocks[position].end_seconds, selected_range[1])
+                - max(all_fine_blocks[position].start_seconds, selected_range[0]),
             )
-            if expansion_seconds > MAX_FINE_BOUNDARY_EXPANSION_SECONDS:
-                status = "expansion_limit"
-                boundary_limit_reached = True
-                uncertain_ids.append(all_fine_blocks[edge].block_id)
-                break
-            inspected_positions.add(adjacent)
-            classify_fine_position(adjacent)
-            expanded_block_ids.append(adjacent_block.block_id)
-            edge = adjacent
-            if fine_labels[adjacent] not in RETAINED_LABELS:
-                status = "semantic_transition"
-                break
-
-        final_edge_seconds = (
-            all_fine_blocks[edge].start_seconds
-            if direction == "start"
-            else all_fine_blocks[edge].end_seconds
+            for position in component
         )
+
+    overlapping_components = [
+        component for component in components if component_overlap(component) > 0.0
+    ]
+    anchored_component = max(
+        overlapping_components,
+        key=lambda component: (
+            component_overlap(component),
+            sum(
+                all_fine_blocks[position].end_seconds
+                - all_fine_blocks[position].start_seconds
+                for position in component
+            ),
+            -component[0],
+        ),
+        default=[],
+    )
+    anchored_indexes = {
+        index
+        for position in anchored_component
+        for index in all_fine_blocks[position].segment_indexes
+    }
+    discarded_component_block_ids = [
+        [all_fine_blocks[position].block_id for position in component]
+        for component in components
+        if component != anchored_component
+    ]
+    retained.intersection_update(anchored_indexes)
+
+    boundary_recovery: dict[str, Any] = {
+        "algorithm_version": "fine-boundary-saturation-v2",
+        "mode": "diagnostic_only",
+        "anchored_component_block_ids": [
+            all_fine_blocks[position].block_id for position in anchored_component
+        ],
+        "discarded_component_block_ids": discarded_component_block_ids,
+    }
+    boundary_probe_required = False
+    for direction, component_edge, inspection_edge, step in (
+        ("start", anchored_component[0] if anchored_component else None, min(initial_positions) if initial_positions else None, -1),
+        ("end", anchored_component[-1] if anchored_component else None, max(initial_positions) if initial_positions else None, 1),
+    ):
+        saturated = component_edge is not None and component_edge == inspection_edge
+        adjacent = component_edge + step if component_edge is not None else None
+        recording_edge = adjacent is not None and not (0 <= adjacent < len(all_fine_blocks))
+        status = (
+            "recording_edge"
+            if saturated and recording_edge
+            else "continuity_probe_required"
+            if saturated
+            else "semantic_transition"
+            if anchored_component
+            else "no_anchored_component"
+        )
+        if status == "continuity_probe_required":
+            boundary_probe_required = True
         boundary_recovery[direction] = {
-            "saturated": True,
-            "reason_code": reason_code,
+            "saturated": saturated,
+            "reason_code": f"boundary_saturated_{direction}" if saturated else None,
             "status": status,
-            "expanded_block_ids": expanded_block_ids,
-            "expansion_seconds": round(abs(final_edge_seconds - initial_edge_seconds), 3),
+            "adjacent_block_id": (
+                all_fine_blocks[adjacent].block_id
+                if status == "continuity_probe_required" and adjacent is not None
+                else None
+            ),
         }
 
-    expand_saturated_boundary("start")
-    expand_saturated_boundary("end")
     fine_positions = sorted(inspected_positions)
     fine_blocks = [all_fine_blocks[position] for position in fine_positions]
     fine_audit = [fine_audit_by_position[position] for position in fine_positions]
@@ -883,7 +913,6 @@ def classify_sermon_content_adaptive(
     ]
     selected_candidate["refinement_reasons"] = (
         list(selected_candidate["refinement_reasons"])
-        + boundary_refinement_reasons
         + list(refinement_reasons)
     )
     selected_candidate["start_refinement"] = start_refinement
@@ -896,8 +925,8 @@ def classify_sermon_content_adaptive(
         warnings.append("adaptive LLM and rule-based sermon windows disagree substantially")
     if uncertain_ids:
         warnings.append("one or more refined blocks require boundary review")
-    if boundary_limit_reached:
-        warnings.append("fine boundary expansion reached its deterministic inspection limit")
+    if boundary_probe_required:
+        warnings.append("a saturated fine boundary requires a continuity probe before expansion")
     warnings.extend(selected_candidate["refinement_reasons"])
     consistency_warnings = _central_consistency_warnings(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
@@ -906,7 +935,7 @@ def classify_sermon_content_adaptive(
     confidence = _adaptive_confidence_tier(
         agreement=agreement,
         retained=bool(retained),
-        uncertain=bool(uncertain_ids) or boundary_limit_reached,
+        uncertain=bool(uncertain_ids) or boundary_probe_required,
         consistency_failed=bool(consistency_warnings),
     )
     confidence_reasons = [
@@ -922,6 +951,13 @@ def classify_sermon_content_adaptive(
             "count": len(uncertain_ids),
             "block_ids": list(uncertain_ids),
             "effect": "caps_medium" if uncertain_ids else "no_cap",
+        },
+        {
+            "code": "boundary_saturation",
+            "probe_required": boundary_probe_required,
+            "start": boundary_recovery["start"],
+            "end": boundary_recovery["end"],
+            "effect": "caps_medium" if boundary_probe_required else "no_cap",
         },
         {
             "code": "retained_content",
