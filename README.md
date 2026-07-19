@@ -108,6 +108,7 @@ transcript before writing a manually approved fixture:
 pte review-ground-truth l6mZEQvArkE --reviewer "Brian Cummings" --open-video
 pte review-next-ground-truth --reviewer "Brian Cummings" --base-dir /path/to/app-data
 pte validate-fixtures evaluation/fixtures
+pte validate-source-families evaluation/source-families.json --base-dir /path/to/app-data
 pte evaluate --base-dir /path/to/app-data
 ```
 
@@ -117,11 +118,16 @@ never treat drafts as ground truth.
 
 `review-next-ground-truth` deterministically rotates through boundary-risk,
 no-candidate, and standard-candidate proposal strata. It excludes videos that
-already have a draft or fixture, favors underrepresented corpus and objective
-conditions, and then runs the unchanged human review. Proposal strata are
+already have a draft or fixture, keeps whole source families in their frozen
+evaluation partition, and favors underrepresented source families, recording
+conditions, and objective diagnostic signals. Signals include rule/LLM
+disagreement, rescue or fallback activation, continuity expansion,
+fragmentation, close candidate scores, recording-edge proximity, low transcript
+coverage, and extreme caption deduplication. Proposal strata and signals are
 selection hints only: they never assign `sermon`, `no_sermon`, or approved
 boundaries. Selection provenance is retained in the draft and approved fixture,
-including when an interrupted automatic draft is resumed manually.
+including when an interrupted automatic draft is resumed manually. Add new
+sources to `evaluation/source-families.json` before they can be nominated.
 
 ## Reclassification and Regression Evaluation
 

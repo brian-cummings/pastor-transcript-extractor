@@ -231,6 +231,34 @@ class GroundTruthReviewTests(unittest.TestCase):
             database = SimpleNamespace(
                 list_videos=lambda: videos,
                 get_latest_extraction_result_for_video=lambda video_id: extractions[video_id],
+                get_source_by_id=lambda _: SimpleNamespace(url="https://example.test/channel"),
+                get_latest_transcript_artifact_for_video=lambda _: SimpleNamespace(
+                    source_kind=SimpleNamespace(value="captions")
+                ),
+            )
+            registry_path = root / "source-families.json"
+            registry_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "registry_version": "test-v1",
+                        "partition_policy": {
+                            "version": "source_family_partition_v1",
+                            "salt": "test",
+                            "development_percent": 60,
+                            "validation_percent": 20,
+                        },
+                        "source_families": [
+                            {
+                                "source_family_id": "family-a",
+                                "source_urls": ["https://example.test/channel"],
+                                "partition": "development",
+                                "partition_origin": "manual",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
             )
 
             with (
@@ -240,6 +268,7 @@ class GroundTruthReviewTests(unittest.TestCase):
                 review_next_ground_truth(
                     reviewer="reviewer",
                     evaluation_dir=evaluation,
+                    source_family_registry=registry_path,
                     open_video=False,
                     base_dir=None,
                 )
@@ -247,6 +276,8 @@ class GroundTruthReviewTests(unittest.TestCase):
             self.assertEqual("video2", review.call_args.kwargs["youtube_video_id"])
             manifest = json.loads(review.call_args.kwargs["selection_manifest_json"])
             self.assertEqual("automatic", manifest["selection_origin"])
+            self.assertEqual("sermon_fixture_selector_v2", manifest["selector_version"])
+            self.assertEqual("family-a", manifest["source_family_id"])
             self.assertNotIn("expected_outcome", manifest)
 
     def test_manual_resume_preserves_automatic_selection_manifest(self) -> None:

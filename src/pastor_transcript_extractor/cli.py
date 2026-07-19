@@ -573,12 +573,17 @@ def review_ground_truth(
 def review_next_ground_truth(
     reviewer: str | None = typer.Option(None, help="Human reviewer name or stable identifier."),
     evaluation_dir: Path = typer.Option(Path("evaluation"), help="Root containing drafts/ and fixtures/."),
+    source_family_registry: Path = typer.Option(
+        Path("evaluation/source-families.json"),
+        help="Frozen source-family registry used for partition-safe nomination.",
+    ),
     open_video: bool = typer.Option(True, "--open-video/--no-open-video", help="Open the selected video."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
     root = evaluation_dir.expanduser().resolve()
     try:
+        registry = load_source_family_registry(source_family_registry.expanduser().resolve())
         drafts = _load_json_artifacts(sorted((root / "drafts").glob("*.json")))
         fixtures = _load_json_artifacts(sorted((root / "fixtures").glob("*.json")))
         excluded_ids = {
@@ -596,6 +601,7 @@ def review_next_ground_truth(
 
         candidates = []
         candidates_by_id = {}
+        unregistered_source_urls: set[str] = set()
         for video in database.list_videos():
             extraction = database.get_latest_extraction_result_for_video(video.id)
             if extraction is None or not extraction.proposed_json_path:
@@ -607,21 +613,39 @@ def review_next_ground_truth(
                 continue
             if not isinstance(proposal, dict) or not isinstance(proposal.get("segments"), list):
                 continue
+            source = database.get_source_by_id(video.source_id)
+            transcript = database.get_latest_transcript_artifact_for_video(video.id)
+            if source is None:
+                continue
+            family = registry.resolve_source_url(source.url)
+            if family is None:
+                unregistered_source_urls.add(source.url)
+                continue
+            partition_assignment = assign_recording_partition(
+                registry=registry,
+                video_id=video.youtube_video_id,
+                source_url=source.url,
+                caption_source=transcript.source_kind.value if transcript else "unknown",
+                recording_date=video.published_at,
+            )
             candidate = sermon_candidate_from_proposal(
                 video_id=video.youtube_video_id,
-                corpus_group=(
-                    f"pastor:{video.pastor_id}"
-                    if video.pastor_id is not None
-                    else f"source:{video.source_id}"
-                ),
+                corpus_group=partition_assignment.source_family_id,
                 recording_date=video.published_at,
                 duration_seconds=float(video.duration_seconds) if video.duration_seconds else None,
                 proposal=proposal,
+                source_family_id=partition_assignment.source_family_id,
+                recording_condition_group_id=(
+                    partition_assignment.recording_condition_group_id
+                ),
+                partition=partition_assignment.partition.value,
             )
             candidates.append(candidate)
             candidates_by_id[candidate.video_id] = candidate
 
         group_use: dict[str, int] = {}
+        condition_use: dict[str, int] = {}
+        signal_use: dict[str, int] = {}
         source_use: dict[str, int] = {}
         bucket_use: dict[str, int] = {}
         prior_dates = []
@@ -629,7 +653,23 @@ def review_next_ground_truth(
             candidate = candidates_by_id.get(str(fixture.get("video_id", "")))
             if candidate is None:
                 continue
-            group_use[candidate.corpus_group] = group_use.get(candidate.corpus_group, 0) + 1
+            manifest = fixture.get("selection_manifest")
+            manifest = manifest if isinstance(manifest, dict) else {}
+            family_id = str(
+                manifest.get("source_family_id") or candidate.effective_source_family_id
+            )
+            condition_id = str(
+                manifest.get("recording_condition_group_id")
+                or candidate.effective_condition_group_id
+            )
+            group_use[family_id] = group_use.get(family_id, 0) + 1
+            condition_use[condition_id] = condition_use.get(condition_id, 0) + 1
+            frozen_signals = manifest.get("nomination_signals")
+            frozen_signals = frozen_signals if isinstance(frozen_signals, list) else []
+            for signal in frozen_signals:
+                if not isinstance(signal, str):
+                    continue
+                signal_use[signal] = signal_use.get(signal, 0) + 1
             source_use[candidate.proposal_source] = source_use.get(candidate.proposal_source, 0) + 1
             bucket = sermon_duration_bucket(candidate.duration_seconds)
             bucket_use[bucket] = bucket_use.get(bucket, 0) + 1
@@ -641,14 +681,24 @@ def review_next_ground_truth(
                 excluded_video_ids=frozenset(excluded_ids),
                 automatic_selection_count=len(automatic_ids),
                 corpus_group_use=group_use,
+                source_family_use=group_use,
+                recording_condition_group_use=condition_use,
+                nomination_signal_use=signal_use,
                 proposal_source_use=source_use,
                 duration_bucket_use=bucket_use,
                 prior_recording_dates=tuple(prior_dates),
             ),
         )
+        if unregistered_source_urls:
+            selection.manifest["unregistered_source_count"] = len(unregistered_source_urls)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
 
+    if selection.manifest.get("unregistered_source_count"):
+        console.print(
+            f"Skipped {selection.manifest['unregistered_source_count']} unregistered source(s); "
+            "add them to the source-family registry before nomination."
+        )
     console.print(
         f"Selected {selection.candidate.video_id} from "
         f"{selection.manifest['selection_stratum']}; "
