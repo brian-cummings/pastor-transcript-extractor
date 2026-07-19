@@ -23,7 +23,11 @@ from pastor_transcript_extractor.config import (
     resolve_base_dir,
 )
 from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_discovered_videos, sort_discovered_videos_by_recency
-from pastor_transcript_extractor.cli import app
+from pastor_transcript_extractor.cli import (
+    _recover_stale_transcribing_videos,
+    app,
+    discover_sources_service,
+)
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import SourceType, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
@@ -933,6 +937,76 @@ class SegmentationTests(unittest.TestCase):
             videos = database.list_videos()
             self.assertEqual(26, len(videos))
             self.assertIn("Found 30 video(s); queued 26 new video(s) after limit 26;", result.output)
+
+    def test_discovery_result_selects_only_the_current_limit_window(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            selected_existing = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="existing001",
+                title="Existing Current",
+                url="https://www.youtube.com/watch?v=existing001",
+                published_at="2026-07-18T00:00:00Z",
+            )
+            outside = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="oldoutside1",
+                title="Existing Outside Window",
+                url="https://www.youtube.com/watch?v=oldoutside1",
+                published_at="2026-07-01T00:00:00Z",
+            )
+            discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="newcurrent1",
+                    title="New Current",
+                    url="https://www.youtube.com/watch?v=newcurrent1",
+                    channel_name="Sample Church",
+                    published_at="2026-07-19T00:00:00Z",
+                    duration_seconds=3600,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="existing001",
+                    title="Existing Current",
+                    url="https://www.youtube.com/watch?v=existing001",
+                    channel_name="Sample Church",
+                    published_at="2026-07-18T00:00:00Z",
+                    duration_seconds=3600,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="oldoutside1",
+                    title="Existing Outside Window",
+                    url="https://www.youtube.com/watch?v=oldoutside1",
+                    channel_name="Sample Church",
+                    published_at="2026-07-01T00:00:00Z",
+                    duration_seconds=3600,
+                ),
+            ]
+
+            with patch(
+                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                return_value=discovered,
+            ):
+                result = discover_sources_service(
+                    limit=2,
+                    source_id=source.id,
+                    base_dir=base_dir,
+                )
+
+            selected_ids = set(result.selected_video_ids_by_source[source.id])
+            new_video = database.get_video_by_youtube_id("newcurrent1")
+            self.assertIsNotNone(new_video)
+            self.assertEqual({new_video.id, selected_existing.id}, selected_ids)
+            self.assertNotIn(outside.id, selected_ids)
 
     def test_discover_all_overrides_default_limit(self) -> None:
         runner = CliRunner()
@@ -2417,6 +2491,32 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("Transcribing 1 video(s) with 1 worker(s).", result.output)
             self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, updated_video.status)
+
+    def test_stale_transcription_restores_recorded_previous_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            database = Database(Path(tmp) / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=restore1234",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="restore1234",
+                title="Restore Previous Status",
+                url="https://www.youtube.com/watch?v=restore1234",
+                status=VideoStatus.TRANSCRIBING_LOCAL,
+                failure_reason="transcription_previous_status:exported",
+            )
+
+            _recover_stale_transcribing_videos(database, [video])
+
+            recovered = database.get_video_by_id(video.id)
+            self.assertEqual(VideoStatus.EXPORTED, recovered.status)
+            self.assertIsNone(recovered.failure_reason)
 
     def test_transcribe_recovers_stale_transcribing_local_with_captions_artifact(self) -> None:
         runner = CliRunner()

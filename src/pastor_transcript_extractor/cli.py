@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -164,6 +164,11 @@ STAGE_LABELS = {
 }
 
 DEFAULT_SPEAKER_MODEL_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryServiceResult:
+    selected_video_ids_by_source: dict[int, tuple[int, ...]]
 
 
 @app.command(help="Validate manually reviewed sermon evaluation fixtures.")
@@ -1405,7 +1410,7 @@ def _claim_video_for_transcription(database: Database, video_id: int) -> bool:
         video_id,
         current_status=video.status,
         new_status=VideoStatus.TRANSCRIBING_LOCAL,
-        failure_reason=None,
+        failure_reason=f"transcription_previous_status:{video.status.value}",
     )
 
 
@@ -1416,6 +1421,20 @@ def _recover_stale_transcribing_videos(database: Database, videos: list) -> None
         latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
         if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.LOCAL_ASR:
             database.update_video_status(video.id, VideoStatus.TRANSCRIBED_LOCAL)
+            continue
+        marker = video.failure_reason or ""
+        if marker.startswith("transcription_previous_status:"):
+            previous_value = marker.partition(":")[2]
+            try:
+                previous_status = VideoStatus(previous_value)
+            except ValueError:
+                previous_status = None
+            if previous_status is not None and previous_status is not VideoStatus.TRANSCRIBING_LOCAL:
+                database.update_video_status(video.id, previous_status)
+                continue
+        latest_extraction = database.get_latest_extraction_result_for_video(video.id)
+        if latest_extraction is not None:
+            database.update_video_status(video.id, VideoStatus.EXTRACTED)
             continue
         if latest_artifact is not None and latest_artifact.source_kind == TranscriptSourceKind.CAPTIONS:
             database.update_video_status(video.id, VideoStatus.TRANSCRIPT_FETCHED)
@@ -1747,12 +1766,35 @@ def sync_imported_sources(
             console.print(
                 f"[{index}/{len(source_ids)}] Synchronizing imported source #{source_id}"
             )
-            discover_sources_service(limit=latest, source_id=source_id, base_dir=base_dir)
-            fetch_captions_service(source_id=source_id, base_dir=base_dir)
+            _recover_stale_transcribing_videos(
+                database, database.list_videos_by_source_id(source_id)
+            )
+            discovery = discover_sources_service(
+                limit=latest, source_id=source_id, base_dir=base_dir
+            )
+            selected_video_ids = set(
+                discovery.selected_video_ids_by_source.get(source_id, ())
+            )
+            if not selected_video_ids:
+                console.print(
+                    f"No videos selected in the current latest-{latest} window for "
+                    f"source #{source_id}; skipping downstream processing."
+                )
+                continue
+            console.print(
+                f"Selected {len(selected_video_ids)} video(s) for downstream processing "
+                f"from source #{source_id}."
+            )
+            fetch_captions_service(
+                source_id=source_id,
+                base_dir=base_dir,
+                video_ids=selected_video_ids,
+            )
             projected_bytes = _projected_transcription_disk_bytes(
                 database,
                 source_id=source_id,
                 captions_missing_only=not all_audio,
+                video_ids=selected_video_ids,
             )
             require_disk_reserve(source_id, projected_bytes)
             transcribe_videos_service(
@@ -1762,12 +1804,14 @@ def sync_imported_sources(
                 prep_jobs=download_jobs,
                 source_id=source_id,
                 base_dir=base_dir,
+                video_ids=selected_video_ids,
             )
             if extract_new:
                 extraction = extract_batch(
                     database,
                     paths,
                     source_id=source_id,
+                    video_ids=selected_video_ids,
                     classifier="auto",
                     llm_model=None,
                     event_callback=lambda message: console.print(message, markup=False),
@@ -1779,7 +1823,11 @@ def sync_imported_sources(
                     f"Extracted {extraction.processed} video(s); "
                     f"skipped {extraction.skipped}; failed {extraction.failed}."
                 )
-            source_videos = database.list_videos_by_source_id(source_id)
+            source_videos = [
+                video
+                for video in database.list_videos_by_source_id(source_id)
+                if video.id in selected_video_ids
+            ]
             registration = [
                 backfill_existing_media_artifacts(database, paths, video_id=video.id)
                 for video in source_videos
@@ -1820,9 +1868,12 @@ def _projected_transcription_disk_bytes(
     *,
     source_id: int,
     captions_missing_only: bool,
+    video_ids: set[int] | None = None,
 ) -> int:
     projected = 0
     for video in database.list_videos_by_source_id(source_id):
+        if video_ids is not None and video.id not in video_ids:
+            continue
         if not _should_transcribe_video(
             database,
             video.id,
@@ -2221,7 +2272,7 @@ def discover_sources_service(
     all_videos: bool = False,
     source_id: int | None = None,
     base_dir: Path | None = None,
-) -> None:
+) -> DiscoveryServiceResult:
     database = get_database(base_dir)
     app_paths = build_paths(base_dir)
     tool_config = build_tool_config()
@@ -2230,7 +2281,7 @@ def discover_sources_service(
         sources = [source for source in sources if source.id == source_id]
     if not sources:
         console.print("No sources queued.")
-        return
+        return DiscoveryServiceResult({})
 
     discovered_count = 0
     skipped_count = 0
@@ -2244,9 +2295,11 @@ def discover_sources_service(
         video.youtube_video_id for video in database.list_excluded_videos()
     }
     total_sources = len(sources)
+    selected_video_ids_by_source: dict[int, tuple[int, ...]] = {}
     for index, source in enumerate(sources, start=1):
         if source.pastor_id is None:
             console.print(f"[yellow]Skipping[/yellow] source #{source.id}: no pastor linked.")
+            selected_video_ids_by_source[source.id] = ()
             continue
         pastor_record = database.get_pastor_by_id(source.pastor_id)
         pastor_slug = pastor_record.slug if pastor_record is not None else str(source.pastor_id)
@@ -2262,9 +2315,20 @@ def discover_sources_service(
             )
         except Exception as error:
             console.print(f"[red]Failed to discover[/red] {source.url}: {error}")
+            selected_video_ids_by_source[source.id] = ()
             continue
 
         discovered_videos = sort_discovered_videos_by_recency(discovered_videos)
+        selected_discovered = (
+            discovered_videos
+            if effective_limit is None
+            else discovered_videos[:effective_limit]
+        )
+        selected_youtube_ids = {
+            video.youtube_video_id
+            for video in selected_discovered
+            if video.youtube_video_id not in excluded_ids
+        }
         found_count += len(discovered_videos)
         source_found_count = len(discovered_videos)
         existing_source_videos = database.list_videos_by_source_id(source.id)
@@ -2316,6 +2380,11 @@ def discover_sources_service(
         if source_excluded_count:
             source_summary += f", excluded {source_excluded_count}"
         console.print(f"{source_summary}.", markup=False)
+        selected_video_ids_by_source[source.id] = tuple(
+            video.id
+            for video in database.list_videos_by_source_id(source.id)
+            if video.youtube_video_id in selected_youtube_ids
+        )
 
     if effective_limit is not None:
         summary = (
@@ -2327,6 +2396,7 @@ def discover_sources_service(
     if excluded_count:
         summary = f"{summary[:-1]}; excluded {excluded_count} video(s)."
     console.print(summary)
+    return DiscoveryServiceResult(selected_video_ids_by_source)
 
 
 @app.command(help="Discover videos from queued sources with yt-dlp metadata.")
@@ -2351,6 +2421,7 @@ def transcribe_videos_service(
     source_id: int | None = None,
     base_dir: Path | None = None,
     prep_jobs: int = DEFAULT_PREP_WORKERS,
+    video_ids: set[int] | None = None,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -2358,6 +2429,8 @@ def transcribe_videos_service(
     videos = database.list_videos()
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]
+    if video_ids is not None:
+        videos = [video for video in videos if video.id in video_ids]
     if not videos:
         console.print("No videos queued.")
         return
@@ -2588,6 +2661,7 @@ def transcribe(
 def fetch_captions_service(
     source_id: int | None = None,
     base_dir: Path | None = None,
+    video_ids: set[int] | None = None,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -2595,6 +2669,8 @@ def fetch_captions_service(
     videos = database.list_videos()
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]
+    if video_ids is not None:
+        videos = [video for video in videos if video.id in video_ids]
     if not videos:
         console.print("No videos queued.")
         return

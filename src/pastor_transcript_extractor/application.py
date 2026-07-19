@@ -81,6 +81,7 @@ def extract_batch(
     force: bool = False,
     source_id: int | None = None,
     pastor_id: int | None = None,
+    video_ids: set[int] | None = None,
     classifier: str = "auto",
     llm_model: str | None = None,
     event_callback: EventCallback | None = None,
@@ -94,6 +95,8 @@ def extract_batch(
         videos = [video for video in videos if video.source_id == source_id]
     if pastor_id is not None:
         videos = [video for video in videos if video.pastor_id == pastor_id]
+    if video_ids is not None:
+        videos = [video for video in videos if video.id in video_ids]
 
     processed = 0
     skipped = 0

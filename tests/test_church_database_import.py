@@ -17,7 +17,7 @@ from pastor_transcript_extractor.church_database_import import (
     normalize_youtube_channel_url,
 )
 from pastor_transcript_extractor.cli import app
-from pastor_transcript_extractor.models import SourceType
+from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.storage import Database
 
 
@@ -211,10 +211,30 @@ class ImportedSourceSyncTests(unittest.TestCase):
     def test_sync_registers_and_archives_each_source_after_extraction(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _, source_id = self._database(root, configure_archive=True)
+            database, source_id = self._database(root, configure_archive=True)
+            pastor = database.get_pastor_by_slug("sample")
+            self.assertIsNotNone(pastor)
+            outside = database.add_video(
+                source_id=source_id,
+                pastor_id=pastor.id,
+                youtube_video_id="outside0001",
+                title="Outside Current Window",
+                url="https://www.youtube.com/watch?v=outside0001",
+                channel_name="Sample Church",
+                published_at="2025-01-01T00:00:00Z",
+                duration_seconds=3600,
+                status=VideoStatus.TRANSCRIBING_LOCAL,
+            )
+            database.add_extraction_result(
+                video_id=outside.id,
+                version=1,
+                proposed_text_path=str(root / "outside.md"),
+                proposed_json_path=str(root / "outside.json"),
+            )
             events: list[str] = []
 
             def extraction(*args, **kwargs):
+                self.assertEqual({1}, kwargs["video_ids"])
                 events.append("extract")
                 return SimpleNamespace(processed=1, skipped=0, failed=0)
 
@@ -241,6 +261,20 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     items=(),
                 )
 
+            def discovery(**kwargs):
+                events.append("discover")
+                return SimpleNamespace(
+                    selected_video_ids_by_source={source_id: (1,)}
+                )
+
+            def captions(**kwargs):
+                self.assertEqual({1}, kwargs["video_ids"])
+                events.append("captions")
+
+            def transcribe(**kwargs):
+                self.assertEqual({1}, kwargs["video_ids"])
+                events.append("transcribe")
+
             with (
                 patch(
                     "pastor_transcript_extractor.cli.imported_source_ids",
@@ -248,15 +282,15 @@ class ImportedSourceSyncTests(unittest.TestCase):
                 ),
                 patch(
                     "pastor_transcript_extractor.cli.discover_sources_service",
-                    side_effect=lambda **kwargs: events.append("discover"),
+                    side_effect=discovery,
                 ),
                 patch(
                     "pastor_transcript_extractor.cli.fetch_captions_service",
-                    side_effect=lambda **kwargs: events.append("captions"),
+                    side_effect=captions,
                 ),
                 patch(
                     "pastor_transcript_extractor.cli.transcribe_videos_service",
-                    side_effect=lambda **kwargs: events.append("transcribe"),
+                    side_effect=transcribe,
                 ),
                 patch("pastor_transcript_extractor.cli.extract_batch", side_effect=extraction),
                 patch(
@@ -283,6 +317,10 @@ class ImportedSourceSyncTests(unittest.TestCase):
             self.assertEqual(
                 ["discover", "captions", "transcribe", "extract", "register", "archive"],
                 events,
+            )
+            self.assertEqual(
+                VideoStatus.EXTRACTED,
+                database.get_video_by_id(outside.id).status,
             )
 
     def test_sync_archive_mode_requires_a_configured_destination(self) -> None:
@@ -377,6 +415,10 @@ class ImportedSourceSyncTests(unittest.TestCase):
                 if source_id == second_source.id:
                     self.assertTrue(archive_started.wait(timeout=2))
                     second_discovery_started.set()
+                selected = database.list_videos_by_source_id(source_id)[0].id
+                return SimpleNamespace(
+                    selected_video_ids_by_source={source_id: (selected,)}
+                )
 
             def archival(*args, **kwargs):
                 nonlocal archive_calls
@@ -463,7 +505,12 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.shutil.disk_usage",
                     return_value=constrained_disk,
                 ),
-                patch("pastor_transcript_extractor.cli.discover_sources_service"),
+                patch(
+                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    return_value=SimpleNamespace(
+                        selected_video_ids_by_source={source_id: (1,)}
+                    ),
+                ),
                 patch("pastor_transcript_extractor.cli.fetch_captions_service"),
                 patch(
                     "pastor_transcript_extractor.cli.transcribe_videos_service"
@@ -550,7 +597,19 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.shutil.disk_usage",
                     side_effect=disk_usage,
                 ),
-                patch("pastor_transcript_extractor.cli.discover_sources_service"),
+                patch(
+                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    side_effect=lambda **kwargs: SimpleNamespace(
+                        selected_video_ids_by_source={
+                            kwargs["source_id"]: tuple(
+                                video.id
+                                for video in database.list_videos_by_source_id(
+                                    kwargs["source_id"]
+                                )
+                            )
+                        }
+                    ),
+                ),
                 patch("pastor_transcript_extractor.cli.fetch_captions_service"),
                 patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
                 patch(

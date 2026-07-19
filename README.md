@@ -148,6 +148,9 @@ normalized processing copy remains local, and archive failures remain retryable.
 If a separate `pte media archive-sources` process already holds the archive lock,
 the sync archive worker stays pending and retries until that process finishes;
 download admission can continue while the disk reservation remains safe.
+The `--latest` window is preserved through captions, local ASR, extraction,
+registration, and archival; older videos already attached to a reused source are
+not pulled into downstream work merely because `--all-audio` is enabled.
 Imported assignment changes are reported as conflicts and are never silently
 overwritten.
 
