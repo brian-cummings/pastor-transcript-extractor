@@ -400,16 +400,29 @@ class MediaArtifactTests(unittest.TestCase):
         )
         archive_root = self.paths.root / "nas"
         archive_root.mkdir()
+        progress_events = []
 
         first = archive_source_media(
             self.database,
             self.paths,
             archive_root=archive_root,
+            progress_callback=progress_events.append,
         )
         second = archive_source_media(self.database, self.paths)
 
         self.assertEqual(1, first.counts["archived"])
         self.assertEqual(1, second.counts["already_archived"])
+        self.assertEqual(
+            [
+                "verifying local source",
+                "copying to NAS",
+                "verifying NAS checksum",
+                "linking archived source",
+                "complete",
+            ],
+            [event.stage for event in progress_events],
+        )
+        self.assertEqual("archived", progress_events[-1].outcome)
         self.assertTrue(source_path.is_symlink())
         archived_path = archive_root / source_path.relative_to(self.paths.root)
         self.assertEqual(archived_path.resolve(), source_path.resolve())

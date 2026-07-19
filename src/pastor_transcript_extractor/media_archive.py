@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import shutil
+from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.media_artifacts import (
@@ -25,6 +26,21 @@ class ArchiveItemResult:
     archive_path: Path
     outcome: str
     detail: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ArchiveProgressEvent:
+    index: int
+    total: int
+    media_artifact_id: int
+    source_path: Path
+    archive_path: Path
+    stage: str
+    outcome: str | None = None
+    detail: str | None = None
+
+
+ArchiveProgressCallback = Callable[[ArchiveProgressEvent], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +91,7 @@ def archive_source_media(
     archive_root: Path | None = None,
     dry_run: bool = False,
     limit: int | None = None,
+    progress_callback: ArchiveProgressCallback | None = None,
 ) -> ArchiveRunResult:
     destination = (
         configure_archive_destination(database, archive_root)
@@ -103,9 +120,19 @@ def archive_source_media(
     if not root.is_dir():
         detail = f"archive destination is unavailable: {root}"
         items = []
-        for artifact, entry in zip(candidates, entries):
+        for index, (artifact, entry) in enumerate(zip(candidates, entries), start=1):
             database.add_media_archive_attempt(
                 archive_entry_id=entry.id,
+                outcome="destination_unavailable",
+                detail=detail,
+            )
+            _notify(
+                progress_callback,
+                index=index,
+                total=len(candidates),
+                artifact=artifact,
+                entry=entry,
+                stage="complete",
                 outcome="destination_unavailable",
                 detail=detail,
             )
@@ -113,11 +140,28 @@ def archive_source_media(
         return ArchiveRunResult(destination, len(candidates), tuple(items))
 
     items: list[ArchiveItemResult] = []
-    for artifact, entry in zip(candidates, entries):
+    for index, (artifact, entry) in enumerate(zip(candidates, entries), start=1):
         if dry_run:
+            _notify(
+                progress_callback,
+                index=index,
+                total=len(candidates),
+                artifact=artifact,
+                entry=entry,
+                stage="complete",
+                outcome="would_archive",
+            )
             items.append(_item(artifact, entry, "would_archive", None))
             continue
-        outcome, detail = _archive_one(artifact, entry)
+        notify_stage = lambda stage: _notify(
+            progress_callback,
+            index=index,
+            total=len(candidates),
+            artifact=artifact,
+            entry=entry,
+            stage=stage,
+        )
+        outcome, detail = _archive_one(artifact, entry, notify_stage)
         database.add_media_archive_attempt(
             archive_entry_id=entry.id,
             outcome=outcome,
@@ -127,6 +171,16 @@ def archive_source_media(
             database.update_media_archive_entry_status(entry.id, "archived")
         elif outcome == "failed":
             database.update_media_archive_entry_status(entry.id, "failed")
+        _notify(
+            progress_callback,
+            index=index,
+            total=len(candidates),
+            artifact=artifact,
+            entry=entry,
+            stage="complete",
+            outcome=outcome,
+            detail=detail,
+        )
         items.append(_item(artifact, entry, outcome, detail))
     return ArchiveRunResult(destination, len(candidates), tuple(items))
 
@@ -164,20 +218,25 @@ def _archive_path(app_paths: AppPaths, root: Path, artifact: MediaArtifact) -> P
 
 
 def _archive_one(
-    artifact: MediaArtifact, entry: MediaArchiveEntry
+    artifact: MediaArtifact,
+    entry: MediaArchiveEntry,
+    stage_callback: Callable[[str], None] | None = None,
 ) -> tuple[str, str | None]:
     source = Path(entry.source_path)
     destination = Path(entry.archive_path)
     try:
         if _source_points_to_archive(source, destination):
+            _stage(stage_callback, "verifying existing archive")
             if _matches(destination, artifact):
                 return "already_archived", None
             return "failed", "archived target is missing or does not match its recorded checksum"
 
         if destination.exists():
+            _stage(stage_callback, "verifying existing archive")
             if not _matches(destination, artifact):
                 return "failed", f"archive path collision: {destination}"
         else:
+            _stage(stage_callback, "verifying local source")
             if not verify_media_artifact(artifact):
                 return "failed", f"source media is missing or corrupt: {source}"
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -185,14 +244,16 @@ def _archive_one(
             if partial.exists() or partial.is_symlink():
                 partial.unlink()
             try:
+                _stage(stage_callback, "copying to NAS")
                 shutil.copy2(source, partial)
+                _stage(stage_callback, "verifying NAS checksum")
                 if not _matches(partial, artifact):
                     raise RuntimeError("copied archive checksum does not match source artifact")
                 os.replace(partial, destination)
             finally:
                 if partial.exists() or partial.is_symlink():
                     partial.unlink()
-
+        _stage(stage_callback, "linking archived source")
         _replace_source_with_symlink(source, destination, artifact)
         return "archived", None
     except OSError as error:
@@ -263,4 +324,36 @@ def _item(
         archive_path=Path(entry.archive_path),
         outcome=outcome,
         detail=detail,
+    )
+
+
+def _stage(callback: Callable[[str], None] | None, stage: str) -> None:
+    if callback is not None:
+        callback(stage)
+
+
+def _notify(
+    callback: ArchiveProgressCallback | None,
+    *,
+    index: int,
+    total: int,
+    artifact: MediaArtifact,
+    entry: MediaArchiveEntry,
+    stage: str,
+    outcome: str | None = None,
+    detail: str | None = None,
+) -> None:
+    if callback is None:
+        return
+    callback(
+        ArchiveProgressEvent(
+            index=index,
+            total=total,
+            media_artifact_id=artifact.id,
+            source_path=Path(entry.source_path),
+            archive_path=Path(entry.archive_path),
+            stage=stage,
+            outcome=outcome,
+            detail=detail,
+        )
     )

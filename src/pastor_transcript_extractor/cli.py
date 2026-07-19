@@ -74,7 +74,11 @@ from pastor_transcript_extractor.interaction_diagnostics import (
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
-from pastor_transcript_extractor.media_archive import archive_source_media, archive_status
+from pastor_transcript_extractor.media_archive import (
+    ArchiveProgressEvent,
+    archive_source_media,
+    archive_status,
+)
 from pastor_transcript_extractor.media_artifacts import (
     audit_media_coverage,
     backfill_existing_media_artifacts,
@@ -1221,22 +1225,49 @@ def media_archive_sources(
 ) -> None:
     database = get_database(base_dir)
     try:
-        result = archive_source_media(
-            database,
-            build_paths(base_dir),
-            archive_root=archive_root,
-            dry_run=dry_run,
-            limit=limit,
-        )
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task("Verifying normalized-audio eligibility", total=None)
+
+            def update_archive_progress(event: ArchiveProgressEvent) -> None:
+                if event.stage == "complete":
+                    detail = f" ({event.detail})" if event.detail else ""
+                    progress.console.print(
+                        f"[{event.index}/{event.total}] media artifact #{event.media_artifact_id}: "
+                        f"{event.outcome} -> {event.archive_path}{detail}",
+                        markup=False,
+                    )
+                    progress.update(
+                        task_id,
+                        total=event.total,
+                        completed=event.index,
+                        description=f"Archived source audio ({event.index}/{event.total})",
+                    )
+                    return
+                progress.update(
+                    task_id,
+                    total=event.total,
+                    completed=event.index - 1,
+                    description=(
+                        f"[{event.index}/{event.total}] {event.source_path.name}: {event.stage}"
+                    ),
+                )
+
+            result = archive_source_media(
+                database,
+                build_paths(base_dir),
+                archive_root=archive_root,
+                dry_run=dry_run,
+                limit=limit,
+                progress_callback=update_archive_progress,
+            )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
-    for index, item in enumerate(result.items, start=1):
-        detail = f" ({item.detail})" if item.detail else ""
-        console.print(
-            f"[{index}/{len(result.items)}] media artifact #{item.media_artifact_id}: "
-            f"{item.outcome} -> {item.archive_path}{detail}",
-            markup=False,
-        )
     counts = result.counts
     console.print(
         f"Archive root={result.destination.archive_root}; eligible={result.eligible}; "
