@@ -35,6 +35,7 @@ from pastor_transcript_extractor.evaluation import (
     create_evaluation_run,
     evaluate_fixture_payload,
 )
+from pastor_transcript_extractor.evaluation_baseline import validate_localization_baseline
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
     NEGATIVE_FAILURE_MODES,
@@ -153,6 +154,27 @@ def validate_fixtures(
 ) -> None:
     fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
     console.print(f"Validated {len(fixtures)} fixture(s); all video IDs are unique.")
+
+
+@app.command(help="Validate a frozen sermon-localization baseline and its exact fixture corpus.")
+def validate_baseline(
+    manifest: Path = typer.Argument(
+        Path("evaluation/baselines/sermon-localization-v1.json"),
+        help="Frozen localization baseline manifest.",
+    ),
+    fixture_dir: Path = typer.Option(
+        Path("evaluation/fixtures"),
+        help="Directory containing the baseline fixture corpus.",
+    ),
+) -> None:
+    baseline = validate_localization_baseline(
+        manifest.expanduser().resolve(),
+        fixture_dir.expanduser().resolve(),
+    )
+    console.print(
+        f"Validated {baseline.baseline_id}: {baseline.fixture_count} fixture(s), "
+        f"fingerprint={baseline.corpus_fingerprint}."
+    )
 
 
 @app.command(help="Evaluate existing production classification artifacts against frozen fixtures.")

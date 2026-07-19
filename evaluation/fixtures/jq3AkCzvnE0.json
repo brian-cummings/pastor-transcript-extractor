@@ -1,0 +1,22 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "religious_education_not_worship_sermon",
+  "ground_truth_version": 1,
+  "notes": "Sabbath school",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-16T22:16:18.959501+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "796e129601838fdbb820925d7ec43cf13686f9b1ddc8de61dc6e23cef96d8813",
+    "reason_codes": [
+      "stratum_boundary_risk",
+      "corpus_group_unrepresented"
+    ],
+    "selection_origin": "automatic",
+    "selection_stratum": "boundary_risk",
+    "selector_version": "sermon_fixture_selector_v1"
+  },
+  "video_id": "jq3AkCzvnE0"
+}

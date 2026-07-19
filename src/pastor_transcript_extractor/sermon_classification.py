@@ -20,6 +20,7 @@ CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v1"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-likelihood-rescue-v1"
 FINE_COMPONENT_VERSION = "objective-noise-components+continuity-probe-v2"
+SEARCH_ALGORITHM_VERSION = "adaptive_llm_v3"
 
 
 class ContentLabel(StrEnum):
@@ -834,7 +835,7 @@ def classify_sermon_content_adaptive(
     else:
         search = {
             "schema_version": 1,
-            "algorithm_version": "adaptive_llm_v3",
+            "algorithm_version": SEARCH_ALGORITHM_VERSION,
             "candidates": [],
             "selected_rank": None,
             "rule_baseline": None,
@@ -845,7 +846,7 @@ def classify_sermon_content_adaptive(
             "discovery": discovery,
         }
         return HybridSermonResult(
-            "adaptive_llm_v3", client.model, prompt_version, "low", [],
+            SEARCH_ALGORITHM_VERSION, client.model, prompt_version, "low", [],
             [index for block in coarse_blocks for index in block.segment_indexes], [],
             ["no plausible sermon region found during coarse scan"], coarse_blocks, coarse_audit,
             {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
@@ -1139,7 +1140,7 @@ def classify_sermon_content_adaptive(
     ]
     search = {
         "schema_version": 1,
-        "algorithm_version": "adaptive_llm_v3",
+        "algorithm_version": SEARCH_ALGORITHM_VERSION,
         "candidates": ranked_candidates,
         "selected_rank": int(selected_candidate["rank"]),
         "rule_baseline": {
@@ -1154,7 +1155,7 @@ def classify_sermon_content_adaptive(
         "discovery": discovery,
     }
     return HybridSermonResult(
-        "adaptive_llm_v3", client.model, prompt_version, confidence,
+        SEARCH_ALGORITHM_VERSION, client.model, prompt_version, confidence,
         sorted(retained), sorted(all_timed - retained), uncertain_ids, warnings,
         coarse_blocks + fine_blocks, coarse_audit + fine_audit,
         {"hits": cache.hits, "misses": cache.misses} if cache is not None else None,
