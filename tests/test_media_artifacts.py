@@ -20,6 +20,7 @@ from pastor_transcript_extractor.media import (
     YtDlpError,
     download_source_audio,
 )
+from pastor_transcript_extractor.media_archive import archive_source_media, archive_status
 from pastor_transcript_extractor.media_artifacts import (
     audit_media_coverage,
     backfill_existing_media_artifacts,
@@ -363,6 +364,119 @@ class MediaArtifactTests(unittest.TestCase):
         )
         coverage = audit_media_coverage(self.database)
         self.assertEqual((video.youtube_video_id,), coverage.verified)
+
+    def test_source_archive_records_path_and_replaces_source_with_verified_symlink(self) -> None:
+        video, _ = self._video("archive001")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "media" / "source-test.webm"
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(b"compressed-source-audio")
+        source = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="original_download",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        normalized_path = audio_root / "media" / "normalized-test.wav"
+        write_wav(normalized_path)
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+            parent=source,
+        )
+        archive_root = self.paths.root / "nas"
+        archive_root.mkdir()
+
+        first = archive_source_media(
+            self.database,
+            self.paths,
+            archive_root=archive_root,
+        )
+        second = archive_source_media(self.database, self.paths)
+
+        self.assertEqual(1, first.counts["archived"])
+        self.assertEqual(1, second.counts["already_archived"])
+        self.assertTrue(source_path.is_symlink())
+        archived_path = archive_root / source_path.relative_to(self.paths.root)
+        self.assertEqual(archived_path.resolve(), source_path.resolve())
+        self.assertEqual(b"compressed-source-audio", archived_path.read_bytes())
+        status = archive_status(self.database)
+        self.assertEqual(str(archive_root.resolve()), status.destination.archive_root)
+        self.assertEqual({"pending": 0, "archived": 1, "failed": 0}, status.counts)
+        entry = status.entries[0]
+        self.assertEqual(str(source_path.resolve(strict=False)), str(archived_path.resolve()))
+        self.assertEqual(str(archived_path), entry.archive_path)
+        self.assertEqual(
+            ["archived", "already_archived"],
+            [attempt.outcome for attempt in self.database.list_media_archive_attempts()],
+        )
+
+    def test_source_archive_persists_unavailable_attempt_and_retries_later(self) -> None:
+        video, _ = self._video("retryarchive")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "downloaded.wav"
+        normalized_path = audio_root / "normalized.wav"
+        write_wav(source_path, sample_rate=44100, channels=2)
+        write_wav(normalized_path)
+        source = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+            parent=source,
+        )
+        unavailable_root = self.paths.root / "temporarily-unmounted-nas"
+
+        unavailable = archive_source_media(
+            self.database,
+            self.paths,
+            archive_root=unavailable_root,
+        )
+        self.assertEqual(1, unavailable.counts["destination_unavailable"])
+        self.assertFalse(source_path.is_symlink())
+        self.assertEqual("pending", archive_status(self.database).entries[0].status)
+
+        unavailable_root.mkdir()
+        retried = archive_source_media(self.database, self.paths)
+
+        self.assertEqual(1, retried.counts["archived"])
+        self.assertTrue(source_path.is_symlink())
+        self.assertEqual(
+            ["destination_unavailable", "archived"],
+            [attempt.outcome for attempt in self.database.list_media_archive_attempts()],
+        )
 
     def test_video_deletion_removes_media_rows_but_not_shared_registry_profiles(self) -> None:
         video, _ = self._video("deletion001")

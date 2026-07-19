@@ -85,6 +85,40 @@ The ensure service first migrates and verifies existing audio. It downloads
 only when no valid normalized artifact is available, and it never invokes
 Whisper or creates a transcript artifact.
 
+## Source audio archive
+
+Original compressed downloads and historical `downloaded.wav` files are not
+inputs to acoustic comparison after a verified normalized artifact exists. PTE
+can archive those eligible source artifacts while retaining normalized audio
+locally:
+
+```bash
+pte media archive-sources \
+  --archive-root /Volumes/home/SermonExtractorAudio \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The first invocation records the archive root as PTE's active destination.
+Later invocations may omit `--archive-root`; they reuse the persisted path and
+retry pending or failed entries. Inspect state without moving files with:
+
+```bash
+pte media archive-status \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Every eligible source artifact receives a persisted entry containing its local
+path, archive path, SHA-256, byte size, and current status. Attempts are
+append-only. If the destination is not mounted, PTE records
+`destination_unavailable`, leaves the source untouched, and keeps the entry
+pending for the next invocation.
+
+Archival copies to a temporary file on the destination, verifies byte size and
+SHA-256, atomically materializes the final archive path, and then replaces the
+local source with a symlink. Normalized audio is never selected by this command.
+The symlink preserves existing media-artifact and transcript provenance paths
+when the NAS is mounted.
+
 ## Replay guarantees
 
 - Existing verified content is reused without redownload.
@@ -97,3 +131,5 @@ Whisper or creates a transcript artifact.
   prior record.
 - Normalization provenance includes the pinned local ffmpeg version.
 - `proposed.json`, transcript artifacts, and sermon dispositions are untouched.
+- Source archival never selects normalized comparison audio.
+- A source is eligible only after its video has a verified normalized artifact.

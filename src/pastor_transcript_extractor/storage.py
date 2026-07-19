@@ -13,6 +13,9 @@ from pastor_transcript_extractor.models import (
     IdentityEvidence,
     IdentityState,
     MediaAcquisitionAttempt,
+    MediaArchiveAttempt,
+    MediaArchiveDestination,
+    MediaArchiveEntry,
     MediaArtifact,
     MetadataArtifact,
     Pastor,
@@ -130,6 +133,41 @@ CREATE TABLE IF NOT EXISTS media_acquisition_attempts (
     created_at TEXT NOT NULL,
     FOREIGN KEY(video_id) REFERENCES videos(id),
     FOREIGN KEY(media_artifact_id) REFERENCES media_artifacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS media_archive_destinations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    archive_root TEXT NOT NULL UNIQUE,
+    active INTEGER NOT NULL CHECK(active IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS media_archive_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    media_artifact_id INTEGER NOT NULL UNIQUE,
+    destination_id INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    archive_path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    byte_size INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'archived', 'failed')),
+    archived_at TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(media_artifact_id) REFERENCES media_artifacts(id),
+    FOREIGN KEY(destination_id) REFERENCES media_archive_destinations(id)
+);
+
+CREATE TABLE IF NOT EXISTS media_archive_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    archive_entry_id INTEGER NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN (
+        'archived', 'already_archived', 'destination_unavailable', 'failed'
+    )),
+    detail TEXT NULL,
+    attempted_at TEXT NOT NULL,
+    FOREIGN KEY(archive_entry_id) REFERENCES media_archive_entries(id)
 );
 
 CREATE TABLE IF NOT EXISTS transcript_segments (
@@ -333,6 +371,12 @@ ON media_artifacts(video_id, artifact_kind, id);
 CREATE INDEX IF NOT EXISTS idx_media_attempts_video
 ON media_acquisition_attempts(video_id, id);
 
+CREATE INDEX IF NOT EXISTS idx_media_archive_entries_status
+ON media_archive_entries(status, id);
+
+CREATE INDEX IF NOT EXISTS idx_media_archive_attempts_entry
+ON media_archive_attempts(archive_entry_id, id);
+
 CREATE INDEX IF NOT EXISTS idx_profile_observation_events_pair
 ON profile_observation_events(profile_id, observation_id, id);
 
@@ -478,6 +522,41 @@ class Database:
             service_version=str(row["service_version"]),
             input_fingerprint=str(row["input_fingerprint"]),
             created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _media_archive_destination_from_row(
+        self, row: sqlite3.Row
+    ) -> MediaArchiveDestination:
+        return MediaArchiveDestination(
+            id=int(row["id"]),
+            archive_root=str(row["archive_root"]),
+            active=bool(row["active"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+            updated_at=parse_datetime(str(row["updated_at"])) or utc_now(),
+        )
+
+    def _media_archive_entry_from_row(self, row: sqlite3.Row) -> MediaArchiveEntry:
+        return MediaArchiveEntry(
+            id=int(row["id"]),
+            media_artifact_id=int(row["media_artifact_id"]),
+            destination_id=int(row["destination_id"]),
+            source_path=str(row["source_path"]),
+            archive_path=str(row["archive_path"]),
+            content_sha256=str(row["content_sha256"]),
+            byte_size=int(row["byte_size"]),
+            status=str(row["status"]),
+            archived_at=parse_datetime(row["archived_at"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+            updated_at=parse_datetime(str(row["updated_at"])) or utc_now(),
+        )
+
+    def _media_archive_attempt_from_row(self, row: sqlite3.Row) -> MediaArchiveAttempt:
+        return MediaArchiveAttempt(
+            id=int(row["id"]),
+            archive_entry_id=int(row["archive_entry_id"]),
+            outcome=str(row["outcome"]),
+            detail=row["detail"],
+            attempted_at=parse_datetime(str(row["attempted_at"])) or utc_now(),
         )
 
     def _transcript_segment_from_row(self, row: sqlite3.Row) -> TranscriptSegment:
@@ -1078,6 +1157,129 @@ class Database:
             ).fetchone()
         return self._media_acquisition_attempt_from_row(row) if row is not None else None
 
+    def configure_media_archive_destination(
+        self, archive_root: str
+    ) -> MediaArchiveDestination:
+        now = utc_now().isoformat()
+        with self.connect() as connection:
+            connection.execute("UPDATE media_archive_destinations SET active = 0, updated_at = ?", (now,))
+            connection.execute(
+                """
+                INSERT INTO media_archive_destinations (
+                    archive_root, active, created_at, updated_at
+                ) VALUES (?, 1, ?, ?)
+                ON CONFLICT(archive_root) DO UPDATE SET active = 1, updated_at = excluded.updated_at
+                """,
+                (archive_root, now, now),
+            )
+            row = connection.execute(
+                "SELECT * FROM media_archive_destinations WHERE archive_root = ?",
+                (archive_root,),
+            ).fetchone()
+        assert row is not None
+        return self._media_archive_destination_from_row(row)
+
+    def get_active_media_archive_destination(self) -> MediaArchiveDestination | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM media_archive_destinations WHERE active = 1 ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return self._media_archive_destination_from_row(row) if row is not None else None
+
+    def upsert_media_archive_entry(
+        self,
+        *,
+        media_artifact_id: int,
+        destination_id: int,
+        source_path: str,
+        archive_path: str,
+        content_sha256: str,
+        byte_size: int,
+    ) -> MediaArchiveEntry:
+        now = utc_now().isoformat()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO media_archive_entries (
+                    media_artifact_id, destination_id, source_path, archive_path,
+                    content_sha256, byte_size, status, archived_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?)
+                ON CONFLICT(media_artifact_id) DO NOTHING
+                """,
+                (
+                    media_artifact_id,
+                    destination_id,
+                    source_path,
+                    archive_path,
+                    content_sha256,
+                    byte_size,
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM media_archive_entries WHERE media_artifact_id = ?",
+                (media_artifact_id,),
+            ).fetchone()
+        assert row is not None
+        return self._media_archive_entry_from_row(row)
+
+    def update_media_archive_entry_status(
+        self, entry_id: int, status: str
+    ) -> MediaArchiveEntry:
+        now = utc_now().isoformat()
+        archived_at = now if status == "archived" else None
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE media_archive_entries
+                SET status = ?, archived_at = COALESCE(archived_at, ?), updated_at = ?
+                WHERE id = ?
+                """,
+                (status, archived_at, now, entry_id),
+            )
+            row = connection.execute(
+                "SELECT * FROM media_archive_entries WHERE id = ?", (entry_id,)
+            ).fetchone()
+        if row is None:
+            raise ValueError(f"Unknown media archive entry: {entry_id}")
+        return self._media_archive_entry_from_row(row)
+
+    def list_media_archive_entries(self) -> list[MediaArchiveEntry]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM media_archive_entries ORDER BY id"
+            ).fetchall()
+        return [self._media_archive_entry_from_row(row) for row in rows]
+
+    def add_media_archive_attempt(
+        self, *, archive_entry_id: int, outcome: str, detail: str | None
+    ) -> MediaArchiveAttempt:
+        attempted_at = utc_now().isoformat()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO media_archive_attempts (
+                    archive_entry_id, outcome, detail, attempted_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (archive_entry_id, outcome, detail, attempted_at),
+            )
+        return MediaArchiveAttempt(
+            id=int(cursor.lastrowid),
+            archive_entry_id=archive_entry_id,
+            outcome=outcome,
+            detail=detail,
+            attempted_at=parse_datetime(attempted_at) or utc_now(),
+        )
+
+    def list_media_archive_attempts(self) -> list[MediaArchiveAttempt]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM media_archive_attempts ORDER BY id"
+            ).fetchall()
+        return [self._media_archive_attempt_from_row(row) for row in rows]
+
     def delete_transcript_segments_for_video(self, video_id: int) -> None:
         with self.connect() as connection:
             connection.execute("DELETE FROM transcript_segments WHERE video_id = ?", (video_id,))
@@ -1130,6 +1332,26 @@ class Database:
         self.delete_transcript_segments_for_video(video_id)
         self.delete_transcript_artifacts_for_video(video_id)
         with self.connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM media_archive_attempts
+                WHERE archive_entry_id IN (
+                    SELECT mae.id FROM media_archive_entries mae
+                    JOIN media_artifacts ma ON ma.id = mae.media_artifact_id
+                    WHERE ma.video_id = ?
+                )
+                """,
+                (video_id,),
+            )
+            connection.execute(
+                """
+                DELETE FROM media_archive_entries
+                WHERE media_artifact_id IN (
+                    SELECT id FROM media_artifacts WHERE video_id = ?
+                )
+                """,
+                (video_id,),
+            )
             connection.execute("DELETE FROM media_acquisition_attempts WHERE video_id = ?", (video_id,))
             connection.execute("DELETE FROM media_artifacts WHERE video_id = ?", (video_id,))
             connection.execute("DELETE FROM videos WHERE id = ?", (video_id,))
@@ -2090,6 +2312,8 @@ class Database:
             speaker_name_claim_count = connection.execute("SELECT COUNT(*) FROM speaker_name_claims").fetchone()[0]
             media_artifact_count = connection.execute("SELECT COUNT(*) FROM media_artifacts").fetchone()[0]
             media_attempt_count = connection.execute("SELECT COUNT(*) FROM media_acquisition_attempts").fetchone()[0]
+            media_archive_entry_count = connection.execute("SELECT COUNT(*) FROM media_archive_entries").fetchone()[0]
+            media_archive_attempt_count = connection.execute("SELECT COUNT(*) FROM media_archive_attempts").fetchone()[0]
         return {
             "sources": int(source_count),
             "source_import_refs": int(source_import_ref_count),
@@ -2108,4 +2332,6 @@ class Database:
             "speaker_name_claims": int(speaker_name_claim_count),
             "media_artifacts": int(media_artifact_count),
             "media_acquisition_attempts": int(media_attempt_count),
+            "media_archive_entries": int(media_archive_entry_count),
+            "media_archive_attempts": int(media_archive_attempt_count),
         }

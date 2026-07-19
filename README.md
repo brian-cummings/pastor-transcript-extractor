@@ -370,3 +370,17 @@ clustering backend is active.
 - `docs/HANDOFF.md`
 - `evaluation/speaker-pairs/README.md` for the offline, abstention-first acoustic pair experiment
 - `docs/MEDIA_FOUNDATION.md` for transcript-independent audio acquisition and migration
+
+Archive comparison-independent source audio to a recorded NAS destination:
+
+```bash
+pte media archive-sources \
+  --archive-root /Volumes/home/SermonExtractorAudio \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+pte media archive-status \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+If the NAS is unavailable, PTE records the failed attempt and retries pending
+entries the next time `archive-sources` is run.

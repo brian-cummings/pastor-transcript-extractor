@@ -74,6 +74,7 @@ from pastor_transcript_extractor.interaction_diagnostics import (
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
+from pastor_transcript_extractor.media_archive import archive_source_media, archive_status
 from pastor_transcript_extractor.media_artifacts import (
     audit_media_coverage,
     backfill_existing_media_artifacts,
@@ -1200,6 +1201,71 @@ def media_audit(
             console.print(f"{label}: {', '.join(values)}")
 
 
+@media_app.command(
+    "archive-sources",
+    help="Archive comparison-independent source audio and replace local files with verified symlinks.",
+)
+def media_archive_sources(
+    archive_root: Path | None = typer.Option(
+        None,
+        "--archive-root",
+        help="NAS archive root. Supplying it records and activates the destination for later retries.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Record eligible entries and show destinations without copying or replacing files.",
+    ),
+    limit: int | None = typer.Option(None, min=1, help="Maximum eligible source artifacts to process."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        result = archive_source_media(
+            database,
+            build_paths(base_dir),
+            archive_root=archive_root,
+            dry_run=dry_run,
+            limit=limit,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    for index, item in enumerate(result.items, start=1):
+        detail = f" ({item.detail})" if item.detail else ""
+        console.print(
+            f"[{index}/{len(result.items)}] media artifact #{item.media_artifact_id}: "
+            f"{item.outcome} -> {item.archive_path}{detail}",
+            markup=False,
+        )
+    counts = result.counts
+    console.print(
+        f"Archive root={result.destination.archive_root}; eligible={result.eligible}; "
+        f"archived={counts['archived']}; already_archived={counts['already_archived']}; "
+        f"unavailable={counts['destination_unavailable']}; failed={counts['failed']}; "
+        f"would_archive={counts['would_archive']}."
+    )
+
+
+@media_app.command(
+    "archive-status",
+    help="Report the configured archive destination and persisted source-audio archive state.",
+)
+def media_archive_status(
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    report = archive_status(database)
+    if report.destination is None:
+        console.print("No media archive destination is configured.")
+        return
+    counts = report.counts
+    console.print(
+        f"Archive root={report.destination.archive_root}; "
+        f"accessible={report.destination_accessible}; entries={len(report.entries)}; "
+        f"archived={counts['archived']}; pending={counts['pending']}; failed={counts['failed']}."
+    )
+
+
 def _unknown_pastor_error(pastor_slug: str, base_dir: Path | None = None) -> typer.BadParameter:
     resolved_root = build_paths(base_dir).root
     return typer.BadParameter(f"Unknown pastor slug: {pastor_slug} (app root: {resolved_root})")
@@ -1635,6 +1701,8 @@ def status(
     summary.add_row("Transcripts", str(counts["transcript_artifacts"]))
     summary.add_row("Media Artifacts", str(counts["media_artifacts"]))
     summary.add_row("Media Acquisition Attempts", str(counts["media_acquisition_attempts"]))
+    summary.add_row("Media Archive Entries", str(counts["media_archive_entries"]))
+    summary.add_row("Media Archive Attempts", str(counts["media_archive_attempts"]))
     summary.add_row("Segments", str(counts["transcript_segments"]))
     summary.add_row("Extraction", str(counts["extraction_results"]))
     summary.add_row("Metadata Snapshots", str(counts["metadata_artifacts"]))

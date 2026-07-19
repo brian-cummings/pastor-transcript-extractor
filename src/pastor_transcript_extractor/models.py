@@ -140,6 +140,39 @@ class MediaAcquisitionAttempt:
 
 
 @dataclass(slots=True)
+class MediaArchiveDestination:
+    id: int
+    archive_root: str
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class MediaArchiveEntry:
+    id: int
+    media_artifact_id: int
+    destination_id: int
+    source_path: str
+    archive_path: str
+    content_sha256: str
+    byte_size: int
+    status: str
+    archived_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class MediaArchiveAttempt:
+    id: int
+    archive_entry_id: int
+    outcome: str
+    detail: Optional[str]
+    attempted_at: datetime
+
+
+@dataclass(slots=True)
 class TranscriptSegment:
     id: Optional[int]
     video_id: int
