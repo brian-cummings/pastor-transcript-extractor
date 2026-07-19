@@ -52,6 +52,22 @@ CREATE TABLE IF NOT EXISTS sources (
     FOREIGN KEY(pastor_id) REFERENCES pastors(id)
 );
 
+CREATE TABLE IF NOT EXISTS source_import_refs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL,
+    pastor_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    external_entity_key TEXT NOT NULL,
+    external_record_id TEXT NULL,
+    imported_fingerprint TEXT NOT NULL,
+    import_payload_json TEXT NOT NULL,
+    external_updated_at TEXT NULL,
+    imported_at TEXT NOT NULL,
+    FOREIGN KEY(source_id) REFERENCES sources(id),
+    FOREIGN KEY(pastor_id) REFERENCES pastors(id),
+    UNIQUE(provider, external_entity_key)
+);
+
 CREATE TABLE IF NOT EXISTS videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id INTEGER NOT NULL,
@@ -322,6 +338,9 @@ ON profile_observation_events(profile_id, observation_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_profile_redirect_events_source
 ON speaker_profile_redirect_events(from_profile_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_source_import_refs_provider
+ON source_import_refs(provider, source_id);
 """
 
 
@@ -2053,6 +2072,9 @@ class Database:
     def counts_by_table(self) -> dict[str, int]:
         with self.connect() as connection:
             source_count = connection.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
+            source_import_ref_count = connection.execute(
+                "SELECT COUNT(*) FROM source_import_refs"
+            ).fetchone()[0]
             pastor_count = connection.execute("SELECT COUNT(*) FROM pastors").fetchone()[0]
             video_count = connection.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
             transcript_count = connection.execute("SELECT COUNT(*) FROM transcript_artifacts").fetchone()[0]
@@ -2070,6 +2092,7 @@ class Database:
             media_attempt_count = connection.execute("SELECT COUNT(*) FROM media_acquisition_attempts").fetchone()[0]
         return {
             "sources": int(source_count),
+            "source_import_refs": int(source_import_ref_count),
             "pastors": int(pastor_count),
             "videos": int(video_count),
             "transcript_artifacts": int(transcript_count),

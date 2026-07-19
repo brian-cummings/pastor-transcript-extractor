@@ -99,6 +99,37 @@ You can override the data directory with `--base-dir`.
 - `pte evaluate [--fixture-dir PATH] [--results-dir PATH] [--base-dir PATH]`
 - `./venv-shell`
 
+## Church Database Import
+
+Import complete pastor/channel pairs directly from the local
+`church-youtube-finder` database. The source database is opened read-only. PTE
+stores a namespaced church key and imported-record fingerprint so later runs can
+report new, unchanged, reused, or conflicting records.
+
+Preview an import:
+
+```bash
+pte import-church-db \
+  /Users/briancummings/Documents/church-youtube-finder/churches.db \
+  --dry-run \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Apply it by removing `--dry-run`, then acquire the six newest videos from every
+source captured by that provider:
+
+```bash
+pte sync-imported-sources \
+  --latest 6 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+By default, synchronization fetches captions and downloads audio for local ASR
+only when captions are unavailable. Add `--all-audio` to acquire and transcribe
+audio for every eligible video. Add `--extract` when the synchronized recordings
+should immediately become sermon-fixture candidates. Imported assignment changes
+are reported as conflicts and are never silently overwritten.
+
 ## Ground-Truth Review
 
 Create a detector-assisted draft and review it against the video and timestamped

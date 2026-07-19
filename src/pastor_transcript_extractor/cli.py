@@ -18,6 +18,12 @@ from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextC
 from rich.table import Table
 
 from pastor_transcript_extractor.application import ReviewBatchResult, extract_batch, prepare_review_exports
+from pastor_transcript_extractor.church_database_import import (
+    IMPORT_PROVIDER,
+    ChurchDatabaseImportError,
+    import_church_sources,
+    imported_source_ids,
+)
 from pastor_transcript_extractor.config import (
     build_llm_config,
     build_paths,
@@ -1475,6 +1481,107 @@ def init(
     console.print(f"Initialized app data at [bold]{paths.root}[/bold]")
 
 
+@app.command(
+    "import-church-db",
+    help="Import complete pastor/channel pairs from church-youtube-finder with stable provenance.",
+)
+def import_church_db(
+    church_database: Path = typer.Argument(..., help="Path to the church-youtube-finder SQLite database."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report changes without importing records."),
+    show_all: bool = typer.Option(False, help="Show unchanged records in addition to changes and conflicts."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        result = import_church_sources(
+            database,
+            church_database.expanduser().resolve(),
+            dry_run=dry_run,
+        )
+    except (ChurchDatabaseImportError, OSError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    table = Table(title="Church database import" + (" (dry run)" if dry_run else ""))
+    table.add_column("Status")
+    table.add_column("Church")
+    table.add_column("Pastor")
+    table.add_column("Source")
+    table.add_column("Reason")
+    for item in result.items:
+        if item.status == "unchanged" and not show_all:
+            continue
+        table.add_row(
+            item.status,
+            item.record.church_name,
+            item.record.pastor_name,
+            item.record.channel_url,
+            item.reason,
+        )
+    console.print(table)
+    counts = ", ".join(
+        f"{status}={count}" for status, count in sorted(result.counts.items())
+    )
+    console.print(f"Church import complete: {counts or 'no complete records'}.")
+
+
+@app.command(
+    "sync-imported-sources",
+    help="Acquire recent transcripts and fallback audio for provenance-imported sources.",
+)
+def sync_imported_sources(
+    provider: str = typer.Option(IMPORT_PROVIDER, help="Import provider to synchronize."),
+    latest: int = typer.Option(6, min=1, help="Newest videos to retain per imported source."),
+    jobs: int = typer.Option(_default_transcribe_jobs(), min=1, help="Concurrent local ASR jobs."),
+    all_audio: bool = typer.Option(
+        False,
+        "--all-audio",
+        help="Download and locally transcribe every eligible video, including captioned videos.",
+    ),
+    extract_new: bool = typer.Option(
+        False,
+        "--extract/--no-extract",
+        help="Also create missing sermon extraction proposals for synchronized sources.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    source_ids = imported_source_ids(database, provider)
+    if not source_ids:
+        raise typer.BadParameter(f"No imported sources found for provider {provider!r}.")
+    for index, source_id in enumerate(source_ids, start=1):
+        console.print(f"[{index}/{len(source_ids)}] Synchronizing imported source #{source_id}")
+        discover_sources_service(limit=latest, source_id=source_id, base_dir=base_dir)
+        fetch_captions_service(source_id=source_id, base_dir=base_dir)
+        transcribe_videos_service(
+            missing_only=False,
+            captions_missing_only=not all_audio,
+            jobs=jobs,
+            source_id=source_id,
+            base_dir=base_dir,
+        )
+        if extract_new:
+            paths = build_paths(base_dir, remember=True)
+            extraction = extract_batch(
+                database,
+                paths,
+                source_id=source_id,
+                classifier="auto",
+                llm_model=None,
+                event_callback=lambda message: console.print(message, markup=False),
+                progress_callback=lambda stage, current, total: console.print(
+                    f"  {stage} block {current}/{total}"
+                ),
+            )
+            console.print(
+                f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; "
+                f"failed {extraction.failed}."
+            )
+    console.print(
+        f"Synchronized {len(source_ids)} imported source(s); latest={latest}, "
+        f"all_audio={all_audio}, extract={extract_new}."
+    )
+
+
 def add_source_service(
     url: str,
     pastor: str,
@@ -1522,6 +1629,7 @@ def status(
     summary.add_column("Metric")
     summary.add_column("Value", justify="right")
     summary.add_row("Sources", str(counts["sources"]))
+    summary.add_row("Imported Source References", str(counts["source_import_refs"]))
     summary.add_row("Pastors", str(counts["pastors"]))
     summary.add_row("Videos", str(counts["videos"]))
     summary.add_row("Transcripts", str(counts["transcript_artifacts"]))
