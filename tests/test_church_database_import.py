@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from typer.testing import CliRunner
 
@@ -624,6 +624,14 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.archive_source_media",
                     side_effect=archival,
                 ),
+                patch(
+                    "pastor_transcript_extractor.cli.SYNC_ARCHIVE_WAIT_INITIAL_SECONDS",
+                    0.01,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.SYNC_ARCHIVE_WAIT_MAX_SECONDS",
+                    0.02,
+                ),
             ):
                 result = CliRunner().invoke(
                     app,
@@ -639,6 +647,64 @@ class ImportedSourceSyncTests(unittest.TestCase):
 
             self.assertEqual(0, result.exit_code, result.output)
             self.assertIn("Waiting for archival before source", result.output)
+
+    def test_sync_rechecks_disk_while_an_external_archive_holds_the_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, source_id = self._database(root, configure_archive=True)
+            disk_calls = 0
+
+            def disk_usage(path):
+                nonlocal disk_calls
+                disk_calls += 1
+                free = 1_900_000_000 if disk_calls <= 3 else 5_000_000_000
+                return SimpleNamespace(
+                    total=10_000_000_000,
+                    used=10_000_000_000 - free,
+                    free=free,
+                )
+
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    return_value=[source_id],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    side_effect=disk_usage,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.media_archive_lock_held",
+                    return_value=True,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.SYNC_ARCHIVE_WAIT_MAX_SECONDS",
+                    2.0,
+                ),
+                patch("pastor_transcript_extractor.cli.time.sleep") as sleep,
+                patch(
+                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    return_value=SimpleNamespace(
+                        selected_video_ids_by_source={source_id: (1,)}
+                    ),
+                ),
+                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "sync-imported-sources",
+                        "--all-audio",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, result.output)
+            self.assertEqual([call(1.0), call(2.0), call(2.0)], sleep.call_args_list)
+            self.assertIn("checking again in 1s", result.output)
+            self.assertIn("checking again in 2s", result.output)
 
 
 if __name__ == "__main__":

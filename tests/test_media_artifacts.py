@@ -20,7 +20,11 @@ from pastor_transcript_extractor.media import (
     YtDlpError,
     download_source_audio,
 )
-from pastor_transcript_extractor.media_archive import archive_source_media, archive_status
+from pastor_transcript_extractor.media_archive import (
+    archive_source_media,
+    archive_status,
+    media_archive_lock_held,
+)
 from pastor_transcript_extractor.media_artifacts import (
     audit_media_coverage,
     backfill_existing_media_artifacts,
@@ -658,6 +662,13 @@ class MediaArtifactTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "Another media archive process"):
                 archive_source_media(self.database, self.paths)
+
+    def test_media_archive_lock_reports_a_concurrent_process(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.media_archive.fcntl.flock",
+            side_effect=BlockingIOError,
+        ):
+            self.assertTrue(media_archive_lock_held(self.paths.root))
 
     def test_source_archive_can_wait_for_a_concurrent_process(self) -> None:
         attempts = 0

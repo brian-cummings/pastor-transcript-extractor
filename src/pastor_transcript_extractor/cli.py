@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 from threading import Lock
 from typing import Callable, Sequence
 import webbrowser
@@ -80,6 +81,7 @@ from pastor_transcript_extractor.media_archive import (
     ArchiveRunResult,
     archive_source_media,
     archive_status,
+    media_archive_lock_held,
 )
 from pastor_transcript_extractor.media_artifacts import (
     audit_media_coverage,
@@ -144,6 +146,8 @@ DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
 DEFAULT_PREP_WORKERS = 2
 MIN_SYNC_FREE_DISK_FRACTION = 0.20
+SYNC_ARCHIVE_WAIT_INITIAL_SECONDS = 1.0
+SYNC_ARCHIVE_WAIT_MAX_SECONDS = 30.0
 SYNC_AUDIO_RESERVATION_BYTES_PER_SECOND = 250_000
 SYNC_UNKNOWN_VIDEO_DURATION_SECONDS = 2 * 60 * 60
 STAGE_QUEUED_PREP = "q-prep"
@@ -1732,6 +1736,7 @@ def sync_imported_sources(
 
     def require_disk_reserve(source_id: int, projected_bytes: int) -> None:
         reap_archives()
+        wait_seconds = SYNC_ARCHIVE_WAIT_INITIAL_SECONDS
         while True:
             disk = shutil.disk_usage(paths.root)
             required_free = int(disk.total * MIN_SYNC_FREE_DISK_FRACTION)
@@ -1744,12 +1749,26 @@ def sync_imported_sources(
                     f"projected={projected_free / disk.total:.1%}."
                 )
                 return
-            if pending_archives:
+            archive_active = bool(pending_archives) or media_archive_lock_held(paths.root)
+            if archive_active:
                 console.print(
                     f"Waiting for archival before source #{source_id}: projected local "
-                    f"free space would be {projected_free / disk.total:.1%}."
+                    f"free space would be {projected_free / disk.total:.1%}; "
+                    f"checking again in {wait_seconds:g}s."
                 )
-                reap_archives(block_one=True)
+                if pending_archives:
+                    wait(
+                        {future for _, future in pending_archives},
+                        timeout=wait_seconds,
+                        return_when=FIRST_COMPLETED,
+                    )
+                    reap_archives()
+                else:
+                    time.sleep(wait_seconds)
+                wait_seconds = min(
+                    wait_seconds * 2,
+                    SYNC_ARCHIVE_WAIT_MAX_SECONDS,
+                )
                 continue
             console.print(
                 f"Stopping before audio download for source #{source_id}: projected "

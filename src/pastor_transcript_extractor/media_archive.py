@@ -130,6 +130,19 @@ def archive_source_media(
         )
 
 
+def media_archive_lock_held(app_root: Path) -> bool:
+    """Return whether another process currently holds the media archive lock."""
+    lock_path = app_root / ".media-archive.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        return False
+
+
 def _archive_source_media_locked(
     database: Database,
     app_paths: AppPaths,
