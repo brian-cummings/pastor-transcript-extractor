@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+import time
 from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths
@@ -105,10 +106,17 @@ def archive_source_media(
     dry_run: bool = False,
     limit: int | None = None,
     video_ids: set[int] | None = None,
+    wait_for_lock: bool = False,
+    lock_retry_seconds: float = 1.0,
     progress_callback: ArchiveProgressCallback | None = None,
     preflight_callback: ArchivePreflightCallback | None = None,
 ) -> ArchiveRunResult:
-    with _archive_lock(app_paths.root):
+    with _archive_lock(
+        app_paths.root,
+        wait_for_lock=wait_for_lock,
+        retry_seconds=lock_retry_seconds,
+        preflight_callback=preflight_callback,
+    ):
         _notify_preflight(preflight_callback, "archive lock", "passed", "exclusive lock acquired")
         return _archive_source_media_locked(
             database,
@@ -513,16 +521,37 @@ def _check_destination(
 
 
 @contextmanager
-def _archive_lock(app_root: Path):
+def _archive_lock(
+    app_root: Path,
+    *,
+    wait_for_lock: bool = False,
+    retry_seconds: float = 1.0,
+    preflight_callback: ArchivePreflightCallback | None = None,
+):
+    if retry_seconds <= 0:
+        raise ValueError("archive lock retry interval must be positive")
     lock_path = app_root / ".media-archive.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+", encoding="utf-8") as lock_file:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as error:
-            raise ValueError(
-                f"Another media archive process holds the lock: {lock_path}"
-            ) from error
+        waiting_reported = False
+        while True:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as error:
+                if not wait_for_lock:
+                    raise ValueError(
+                        f"Another media archive process holds the lock: {lock_path}"
+                    ) from error
+                if not waiting_reported:
+                    _notify_preflight(
+                        preflight_callback,
+                        "archive lock",
+                        "waiting",
+                        f"another archive process holds {lock_path}; retrying",
+                    )
+                    waiting_reported = True
+                time.sleep(retry_seconds)
         try:
             yield
         finally:

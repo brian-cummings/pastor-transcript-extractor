@@ -124,6 +124,8 @@ source captured by that provider:
 pte sync-imported-sources \
   --latest 6 \
   --all-audio \
+  --download-jobs 2 \
+  --jobs 2 \
   --extract \
   --archive-sources \
   --base-dir /Users/briancummings/Documents/PastorSearchData
@@ -134,12 +136,18 @@ only when captions are unavailable. Add `--all-audio` to acquire and transcribe
 audio for every eligible video. Add `--extract` when the synchronized recordings
 should immediately become sermon-fixture candidates. `--archive-sources` requires
 `--extract` and an archive destination previously configured with `pte media
-archive-sources --archive-root PATH`. After each imported source, synchronization
-registers its media, archives source audio whose normalized copy covers the
-isolated sermon or independently matches the complete recording, and leaves the
-normalized processing copy local. Before downloading from each source, the sync
-requires at least 20% free space on the local volume. Archive failures remain
-retryable; synchronization continues only while that reserve is preserved.
+archive-sources --archive-root PATH`. Synchronization uses separate download /
+normalization and transcription worker pools, then queues verified source audio
+to one background NAS archive worker while processing continues. Before
+admitting each transcription batch, PTE reserves disk from the discovered video
+durations and requires projected local
+free space to remain at least 20%; it waits for pending archival when that can
+restore the reserve. Source audio is archive-safe when its normalized copy covers
+the isolated sermon or independently matches the complete recording. The
+normalized processing copy remains local, and archive failures remain retryable.
+If a separate `pte media archive-sources` process already holds the archive lock,
+the sync archive worker stays pending and retries until that process finishes;
+download admission can continue while the disk reservation remains safe.
 Imported assignment changes are reported as conflicts and are never silently
 overwritten.
 

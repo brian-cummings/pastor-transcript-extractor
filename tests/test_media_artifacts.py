@@ -659,6 +659,45 @@ class MediaArtifactTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Another media archive process"):
                 archive_source_media(self.database, self.paths)
 
+    def test_source_archive_can_wait_for_a_concurrent_process(self) -> None:
+        attempts = 0
+
+        def contested_lock(*args):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise BlockingIOError
+
+        archive_root = self.paths.root / "waited-archive"
+        archive_root.mkdir()
+        preflight_events = []
+        with (
+            patch(
+                "pastor_transcript_extractor.media_archive.fcntl.flock",
+                side_effect=contested_lock,
+            ),
+            patch("pastor_transcript_extractor.media_archive.time.sleep") as sleep,
+        ):
+            result = archive_source_media(
+                self.database,
+                self.paths,
+                archive_root=archive_root,
+                wait_for_lock=True,
+                lock_retry_seconds=0.01,
+                preflight_callback=preflight_events.append,
+            )
+
+        self.assertEqual(0, result.eligible)
+        sleep.assert_called_once_with(0.01)
+        self.assertEqual(
+            [("archive lock", "waiting"), ("archive lock", "passed")],
+            [
+                (event.check, event.status)
+                for event in preflight_events
+                if event.check == "archive lock"
+            ],
+        )
+
     def test_video_deletion_removes_media_rows_but_not_shared_registry_profiles(self) -> None:
         video, _ = self._video("deletion001")
         transcript_paths = build_transcript_artifact_paths(

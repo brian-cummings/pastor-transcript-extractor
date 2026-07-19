@@ -77,6 +77,7 @@ from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUna
 from pastor_transcript_extractor.media_archive import (
     ArchivePreflightEvent,
     ArchiveProgressEvent,
+    ArchiveRunResult,
     archive_source_media,
     archive_status,
 )
@@ -141,7 +142,10 @@ app.add_typer(media_app, name="media")
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
-DEFAULT_PREP_WORKERS = 1
+DEFAULT_PREP_WORKERS = 2
+MIN_SYNC_FREE_DISK_FRACTION = 0.20
+SYNC_AUDIO_RESERVATION_BYTES_PER_SECOND = 250_000
+SYNC_UNKNOWN_VIDEO_DURATION_SECONDS = 2 * 60 * 60
 STAGE_QUEUED_PREP = "q-prep"
 STAGE_DOWNLOADING = "dl"
 STAGE_NORMALIZING = "norm"
@@ -1639,6 +1643,12 @@ def sync_imported_sources(
     provider: str = typer.Option(IMPORT_PROVIDER, help="Import provider to synchronize."),
     latest: int = typer.Option(6, min=1, help="Newest videos to retain per imported source."),
     jobs: int = typer.Option(_default_transcribe_jobs(), min=1, help="Concurrent local ASR jobs."),
+    download_jobs: int = typer.Option(
+        DEFAULT_PREP_WORKERS,
+        "--download-jobs",
+        min=1,
+        help="Concurrent audio download and normalization workers.",
+    ),
     all_audio: bool = typer.Option(
         False,
         "--all-audio",
@@ -1653,8 +1663,8 @@ def sync_imported_sources(
         False,
         "--archive-sources/--no-archive-sources",
         help=(
-            "After each source, register audio and archive verified source files to "
-            "the configured media archive destination. Requires --extract."
+            "Register audio and queue verified source files to a background archive "
+            "worker at the configured destination. Requires --extract."
         ),
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -1671,73 +1681,167 @@ def sync_imported_sources(
     source_ids = imported_source_ids(database, provider)
     if not source_ids:
         raise typer.BadParameter(f"No imported sources found for provider {provider!r}.")
-    for index, source_id in enumerate(source_ids, start=1):
-        disk = shutil.disk_usage(paths.root)
-        free_fraction = disk.free / disk.total if disk.total else 0.0
-        if free_fraction < 0.20:
+    archive_executor = ThreadPoolExecutor(max_workers=1) if archive_sources else None
+    pending_archives: list[tuple[int, Future[ArchiveRunResult]]] = []
+
+    def finish_archive(source_id: int, future: Future[ArchiveRunResult]) -> None:
+        try:
+            archive = future.result()
+        except (OSError, RuntimeError, ValueError) as error:
+            console.print(f"Archive worker failed for source #{source_id}: {error}")
+            return
+        counts = archive.counts
+        console.print(
+            f"Archived source #{source_id}: archived={counts['archived']}, "
+            f"already_archived={counts['already_archived']}, "
+            f"unavailable={counts['destination_unavailable']}, failed={counts['failed']}."
+        )
+        if counts["destination_unavailable"] or counts["failed"]:
             console.print(
-                f"Stopping before source #{source_id}: local disk has "
-                f"{free_fraction:.1%} free; synchronization requires at least 20.0%."
+                "Some source audio remains local and will be retried by the next "
+                "archive run; download admission remains governed by disk reserve."
+            )
+
+    def reap_archives(*, block_one: bool = False) -> None:
+        if block_one and pending_archives:
+            source_id, future = pending_archives.pop(0)
+            finish_archive(source_id, future)
+        completed = [item for item in pending_archives if item[1].done()]
+        for source_id, future in completed:
+            pending_archives.remove((source_id, future))
+            finish_archive(source_id, future)
+
+    def require_disk_reserve(source_id: int, projected_bytes: int) -> None:
+        reap_archives()
+        while True:
+            disk = shutil.disk_usage(paths.root)
+            required_free = int(disk.total * MIN_SYNC_FREE_DISK_FRACTION)
+            projected_free = disk.free - projected_bytes
+            if projected_free >= required_free:
+                console.print(
+                    f"Disk admission for source #{source_id}: "
+                    f"{disk.free / disk.total:.1%} free, "
+                    f"reserving {_format_sync_bytes(projected_bytes)}, "
+                    f"projected={projected_free / disk.total:.1%}."
+                )
+                return
+            if pending_archives:
+                console.print(
+                    f"Waiting for archival before source #{source_id}: projected local "
+                    f"free space would be {projected_free / disk.total:.1%}."
+                )
+                reap_archives(block_one=True)
+                continue
+            console.print(
+                f"Stopping before audio download for source #{source_id}: projected "
+                f"local free space would be {projected_free / disk.total:.1%}; "
+                f"synchronization requires at least "
+                f"{MIN_SYNC_FREE_DISK_FRACTION:.1%}."
             )
             raise typer.Exit(code=1)
-        console.print(
-            f"Local disk headroom before source #{source_id}: {free_fraction:.1%} free."
-        )
-        console.print(f"[{index}/{len(source_ids)}] Synchronizing imported source #{source_id}")
-        discover_sources_service(limit=latest, source_id=source_id, base_dir=base_dir)
-        fetch_captions_service(source_id=source_id, base_dir=base_dir)
-        transcribe_videos_service(
-            missing_only=False,
-            captions_missing_only=not all_audio,
-            jobs=jobs,
-            source_id=source_id,
-            base_dir=base_dir,
-        )
-        if extract_new:
-            extraction = extract_batch(
+
+    try:
+        for index, source_id in enumerate(source_ids, start=1):
+            reap_archives()
+            require_disk_reserve(source_id, 0)
+            console.print(
+                f"[{index}/{len(source_ids)}] Synchronizing imported source #{source_id}"
+            )
+            discover_sources_service(limit=latest, source_id=source_id, base_dir=base_dir)
+            fetch_captions_service(source_id=source_id, base_dir=base_dir)
+            projected_bytes = _projected_transcription_disk_bytes(
                 database,
-                paths,
                 source_id=source_id,
-                classifier="auto",
-                llm_model=None,
-                event_callback=lambda message: console.print(message, markup=False),
-                progress_callback=lambda stage, current, total: console.print(
-                    f"  {stage} block {current}/{total}"
-                ),
+                captions_missing_only=not all_audio,
             )
-            console.print(
-                f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; "
-                f"failed {extraction.failed}."
+            require_disk_reserve(source_id, projected_bytes)
+            transcribe_videos_service(
+                missing_only=False,
+                captions_missing_only=not all_audio,
+                jobs=jobs,
+                prep_jobs=download_jobs,
+                source_id=source_id,
+                base_dir=base_dir,
             )
-        source_videos = database.list_videos_by_source_id(source_id)
-        registration = [
-            backfill_existing_media_artifacts(database, paths, video_id=video.id)
-            for video in source_videos
-        ]
-        console.print(
-            f"Registered {sum(item.artifacts_registered for item in registration)} media "
-            f"artifact(s) for source #{source_id}; "
-            f"missing paths={sum(item.missing_paths for item in registration)}."
-        )
-        if archive_sources:
-            video_ids = {video.id for video in source_videos}
-            archive = archive_source_media(database, paths, video_ids=video_ids)
-            counts = archive.counts
-            console.print(
-                f"Archived source #{source_id}: archived={counts['archived']}, "
-                f"already_archived={counts['already_archived']}, "
-                f"unavailable={counts['destination_unavailable']}, failed={counts['failed']}."
-            )
-            if counts["destination_unavailable"] or counts["failed"]:
-                console.print(
-                    "Some source audio remains local and will be retried by the "
-                    "next archive run; disk headroom will be checked before the "
-                    "next source."
+            if extract_new:
+                extraction = extract_batch(
+                    database,
+                    paths,
+                    source_id=source_id,
+                    classifier="auto",
+                    llm_model=None,
+                    event_callback=lambda message: console.print(message, markup=False),
+                    progress_callback=lambda stage, current, total: console.print(
+                        f"  {stage} block {current}/{total}"
+                    ),
                 )
+                console.print(
+                    f"Extracted {extraction.processed} video(s); "
+                    f"skipped {extraction.skipped}; failed {extraction.failed}."
+                )
+            source_videos = database.list_videos_by_source_id(source_id)
+            registration = [
+                backfill_existing_media_artifacts(database, paths, video_id=video.id)
+                for video in source_videos
+            ]
+            console.print(
+                f"Registered {sum(item.artifacts_registered for item in registration)} "
+                f"media artifact(s) for source #{source_id}; "
+                f"missing paths={sum(item.missing_paths for item in registration)}."
+            )
+            if archive_executor is not None:
+                video_ids = {video.id for video in source_videos}
+                future = archive_executor.submit(
+                    archive_source_media,
+                    database,
+                    paths,
+                    video_ids=video_ids,
+                    wait_for_lock=True,
+                )
+                pending_archives.append((source_id, future))
+                console.print(
+                    f"Queued source #{source_id} for archival "
+                    f"({len(pending_archives)} pending)."
+                )
+    finally:
+        while pending_archives:
+            reap_archives(block_one=True)
+        if archive_executor is not None:
+            archive_executor.shutdown(wait=True)
     console.print(
         f"Synchronized {len(source_ids)} imported source(s); latest={latest}, "
+        f"download_jobs={download_jobs}, transcription_jobs={jobs}, "
         f"all_audio={all_audio}, extract={extract_new}, archive_sources={archive_sources}."
     )
+
+
+def _projected_transcription_disk_bytes(
+    database: Database,
+    *,
+    source_id: int,
+    captions_missing_only: bool,
+) -> int:
+    projected = 0
+    for video in database.list_videos_by_source_id(source_id):
+        if not _should_transcribe_video(
+            database,
+            video.id,
+            missing_only=False,
+            captions_missing_only=captions_missing_only,
+        ):
+            continue
+        duration = video.duration_seconds or SYNC_UNKNOWN_VIDEO_DURATION_SECONDS
+        projected += int(duration * SYNC_AUDIO_RESERVATION_BYTES_PER_SECOND)
+    return projected
+
+
+def _format_sync_bytes(value: int) -> str:
+    amount = float(max(0, value))
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if amount < 1024 or unit == "TiB":
+            return f"{amount:.1f} {unit}"
+        amount /= 1024
+    return f"{amount:.1f} TiB"
 
 
 def add_source_service(
@@ -2246,6 +2350,7 @@ def transcribe_videos_service(
     jobs: int = DEFAULT_TRANSCRIBE_JOBS,
     source_id: int | None = None,
     base_dir: Path | None = None,
+    prep_jobs: int = DEFAULT_PREP_WORKERS,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -2284,7 +2389,7 @@ def transcribe_videos_service(
     max_workers = min(jobs, len(claimed_videos))
     total_claimed = len(claimed_videos)
     console.print(f"Transcribing {total_claimed} video(s) with {max_workers} worker(s).")
-    prep_workers = min(DEFAULT_PREP_WORKERS, total_claimed)
+    prep_workers = min(prep_jobs, total_claimed)
     if console.is_terminal:
         progress_lock = Lock()
         progress = Progress(

@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -228,6 +229,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
             def archival(*args, **kwargs):
                 events.append("archive")
                 self.assertEqual({1}, kwargs["video_ids"])
+                self.assertTrue(kwargs["wait_for_lock"])
                 return SimpleNamespace(
                     counts={
                         "archived": 0,
@@ -344,6 +346,240 @@ class ImportedSourceSyncTests(unittest.TestCase):
             self.assertEqual(1, result.exit_code)
             self.assertIn("at least 20.0%", result.output)
             discover.assert_not_called()
+
+    def test_sync_overlaps_archival_with_the_next_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database, first_source_id = self._database(root, configure_archive=True)
+            second_pastor = database.add_pastor("second", "Second Pastor")
+            second_source = database.add_source(
+                "https://www.youtube.com/@second",
+                SourceType.CHANNEL,
+                second_pastor.id,
+            )
+            database.add_video(
+                source_id=second_source.id,
+                pastor_id=second_pastor.id,
+                youtube_video_id="syncvideo02",
+                title="Second Sync Video",
+                url="https://www.youtube.com/watch?v=syncvideo02",
+                channel_name="Second Church",
+                published_at="2026-07-19T00:00:00Z",
+                duration_seconds=3600,
+            )
+            archive_started = Event()
+            second_discovery_started = Event()
+            events: list[str] = []
+            archive_calls = 0
+
+            def discover(*, source_id, **kwargs):
+                events.append(f"discover:{source_id}")
+                if source_id == second_source.id:
+                    self.assertTrue(archive_started.wait(timeout=2))
+                    second_discovery_started.set()
+
+            def archival(*args, **kwargs):
+                nonlocal archive_calls
+                archive_calls += 1
+                current = archive_calls
+                events.append(f"archive-start:{current}")
+                if current == 1:
+                    archive_started.set()
+                    self.assertTrue(second_discovery_started.wait(timeout=2))
+                events.append(f"archive-done:{current}")
+                return SimpleNamespace(
+                    counts={
+                        "archived": 0,
+                        "already_archived": 0,
+                        "destination_unavailable": 0,
+                        "failed": 0,
+                        "would_archive": 0,
+                    },
+                    items=(),
+                )
+
+            no_registration = SimpleNamespace(
+                artifacts_registered=0,
+                attempts_registered=0,
+                missing_paths=0,
+            )
+            no_extraction = SimpleNamespace(processed=0, skipped=1, failed=0)
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    return_value=[first_source_id, second_source.id],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    side_effect=discover,
+                ),
+                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
+                patch(
+                    "pastor_transcript_extractor.cli.extract_batch",
+                    return_value=no_extraction,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.backfill_existing_media_artifacts",
+                    return_value=no_registration,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.archive_source_media",
+                    side_effect=archival,
+                ),
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "sync-imported-sources",
+                        "--extract",
+                        "--archive-sources",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, result.output)
+            self.assertLess(
+                events.index(f"discover:{second_source.id}"),
+                events.index("archive-done:1"),
+            )
+
+    def test_sync_reserves_duration_projected_bytes_before_audio_download(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, source_id = self._database(root, configure_archive=False)
+            constrained_disk = SimpleNamespace(
+                total=1_000_000_000,
+                used=700_000_000,
+                free=300_000_000,
+            )
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    return_value=[source_id],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    return_value=constrained_disk,
+                ),
+                patch("pastor_transcript_extractor.cli.discover_sources_service"),
+                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch(
+                    "pastor_transcript_extractor.cli.transcribe_videos_service"
+                ) as transcribe,
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "sync-imported-sources",
+                        "--all-audio",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+            self.assertEqual(1, result.exit_code)
+            self.assertIn("projected local free space", result.output)
+            transcribe.assert_not_called()
+
+    def test_sync_waits_for_pending_archive_to_restore_projected_reserve(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database, first_source_id = self._database(root, configure_archive=True)
+            second_pastor = database.add_pastor("reserve", "Reserve Pastor")
+            second_source = database.add_source(
+                "https://www.youtube.com/@reserve",
+                SourceType.CHANNEL,
+                second_pastor.id,
+            )
+            database.add_video(
+                source_id=second_source.id,
+                pastor_id=second_pastor.id,
+                youtube_video_id="reservevid1",
+                title="Reserve Video",
+                url="https://www.youtube.com/watch?v=reservevid1",
+                channel_name="Reserve Church",
+                published_at="2026-07-19T00:00:00Z",
+                duration_seconds=3600,
+            )
+            release_archive = Event()
+            disk_calls = 0
+            archive_calls = 0
+
+            def disk_usage(path):
+                nonlocal disk_calls
+                disk_calls += 1
+                free = 2_500_000_000 if disk_calls in {3, 4} else 5_000_000_000
+                if disk_calls == 4:
+                    release_archive.set()
+                return SimpleNamespace(
+                    total=10_000_000_000,
+                    used=10_000_000_000 - free,
+                    free=free,
+                )
+
+            def archival(*args, **kwargs):
+                nonlocal archive_calls
+                archive_calls += 1
+                if archive_calls == 1:
+                    self.assertTrue(release_archive.wait(timeout=2))
+                return SimpleNamespace(
+                    counts={
+                        "archived": 1,
+                        "already_archived": 0,
+                        "destination_unavailable": 0,
+                        "failed": 0,
+                        "would_archive": 0,
+                    },
+                    items=(),
+                )
+
+            no_registration = SimpleNamespace(
+                artifacts_registered=0,
+                attempts_registered=0,
+                missing_paths=0,
+            )
+            no_extraction = SimpleNamespace(processed=0, skipped=1, failed=0)
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    return_value=[first_source_id, second_source.id],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    side_effect=disk_usage,
+                ),
+                patch("pastor_transcript_extractor.cli.discover_sources_service"),
+                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
+                patch(
+                    "pastor_transcript_extractor.cli.extract_batch",
+                    return_value=no_extraction,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.backfill_existing_media_artifacts",
+                    return_value=no_registration,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.archive_source_media",
+                    side_effect=archival,
+                ),
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "sync-imported-sources",
+                        "--all-audio",
+                        "--extract",
+                        "--archive-sources",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, result.output)
+            self.assertIn("Waiting for archival before source", result.output)
 
 
 if __name__ == "__main__":
