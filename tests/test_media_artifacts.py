@@ -79,6 +79,7 @@ class MediaArtifactTests(unittest.TestCase):
         *,
         isolated: bool = True,
         sermon_end_seconds: float = 0.8,
+        video_duration_seconds: int = 1800,
     ):
         video = self.database.add_video(
             source_id=self.source.id,
@@ -88,7 +89,7 @@ class MediaArtifactTests(unittest.TestCase):
             url=f"https://www.youtube.com/watch?v={identifier}",
             channel_name="Sample Church",
             published_at="2026-07-01T12:00:00+00:00",
-            duration_seconds=1800,
+            duration_seconds=video_duration_seconds,
             status=VideoStatus.EXTRACTED,
         )
         video_paths = build_video_artifact_paths(
@@ -326,6 +327,56 @@ class MediaArtifactTests(unittest.TestCase):
         coverage = audit_media_coverage(self.database)
         self.assertEqual((video.youtube_video_id,), coverage.corrupt)
 
+    def test_full_video_audio_is_valid_when_transcript_endpoint_overshoots(self) -> None:
+        video, _ = self._video(
+            "overshoot001",
+            sermon_end_seconds=10.0,
+            video_duration_seconds=8,
+        )
+        transcript_paths = build_transcript_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        )
+        write_wav(transcript_paths.audio_normalized, duration_seconds=8)
+        self.database.add_transcript_artifact(
+            video_id=video.id,
+            source_kind=TranscriptSourceKind.LOCAL_ASR,
+            audio_path=str(transcript_paths.audio_normalized),
+        )
+
+        backfill_existing_media_artifacts(self.database, self.paths, video_id=video.id)
+
+        self.assertEqual(
+            transcript_paths.audio_normalized.resolve(),
+            resolve_normalized_audio_path(self.database, video.id),
+        )
+        attempt = self.database.get_latest_media_acquisition_attempt(video.id)
+        self.assertIsNotNone(attempt)
+        self.assertEqual("verified", attempt.outcome)
+        coverage = audit_media_coverage(self.database)
+        self.assertEqual((video.youtube_video_id,), coverage.verified)
+
+    def test_truncated_audio_is_not_validated_by_endpoint_overshoot(self) -> None:
+        video, _ = self._video(
+            "truncated001",
+            sermon_end_seconds=10.0,
+            video_duration_seconds=8,
+        )
+        transcript_paths = build_transcript_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        )
+        write_wav(transcript_paths.audio_normalized, duration_seconds=5)
+        self.database.add_transcript_artifact(
+            video_id=video.id,
+            source_kind=TranscriptSourceKind.LOCAL_ASR,
+            audio_path=str(transcript_paths.audio_normalized),
+        )
+
+        backfill_existing_media_artifacts(self.database, self.paths, video_id=video.id)
+
+        self.assertIsNone(resolve_normalized_audio_path(self.database, video.id))
+        coverage = audit_media_coverage(self.database)
+        self.assertEqual((video.youtube_video_id,), coverage.corrupt)
+
     def test_newer_incomplete_artifact_does_not_hide_older_verified_audio(self) -> None:
         video, _ = self._video("fallback001", sermon_end_seconds=8.0)
         media_root = build_video_artifact_paths(
@@ -398,6 +449,38 @@ class MediaArtifactTests(unittest.TestCase):
             acquisition_tool_version="1",
             parent=source,
         )
+        other_video, _ = self._video("archive002")
+        other_audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, other_video.youtube_video_id
+        ).audio
+        other_source_path = other_audio_root / "media" / "source-test.webm"
+        other_source_path.parent.mkdir(parents=True, exist_ok=True)
+        other_source_path.write_bytes(b"other-compressed-source-audio")
+        other_source = register_media_file(
+            self.database,
+            self.paths,
+            video=other_video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=other_source_path,
+            artifact_kind="source_audio",
+            provenance_kind="original_download",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        other_normalized_path = other_audio_root / "media" / "normalized-test.wav"
+        write_wav(other_normalized_path)
+        register_media_file(
+            self.database,
+            self.paths,
+            video=other_video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=other_normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+            parent=other_source,
+        )
         archive_root = self.paths.root / "nas"
         archive_root.mkdir()
         progress_events = []
@@ -407,10 +490,13 @@ class MediaArtifactTests(unittest.TestCase):
             self.database,
             self.paths,
             archive_root=archive_root,
+            video_ids={video.id},
             progress_callback=progress_events.append,
             preflight_callback=preflight_events.append,
         )
-        second = archive_source_media(self.database, self.paths)
+        second = archive_source_media(
+            self.database, self.paths, video_ids={video.id}
+        )
 
         self.assertEqual(1, first.counts["archived"])
         self.assertEqual(1, second.counts["already_archived"])
@@ -443,6 +529,7 @@ class MediaArtifactTests(unittest.TestCase):
             all(event.status != "failed" for event in preflight_events)
         )
         self.assertTrue(source_path.is_symlink())
+        self.assertFalse(other_source_path.is_symlink())
         archived_path = archive_root / source_path.relative_to(self.paths.root)
         self.assertEqual(archived_path.resolve(), source_path.resolve())
         self.assertEqual(b"compressed-source-audio", archived_path.read_bytes())
@@ -505,10 +592,64 @@ class MediaArtifactTests(unittest.TestCase):
 
         self.assertEqual(1, retried.counts["archived"])
         self.assertTrue(source_path.is_symlink())
+        replay = backfill_existing_media_artifacts(
+            self.database, self.paths, video_id=video.id
+        )
+        self.assertEqual(0, replay.artifacts_registered)
         self.assertEqual(
             ["destination_unavailable", "archived"],
             [attempt.outcome for attempt in self.database.list_media_archive_attempts()],
         )
+
+    def test_source_archive_accepts_complete_normalized_negative_recording(self) -> None:
+        video, _ = self._video(
+            "archivenegative",
+            isolated=False,
+            video_duration_seconds=1,
+        )
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "downloaded.wav"
+        normalized_path = audio_root / "normalized.wav"
+        write_wav(source_path, sample_rate=44100, channels=2)
+        write_wav(normalized_path)
+        source = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+            parent=source,
+        )
+        archive_root = self.paths.root / "negative-archive"
+        archive_root.mkdir()
+
+        result = archive_source_media(
+            self.database,
+            self.paths,
+            archive_root=archive_root,
+            video_ids={video.id},
+        )
+
+        self.assertEqual(1, result.counts["archived"])
+        self.assertTrue(source_path.is_symlink())
+        self.assertTrue(normalized_path.is_file())
 
     def test_source_archive_refuses_a_concurrent_process(self) -> None:
         with patch(

@@ -15,7 +15,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 IMPORT_PROVIDER = "church-youtube-finder"
-IMPORTER_VERSION = "church_database_import_v1"
+IMPORTER_VERSION = "church_database_import_v2"
 
 
 class ChurchDatabaseImportError(ValueError):
@@ -29,7 +29,12 @@ class ChurchSourceRecord:
     church_name: str
     church_source_url: str
     pastor_name: str
+    discovered_channel_url: str
     channel_url: str
+    channel_id: str
+    channel_key: str
+    channel_resolver_version: str
+    channel_resolved_at: str | None
     external_updated_at: str | None
     fingerprint: str
 
@@ -37,7 +42,12 @@ class ChurchSourceRecord:
         return {
             "church_name": self.church_name,
             "church_source_url": self.church_source_url,
+            "discovered_channel_url": self.discovered_channel_url,
             "channel_url": self.channel_url,
+            "channel_id": self.channel_id,
+            "channel_key": self.channel_key,
+            "channel_resolved_at": self.channel_resolved_at,
+            "channel_resolver_version": self.channel_resolver_version,
             "external_record_id": self.external_record_id,
             "external_updated_at": self.external_updated_at,
             "importer_version": IMPORTER_VERSION,
@@ -74,7 +84,7 @@ def normalize_youtube_channel_url(url: str) -> str:
     if host == "youtube.com":
         host = "www.youtube.com"
     path = parsed.path.rstrip("/")
-    for suffix in ("/featured", "/streams", "/videos"):
+    for suffix in ("/featured", "/streams", "/videos", "/live"):
         if path.lower().endswith(suffix):
             path = path[: -len(suffix)].rstrip("/")
             break
@@ -106,6 +116,12 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
             "name",
             "source_url",
             "youtube_channel",
+            "youtube_channel_canonical_url",
+            "youtube_channel_id",
+            "youtube_channel_key",
+            "youtube_channel_resolver_version",
+            "youtube_channel_resolved_at",
+            "youtube_channel_resolution_error",
             "pastor_name",
             "status",
             "updated_at",
@@ -117,11 +133,18 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
             )
         rows = connection.execute(
             """
-            SELECT id, name, source_url, youtube_channel, pastor_name, updated_at
+            SELECT
+                id, name, source_url, youtube_channel, pastor_name, updated_at,
+                youtube_channel_canonical_url, youtube_channel_id, youtube_channel_key,
+                youtube_channel_resolver_version, youtube_channel_resolved_at,
+                youtube_channel_resolution_error
             FROM churches
             WHERE status = 'found'
               AND trim(coalesce(pastor_name, '')) <> ''
-              AND trim(coalesce(youtube_channel, '')) <> ''
+              AND trim(coalesce(youtube_channel_key, '')) <> ''
+              AND trim(coalesce(youtube_channel_id, '')) <> ''
+              AND trim(coalesce(youtube_channel_canonical_url, '')) <> ''
+              AND trim(coalesce(youtube_channel_resolution_error, '')) = ''
             ORDER BY id
             """
         ).fetchall()
@@ -140,13 +163,30 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
         if external_key in seen_keys:
             raise ChurchDatabaseImportError(f"duplicate church entity key: {external_key}")
         seen_keys.add(external_key)
+        discovered_channel_url = str(row["youtube_channel"] or "").strip()
+        channel_url = str(row["youtube_channel_canonical_url"]).strip()
+        channel_id = str(row["youtube_channel_id"]).strip()
+        channel_key = str(row["youtube_channel_key"]).strip()
+        resolver_version = str(row["youtube_channel_resolver_version"] or "").strip()
         try:
-            channel_url = normalize_youtube_channel_url(str(row["youtube_channel"]))
+            channel_url = normalize_youtube_channel_url(channel_url)
+            expected_key = youtube_channel_key_from_id(channel_id)
         except ValueError as error:
             raise ChurchDatabaseImportError(
-                f"church row {row['id']} has an invalid YouTube channel: {error}"
+                f"church row {row['id']} has invalid resolved YouTube identity: {error}"
             ) from error
-        channel_key = canonical_youtube_source_key(channel_url)
+        if channel_key != expected_key:
+            raise ChurchDatabaseImportError(
+                f"church row {row['id']} channel key does not match channel ID"
+            )
+        if _channel_id_from_url(channel_url) != channel_id:
+            raise ChurchDatabaseImportError(
+                f"church row {row['id']} canonical URL does not match channel ID"
+            )
+        if not resolver_version:
+            raise ChurchDatabaseImportError(
+                f"church row {row['id']} is missing youtube_channel_resolver_version"
+            )
         prior_key = seen_channels.get(channel_key)
         if prior_key is not None:
             raise ChurchDatabaseImportError(
@@ -168,7 +208,16 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
                 church_name=str(row["name"]).strip(),
                 church_source_url=church_source_url,
                 pastor_name=str(row["pastor_name"]).strip(),
+                discovered_channel_url=discovered_channel_url,
                 channel_url=channel_url,
+                channel_id=channel_id,
+                channel_key=channel_key,
+                channel_resolver_version=resolver_version,
+                channel_resolved_at=(
+                    str(row["youtube_channel_resolved_at"])
+                    if row["youtube_channel_resolved_at"] is not None
+                    else None
+                ),
                 external_updated_at=(
                     str(row["updated_at"]) if row["updated_at"] is not None else None
                 ),
@@ -232,16 +281,19 @@ def _import_record(
             "external record changed; manual reconciliation required",
         )
 
-    channel_key = canonical_youtube_source_key(record.channel_url)
     source_rows = connection.execute(
         """
-        SELECT s.id, s.url, s.pastor_id, p.slug, p.display_name
+        SELECT s.id, s.url, s.source_identity_key, s.pastor_id, p.slug, p.display_name
         FROM sources s JOIN pastors p ON p.id = s.pastor_id
         ORDER BY s.id
         """
     ).fetchall()
     existing_source = next(
-        (row for row in source_rows if canonical_youtube_source_key(str(row["url"])) == channel_key),
+        (
+            row
+            for row in source_rows
+            if _source_matches_record(row, record)
+        ),
         None,
     )
     if existing_source is not None:
@@ -256,6 +308,11 @@ def _import_record(
                 "channel already exists with a different pastor assignment",
             )
         if not dry_run:
+            if existing_source["source_identity_key"] is None:
+                connection.execute(
+                    "UPDATE sources SET source_identity_key = ? WHERE id = ?",
+                    (record.channel_key, int(existing_source["id"])),
+                )
             _insert_import_ref(
                 connection,
                 record,
@@ -288,12 +345,14 @@ def _import_record(
     pastor_id = int(pastor_cursor.lastrowid)
     source_cursor = connection.execute(
         """
-        INSERT INTO sources (pastor_id, url, source_type, added_at, notes)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO sources (
+            pastor_id, url, source_identity_key, source_type, added_at, notes
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             pastor_id,
             record.channel_url,
+            record.channel_key,
             detect_source_type(record.channel_url).value,
             now,
             f"Imported from {IMPORT_PROVIDER}: {record.church_name}",
@@ -349,6 +408,36 @@ def _available_slug(connection: sqlite3.Connection, record: ChurchSourceRecord) 
 def _normalized_name(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
+
+
+def youtube_channel_key_from_id(channel_id: str) -> str:
+    value = channel_id.strip()
+    if not re.fullmatch(r"UC[A-Za-z0-9_-]{22}", value):
+        raise ChurchDatabaseImportError(f"invalid YouTube channel ID: {channel_id!r}")
+    return f"youtube:channel:{value}"
+
+
+def _channel_id_from_url(url: str) -> str | None:
+    path = urlsplit(url).path.strip("/")
+    parts = path.split("/")
+    if len(parts) == 2 and parts[0].lower() == "channel":
+        return parts[1]
+    return None
+
+
+def _source_matches_record(row: sqlite3.Row, record: ChurchSourceRecord) -> bool:
+    identity_key = row["source_identity_key"]
+    if identity_key is not None:
+        return str(identity_key) == record.channel_key
+    source_url = str(row["url"])
+    channel_id = _channel_id_from_url(normalize_youtube_channel_url(source_url))
+    if channel_id is not None:
+        return youtube_channel_key_from_id(channel_id) == record.channel_key
+    aliases = {
+        canonical_youtube_source_key(record.discovered_channel_url),
+        canonical_youtube_source_key(record.channel_url),
+    }
+    return canonical_youtube_source_key(source_url) in aliases
 
 
 def _canonical_hash(value: object) -> str:

@@ -4,6 +4,10 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from typer.testing import CliRunner
 
 from pastor_transcript_extractor.church_database_import import (
     canonical_youtube_source_key,
@@ -11,6 +15,7 @@ from pastor_transcript_extractor.church_database_import import (
     imported_source_ids,
     normalize_youtube_channel_url,
 )
+from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.models import SourceType
 from pastor_transcript_extractor.storage import Database
 
@@ -28,21 +33,36 @@ class ChurchDatabaseImportTests(unittest.TestCase):
                 youtube_channel TEXT,
                 pastor_name TEXT,
                 status TEXT NOT NULL,
-                updated_at TEXT
+                updated_at TEXT,
+                youtube_channel_canonical_url TEXT,
+                youtube_channel_id TEXT,
+                youtube_channel_key TEXT,
+                youtube_channel_resolver_version TEXT,
+                youtube_channel_resolved_at TEXT,
+                youtube_channel_resolution_error TEXT
             );
             INSERT INTO churches VALUES (
                 1, 'Existing Church', 'https://directory.test/church/1',
                 'https://www.youtube.com/@existing/featured', 'Existing Pastor',
-                'found', '2026-07-19T00:00:00Z'
+                'found', '2026-07-19T00:00:00Z',
+                'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa',
+                'UCaaaaaaaaaaaaaaaaaaaaaa',
+                'youtube:channel:UCaaaaaaaaaaaaaaaaaaaaaa',
+                'test-resolver-v1', '2026-07-19T00:00:00Z', NULL
             );
             INSERT INTO churches VALUES (
                 2, 'New Church', 'https://directory.test/church/2/',
-                'https://youtube.com/channel/UCAbCdEf/streams?view=1', 'New Pastor',
-                'found', '2026-07-19T00:00:00Z'
+                'https://youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb/streams?view=1',
+                'New Pastor', 'found', '2026-07-19T00:00:00Z',
+                'https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb',
+                'UCbbbbbbbbbbbbbbbbbbbbbb',
+                'youtube:channel:UCbbbbbbbbbbbbbbbbbbbbbb',
+                'test-resolver-v1', '2026-07-19T00:00:00Z', NULL
             );
             INSERT INTO churches VALUES (
                 3, 'Incomplete Church', 'https://directory.test/church/3',
-                NULL, 'No Channel', 'found', '2026-07-19T00:00:00Z'
+                NULL, 'No Channel', 'found', '2026-07-19T00:00:00Z',
+                NULL, NULL, NULL, NULL, NULL, 'not resolved'
             );
             """
         )
@@ -50,26 +70,51 @@ class ChurchDatabaseImportTests(unittest.TestCase):
         connection.close()
         return path
 
-    def _app_database(self, root: Path) -> Database:
+    def _app_database(
+        self,
+        root: Path,
+        *,
+        existing_url: str = "https://www.youtube.com/@existing",
+    ) -> Database:
         database = Database(root / "app.db")
         database.initialize()
         pastor = database.add_pastor("existing", "Existing Pastor")
         database.add_source(
-            "https://www.youtube.com/@existing",
+            existing_url,
             SourceType.CHANNEL,
             pastor.id,
         )
         return database
 
+    def test_resolved_identity_reuses_existing_channel_id_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            church_path = self._church_database(root)
+            database = self._app_database(
+                root,
+                existing_url=(
+                    "https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa"
+                ),
+            )
+
+            result = import_church_sources(database, church_path, dry_run=True)
+
+            self.assertEqual({"created": 1, "reused": 1}, result.counts)
+            self.assertEqual(1, len(database.list_sources()))
+
     def test_normalizes_channel_variants_without_losing_channel_id_case(self) -> None:
         normalized = normalize_youtube_channel_url(
-            "https://youtube.com/channel/UCAbCdEf/streams?view=1"
+            "https://youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb/streams?view=1"
         )
 
-        self.assertEqual("https://www.youtube.com/channel/UCAbCdEf", normalized)
+        self.assertEqual(
+            "https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb", normalized
+        )
         self.assertEqual(
             canonical_youtube_source_key(normalized),
-            canonical_youtube_source_key("https://www.youtube.com/channel/UCAbCdEf/featured"),
+            canonical_youtube_source_key(
+                "https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb/featured"
+            ),
         )
 
     def test_dry_run_reports_without_writing(self) -> None:
@@ -97,6 +142,14 @@ class ChurchDatabaseImportTests(unittest.TestCase):
             self.assertEqual({"unchanged": 2}, replay.counts)
             self.assertEqual(2, len(imported_source_ids(database)))
             self.assertEqual(2, len(database.list_sources()))
+            with database.connect() as connection:
+                existing_identity = connection.execute(
+                    "SELECT source_identity_key FROM sources WHERE url = ?",
+                    ("https://www.youtube.com/@existing",),
+                ).fetchone()["source_identity_key"]
+            self.assertEqual(
+                "youtube:channel:UCaaaaaaaaaaaaaaaaaaaaaa", existing_identity
+            )
 
             manual_pastor = database.add_pastor("manual", "Manual Pastor")
             database.add_source(
@@ -126,6 +179,171 @@ class ChurchDatabaseImportTests(unittest.TestCase):
             imported = database.get_pastor_by_slug("churchdb-2")
             self.assertIsNotNone(imported)
             self.assertEqual("New Pastor", imported.display_name)
+
+
+class ImportedSourceSyncTests(unittest.TestCase):
+    def _database(self, root: Path, *, configure_archive: bool) -> tuple[Database, int]:
+        database = Database(root / "app.db")
+        database.initialize()
+        pastor = database.add_pastor("sample", "Sample Pastor")
+        source = database.add_source(
+            "https://www.youtube.com/@sample",
+            SourceType.CHANNEL,
+            pastor.id,
+        )
+        database.add_video(
+            source_id=source.id,
+            pastor_id=pastor.id,
+            youtube_video_id="syncvideo01",
+            title="Sync Video",
+            url="https://www.youtube.com/watch?v=syncvideo01",
+            channel_name="Sample Church",
+            published_at="2026-07-19T00:00:00Z",
+            duration_seconds=3600,
+        )
+        if configure_archive:
+            archive_root = root / "archive"
+            archive_root.mkdir()
+            database.configure_media_archive_destination(str(archive_root))
+        return database, source.id
+
+    def test_sync_registers_and_archives_each_source_after_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, source_id = self._database(root, configure_archive=True)
+            events: list[str] = []
+
+            def extraction(*args, **kwargs):
+                events.append("extract")
+                return SimpleNamespace(processed=1, skipped=0, failed=0)
+
+            def registration(*args, **kwargs):
+                events.append("register")
+                return SimpleNamespace(
+                    artifacts_registered=2,
+                    attempts_registered=1,
+                    missing_paths=0,
+                )
+
+            def archival(*args, **kwargs):
+                events.append("archive")
+                self.assertEqual({1}, kwargs["video_ids"])
+                return SimpleNamespace(
+                    counts={
+                        "archived": 0,
+                        "already_archived": 0,
+                        "destination_unavailable": 0,
+                        "failed": 0,
+                        "would_archive": 0,
+                    },
+                    items=(),
+                )
+
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    return_value=[source_id],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    side_effect=lambda **kwargs: events.append("discover"),
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.fetch_captions_service",
+                    side_effect=lambda **kwargs: events.append("captions"),
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.transcribe_videos_service",
+                    side_effect=lambda **kwargs: events.append("transcribe"),
+                ),
+                patch("pastor_transcript_extractor.cli.extract_batch", side_effect=extraction),
+                patch(
+                    "pastor_transcript_extractor.cli.backfill_existing_media_artifacts",
+                    side_effect=registration,
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.archive_source_media",
+                    side_effect=archival,
+                ),
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "sync-imported-sources",
+                        "--extract",
+                        "--archive-sources",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, result.output)
+            self.assertEqual(
+                ["discover", "captions", "transcribe", "extract", "register", "archive"],
+                events,
+            )
+
+    def test_sync_archive_mode_requires_a_configured_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, source_id = self._database(root, configure_archive=False)
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    return_value=[source_id],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.discover_sources_service"
+                ) as discover,
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "sync-imported-sources",
+                        "--extract",
+                        "--archive-sources",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+            self.assertNotEqual(0, result.exit_code)
+            self.assertIn("No media archive destination is configured", result.output)
+            discover.assert_not_called()
+
+    def test_sync_stops_before_download_when_free_space_is_below_twenty_percent(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, source_id = self._database(root, configure_archive=True)
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    return_value=[source_id],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    return_value=SimpleNamespace(total=100, used=81, free=19),
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.discover_sources_service"
+                ) as discover,
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "sync-imported-sources",
+                        "--extract",
+                        "--archive-sources",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+            self.assertEqual(1, result.exit_code)
+            self.assertIn("at least 20.0%", result.output)
+            discover.assert_not_called()
 
 
 if __name__ == "__main__":

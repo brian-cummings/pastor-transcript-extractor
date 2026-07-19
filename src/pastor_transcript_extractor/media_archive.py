@@ -11,7 +11,7 @@ from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.media_artifacts import (
-    get_verified_normalized_media_artifact,
+    get_archive_safe_normalized_media_artifact,
     verify_media_artifact,
 )
 from pastor_transcript_extractor.models import (
@@ -104,6 +104,7 @@ def archive_source_media(
     archive_root: Path | None = None,
     dry_run: bool = False,
     limit: int | None = None,
+    video_ids: set[int] | None = None,
     progress_callback: ArchiveProgressCallback | None = None,
     preflight_callback: ArchivePreflightCallback | None = None,
 ) -> ArchiveRunResult:
@@ -115,6 +116,7 @@ def archive_source_media(
             archive_root=archive_root,
             dry_run=dry_run,
             limit=limit,
+            video_ids=video_ids,
             progress_callback=progress_callback,
             preflight_callback=preflight_callback,
         )
@@ -127,6 +129,7 @@ def _archive_source_media_locked(
     archive_root: Path | None,
     dry_run: bool,
     limit: int | None,
+    video_ids: set[int] | None,
     progress_callback: ArchiveProgressCallback | None,
     preflight_callback: ArchivePreflightCallback | None,
 ) -> ArchiveRunResult:
@@ -160,7 +163,7 @@ def _archive_source_media_locked(
         "running",
         "verifying normalized audio; normalized files are never archive candidates",
     )
-    candidates = _eligible_source_artifacts(database)
+    candidates = _eligible_source_artifacts(database, video_ids=video_ids)
     if limit is not None:
         candidates = candidates[:limit]
     entries = [
@@ -298,10 +301,14 @@ def archive_status(database: Database) -> ArchiveStatusReport:
     )
 
 
-def _eligible_source_artifacts(database: Database) -> list[MediaArtifact]:
+def _eligible_source_artifacts(
+    database: Database, *, video_ids: set[int] | None = None
+) -> list[MediaArtifact]:
     candidates: list[MediaArtifact] = []
     for video in database.list_videos():
-        if get_verified_normalized_media_artifact(database, video.id) is None:
+        if video_ids is not None and video.id not in video_ids:
+            continue
+        if get_archive_safe_normalized_media_artifact(database, video.id) is None:
             continue
         candidates.extend(
             artifact

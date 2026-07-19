@@ -1649,13 +1649,40 @@ def sync_imported_sources(
         "--extract/--no-extract",
         help="Also create missing sermon extraction proposals for synchronized sources.",
     ),
+    archive_sources: bool = typer.Option(
+        False,
+        "--archive-sources/--no-archive-sources",
+        help=(
+            "After each source, register audio and archive verified source files to "
+            "the configured media archive destination. Requires --extract."
+        ),
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    if archive_sources and not extract_new:
+        raise typer.BadParameter("--archive-sources requires --extract.")
+    if archive_sources and database.get_active_media_archive_destination() is None:
+        raise typer.BadParameter(
+            "No media archive destination is configured. Run "
+            "'pte media archive-sources --archive-root PATH' first."
+        )
     source_ids = imported_source_ids(database, provider)
     if not source_ids:
         raise typer.BadParameter(f"No imported sources found for provider {provider!r}.")
     for index, source_id in enumerate(source_ids, start=1):
+        disk = shutil.disk_usage(paths.root)
+        free_fraction = disk.free / disk.total if disk.total else 0.0
+        if free_fraction < 0.20:
+            console.print(
+                f"Stopping before source #{source_id}: local disk has "
+                f"{free_fraction:.1%} free; synchronization requires at least 20.0%."
+            )
+            raise typer.Exit(code=1)
+        console.print(
+            f"Local disk headroom before source #{source_id}: {free_fraction:.1%} free."
+        )
         console.print(f"[{index}/{len(source_ids)}] Synchronizing imported source #{source_id}")
         discover_sources_service(limit=latest, source_id=source_id, base_dir=base_dir)
         fetch_captions_service(source_id=source_id, base_dir=base_dir)
@@ -1667,7 +1694,6 @@ def sync_imported_sources(
             base_dir=base_dir,
         )
         if extract_new:
-            paths = build_paths(base_dir, remember=True)
             extraction = extract_batch(
                 database,
                 paths,
@@ -1683,9 +1709,34 @@ def sync_imported_sources(
                 f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; "
                 f"failed {extraction.failed}."
             )
+        source_videos = database.list_videos_by_source_id(source_id)
+        registration = [
+            backfill_existing_media_artifacts(database, paths, video_id=video.id)
+            for video in source_videos
+        ]
+        console.print(
+            f"Registered {sum(item.artifacts_registered for item in registration)} media "
+            f"artifact(s) for source #{source_id}; "
+            f"missing paths={sum(item.missing_paths for item in registration)}."
+        )
+        if archive_sources:
+            video_ids = {video.id for video in source_videos}
+            archive = archive_source_media(database, paths, video_ids=video_ids)
+            counts = archive.counts
+            console.print(
+                f"Archived source #{source_id}: archived={counts['archived']}, "
+                f"already_archived={counts['already_archived']}, "
+                f"unavailable={counts['destination_unavailable']}, failed={counts['failed']}."
+            )
+            if counts["destination_unavailable"] or counts["failed"]:
+                console.print(
+                    "Some source audio remains local and will be retried by the "
+                    "next archive run; disk headroom will be checked before the "
+                    "next source."
+                )
     console.print(
         f"Synchronized {len(source_ids)} imported source(s); latest={latest}, "
-        f"all_audio={all_audio}, extract={extract_new}."
+        f"all_audio={all_audio}, extract={extract_new}, archive_sources={archive_sources}."
     )
 
 

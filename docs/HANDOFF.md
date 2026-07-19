@@ -43,7 +43,7 @@ Implemented:
 - media acquisition outcomes distinguish verified, unavailable, and failed; they remain non-gating for sermon content
 - universal acquisition is an explicit shadow command and has not been inserted into the stable `run` workflow
 - no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
-- 208 tests pass
+- 251 tests pass
 
 ## Transcript-Independent Media
 
@@ -80,7 +80,7 @@ The existing `run` workflow remains unchanged. Media acquisition failures are
 persisted separately and do not alter `proposed.json`, extraction metrics,
 content dispositions, profiles, memberships, or name claims.
 
-### Production media verification (2026-07-15)
+### Production media verification (2026-07-16)
 
 The historical backfill examined 183 videos and produced 78 reconstructed media
 artifacts plus 39 initial acquisition outcomes. An immediate full replay
@@ -98,31 +98,45 @@ missing artifacts; all 12 fixtures from the preceding accepted benchmark had
 exactly unchanged per-fixture result payloads. The additional fixture was new
 ground truth, not a media-induced classification change.
 
-A bounded acquisition batch processed ten previously unresolved sermons: nine
-were verified and one yt-dlp HTTP 403 was persisted as `failed`, without being
-converted into an identity conclusion. Duration validation then rejected 16
-reconstructed audio candidates that were hash-valid but ended before their
-isolated sermon boundary. Twelve affected videos also have another verified
-artifact; four have no valid alternative and are conservatively reported as
-`corrupt` and eligible for reacquisition. Replaying the stricter historical
-backfill created no media artifacts and recorded those 16 classifications; a
-second replay created zero artifacts and zero acquisition outcomes.
+Universal acquisition subsequently produced media artifacts for every isolated
+sermon. Transient yt-dlp HTTP 403 failures remained append-only history and
+succeeded on later retries. Six hash-valid, full-length artifacts initially
+appeared as `corrupt` because final transcript segments extended between 2 and
+28 seconds past the independently recorded video duration. Coverage validation
+now accepts an artifact that either reaches the sermon endpoint directly or
+closely matches the full video duration when the sermon endpoint reaches or
+overshoots it. It still rejects audio that is materially shorter than both.
+This policy correction changed no media bytes, sermon artifacts, or identity
+state.
 
 Current coverage is:
 
 ```text
 isolated sermons  135
-verified audio     34
+verified audio    135
 unavailable         0
-failed              1
-corrupt             4
-missing             96
+failed              0
+corrupt             0
+missing             0
 ```
 
-Acquiring the remaining 96 missing sermons and reacquiring the four incomplete
-ones is intentionally not part of the normal workflow yet. It is a substantial
-external download/storage job and should be run in bounded batches with
-`pte media ensure-audio --all-eligible --limit N`, auditing between batches.
+All currently isolated sermons now have verified audio. Replaying
+`pte media ensure-audio --all-eligible` skips them; no reacquisition is needed.
+
+Source-audio archival is tracked as a first-class retryable workflow. The
+active production destination is `/Volumes/home/SermonExtractorAudio`. A dry
+run registered 135 eligible source artifacts totaling 36.95 GiB; all remain
+pending for the operator-run archive. PTE stores deterministic source and NAS
+paths, checksums, byte sizes, current entry state, and append-only attempts.
+Unavailable destinations leave entries pending. Run:
+
+```bash
+pte media archive-sources \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The destination argument is omitted because it is already persisted. Inspect
+progress or retry state with `pte media archive-status --base-dir ...`.
 
 ## Acoustic Pair Experiment
 

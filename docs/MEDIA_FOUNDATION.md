@@ -128,8 +128,10 @@ write, or capacity check leaves sources untouched and records retryable outcomes
 ## Replay guarantees
 
 - Existing verified content is reused without redownload.
-- Integrity verification includes SHA-256, byte size, and coverage through the
-  isolated sermon end; truncated historical files remain unresolved.
+- Integrity verification includes SHA-256 and byte size. Coverage requires the
+  artifact to reach the isolated sermon end, or to closely match the complete
+  video duration when transcript timing extends past the real media endpoint;
+  materially truncated files remain unresolved.
 - Replaying migration or acquisition creates no duplicate rows.
 - Existing audio bytes and modification times remain unchanged.
 - An identical source or normalized file resolves to the same fingerprint.

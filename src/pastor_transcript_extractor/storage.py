@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pastor_id INTEGER NOT NULL,
     url TEXT NOT NULL UNIQUE,
+    source_identity_key TEXT NULL,
     source_type TEXT NOT NULL,
     added_at TEXT NOT NULL,
     notes TEXT NULL,
@@ -423,6 +424,15 @@ class Database:
         source_columns = {str(row["name"]) for row in connection.execute("PRAGMA table_info(sources)").fetchall()}
         if "pastor_id" not in source_columns:
             connection.execute("ALTER TABLE sources ADD COLUMN pastor_id INTEGER NULL")
+        if "source_identity_key" not in source_columns:
+            connection.execute("ALTER TABLE sources ADD COLUMN source_identity_key TEXT NULL")
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_sources_identity_key
+            ON sources(source_identity_key)
+            WHERE source_identity_key IS NOT NULL
+            """
+        )
 
         video_columns = {str(row["name"]) for row in connection.execute("PRAGMA table_info(videos)").fetchall()}
         if "pastor_id" not in video_columns:

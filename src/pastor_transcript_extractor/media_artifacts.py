@@ -198,8 +198,13 @@ def backfill_existing_media_artifacts(
         transcript_paths = build_transcript_artifact_paths(
             app_paths, pastor.slug, video.youtube_video_id
         )
-        source_artifact: MediaArtifact | None = None
-        if transcript_paths.audio_download.exists():
+        existing_artifacts = database.list_media_artifacts_for_video(video.id)
+        source_artifact = _artifact_at_logical_path(
+            existing_artifacts,
+            artifact_kind="source_audio",
+            path=transcript_paths.audio_download,
+        )
+        if source_artifact is None and transcript_paths.audio_download.exists():
             source_artifact = register_media_file(
                 database,
                 app_paths,
@@ -226,18 +231,25 @@ def backfill_existing_media_artifacts(
             if not path.exists():
                 missing_paths += 1
                 continue
-            normalized = register_media_file(
-                database,
-                app_paths,
-                video=video,
-                pastor_slug=pastor.slug,
-                artifact_path=path,
+            normalized = _artifact_at_logical_path(
+                existing_artifacts,
                 artifact_kind="normalized_audio",
-                provenance_kind="reconstructed_existing",
-                acquisition_tool="unknown_reconstructed",
-                acquisition_tool_version="unknown",
-                parent=source_artifact,
+                path=path,
             )
+            if normalized is None:
+                normalized = register_media_file(
+                    database,
+                    app_paths,
+                    video=video,
+                    pastor_slug=pastor.slug,
+                    artifact_path=path,
+                    artifact_kind="normalized_audio",
+                    provenance_kind="reconstructed_existing",
+                    acquisition_tool="unknown_reconstructed",
+                    acquisition_tool_version="unknown",
+                    parent=source_artifact,
+                )
+                existing_artifacts.append(normalized)
             covers_window = media_artifact_covers_isolated_sermon(database, normalized)
             _record_attempt(
                 database,
@@ -262,6 +274,21 @@ def backfill_existing_media_artifacts(
         attempts_registered=after["media_acquisition_attempts"] - before_attempts,
         missing_paths=missing_paths,
     )
+
+
+def _artifact_at_logical_path(
+    artifacts: list[MediaArtifact],
+    *,
+    artifact_kind: str,
+    path: Path,
+) -> MediaArtifact | None:
+    logical_path = path.expanduser().absolute()
+    for artifact in reversed(artifacts):
+        if artifact.artifact_kind != artifact_kind:
+            continue
+        if Path(artifact.artifact_path).expanduser().absolute() == logical_path:
+            return artifact
+    return None
 
 
 def ensure_audio_for_video(
@@ -508,6 +535,22 @@ def get_verified_normalized_media_artifact(
     return None
 
 
+def get_archive_safe_normalized_media_artifact(
+    database: Database, video_id: int
+) -> MediaArtifact | None:
+    artifacts = database.list_media_artifacts_for_video(video_id)
+    for artifact in reversed(artifacts):
+        if artifact.artifact_kind != "normalized_audio":
+            continue
+        if not verify_media_artifact(artifact):
+            continue
+        if media_artifact_covers_isolated_sermon(
+            database, artifact
+        ) or media_artifact_covers_complete_recording(database, artifact):
+            return artifact
+    return None
+
+
 def verify_media_artifact(artifact: MediaArtifact) -> bool:
     path = Path(artifact.artifact_path)
     return (
@@ -526,7 +569,42 @@ def media_artifact_covers_isolated_sermon(
     window, _ = _isolated_sermon_window(database, artifact.video_id)
     if window is None or artifact.duration_seconds is None:
         return False
-    return artifact.duration_seconds + tolerance_seconds >= window[1]
+    if artifact.duration_seconds + tolerance_seconds >= window[1]:
+        return True
+
+    # Caption/transcript segment endpoints can extend beyond the actual media
+    # endpoint, especially when the final segment is rounded to a fixed block.
+    # Treat a hash-valid full-video artifact as complete only when its measured
+    # duration agrees closely with the independently stored video duration and
+    # the sermon window reaches that endpoint. The agreement check prevents a
+    # stale, shorter video-duration value from blessing genuinely truncated
+    # audio.
+    video = database.get_video_by_id(artifact.video_id)
+    if video is None or video.duration_seconds is None or video.duration_seconds <= 0:
+        return False
+    video_duration = float(video.duration_seconds)
+    reaches_recorded_video_end = (
+        abs(artifact.duration_seconds - video_duration) <= tolerance_seconds
+    )
+    sermon_reaches_video_end = window[1] + tolerance_seconds >= video_duration
+    return reaches_recorded_video_end and sermon_reaches_video_end
+
+
+def media_artifact_covers_complete_recording(
+    database: Database,
+    artifact: MediaArtifact,
+    *,
+    tolerance_seconds: float = 2.0,
+) -> bool:
+    if artifact.duration_seconds is None:
+        return False
+    video = database.get_video_by_id(artifact.video_id)
+    if video is None or video.duration_seconds is None or video.duration_seconds <= 0:
+        return False
+    return (
+        abs(artifact.duration_seconds - float(video.duration_seconds))
+        <= tolerance_seconds
+    )
 
 
 def _record_attempt(

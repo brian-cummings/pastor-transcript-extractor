@@ -104,7 +104,9 @@ You can override the data directory with `--base-dir`.
 Import complete pastor/channel pairs directly from the local
 `church-youtube-finder` database. The source database is opened read-only. PTE
 stores a namespaced church key and imported-record fingerprint so later runs can
-report new, unchanged, reused, or conflicting records.
+report new, unchanged, reused, or conflicting records. Import eligibility
+requires a resolved `youtube_channel_key`; immutable channel keys—not handles or
+URL spellings—are used to match existing PTE sources.
 
 Preview an import:
 
@@ -121,14 +123,25 @@ source captured by that provider:
 ```bash
 pte sync-imported-sources \
   --latest 6 \
+  --all-audio \
+  --extract \
+  --archive-sources \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
 By default, synchronization fetches captions and downloads audio for local ASR
 only when captions are unavailable. Add `--all-audio` to acquire and transcribe
 audio for every eligible video. Add `--extract` when the synchronized recordings
-should immediately become sermon-fixture candidates. Imported assignment changes
-are reported as conflicts and are never silently overwritten.
+should immediately become sermon-fixture candidates. `--archive-sources` requires
+`--extract` and an archive destination previously configured with `pte media
+archive-sources --archive-root PATH`. After each imported source, synchronization
+registers its media, archives source audio whose normalized copy covers the
+isolated sermon or independently matches the complete recording, and leaves the
+normalized processing copy local. Before downloading from each source, the sync
+requires at least 20% free space on the local volume. Archive failures remain
+retryable; synchronization continues only while that reserve is preserved.
+Imported assignment changes are reported as conflicts and are never silently
+overwritten.
 
 ## Ground-Truth Review
 
