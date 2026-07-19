@@ -1,0 +1,32 @@
+{
+  "approval_confirmed": false,
+  "draft_id": "95f24ef8e4ff3764ba1ad0214230e08fefdfa7af8fe9835b83f6d596b4be1aeb",
+  "event_kind": "speaker_pair_human_review",
+  "fixture_eligible": false,
+  "notes": "Bad sermon window included vocalists in observation A",
+  "pair_id": "pair-03024668b28b4c82",
+  "pair_judgment": "cannot_determine",
+  "qualification": {
+    "A": "multiple_speakers",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "255dd8918af0c035bc2e67abf2906cc9c5ce3084c7e3642f1660f6283b00e963",
+  "reviewed_at": "2026-07-16T12:56:00.283711+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "4d4f48db248d60e9a448fd7114866a2b8c3d4bc96b0aa7a5fe62032eb596e3cb",
+    "observation_prior_use": {
+      "a": 0,
+      "b": 0
+    },
+    "reason_codes": [
+      "both_observations_unused"
+    ],
+    "selection_origin": "automatic",
+    "selection_stratum": "shared_attribution",
+    "selector_version": "speaker_pair_selector_v1"
+  },
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v1"
+}

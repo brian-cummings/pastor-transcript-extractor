@@ -1,0 +1,19 @@
+{
+  "approval_confirmed": true,
+  "draft_id": "b088a88ee46abbdb55074fcaf6f712ba28bf85b1a1aa3df6913b8af47d7c27a3",
+  "event_kind": "speaker_pair_human_review",
+  "fixture_eligible": true,
+  "notes": "",
+  "pair_id": "pair-54ba7430472bb519",
+  "pair_judgment": "different_speaker",
+  "qualification": {
+    "A": "qualified_single_speaker",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "4406b4a6dcdc9c4f9f8b8b3a79c1f45d1b97a6c0e4fe16f28e66f38c60f8b2f6",
+  "reviewed_at": "2026-07-16T01:02:44.178229+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v1"
+}
