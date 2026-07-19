@@ -401,12 +401,14 @@ class MediaArtifactTests(unittest.TestCase):
         archive_root = self.paths.root / "nas"
         archive_root.mkdir()
         progress_events = []
+        preflight_events = []
 
         first = archive_source_media(
             self.database,
             self.paths,
             archive_root=archive_root,
             progress_callback=progress_events.append,
+            preflight_callback=preflight_events.append,
         )
         second = archive_source_media(self.database, self.paths)
 
@@ -423,6 +425,23 @@ class MediaArtifactTests(unittest.TestCase):
             [event.stage for event in progress_events],
         )
         self.assertEqual("archived", progress_events[-1].outcome)
+        self.assertEqual(
+            [
+                "archive lock",
+                "destination",
+                "mount",
+                "write probe",
+                "persisted state",
+                "eligibility",
+                "eligibility",
+                "recovery markers",
+                "capacity",
+            ],
+            [event.check for event in preflight_events],
+        )
+        self.assertTrue(
+            all(event.status != "failed" for event in preflight_events)
+        )
         self.assertTrue(source_path.is_symlink())
         archived_path = archive_root / source_path.relative_to(self.paths.root)
         self.assertEqual(archived_path.resolve(), source_path.resolve())
@@ -490,6 +509,14 @@ class MediaArtifactTests(unittest.TestCase):
             ["destination_unavailable", "archived"],
             [attempt.outcome for attempt in self.database.list_media_archive_attempts()],
         )
+
+    def test_source_archive_refuses_a_concurrent_process(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.media_archive.fcntl.flock",
+            side_effect=BlockingIOError,
+        ):
+            with self.assertRaisesRegex(ValueError, "Another media archive process"):
+                archive_source_media(self.database, self.paths)
 
     def test_video_deletion_removes_media_rows_but_not_shared_registry_profiles(self) -> None:
         video, _ = self._video("deletion001")

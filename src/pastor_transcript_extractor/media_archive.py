@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
+import fcntl
 import os
 from pathlib import Path
 import shutil
+import tempfile
 from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths
@@ -41,6 +44,16 @@ class ArchiveProgressEvent:
 
 
 ArchiveProgressCallback = Callable[[ArchiveProgressEvent], None]
+
+
+@dataclass(frozen=True, slots=True)
+class ArchivePreflightEvent:
+    check: str
+    status: str
+    detail: str
+
+
+ArchivePreflightCallback = Callable[[ArchivePreflightEvent], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +105,30 @@ def archive_source_media(
     dry_run: bool = False,
     limit: int | None = None,
     progress_callback: ArchiveProgressCallback | None = None,
+    preflight_callback: ArchivePreflightCallback | None = None,
+) -> ArchiveRunResult:
+    with _archive_lock(app_paths.root):
+        _notify_preflight(preflight_callback, "archive lock", "passed", "exclusive lock acquired")
+        return _archive_source_media_locked(
+            database,
+            app_paths,
+            archive_root=archive_root,
+            dry_run=dry_run,
+            limit=limit,
+            progress_callback=progress_callback,
+            preflight_callback=preflight_callback,
+        )
+
+
+def _archive_source_media_locked(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    archive_root: Path | None,
+    dry_run: bool,
+    limit: int | None,
+    progress_callback: ArchiveProgressCallback | None,
+    preflight_callback: ArchivePreflightCallback | None,
 ) -> ArchiveRunResult:
     destination = (
         configure_archive_destination(database, archive_root)
@@ -102,6 +139,27 @@ def archive_source_media(
         raise ValueError("No media archive destination is configured")
 
     root = Path(destination.archive_root)
+    _notify_preflight(preflight_callback, "destination", "configured", str(root))
+    destination_available, unavailable_detail, available_bytes = _check_destination(
+        root, preflight_callback
+    )
+    existing_entries = database.list_media_archive_entries()
+    state_counts = {
+        status: sum(entry.status == status for entry in existing_entries)
+        for status in ("pending", "archived", "failed")
+    }
+    _notify_preflight(
+        preflight_callback,
+        "persisted state",
+        "ready",
+        ", ".join(f"{key}={value}" for key, value in state_counts.items()),
+    )
+    _notify_preflight(
+        preflight_callback,
+        "eligibility",
+        "running",
+        "verifying normalized audio; normalized files are never archive candidates",
+    )
     candidates = _eligible_source_artifacts(database)
     if limit is not None:
         candidates = candidates[:limit]
@@ -117,8 +175,53 @@ def archive_source_media(
         for artifact in candidates
     ]
 
-    if not root.is_dir():
-        detail = f"archive destination is unavailable: {root}"
+    eligible_bytes = sum(artifact.byte_size for artifact in candidates)
+    _notify_preflight(
+        preflight_callback,
+        "eligibility",
+        "passed",
+        f"{len(candidates)} source artifacts / {_format_bytes(eligible_bytes)}; normalized selected=0",
+    )
+    partial_count = 0
+    staging_count = 0
+    required_bytes = 0
+    for artifact, entry in zip(candidates, entries):
+        archive_path = Path(entry.archive_path)
+        partial_path = archive_path.with_name(
+            f".{archive_path.name}.pte-partial-{artifact.id}"
+        )
+        staging_path = Path(entry.source_path).with_name(
+            f".{Path(entry.source_path).name}.pte-archive-staging-{artifact.id}"
+        )
+        if destination_available and partial_path.exists():
+            partial_count += 1
+        if staging_path.exists() or staging_path.is_symlink():
+            staging_count += 1
+        if not destination_available or not archive_path.exists():
+            required_bytes += artifact.byte_size
+    _notify_preflight(
+        preflight_callback,
+        "recovery markers",
+        "passed" if staging_count == 0 else "warning",
+        f"partial={partial_count}, local_staging={staging_count}",
+    )
+    if available_bytes is not None:
+        space_ok = available_bytes >= required_bytes
+        _notify_preflight(
+            preflight_callback,
+            "capacity",
+            "passed" if space_ok else "failed",
+            f"available={_format_bytes(available_bytes)}, required={_format_bytes(required_bytes)}",
+        )
+        if not space_ok:
+            destination_available = False
+            unavailable_detail = (
+                f"archive destination has insufficient free space: "
+                f"available={available_bytes}, required={required_bytes}"
+            )
+
+    if not destination_available:
+        detail = unavailable_detail or f"archive destination is unavailable: {root}"
         items = []
         for index, (artifact, entry) in enumerate(zip(candidates, entries), start=1):
             database.add_media_archive_attempt(
@@ -357,3 +460,82 @@ def _notify(
             detail=detail,
         )
     )
+
+
+def _check_destination(
+    root: Path, callback: ArchivePreflightCallback | None
+) -> tuple[bool, str | None, int | None]:
+    if not root.is_dir():
+        detail = f"archive destination is unavailable: {root}"
+        _notify_preflight(callback, "mount", "failed", detail)
+        return False, detail, None
+    _notify_preflight(callback, "mount", "passed", "archive directory is accessible")
+
+    probe_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=".pte-write-probe-",
+            dir=root,
+            delete=False,
+        ) as probe:
+            probe_path = Path(probe.name)
+            probe.write(b"pte archive write probe\n")
+            probe.flush()
+            os.fsync(probe.fileno())
+        probe_path.unlink()
+        probe_path = None
+    except OSError as error:
+        if probe_path is not None and probe_path.exists():
+            try:
+                probe_path.unlink()
+            except OSError:
+                pass
+        detail = f"archive destination write probe failed: {type(error).__name__}: {error}"
+        _notify_preflight(callback, "write probe", "failed", detail)
+        return False, detail, None
+    _notify_preflight(callback, "write probe", "passed", "create, fsync, and delete succeeded")
+
+    try:
+        available_bytes = shutil.disk_usage(root).free
+    except OSError as error:
+        detail = f"free-space check failed: {type(error).__name__}: {error}"
+        _notify_preflight(callback, "capacity", "warning", detail)
+        return True, None, None
+    return True, None, available_bytes
+
+
+@contextmanager
+def _archive_lock(app_root: Path):
+    lock_path = app_root / ".media-archive.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError(
+                f"Another media archive process holds the lock: {lock_path}"
+            ) from error
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _notify_preflight(
+    callback: ArchivePreflightCallback | None,
+    check: str,
+    status: str,
+    detail: str,
+) -> None:
+    if callback is not None:
+        callback(ArchivePreflightEvent(check=check, status=status, detail=detail))
+
+
+def _format_bytes(value: int) -> str:
+    amount = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if amount < 1024.0 or unit == "TiB":
+            return f"{amount:.2f} {unit}"
+        amount /= 1024.0
+    raise AssertionError("unreachable")

@@ -75,6 +75,7 @@ from pastor_transcript_extractor.identity import backfill_shadow_identity_assess
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.media_archive import (
+    ArchivePreflightEvent,
     ArchiveProgressEvent,
     archive_source_media,
     archive_status,
@@ -1234,6 +1235,14 @@ def media_archive_sources(
         ) as progress:
             task_id = progress.add_task("Verifying normalized-audio eligibility", total=None)
 
+            def report_archive_preflight(event: ArchivePreflightEvent) -> None:
+                progress.console.print(
+                    f"Preflight {event.check}: {event.status} — {event.detail}",
+                    markup=False,
+                )
+                if event.check == "eligibility" and event.status == "running":
+                    progress.update(task_id, description="Verifying normalized-audio eligibility")
+
             def update_archive_progress(event: ArchiveProgressEvent) -> None:
                 if event.stage == "complete":
                     detail = f" ({event.detail})" if event.detail else ""
@@ -1265,6 +1274,7 @@ def media_archive_sources(
                 dry_run=dry_run,
                 limit=limit,
                 progress_callback=update_archive_progress,
+                preflight_callback=report_archive_preflight,
             )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error

@@ -119,6 +119,12 @@ local source with a symlink. Normalized audio is never selected by this command.
 The symlink preserves existing media-artifact and transcript provenance paths
 when the NAS is mounted.
 
+Before scanning eligibility or moving bytes, the command acquires an exclusive
+archive lock and reports the configured destination, mount accessibility, a
+create/fsync/delete write probe, persisted entry counts, free capacity versus
+required bytes, and leftover PTE partial or local staging files. A failed mount,
+write, or capacity check leaves sources untouched and records retryable outcomes.
+
 ## Replay guarantees
 
 - Existing verified content is reused without redownload.
