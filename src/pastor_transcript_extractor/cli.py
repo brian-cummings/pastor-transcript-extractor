@@ -36,6 +36,11 @@ from pastor_transcript_extractor.evaluation import (
     evaluate_fixture_payload,
 )
 from pastor_transcript_extractor.evaluation_baseline import validate_localization_baseline
+from pastor_transcript_extractor.evaluation_partitioning import (
+    SourceFamilyRegistryError,
+    assign_recording_partition,
+    load_source_family_registry,
+)
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
 from pastor_transcript_extractor.ground_truth_review import (
     NEGATIVE_FAILURE_MODES,
@@ -174,6 +179,64 @@ def validate_baseline(
     console.print(
         f"Validated {baseline.baseline_id}: {baseline.fixture_count} fixture(s), "
         f"fingerprint={baseline.corpus_fingerprint}."
+    )
+
+
+@app.command(help="Validate source-family coverage and family-level evaluation partitions.")
+def validate_source_families(
+    registry_path: Path = typer.Argument(
+        Path("evaluation/source-families.json"),
+        help="Source-family registry JSON.",
+    ),
+    fixture_dir: Path = typer.Option(
+        Path("evaluation/fixtures"),
+        help="Fixture corpus whose source-family coverage should be checked.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        registry = load_source_family_registry(registry_path.expanduser().resolve())
+        fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
+        paths = build_paths(base_dir)
+        if not paths.database.exists():
+            raise SourceFamilyRegistryError(
+                f"application database does not exist: {paths.database}"
+            )
+        database = Database(paths.database, readonly=True)
+        assignments = []
+        for fixture in fixtures:
+            video = database.get_video_by_youtube_id(fixture.video_id)
+            if video is None:
+                raise SourceFamilyRegistryError(f"fixture video is not in the database: {fixture.video_id}")
+            source = database.get_source_by_id(video.source_id)
+            if source is None:
+                raise SourceFamilyRegistryError(f"video source is missing: {fixture.video_id}")
+            transcript = database.get_latest_transcript_artifact_for_video(video.id)
+            assignments.append(
+                assign_recording_partition(
+                    registry=registry,
+                    video_id=fixture.video_id,
+                    source_url=source.url,
+                    caption_source=transcript.source_kind.value if transcript else "unknown",
+                    recording_date=video.published_at,
+                )
+            )
+    except (OSError, SourceFamilyRegistryError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    partition_counts: dict[str, int] = {}
+    for assignment in assignments:
+        partition_counts[assignment.partition.value] = (
+            partition_counts.get(assignment.partition.value, 0) + 1
+        )
+    family_count = len({assignment.source_family_id for assignment in assignments})
+    condition_count = len({assignment.recording_condition_group_id for assignment in assignments})
+    counts = ", ".join(
+        f"{partition}={count}" for partition, count in sorted(partition_counts.items())
+    )
+    console.print(
+        f"Validated {len(assignments)} fixture(s) across {family_count} source families and "
+        f"{condition_count} recording-condition groups; {counts}."
     )
 
 

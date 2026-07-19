@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "registry_version": "sermon-source-families-v1",
+  "partition_policy": {
+    "version": "source_family_partition_v1",
+    "salt": "pte-sermon-evaluation-v1",
+    "development_percent": 60,
+    "validation_percent": 20
+  },
+  "source_families": [
+    {
+      "source_family_id": "youtube-adairsville-sda",
+      "source_urls": ["https://www.youtube.com/@adairsvillesdachurch"],
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure"
+    },
+    {
+      "source_family_id": "youtube-apison-adventist",
+      "source_urls": ["https://www.youtube.com/@apisonadventistchurch"],
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure"
+    },
+    {
+      "source_family_id": "youtube-atlanta-belvedere",
+      "source_urls": ["https://www.youtube.com/@atlantabelvedere"],
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure"
+    },
+    {
+      "source_family_id": "youtube-buford-sda",
+      "source_urls": ["https://www.youtube.com/user/bufordsdachurch"],
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure"
+    },
+    {
+      "source_family_id": "youtube-channel-uciqlkujwv1mykhy4bxst7ow",
+      "source_urls": ["https://www.youtube.com/channel/UCIqlKuJwv1mYKHy4BXST7Ow"],
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure"
+    },
+    {
+      "source_family_id": "youtube-channel-ucp2ro6cs-p-n60myufg5ema",
+      "source_urls": ["https://www.youtube.com/channel/UCp2rO6Cs-P-n60myUfg5emA"],
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure"
+    },
+    {
+      "source_family_id": "youtube-duluth-sda",
+      "source_urls": ["https://www.youtube.com/@duluthsdachurch1869"],
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure"
+    }
+  ]
+}
