@@ -235,6 +235,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
 
             def extraction(*args, **kwargs):
                 self.assertEqual({1}, kwargs["video_ids"])
+                self.assertEqual(2, kwargs["workers"])
                 events.append("extract")
                 return SimpleNamespace(processed=1, skipped=0, failed=0)
 

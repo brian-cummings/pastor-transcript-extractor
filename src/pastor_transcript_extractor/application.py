@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from typing import Callable
 
@@ -84,10 +85,13 @@ def extract_batch(
     video_ids: set[int] | None = None,
     classifier: str = "auto",
     llm_model: str | None = None,
+    workers: int = 1,
     event_callback: EventCallback | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> ExtractionBatchResult:
-    """Extract eligible videos through the single adaptive production path."""
+    """Extract eligible videos through the adaptive production path."""
+    if workers < 1:
+        raise ValueError("Extraction workers must be at least 1")
     llm_config, llm_client = _build_classifier_client(classifier, llm_model)
     _emit(event_callback, _classifier_summary(classifier, llm_config, llm_client))
     videos = database.list_videos()
@@ -98,9 +102,8 @@ def extract_batch(
     if video_ids is not None:
         videos = [video for video in videos if video.id in video_ids]
 
-    processed = 0
     skipped = 0
-    failed = 0
+    eligible_videos = []
     for video in videos:
         if video.pastor_id is None:
             skipped += 1
@@ -121,25 +124,52 @@ def extract_batch(
             skipped += 1
             continue
 
+        eligible_videos.append(video)
+
+    def extract_one(video) -> None:
         _emit(event_callback, f"Extracting video #{video.id}: {video.title}")
-        try:
-            extract_video(
-                database,
-                paths,
-                video.id,
-                classifier=classifier,
-                llm_client=llm_client,
-                prompt_version=llm_config.prompt_version,
-                context_size=llm_config.context_size,
-                progress=progress_callback,
-            )
-        except Exception as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            _emit(event_callback, f"ERROR: Failed to extract video #{video.id}: {error}")
-            failed += 1
-            continue
-        _emit(event_callback, f"Extracted video #{video.id}")
-        processed += 1
+        extract_video(
+            database,
+            paths,
+            video.id,
+            classifier=classifier,
+            llm_client=llm_client,
+            prompt_version=llm_config.prompt_version,
+            context_size=llm_config.context_size,
+            progress=progress_callback,
+        )
+
+    processed = 0
+    failed = 0
+    max_workers = min(workers, len(eligible_videos)) if eligible_videos else 1
+    if max_workers == 1:
+        for video in eligible_videos:
+            try:
+                extract_one(video)
+            except Exception as error:
+                database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                _emit(event_callback, f"ERROR: Failed to extract video #{video.id}: {error}")
+                failed += 1
+            else:
+                _emit(event_callback, f"Extracted video #{video.id}")
+                processed += 1
+        return ExtractionBatchResult(processed=processed, skipped=skipped, failed=failed)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_video = {
+            executor.submit(extract_one, video): video for video in eligible_videos
+        }
+        for future in as_completed(future_to_video):
+            video = future_to_video[future]
+            try:
+                future.result()
+            except Exception as error:
+                database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+                _emit(event_callback, f"ERROR: Failed to extract video #{video.id}: {error}")
+                failed += 1
+            else:
+                _emit(event_callback, f"Extracted video #{video.id}")
+                processed += 1
 
     return ExtractionBatchResult(processed=processed, skipped=skipped, failed=failed)
 

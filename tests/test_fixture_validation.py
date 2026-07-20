@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Barrier
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -213,6 +214,69 @@ class FixtureReclassificationCliTests(unittest.TestCase):
             self.assertNotEqual(0, result.exit_code)
             self.assertIn("missing-video", result.output)
             client_mock.assert_not_called()
+
+    def test_reclassify_runs_fixture_videos_with_requested_workers(self) -> None:
+        class FakeOllamaClient:
+            def __init__(self, config: object) -> None:
+                self.model = getattr(config, "model")
+
+            def model_digest(self) -> str:
+                return "fixture-digest"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture_dir = root / "fixtures"
+            fixture_dir.mkdir()
+            for fixture_id in ("youtube-a", "youtube-b"):
+                (fixture_dir / f"{fixture_id}.json").write_text(
+                    json.dumps(valid_payload(fixture_id)), encoding="utf-8"
+                )
+            videos = {
+                "youtube-a": SimpleNamespace(id=20, title="Fixture A"),
+                "youtube-b": SimpleNamespace(id=10, title="Fixture B"),
+            }
+            database = SimpleNamespace(
+                get_video_by_youtube_id=lambda video_id: videos.get(video_id),
+                get_latest_extraction_result_for_video=lambda _: SimpleNamespace(),
+            )
+            barrier = Barrier(2)
+
+            def reclassify(*args, **kwargs):
+                barrier.wait(timeout=2)
+                return SimpleNamespace(
+                    reused=False,
+                    confidence_tier="medium",
+                    disposition_status="review_required",
+                    retained_segment_count=4,
+                    cache_hits=0,
+                    cache_misses=1,
+                    classification_path=root / "classification.json",
+                )
+
+            with patch(
+                "pastor_transcript_extractor.cli.get_database", return_value=database
+            ), patch(
+                "pastor_transcript_extractor.cli.OllamaClient", FakeOllamaClient
+            ), patch(
+                "pastor_transcript_extractor.cli.reclassify_video",
+                side_effect=reclassify,
+            ):
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "reclassify",
+                        "--fixture-dir",
+                        str(fixture_dir),
+                        "--force",
+                        "--jobs",
+                        "2",
+                        "--base-dir",
+                        str(root / "data"),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("Reclassified 2 video(s)", result.output)
 
 
 if __name__ == "__main__":

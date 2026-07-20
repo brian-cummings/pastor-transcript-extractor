@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass, replace
 import json
 import os
@@ -1665,7 +1665,11 @@ def import_church_db(
 def sync_imported_sources(
     provider: str = typer.Option(IMPORT_PROVIDER, help="Import provider to synchronize."),
     latest: int = typer.Option(6, min=1, help="Newest videos to retain per imported source."),
-    jobs: int = typer.Option(_default_transcribe_jobs(), min=1, help="Concurrent local ASR jobs."),
+    jobs: int = typer.Option(
+        _default_transcribe_jobs(),
+        min=1,
+        help="Concurrent local ASR and video extraction jobs.",
+    ),
     download_jobs: int = typer.Option(
         DEFAULT_PREP_WORKERS,
         "--download-jobs",
@@ -1833,6 +1837,7 @@ def sync_imported_sources(
                     video_ids=selected_video_ids,
                     classifier="auto",
                     llm_model=None,
+                    workers=jobs,
                     event_callback=lambda message: console.print(message, markup=False),
                     progress_callback=lambda stage, current, total: console.print(
                         f"  {stage} block {current}/{total}"
@@ -1878,7 +1883,8 @@ def sync_imported_sources(
     console.print(
         f"Synchronized {len(source_ids)} imported source(s); latest={latest}, "
         f"download_jobs={download_jobs}, transcription_jobs={jobs}, "
-        f"all_audio={all_audio}, extract={extract_new}, archive_sources={archive_sources}."
+        f"extraction_jobs={jobs}, all_audio={all_audio}, extract={extract_new}, "
+        f"archive_sources={archive_sources}."
     )
 
 
@@ -2759,6 +2765,7 @@ def extract(
         help="Content classifier: auto, rules, or llm.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
+    jobs: int = typer.Option(1, "--jobs", min=1, help="Concurrent video extraction jobs."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -2772,6 +2779,7 @@ def extract(
             source_id=source_id,
             classifier=classifier,
             llm_model=llm_model,
+            workers=jobs,
             event_callback=lambda message: console.print(message, markup=False),
             progress_callback=lambda stage, current, total: console.print(
                 f"  {stage} block {current}/{total}"
@@ -2792,6 +2800,12 @@ def reclassify(
         help="Reclassify every approved fixture in this directory.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
+    jobs: int = typer.Option(1, "--jobs", min=1, help="Concurrent video classification jobs."),
+    inference_cache_root: Path | None = typer.Option(
+        None,
+        "--inference-cache-root",
+        help="Use a separate per-video inference cache root, primarily for controlled comparisons.",
+    ),
     force: bool = typer.Option(False, "--force", help="Rerun even when model and prompt versions match."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
@@ -2842,29 +2856,47 @@ def reclassify(
     reused = 0
     skipped = 0
     failed = 0
+    eligible_videos = []
     for video in videos:
         if database.get_latest_extraction_result_for_video(video.id) is None:
             skipped += 1
             continue
-        try:
-            console.print(f"Reclassifying video #{video.id}: {video.title}")
-            result = reclassify_video(
-                database,
-                paths,
-                video.id,
-                llm_client=client,
-                prompt_version=llm_config.prompt_version,
-                force=force,
-                progress=lambda stage, current, total: console.print(
-                    f"  {stage} block {current}/{total}"
-                ),
-                model_digest=client.model_digest(),
-                context_size=llm_config.context_size,
-            )
-        except Exception as error:
+        eligible_videos.append(video)
+
+    model_digest = client.model_digest() if eligible_videos else None
+    resolved_cache_root = (
+        inference_cache_root.expanduser().resolve()
+        if inference_cache_root is not None
+        else None
+    )
+
+    def reclassify_one(video):
+        return reclassify_video(
+            database,
+            paths,
+            video.id,
+            llm_client=client,
+            prompt_version=llm_config.prompt_version,
+            force=force,
+            progress=lambda stage, current, total: console.print(
+                f"  video #{video.id} {stage} block {current}/{total}"
+            ),
+            model_digest=model_digest,
+            context_size=llm_config.context_size,
+            inference_cache_dir=(
+                resolved_cache_root / video.youtube_video_id
+                if resolved_cache_root is not None
+                else None
+            ),
+        )
+
+    def record_result(video, result=None, error: Exception | None = None) -> None:
+        nonlocal processed, reused, failed
+        if error is not None:
             console.print(f"[red]Failed to reclassify[/red] video #{video.id}: {error}")
             failed += 1
-            continue
+            return
+        assert result is not None
         if result.reused:
             console.print(
                 f"Reused current classification for video #{video.id}: "
@@ -2880,6 +2912,33 @@ def reclassify(
                 f"audit={result.classification_path}"
             )
             processed += 1
+
+    for video in eligible_videos:
+        console.print(f"Reclassifying video #{video.id}: {video.title}")
+
+    max_workers = min(jobs, len(eligible_videos)) if eligible_videos else 1
+    if max_workers == 1:
+        for video in eligible_videos:
+            try:
+                result = reclassify_one(video)
+            except Exception as error:
+                record_result(video, error=error)
+            else:
+                record_result(video, result=result)
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_video = {
+                executor.submit(reclassify_one, video): video
+                for video in eligible_videos
+            }
+            for future in as_completed(future_to_video):
+                video = future_to_video[future]
+                try:
+                    result = future.result()
+                except Exception as error:
+                    record_result(video, error=error)
+                else:
+                    record_result(video, result=result)
     console.print(
         f"Reclassified {processed} video(s); reused {reused}; skipped {skipped}; failed {failed}."
     )

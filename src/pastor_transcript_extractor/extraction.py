@@ -252,6 +252,7 @@ def reclassify_video(
     progress: Any | None = None,
     model_digest: str | None = None,
     context_size: int = 4096,
+    inference_cache_dir: Path | None = None,
 ) -> ReclassificationRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -319,7 +320,7 @@ def reclassify_video(
         llm_client,
         prompt_version=prompt_version,
         progress=progress,
-        cache_dir=video_paths.extracted / "inference-cache",
+        cache_dir=inference_cache_dir or video_paths.extracted / "inference-cache",
         model_digest=model_digest,
         context_size=context_size,
         rule_baseline_source="manual_override" if override is not None else "recomputed_rules",
