@@ -67,6 +67,7 @@ class Source:
     source_type: SourceType
     added_at: datetime
     notes: Optional[str] = None
+    source_identity_key: Optional[str] = None
 
 
 @dataclass(slots=True)

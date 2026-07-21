@@ -46,6 +46,7 @@ from pastor_transcript_extractor.evaluation_baseline import validate_localizatio
 from pastor_transcript_extractor.evaluation_partitioning import (
     SourceFamilyRegistryError,
     assign_recording_partition,
+    extend_source_family_registry,
     load_source_family_registry,
 )
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
@@ -262,6 +263,40 @@ def validate_source_families(
     console.print(
         f"Validated {len(assignments)} fixture(s) across {family_count} source families and "
         f"{condition_count} recording-condition groups; {counts}."
+    )
+
+
+@app.command(help="Deterministically register new database sources for evaluation partitioning.")
+def sync_source_families(
+    registry_path: Path = typer.Argument(
+        Path("evaluation/source-families.json"),
+        help="Source-family registry JSON to extend without changing existing assignments.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report additions without writing."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    path = registry_path.expanduser().resolve()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise SourceFamilyRegistryError("source-family registry must be a JSON object")
+        registry = load_source_family_registry(path)
+        database = Database(build_paths(base_dir).database, readonly=True)
+        extension = extend_source_family_registry(
+            registry,
+            payload,
+            [(source.url, source.source_identity_key) for source in database.list_sources()],
+        )
+        if not dry_run and (extension.families_added or extension.aliases_added):
+            write_json(path, extension.payload)
+            load_source_family_registry(path)
+    except (OSError, json.JSONDecodeError, SourceFamilyRegistryError) as error:
+        raise typer.BadParameter(str(error)) from error
+    action = "Would add" if dry_run else "Added"
+    console.print(
+        f"{action} {extension.families_added} source family(s) and "
+        f"{extension.aliases_added} URL alias(es); "
+        f"total={len(extension.payload['source_families'])}."
     )
 
 
@@ -674,11 +709,16 @@ def review_next_ground_truth(
         source_use: dict[str, int] = {}
         bucket_use: dict[str, int] = {}
         prior_dates = []
-        for fixture in fixtures:
-            candidate = candidates_by_id.get(str(fixture.get("video_id", "")))
+        history_by_video_id = {
+            str(payload["video_id"]): payload
+            for payload in (*drafts, *fixtures)
+            if payload.get("video_id")
+        }
+        for history_item in history_by_video_id.values():
+            candidate = candidates_by_id.get(str(history_item.get("video_id", "")))
             if candidate is None:
                 continue
-            manifest = fixture.get("selection_manifest")
+            manifest = history_item.get("selection_manifest")
             manifest = manifest if isinstance(manifest, dict) else {}
             family_id = str(
                 manifest.get("source_family_id") or candidate.effective_source_family_id

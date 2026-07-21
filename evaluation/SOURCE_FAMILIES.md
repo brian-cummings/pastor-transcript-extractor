@@ -19,6 +19,17 @@ They cannot become held out retroactively.
 
 ## Adding a source family
 
+Synchronize newly imported database sources first:
+
+```bash
+pte sync-source-families \
+  evaluation/source-families.json \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The command groups URL aliases by resolved channel identity, preserves existing
+assignments, and deterministically partitions genuinely new source families.
+
 1. Review objective provenance: channel or church, production setup, production
    era, recording format, and caption source. Do not inspect expected outcomes
    when deciding the family or partition.

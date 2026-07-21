@@ -446,6 +446,9 @@ class Database:
             source_type=SourceType(str(row["source_type"])),
             added_at=parse_datetime(str(row["added_at"])) or utc_now(),
             notes=row["notes"],
+            source_identity_key=(
+                row["source_identity_key"] if "source_identity_key" in row.keys() else None
+            ),
         )
 
     def _pastor_from_row(self, row: sqlite3.Row) -> Pastor:
@@ -784,19 +787,22 @@ class Database:
             source_type=source_type,
             added_at=parse_datetime(added_at) or utc_now(),
             notes=notes,
+            source_identity_key=None,
         )
 
     def list_sources(self) -> list[Source]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id, pastor_id, url, source_type, added_at, notes FROM sources ORDER BY id"
+                "SELECT id, pastor_id, url, source_identity_key, source_type, added_at, notes "
+                "FROM sources ORDER BY id"
             ).fetchall()
         return [self._source_from_row(row) for row in rows]
 
     def get_source_by_id(self, source_id: int) -> Source | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, pastor_id, url, source_type, added_at, notes FROM sources WHERE id = ?",
+                "SELECT id, pastor_id, url, source_identity_key, source_type, added_at, notes "
+                "FROM sources WHERE id = ?",
                 (source_id,),
             ).fetchone()
         if row is None:
@@ -806,7 +812,8 @@ class Database:
     def get_source_by_url(self, url: str) -> Source | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, pastor_id, url, source_type, added_at, notes FROM sources WHERE url = ?",
+                "SELECT id, pastor_id, url, source_identity_key, source_type, added_at, notes "
+                "FROM sources WHERE url = ?",
                 (url,),
             ).fetchone()
         if row is None:

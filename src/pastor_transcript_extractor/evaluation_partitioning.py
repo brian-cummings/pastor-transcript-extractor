@@ -6,6 +6,7 @@ from enum import StrEnum
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 
@@ -50,6 +51,13 @@ class SourceFamilyRegistry:
             if normalized in family.source_urls:
                 return family
         return None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceFamilyRegistryExtension:
+    payload: dict[str, Any]
+    families_added: int
+    aliases_added: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +193,86 @@ def load_source_family_registry(path: Path) -> SourceFamilyRegistry:
         families.append(SourceFamily(family_id, urls, partition, partition_origin))
     families.sort(key=lambda family: family.source_family_id)
     return SourceFamilyRegistry(version, policy, tuple(families))
+
+
+def extend_source_family_registry(
+    registry: SourceFamilyRegistry,
+    payload: Mapping[str, Any],
+    sources: list[tuple[str, str | None]],
+) -> SourceFamilyRegistryExtension:
+    """Deterministically append previously unseen source identities and URL aliases."""
+    updated = json.loads(json.dumps(payload))
+    raw_families = updated.get("source_families")
+    if not isinstance(raw_families, list):
+        raise SourceFamilyRegistryError("source_families must be a list")
+    families_by_id = {
+        str(family.get("source_family_id")): family
+        for family in raw_families
+        if isinstance(family, dict) and family.get("source_family_id")
+    }
+    family_id_by_url = {
+        url: family.source_family_id
+        for family in registry.families
+        for url in family.source_urls
+    }
+    grouped: dict[str, set[str]] = {}
+    identities: dict[str, str | None] = {}
+    for source_url, identity_key in sources:
+        normalized_url = normalize_source_url(source_url)
+        group_key = identity_key.strip().lower() if identity_key else normalized_url
+        grouped.setdefault(group_key, set()).add(normalized_url)
+        identities[group_key] = identity_key.strip() if identity_key else None
+
+    families_added = 0
+    aliases_added = 0
+    for group_key in sorted(grouped):
+        urls = grouped[group_key]
+        existing_ids = {family_id_by_url[url] for url in urls if url in family_id_by_url}
+        if len(existing_ids) > 1:
+            raise SourceFamilyRegistryError(
+                f"source identity {group_key!r} spans multiple registered families"
+            )
+        if existing_ids:
+            family_id = next(iter(existing_ids))
+            family_payload = families_by_id[family_id]
+            registered_urls = {
+                normalize_source_url(str(url)) for url in family_payload["source_urls"]
+            }
+            new_aliases = urls - registered_urls
+            if new_aliases:
+                family_payload["source_urls"] = sorted(registered_urls | new_aliases)
+                aliases_added += len(new_aliases)
+                for url in new_aliases:
+                    family_id_by_url[url] = family_id
+            continue
+
+        family_id = _deterministic_family_id(identities[group_key], min(urls))
+        if family_id in families_by_id:
+            family_id = f"{family_id}-{hashlib.sha256(group_key.encode()).hexdigest()[:8]}"
+        partition = suggested_partition(family_id, registry.policy)
+        family_payload = {
+            "source_family_id": family_id,
+            "source_urls": sorted(urls),
+            "partition": partition.value,
+            "partition_origin": "deterministic",
+        }
+        raw_families.append(family_payload)
+        families_by_id[family_id] = family_payload
+        for url in urls:
+            family_id_by_url[url] = family_id
+        families_added += 1
+
+    raw_families.sort(key=lambda family: str(family["source_family_id"]))
+    return SourceFamilyRegistryExtension(updated, families_added, aliases_added)
+
+
+def _deterministic_family_id(identity_key: str | None, source_url: str) -> str:
+    if identity_key:
+        slug = re.sub(r"[^a-z0-9]+", "-", identity_key.lower()).strip("-")
+        if slug:
+            return slug
+    digest = hashlib.sha256(normalize_source_url(source_url).encode()).hexdigest()[:16]
+    return f"source-family-{digest}"
 
 
 def _object(payload: dict[str, Any], field: str) -> dict[str, Any]:

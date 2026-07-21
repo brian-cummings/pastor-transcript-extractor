@@ -278,6 +278,7 @@ class GroundTruthReviewTests(unittest.TestCase):
             self.assertEqual("automatic", manifest["selection_origin"])
             self.assertEqual("sermon_fixture_selector_v2", manifest["selector_version"])
             self.assertEqual("family-a", manifest["source_family_id"])
+            self.assertNotIn("source_family_unrepresented", manifest["reason_codes"])
             self.assertNotIn("expected_outcome", manifest)
 
     def test_manual_resume_preserves_automatic_selection_manifest(self) -> None:

@@ -10,6 +10,7 @@ from pastor_transcript_extractor.evaluation_partitioning import (
     EvaluationPartition,
     SourceFamilyRegistryError,
     assign_recording_partition,
+    extend_source_family_registry,
     load_source_family_registry,
     suggested_partition,
 )
@@ -115,17 +116,55 @@ class EvaluationPartitioningTests(unittest.TestCase):
                 recording_date=None,
             )
 
+    def test_registry_extension_groups_aliases_and_assigns_new_families_deterministically(self) -> None:
+        payload = registry_payload()
+        registry = self._load(payload)
+
+        extension = extend_source_family_registry(
+            registry,
+            payload,
+            [
+                ("https://example.test/channel", "youtube:channel:existing"),
+                ("https://example.test/channel-alias", "youtube:channel:existing"),
+                ("https://youtube.test/channel/new", "youtube:channel:UC_New"),
+            ],
+        )
+        replay = extend_source_family_registry(
+            self._load(extension.payload),
+            extension.payload,
+            [
+                ("https://example.test/channel", "youtube:channel:existing"),
+                ("https://example.test/channel-alias", "youtube:channel:existing"),
+                ("https://youtube.test/channel/new", "youtube:channel:UC_New"),
+            ],
+        )
+
+        self.assertEqual(1, extension.families_added)
+        self.assertEqual(1, extension.aliases_added)
+        self.assertEqual(0, replay.families_added)
+        self.assertEqual(0, replay.aliases_added)
+        extended = self._load(extension.payload)
+        new_family = next(
+            family for family in extended.families if family.source_family_id == "youtube-channel-uc-new"
+        )
+        self.assertEqual(
+            suggested_partition(new_family.source_family_id, extended.policy),
+            new_family.partition,
+        )
+
     def test_repository_registry_keeps_exposed_baseline_families_in_development(self) -> None:
         registry = load_source_family_registry(Path("evaluation/source-families.json"))
 
-        self.assertEqual(7, len(registry.families))
+        self.assertGreaterEqual(len(registry.families), 7)
+        historical = [
+            family
+            for family in registry.families
+            if family.partition_origin == "historical_tuning_exposure"
+        ]
+        self.assertEqual(7, len(historical))
         self.assertEqual(
             {EvaluationPartition.DEVELOPMENT},
-            {family.partition for family in registry.families},
-        )
-        self.assertEqual(
-            {"historical_tuning_exposure"},
-            {family.partition_origin for family in registry.families},
+            {family.partition for family in historical},
         )
 
 

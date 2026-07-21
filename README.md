@@ -161,6 +161,7 @@ transcript before writing a manually approved fixture:
 
 ```bash
 pte review-ground-truth l6mZEQvArkE --reviewer "Brian Cummings" --open-video
+pte sync-source-families evaluation/source-families.json --base-dir /path/to/app-data
 pte review-next-ground-truth --reviewer "Brian Cummings" --base-dir /path/to/app-data
 pte validate-fixtures evaluation/fixtures
 pte validate-source-families evaluation/source-families.json --base-dir /path/to/app-data
@@ -182,7 +183,9 @@ coverage, and extreme caption deduplication. Proposal strata and signals are
 selection hints only: they never assign `sermon`, `no_sermon`, or approved
 boundaries. Selection provenance is retained in the draft and approved fixture,
 including when an interrupted automatic draft is resumed manually. Add new
-sources to `evaluation/source-families.json` before they can be nominated.
+sources with `sync-source-families` before they can be nominated. Existing
+family assignments are preserved; new channel identities receive deterministic
+family-level partitions.
 
 ## Reclassification and Regression Evaluation
 

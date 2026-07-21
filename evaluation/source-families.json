@@ -1,54 +1,508 @@
 {
-  "schema_version": 1,
-  "registry_version": "sermon-source-families-v1",
   "partition_policy": {
-    "version": "source_family_partition_v1",
-    "salt": "pte-sermon-evaluation-v1",
     "development_percent": 60,
-    "validation_percent": 20
+    "salt": "pte-sermon-evaluation-v1",
+    "validation_percent": 20,
+    "version": "source_family_partition_v1"
   },
+  "registry_version": "sermon-source-families-v1",
+  "schema_version": 1,
   "source_families": [
     {
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure",
       "source_family_id": "youtube-adairsville-sda",
-      "source_urls": ["https://www.youtube.com/@adairsvillesdachurch"],
-      "partition": "development",
-      "partition_origin": "historical_tuning_exposure"
+      "source_urls": [
+        "https://www.youtube.com/@adairsvillesdachurch"
+      ]
     },
     {
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure",
       "source_family_id": "youtube-apison-adventist",
-      "source_urls": ["https://www.youtube.com/@apisonadventistchurch"],
-      "partition": "development",
-      "partition_origin": "historical_tuning_exposure"
+      "source_urls": [
+        "https://www.youtube.com/@apisonadventistchurch"
+      ]
     },
     {
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure",
       "source_family_id": "youtube-atlanta-belvedere",
-      "source_urls": ["https://www.youtube.com/@atlantabelvedere"],
-      "partition": "development",
-      "partition_origin": "historical_tuning_exposure"
+      "source_urls": [
+        "https://www.youtube.com/@atlantabelvedere"
+      ]
     },
     {
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure",
       "source_family_id": "youtube-buford-sda",
-      "source_urls": ["https://www.youtube.com/user/bufordsdachurch"],
-      "partition": "development",
-      "partition_origin": "historical_tuning_exposure"
+      "source_urls": [
+        "https://www.youtube.com/user/bufordsdachurch"
+      ]
     },
     {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc-08mixk5blq26z69qucmmg",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc_08mixk5blq26z69qucmmg"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc-h5-olxo2njmoqin1rphbg",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc_h5-olxo2njmoqin1rphbg"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc0jgrkmlvmedjuc5ptxcgog",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc0jgrkmlvmedjuc5ptxcgog"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc0vwulccgv5zmrcflcsy6ww",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc0vwulccgv5zmrcflcsy6ww"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc1ubwhcccrdjtc7ik9uauew",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc1ubwhcccrdjtc7ik9uauew"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc37q8f01ap9ctxlrpttfm9q",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc37q8f01ap9ctxlrpttfm9q"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc4uxk5b7thsvpldnzphzmnw",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc4uxk5b7thsvpldnzphzmnw"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc70qptjnfbrx-zbxqtpe4yq",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc70qptjnfbrx_zbxqtpe4yq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uc7oxlfke6ewmzoqb5arnylg",
+      "source_urls": [
+        "https://www.youtube.com/channel/uc7oxlfke6ewmzoqb5arnylg"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucak6dq9y7zt4pik6kdmzvwa",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucak6dq9y7zt4pik6kdmzvwa"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucdhnrziazkyprhsrblfkgxq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucdhnrziazkyprhsrblfkgxq"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucdktzjimowlkuzpye4cwm1a",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucdktzjimowlkuzpye4cwm1a"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucdoyjoc-pupyymef5ys7g-w",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucdoyjoc_pupyymef5ys7g_w"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucf208016ka7zf7476ekoq6a",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucf208016ka7zf7476ekoq6a"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucf4latuwunuxy0vniaxpm-g",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucf4latuwunuxy0vniaxpm_g"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucffwwn8tcys8dw7psy2eqxa",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucffwwn8tcys8dw7psy2eqxa"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucfwdyg0zbpw0qr-fvsdg1rq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucfwdyg0zbpw0qr-fvsdg1rq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucfxaaml21njuvvongpi1lcg",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucfxaaml21njuvvongpi1lcg"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucgiie9uflofyrqv8ghshoea",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucgiie9uflofyrqv8ghshoea"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uch04bk3itqbscwn-hfpxi8g",
+      "source_urls": [
+        "https://www.youtube.com/channel/uch04bk3itqbscwn-hfpxi8g"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uchijondj3lxvwrm8chpwjqa",
+      "source_urls": [
+        "https://www.youtube.com/channel/uchijondj3lxvwrm8chpwjqa"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure",
       "source_family_id": "youtube-channel-uciqlkujwv1mykhy4bxst7ow",
-      "source_urls": ["https://www.youtube.com/channel/UCIqlKuJwv1mYKHy4BXST7Ow"],
-      "partition": "development",
-      "partition_origin": "historical_tuning_exposure"
+      "source_urls": [
+        "https://www.youtube.com/channel/UCIqlKuJwv1mYKHy4BXST7Ow"
+      ]
     },
     {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucj3jjh1smnxin6libluwuww",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucj3jjh1smnxin6libluwuww"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uckh1-tsxbzrws6ubclm34pw",
+      "source_urls": [
+        "https://www.youtube.com/channel/uckh1-tsxbzrws6ubclm34pw"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uckteeuz-wcrnuqpzi95h5ta",
+      "source_urls": [
+        "https://www.youtube.com/channel/uckteeuz-wcrnuqpzi95h5ta"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uckw26p-lbgo0wuar0ejqpzq",
+      "source_urls": [
+        "https://www.youtube.com/channel/uckw26p_lbgo0wuar0ejqpzq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucm1ud0cv-twhggy-e3rzaxg",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucm1ud0cv-twhggy-e3rzaxg"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucm4l3voqms3dzly5hll1lrw",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucm4l3voqms3dzly5hll1lrw"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucmahmhphog7po3yjj5ulfma",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucmahmhphog7po3yjj5ulfma"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucmeiqtrz3ev6obp-eszgqwa",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucmeiqtrz3ev6obp_eszgqwa"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucmjbtsym4vz3kel6peynmea",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucmjbtsym4vz3kel6peynmea"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucn7jbkbbm-ulspsee11zwdw",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucn7jbkbbm_ulspsee11zwdw"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucnjgtc0xkdrmvuznf5odxyg",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucnjgtc0xkdrmvuznf5odxyg"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucnpoga-9ytyl9xef-fue4vw",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucnpoga-9ytyl9xef-fue4vw"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucoah0vtkgc0jscvib7k6h1a",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucoah0vtkgc0jscvib7k6h1a"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucosrv-4x5xxgerti8rfalqq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucosrv_4x5xxgerti8rfalqq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure",
       "source_family_id": "youtube-channel-ucp2ro6cs-p-n60myufg5ema",
-      "source_urls": ["https://www.youtube.com/channel/UCp2rO6Cs-P-n60myUfg5emA"],
-      "partition": "development",
-      "partition_origin": "historical_tuning_exposure"
+      "source_urls": [
+        "https://www.youtube.com/channel/UCp2rO6Cs-P-n60myUfg5emA"
+      ]
     },
     {
-      "source_family_id": "youtube-duluth-sda",
-      "source_urls": ["https://www.youtube.com/@duluthsdachurch1869"],
       "partition": "development",
-      "partition_origin": "historical_tuning_exposure"
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucq-2wqrm-p6mvkoitrkua",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucq___2wqrm_p6mvkoitrkua"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucrb-zvezrkqp9vqiqdtjoka",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucrb-zvezrkqp9vqiqdtjoka"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucrlmwqzgbmvd1ukcjmek-2g",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucrlmwqzgbmvd1ukcjmek_2g"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucslzatozvz-gb4wxtkh-9pq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucslzatozvz-gb4wxtkh_9pq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uctbrvt-lzyzc0in-mp17diw",
+      "source_urls": [
+        "https://www.youtube.com/channel/uctbrvt_lzyzc0in_mp17diw"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uctlw6cuerhcneus431gvkjw",
+      "source_urls": [
+        "https://www.youtube.com/channel/uctlw6cuerhcneus431gvkjw"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uctm0abgsk2dpwxne4mrfw-a",
+      "source_urls": [
+        "https://www.youtube.com/channel/uctm0abgsk2dpwxne4mrfw-a"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uctqrn05stepxh1hkl9zkasq",
+      "source_urls": [
+        "https://www.youtube.com/channel/uctqrn05stepxh1hkl9zkasq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uctxriowaakwl2eyfkwkieqq",
+      "source_urls": [
+        "https://www.youtube.com/channel/uctxriowaakwl2eyfkwkieqq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucu863-n4niwsdgbcku6k75w",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucu863-n4niwsdgbcku6k75w"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucv5jpdbe9n2zdcxy-uey2mq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucv5jpdbe9n2zdcxy-uey2mq"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucvidalojqrues5qqotzoikq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucvidalojqrues5qqotzoikq"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucvsn3o5nqfvy8is1psknpla",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucvsn3o5nqfvy8is1psknpla"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucx4pa4swrortce4ntwpvydq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucx4pa4swrortce4ntwpvydq"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucxgulnzb4atm83ku20bmq-q",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucxgulnzb4atm83ku20bmq_q"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucxktmlbhyjh-n5nth6euc2q",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucxktmlbhyjh-n5nth6euc2q"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucy4n6v-axuvlkqtbm6o8gbq",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucy4n6v-axuvlkqtbm6o8gbq"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucyzpken7m-tdhvsyam2jzrw",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucyzpken7m-tdhvsyam2jzrw"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uczjjabfvd1zwue6d5f26q3g",
+      "source_urls": [
+        "https://www.youtube.com/channel/uczjjabfvd1zwue6d5f26q3g"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uczqilbozgt9xi5eixryt71g",
+      "source_urls": [
+        "https://www.youtube.com/channel/uczqilbozgt9xi5eixryt71g"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "historical_tuning_exposure",
+      "source_family_id": "youtube-duluth-sda",
+      "source_urls": [
+        "https://www.youtube.com/@duluthsdachurch1869"
+      ]
     }
   ]
 }
