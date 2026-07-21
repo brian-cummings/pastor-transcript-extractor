@@ -11,6 +11,10 @@ import time
 from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.filesystem_capacity import (
+    FilesystemCapacity,
+    filesystem_capacity,
+)
 from pastor_transcript_extractor.media_artifacts import (
     get_archive_safe_normalized_media_artifact,
     verify_media_artifact,
@@ -164,7 +168,7 @@ def _archive_source_media_locked(
 
     root = Path(destination.archive_root)
     _notify_preflight(preflight_callback, "destination", "configured", str(root))
-    destination_available, unavailable_detail, available_bytes = _check_destination(
+    destination_available, unavailable_detail, capacity = _check_destination(
         root, preflight_callback
     )
     existing_entries = database.list_media_archive_entries()
@@ -229,13 +233,28 @@ def _archive_source_media_locked(
         "passed" if staging_count == 0 else "warning",
         f"partial={partial_count}, local_staging={staging_count}",
     )
-    if available_bytes is not None:
+    if capacity is not None:
+        available_bytes = capacity.available_bytes
         space_ok = available_bytes >= required_bytes
+        capacity_detail = (
+            f"available={_format_bytes(available_bytes)}, "
+            f"required={_format_bytes(required_bytes)}, source={capacity.source}"
+        )
+        if capacity.filesystem_type is not None:
+            capacity_detail += f", filesystem={capacity.filesystem_type}"
+        if (
+            capacity.portable_available_bytes is not None
+            and capacity.portable_available_bytes != available_bytes
+        ):
+            capacity_detail += (
+                ", shutil_available="
+                f"{_format_bytes(capacity.portable_available_bytes)}"
+            )
         _notify_preflight(
             preflight_callback,
             "capacity",
             "passed" if space_ok else "failed",
-            f"available={_format_bytes(available_bytes)}, required={_format_bytes(required_bytes)}",
+            capacity_detail,
         )
         if not space_ok:
             destination_available = False
@@ -492,7 +511,7 @@ def _notify(
 
 def _check_destination(
     root: Path, callback: ArchivePreflightCallback | None
-) -> tuple[bool, str | None, int | None]:
+) -> tuple[bool, str | None, FilesystemCapacity | None]:
     if not root.is_dir():
         detail = f"archive destination is unavailable: {root}"
         _notify_preflight(callback, "mount", "failed", detail)
@@ -525,12 +544,12 @@ def _check_destination(
     _notify_preflight(callback, "write probe", "passed", "create, fsync, and delete succeeded")
 
     try:
-        available_bytes = shutil.disk_usage(root).free
+        capacity = filesystem_capacity(root)
     except OSError as error:
         detail = f"free-space check failed: {type(error).__name__}: {error}"
         _notify_preflight(callback, "capacity", "warning", detail)
         return True, None, None
-    return True, None, available_bytes
+    return True, None, capacity
 
 
 @contextmanager

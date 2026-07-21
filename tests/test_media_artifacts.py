@@ -15,6 +15,7 @@ from pastor_transcript_extractor.config import (
     build_video_artifact_paths,
     ensure_directories,
 )
+from pastor_transcript_extractor.filesystem_capacity import FilesystemCapacity
 from pastor_transcript_extractor.media import (
     VideoUnavailableError,
     YtDlpError,
@@ -604,6 +605,68 @@ class MediaArtifactTests(unittest.TestCase):
             ["destination_unavailable", "archived"],
             [attempt.outcome for attempt in self.database.list_media_archive_attempts()],
         )
+
+    def test_source_archive_uses_native_smb_capacity_and_reports_disagreement(self) -> None:
+        video, _ = self._video("smbcapacity")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "downloaded.wav"
+        normalized_path = audio_root / "normalized.wav"
+        write_wav(source_path, sample_rate=44100, channels=2)
+        write_wav(normalized_path)
+        source = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+            parent=source,
+        )
+        archive_root = self.paths.root / "smb-archive"
+        archive_root.mkdir()
+        preflight_events = []
+        capacity = FilesystemCapacity(
+            available_bytes=8 * 1024**4,
+            source="darwin_statfs",
+            filesystem_type="smbfs",
+            portable_available_bytes=10 * 1024**3,
+        )
+
+        with patch(
+            "pastor_transcript_extractor.media_archive.filesystem_capacity",
+            return_value=capacity,
+        ):
+            result = archive_source_media(
+                self.database,
+                self.paths,
+                archive_root=archive_root,
+                preflight_callback=preflight_events.append,
+            )
+
+        self.assertEqual(1, result.counts["archived"])
+        capacity_event = next(
+            event for event in preflight_events if event.check == "capacity"
+        )
+        self.assertEqual("passed", capacity_event.status)
+        self.assertIn("source=darwin_statfs", capacity_event.detail)
+        self.assertIn("filesystem=smbfs", capacity_event.detail)
+        self.assertIn("shutil_available=10.00 GiB", capacity_event.detail)
 
     def test_source_archive_accepts_complete_normalized_negative_recording(self) -> None:
         video, _ = self._video(
