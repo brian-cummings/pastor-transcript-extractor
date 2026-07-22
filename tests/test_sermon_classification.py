@@ -28,12 +28,14 @@ from pastor_transcript_extractor.sermon_classification import (
     CoarsePhase,
     ContentLabel,
     FINE_COMPONENT_VERSION,
+    LONG_EDGE_EXPANSION_SECONDS,
     RawInferenceCache,
     TranscriptBlock,
     _candidate_strength,
     _adaptive_confidence_tier,
     _coarse_candidate_ranges,
     _joined_candidate,
+    _long_recording_edge_expansion,
     _refine_retained_boundaries,
     build_transcript_blocks,
     classify_sermon_content,
@@ -232,6 +234,35 @@ class TranscriptBlockTests(unittest.TestCase):
         explicit = _candidate_strength((1200.0, 1500.0), blocks)
 
         self.assertGreater(explicit, generic)
+
+    def test_title_without_sermon_word_outranks_a_slightly_longer_candidate(self) -> None:
+        blocks = [
+            TranscriptBlock(0, [0], 0.0, 1200.0, "Earlier religious program"),
+            TranscriptBlock(1, [1], 1800.0, 2850.0, "Our title today is Celebrating Freedom"),
+        ]
+
+        generic = _candidate_strength((0.0, 1200.0), blocks)
+        titled = _candidate_strength((1800.0, 2850.0), blocks)
+
+        self.assertGreater(titled, generic)
+
+    def test_long_continuity_expansion_to_recording_edge_requires_review(self) -> None:
+        blocks = [
+            TranscriptBlock(index, [index], index * 90.0, (index + 1) * 90.0, "teaching")
+            for index in range(8)
+        ]
+        outcome = _long_recording_edge_expansion(
+            {
+                "start": {"status": "semantic_transition", "probed_block_ids": []},
+                "end": {"status": "recording_edge", "probed_block_ids": list(range(8))},
+            },
+            blocks,
+        )
+
+        self.assertIsNotNone(outcome)
+        assert outcome is not None
+        self.assertEqual(LONG_EDGE_EXPANSION_SECONDS, outcome["threshold_seconds"])
+        self.assertEqual(720.0, outcome["expansions"][0]["duration_seconds"])
 
     def test_candidate_join_requires_explicit_allowed_gap_evidence(self) -> None:
         blocks = [

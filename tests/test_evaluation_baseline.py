@@ -36,9 +36,9 @@ def baseline_payload(fixture: dict[str, object]) -> dict[str, object]:
         "implementation_versions": {
             "search_algorithm": "adaptive_llm_v3",
             "block_builder": "timestamp-blocks-v2+rolling-caption-v1",
-            "coarse_discovery": "phase-primary-likelihood-rescue-v1",
+            "coarse_discovery": "phase-primary-likelihood-rescue-v2",
             "fine_component": "objective-noise-components+continuity-probe-v2",
-            "confidence_policy": "soft_rule_overlap_v1",
+            "confidence_policy": "soft_rule_overlap_v2",
         },
         "model_configuration": {"model_name": "test"},
         "fixture_corpus": {

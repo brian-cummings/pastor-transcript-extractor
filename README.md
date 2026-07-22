@@ -327,6 +327,8 @@ rejected videos do not fall back to the full transcript in pastor review output.
 Production confidence uses soft rule overlap: low rule/LLM agreement can reduce
 an otherwise-high result to medium, but cannot force it to low by itself.
 Uncertainty, empty retention, and central-consistency failures remain safety caps.
+Fine-label continuity that expands for more than ten minutes to a recording edge
+also requires review instead of producing an automatic high-confidence acceptance.
 
 ## Pastor Identity Shadow Mode
 

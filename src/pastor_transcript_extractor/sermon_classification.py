@@ -16,11 +16,12 @@ from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v1"
+CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v2"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
-COARSE_DISCOVERY_VERSION = "phase-primary-likelihood-rescue-v1"
+COARSE_DISCOVERY_VERSION = "phase-primary-likelihood-rescue-v2"
 FINE_COMPONENT_VERSION = "objective-noise-components+continuity-probe-v2"
 SEARCH_ALGORITHM_VERSION = "adaptive_llm_v3"
+LONG_EDGE_EXPANSION_SECONDS = 600.0
 
 
 class ContentLabel(StrEnum):
@@ -406,6 +407,7 @@ def _likelihood_candidate_ranges(
 _SERMON_SEED_CUES = (
     "our sermon title",
     "sermon title today",
+    "our title today",
     "as we open up god's word",
     "as we open god's word",
     "turn in your bibles",
@@ -674,6 +676,38 @@ def _adaptive_confidence_tier(
     if uncertain:
         return "medium"
     return "medium" if agreement < 0.5 else "high"
+
+
+def _long_recording_edge_expansion(
+    probe_outcomes: dict[str, dict[str, Any]], blocks: list[TranscriptBlock]
+) -> dict[str, Any] | None:
+    blocks_by_id = {block.block_id: block for block in blocks}
+    expansions: list[dict[str, Any]] = []
+    for direction in ("start", "end"):
+        outcome = probe_outcomes.get(direction, {})
+        if outcome.get("status") != "recording_edge":
+            continue
+        block_ids = [
+            block_id
+            for block_id in outcome.get("probed_block_ids", [])
+            if isinstance(block_id, int) and block_id in blocks_by_id
+        ]
+        duration = sum(
+            blocks_by_id[block_id].end_seconds - blocks_by_id[block_id].start_seconds
+            for block_id in block_ids
+        )
+        if duration > LONG_EDGE_EXPANSION_SECONDS:
+            expansions.append({
+                "direction": direction,
+                "duration_seconds": round(duration, 3),
+                "block_ids": block_ids,
+            })
+    if not expansions:
+        return None
+    return {
+        "threshold_seconds": LONG_EDGE_EXPANSION_SECONDS,
+        "expansions": expansions,
+    }
 
 
 def classify_sermon_content_adaptive(
@@ -1017,6 +1051,10 @@ def classify_sermon_content_adaptive(
             "status": status,
         }
 
+    long_edge_expansion = _long_recording_edge_expansion(
+        probe_outcomes, all_fine_blocks
+    )
+
     separator_positions, components, anchored_component = retained_components(
         inspected_positions
     )
@@ -1090,6 +1128,10 @@ def classify_sermon_content_adaptive(
         warnings.append("one or more refined blocks require boundary review")
     if boundary_probe_required:
         warnings.append("a saturated fine boundary requires a continuity probe before expansion")
+    if long_edge_expansion is not None:
+        warnings.append(
+            "fine classification expanded more than ten minutes to a recording edge"
+        )
     warnings.extend(selected_candidate["refinement_reasons"])
     consistency_warnings = _central_consistency_warnings(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
@@ -1098,7 +1140,11 @@ def classify_sermon_content_adaptive(
     confidence = _adaptive_confidence_tier(
         agreement=agreement,
         retained=bool(retained),
-        uncertain=bool(uncertain_ids) or boundary_probe_required,
+        uncertain=(
+            bool(uncertain_ids)
+            or boundary_probe_required
+            or long_edge_expansion is not None
+        ),
         consistency_failed=bool(consistency_warnings),
     )
     confidence_reasons = [
@@ -1121,6 +1167,11 @@ def classify_sermon_content_adaptive(
             "start": boundary_recovery["start"],
             "end": boundary_recovery["end"],
             "effect": "caps_medium" if boundary_probe_required else "no_cap",
+        },
+        {
+            "code": "long_recording_edge_expansion",
+            "details": long_edge_expansion,
+            "effect": "caps_medium" if long_edge_expansion is not None else "no_cap",
         },
         {
             "code": "retained_content",
