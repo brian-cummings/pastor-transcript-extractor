@@ -553,12 +553,6 @@ def review_ground_truth(
         default=True,
     )
     if not contains_sermon:
-        if not typer.confirm(
-            "Have you reviewed the entire video and confirmed there is no worship-service sermon?",
-            default=False,
-        ):
-            console.print("Review stopped; no negative fixture was written.")
-            return
         reviewer_value = reviewer or typer.prompt("Reviewed by")
         failure_mode = _prompt_failure_mode(contains_sermon=False)
         notes = typer.prompt("Review notes", default="No worship-service sermon found.")
@@ -575,7 +569,7 @@ def review_ground_truth(
         ):
             console.print("Existing fixture preserved.")
             return
-        if not typer.confirm("Write this manually approved negative fixture?", default=False):
+        if not typer.confirm("Write this manually approved negative fixture?", default=True):
             console.print("Approval cancelled; the unreviewed draft was preserved.")
             return
         write_json(fixture_path, fixture)
@@ -596,12 +590,6 @@ def review_ground_truth(
             break
         except ValueError as error:
             console.print(f"[red]{error}[/red]")
-    if not typer.confirm("Have you reviewed the entire sermon envelope for missing sermon content?", default=False):
-        console.print("Review stopped; the unreviewed draft was preserved and no fixture was written.")
-        return
-    if not typer.confirm("Are all listed interruptions genuinely non-sermon content?", default=not interruptions):
-        console.print("Review stopped; adjust interruptions before approving ground truth.")
-        return
     reviewer_value = reviewer or typer.prompt("Reviewed by")
     failure_mode = _prompt_failure_mode(contains_sermon=True)
     notes = typer.prompt("Review notes", default="")
@@ -619,7 +607,7 @@ def review_ground_truth(
     if fixture_path.exists() and not typer.confirm(f"Overwrite existing fixture {fixture_path}?", default=False):
         console.print("Existing fixture preserved.")
         return
-    if not typer.confirm("Write this manually approved ground-truth fixture?", default=False):
+    if not typer.confirm("Write this manually approved ground-truth fixture?", default=True):
         console.print("Approval cancelled; the unreviewed draft was preserved.")
         return
     write_json(fixture_path, fixture)

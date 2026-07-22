@@ -191,6 +191,124 @@ class GroundTruthReviewTests(unittest.TestCase):
             autoraise=True,
         )
 
+    def test_positive_review_omits_redundant_checks_and_defaults_write_to_yes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path = root / "proposed.json"
+            proposed_path.write_text(
+                json.dumps(
+                    {
+                        "segments": [
+                            {"start_seconds": 10.0, "end_seconds": 100.0, "text": "sermon"}
+                        ],
+                        "classification": {
+                            "method": "adaptive_llm_v3",
+                            "retained_segment_indexes": [0],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            database = SimpleNamespace(
+                get_video_by_youtube_id=lambda _: SimpleNamespace(
+                    id=1,
+                    url="https://www.youtube.com/watch?v=abc123",
+                    title="Fixture",
+                    duration_seconds=100,
+                ),
+                get_latest_extraction_result_for_video=lambda _: SimpleNamespace(
+                    proposed_json_path=str(proposed_path)
+                ),
+            )
+            with (
+                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch(
+                    "pastor_transcript_extractor.cli.typer.prompt",
+                    side_effect=["0:00:10", "0:01:40", "", "unknown", ""],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.typer.confirm", return_value=True
+                ) as confirm,
+            ):
+                review_ground_truth(
+                    "abc123",
+                    reviewer="reviewer",
+                    evaluation_dir=root / "evaluation",
+                    open_video=False,
+                    base_dir=None,
+                )
+
+            prompts = [call.args[0] for call in confirm.call_args_list]
+            self.assertNotIn(
+                "Have you reviewed the entire sermon envelope for missing sermon content?",
+                prompts,
+            )
+            self.assertNotIn(
+                "Are all listed interruptions genuinely non-sermon content?",
+                prompts,
+            )
+            final = confirm.call_args_list[-1]
+            self.assertEqual(
+                "Write this manually approved ground-truth fixture?", final.args[0]
+            )
+            self.assertTrue(final.kwargs["default"])
+
+    def test_negative_review_omits_redundant_check_and_defaults_write_to_yes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path = root / "proposed.json"
+            proposed_path.write_text(
+                json.dumps(
+                    {
+                        "segments": [
+                            {"start_seconds": 0.0, "end_seconds": 100.0, "text": "event"}
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            database = SimpleNamespace(
+                get_video_by_youtube_id=lambda _: SimpleNamespace(
+                    id=1,
+                    url="https://www.youtube.com/watch?v=negative123",
+                    title="Negative fixture",
+                    duration_seconds=100,
+                ),
+                get_latest_extraction_result_for_video=lambda _: SimpleNamespace(
+                    proposed_json_path=str(proposed_path)
+                ),
+            )
+            with (
+                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch(
+                    "pastor_transcript_extractor.cli.typer.prompt",
+                    side_effect=["non_sermon_event", "No worship-service sermon found."],
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.typer.confirm",
+                    side_effect=[False, True],
+                ) as confirm,
+            ):
+                review_ground_truth(
+                    "negative123",
+                    reviewer="reviewer",
+                    evaluation_dir=root / "evaluation",
+                    open_video=False,
+                    base_dir=None,
+                )
+
+            prompts = [call.args[0] for call in confirm.call_args_list]
+            self.assertNotIn(
+                "Have you reviewed the entire video and confirmed there is no "
+                "worship-service sermon?",
+                prompts,
+            )
+            final = confirm.call_args_list[-1]
+            self.assertEqual(
+                "Write this manually approved negative fixture?", final.args[0]
+            )
+            self.assertTrue(final.kwargs["default"])
+
     def test_review_next_ground_truth_excludes_existing_draft_and_delegates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
