@@ -214,6 +214,7 @@ Run the frozen regression set after reclassifying its videos:
 pte reclassify \
   --fixture-dir evaluation/fixtures \
   --force \
+  --jobs 2 \
   --base-dir /path/to/app-data
 
 pte validate-fixtures evaluation/fixtures

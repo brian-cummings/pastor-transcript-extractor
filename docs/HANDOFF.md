@@ -12,13 +12,15 @@ Implemented:
 - low-confidence classifications preserve the protected rule/manual baseline
 - forced reclassification recomputes the rule-only baseline instead of reusing a prior hybrid result
 - ground-truth review supports positive and negative fixtures
-- 12 manually reviewed fixtures are frozen: 5 positive and 7 negative
+- 42 manually reviewed fixtures are frozen: 22 positive and 20 negative
 - evaluation is segment-based and produces JSON and Markdown reports
 - failure reports show expected, missed, retained, and contaminating ranges with persisted label evidence
 - conservative candidate joining can recover interrupted sermons
 - explicit sermon-title cues can recover up to four minutes of contiguous sermon-like setup before the cue
+- candidate ranking recognizes the explicit phrase `our title today`, even when the word `sermon` is omitted
 - pre-title recovery persists its anchor, duration, reason, and stopping evidence
 - production confidence uses versioned soft rule overlap; the evaluator also replays the legacy hard-veto and no-overlap policies
+- fine-label continuity that expands more than ten minutes to a recording edge caps confidence at medium and requires review
 - extraction and reclassification persist an explicit final disposition separately from diagnostic candidates
 - rejected videos never fall back to a full-transcript excerpt in pastor review exports
 - `extract`, review preparation, and `run` share one adaptive extraction batch service
@@ -43,7 +45,7 @@ Implemented:
 - media acquisition outcomes distinguish verified, unavailable, and failed; they remain non-gating for sermon content
 - universal acquisition is an explicit shadow command and has not been inserted into the stable `run` workflow
 - no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
-- 251 tests pass
+- 282 tests pass
 
 ## Transcript-Independent Media
 
@@ -325,45 +327,22 @@ The current fixtures are under `evaluation/fixtures/`. Validate their schema bef
 pte validate-fixtures evaluation/fixtures
 ```
 
-The frozen YouTube IDs are:
-
-```text
-Positive: OBK7fBLTM6o TyNvrFPC5AU fcZNzRYQOtA l6mZEQvArkE tad-oXefJMQ
-Negative: jJDBYaE33gA NeceoWYZRmg NKNFh_xoDfU QIqMpJfY-fQ WaNsL05AX3A dTDAt941Gf8 qny7TUqNkQU
-```
-
-At the time of this handoff, their local numeric database IDs are:
-
-| Database ID | YouTube ID | Expected outcome |
-|---:|---|---|
-| 46 | `fcZNzRYQOtA` | sermon |
-| 50 | `l6mZEQvArkE` | sermon |
-| 57 | `jJDBYaE33gA` | no sermon |
-| 71 | `NeceoWYZRmg` | no sermon |
-| 78 | `OBK7fBLTM6o` | sermon |
-| 81 | `tad-oXefJMQ` | sermon |
-| 82 | `qny7TUqNkQU` | no sermon (ambiguous speakers) |
-| 85 | `NKNFh_xoDfU` | no sermon |
-| 89 | `QIqMpJfY-fQ` | no sermon |
-| 148 | `WaNsL05AX3A` | no sermon |
-| 185 | `dTDAt941Gf8` | no sermon |
-| 188 | `TyNvrFPC5AU` | sermon |
-
-Verify those mappings with `pte video list` before relying on them in another database. To reproduce the current full rerun:
+The fixture files themselves are the authoritative list of YouTube IDs and expected outcomes. To reproduce the current full rerun with two concurrent classification jobs:
 
 ```bash
-for id in 46 50 57 71 78 81 82 85 89 148 185 188; do
-  pte reclassify \
-    --video-id "$id" \
-    --force \
-    --base-dir /Users/briancummings/Documents/PastorSearchData || exit 1
-done
+pte reclassify \
+  --fixture-dir evaluation/fixtures \
+  --force \
+  --jobs 2 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
 Then evaluate the frozen fixtures:
 
 ```bash
-pte evaluate --base-dir /Users/briancummings/Documents/PastorSearchData
+pte evaluate \
+  --fixture-dir evaluation/fixtures \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
 Each run creates timestamped files under `evaluation/results/<timestamp>/`:
@@ -376,17 +355,16 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 ## Current Benchmark
 
-The latest validated 12-fixture report, rerun after the final identity increment
-2 production shadow backfill, is:
+The accepted 42-fixture report is:
 
-- `evaluation/results/20260715T173039Z/report.md`
+- `evaluation/results/20260722T133453Z/report.md`
 
 Results:
 
-- mean sermon recall: `0.975`
-- worst sermon recall: `0.917`
+- mean sermon recall: `0.9923337198689602`
+- worst sermon recall: `0.9012345679012346`
 - catastrophic omissions: `0`
-- mean contamination ratio: `0.032`
+- mean contamination ratio: `0.10220744132985758`
 - correct top-candidate rate: `1.000`
 - high-confidence negative false positives: `0`
 - negative `accepted_sermon` dispositions: `0`
@@ -399,7 +377,7 @@ When evaluating a behavior change, compare every positive fixture to the precedi
 
 The evaluator replays four policies from persisted evidence:
 
-- `current`: production `soft_rule_overlap_v1`
+- `current`: production `soft_rule_overlap_v2`, including the long recording-edge expansion cap
 - `legacy_hard_rule_overlap`: the former policy, where rule overlap below `0.5` forced low
 - `no_rule_overlap`: confidence from retained content, uncertainty, and central consistency only
 - `soft_rule_overlap`: the same evidence, with low overlap downgrading an otherwise-high result by one tier but never forcing low
@@ -408,12 +386,12 @@ The frozen fixtures produced:
 
 | Policy | Positive H/M/L | Negative H/M/L | High-confidence negative false positives |
 |---|---:|---:|---:|
-| current | 1/4/0 | 0/2/5 | 0 |
-| legacy hard overlap | 0/1/4 | 0/0/7 | 0 |
-| no rule overlap | 5/0/0 | 2/0/5 | 2 (`WaNsL05AX3A`, `qny7TUqNkQU`) |
-| soft rule overlap | 1/4/0 | 0/2/5 | 0 |
+| current | 5/11/6 | 0/8/12 | 0 |
+| legacy hard overlap | 1/4/17 | 0/1/19 | 0 |
+| no rule overlap | 16/0/6 | 8/0/12 | 8 |
+| soft rule overlap | 5/11/6 | 1/7/12 | 1 (`jWGOaKtwPT4`) |
 
-Production now uses the supported soft policy. All five positive fixtures are high or medium, while every negative remains medium or low and none receives `accepted_sermon`. Removing overlap entirely still makes both the Sabbath School and ambiguous multi-speaker negatives falsely high. Classification artifacts persist `confidence_policy_version`, so old hard-veto results are invalidated without invalidating raw inference cache entries.
+Production uses the supported soft policy plus the recording-edge expansion cap. Every negative remains medium or low and none receives `accepted_sermon`. Removing overlap entirely makes eight negatives falsely high; replaying soft overlap without the new edge cap leaves `jWGOaKtwPT4` falsely high. Classification artifacts persist `confidence_policy_version`, so older results are invalidated without invalidating raw inference cache entries.
 
 ### Interaction-evidence experiment (not shipped)
 
@@ -609,7 +587,7 @@ Production shadow verification on 2026-07-15:
 - all 178 v4 assessments remain `profile_unavailable`, review-only, and shadow-mode
 - all 534 Increment 3 artifacts retained aggregate SHA-256 `de59fe41e5cbff85690bb20e88be197737622eee7be2359856aa1341fb17d4b2` across replay
 - all existing `proposed.json` files retained aggregate SHA-256 `67a86ee366391f3ab399b2341f04eaa09dfe94c9259d0bded35a4c83e336af50`
-- the frozen 12-fixture sermon metrics remain identical to the accepted benchmark
+- the then-frozen 12-fixture sermon metrics remained identical to that benchmark
 
 The next acoustic increment should answer only: “Do these two independently
 isolated sermons contain the same principal speaker?” It should run offline and
@@ -619,11 +597,11 @@ must not name speakers, mutate profiles, or gate production.
 
 ### `qny7TUqNkQU`
 
-This fixture was changed to `no_sermon` in ground-truth version 2. Its title identifies a chaplain and students, and manual review found student sermonettes between presumed primary sermons. Because the retained speech cannot be attributed confidently to the targeted pastor, policy now rejects the entire compound program rather than attempting to isolate individual speakers from transcript text.
+This fixture was changed to `no_sermon` in ground-truth version 2. Its title identifies a chaplain and students, and manual review found student sermonettes between presumed primary sermons. Production still produces a low-confidence diagnostic candidate, but its disposition is `review_required`, never `accepted_sermon`.
 
 ### `WaNsL05AX3A`
 
-The Sabbath School fixture is now low confidence and baseline-protected, but the classifier still produces a sermon candidate because the schema does not explicitly represent interactive or facilitated Bible teaching.
+The Sabbath School fixture is medium confidence and `review_required`. The classifier still produces a sermon candidate because the schema does not explicitly represent interactive or facilitated Bible teaching.
 
 ## Recommended Next Increment
 
@@ -677,6 +655,9 @@ Speaker diarization or voice recognition may ultimately be required for reliable
 
 ## Recent Milestones
 
+- `45817c4 Promote expanded sermon evaluation baseline`
+- `501394a Add reviewed sermon evaluation fixtures`
+- `6d1e84b Improve sermon candidate identification`
 - confidence ablation evaluator: current vs no-overlap vs soft-overlap
 - `a2ea8f0 Recover sermon setup before explicit anchors`
 - `4aa8fd7 Recompute stable rule baselines on reclassification`
