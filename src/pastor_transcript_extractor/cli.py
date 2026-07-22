@@ -36,6 +36,7 @@ from pastor_transcript_extractor.config import (
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.evaluation import (
+    allocate_evaluation_run_directory,
     build_failure_analysis,
     build_failure_markdown,
     build_markdown_report,
@@ -357,8 +358,9 @@ def evaluate(
         if result.get("catastrophic_omission") or result.get("false_high_confidence_acceptance"):
             failure_inputs[validated.video_id] = (fixture_payload, proposed_payload)
     run = create_evaluation_run(results)
-    output_dir = results_dir.expanduser().resolve() / str(run["run_id"])
-    output_dir.mkdir(parents=True, exist_ok=False)
+    output_dir = allocate_evaluation_run_directory(
+        results_dir.expanduser().resolve(), run
+    )
     json_path = output_dir / "results.json"
     markdown_path = output_dir / "report.md"
     json_path.write_text(json.dumps(run, indent=2, sort_keys=True), encoding="utf-8")

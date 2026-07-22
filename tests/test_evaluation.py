@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
 from pastor_transcript_extractor.evaluation import (
+    allocate_evaluation_run_directory,
     aggregate_confidence_ablations,
     aggregate_results,
     build_markdown_report,
@@ -66,6 +68,21 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_run_directory_allocation_suffixes_collisions_without_overwriting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            existing = root / "20260722T125223Z"
+            existing.mkdir()
+            marker = existing / "results.json"
+            marker.write_text("existing", encoding="utf-8")
+            run = {"run_id": "20260722T125223Z"}
+
+            allocated = allocate_evaluation_run_directory(root, run)
+
+            self.assertEqual(root / "20260722T125223Z-2", allocated)
+            self.assertEqual("20260722T125223Z-2", run["run_id"])
+            self.assertEqual("existing", marker.read_text(encoding="utf-8"))
+
     def test_confidence_ablations_remove_veto_without_making_low_overlap_high(self) -> None:
         classification = proposed([1])["classification"]
         assert isinstance(classification, dict)

@@ -682,3 +682,23 @@ def create_evaluation_run(results: list[dict[str, Any]]) -> dict[str, Any]:
         "aggregate": aggregate_results(results),
         "results": results,
     }
+
+
+def allocate_evaluation_run_directory(
+    results_root: Path,
+    run: dict[str, Any],
+) -> Path:
+    """Atomically reserve a unique output directory and align the persisted run ID."""
+    results_root.mkdir(parents=True, exist_ok=True)
+    requested_id = str(run["run_id"])
+    suffix = 1
+    while True:
+        run_id = requested_id if suffix == 1 else f"{requested_id}-{suffix}"
+        output_dir = results_root / run_id
+        try:
+            output_dir.mkdir()
+        except FileExistsError:
+            suffix += 1
+            continue
+        run["run_id"] = run_id
+        return output_dir
