@@ -1,0 +1,43 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 1665.0,
+      "start_seconds": 27.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-22T01:25:17.819560+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "ab9f4002444906602f3a645cf3b62e5039c41d9d47fcdc6480147241c29f7049",
+    "evaluation_partition": "development",
+    "nomination_signals": [
+      "candidate_near_recording_boundary",
+      "retained_block_fragmentation"
+    ],
+    "reason_codes": [
+      "stratum_standard_candidate",
+      "source_family_unrepresented",
+      "recording_condition_unrepresented"
+    ],
+    "recording_condition_group_id": "recording-condition-59f4309c53a320db",
+    "selection_origin": "automatic",
+    "selection_stratum": "standard_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 0.0,
+      "continuity_probe_block_count": 0,
+      "discarded_retained_component_count": 1,
+      "mean_caption_deduplication_ratio": 0.585007,
+      "rule_llm_agreement": 0.521001,
+      "transcript_time_coverage": 0.997718
+    },
+    "source_family_id": "youtube-channel-ucmjbtsym4vz3kel6peynmea"
+  },
+  "video_id": "sA1Nm6EkEBw"
+}

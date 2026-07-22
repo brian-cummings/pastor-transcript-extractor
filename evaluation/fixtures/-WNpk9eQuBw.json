@@ -1,0 +1,36 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "religious_education_not_worship_sermon",
+  "ground_truth_version": 1,
+  "notes": "Sabbath school",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-21T13:17:08.925539+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "b28453ab6f7c4c684849cd2ce483cb2a87c4565721001734e865b83527559cc5",
+    "evaluation_partition": "development",
+    "nomination_signals": [
+      "candidate_near_recording_boundary",
+      "rule_llm_disagreement"
+    ],
+    "reason_codes": [
+      "stratum_boundary_risk"
+    ],
+    "recording_condition_group_id": "recording-condition-463a8239611d7f76",
+    "selection_origin": "automatic",
+    "selection_stratum": "boundary_risk",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 43.24,
+      "continuity_probe_block_count": 0,
+      "discarded_retained_component_count": 0,
+      "rule_llm_agreement": 0.220386,
+      "transcript_time_coverage": 0.977576
+    },
+    "source_family_id": "youtube-atlanta-belvedere",
+    "unregistered_source_count": 48
+  },
+  "video_id": "-WNpk9eQuBw"
+}

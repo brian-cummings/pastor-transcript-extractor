@@ -1,0 +1,36 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 5675.0,
+      "start_seconds": 3240.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-21T12:51:35.222470+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "033c3f0e01b44a1dddd1b939ec700f7d297ea3e59bcd49f11c7e4c42de842c5b",
+    "evaluation_partition": "development",
+    "nomination_signals": [],
+    "reason_codes": [
+      "stratum_standard_candidate",
+      "recording_condition_unrepresented",
+      "proposal_source_unrepresented"
+    ],
+    "recording_condition_group_id": "recording-condition-434c20d464d8ab2e",
+    "selection_origin": "automatic",
+    "selection_stratum": "standard_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "transcript_time_coverage": 1.0
+    },
+    "source_family_id": "youtube-apison-adventist",
+    "unregistered_source_count": 48
+  },
+  "video_id": "vcGfJGa5Fp0"
+}

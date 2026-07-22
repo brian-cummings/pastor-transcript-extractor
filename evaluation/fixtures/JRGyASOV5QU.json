@@ -1,0 +1,47 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 7174.0,
+      "start_seconds": 3810.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-21T13:11:15.202485+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "54f67d246b2362f068193396d45303113ec5b5299c6f69be24be661f5a98cbf4",
+    "evaluation_partition": "development",
+    "nomination_signals": [
+      "candidate_near_recording_boundary",
+      "long_continuity_expansion",
+      "rule_llm_disagreement"
+    ],
+    "reason_codes": [
+      "stratum_boundary_risk",
+      "recording_condition_unrepresented",
+      "signal_candidate_near_recording_boundary_unrepresented",
+      "signal_long_continuity_expansion_unrepresented"
+    ],
+    "recording_condition_group_id": "recording-condition-fdfe59e0ddd66611",
+    "selection_origin": "automatic",
+    "selection_stratum": "boundary_risk",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 2.0,
+      "continuity_probe_block_count": 27,
+      "discarded_retained_component_count": 0,
+      "mean_caption_deduplication_ratio": 0.009134,
+      "rule_llm_agreement": 0.191489,
+      "top_candidate_relative_margin": 0.4,
+      "transcript_time_coverage": 1.0
+    },
+    "source_family_id": "youtube-buford-sda",
+    "unregistered_source_count": 48
+  },
+  "video_id": "JRGyASOV5QU"
+}

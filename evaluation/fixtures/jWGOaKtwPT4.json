@@ -1,0 +1,39 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "religious_education_not_worship_sermon",
+  "ground_truth_version": 1,
+  "notes": "No worship-service sermon found.",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-22T01:34:40.926644+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "5007f6492432bedda6dd415af90cb78a423d7099114e30f2875b29e805197028",
+    "evaluation_partition": "development",
+    "nomination_signals": [
+      "candidate_near_recording_boundary",
+      "long_continuity_expansion"
+    ],
+    "reason_codes": [
+      "stratum_standard_candidate",
+      "source_family_unrepresented",
+      "recording_condition_unrepresented"
+    ],
+    "recording_condition_group_id": "recording-condition-a39be46342601636",
+    "selection_origin": "automatic",
+    "selection_stratum": "standard_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 2.04,
+      "continuity_probe_block_count": 12,
+      "discarded_retained_component_count": 0,
+      "mean_caption_deduplication_ratio": 0.604656,
+      "rule_llm_agreement": 0.745412,
+      "top_candidate_relative_margin": 0.751979,
+      "transcript_time_coverage": 0.813087
+    },
+    "source_family_id": "youtube-channel-uckh1-tsxbzrws6ubclm34pw"
+  },
+  "video_id": "jWGOaKtwPT4"
+}

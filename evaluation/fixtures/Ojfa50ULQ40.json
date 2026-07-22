@@ -1,0 +1,30 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "non_sermon_event",
+  "ground_truth_version": 1,
+  "notes": "Adventurer sabbath",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-21T13:16:29.612619+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "5c2f584180440a8d6da26eef3c8e11dda1715b8cd3c7ca6794a41f835bc38e2a",
+    "evaluation_partition": "development",
+    "nomination_signals": [],
+    "reason_codes": [
+      "stratum_standard_candidate",
+      "recording_condition_unrepresented"
+    ],
+    "recording_condition_group_id": "recording-condition-05a05b8d51467200",
+    "selection_origin": "automatic",
+    "selection_stratum": "standard_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "transcript_time_coverage": 1.0
+    },
+    "source_family_id": "youtube-adairsville-sda",
+    "unregistered_source_count": 48
+  },
+  "video_id": "Ojfa50ULQ40"
+}

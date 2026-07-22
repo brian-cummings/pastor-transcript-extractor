@@ -1,0 +1,43 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 6420.0,
+      "start_seconds": 4500.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-21T12:46:31.204004+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "7207a7afefebec1920325d593b565ec0b9c998bd983304506421b3f27e0770ed",
+    "evaluation_partition": "development",
+    "nomination_signals": [
+      "rule_llm_disagreement"
+    ],
+    "reason_codes": [
+      "stratum_boundary_risk",
+      "recording_condition_unrepresented",
+      "signal_rule_llm_disagreement_unrepresented"
+    ],
+    "recording_condition_group_id": "recording-condition-ed39d575313a109c",
+    "selection_origin": "automatic",
+    "selection_stratum": "boundary_risk",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 974.0,
+      "continuity_probe_block_count": 0,
+      "discarded_retained_component_count": 0,
+      "rule_llm_agreement": 0.414286,
+      "top_candidate_relative_margin": 0.833333,
+      "transcript_time_coverage": 1.0
+    },
+    "source_family_id": "youtube-atlanta-belvedere",
+    "unregistered_source_count": 48
+  },
+  "video_id": "nU12JALgpk0"
+}

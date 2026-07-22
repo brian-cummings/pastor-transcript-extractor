@@ -1,0 +1,29 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "technical_test_no_sermon",
+  "ground_truth_version": 1,
+  "notes": "No worship-service sermon found.",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-21T12:47:27.827996+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "d97c9f3855bcadc2f0370a06ca9c8a603b8817e7e9fc7a0214331d85b4445b2f",
+    "evaluation_partition": "development",
+    "nomination_signals": [],
+    "reason_codes": [
+      "stratum_no_candidate"
+    ],
+    "recording_condition_group_id": "recording-condition-eae543826150e3c3",
+    "selection_origin": "automatic",
+    "selection_stratum": "no_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "transcript_time_coverage": 1.0
+    },
+    "source_family_id": "youtube-duluth-sda",
+    "unregistered_source_count": 48
+  },
+  "video_id": "WXC9wpdLqAk"
+}
