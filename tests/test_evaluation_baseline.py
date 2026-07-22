@@ -118,7 +118,7 @@ class EvaluationBaselineTests(unittest.TestCase):
         )
 
         self.assertEqual(0, result.exit_code, result.output)
-        self.assertIn("Validated sermon-localization-v1: 22 fixture(s)", result.output)
+        self.assertIn("Validated sermon-localization-v1: 42 fixture(s)", result.output)
 
 
 if __name__ == "__main__":
