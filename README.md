@@ -221,6 +221,23 @@ pte validate-fixtures evaluation/fixtures
 pte evaluate --base-dir /path/to/app-data
 ```
 
+After the fixture evaluation is accepted, propagate the classifier to every
+video with reusable extraction segments. On macOS, `caffeinate` keeps the run
+active while two videos are classified concurrently:
+
+```bash
+caffeinate pte reclassify \
+  --all \
+  --force \
+  --jobs 2 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Corpus-wide reclassification skips videos without a readable `proposed.json`
+containing timestamped segments. Completed inference remains resumable through
+the per-video raw inference cache, and the final summary reports reclassified,
+reused, skipped, and failed counts.
+
 Evaluation creates `results.json`, a human-readable `report.md`, and relevant
 failure-analysis files under `evaluation/results/<timestamp>/`. Metrics are
 computed against original transcript segments rather than timestamp overlap

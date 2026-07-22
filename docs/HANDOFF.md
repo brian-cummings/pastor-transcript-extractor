@@ -11,6 +11,7 @@ Implemented:
 - candidate ranking, score components, confidence reasons, model identity, and refinement reasons are persisted
 - low-confidence classifications preserve the protected rule/manual baseline
 - forced reclassification recomputes the rule-only baseline instead of reusing a prior hybrid result
+- corpus-wide `reclassify --all` propagation selects reusable extraction artifacts, skips ineligible videos, and retains cache-based resumability
 - ground-truth review supports positive and negative fixtures
 - 42 manually reviewed fixtures are frozen: 22 positive and 20 negative
 - evaluation is segment-based and produces JSON and Markdown reports
@@ -45,7 +46,7 @@ Implemented:
 - media acquisition outcomes distinguish verified, unavailable, and failed; they remain non-gating for sermon content
 - universal acquisition is an explicit shadow command and has not been inserted into the stable `run` workflow
 - no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
-- 282 tests pass
+- 284 tests pass
 
 ## Transcript-Independent Media
 
@@ -344,6 +345,23 @@ pte evaluate \
   --fixture-dir evaluation/fixtures \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
+
+After accepting the fixture regression, propagate the classifier across the
+existing corpus:
+
+```bash
+caffeinate pte reclassify \
+  --all \
+  --force \
+  --jobs 2 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The corpus run inspects every database video, processes only readable proposed
+artifacts with timestamped segments, and counts missing or invalid artifacts as
+skipped. Completed raw inference is cached per video, so an interrupted forced
+run can reuse successful block inference when restarted. The summary reports
+reclassified, reused, skipped, and failed counts.
 
 Each run creates timestamped files under `evaluation/results/<timestamp>/`:
 

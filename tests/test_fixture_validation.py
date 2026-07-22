@@ -126,6 +126,104 @@ class FixtureReclassificationCliTests(unittest.TestCase):
         self.assertNotEqual(0, result.exit_code)
         self.assertIn("exactly one", result.output)
 
+    def test_reclassify_rejects_all_with_another_selector(self) -> None:
+        result = CliRunner().invoke(
+            app,
+            ["reclassify", "--all", "--video-id", "1"],
+        )
+
+        self.assertNotEqual(0, result.exit_code)
+        self.assertIn("exactly one", result.output)
+
+    def test_reclassify_all_skips_non_reusable_artifacts_and_reports_counts(self) -> None:
+        class FakeOllamaClient:
+            def __init__(self, config: object) -> None:
+                self.model = getattr(config, "model")
+
+            def model_digest(self) -> str:
+                return "fixture-digest"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_paths: dict[int, Path] = {}
+            for video_id in (1, 2):
+                path = root / f"proposed-{video_id}.json"
+                path.write_text(
+                    json.dumps({
+                        "segments": [{
+                            "start_seconds": 0.0,
+                            "end_seconds": 60.0,
+                            "text": "Reusable transcript segment",
+                        }]
+                    }),
+                    encoding="utf-8",
+                )
+                proposed_paths[video_id] = path
+            videos = [
+                SimpleNamespace(
+                    id=video_id,
+                    title=f"Video {video_id}",
+                    youtube_video_id=f"youtube-{video_id}",
+                )
+                for video_id in range(1, 5)
+            ]
+            extractions = {
+                1: SimpleNamespace(proposed_json_path=str(proposed_paths[1])),
+                2: SimpleNamespace(proposed_json_path=str(proposed_paths[2])),
+                3: SimpleNamespace(proposed_json_path=str(root / "missing.json")),
+                4: None,
+            }
+            database = SimpleNamespace(
+                list_videos=lambda: videos,
+                get_latest_extraction_result_for_video=lambda video_id: extractions[video_id],
+            )
+
+            def reclassify(*args, **kwargs):
+                del kwargs
+                video_id = args[2]
+                if video_id == 2:
+                    raise RuntimeError("fixture failure")
+                return SimpleNamespace(
+                    reused=True,
+                    confidence_tier="medium",
+                    disposition_status="review_required",
+                    retained_segment_count=4,
+                    cache_hits=2,
+                    cache_misses=0,
+                    classification_path=root / "classification.json",
+                )
+
+            with patch(
+                "pastor_transcript_extractor.cli.get_database", return_value=database
+            ), patch(
+                "pastor_transcript_extractor.cli.OllamaClient", FakeOllamaClient
+            ), patch(
+                "pastor_transcript_extractor.cli.reclassify_video",
+                side_effect=reclassify,
+            ) as reclassify_mock:
+                result = CliRunner().invoke(
+                    app,
+                    [
+                        "reclassify",
+                        "--all",
+                        "--jobs",
+                        "2",
+                        "--base-dir",
+                        str(root / "data"),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("Discovered 4 video(s) in the corpus", result.output)
+            self.assertEqual(
+                {1, 2},
+                {call.args[2] for call in reclassify_mock.call_args_list},
+            )
+            self.assertIn(
+                "Reclassified 0 video(s); reused 1; skipped 2; failed 1.",
+                result.output,
+            )
+
     def test_reclassify_discovers_fixture_videos_in_deterministic_order(self) -> None:
         class FakeOllamaClient:
             def __init__(self, config: object) -> None:

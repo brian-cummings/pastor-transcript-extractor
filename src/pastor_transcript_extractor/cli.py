@@ -2820,10 +2820,48 @@ def extract(
     console.print(f"Extracted {result.processed} video(s); skipped {result.skipped}; failed {result.failed}.")
 
 
+def _has_reusable_extraction_segments(extraction: object) -> bool:
+    proposed_path = getattr(extraction, "proposed_json_path", None)
+    if not isinstance(proposed_path, str) or not proposed_path.strip():
+        return False
+    try:
+        payload = json.loads(Path(proposed_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    segments = payload.get("segments")
+    if (
+        not isinstance(segments, list)
+        or not segments
+        or any(
+            not isinstance(segment, dict)
+            or not isinstance(segment.get("text"), str)
+            for segment in segments
+        )
+    ):
+        return False
+    return any(
+        isinstance(segment, dict)
+        and isinstance(segment.get("text"), str)
+        and isinstance(segment.get("start_seconds"), (int, float))
+        and not isinstance(segment.get("start_seconds"), bool)
+        and isinstance(segment.get("end_seconds"), (int, float))
+        and not isinstance(segment.get("end_seconds"), bool)
+        and float(segment["end_seconds"]) > float(segment["start_seconds"])
+        for segment in segments
+    )
+
+
 @app.command(help="Rerun local-LLM classification using existing extraction segments.")
 def reclassify(
     video_id: int | None = typer.Option(None, "--video-id", help="Reclassify one database video id."),
     source_id: int | None = typer.Option(None, "--source-id", help="Reclassify extracted videos from one source id."),
+    all_videos: bool = typer.Option(
+        False,
+        "--all",
+        help="Reclassify every database video with reusable extraction segments.",
+    ),
     fixture_dir: Path | None = typer.Option(
         None,
         "--fixture-dir",
@@ -2840,11 +2878,16 @@ def reclassify(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     selector_count = sum(
-        (video_id is not None, source_id is not None, fixture_dir is not None)
+        (
+            video_id is not None,
+            source_id is not None,
+            fixture_dir is not None,
+            all_videos,
+        )
     )
     if selector_count != 1:
         raise typer.BadParameter(
-            "Pass exactly one of --video-id, --source-id, or --fixture-dir."
+            "Pass exactly one of --video-id, --source-id, --fixture-dir, or --all."
         )
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -2853,6 +2896,9 @@ def reclassify(
         videos = [video] if video is not None else []
     elif source_id is not None:
         videos = database.list_videos_by_source_id(source_id)
+    elif all_videos:
+        videos = database.list_videos()
+        console.print(f"Discovered {len(videos)} video(s) in the corpus.")
     else:
         assert fixture_dir is not None
         fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
@@ -2888,8 +2934,19 @@ def reclassify(
     failed = 0
     eligible_videos = []
     for video in videos:
-        if database.get_latest_extraction_result_for_video(video.id) is None:
+        extraction = database.get_latest_extraction_result_for_video(video.id)
+        if extraction is None:
             skipped += 1
+            if all_videos:
+                console.print(
+                    f"Skipping video #{video.id}: no reusable extraction segments."
+                )
+            continue
+        if all_videos and not _has_reusable_extraction_segments(extraction):
+            skipped += 1
+            console.print(
+                f"Skipping video #{video.id}: no reusable extraction segments."
+            )
             continue
         eligible_videos.append(video)
 
