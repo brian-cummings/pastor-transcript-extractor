@@ -152,6 +152,16 @@ principal-speaker observations contain the same person. The implementation and
 evaluation contract are documented in
 `evaluation/speaker-pairs/README.md`.
 
+Automatic pair nomination now inherits sermon-classification safety.
+`review-next-speaker-pair` admits only observations tied to the readable latest
+extraction when its persisted top-level disposition is `accepted_sermon` and
+the observation boundaries match the current valid sermon window. It also
+requires usable diagnostic spans and hash-verified normalized media.
+Review-required, rejected, malformed, unknown, and stale observations are
+excluded. Accepted manual window overrides remain eligible when their current
+observation matches the override. This is derived at selection time and adds no
+database migration or lifecycle state.
+
 The provisional local backend is sherpa-onnx 1.13.1 with an English CAMPPlus
 ONNX model whose SHA-256 is pinned by the CLI. Model files and all generated
 audio/embedding caches are ignored. There is no production dependency on this

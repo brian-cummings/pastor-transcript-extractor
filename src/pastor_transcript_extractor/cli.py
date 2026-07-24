@@ -110,9 +110,11 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     SherpaOnnxEmbeddingBackend,
     analyze_observation_pair,
     evaluate_reviewed_pair_results,
-    select_diagnostic_spans,
     validate_reviewed_pair_fixture,
     write_pair_result,
+)
+from pastor_transcript_extractor.speaker_pair_eligibility import (
+    assess_automatic_speaker_observation,
 )
 from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
@@ -1184,12 +1186,13 @@ def review_next_speaker_pair(
 
         candidates: list[PairCandidateObservation] = []
         for video in database.list_videos():
-            observation = database.get_latest_speaker_observation_for_video(video.id)
-            if observation is None or not select_diagnostic_spans(observation):
+            eligibility = assess_automatic_speaker_observation(database, video.id)
+            if not eligibility.eligible:
                 continue
-            media = get_verified_normalized_media_artifact(database, video.id)
-            if media is None:
-                continue
+            observation = eligibility.observation
+            media = eligibility.media_artifact
+            assert observation is not None
+            assert media is not None
             claims = database.list_speaker_name_claims_for_video(video.id)
             names = frozenset(
                 claim.normalized_name

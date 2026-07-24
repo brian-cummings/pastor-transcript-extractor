@@ -372,6 +372,14 @@ Source-to-pastor assignment is explicitly recorded as an expectation, not proof
 that the assigned pastor delivered the sermon. Manual sermon-window overrides
 apply only to content boundaries and do not suppress guest-speaker concerns.
 
+Automatic speaker-pair nomination is limited to current, accepted sermon
+observations. `pte identity review-next-speaker-pair` requires a readable latest
+extraction whose top-level disposition is `accepted_sermon`, an observation
+from that extraction with boundaries matching its current sermon window,
+usable diagnostic spans, and verified normalized media. Review-required,
+rejected, malformed, and stale observations are excluded conservatively.
+Explicit `review-speaker-pair` requests remain a manual workflow.
+
 Backfill shadow identity artifacts for existing extractions without invoking
 classification or rewriting sermon artifacts:
 

@@ -125,6 +125,16 @@ selection metadata only. It is hidden from the packet and never supplies the
 fixture outcome or speaker-profile membership. Repeating the command advances
 because the prior draft is part of the derived selection history.
 
+Automatic candidates must be current observations of accepted sermons. The
+selector requires a readable latest extraction with a persisted top-level
+`accepted_sermon` disposition, a valid current sermon window, an observation
+from that extraction whose boundaries match the window, usable diagnostic
+spans, and verified normalized media. Review-required, rejected, malformed,
+unknown, and stale observations are excluded. Accepted manual sermon-window
+overrides remain eligible when the current observation matches the override.
+This eligibility gate does not alter pair ranking, stratum rotation, history,
+or the blinded packet.
+
 The command extracts the same deterministic spans used by diagnostics and
 opens a local HTML packet. The packet labels the groups only as Observation A
 and Observation B, randomizes their presentation deterministically, and hides
