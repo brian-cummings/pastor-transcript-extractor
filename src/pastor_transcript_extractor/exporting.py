@@ -135,6 +135,7 @@ def _build_review_transcript_excerpt(
             classification,
             sermon_window,
             guest_speaker_suspected=proposed_json.get("guest_speaker_suspected") is True,
+            recording_verification=proposed_json.get("recording_verification"),
         )
     status = str(disposition.get("status", "unknown"))
     if status.startswith("rejected_"):
@@ -200,6 +201,7 @@ def _build_review_sections_for_videos(
                 classification,
                 sermon_window,
                 guest_speaker_suspected=guest_speaker_suspected,
+                recording_verification=proposed_json.get("recording_verification"),
             )
         published_text = video.published_at.date().isoformat() if video.published_at is not None else "undated"
         section_lines = [

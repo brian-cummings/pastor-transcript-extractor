@@ -413,6 +413,7 @@ def backfill_shadow_identity_assessments(
                     payload.get("classification"),
                     payload.get("sermon_window"),
                     guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+                    recording_verification=payload.get("recording_verification"),
                 )
             before = database.get_latest_identity_assessment_for_video(video.id)
             result = record_shadow_identity_assessment(

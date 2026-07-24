@@ -208,6 +208,14 @@ Use `--force` while testing algorithm, prompt, or adjudication changes. Raw LLM
 responses are cached separately from ranking and adjudication, so an unchanged
 second pass should normally report zero cache misses.
 
+Production classification is a cascade: `gemma3:4b` localizes sermon-like
+blocks, then `gemma3:12b` verifies only recordings that would otherwise require
+review. Explicit Bible Class, Sabbath School, graduation, concert, technical
+test, and named student-program titles can be resolved by a versioned
+high-precision title policy without calling 12B. Invalid or contradictory
+verifier evidence remains unresolved, and guest-speaker safeguards still take
+precedence.
+
 Run the frozen regression set after reclassifying its videos:
 
 ```bash
@@ -215,6 +223,8 @@ pte reclassify \
   --fixture-dir evaluation/fixtures \
   --force \
   --jobs 2 \
+  --recording-verifier-model gemma3:12b \
+  --recording-verifier-cache-root evaluation/recording-verifier/cache \
   --base-dir /path/to/app-data
 
 pte validate-fixtures evaluation/fixtures
@@ -230,13 +240,15 @@ caffeinate pte reclassify \
   --all \
   --force \
   --jobs 2 \
+  --recording-verifier-model gemma3:12b \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
 Corpus-wide reclassification skips videos without a readable `proposed.json`
 containing timestamped segments. Completed inference remains resumable through
-the per-video raw inference cache, and the final summary reports reclassified,
-reused, skipped, and failed counts.
+the per-video raw inference and recording-verifier caches. Each video persists
+`recording-verification-v1.json` alongside `llm-classification-v1.json`, and the
+final summary reports reclassified, reused, skipped, and failed counts.
 
 Evaluation creates `results.json`, a human-readable `report.md`, and relevant
 failure-analysis files under `evaluation/results/<timestamp>/`. Metrics are

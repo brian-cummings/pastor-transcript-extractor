@@ -74,6 +74,14 @@ from pastor_transcript_extractor.interaction_diagnostics import (
     load_sentinel_blocks,
     run_model_diagnostics,
 )
+from pastor_transcript_extractor.recording_verifier import (
+    RecordingVerifierCache,
+    build_report as build_recording_verifier_report,
+    create_run as create_recording_verifier_run,
+    load_cases as load_recording_verifier_cases,
+    run_diagnostics as run_recording_verifier_diagnostics,
+    validate_partition_access,
+)
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
@@ -437,6 +445,83 @@ def diagnose_interaction(
     report_path.write_text(build_diagnostic_report(run), encoding="utf-8")
     console.print(f"Wrote interaction diagnostic JSON to {json_path}")
     console.print(f"Wrote interaction diagnostic report to {report_path}")
+
+
+@app.command(
+    "diagnose-recording-verifier",
+    help="Test one recording-level sermon decision on a non-held-out fixture partition.",
+)
+def diagnose_recording_verifier(
+    model: str = typer.Option("gemma3:12b", "--model", help="Ollama model to test."),
+    partition: str = typer.Option(
+        "development",
+        "--partition",
+        help="Fixture partition to test. Use development while tuning.",
+    ),
+    confirm_frozen_policy: bool = typer.Option(
+        False,
+        "--confirm-frozen-policy",
+        help="Required to unseal the held-out partition for final validation.",
+    ),
+    fixture_dir: Path = typer.Option(
+        Path("evaluation/fixtures"), help="Approved fixture directory."
+    ),
+    output_root: Path = typer.Option(
+        Path("evaluation/recording-verifier"),
+        help="Generated diagnostic result root.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        validate_partition_access(
+            partition,
+            confirm_frozen_policy=confirm_frozen_policy,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    database = get_database(base_dir)
+    fixture_root = fixture_dir.expanduser().resolve()
+    cases = load_recording_verifier_cases(
+        database,
+        fixture_root,
+        partition=partition,
+    )
+    if not cases:
+        raise typer.BadParameter(f"No fixtures found in partition {partition!r}.")
+    root = output_root.expanduser().resolve()
+    llm_config = build_llm_config()
+    client = OllamaClient(replace(llm_config, enabled=True, model=model))
+    try:
+        digest = client.model_digest()
+    except Exception as error:
+        raise typer.BadParameter(
+            f"Could not use Ollama model {model!r}; install it before comparison: {error}"
+        ) from error
+    console.print(
+        f"Running recording-level verifier with {model} on "
+        f"{len(cases)} {partition} fixture(s)."
+    )
+    model_result = run_recording_verifier_diagnostics(
+        client,
+        model_digest=digest,
+        cases=cases,
+        cache=RecordingVerifierCache(root / "cache"),
+        progress=lambda video_id, current, total: console.print(
+            f"  {video_id} case {current}/{total}"
+        ),
+    )
+    run = create_recording_verifier_run(model_result, partition=partition)
+    output_dir = root / str(run["run_id"])
+    output_dir.mkdir(parents=True, exist_ok=False)
+    json_path = output_dir / "results.json"
+    report_path = output_dir / "report.md"
+    json_path.write_text(json.dumps(run, indent=2, sort_keys=True), encoding="utf-8")
+    report_path.write_text(
+        build_recording_verifier_report(run),
+        encoding="utf-8",
+    )
+    console.print(f"Wrote recording verifier JSON to {json_path}")
+    console.print(f"Wrote recording verifier report to {report_path}")
 
 
 def _prompt_failure_mode(*, contains_sermon: bool) -> str:
@@ -2795,6 +2880,11 @@ def extract(
         help="Content classifier: auto, rules, or llm.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
+    recording_verifier_model: str = typer.Option(
+        "gemma3:12b",
+        "--recording-verifier-model",
+        help="Ollama model used only for ambiguous recording-level decisions.",
+    ),
     jobs: int = typer.Option(1, "--jobs", min=1, help="Concurrent video extraction jobs."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
@@ -2809,6 +2899,7 @@ def extract(
             source_id=source_id,
             classifier=classifier,
             llm_model=llm_model,
+            recording_verifier_model=recording_verifier_model,
             workers=jobs,
             event_callback=lambda message: console.print(message, markup=False),
             progress_callback=lambda stage, current, total: console.print(
@@ -2868,11 +2959,21 @@ def reclassify(
         help="Reclassify every approved fixture in this directory.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
+    recording_verifier_model: str = typer.Option(
+        "gemma3:12b",
+        "--recording-verifier-model",
+        help="Ollama model used only for ambiguous recording-level decisions.",
+    ),
     jobs: int = typer.Option(1, "--jobs", min=1, help="Concurrent video classification jobs."),
     inference_cache_root: Path | None = typer.Option(
         None,
         "--inference-cache-root",
         help="Use a separate per-video inference cache root, primarily for controlled comparisons.",
+    ),
+    recording_verifier_cache_root: Path | None = typer.Option(
+        None,
+        "--recording-verifier-cache-root",
+        help="Use a shared recording-verifier cache root.",
     ),
     force: bool = typer.Option(False, "--force", help="Rerun even when model and prompt versions match."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -2923,10 +3024,20 @@ def reclassify(
         raise typer.BadParameter("No matching videos found.")
     llm_config = build_llm_config()
     if llm_model is not None:
-        from dataclasses import replace
-
         llm_config = replace(llm_config, model=llm_model)
     client = OllamaClient(llm_config)
+    verifier_config = replace(llm_config, model=recording_verifier_model)
+    raw_verifier_client = OllamaClient(verifier_config)
+    verifier_lock = Lock()
+
+    class LockedVerifierClient:
+        model = raw_verifier_client.model
+
+        def generate_json(self, prompt, schema):
+            with verifier_lock:
+                return raw_verifier_client.generate_json(prompt, schema)
+
+    verifier_client = LockedVerifierClient()
 
     processed = 0
     reused = 0
@@ -2951,9 +3062,17 @@ def reclassify(
         eligible_videos.append(video)
 
     model_digest = client.model_digest() if eligible_videos else None
+    verifier_model_digest = (
+        raw_verifier_client.model_digest() if eligible_videos else None
+    )
     resolved_cache_root = (
         inference_cache_root.expanduser().resolve()
         if inference_cache_root is not None
+        else None
+    )
+    resolved_verifier_cache_root = (
+        recording_verifier_cache_root.expanduser().resolve()
+        if recording_verifier_cache_root is not None
         else None
     )
 
@@ -2973,6 +3092,13 @@ def reclassify(
             inference_cache_dir=(
                 resolved_cache_root / video.youtube_video_id
                 if resolved_cache_root is not None
+                else None
+            ),
+            recording_verifier_client=verifier_client,
+            recording_verifier_model_digest=verifier_model_digest,
+            recording_verifier_cache_dir=(
+                resolved_verifier_cache_root
+                if resolved_verifier_cache_root is not None
                 else None
             ),
         )
@@ -2996,6 +3122,10 @@ def reclassify(
                 f"disposition={result.disposition_status}, "
                 f"retained_segments={result.retained_segment_count}, "
                 f"cache_hits={result.cache_hits}, cache_misses={result.cache_misses}, "
+                f"recording_verifier="
+                f"{getattr(result, 'recording_verifier_decision', None) or 'not_required'}, "
+                f"verifier_cache_hit="
+                f"{getattr(result, 'recording_verifier_cache_hit', False)}, "
                 f"audit={result.classification_path}"
             )
             processed += 1

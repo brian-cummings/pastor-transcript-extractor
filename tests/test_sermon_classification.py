@@ -20,6 +20,9 @@ from pastor_transcript_extractor.extraction import (
 )
 from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import TranscriptSegmentLabel
+from pastor_transcript_extractor.recording_verifier import (
+    POLICY_VERSION as RECORDING_VERIFIER_POLICY_VERSION,
+)
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
     BLOCK_BUILDER_VERSION,
@@ -668,6 +671,11 @@ class HybridClassificationTests(unittest.TestCase):
             "model": "fixture:4b",
             "prompt_version": "v1",
             "confidence_policy_version": CONFIDENCE_POLICY_VERSION,
+            "recording_verifier_policy_version": RECORDING_VERIFIER_POLICY_VERSION,
+            "recording_verification": {
+                "source": "not_required",
+                "decision": None,
+            },
         }
         self.assertTrue(_classification_is_current(classification, model="fixture:4b", prompt_version="v1"))
         self.assertFalse(_classification_is_current(classification, model="other:4b", prompt_version="v1"))

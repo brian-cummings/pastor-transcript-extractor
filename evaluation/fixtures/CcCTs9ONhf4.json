@@ -1,0 +1,43 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 4088.0,
+      "start_seconds": 2471.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-22T21:53:06.406478+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "222c690fb2bdfb5ef418635dc9da97b767ef0ccbeec6c77130a9d8045b030e9c",
+    "evaluation_partition": "held_out",
+    "nomination_signals": [
+      "retained_block_fragmentation"
+    ],
+    "reason_codes": [
+      "stratum_standard_candidate",
+      "source_family_unrepresented",
+      "recording_condition_unrepresented"
+    ],
+    "recording_condition_group_id": "recording-condition-e0a60045bad02a4f",
+    "selection_origin": "automatic",
+    "selection_stratum": "standard_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 2340.0,
+      "continuity_probe_block_count": 1,
+      "discarded_retained_component_count": 1,
+      "mean_caption_deduplication_ratio": 0.16615,
+      "rule_llm_agreement": 0.9,
+      "top_candidate_relative_margin": 0.8,
+      "transcript_time_coverage": 1.0
+    },
+    "source_family_id": "youtube-channel-ucvidalojqrues5qqotzoikq"
+  },
+  "video_id": "CcCTs9ONhf4"
+}

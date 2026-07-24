@@ -26,6 +26,7 @@ def build_final_disposition(
     *,
     guest_speaker_suspected: bool = False,
     ambiguous_speakers: bool = False,
+    recording_verification: object = None,
 ) -> dict[str, Any]:
     """Derive the user-facing outcome without discarding diagnostic candidates."""
     classification_dict = classification if isinstance(classification, dict) else {}
@@ -35,10 +36,22 @@ def build_final_disposition(
     has_window = _has_effective_window(sermon_window)
     window_source = sermon_window.get("source") if isinstance(sermon_window, dict) else None
     manual_override = window_source == "override"
+    verification = (
+        recording_verification if isinstance(recording_verification, dict) else {}
+    )
+    verified_outcome = verification.get("predicted_outcome")
+    verification_decision = verification.get("decision")
 
     if ambiguous_speakers:
         status = REJECTED_AMBIGUOUS_SPEAKERS
         reasons = ["multiple_sustained_speakers_cannot_be_attributed_to_target_pastor"]
+    elif verified_outcome == "no_sermon":
+        status = (
+            REJECTED_AMBIGUOUS_SPEAKERS
+            if verification_decision == "multi_speaker_or_student_program"
+            else REJECTED_NO_SERMON
+        )
+        reasons = [f"recording_verifier_{verification_decision}"]
     elif guest_speaker_suspected:
         status = REVIEW_REQUIRED
         reasons = ["guest_speaker_suspected"]
@@ -47,6 +60,9 @@ def build_final_disposition(
     elif manual_override and has_window:
         status = ACCEPTED_SERMON
         reasons = ["manual_content_boundary_override_is_authoritative"]
+    elif verified_outcome == "sermon" and has_window:
+        status = ACCEPTED_SERMON
+        reasons = ["recording_verifier_confirmed_worship_service_sermon"]
     elif not has_window and diagnostic_candidate_present:
         status = REVIEW_REQUIRED
         reasons = ["low_confidence_candidate_not_promoted"]
@@ -73,4 +89,7 @@ def build_final_disposition(
         "diagnostic_candidate_present": diagnostic_candidate_present,
         "guest_speaker_suspected": guest_speaker_suspected,
         "manual_content_override_present": manual_override,
+        "recording_verifier_policy_version": verification.get("policy_version"),
+        "recording_verifier_decision": verification_decision,
+        "recording_verifier_outcome": verified_outcome,
     }

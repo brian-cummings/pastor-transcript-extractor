@@ -7,10 +7,16 @@ from pathlib import Path
 from typing import Any
 
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
-from pastor_transcript_extractor.disposition import build_final_disposition
+from pastor_transcript_extractor.disposition import REVIEW_REQUIRED, build_final_disposition
 from pastor_transcript_extractor.identity import record_shadow_identity_assessment
 from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
+from pastor_transcript_extractor.recording_verifier import (
+    ARTIFACT_SCHEMA_VERSION as RECORDING_VERIFIER_SCHEMA_VERSION,
+    POLICY_VERSION as RECORDING_VERIFIER_POLICY_VERSION,
+    PROMPT_VERSION as RECORDING_VERIFIER_PROMPT_VERSION,
+    verify_recording,
+)
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.sermon_classification import (
@@ -43,6 +49,8 @@ class ReclassificationRunResult:
     disposition_status: str = "unknown"
     cache_hits: int = 0
     cache_misses: int = 0
+    recording_verifier_decision: str | None = None
+    recording_verifier_cache_hit: bool = False
 
 
 def _record_identity_shadow_safely(
@@ -149,9 +157,13 @@ def _classify_with_fallback(
 
 
 def _classification_is_current(
-    classification: object, *, model: str, prompt_version: str
+    classification: object,
+    *,
+    model: str,
+    prompt_version: str,
+    recording_verifier_model: str | None = None,
 ) -> bool:
-    return (
+    current = (
         isinstance(classification, dict)
         and classification.get("method") == "adaptive_llm_v3"
         and classification.get("block_builder_version") == BLOCK_BUILDER_VERSION
@@ -160,6 +172,22 @@ def _classification_is_current(
         and classification.get("model") == model
         and classification.get("prompt_version") == prompt_version
         and classification.get("confidence_policy_version") == CONFIDENCE_POLICY_VERSION
+        and classification.get("recording_verifier_policy_version")
+        == RECORDING_VERIFIER_POLICY_VERSION
+    )
+    if not current or not isinstance(classification, dict):
+        return False
+    verification = classification.get("recording_verification")
+    if not isinstance(verification, dict):
+        return False
+    if verification.get("source") == "not_required":
+        return "verifier_unavailable" not in verification.get("reason_codes", [])
+    if verification.get("source") == "deterministic_title_gate":
+        return True
+    return (
+        recording_verifier_model is not None
+        and verification.get("model") == recording_verifier_model
+        and verification.get("prompt_version") == RECORDING_VERIFIER_PROMPT_VERSION
     )
 
 
@@ -241,6 +269,47 @@ def _baseline_window_payload(
     }
 
 
+def _not_required_recording_verification(reason: str) -> dict[str, Any]:
+    return {
+        "schema_version": RECORDING_VERIFIER_SCHEMA_VERSION,
+        "prompt_version": RECORDING_VERIFIER_PROMPT_VERSION,
+        "policy_version": RECORDING_VERIFIER_POLICY_VERSION,
+        "model": None,
+        "model_digest": None,
+        "source": "not_required",
+        "decision": None,
+        "confidence": None,
+        "reason_codes": [reason],
+        "predicted_outcome": None,
+        "cache_hit": False,
+        "evidence_packet_hash": None,
+        "raw_response": None,
+        "error": None,
+    }
+
+
+def _promote_hybrid_window(
+    window: dict[str, Any],
+    drafts: list[SegmentDraft],
+    hybrid: HybridSermonResult,
+) -> None:
+    retained = [drafts[index] for index in hybrid.retained_segment_indexes]
+    starts = [draft.start_seconds for draft in retained if draft.start_seconds is not None]
+    ends = [draft.end_seconds for draft in retained if draft.end_seconds is not None]
+    window.update(
+        {
+            "start_seconds": min(starts) if starts else window.get("start_seconds"),
+            "end_seconds": max(ends) if ends else window.get("end_seconds"),
+            "method": hybrid.method,
+            "source": "hybrid_llm",
+            "included_segment_indexes": hybrid.retained_segment_indexes,
+            "excluded_segment_indexes": hybrid.excluded_segment_indexes,
+            "suspicious_boundary": hybrid.confidence_tier != "high",
+            "suspicious_boundary_reasons": hybrid.warnings,
+        }
+    )
+
+
 def reclassify_video(
     database: Database,
     app_paths: AppPaths,
@@ -253,6 +322,9 @@ def reclassify_video(
     model_digest: str | None = None,
     context_size: int = 4096,
     inference_cache_dir: Path | None = None,
+    recording_verifier_client: LocalLlmClient | None = None,
+    recording_verifier_model_digest: str | None = None,
+    recording_verifier_cache_dir: Path | None = None,
 ) -> ReclassificationRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -271,13 +343,22 @@ def reclassify_video(
     classification_path = video_paths.extracted / "llm-classification-v1.json"
     existing = payload.get("classification")
     if not force and _classification_is_current(
-        existing, model=llm_client.model, prompt_version=prompt_version
+        existing,
+        model=llm_client.model,
+        prompt_version=prompt_version,
+        recording_verifier_model=(
+            recording_verifier_client.model
+            if recording_verifier_client is not None
+            else None
+        ),
     ):
         assert isinstance(existing, dict)
+        recording_verification = existing.get("recording_verification")
         disposition = build_final_disposition(
             existing,
             payload.get("sermon_window"),
             guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+            recording_verification=recording_verification,
         )
         if payload.get("final_disposition") != disposition or existing.get("final_disposition") != disposition:
             payload["final_disposition"] = disposition
@@ -299,6 +380,17 @@ def reclassify_video(
             len(existing.get("retained_segment_indexes", [])),
             True,
             str(disposition["status"]),
+            recording_verifier_decision=(
+                str(recording_verification.get("decision"))
+                if isinstance(recording_verification, dict)
+                and recording_verification.get("decision") is not None
+                else None
+            ),
+            recording_verifier_cache_hit=(
+                recording_verification.get("cache_hit") is True
+                if isinstance(recording_verification, dict)
+                else False
+            ),
         )
 
     drafts = _drafts_from_proposed_json(payload)
@@ -341,30 +433,61 @@ def reclassify_video(
         and hybrid.confidence_tier != "low"
         and hybrid.retained_segment_indexes
     ):
-        retained = [drafts[index] for index in hybrid.retained_segment_indexes]
-        starts = [draft.start_seconds for draft in retained if draft.start_seconds is not None]
-        ends = [draft.end_seconds for draft in retained if draft.end_seconds is not None]
-        existing_window.update(
-            {
-                "start_seconds": min(starts) if starts else existing_window.get("start_seconds"),
-                "end_seconds": max(ends) if ends else existing_window.get("end_seconds"),
-                "method": hybrid.method,
-                "source": "hybrid_llm",
-                "included_segment_indexes": hybrid.retained_segment_indexes,
-                "excluded_segment_indexes": hybrid.excluded_segment_indexes,
-                "suspicious_boundary": hybrid.confidence_tier != "high",
-                "suspicious_boundary_reasons": hybrid.warnings,
-            }
+        _promote_hybrid_window(existing_window, drafts, hybrid)
+    preliminary_disposition = build_final_disposition(
+        classification,
+        existing_window,
+        guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+    )
+    if (
+        preliminary_disposition["status"] == REVIEW_REQUIRED
+        and recording_verifier_client is not None
+        and recording_verifier_model_digest is not None
+    ):
+        recording_verification = verify_recording(
+            title=video.title,
+            proposed=payload,
+            client=recording_verifier_client,
+            model_digest=recording_verifier_model_digest,
+            cache_dir=(
+                recording_verifier_cache_dir
+                or video_paths.extracted / "recording-verifier-cache"
+            ),
         )
+    else:
+        recording_verification = _not_required_recording_verification(
+            "guest_speaker_safeguard"
+            if payload.get("guest_speaker_suspected") is True
+            else "verifier_unavailable"
+            if preliminary_disposition["status"] == REVIEW_REQUIRED
+            else "base_classifier_resolved"
+        )
+    classification["recording_verifier_policy_version"] = (
+        RECORDING_VERIFIER_POLICY_VERSION
+    )
+    classification["recording_verification"] = recording_verification
+    payload["recording_verification"] = recording_verification
+    if (
+        override is None
+        and recording_verification.get("predicted_outcome") == "sermon"
+        and hybrid.retained_segment_indexes
+        and not existing_window.get("included_segment_indexes")
+    ):
+        _promote_hybrid_window(existing_window, drafts, hybrid)
     disposition = build_final_disposition(
         classification,
         existing_window,
         guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+        recording_verification=recording_verification,
     )
     classification["final_disposition"] = disposition
     payload["final_disposition"] = disposition
     proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     classification_path.write_text(json.dumps(classification, indent=2, sort_keys=True), encoding="utf-8")
+    (video_paths.extracted / "recording-verification-v1.json").write_text(
+        json.dumps(recording_verification, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
     _record_identity_shadow_safely(
         database,
         app_paths,
@@ -382,6 +505,10 @@ def reclassify_video(
         str(disposition["status"]),
         int(classification.get("cache_stats", {}).get("hits", 0)),
         int(classification.get("cache_stats", {}).get("misses", 0)),
+        str(recording_verification.get("decision"))
+        if recording_verification.get("decision") is not None
+        else None,
+        recording_verification.get("cache_hit") is True,
     )
 
 
@@ -567,6 +694,8 @@ def extract_video(
     prompt_version: str = "sermon-content-v1",
     context_size: int = 4096,
     progress: Any | None = None,
+    recording_verifier_client: LocalLlmClient | None = None,
+    recording_verifier_model_digest: str | None = None,
 ) -> ExtractionRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -636,10 +765,64 @@ def extract_video(
         pastor_name=pastor.display_name,
         sermon_window=detected_window,
     )
+    serialized_segments = [
+        {
+            "start_seconds": segment.start_seconds,
+            "end_seconds": segment.end_seconds,
+            "text": segment.text,
+            "speaker_hint": segment.speaker_hint,
+            "label": segment.label.value,
+            "confidence": segment.confidence,
+        }
+        for segment in persisted_segments
+    ]
+    preliminary_disposition = build_final_disposition(
+        classification,
+        sermon_window,
+        guest_speaker_suspected=guest_flags.suspected,
+    )
+    if (
+        preliminary_disposition["status"] == REVIEW_REQUIRED
+        and recording_verifier_client is not None
+        and recording_verifier_model_digest is not None
+    ):
+        recording_verification = verify_recording(
+            title=video.title,
+            proposed={
+                "video_id": video.id,
+                "youtube_video_id": video.youtube_video_id,
+                "classification": classification,
+                "segments": serialized_segments,
+            },
+            client=recording_verifier_client,
+            model_digest=recording_verifier_model_digest,
+            cache_dir=video_paths.extracted / "recording-verifier-cache",
+        )
+    else:
+        recording_verification = _not_required_recording_verification(
+            "guest_speaker_safeguard"
+            if guest_flags.suspected
+            else "verifier_unavailable"
+            if preliminary_disposition["status"] == REVIEW_REQUIRED
+            else "base_classifier_resolved"
+        )
+    classification["recording_verifier_policy_version"] = (
+        RECORDING_VERIFIER_POLICY_VERSION
+    )
+    classification["recording_verification"] = recording_verification
+    if (
+        hybrid_result is not None
+        and override is None
+        and recording_verification.get("predicted_outcome") == "sermon"
+        and hybrid_result.retained_segment_indexes
+        and not sermon_window.get("included_segment_indexes")
+    ):
+        _promote_hybrid_window(sermon_window, drafts, hybrid_result)
     final_disposition = build_final_disposition(
         classification,
         sermon_window,
         guest_speaker_suspected=guest_flags.suspected,
+        recording_verification=recording_verification,
     )
     classification["final_disposition"] = final_disposition
 
@@ -667,26 +850,21 @@ def extract_video(
         "transcript_source": transcript_artifact.source_kind.value,
         "sermon_window": sermon_window,
         "classification": classification,
+        "recording_verification": recording_verification,
         "final_disposition": final_disposition,
         "guest_speaker_suspected": guest_flags.suspected,
         "guest_name_candidates": guest_flags.name_candidates,
         "guest_signal_reasons": guest_flags.reasons,
         "segment_count": len(persisted_segments),
-        "segments": [
-            {
-                "start_seconds": segment.start_seconds,
-                "end_seconds": segment.end_seconds,
-                "text": segment.text,
-                "speaker_hint": segment.speaker_hint,
-                "label": segment.label.value,
-                "confidence": segment.confidence,
-            }
-            for segment in persisted_segments
-        ],
+        "segments": serialized_segments,
     }
     proposed_json_path.write_text(json.dumps(proposed_json, indent=2, sort_keys=True), encoding="utf-8")
     segments_path.write_text(json.dumps(proposed_json["segments"], indent=2, sort_keys=True), encoding="utf-8")
     classification_path.write_text(json.dumps(classification, indent=2, sort_keys=True), encoding="utf-8")
+    (video_paths.extracted / "recording-verification-v1.json").write_text(
+        json.dumps(recording_verification, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
 
     extraction_result = database.add_extraction_result(
         video_id=video.id,

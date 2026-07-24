@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
+from threading import Lock
 from typing import Callable
 
 from pastor_transcript_extractor.config import AppPaths, LlmConfig, build_llm_config
@@ -85,6 +86,7 @@ def extract_batch(
     video_ids: set[int] | None = None,
     classifier: str = "auto",
     llm_model: str | None = None,
+    recording_verifier_model: str = "gemma3:12b",
     workers: int = 1,
     event_callback: EventCallback | None = None,
     progress_callback: ProgressCallback | None = None,
@@ -126,6 +128,36 @@ def extract_batch(
 
         eligible_videos.append(video)
 
+    raw_verifier_client = None
+    verifier_digest = None
+    if llm_client is not None and eligible_videos:
+        candidate_verifier = OllamaClient(
+            replace(llm_config, model=recording_verifier_model)
+        )
+        try:
+            verifier_digest = candidate_verifier.model_digest()
+        except Exception as error:
+            _emit(
+                event_callback,
+                "Recording verifier unavailable; ambiguous videos will remain "
+                f"review-required: {error}",
+            )
+        else:
+            raw_verifier_client = candidate_verifier
+    verifier_lock = Lock()
+
+    class LockedVerifierClient:
+        model = raw_verifier_client.model if raw_verifier_client is not None else ""
+
+        def generate_json(self, prompt, schema):
+            assert raw_verifier_client is not None
+            with verifier_lock:
+                return raw_verifier_client.generate_json(prompt, schema)
+
+    verifier_client = (
+        LockedVerifierClient() if raw_verifier_client is not None else None
+    )
+
     def extract_one(video) -> None:
         _emit(event_callback, f"Extracting video #{video.id}: {video.title}")
         extract_video(
@@ -137,6 +169,8 @@ def extract_batch(
             prompt_version=llm_config.prompt_version,
             context_size=llm_config.context_size,
             progress=progress_callback,
+            recording_verifier_client=verifier_client,
+            recording_verifier_model_digest=verifier_digest,
         )
 
     processed = 0

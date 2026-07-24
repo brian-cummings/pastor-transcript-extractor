@@ -12,8 +12,12 @@ Implemented:
 - low-confidence classifications preserve the protected rule/manual baseline
 - forced reclassification recomputes the rule-only baseline instead of reusing a prior hybrid result
 - corpus-wide `reclassify --all` propagation selects reusable extraction artifacts, skips ineligible videos, and retains cache-based resumability
+- ambiguous classifications use a production 4B-to-12B cascade: 4B localizes blocks and 12B verifies the recording type
+- recording verification is persisted with prompt `recording-sermon-verifier-v2` and policy `recording-sermon-verifier-policy-v3`
+- deterministic title decisions handle explicit classes, school programs, graduations, concerts, and technical tests before 12B inference
+- guest-speaker concerns and invalid verifier evidence remain protected rather than being automatically accepted
 - ground-truth review supports positive and negative fixtures
-- 42 manually reviewed fixtures are frozen: 22 positive and 20 negative
+- 44 manually reviewed fixtures are frozen: 23 positive and 21 negative
 - evaluation is segment-based and produces JSON and Markdown reports
 - failure reports show expected, missed, retained, and contaminating ranges with persisted label evidence
 - conservative candidate joining can recover interrupted sermons
@@ -335,6 +339,8 @@ pte reclassify \
   --fixture-dir evaluation/fixtures \
   --force \
   --jobs 2 \
+  --recording-verifier-model gemma3:12b \
+  --recording-verifier-cache-root evaluation/recording-verifier/cache \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
@@ -354,6 +360,7 @@ caffeinate pte reclassify \
   --all \
   --force \
   --jobs 2 \
+  --recording-verifier-model gemma3:12b \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
@@ -373,19 +380,40 @@ Do not edit or derive fixtures from detected boundaries. Only manually reviewed 
 
 ## Current Benchmark
 
-The accepted 42-fixture report is:
+The accepted pre-verifier 44-fixture localization report is:
 
-- `evaluation/results/20260722T133453Z/report.md`
+- `evaluation/results/20260722T215614Z/report.md`
 
 Results:
 
-- mean sermon recall: `0.9923337198689602`
+- mean sermon recall: `0.992`
 - worst sermon recall: `0.9012345679012346`
 - catastrophic omissions: `0`
-- mean contamination ratio: `0.10220744132985758`
+- mean contamination ratio: `0.101`
 - correct top-candidate rate: `1.000`
 - high-confidence negative false positives: `0`
 - negative `accepted_sermon` dispositions: `0`
+- automatic coverage before recording verification: `15/44` (`0.341`)
+- automatic accuracy before recording verification: `15/15` (`1.000`)
+
+### Recording-level verifier promotion
+
+The frozen `gemma3:12b` verifier was evaluated only on fixtures whose existing
+4B result required review. It uses the recording title plus the recording
+opening and candidate opening, midpoint, and ending. The frozen results were:
+
+| Partition | Correct automatic decisions | Unresolved | Errors |
+|---|---:|---:|---:|
+| development | 9/9 | 1 | 0 |
+| legacy | 15/15 | 2 | 0 |
+| held-out | 2/2 | 0 | 0 |
+
+The held-out run is
+`evaluation/recording-verifier/20260723T211301Z/report.md`. Across the 29
+previously review-required fixtures, the verifier resolves 26 with zero known
+automatic errors. Combined with the 15 existing automatic outcomes, projected
+coverage is 41/44 (`0.932`) before guest-speaker safeguards. The remaining
+three cases stay unresolved.
 
 The pre-title recovery increment raised `fcZNzRYQOtA` recall from `0.891` to `1.000`, with contamination increasing by only `0.0006` absolute. Its persisted diagnostic records a `168.04`-second extension stopped by music.
 
@@ -404,10 +432,10 @@ The frozen fixtures produced:
 
 | Policy | Positive H/M/L | Negative H/M/L | High-confidence negative false positives |
 |---|---:|---:|---:|
-| current | 5/11/6 | 0/8/12 | 0 |
-| legacy hard overlap | 1/4/17 | 0/1/19 | 0 |
-| no rule overlap | 16/0/6 | 8/0/12 | 8 |
-| soft rule overlap | 5/11/6 | 1/7/12 | 1 (`jWGOaKtwPT4`) |
+| current | 6/11/6 | 0/8/13 | 0 |
+| legacy hard overlap | 2/4/17 | 0/1/20 | 0 |
+| no rule overlap | 17/0/6 | 8/0/13 | 8 |
+| soft rule overlap | 6/11/6 | 1/7/13 | 1 (`jWGOaKtwPT4`) |
 
 Production uses the supported soft policy plus the recording-edge expansion cap. Every negative remains medium or low and none receives `accepted_sermon`. Removing overlap entirely makes eight negatives falsely high; replaying soft overlap without the new edge cap leaves `jWGOaKtwPT4` falsely high. Classification artifacts persist `confidence_policy_version`, so older results are invalidated without invalidating raw inference cache entries.
 
@@ -442,7 +470,8 @@ This project uses the standard-library `unittest` runner; `pytest` is not instal
 git diff --check
 ```
 
-The expected count at this handoff is 185 tests.
+Codex should run focused unit tests while developing; Brian runs the complete
+suite and dataset validation commands.
 
 ## Identity Increment 1
 

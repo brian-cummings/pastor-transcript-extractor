@@ -235,6 +235,7 @@ class EvaluationTests(unittest.TestCase):
                 {
                     "status": "evaluated",
                     "expected_outcome": "sermon",
+                    "disposition_status": "review_required",
                     "sermon_recall": 0.8,
                     "contamination_ratio": 0.1,
                     "catastrophic_omission": True,
@@ -243,6 +244,7 @@ class EvaluationTests(unittest.TestCase):
                 {
                     "status": "evaluated",
                     "expected_outcome": "no_sermon",
+                    "disposition_status": "rejected_no_sermon",
                     "candidate_produced": True,
                     "false_high_confidence_acceptance": False,
                 },
@@ -251,6 +253,39 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(1, aggregate["catastrophic_omissions"])
         self.assertEqual(1, aggregate["negative_candidates_produced"])
         self.assertEqual(0, aggregate["negative_high_confidence_false_positives"])
+        self.assertEqual(1, aggregate["automatic_resolution_count"])
+        self.assertEqual(1, aggregate["review_required_count"])
+        self.assertEqual(0.5, aggregate["automatic_coverage_rate"])
+        self.assertEqual(1.0, aggregate["automatic_accuracy"])
+        self.assertEqual(0.0, aggregate["positive_automatic_acceptance_rate"])
+        self.assertEqual(1.0, aggregate["negative_automatic_rejection_rate"])
+
+    def test_aggregate_counts_wrong_automatic_dispositions_as_errors(self) -> None:
+        aggregate = aggregate_results(
+            [
+                {
+                    "status": "evaluated",
+                    "expected_outcome": "sermon",
+                    "disposition_status": "rejected_no_sermon",
+                    "sermon_recall": 1.0,
+                    "contamination_ratio": 0.0,
+                    "catastrophic_omission": False,
+                    "correct_top_candidate": True,
+                },
+                {
+                    "status": "evaluated",
+                    "expected_outcome": "no_sermon",
+                    "disposition_status": "accepted_sermon",
+                    "candidate_produced": True,
+                    "false_high_confidence_acceptance": True,
+                    "false_accepted_disposition": True,
+                },
+            ]
+        )
+
+        self.assertEqual(2, aggregate["automatic_resolution_count"])
+        self.assertEqual(2, aggregate["automatic_error_count"])
+        self.assertEqual(0.0, aggregate["automatic_accuracy"])
 
     def test_ablation_aggregate_reports_negative_promotions_per_policy(self) -> None:
         result = {

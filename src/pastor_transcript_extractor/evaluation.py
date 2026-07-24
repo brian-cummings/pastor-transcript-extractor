@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from pastor_transcript_extractor.disposition import ACCEPTED_SERMON, build_final_disposition
+from pastor_transcript_extractor.disposition import (
+    ACCEPTED_SERMON,
+    REJECTED_AMBIGUOUS_SPEAKERS,
+    REJECTED_NO_SERMON,
+    REVIEW_REQUIRED,
+    build_final_disposition,
+)
 
 
 CATASTROPHIC_RECALL_THRESHOLD = 0.90
@@ -451,6 +457,14 @@ def evaluate_fixture_payload(
     cache_stats = classification.get("cache_stats") if isinstance(classification.get("cache_stats"), dict) else {}
     sermon_window = proposed.get("sermon_window") if isinstance(proposed.get("sermon_window"), dict) else {}
     final_disposition = proposed.get("final_disposition")
+    recording_verification = proposed.get("recording_verification")
+    if not isinstance(recording_verification, dict):
+        candidate_verification = classification.get("recording_verification")
+        recording_verification = (
+            candidate_verification
+            if isinstance(candidate_verification, dict)
+            else {}
+        )
     if not isinstance(final_disposition, dict):
         candidate_disposition = classification.get("final_disposition")
         final_disposition = (
@@ -460,6 +474,7 @@ def evaluate_fixture_payload(
                 classification,
                 sermon_window,
                 guest_speaker_suspected=proposed.get("guest_speaker_suspected") is True,
+                recording_verification=proposed.get("recording_verification"),
             )
         )
     common = {
@@ -483,6 +498,9 @@ def evaluate_fixture_payload(
         "confidence_tier": confidence,
         "final_disposition": final_disposition,
         "disposition_status": final_disposition.get("status"),
+        "recording_verifier_decision": recording_verification.get("decision"),
+        "recording_verifier_source": recording_verification.get("source"),
+        "recording_verifier_cache_hit": recording_verification.get("cache_hit") is True,
         "confidence_ablations": build_confidence_ablations(classification),
         "cache_hits": int(cache_stats.get("hits", 0)),
         "cache_misses": int(cache_stats.get("misses", 0)),
@@ -543,6 +561,34 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     evaluated = [result for result in results if result.get("status") == "evaluated"]
     positives = [result for result in evaluated if result.get("expected_outcome") == "sermon"]
     negatives = [result for result in evaluated if result.get("expected_outcome") == "no_sermon"]
+    accepted_positives = [
+        result for result in positives
+        if result.get("disposition_status") == ACCEPTED_SERMON
+    ]
+    rejected_negatives = [
+        result for result in negatives
+        if result.get("disposition_status")
+        in {REJECTED_NO_SERMON, REJECTED_AMBIGUOUS_SPEAKERS}
+    ]
+    reviewed = [
+        result for result in evaluated
+        if result.get("disposition_status") == REVIEW_REQUIRED
+    ]
+    automatically_resolved = [
+        result for result in evaluated
+        if result.get("disposition_status")
+        in {ACCEPTED_SERMON, REJECTED_NO_SERMON, REJECTED_AMBIGUOUS_SPEAKERS}
+    ]
+    automatic_errors = [
+        result for result in automatically_resolved
+        if (
+            result.get("expected_outcome") == "sermon"
+            and result.get("disposition_status") != ACCEPTED_SERMON
+        ) or (
+            result.get("expected_outcome") == "no_sermon"
+            and result.get("disposition_status") == ACCEPTED_SERMON
+        )
+    ]
     recalls = [float(result["sermon_recall"]) for result in positives]
     contamination = [float(result["contamination_ratio"]) for result in positives]
     top_candidates = [bool(result.get("correct_top_candidate")) for result in positives]
@@ -560,6 +606,27 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "negative_high_confidence_false_positives": sum(bool(result.get("false_high_confidence_acceptance")) for result in negatives),
         "negative_accepted_dispositions": sum(bool(result.get("false_accepted_disposition")) for result in negatives),
         "correct_top_candidate_rate": sum(top_candidates) / len(top_candidates) if top_candidates else None,
+        "automatic_resolution_count": len(automatically_resolved),
+        "review_required_count": len(reviewed),
+        "automatic_coverage_rate": (
+            len(automatically_resolved) / len(evaluated) if evaluated else None
+        ),
+        "automatic_correct_count": len(automatically_resolved) - len(automatic_errors),
+        "automatic_error_count": len(automatic_errors),
+        "automatic_accuracy": (
+            (len(automatically_resolved) - len(automatic_errors))
+            / len(automatically_resolved)
+            if automatically_resolved
+            else None
+        ),
+        "positive_automatic_acceptance_count": len(accepted_positives),
+        "positive_automatic_acceptance_rate": (
+            len(accepted_positives) / len(positives) if positives else None
+        ),
+        "negative_automatic_rejection_count": len(rejected_negatives),
+        "negative_automatic_rejection_rate": (
+            len(rejected_negatives) / len(negatives) if negatives else None
+        ),
     }
     aggregate["confidence_ablations"] = aggregate_confidence_ablations(results)
     return aggregate
@@ -581,6 +648,18 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         f"- Worst sermon recall: {metric(aggregate['worst_sermon_recall'])}",
         f"- Mean contamination ratio: {metric(aggregate['mean_contamination_ratio'])}",
         f"- Correct top-candidate rate: {metric(aggregate['correct_top_candidate_rate'])}",
+        f"- Automatic coverage: {metric(aggregate['automatic_coverage_rate'])} "
+        f"({aggregate['automatic_resolution_count']}/{aggregate['evaluated_fixture_count']})",
+        f"- Automatic accuracy: {metric(aggregate['automatic_accuracy'])} "
+        f"({aggregate['automatic_correct_count']}/{aggregate['automatic_resolution_count']})",
+        f"- Positive automatic acceptance: "
+        f"{metric(aggregate['positive_automatic_acceptance_rate'])} "
+        f"({aggregate['positive_automatic_acceptance_count']}/{aggregate['positive_fixture_count']})",
+        f"- Negative automatic rejection: "
+        f"{metric(aggregate['negative_automatic_rejection_rate'])} "
+        f"({aggregate['negative_automatic_rejection_count']}/{aggregate['negative_fixture_count']})",
+        f"- Review required: {aggregate['review_required_count']}",
+        f"- Automatic disposition errors: {aggregate['automatic_error_count']}",
         f"- Catastrophic omissions: {aggregate['catastrophic_omissions']}",
         f"- Negative high-confidence false positives: {aggregate['negative_high_confidence_false_positives']}",
         f"- Negative accepted dispositions: {aggregate['negative_accepted_dispositions']}",
@@ -622,8 +701,8 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         "",
         "## Positive fixtures",
         "",
-        "| Video | Confidence | Disposition | Recall | Contam. | Start error | End error | Selected / best rank | Rule overlap | Cache H/M | Status |",
-        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| Video | Confidence | Disposition | Recording verifier | Recall | Contam. | Start error | End error | Selected / best rank | Rule overlap | Cache H/M | Status |",
+        "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ])
     positives = [result for result in run["results"] if result.get("expected_outcome") == "sermon"]
     negatives = [result for result in run["results"] if result.get("expected_outcome") == "no_sermon"]
@@ -632,6 +711,7 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         lines.append(
             f"| {result.get('video_id')} | {result.get('confidence_tier', '—')} | "
             f"{result.get('disposition_status', '—')} | "
+            f"{result.get('recording_verifier_decision') or '—'} | "
             f"{metric(result.get('sermon_recall'))} | {metric(result.get('contamination_ratio'))} | "
             f"{metric(result.get('start_boundary_error_seconds'), 1)} | {metric(result.get('end_boundary_error_seconds'), 1)} | "
             f"{result.get('selected_candidate_rank', '—')} / {result.get('ground_truth_best_candidate_rank', '—')} | "
@@ -642,13 +722,14 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         "",
         "## Negative fixtures",
         "",
-        "| Video | Candidate | Confidence | Disposition | Retained | False-positive ratio | Baseline protected | Cache H/M | Status |",
-        "|---|---:|---:|---|---:|---:|---:|---:|---|",
+        "| Video | Candidate | Confidence | Disposition | Recording verifier | Retained | False-positive ratio | Baseline protected | Cache H/M | Status |",
+        "|---|---:|---:|---|---|---:|---:|---:|---:|---|",
     ])
     for result in negatives:
         lines.append(
             f"| {result.get('video_id')} | {'yes' if result.get('candidate_produced') else 'no'} | "
             f"{result.get('confidence_tier', '—')} | {result.get('disposition_status', '—')} | "
+            f"{result.get('recording_verifier_decision') or '—'} | "
             f"{result.get('retained_segment_count', '—')} | "
             f"{metric(result.get('false_positive_ratio'))} | "
             f"{'yes' if result.get('baseline_protection_prevented_replacement') else 'no'} | "
