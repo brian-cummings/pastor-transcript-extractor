@@ -7,7 +7,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from pastor_transcript_extractor.cli import review_speaker_pair
 from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import CachedSpan
 from pastor_transcript_extractor.speaker_pair_review import (
@@ -237,6 +240,62 @@ class SpeakerPairReviewTests(unittest.TestCase):
                 approval_confirmed=False,
                 evaluation_root=self.evaluation_root,
             )
+
+    def test_eligible_review_defaults_fixture_approval_to_yes(self):
+        draft = SimpleNamespace(
+            packet_path=self.evaluation_root / "drafts" / "pair.html",
+            payload={"pair_id": "pair"},
+        )
+        database = SimpleNamespace(
+            get_video_by_youtube_id=lambda value: SimpleNamespace(id=value),
+            get_latest_speaker_observation_for_video=lambda _video_id: self.observation_a,
+        )
+        submission = SimpleNamespace(
+            event_path=self.evaluation_root / "reviews" / "event.json",
+            fixture_path=None,
+            fixture_status="not_eligible",
+        )
+        with (
+            patch(
+                "pastor_transcript_extractor.cli.build_paths",
+                return_value=SimpleNamespace(database=self.root / "database.sqlite3"),
+            ),
+            patch("pastor_transcript_extractor.cli.Path.exists", return_value=True),
+            patch("pastor_transcript_extractor.cli.Database", return_value=database),
+            patch(
+                "pastor_transcript_extractor.cli.resolve_normalized_audio_path",
+                return_value=self.root / "audio.wav",
+            ),
+            patch("pastor_transcript_extractor.cli.create_review_draft", return_value=draft),
+            patch(
+                "pastor_transcript_extractor.cli.typer.prompt",
+                side_effect=["single", "single", "same", "", ""],
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.typer.confirm",
+                return_value=False,
+            ) as confirm,
+            patch(
+                "pastor_transcript_extractor.cli.submit_review",
+                return_value=submission,
+            ),
+        ):
+            review_speaker_pair(
+                "video-a",
+                "video-b",
+                reviewer="reviewer-1",
+                evaluation_root=self.evaluation_root,
+                cache_dir=self.root / "cache",
+                open_packet=False,
+                prepare_only=False,
+                base_dir=self.root,
+                selection_manifest_json=None,
+            )
+
+        confirm.assert_called_once_with(
+            "Freeze this exact-span binary judgment as an approved fixture?",
+            default=True,
+        )
 
 
 if __name__ == "__main__":

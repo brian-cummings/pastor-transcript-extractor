@@ -1111,7 +1111,7 @@ def review_speaker_pair(
     }
     approval_confirmed = fixture_eligible and typer.confirm(
         "Freeze this exact-span binary judgment as an approved fixture?",
-        default=False,
+        default=True,
     )
     try:
         submission = submit_review(
