@@ -18,7 +18,9 @@ from pastor_transcript_extractor.models import (
     MediaArchiveEntry,
     MediaArtifact,
     MetadataArtifact,
+    Organization,
     Pastor,
+    PastorOrganizationAffiliation,
     SpeakerNameClaim,
     SpeakerObservation,
     SpeakerProfile,
@@ -34,6 +36,11 @@ from pastor_transcript_extractor.models import (
     parse_datetime,
     utc_now,
 )
+from pastor_transcript_extractor.source_ownership import (
+    apply_source_ownership_schema,
+    backfill_source_ownership,
+    stable_fingerprint,
+)
 
 
 SCHEMA = """
@@ -47,7 +54,7 @@ CREATE TABLE IF NOT EXISTS pastors (
 
 CREATE TABLE IF NOT EXISTS sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    pastor_id INTEGER NOT NULL,
+    pastor_id INTEGER NULL,
     url TEXT NOT NULL UNIQUE,
     source_identity_key TEXT NULL,
     source_type TEXT NOT NULL,
@@ -75,7 +82,7 @@ CREATE TABLE IF NOT EXISTS source_import_refs (
 CREATE TABLE IF NOT EXISTS videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id INTEGER NOT NULL,
-    pastor_id INTEGER NOT NULL,
+    pastor_id INTEGER NULL,
     youtube_video_id TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     url TEXT NOT NULL,
@@ -419,6 +426,8 @@ class Database:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
             self._ensure_pastor_columns(connection)
+            apply_source_ownership_schema(connection)
+            backfill_source_ownership(connection)
 
     def _ensure_pastor_columns(self, connection: sqlite3.Connection) -> None:
         source_columns = {str(row["name"]) for row in connection.execute("PRAGMA table_info(sources)").fetchall()}
@@ -442,6 +451,9 @@ class Database:
         return Source(
             id=int(row["id"]),
             pastor_id=row["pastor_id"],
+            organization_id=(
+                row["organization_id"] if "organization_id" in row.keys() else None
+            ),
             url=str(row["url"]),
             source_type=SourceType(str(row["source_type"])),
             added_at=parse_datetime(str(row["added_at"])) or utc_now(),
@@ -458,6 +470,38 @@ class Database:
             display_name=str(row["display_name"]),
             added_at=parse_datetime(str(row["added_at"])) or utc_now(),
             notes=row["notes"],
+        )
+
+    def _organization_from_row(self, row: sqlite3.Row) -> Organization:
+        return Organization(
+            id=int(row["id"]),
+            slug=str(row["slug"]),
+            display_name=str(row["display_name"]),
+            organization_type=str(row["organization_type"]),
+            added_at=parse_datetime(str(row["added_at"])) or utc_now(),
+            notes=row["notes"],
+        )
+
+    def _pastor_organization_affiliation_from_row(
+        self, row: sqlite3.Row
+    ) -> PastorOrganizationAffiliation:
+        return PastorOrganizationAffiliation(
+            id=int(row["id"]),
+            pastor_id=int(row["pastor_id"]),
+            organization_id=int(row["organization_id"]),
+            role_key=str(row["role_key"]),
+            role_label=str(row["role_label"]),
+            started_on=row["started_on"],
+            ended_on=row["ended_on"],
+            temporal_status=str(row["temporal_status"]),
+            provenance_kind=str(row["provenance_kind"]),
+            affiliation_claim_id=(
+                int(row["affiliation_claim_id"])
+                if row["affiliation_claim_id"] is not None
+                else None
+            ),
+            notes=row["notes"],
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
         )
 
     def _video_from_row(self, row: sqlite3.Row) -> Video:
@@ -757,32 +801,149 @@ class Database:
             ).fetchall()
         return [self._pastor_from_row(row) for row in rows]
 
+    def add_organization(
+        self,
+        slug: str,
+        display_name: str,
+        organization_type: str,
+        notes: str | None = None,
+    ) -> Organization:
+        added_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO organizations (
+                        slug, display_name, organization_type, added_at, notes
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (slug, display_name, organization_type, added_at, notes),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, slug, display_name, organization_type, added_at, notes
+                    FROM organizations WHERE slug = ?
+                    """,
+                    (slug,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._organization_from_row(row)
+        return Organization(
+            id=int(cursor.lastrowid),
+            slug=slug,
+            display_name=display_name,
+            organization_type=organization_type,
+            added_at=parse_datetime(added_at) or utc_now(),
+            notes=notes,
+        )
+
+    def get_organization_by_slug(self, slug: str) -> Organization | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, slug, display_name, organization_type, added_at, notes
+                FROM organizations WHERE slug = ?
+                """,
+                (slug,),
+            ).fetchone()
+        return self._organization_from_row(row) if row is not None else None
+
+    def get_organization_by_id(self, organization_id: int) -> Organization | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, slug, display_name, organization_type, added_at, notes
+                FROM organizations WHERE id = ?
+                """,
+                (organization_id,),
+            ).fetchone()
+        return self._organization_from_row(row) if row is not None else None
+
+    def list_organizations(self) -> list[Organization]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, slug, display_name, organization_type, added_at, notes
+                FROM organizations ORDER BY id
+                """
+            ).fetchall()
+        return [self._organization_from_row(row) for row in rows]
+
     def add_source(
         self,
         url: str,
         source_type: SourceType,
-        pastor_id: int,
+        pastor_id: int | None,
         notes: str | None = None,
+        organization_id: int | None = None,
     ) -> Source:
         added_at = utc_now().isoformat()
         with self.connect() as connection:
             try:
                 cursor = connection.execute(
-                    "INSERT INTO sources (pastor_id, url, source_type, added_at, notes) VALUES (?, ?, ?, ?, ?)",
-                    (pastor_id, url, source_type.value, added_at, notes),
+                    """
+                    INSERT INTO sources (
+                        pastor_id, organization_id, url, source_type, added_at, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        pastor_id,
+                        organization_id,
+                        url,
+                        source_type.value,
+                        added_at,
+                        notes,
+                    ),
                 )
             except sqlite3.IntegrityError:
                 row = connection.execute(
-                    "SELECT id, pastor_id, url, source_type, added_at, notes FROM sources WHERE url = ?",
+                    """
+                    SELECT id, pastor_id, organization_id, url, source_identity_key,
+                           source_type, added_at, notes
+                    FROM sources WHERE url = ?
+                    """,
                     (url,),
                 ).fetchone()
                 if row is None:
                     raise
+                if pastor_id is not None and row["pastor_id"] is None:
+                    connection.execute(
+                        "UPDATE sources SET pastor_id = ? WHERE id = ?",
+                        (pastor_id, int(row["id"])),
+                    )
+                    row = connection.execute(
+                        """
+                        SELECT id, pastor_id, organization_id, url,
+                               source_identity_key, source_type, added_at, notes
+                        FROM sources WHERE id = ?
+                        """,
+                        (int(row["id"]),),
+                    ).fetchone()
+                    assert row is not None
+                if pastor_id is not None:
+                    self._ensure_source_target_policy(
+                        connection,
+                        source_id=int(row["id"]),
+                        pastor_id=pastor_id,
+                        origin_kind="manual_compatibility",
+                        created_at=added_at,
+                    )
                 return self._source_from_row(row)
             source_id = int(cursor.lastrowid)
+            if pastor_id is not None:
+                self._ensure_source_target_policy(
+                    connection,
+                    source_id=source_id,
+                    pastor_id=pastor_id,
+                    origin_kind="manual_compatibility",
+                    created_at=added_at,
+                )
         return Source(
             id=source_id,
             pastor_id=pastor_id,
+            organization_id=organization_id,
             url=url,
             source_type=source_type,
             added_at=parse_datetime(added_at) or utc_now(),
@@ -793,7 +954,8 @@ class Database:
     def list_sources(self) -> list[Source]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id, pastor_id, url, source_identity_key, source_type, added_at, notes "
+                "SELECT id, pastor_id, organization_id, url, source_identity_key, "
+                "source_type, added_at, notes "
                 "FROM sources ORDER BY id"
             ).fetchall()
         return [self._source_from_row(row) for row in rows]
@@ -801,7 +963,8 @@ class Database:
     def get_source_by_id(self, source_id: int) -> Source | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, pastor_id, url, source_identity_key, source_type, added_at, notes "
+                "SELECT id, pastor_id, organization_id, url, source_identity_key, "
+                "source_type, added_at, notes "
                 "FROM sources WHERE id = ?",
                 (source_id,),
             ).fetchone()
@@ -812,7 +975,8 @@ class Database:
     def get_source_by_url(self, url: str) -> Source | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, pastor_id, url, source_identity_key, source_type, added_at, notes "
+                "SELECT id, pastor_id, organization_id, url, source_identity_key, "
+                "source_type, added_at, notes "
                 "FROM sources WHERE url = ?",
                 (url,),
             ).fetchone()
@@ -823,7 +987,7 @@ class Database:
     def add_video(
         self,
         source_id: int,
-        pastor_id: int,
+        pastor_id: int | None,
         youtube_video_id: str,
         title: str,
         url: str,
@@ -870,6 +1034,38 @@ class Database:
                 return self._video_from_row(row)
 
             video_id = int(cursor.lastrowid)
+            self._ensure_video_artifact_namespace(
+                connection,
+                video_id=video_id,
+                pastor_id=pastor_id,
+                youtube_video_id=youtube_video_id,
+            )
+            policies = connection.execute(
+                """
+                SELECT id, pastor_id, purpose, origin_kind
+                FROM source_target_policies
+                WHERE source_id = ? AND active = 1
+                ORDER BY id
+                """,
+                (source_id,),
+            ).fetchall()
+            for policy in policies:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO video_target_contexts (
+                        video_id, pastor_id, source_target_policy_id, purpose,
+                        origin_kind, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        video_id,
+                        int(policy["pastor_id"]),
+                        int(policy["id"]),
+                        str(policy["purpose"]),
+                        str(policy["origin_kind"]),
+                        utc_now().isoformat(),
+                    ),
+                )
         return Video(
             id=video_id,
             source_id=source_id,
@@ -882,6 +1078,371 @@ class Database:
             duration_seconds=duration_seconds,
             status=status,
             failure_reason=failure_reason,
+        )
+
+    def set_source_organization(
+        self,
+        source_id: int,
+        organization_id: int | None,
+        *,
+        actor: str,
+        reason: str,
+        event_key: str,
+    ) -> None:
+        created_at = utc_now().isoformat()
+        action = "attach" if organization_id is not None else "detach"
+        fingerprint = stable_fingerprint(
+            {
+                "event_key": event_key,
+                "source_id": source_id,
+                "organization_id": organization_id,
+                "action": action,
+            }
+        )
+        with self.connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM sources WHERE id = ?", (source_id,)
+            ).fetchone() is None:
+                raise ValueError(f"Unknown source id: {source_id}")
+            if organization_id is not None and connection.execute(
+                "SELECT 1 FROM organizations WHERE id = ?", (organization_id,)
+            ).fetchone() is None:
+                raise ValueError(f"Unknown organization id: {organization_id}")
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO source_organization_events (
+                    source_id, organization_id, action, actor, reason,
+                    external_record_snapshot_id, event_fingerprint, created_at
+                ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+                """,
+                (
+                    source_id,
+                    organization_id,
+                    action,
+                    actor,
+                    reason,
+                    fingerprint,
+                    created_at,
+                ),
+            )
+            connection.execute(
+                "UPDATE sources SET organization_id = ? WHERE id = ?",
+                (organization_id, source_id),
+            )
+
+    def add_pastor_organization_affiliation(
+        self,
+        *,
+        pastor_id: int,
+        organization_id: int,
+        role_key: str,
+        role_label: str,
+        started_on: str | None,
+        ended_on: str | None,
+        temporal_status: str,
+        provenance_kind: str,
+        notes: str | None = None,
+        affiliation_claim_id: int | None = None,
+    ) -> PastorOrganizationAffiliation:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO pastor_organization_affiliations (
+                    pastor_id, organization_id, role_key, role_label,
+                    started_on, ended_on, temporal_status, provenance_kind,
+                    affiliation_claim_id, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    pastor_id,
+                    organization_id,
+                    role_key,
+                    role_label,
+                    started_on,
+                    ended_on,
+                    temporal_status,
+                    provenance_kind,
+                    affiliation_claim_id,
+                    notes,
+                    created_at,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM pastor_organization_affiliations WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+        assert row is not None
+        return self._pastor_organization_affiliation_from_row(row)
+
+    def list_pastor_organization_affiliations(
+        self, pastor_id: int | None = None
+    ) -> list[PastorOrganizationAffiliation]:
+        with self.connect() as connection:
+            if pastor_id is None:
+                rows = connection.execute(
+                    "SELECT * FROM pastor_organization_affiliations ORDER BY id"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM pastor_organization_affiliations
+                    WHERE pastor_id = ? ORDER BY id
+                    """,
+                    (pastor_id,),
+                ).fetchall()
+        return [
+            self._pastor_organization_affiliation_from_row(row) for row in rows
+        ]
+
+    def list_organization_affiliation_claims(
+        self, organization_id: int | None = None
+    ) -> list[sqlite3.Row]:
+        with self.connect() as connection:
+            if organization_id is None:
+                rows = connection.execute(
+                    """
+                    SELECT claim.*, organization.slug AS organization_slug,
+                           (
+                               SELECT review.action
+                               FROM affiliation_claim_review_events review
+                               WHERE review.claim_id = claim.id
+                               ORDER BY review.id DESC LIMIT 1
+                           ) AS review_status
+                    FROM organization_affiliation_claims claim
+                    JOIN organizations organization
+                      ON organization.id = claim.organization_id
+                    ORDER BY claim.id
+                    """
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT claim.*, organization.slug AS organization_slug,
+                           (
+                               SELECT review.action
+                               FROM affiliation_claim_review_events review
+                               WHERE review.claim_id = claim.id
+                               ORDER BY review.id DESC LIMIT 1
+                           ) AS review_status
+                    FROM organization_affiliation_claims claim
+                    JOIN organizations organization
+                      ON organization.id = claim.organization_id
+                    WHERE claim.organization_id = ?
+                    ORDER BY claim.id
+                    """,
+                    (organization_id,),
+                ).fetchall()
+        return rows
+
+    def review_organization_affiliation_claim(
+        self,
+        *,
+        claim_id: int,
+        pastor_id: int | None,
+        attach: bool,
+        reviewer: str,
+        reason: str,
+        review_event_key: str,
+    ) -> int:
+        action = "attach" if attach else "reject"
+        if attach and pastor_id is None:
+            raise ValueError("Attaching an affiliation claim requires a pastor")
+        if not attach and pastor_id is not None:
+            raise ValueError("Rejecting an affiliation claim cannot select a pastor")
+        created_at = utc_now().isoformat()
+        fingerprint = stable_fingerprint(
+            {
+                "review_event_key": review_event_key,
+                "claim_id": claim_id,
+                "pastor_id": pastor_id,
+                "action": action,
+            }
+        )
+        with self.connect() as connection:
+            claim = connection.execute(
+                """
+                SELECT id, organization_id, claimed_role, valid_from, valid_to
+                FROM organization_affiliation_claims
+                WHERE id = ?
+                """,
+                (claim_id,),
+            ).fetchone()
+            if claim is None:
+                raise ValueError(f"Unknown affiliation claim id: {claim_id}")
+            if pastor_id is not None and connection.execute(
+                "SELECT 1 FROM pastors WHERE id = ?", (pastor_id,)
+            ).fetchone() is None:
+                raise ValueError(f"Unknown pastor id: {pastor_id}")
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO affiliation_claim_review_events (
+                    claim_id, pastor_id, action, reviewer, reason,
+                    event_fingerprint, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim_id,
+                    pastor_id,
+                    action,
+                    reviewer,
+                    reason,
+                    fingerprint,
+                    created_at,
+                ),
+            )
+            event = connection.execute(
+                """
+                SELECT id FROM affiliation_claim_review_events
+                WHERE event_fingerprint = ?
+                """,
+                (fingerprint,),
+            ).fetchone()
+            assert event is not None
+            if attach:
+                role_label = str(claim["claimed_role"])
+                role_key = (
+                    "".join(
+                        character if character.isalnum() else "_"
+                        for character in role_label.lower()
+                    ).strip("_")
+                    or "affiliated"
+                )
+                started_on = claim["valid_from"]
+                ended_on = claim["valid_to"]
+                temporal_status = (
+                    "bounded"
+                    if started_on is not None and ended_on is not None
+                    else "former"
+                    if ended_on is not None
+                    else "current"
+                    if started_on is not None
+                    else "unknown"
+                )
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO pastor_organization_affiliations (
+                        pastor_id, organization_id, role_key, role_label,
+                        started_on, ended_on, temporal_status, provenance_kind,
+                        affiliation_claim_id, notes, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'reviewed_import', ?, ?, ?)
+                    """,
+                    (
+                        pastor_id,
+                        int(claim["organization_id"]),
+                        role_key,
+                        role_label,
+                        started_on,
+                        ended_on,
+                        temporal_status,
+                        claim_id,
+                        reason,
+                        created_at,
+                    ),
+                )
+        return int(event["id"])
+
+    def list_video_ids_for_target_pastor(self, pastor_id: int) -> set[int]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT video_id
+                FROM video_target_contexts
+                WHERE pastor_id = ?
+                """,
+                (pastor_id,),
+            ).fetchall()
+        return {int(row["video_id"]) for row in rows}
+
+    def _ensure_source_target_policy(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        source_id: int,
+        pastor_id: int,
+        origin_kind: str,
+        created_at: str,
+    ) -> int:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO source_target_policies (
+                source_id, pastor_id, purpose, origin_kind, active, created_at
+            ) VALUES (?, ?, 'legacy_primary_target', ?, 1, ?)
+            """,
+            (source_id, pastor_id, origin_kind, created_at),
+        )
+        row = connection.execute(
+            """
+            SELECT id FROM source_target_policies
+            WHERE source_id = ? AND pastor_id = ?
+              AND purpose = 'legacy_primary_target'
+            """,
+            (source_id, pastor_id),
+        ).fetchone()
+        assert row is not None
+        policy_id = int(row["id"])
+        primary = connection.execute(
+            "SELECT pastor_id FROM sources WHERE id = ?",
+            (source_id,),
+        ).fetchone()
+        if primary is not None and primary["pastor_id"] == pastor_id:
+            connection.execute(
+                """
+                UPDATE videos SET pastor_id = ?
+                WHERE source_id = ? AND pastor_id IS NULL
+                """,
+                (pastor_id, source_id),
+            )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO video_target_contexts (
+                video_id, pastor_id, source_target_policy_id, purpose,
+                origin_kind, created_at
+            )
+            SELECT video.id, ?, ?, 'legacy_primary_target', ?, ?
+            FROM videos video
+            WHERE video.source_id = ?
+            """,
+            (
+                pastor_id,
+                policy_id,
+                origin_kind,
+                created_at,
+                source_id,
+            ),
+        )
+        return policy_id
+
+    def _ensure_video_artifact_namespace(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        video_id: int,
+        pastor_id: int | None,
+        youtube_video_id: str,
+    ) -> None:
+        if pastor_id is None:
+            scheme = "video_v1"
+            relative_root = f"artifacts/videos/{youtube_video_id}"
+        else:
+            row = connection.execute(
+                "SELECT slug FROM pastors WHERE id = ?", (pastor_id,)
+            ).fetchone()
+            if row is None:
+                scheme = "video_v1"
+                relative_root = f"artifacts/videos/{youtube_video_id}"
+            else:
+                scheme = "legacy_pastor_v1"
+                relative_root = (
+                    f"pastors/{row['slug']}/videos/{youtube_video_id}"
+                )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO video_artifact_namespaces (
+                video_id, scheme, relative_root, created_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (video_id, scheme, relative_root, utc_now().isoformat()),
         )
 
     def update_video_status(self, video_id: int, status: VideoStatus, failure_reason: str | None = None) -> None:
@@ -2310,6 +2871,18 @@ class Database:
 
     def counts_by_table(self) -> dict[str, int]:
         with self.connect() as connection:
+            organization_count = connection.execute(
+                "SELECT COUNT(*) FROM organizations"
+            ).fetchone()[0]
+            affiliation_claim_count = connection.execute(
+                "SELECT COUNT(*) FROM organization_affiliation_claims"
+            ).fetchone()[0]
+            pastor_affiliation_count = connection.execute(
+                "SELECT COUNT(*) FROM pastor_organization_affiliations"
+            ).fetchone()[0]
+            affiliation_review_count = connection.execute(
+                "SELECT COUNT(*) FROM affiliation_claim_review_events"
+            ).fetchone()[0]
             source_count = connection.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
             source_import_ref_count = connection.execute(
                 "SELECT COUNT(*) FROM source_import_refs"
@@ -2332,6 +2905,10 @@ class Database:
             media_archive_entry_count = connection.execute("SELECT COUNT(*) FROM media_archive_entries").fetchone()[0]
             media_archive_attempt_count = connection.execute("SELECT COUNT(*) FROM media_archive_attempts").fetchone()[0]
         return {
+            "organizations": int(organization_count),
+            "organization_affiliation_claims": int(affiliation_claim_count),
+            "pastor_organization_affiliations": int(pastor_affiliation_count),
+            "affiliation_claim_review_events": int(affiliation_review_count),
             "sources": int(source_count),
             "source_import_refs": int(source_import_ref_count),
             "pastors": int(pastor_count),

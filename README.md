@@ -13,6 +13,10 @@ This workspace now has the main pipeline scaffold in place:
 - source URL classification
 - source persistence in SQLite
 - pastor entity persistence
+- publishing organization persistence and external provenance
+- temporal pastor-to-organization affiliations
+- explicit source/video target contexts independent of publisher ownership
+- immutable per-video artifact namespaces
 - pastor-aware artifact path helpers
 - transcript segmentation and heuristic extraction
 - optional local-LLM sermon-content classification with rule-based fallback
@@ -151,8 +155,32 @@ download admission can continue while the disk reservation remains safe.
 The `--latest` window is preserved through captions, local ASR, extraction,
 registration, and archival; older videos already attached to a reused source are
 not pulled into downstream work merely because `--all-audio` is enabled.
-Imported assignment changes are reported as conflicts and are never silently
+Imported channel-identity or publisher-association conflicts are never silently
 overwritten.
+
+Imported church identities now create publishing organizations and source
+associations. Imported pastor names are retained as provenance-grounded,
+unreviewed affiliation claims; they do not automatically create pastor records,
+speaker profiles, affiliations, or speaker membership. A changed pastor name
+appends evidence, while a changed resolved channel identity remains a manual
+reconciliation conflict.
+
+## Organizations and source ownership
+
+Publishing ownership is independent of pastor query context:
+
+```bash
+pte organization add sample-church "Sample Church" --type church
+pte source add 'https://www.youtube.com/@samplechurch' --organization sample-church
+pte source add 'https://www.youtube.com/@unknownpublisher'
+pte source set-organization 12 sample-church
+pte pastor affiliate pastor-a sample-church --role "Senior Pastor" --status current
+```
+
+The legacy `pte add URL --pastor SLUG` workflow remains supported. Its pastor is
+now an explicit target-policy compatibility projection, not the source's
+publisher. See [docs/SOURCE_OWNERSHIP.md](docs/SOURCE_OWNERSHIP.md) for the
+schema semantics, migration audit, and production-copy validation commands.
 
 ## Ground-Truth Review
 
@@ -368,9 +396,10 @@ and a `profile_unavailable` identity assessment under each video's `identity/`
 directory. These assessments run in shadow mode: they show that identity would
 require review, but do not change existing extraction or review exports.
 
-Source-to-pastor assignment is explicitly recorded as an expectation, not proof
-that the assigned pastor delivered the sermon. Manual sermon-window overrides
-apply only to content boundaries and do not suppress guest-speaker concerns.
+Video target context is explicitly recorded as an expectation, not proof that
+the requested pastor delivered the sermon. Publishing organization and pastor
+affiliation are not identity proof. Manual sermon-window overrides apply only
+to content boundaries and do not suppress guest-speaker concerns.
 
 Automatic speaker-pair nomination is limited to current, accepted sermon
 observations. `pte identity review-next-speaker-pair` requires a readable latest
@@ -408,7 +437,19 @@ clustering backend is active.
 ## Commands
 
 - `pte init`
-- `pte add <url>`
+- `pte add <url> --pastor <pastor-slug>` (legacy target compatibility)
+- `pte organization add <slug> <display-name>`
+- `pte organization list`
+- `pte organization review <slug>`
+- `pte source add <url> [--organization <slug>] [--target-pastor <slug>]`
+- `pte source set-organization <source-id> <organization-slug>`
+- `pte source clear-organization <source-id>`
+- `pte pastor affiliate <pastor-slug> <organization-slug>`
+- `pte organization claims [--organization <slug>]`
+- `pte pastor affiliate-claim <pastor-slug> <claim-id>`
+- `pte organization reject-affiliation-claim <claim-id>`
+- `pte source-ownership migrate [--dry-run]`
+- `pte source-ownership audit --strict`
 - `pte status`
 - `pte doctor`
 - `pte discover`
@@ -437,6 +478,7 @@ clustering backend is active.
 - `docs/HANDOFF.md`
 - `evaluation/speaker-pairs/README.md` for the offline, abstention-first acoustic pair experiment
 - `docs/MEDIA_FOUNDATION.md` for transcript-independent audio acquisition and migration
+- `docs/SOURCE_OWNERSHIP.md` for publisher ownership, target contexts, and migration validation
 
 Archive comparison-independent source audio to a recorded NAS destination:
 

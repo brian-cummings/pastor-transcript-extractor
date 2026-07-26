@@ -10,12 +10,11 @@ import tempfile
 from typing import Any
 import wave
 
-from pastor_transcript_extractor.config import (
-    AppPaths,
-    ToolConfig,
-    build_transcript_artifact_paths,
-    build_video_artifact_paths,
+from pastor_transcript_extractor.artifact_namespace import (
+    resolve_transcript_artifact_paths,
+    resolve_video_artifact_paths,
 )
+from pastor_transcript_extractor.config import AppPaths, ToolConfig
 from pastor_transcript_extractor.media import (
     VideoUnavailableError,
     YtDlpError,
@@ -120,7 +119,7 @@ def register_media_file(
         "acquisition_tool_version": acquisition_tool_version,
     }
     input_fingerprint = _sha256_json(fingerprint_payload)
-    video_paths = build_video_artifact_paths(app_paths, pastor_slug, video.youtube_video_id)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     manifest_path = (
         video_paths.audio
         / "media"
@@ -190,13 +189,13 @@ def backfill_existing_media_artifacts(
     before_attempts = database.counts_by_table()["media_acquisition_attempts"]
     missing_paths = 0
     for video in videos:
-        if video.pastor_id is None:
-            continue
-        pastor = database.get_pastor_by_id(video.pastor_id)
-        if pastor is None:
-            continue
-        transcript_paths = build_transcript_artifact_paths(
-            app_paths, pastor.slug, video.youtube_video_id
+        pastor = (
+            database.get_pastor_by_id(video.pastor_id)
+            if video.pastor_id is not None
+            else None
+        )
+        transcript_paths = resolve_transcript_artifact_paths(
+            database, app_paths, video
         )
         existing_artifacts = database.list_media_artifacts_for_video(video.id)
         source_artifact = _artifact_at_logical_path(
@@ -209,7 +208,7 @@ def backfill_existing_media_artifacts(
                 database,
                 app_paths,
                 video=video,
-                pastor_slug=pastor.slug,
+                pastor_slug=pastor.slug if pastor is not None else "",
                 artifact_path=transcript_paths.audio_download,
                 artifact_kind="source_audio",
                 provenance_kind="reconstructed_existing",
@@ -241,7 +240,7 @@ def backfill_existing_media_artifacts(
                     database,
                     app_paths,
                     video=video,
-                    pastor_slug=pastor.slug,
+                    pastor_slug=pastor.slug if pastor is not None else "",
                     artifact_path=path,
                     artifact_kind="normalized_audio",
                     provenance_kind="reconstructed_existing",
@@ -314,11 +313,11 @@ def ensure_audio_for_video(
             None,
             False,
         )
-    if video.pastor_id is None:
-        raise ValueError(f"Video {video.id} is missing a linked pastor")
-    pastor = database.get_pastor_by_id(video.pastor_id)
-    if pastor is None:
-        raise ValueError(f"Video {video.id} is missing a linked pastor")
+    pastor = (
+        database.get_pastor_by_id(video.pastor_id)
+        if video.pastor_id is not None
+        else None
+    )
 
     backfill_existing_media_artifacts(database, app_paths, video_id=video.id)
     existing = get_verified_normalized_media_artifact(database, video.id)
@@ -355,7 +354,7 @@ def ensure_audio_for_video(
         "yt-dlp": _tool_version(tools.yt_dlp_bin, "--version"),
         "ffmpeg": _tool_version(tools.ffmpeg_bin, "-version"),
     }
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     media_root = video_paths.audio / "media"
     media_root.mkdir(parents=True, exist_ok=True)
     try:
@@ -374,7 +373,7 @@ def ensure_audio_for_video(
                 database,
                 app_paths,
                 video=video,
-                pastor_slug=pastor.slug,
+                pastor_slug=pastor.slug if pastor is not None else "",
                 artifact_path=source_path,
                 artifact_kind="source_audio",
                 provenance_kind="original_download",
@@ -393,7 +392,7 @@ def ensure_audio_for_video(
                 database,
                 app_paths,
                 video=video,
-                pastor_slug=pastor.slug,
+                pastor_slug=pastor.slug if pastor is not None else "",
                 artifact_path=normalized_path,
                 artifact_kind="normalized_audio",
                 provenance_kind="derived",

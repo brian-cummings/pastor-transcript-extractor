@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
+from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
+from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.identity_attribution import (
     ATTRIBUTION_EXTRACTOR_VERSION,
     extract_grounded_attributions,
@@ -66,7 +67,7 @@ def persist_metadata_snapshot(
     app_paths: AppPaths,
     *,
     video: Video,
-    pastor: Pastor,
+    pastor: Pastor | None,
     source_kind: str,
     raw_metadata: dict[str, Any] | None = None,
 ) -> MetadataArtifact:
@@ -86,12 +87,16 @@ def persist_metadata_snapshot(
             "published_at": video.published_at.isoformat() if video.published_at is not None else None,
             "duration_seconds": video.duration_seconds,
         },
-        "target_context": {
-            "pastor_id": pastor.id,
-            "pastor_slug": pastor.slug,
-            "pastor_display_name": pastor.display_name,
-            "semantic_role": "expected_target_not_verified_speaker",
-        },
+        "target_context": (
+            {
+                "pastor_id": pastor.id,
+                "pastor_slug": pastor.slug,
+                "pastor_display_name": pastor.display_name,
+                "semantic_role": "expected_target_not_verified_speaker",
+            }
+            if pastor is not None
+            else None
+        ),
         "raw_metadata": raw_metadata or {},
     }
     content_sha256 = _sha256(evidence)
@@ -104,7 +109,7 @@ def persist_metadata_snapshot(
     ):
         return existing
 
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     artifact_path = (
         video_paths.identity
         / "metadata"
@@ -252,7 +257,7 @@ def record_shadow_identity_assessment(
             assessment_path=Path(existing.assessment_path),
         )
 
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     evidence_ledger_path = (
         video_paths.identity / f"evidence-ledger-v4-{input_fingerprint[:12]}.json"
     )

@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from pastor_transcript_extractor.config import AppPaths, ToolConfig, build_transcript_artifact_paths, build_video_artifact_paths
+from pastor_transcript_extractor.artifact_namespace import (
+    resolve_transcript_artifact_paths,
+    resolve_video_artifact_paths,
+)
+from pastor_transcript_extractor.config import AppPaths, ToolConfig
 from pastor_transcript_extractor.media import download_audio, download_captions, normalize_audio
 from pastor_transcript_extractor.models import TranscriptArtifact, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.storage import Database
@@ -27,8 +31,8 @@ class TranscriptResult:
 class PreparedTranscriptInput:
     video_id: int
     youtube_video_id: str
-    pastor_id: int
-    pastor_slug: str
+    pastor_id: int | None
+    pastor_slug: str | None
     source_url: str
     transcript_root: Path
     metadata_path: Path
@@ -201,12 +205,13 @@ def fetch_captions_video(
     video = database.get_video_by_id(video_id)
     if video is None:
         raise ValueError(f"Unknown video id: {video_id}")
-    pastor = database.get_pastor_by_id(video.pastor_id)
-    if pastor is None:
-        raise ValueError(f"Video {video_id} is missing a linked pastor")
-
-    transcript_paths = build_transcript_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    pastor = (
+        database.get_pastor_by_id(video.pastor_id)
+        if video.pastor_id is not None
+        else None
+    )
+    transcript_paths = resolve_transcript_artifact_paths(database, app_paths, video)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     for directory in (video_paths.root, video_paths.audio, video_paths.raw, video_paths.extracted, video_paths.review):
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -229,7 +234,7 @@ def fetch_captions_video(
             {
                 "video_id": video.id,
                 "youtube_video_id": video.youtube_video_id,
-                "pastor_slug": pastor.slug,
+                "pastor_slug": pastor.slug if pastor is not None else None,
                 "captions_path": str(captions_path),
                 "raw_text_path": str(raw_text_path),
                 "text": raw_text.strip(),
@@ -245,8 +250,8 @@ def fetch_captions_video(
     metadata = {
         "video_id": video.id,
         "youtube_video_id": video.youtube_video_id,
-        "pastor_id": pastor.id,
-        "pastor_slug": pastor.slug,
+        "pastor_id": pastor.id if pastor is not None else None,
+        "pastor_slug": pastor.slug if pastor is not None else None,
         "source_url": video.url,
         "transcription_backend": "captions",
         "yt_dlp_bin": str(tools.yt_dlp_bin),
@@ -302,12 +307,13 @@ def prepare_transcription_input(
     video = database.get_video_by_id(video_id)
     if video is None:
         raise ValueError(f"Unknown video id: {video_id}")
-    pastor = database.get_pastor_by_id(video.pastor_id)
-    if pastor is None:
-        raise ValueError(f"Video {video_id} is missing a linked pastor")
-
-    transcript_paths = build_transcript_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    pastor = (
+        database.get_pastor_by_id(video.pastor_id)
+        if video.pastor_id is not None
+        else None
+    )
+    transcript_paths = resolve_transcript_artifact_paths(database, app_paths, video)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     for directory in (video_paths.root, video_paths.audio, video_paths.raw, video_paths.extracted, video_paths.review):
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -331,8 +337,8 @@ def prepare_transcription_input(
     return PreparedTranscriptInput(
         video_id=video.id,
         youtube_video_id=video.youtube_video_id,
-        pastor_id=pastor.id,
-        pastor_slug=pastor.slug,
+        pastor_id=pastor.id if pastor is not None else None,
+        pastor_slug=pastor.slug if pastor is not None else None,
         source_url=video.url,
         transcript_root=transcript_paths.root,
         metadata_path=video_paths.metadata,

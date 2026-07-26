@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
+from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
+from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.identity_attribution import AttributionResult
 from pastor_transcript_extractor.models import (
     ExtractionResult,
@@ -210,7 +211,7 @@ def persist_neutral_speaker_evidence(
         },
     }
     content_sha256 = _sha256(content)
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     artifact_path = video_paths.identity / f"speaker-evidence-v1-{content_sha256[:12]}.json"
     if not artifact_path.exists():
         artifact_path.parent.mkdir(parents=True, exist_ok=True)

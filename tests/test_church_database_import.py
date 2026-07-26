@@ -130,6 +130,48 @@ class ChurchDatabaseImportTests(unittest.TestCase):
             self.assertEqual([], imported_source_ids(database))
             self.assertEqual(1, len(database.list_sources()))
 
+    def test_resolved_church_without_pastor_still_imports_publisher_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            church_path = self._church_database(root)
+            connection = sqlite3.connect(church_path)
+            connection.execute(
+                """
+                INSERT INTO churches VALUES (
+                    4, 'Pastor Unknown Church', 'https://directory.test/church/4',
+                    'https://www.youtube.com/@unknownpastor', NULL,
+                    'found', '2026-07-19T00:00:00Z',
+                    'https://www.youtube.com/channel/UCcccccccccccccccccccccc',
+                    'UCcccccccccccccccccccccc',
+                    'youtube:channel:UCcccccccccccccccccccccc',
+                    'test-resolver-v1', '2026-07-19T00:00:00Z', NULL
+                )
+                """
+            )
+            connection.commit()
+            connection.close()
+            database = self._app_database(root)
+
+            result = import_church_sources(database, church_path, dry_run=False)
+
+            self.assertEqual({"created": 2, "reused": 1}, result.counts)
+            source = database.get_source_by_url(
+                "https://www.youtube.com/channel/UCcccccccccccccccccccccc"
+            )
+            self.assertIsNotNone(source)
+            self.assertIsNone(source.pastor_id)
+            organization = database.get_organization_by_id(source.organization_id)
+            self.assertEqual("Pastor Unknown Church", organization.display_name)
+            with database.connect() as connection:
+                claim_count = connection.execute(
+                    """
+                    SELECT COUNT(*) FROM organization_affiliation_claims
+                    WHERE organization_id = ?
+                    """,
+                    (organization.id,),
+                ).fetchone()[0]
+            self.assertEqual(0, claim_count)
+
     def test_apply_is_idempotent_and_tracks_existing_sources(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -143,6 +185,8 @@ class ChurchDatabaseImportTests(unittest.TestCase):
             self.assertEqual({"unchanged": 2}, replay.counts)
             self.assertEqual(2, len(imported_source_ids(database)))
             self.assertEqual(2, len(database.list_sources()))
+            self.assertEqual(1, len(database.list_pastors()))
+            self.assertEqual(2, len(database.list_organizations()))
             with database.connect() as connection:
                 existing_identity = connection.execute(
                     "SELECT source_identity_key FROM sources WHERE url = ?",
@@ -161,7 +205,7 @@ class ChurchDatabaseImportTests(unittest.TestCase):
             self.assertEqual(2, len(imported_source_ids(database)))
             self.assertEqual(3, len(database.list_sources()))
 
-    def test_changed_external_assignment_becomes_conflict(self) -> None:
+    def test_changed_external_pastor_name_appends_evidence_without_creating_person(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             church_path = self._church_database(root)
@@ -176,10 +220,29 @@ class ChurchDatabaseImportTests(unittest.TestCase):
 
             result = import_church_sources(database, church_path, dry_run=False)
 
-            self.assertEqual({"conflict": 1, "unchanged": 1}, result.counts)
-            imported = database.get_pastor_by_slug("churchdb-2")
-            self.assertIsNotNone(imported)
-            self.assertEqual("New Pastor", imported.display_name)
+            self.assertEqual({"updated": 1, "unchanged": 1}, result.counts)
+            self.assertIsNone(database.get_pastor_by_slug("churchdb-2"))
+            organization = database.get_organization_by_slug("churchdb-org-2")
+            self.assertIsNotNone(organization)
+            self.assertEqual("New Church", organization.display_name)
+            with database.connect() as connection:
+                claims = connection.execute(
+                    """
+                    SELECT claimed_person_name
+                    FROM organization_affiliation_claims
+                    WHERE organization_id = ?
+                    ORDER BY id
+                    """,
+                    (organization.id,),
+                ).fetchall()
+                profile_count = connection.execute(
+                    "SELECT COUNT(*) FROM speaker_profiles"
+                ).fetchone()[0]
+            self.assertEqual(
+                ["New Pastor", "Replacement Pastor"],
+                [row["claimed_person_name"] for row in claims],
+            )
+            self.assertEqual(0, profile_count)
 
 
 class ImportedSourceSyncTests(unittest.TestCase):

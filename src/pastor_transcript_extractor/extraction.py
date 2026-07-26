@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths
+from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
+from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths_at_root
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED, build_final_disposition
 from pastor_transcript_extractor.identity import record_shadow_identity_assessment
 from pastor_transcript_extractor.local_llm import LocalLlmClient
@@ -339,7 +340,10 @@ def reclassify_video(
     payload = _load_json(proposed_json_path)
     if payload is None:
         raise ValueError(f"Video {video_id} has an invalid proposed JSON artifact")
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    # The stored extraction artifact is the authoritative immutable namespace
+    # for reclassification. This also keeps follow-on artifacts colocated when
+    # callers provide a database double that only implements extraction reads.
+    video_paths = build_video_artifact_paths_at_root(proposed_json_path.parent.parent)
     classification_path = video_paths.extracted / "llm-classification-v1.json"
     existing = payload.get("classification")
     if not force and _classification_is_current(
@@ -713,7 +717,7 @@ def extract_video(
         transcript_artifacts[-1],
     )
 
-    video_paths = build_video_artifact_paths(app_paths, pastor.slug, video.youtube_video_id)
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
     video_paths.extracted.mkdir(parents=True, exist_ok=True)
     database.delete_transcript_segments_for_video(video.id)
 

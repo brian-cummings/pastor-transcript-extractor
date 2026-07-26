@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 import re
 import sqlite3
-import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
 from pastor_transcript_extractor.models import utc_now
@@ -48,10 +47,12 @@ class ChurchSourceRecord:
             "channel_key": self.channel_key,
             "channel_resolved_at": self.channel_resolved_at,
             "channel_resolver_version": self.channel_resolver_version,
+            "channel_resolution_error": "",
             "external_record_id": self.external_record_id,
             "external_updated_at": self.external_updated_at,
             "importer_version": IMPORTER_VERSION,
             "pastor_name": self.pastor_name,
+            "source_status": "found",
         }
 
 
@@ -60,7 +61,7 @@ class ChurchImportItem:
     record: ChurchSourceRecord
     status: str
     source_id: int | None
-    pastor_slug: str | None
+    organization_slug: str | None
     reason: str
 
 
@@ -140,7 +141,6 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
                 youtube_channel_resolution_error
             FROM churches
             WHERE status = 'found'
-              AND trim(coalesce(pastor_name, '')) <> ''
               AND trim(coalesce(youtube_channel_key, '')) <> ''
               AND trim(coalesce(youtube_channel_id, '')) <> ''
               AND trim(coalesce(youtube_channel_canonical_url, '')) <> ''
@@ -196,9 +196,21 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
         seen_channels[channel_key] = external_key
         fingerprint_payload = {
             "channel_key": channel_key,
+            "channel_resolved_at": (
+                str(row["youtube_channel_resolved_at"])
+                if row["youtube_channel_resolved_at"] is not None
+                else None
+            ),
+            "channel_resolver_version": resolver_version,
+            "channel_url": channel_url,
             "church_name": str(row["name"]).strip(),
             "church_source_url": church_source_url,
-            "pastor_name": str(row["pastor_name"]).strip(),
+            "discovered_channel_url": discovered_channel_url,
+            "external_record_id": str(row["id"]),
+            "external_updated_at": (
+                str(row["updated_at"]) if row["updated_at"] is not None else None
+            ),
+            "pastor_name": str(row["pastor_name"] or "").strip(),
         }
         fingerprint = _canonical_hash(fingerprint_payload)
         records.append(
@@ -207,7 +219,7 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
                 external_entity_key=external_key,
                 church_name=str(row["name"]).strip(),
                 church_source_url=church_source_url,
-                pastor_name=str(row["pastor_name"]).strip(),
+                pastor_name=str(row["pastor_name"] or "").strip(),
                 discovered_channel_url=discovered_channel_url,
                 channel_url=channel_url,
                 channel_id=channel_id,
@@ -245,12 +257,20 @@ def imported_source_ids(database: Database, provider: str = IMPORT_PROVIDER) -> 
     with database.connect() as connection:
         rows = connection.execute(
             """
-            SELECT DISTINCT source_id
-            FROM source_import_refs
-            WHERE provider = ?
+            SELECT source_id FROM (
+                SELECT legacy.source_id
+                FROM source_import_refs legacy
+                WHERE legacy.provider = ?
+                UNION
+                SELECT link.source_id
+                FROM source_import_links link
+                JOIN organization_external_refs ref
+                  ON ref.id = link.organization_external_ref_id
+                WHERE ref.provider = ?
+            )
             ORDER BY source_id
             """,
-            (provider,),
+            (provider, provider),
         ).fetchall()
     return [int(row["source_id"]) for row in rows]
 
@@ -263,29 +283,83 @@ def _import_record(
 ) -> ChurchImportItem:
     existing_ref = connection.execute(
         """
-        SELECT r.source_id, r.pastor_id, r.imported_fingerprint, p.slug
-        FROM source_import_refs r
-        JOIN pastors p ON p.id = r.pastor_id
-        WHERE r.provider = ? AND r.external_entity_key = ?
+        SELECT ref.id AS ref_id, ref.organization_id, organization.slug,
+               link.source_id, link.channel_identity_key, source.source_identity_key
+        FROM organization_external_refs ref
+        JOIN organizations organization ON organization.id = ref.organization_id
+        LEFT JOIN source_import_links link
+          ON link.organization_external_ref_id = ref.id
+        LEFT JOIN sources source ON source.id = link.source_id
+        WHERE ref.provider = ? AND ref.external_entity_key = ?
         """,
         (IMPORT_PROVIDER, record.external_entity_key),
     ).fetchone()
     if existing_ref is not None:
-        if str(existing_ref["imported_fingerprint"]) == record.fingerprint:
+        existing_snapshot = connection.execute(
+            """
+            SELECT id FROM external_record_snapshots
+            WHERE organization_external_ref_id = ? AND imported_fingerprint = ?
+            """,
+            (int(existing_ref["ref_id"]), record.fingerprint),
+        ).fetchone()
+        if existing_snapshot is not None:
             return ChurchImportItem(
-                record, "unchanged", int(existing_ref["source_id"]), str(existing_ref["slug"]),
+                record,
+                "unchanged",
+                (
+                    int(existing_ref["source_id"])
+                    if existing_ref["source_id"] is not None
+                    else None
+                ),
+                str(existing_ref["slug"]),
                 "external key and imported fingerprint match",
             )
+        channel_keys = {
+            str(value)
+            for value in (
+                existing_ref["channel_identity_key"],
+                existing_ref["source_identity_key"],
+            )
+            if value is not None
+        }
+        conflict = bool(channel_keys and record.channel_key not in channel_keys)
+        if not dry_run:
+            snapshot_id = _insert_snapshot(
+                connection,
+                organization_external_ref_id=int(existing_ref["ref_id"]),
+                record=record,
+            )
+            _insert_affiliation_claim(
+                connection,
+                organization_id=int(existing_ref["organization_id"]),
+                snapshot_id=snapshot_id,
+                record=record,
+            )
         return ChurchImportItem(
-            record, "conflict", int(existing_ref["source_id"]), str(existing_ref["slug"]),
-            "external record changed; manual reconciliation required",
+            record,
+            "conflict" if conflict else "updated",
+            (
+                int(existing_ref["source_id"])
+                if existing_ref["source_id"] is not None
+                else None
+            ),
+            str(existing_ref["slug"]),
+            (
+                "resolved channel identity changed; manual reconciliation required"
+                if conflict
+                else (
+                    "would append a new external snapshot and affiliation claim"
+                    if dry_run
+                    else "appended a new external snapshot and affiliation claim"
+                )
+            ),
         )
 
     source_rows = connection.execute(
         """
-        SELECT s.id, s.url, s.source_identity_key, s.pastor_id, p.slug, p.display_name
-        FROM sources s JOIN pastors p ON p.id = s.pastor_id
-        ORDER BY s.id
+        SELECT id, url, source_identity_key, organization_id
+        FROM sources
+        ORDER BY id
         """
     ).fetchall()
     existing_source = next(
@@ -296,118 +370,262 @@ def _import_record(
         ),
         None,
     )
-    if existing_source is not None:
-        if _normalized_name(str(existing_source["display_name"])) != _normalized_name(
-            record.pastor_name
-        ):
-            return ChurchImportItem(
-                record,
-                "conflict",
-                int(existing_source["id"]),
-                str(existing_source["slug"]),
-                "channel already exists with a different pastor assignment",
+    if dry_run:
+        if existing_source is not None and existing_source["organization_id"] is not None:
+            organization = connection.execute(
+                "SELECT slug FROM organizations WHERE id = ?",
+                (int(existing_source["organization_id"]),),
+            ).fetchone()
+            organization_slug = (
+                str(organization["slug"])
+                if organization is not None
+                else _available_slug(connection, record)
             )
-        if not dry_run:
-            if existing_source["source_identity_key"] is None:
-                connection.execute(
-                    "UPDATE sources SET source_identity_key = ? WHERE id = ?",
-                    (record.channel_key, int(existing_source["id"])),
-                )
-            _insert_import_ref(
-                connection,
-                record,
-                source_id=int(existing_source["id"]),
-                pastor_id=int(existing_source["pastor_id"]),
-            )
+        else:
+            organization_slug = _available_slug(connection, record)
         return ChurchImportItem(
             record,
-            "reused",
-            int(existing_source["id"]),
-            str(existing_source["slug"]),
-            "matched an existing channel and pastor assignment",
+            "reused" if existing_source is not None else "created",
+            int(existing_source["id"]) if existing_source is not None else None,
+            organization_slug,
+            (
+                "would create organization provenance and reuse the channel"
+                if existing_source is not None
+                else "would create organization, source, provenance, and affiliation claim"
+            ),
         )
 
-    slug = _available_slug(connection, record)
-    if dry_run:
-        return ChurchImportItem(
-            record, "created", None, slug, "would create pastor, source, and import reference"
-        )
     now = utc_now().isoformat()
-    pastor_cursor = connection.execute(
-        "INSERT INTO pastors (slug, display_name, added_at, notes) VALUES (?, ?, ?, ?)",
-        (
-            slug,
-            record.pastor_name,
-            now,
-            f"Imported from {IMPORT_PROVIDER}: {record.church_name}",
-        ),
-    )
-    pastor_id = int(pastor_cursor.lastrowid)
-    source_cursor = connection.execute(
+    if existing_source is not None and existing_source["organization_id"] is not None:
+        organization_id = int(existing_source["organization_id"])
+        organization = connection.execute(
+            "SELECT slug FROM organizations WHERE id = ?",
+            (organization_id,),
+        ).fetchone()
+        if organization is None:
+            raise ChurchDatabaseImportError(
+                f"source {existing_source['id']} references an unknown organization"
+            )
+        slug = str(organization["slug"])
+    else:
+        slug = _available_slug(connection, record)
+        organization_cursor = connection.execute(
+            """
+            INSERT INTO organizations (
+                slug, display_name, organization_type, added_at, notes
+            ) VALUES (?, ?, 'church', ?, ?)
+            """,
+            (
+                slug,
+                record.church_name,
+                now,
+                f"Imported from {IMPORT_PROVIDER}",
+            ),
+        )
+        organization_id = int(organization_cursor.lastrowid)
+    ref_cursor = connection.execute(
         """
-        INSERT INTO sources (
-            pastor_id, url, source_identity_key, source_type, added_at, notes
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO organization_external_refs (
+            organization_id, provider, external_entity_key,
+            external_record_id, created_at
+        ) VALUES (?, ?, ?, ?, ?)
         """,
         (
-            pastor_id,
-            record.channel_url,
-            record.channel_key,
-            detect_source_type(record.channel_url).value,
-            now,
-            f"Imported from {IMPORT_PROVIDER}: {record.church_name}",
-        ),
-    )
-    source_id = int(source_cursor.lastrowid)
-    _insert_import_ref(connection, record, source_id=source_id, pastor_id=pastor_id)
-    return ChurchImportItem(
-        record, "created", source_id, slug, "created pastor, source, and import reference"
-    )
-
-
-def _insert_import_ref(
-    connection: sqlite3.Connection,
-    record: ChurchSourceRecord,
-    *,
-    source_id: int,
-    pastor_id: int,
-) -> None:
-    connection.execute(
-        """
-        INSERT INTO source_import_refs (
-            source_id, pastor_id, provider, external_entity_key, external_record_id,
-            imported_fingerprint, import_payload_json, external_updated_at, imported_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            source_id,
-            pastor_id,
+            organization_id,
             IMPORT_PROVIDER,
             record.external_entity_key,
             record.external_record_id,
+            now,
+        ),
+    )
+    external_ref_id = int(ref_cursor.lastrowid)
+    if existing_source is None:
+        source_cursor = connection.execute(
+            """
+            INSERT INTO sources (
+                pastor_id, organization_id, url, source_identity_key,
+                source_type, added_at, notes
+            ) VALUES (NULL, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                organization_id,
+                record.channel_url,
+                record.channel_key,
+                detect_source_type(record.channel_url).value,
+                now,
+                f"Imported from {IMPORT_PROVIDER}: {record.church_name}",
+            ),
+        )
+        source_id = int(source_cursor.lastrowid)
+    else:
+        source_id = int(existing_source["id"])
+        connection.execute(
+            """
+            UPDATE sources
+            SET organization_id = ?,
+                source_identity_key = coalesce(source_identity_key, ?)
+            WHERE id = ?
+            """,
+            (organization_id, record.channel_key, source_id),
+        )
+    snapshot_id = _insert_snapshot(
+        connection,
+        organization_external_ref_id=external_ref_id,
+        record=record,
+    )
+    connection.execute(
+        """
+        INSERT INTO source_import_links (
+            source_id, organization_external_ref_id,
+            channel_identity_key, created_at
+        ) VALUES (?, ?, ?, ?)
+        """,
+        (source_id, external_ref_id, record.channel_key, now),
+    )
+    _insert_source_organization_event(
+        connection,
+        source_id=source_id,
+        organization_id=organization_id,
+        snapshot_id=snapshot_id,
+        record=record,
+    )
+    _insert_affiliation_claim(
+        connection,
+        organization_id=organization_id,
+        snapshot_id=snapshot_id,
+        record=record,
+    )
+    return ChurchImportItem(
+        record,
+        "reused" if existing_source is not None else "created",
+        source_id,
+        slug,
+        (
+            "created organization provenance and reused the channel"
+            if existing_source is not None
+            else "created organization, source, provenance, and affiliation claim"
+        ),
+    )
+
+
+def _insert_snapshot(
+    connection: sqlite3.Connection,
+    *,
+    organization_external_ref_id: int,
+    record: ChurchSourceRecord,
+) -> int:
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO external_record_snapshots (
+            organization_external_ref_id, imported_fingerprint,
+            import_payload_json, external_updated_at, observed_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            organization_external_ref_id,
             record.fingerprint,
             json.dumps(record.payload(), sort_keys=True, separators=(",", ":")),
             record.external_updated_at,
             utc_now().isoformat(),
         ),
     )
+    row = connection.execute(
+        """
+        SELECT id FROM external_record_snapshots
+        WHERE organization_external_ref_id = ? AND imported_fingerprint = ?
+        """,
+        (organization_external_ref_id, record.fingerprint),
+    ).fetchone()
+    assert row is not None
+    return int(row["id"])
+
+
+def _insert_affiliation_claim(
+    connection: sqlite3.Connection,
+    *,
+    organization_id: int,
+    snapshot_id: int,
+    record: ChurchSourceRecord,
+) -> None:
+    if not record.pastor_name:
+        return
+    fingerprint = _canonical_hash(
+        {
+            "organization_id": organization_id,
+            "snapshot_id": snapshot_id,
+            "claimed_person_name": record.pastor_name,
+            "claimed_role": "pastor",
+        }
+    )
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO organization_affiliation_claims (
+            organization_id, external_record_snapshot_id,
+            claimed_person_name, claimed_role, valid_from, valid_to,
+            claim_fingerprint, created_at
+        ) VALUES (?, ?, ?, 'pastor', NULL, NULL, ?, ?)
+        """,
+        (
+            organization_id,
+            snapshot_id,
+            record.pastor_name,
+            fingerprint,
+            utc_now().isoformat(),
+        ),
+    )
+
+
+def _insert_source_organization_event(
+    connection: sqlite3.Connection,
+    *,
+    source_id: int,
+    organization_id: int,
+    snapshot_id: int,
+    record: ChurchSourceRecord,
+) -> None:
+    fingerprint = _canonical_hash(
+        {
+            "source_id": source_id,
+            "organization_id": organization_id,
+            "snapshot_id": snapshot_id,
+            "action": "attach",
+        }
+    )
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO source_organization_events (
+            source_id, organization_id, action, actor, reason,
+            external_record_snapshot_id, event_fingerprint, created_at
+        ) VALUES (?, ?, 'attach', ?, ?, ?, ?, ?)
+        """,
+        (
+            source_id,
+            organization_id,
+            f"import:{IMPORT_PROVIDER}",
+            "Grounded external church/channel association",
+            snapshot_id,
+            fingerprint,
+            utc_now().isoformat(),
+        ),
+    )
 
 
 def _available_slug(connection: sqlite3.Connection, record: ChurchSourceRecord) -> str:
-    base = f"churchdb-{record.external_record_id}"
-    row = connection.execute("SELECT display_name FROM pastors WHERE slug = ?", (base,)).fetchone()
+    base = f"churchdb-org-{record.external_record_id}"
+    row = connection.execute(
+        "SELECT display_name FROM organizations WHERE slug = ?", (base,)
+    ).fetchone()
     if row is None:
         return base
     suffix = hashlib.sha256(record.external_entity_key.encode("utf-8")).hexdigest()[:8]
     candidate = f"{base}-{suffix}"
-    if connection.execute("SELECT 1 FROM pastors WHERE slug = ?", (candidate,)).fetchone():
-        raise ChurchDatabaseImportError(f"could not allocate stable pastor slug for {record.church_name}")
+    if connection.execute(
+        "SELECT 1 FROM organizations WHERE slug = ?", (candidate,)
+    ).fetchone():
+        raise ChurchDatabaseImportError(
+            f"could not allocate stable organization slug for {record.church_name}"
+        )
     return candidate
-
-
-def _normalized_name(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
 
 
 def youtube_channel_key_from_id(channel_id: str) -> str:

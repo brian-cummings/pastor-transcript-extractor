@@ -100,7 +100,8 @@ def extract_batch(
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]
     if pastor_id is not None:
-        videos = [video for video in videos if video.pastor_id == pastor_id]
+        target_video_ids = database.list_video_ids_for_target_pastor(pastor_id)
+        videos = [video for video in videos if video.id in target_video_ids]
     if video_ids is not None:
         videos = [video for video in videos if video.id in video_ids]
 

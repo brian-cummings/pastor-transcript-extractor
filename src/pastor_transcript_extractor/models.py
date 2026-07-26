@@ -63,6 +63,7 @@ class IdentityAction(StrEnum):
 class Source:
     id: int
     pastor_id: Optional[int]
+    organization_id: Optional[int]
     url: str
     source_type: SourceType
     added_at: datetime
@@ -92,6 +93,32 @@ class Pastor:
     display_name: str
     added_at: datetime
     notes: Optional[str] = None
+
+
+@dataclass(slots=True)
+class Organization:
+    id: int
+    slug: str
+    display_name: str
+    organization_type: str
+    added_at: datetime
+    notes: Optional[str] = None
+
+
+@dataclass(slots=True)
+class PastorOrganizationAffiliation:
+    id: int
+    pastor_id: int
+    organization_id: int
+    role_key: str
+    role_label: str
+    started_on: Optional[str]
+    ended_on: Optional[str]
+    temporal_status: str
+    provenance_kind: str
+    affiliation_claim_id: Optional[int]
+    notes: Optional[str]
+    created_at: datetime
 
 
 @dataclass(slots=True)

@@ -20,6 +20,9 @@ class PastorReviewMarkdownResult:
     skipped_count: int
 
 
+OrganizationReviewMarkdownResult = PastorReviewMarkdownResult
+
+
 def _sort_videos_for_review(videos: list[Video]) -> list[Video]:
     def sort_key(video: Video) -> tuple[int, datetime, int]:
         published = video.published_at or datetime.min.replace(tzinfo=timezone.utc)
@@ -51,6 +54,37 @@ def _build_pastor_review_markdown(
         lines.extend(["No extracted videos are available for this pastor.", ""])
         return "\n".join(lines)
 
+    lines.extend(sections)
+    if lines[-1] != "":
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _build_organization_review_markdown(
+    organization_slug: str,
+    organization_name: str,
+    generated_at: str,
+    sections: list[str],
+) -> str:
+    lines = [
+        "---",
+        f"organization: {organization_slug}",
+        f"organization_name: {organization_name}",
+        f"generated_at: {generated_at}",
+        f"video_count: {len(sections)}",
+        "selection_semantics: publisher_source_membership",
+        "---",
+        "",
+        f"# {organization_name} Publisher Review",
+        "",
+        "This review is scoped by publishing organization, not recognized speaker identity.",
+        "",
+    ]
+    if not sections:
+        lines.extend(
+            ["No extracted videos are available for this organization.", ""]
+        )
+        return "\n".join(lines)
     lines.extend(sections)
     if lines[-1] != "":
         lines.append("")
@@ -287,10 +321,12 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
     pastor_paths = build_pastor_paths(app_paths, pastor.slug)
     pastor_paths.exports.mkdir(parents=True, exist_ok=True)
 
+    target_video_ids = database.list_video_ids_for_target_pastor(pastor.id)
     candidate_videos = [
         video
         for video in database.list_videos()
-        if video.pastor_id == pastor.id and database.get_latest_extraction_result_for_video(video.id) is not None
+        if video.id in target_video_ids
+        and database.get_latest_extraction_result_for_video(video.id) is not None
     ]
     videos = _sort_videos_for_review(candidate_videos)
     sections, skipped_count, manifest_videos = _build_review_sections_for_videos(
@@ -326,6 +362,70 @@ def export_pastor_review_markdown(database: Database, app_paths: AppPaths, pasto
         encoding="utf-8",
     )
     return PastorReviewMarkdownResult(
+        export_path=export_path,
+        manifest_path=manifest_path,
+        video_count=len(manifest_videos),
+        skipped_count=skipped_count,
+    )
+
+
+def export_organization_review_markdown(
+    database: Database,
+    app_paths: AppPaths,
+    organization_slug: str,
+) -> OrganizationReviewMarkdownResult:
+    organization = database.get_organization_by_slug(organization_slug)
+    if organization is None:
+        raise ValueError(f"Unknown organization slug: {organization_slug}")
+    export_root = (
+        app_paths.root / "organizations" / organization.slug / "exports"
+    )
+    export_root.mkdir(parents=True, exist_ok=True)
+    source_ids = {
+        source.id
+        for source in database.list_sources()
+        if source.organization_id == organization.id
+    }
+    candidate_videos = [
+        video
+        for video in database.list_videos()
+        if video.source_id in source_ids
+        and database.get_latest_extraction_result_for_video(video.id) is not None
+    ]
+    videos = _sort_videos_for_review(candidate_videos)
+    sections, skipped_count, manifest_videos = _build_review_sections_for_videos(
+        database,
+        videos,
+    )
+    generated_at = datetime.now(timezone.utc).isoformat()
+    export_path = export_root / "review.md"
+    manifest_path = export_root / "review.json"
+    export_path.write_text(
+        _build_organization_review_markdown(
+            organization_slug=organization.slug,
+            organization_name=organization.display_name,
+            generated_at=generated_at,
+            sections=sections,
+        ),
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "organization_slug": organization.slug,
+                "organization_name": organization.display_name,
+                "selection_semantics": "publisher_source_membership",
+                "generated_at": generated_at,
+                "video_count": len(manifest_videos),
+                "skipped_count": skipped_count,
+                "videos": manifest_videos,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return OrganizationReviewMarkdownResult(
         export_path=export_path,
         manifest_path=manifest_path,
         video_count=len(manifest_videos),

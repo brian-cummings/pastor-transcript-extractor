@@ -218,6 +218,10 @@ def build_pastor_paths(paths: AppPaths, pastor_slug: str) -> PastorPaths:
 
 def build_video_artifact_paths(paths: AppPaths, pastor_slug: str, youtube_video_id: str) -> VideoArtifactPaths:
     video_root = paths.pastors / pastor_slug / "videos" / youtube_video_id
+    return build_video_artifact_paths_at_root(video_root)
+
+
+def build_video_artifact_paths_at_root(video_root: Path) -> VideoArtifactPaths:
     return VideoArtifactPaths(
         root=video_root,
         metadata=video_root / "metadata.json",
@@ -231,6 +235,13 @@ def build_video_artifact_paths(paths: AppPaths, pastor_slug: str, youtube_video_
 
 def build_transcript_artifact_paths(paths: AppPaths, pastor_slug: str, youtube_video_id: str) -> TranscriptArtifactPaths:
     video_paths = build_video_artifact_paths(paths, pastor_slug, youtube_video_id)
+    return build_transcript_artifact_paths_at_root(video_paths.root)
+
+
+def build_transcript_artifact_paths_at_root(
+    video_root: Path,
+) -> TranscriptArtifactPaths:
+    video_paths = build_video_artifact_paths_at_root(video_root)
     return TranscriptArtifactPaths(
         root=video_paths.root,
         audio_download=video_paths.audio / "downloaded.wav",

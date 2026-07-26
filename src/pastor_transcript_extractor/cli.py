@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass, replace
+from datetime import date
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -19,6 +21,7 @@ from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextC
 from rich.table import Table
 
 from pastor_transcript_extractor.application import ReviewBatchResult, extract_batch, prepare_review_exports
+from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.church_database_import import (
     IMPORT_PROVIDER,
     ChurchDatabaseImportError,
@@ -30,11 +33,11 @@ from pastor_transcript_extractor.config import (
     build_paths,
     build_pastor_paths,
     build_tool_config,
-    build_video_artifact_paths,
     ensure_directories,
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import reclassify_video
+from pastor_transcript_extractor.exporting import export_organization_review_markdown
 from pastor_transcript_extractor.evaluation import (
     allocate_evaluation_run_directory,
     build_failure_analysis,
@@ -135,6 +138,11 @@ from pastor_transcript_extractor.sermon_fixture_selector import (
     sermon_duration_bucket,
 )
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.source_ownership import (
+    apply_source_ownership_schema,
+    audit_source_ownership,
+    backfill_source_ownership,
+)
 from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
     complete_transcription_video,
@@ -144,15 +152,19 @@ from pastor_transcript_extractor.transcription import (
 
 app = typer.Typer(help="Pastor Transcript Extractor CLI")
 pastor_app = typer.Typer(help="Manage pastors.")
+organization_app = typer.Typer(help="Manage publishing organizations.")
 source_app = typer.Typer(help="Manage queued sources.")
 video_app = typer.Typer(help="Manage discovered videos.")
 identity_app = typer.Typer(help="Manage speaker identity shadow artifacts.")
 media_app = typer.Typer(help="Manage transcript-independent local media artifacts.")
+source_ownership_app = typer.Typer(help="Migrate and audit source ownership data.")
 app.add_typer(pastor_app, name="pastor")
+app.add_typer(organization_app, name="organization")
 app.add_typer(source_app, name="source")
 app.add_typer(video_app, name="video")
 app.add_typer(identity_app, name="identity")
 app.add_typer(media_app, name="media")
+app.add_typer(source_ownership_app, name="source-ownership")
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
@@ -1504,7 +1516,7 @@ def _should_transcribe_video(
     captions_missing_only: bool,
 ) -> bool:
     video = database.get_video_by_id(video_id)
-    if video is None or video.pastor_id is None:
+    if video is None:
         return False
     if _is_terminal_unavailable(video.status, video.failure_reason):
         return False
@@ -1694,11 +1706,9 @@ def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
     if video is None:
         raise typer.BadParameter(f"Unknown video id: {video_id}")
 
-    pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
-    if pastor is not None:
-        video_paths = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
-        if video_paths.root.exists():
-            shutil.rmtree(video_paths.root)
+    video_paths = resolve_video_artifact_paths(database, paths, video)
+    if video_paths.root.exists():
+        shutil.rmtree(video_paths.root)
     database.delete_video(video.id)
 
 
@@ -1710,11 +1720,9 @@ def _delete_source_tree(database: Database, paths: Path, source_id: int) -> int:
     videos = database.list_videos_by_source_id(source_id)
     deleted_count = 0
     for video in videos:
-        pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
-        if pastor is not None:
-            video_paths = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
-            if video_paths.root.exists():
-                shutil.rmtree(video_paths.root)
+        video_paths = resolve_video_artifact_paths(database, paths, video)
+        if video_paths.root.exists():
+            shutil.rmtree(video_paths.root)
         database.delete_video(video.id)
         deleted_count += 1
 
@@ -1731,6 +1739,94 @@ def init(
     database = Database(paths.database)
     database.initialize()
     console.print(f"Initialized app data at [bold]{paths.root}[/bold]")
+
+
+@source_ownership_app.command(
+    "migrate",
+    help="Apply or preview the replayable source-ownership migration.",
+)
+def source_ownership_migrate(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Run the migration and audit inside a rolled-back savepoint.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    paths = build_paths(base_dir, remember=True)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Database does not exist: {paths.database}. Run 'pte init' first."
+        )
+    database = Database(paths.database)
+    with database.connect() as connection:
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sources'"
+        ).fetchone() is None:
+            raise typer.BadParameter(
+                "Database is not initialized; run 'pte init' first."
+            )
+        if dry_run:
+            connection.execute("SAVEPOINT source_ownership_preview")
+        try:
+            apply_source_ownership_schema(connection)
+            result = backfill_source_ownership(connection)
+            report = audit_source_ownership(connection, app_root=paths.root)
+        finally:
+            if dry_run:
+                connection.execute("ROLLBACK TO source_ownership_preview")
+                connection.execute("RELEASE source_ownership_preview")
+    mode = "preview" if dry_run else "applied"
+    console.print(
+        f"Source ownership migration {mode}: "
+        f"organizations={result.organizations_created}, "
+        f"snapshots={result.snapshots_created}, "
+        f"claims={result.affiliation_claims_created}, "
+        f"source_targets={result.source_target_policies_created}, "
+        f"video_targets={result.video_target_contexts_created}, "
+        f"artifact_namespaces={result.artifact_namespaces_created}."
+    )
+    console.print(
+        "Projected audit passed." if report.ok else "Projected audit failed."
+    )
+    if not report.ok:
+        raise typer.Exit(code=1)
+
+
+@source_ownership_app.command(
+    "audit",
+    help="Validate organization, target-context, and artifact-namespace projections.",
+)
+def source_ownership_audit(
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit unsuccessfully when any ownership invariant fails.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir)
+    with database.connect() as connection:
+        report = audit_source_ownership(connection, app_root=paths.root)
+    values = {
+        "Foreign-key violations": report.foreign_key_violations,
+        "Legacy imports without external refs": report.imported_refs_without_external_ref,
+        "Imported links without organization": report.imported_links_without_organization,
+        "Legacy sources without target policy": report.legacy_sources_without_target_policy,
+        "Legacy videos without target context": report.legacy_videos_without_target_context,
+        "Videos without artifact namespace": report.videos_without_artifact_namespace,
+        "Artifact namespace path mismatches": report.artifact_namespace_path_mismatches,
+    }
+    table = Table(title="Source ownership audit")
+    table.add_column("Invariant")
+    table.add_column("Failures", justify="right")
+    for label, value in values.items():
+        table.add_row(label, str(value))
+    console.print(table)
+    console.print("Source ownership audit passed." if report.ok else "Source ownership audit failed.")
+    if strict and not report.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command(
@@ -2040,9 +2136,10 @@ def _format_sync_bytes(value: int) -> str:
 
 def add_source_service(
     url: str,
-    pastor: str,
+    pastor: str | None,
     notes: str | None = None,
     base_dir: Path | None = None,
+    organization: str | None = None,
 ) -> None:
     database = get_database(base_dir)
     try:
@@ -2050,13 +2147,55 @@ def add_source_service(
     except UnsupportedSourceError as error:
         raise ValueError(str(error)) from error
 
-    pastor_record = database.get_pastor_by_slug(pastor)
-    if pastor_record is None:
-        raise ValueError(f"Unknown pastor slug: {pastor} (app root: {build_paths(base_dir).root})")
+    pastor_record = database.get_pastor_by_slug(pastor) if pastor is not None else None
+    if pastor is not None and pastor_record is None:
+        raise ValueError(
+            f"Unknown pastor slug: {pastor} (app root: {build_paths(base_dir).root})"
+        )
+    organization_record = (
+        database.get_organization_by_slug(organization)
+        if organization is not None
+        else None
+    )
+    if organization is not None and organization_record is None:
+        raise ValueError(f"Unknown organization slug: {organization}")
 
-    source = database.add_source(url=url, source_type=source_type, pastor_id=pastor_record.id, notes=notes)
+    source = database.add_source(
+        url=url,
+        source_type=source_type,
+        pastor_id=pastor_record.id if pastor_record is not None else None,
+        organization_id=(
+            organization_record.id if organization_record is not None else None
+        ),
+        notes=notes,
+    )
+    if organization_record is not None:
+        if (
+            source.organization_id is not None
+            and source.organization_id != organization_record.id
+        ):
+            current = database.get_organization_by_id(source.organization_id)
+            current_label = current.slug if current is not None else source.organization_id
+            raise ValueError(
+                f"Source #{source.id} is already attached to organization "
+                f"{current_label}; use 'pte source set-organization' to correct it"
+            )
+        database.set_source_organization(
+            source.id,
+            organization_record.id,
+            actor="manual",
+            reason="Organization selected while adding source",
+            event_key=f"source-add:{source.id}:{organization_record.id}",
+        )
+        source = database.get_source_by_id(source.id) or source
+    context = []
+    if organization_record is not None:
+        context.append(f"organization: {organization_record.slug}")
+    if pastor_record is not None:
+        context.append(f"target pastor: {pastor_record.slug}")
+    suffix = f" ({', '.join(context)})" if context else " (organization unknown)"
     console.print(
-        f"Added source #{source.id}: {source.source_type.value} -> {source.url} (pastor: {pastor_record.slug})"
+        f"Added source #{source.id}: {source.source_type.value} -> {source.url}{suffix}"
     )
 
 
@@ -2073,6 +2212,232 @@ def add(
         raise typer.BadParameter(str(error)) from error
 
 
+@organization_app.command("add", help="Create a publishing organization.")
+def organization_add(
+    slug: str = typer.Argument(..., help="Stable organization slug."),
+    display_name: str = typer.Argument(..., help="Human-readable organization name."),
+    organization_type: str = typer.Option(
+        "church",
+        "--type",
+        help="Organization type, such as church, conference, ministry, school, or network.",
+    ),
+    notes: str | None = typer.Option(None, help="Optional organization notes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organization = database.add_organization(
+        slug=slug,
+        display_name=display_name,
+        organization_type=organization_type,
+        notes=notes,
+    )
+    console.print(
+        f"Added organization #{organization.id}: {organization.slug} -> "
+        f"{organization.display_name} ({organization.organization_type})"
+    )
+
+
+@organization_app.command("list", help="List publishing organizations.")
+def organization_list(
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organizations = database.list_organizations()
+    if not organizations:
+        console.print("No organizations configured.")
+        return
+    table = Table(title="Organizations")
+    table.add_column("ID", justify="right")
+    table.add_column("Slug")
+    table.add_column("Type")
+    table.add_column("Display Name")
+    for organization in organizations:
+        table.add_row(
+            str(organization.id),
+            organization.slug,
+            organization.organization_type,
+            organization.display_name,
+        )
+    console.print(table)
+
+
+@organization_app.command(
+    "review",
+    help="Build a publisher-scoped review without asserting speaker identity.",
+)
+def organization_review(
+    organization: str = typer.Argument(..., help="Organization slug."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    try:
+        result = export_organization_review_markdown(
+            database,
+            paths,
+            organization,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Wrote organization review markdown to {result.export_path}")
+    console.print(f"Wrote organization review manifest to {result.manifest_path}")
+    console.print(
+        f"Included {result.video_count} video(s); skipped {result.skipped_count}."
+    )
+
+
+@organization_app.command(
+    "claims",
+    help="List imported affiliation claims without linking people by name.",
+)
+def organization_claims(
+    organization: str | None = typer.Option(
+        None,
+        help="Only show claims for one organization slug.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organization_id = None
+    if organization is not None:
+        organization_record = database.get_organization_by_slug(organization)
+        if organization_record is None:
+            raise typer.BadParameter(f"Unknown organization slug: {organization}")
+        organization_id = organization_record.id
+    claims = database.list_organization_affiliation_claims(organization_id)
+    if not claims:
+        console.print("No affiliation claims matched.")
+        return
+    table = Table(title="Organization Affiliation Claims")
+    table.add_column("ID", justify="right")
+    table.add_column("Organization")
+    table.add_column("Claimed Name")
+    table.add_column("Role")
+    table.add_column("Review")
+    for claim in claims:
+        table.add_row(
+            str(claim["id"]),
+            str(claim["organization_slug"]),
+            str(claim["claimed_person_name"]),
+            str(claim["claimed_role"]),
+            str(claim["review_status"] or "unreviewed"),
+        )
+    console.print(table)
+
+
+@organization_app.command(
+    "reject-affiliation-claim",
+    help="Append a reviewed rejection without creating or linking a person.",
+)
+def organization_reject_affiliation_claim(
+    claim_id: int = typer.Argument(..., help="Affiliation claim id."),
+    reviewer: str = typer.Option(..., help="Reviewer name."),
+    reason: str = typer.Option(..., help="Reason for rejection."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        event_id = database.review_organization_affiliation_claim(
+            claim_id=claim_id,
+            pastor_id=None,
+            attach=False,
+            reviewer=reviewer,
+            reason=reason,
+            review_event_key=f"reject:{claim_id}:{reviewer}:{reason}",
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Recorded affiliation claim rejection event #{event_id}.")
+
+
+@source_app.command(
+    "add",
+    help="Add a source with an optional publisher and optional target pastor.",
+)
+def source_add(
+    url: str = typer.Argument(..., help="YouTube video, playlist, or channel URL."),
+    organization: str | None = typer.Option(
+        None,
+        help="Publishing organization slug; omit when unknown.",
+    ),
+    target_pastor: str | None = typer.Option(
+        None,
+        "--target-pastor",
+        help="Optional pastor query target; this is not source ownership.",
+    ),
+    notes: str | None = typer.Option(None, help="Optional source notes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        add_source_service(
+            url,
+            target_pastor,
+            notes,
+            base_dir,
+            organization=organization,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@source_app.command(
+    "set-organization",
+    help="Attach or correct a source's current publishing organization.",
+)
+def source_set_organization(
+    source_id: int = typer.Argument(..., help="Source id to update."),
+    organization: str = typer.Argument(..., help="Publishing organization slug."),
+    reason: str = typer.Option(
+        "Manual publisher correction",
+        help="Audit reason for the association.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organization_record = database.get_organization_by_slug(organization)
+    if organization_record is None:
+        raise typer.BadParameter(f"Unknown organization slug: {organization}")
+    try:
+        database.set_source_organization(
+            source_id,
+            organization_record.id,
+            actor="manual",
+            reason=reason,
+            event_key=f"manual-attach:{source_id}:{organization_record.id}:{reason}",
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Attached source #{source_id} to organization {organization_record.slug}."
+    )
+
+
+@source_app.command(
+    "clear-organization",
+    help="Mark a source's current publishing organization as unknown.",
+)
+def source_clear_organization(
+    source_id: int = typer.Argument(..., help="Source id to update."),
+    reason: str = typer.Option(
+        "Manual publisher correction",
+        help="Audit reason for clearing the association.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        database.set_source_organization(
+            source_id,
+            None,
+            actor="manual",
+            reason=reason,
+            event_key=f"manual-detach:{source_id}:{reason}",
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Cleared the publishing organization for source #{source_id}.")
+
+
 @app.command(help="Show database counts and queued sources.")
 def status(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -2084,6 +2449,19 @@ def status(
     summary = Table(title="Pastor Transcript Extractor")
     summary.add_column("Metric")
     summary.add_column("Value", justify="right")
+    summary.add_row("Organizations", str(counts["organizations"]))
+    summary.add_row(
+        "Imported Affiliation Claims",
+        str(counts["organization_affiliation_claims"]),
+    )
+    summary.add_row(
+        "Pastor Affiliations",
+        str(counts["pastor_organization_affiliations"]),
+    )
+    summary.add_row(
+        "Affiliation Claim Reviews",
+        str(counts["affiliation_claim_review_events"]),
+    )
     summary.add_row("Sources", str(counts["sources"]))
     summary.add_row("Imported Source References", str(counts["source_import_refs"]))
     summary.add_row("Pastors", str(counts["pastors"]))
@@ -2110,10 +2488,21 @@ def status(
 
     table = Table(title="Queued Sources")
     table.add_column("ID", justify="right")
-    table.add_column("Pastor")
+    table.add_column("Organization")
+    table.add_column("Target Pastor")
     table.add_column("Type")
     table.add_column("URL")
     for source in sources:
+        organization_name = "-"
+        if source.organization_id is not None:
+            organization_record = database.get_organization_by_id(
+                source.organization_id
+            )
+            organization_name = (
+                organization_record.slug
+                if organization_record is not None
+                else str(source.organization_id)
+            )
         pastor_name = "-"
         if source.pastor_id is not None:
             pastor_record = database.get_pastor_by_id(source.pastor_id)
@@ -2121,7 +2510,13 @@ def status(
                 pastor_name = pastor_record.slug
             else:
                 pastor_name = str(source.pastor_id)
-        table.add_row(str(source.id), pastor_name, source.source_type.value, source.url)
+        table.add_row(
+            str(source.id),
+            organization_name,
+            pastor_name,
+            source.source_type.value,
+            source.url,
+        )
     console.print(table)
 
 
@@ -2138,15 +2533,32 @@ def source_list(
 
     table = Table(title="Sources")
     table.add_column("ID", justify="right")
-    table.add_column("Pastor")
+    table.add_column("Organization")
+    table.add_column("Target Pastor")
     table.add_column("Type")
     table.add_column("URL")
     for source in sources:
+        organization_name = "-"
+        if source.organization_id is not None:
+            organization_record = database.get_organization_by_id(
+                source.organization_id
+            )
+            organization_name = (
+                organization_record.slug
+                if organization_record is not None
+                else str(source.organization_id)
+            )
         pastor_name = "-"
         if source.pastor_id is not None:
             pastor_record = database.get_pastor_by_id(source.pastor_id)
             pastor_name = pastor_record.slug if pastor_record is not None else str(source.pastor_id)
-        table.add_row(str(source.id), pastor_name, source.source_type.value, source.url)
+        table.add_row(
+            str(source.id),
+            organization_name,
+            pastor_name,
+            source.source_type.value,
+            source.url,
+        )
     console.print(table)
 
 
@@ -2188,6 +2600,10 @@ def source_delete(
 @video_app.command("list", help="List discovered videos.")
 def video_list(
     pastor: str | None = typer.Option(None, help="Filter by pastor slug."),
+    organization: str | None = typer.Option(
+        None,
+        help="Filter by publishing organization slug.",
+    ),
     source_id: int | None = typer.Option(None, help="Filter by source id."),
     status: VideoStatus | None = typer.Option(None, help="Filter by video status."),
     limit: int = typer.Option(50, min=1, help="Maximum number of videos to show."),
@@ -2200,7 +2616,23 @@ def video_list(
         pastor_record = database.get_pastor_by_slug(pastor)
         if pastor_record is None:
             raise _unknown_pastor_error(pastor, base_dir)
-        videos = [video for video in videos if video.pastor_id == pastor_record.id]
+        target_video_ids = database.list_video_ids_for_target_pastor(
+            pastor_record.id
+        )
+        videos = [video for video in videos if video.id in target_video_ids]
+
+    if organization is not None:
+        organization_record = database.get_organization_by_slug(organization)
+        if organization_record is None:
+            raise typer.BadParameter(
+                f"Unknown organization slug: {organization}"
+            )
+        source_ids = {
+            source.id
+            for source in database.list_sources()
+            if source.organization_id == organization_record.id
+        }
+        videos = [video for video in videos if video.source_id in source_ids]
 
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]
@@ -2215,25 +2647,33 @@ def video_list(
     videos = videos[:limit]
     table = Table(title="Videos")
     table.add_column("ID", justify="right")
-    table.add_column("Pastor")
-    table.add_column("Source", justify="right")
+    table.add_column("Publisher")
+    table.add_column("Target Pastor")
     table.add_column("Status")
-    table.add_column("Published")
     table.add_column("Title")
     table.add_column("YouTube ID")
 
     for video in videos:
+        source = database.get_source_by_id(video.source_id)
+        publisher_name = "-"
+        if source is not None and source.organization_id is not None:
+            organization_record = database.get_organization_by_id(
+                source.organization_id
+            )
+            publisher_name = (
+                organization_record.slug
+                if organization_record is not None
+                else str(source.organization_id)
+            )
         pastor_name = "-"
         if video.pastor_id is not None:
             pastor_record = database.get_pastor_by_id(video.pastor_id)
             pastor_name = pastor_record.slug if pastor_record is not None else str(video.pastor_id)
-        published = video.published_at.date().isoformat() if video.published_at is not None else "-"
         table.add_row(
             str(video.id),
+            publisher_name,
             pastor_name,
-            str(video.source_id),
             video.status.value,
-            published,
             video.title,
             video.youtube_video_id,
         )
@@ -2366,6 +2806,115 @@ def pastor_list(
     console.print(table)
 
 
+@pastor_app.command(
+    "affiliate",
+    help="Record a reviewed or manually grounded organization affiliation.",
+)
+def pastor_affiliate(
+    pastor: str = typer.Argument(..., help="Pastor slug."),
+    organization: str = typer.Argument(..., help="Organization slug."),
+    role: str = typer.Option("pastor", help="Role held at the organization."),
+    started_on: str | None = typer.Option(
+        None,
+        "--from",
+        help="Inclusive start date in YYYY-MM-DD format.",
+    ),
+    ended_on: str | None = typer.Option(
+        None,
+        "--to",
+        help="Exclusive end date in YYYY-MM-DD format.",
+    ),
+    temporal_status: str | None = typer.Option(
+        None,
+        "--status",
+        help="Temporal status: current, former, bounded, or unknown.",
+    ),
+    notes: str | None = typer.Option(None, help="Optional affiliation notes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    pastor_record = database.get_pastor_by_slug(pastor)
+    if pastor_record is None:
+        raise _unknown_pastor_error(pastor, base_dir)
+    organization_record = database.get_organization_by_slug(organization)
+    if organization_record is None:
+        raise typer.BadParameter(f"Unknown organization slug: {organization}")
+    try:
+        start_date = date.fromisoformat(started_on) if started_on is not None else None
+        end_date = date.fromisoformat(ended_on) if ended_on is not None else None
+    except ValueError as error:
+        raise typer.BadParameter("Affiliation dates must use YYYY-MM-DD.") from error
+    if start_date is not None and end_date is not None and end_date <= start_date:
+        raise typer.BadParameter("--to must be later than --from.")
+    inferred_status = (
+        "bounded"
+        if end_date is not None and start_date is not None
+        else "former"
+        if end_date is not None
+        else "current"
+        if start_date is not None
+        else "unknown"
+    )
+    resolved_status = temporal_status or inferred_status
+    if resolved_status not in {"current", "former", "bounded", "unknown"}:
+        raise typer.BadParameter(
+            "--status must be current, former, bounded, or unknown."
+        )
+    role_label = role.strip()
+    if not role_label:
+        raise typer.BadParameter("--role cannot be empty.")
+    role_key = re.sub(r"[^a-z0-9]+", "_", role_label.lower()).strip("_")
+    affiliation = database.add_pastor_organization_affiliation(
+        pastor_id=pastor_record.id,
+        organization_id=organization_record.id,
+        role_key=role_key,
+        role_label=role_label,
+        started_on=started_on,
+        ended_on=ended_on,
+        temporal_status=resolved_status,
+        provenance_kind="manual",
+        notes=notes,
+    )
+    console.print(
+        f"Recorded affiliation #{affiliation.id}: {pastor_record.slug} -> "
+        f"{organization_record.slug} ({role_label}, {resolved_status})."
+    )
+
+
+@pastor_app.command(
+    "affiliate-claim",
+    help="Explicitly attach an imported affiliation claim to a selected pastor.",
+)
+def pastor_affiliate_claim(
+    pastor: str = typer.Argument(..., help="Existing curated pastor slug."),
+    claim_id: int = typer.Argument(..., help="Imported affiliation claim id."),
+    reviewer: str = typer.Option(..., help="Reviewer name."),
+    reason: str = typer.Option(..., help="Grounded reason for the attachment."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    pastor_record = database.get_pastor_by_slug(pastor)
+    if pastor_record is None:
+        raise _unknown_pastor_error(pastor, base_dir)
+    try:
+        event_id = database.review_organization_affiliation_claim(
+            claim_id=claim_id,
+            pastor_id=pastor_record.id,
+            attach=True,
+            reviewer=reviewer,
+            reason=reason,
+            review_event_key=(
+                f"attach:{claim_id}:{pastor_record.id}:{reviewer}:{reason}"
+            ),
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Attached affiliation claim #{claim_id} to pastor "
+        f"{pastor_record.slug} with review event #{event_id}."
+    )
+
+
 @app.command(help="Validate local tool paths and app data directories.")
 def doctor(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -2440,14 +2989,31 @@ def discover_sources_service(
     total_sources = len(sources)
     selected_video_ids_by_source: dict[int, tuple[int, ...]] = {}
     for index, source in enumerate(sources, start=1):
-        if source.pastor_id is None:
-            console.print(f"[yellow]Skipping[/yellow] source #{source.id}: no pastor linked.")
-            selected_video_ids_by_source[source.id] = ()
-            continue
-        pastor_record = database.get_pastor_by_id(source.pastor_id)
-        pastor_slug = pastor_record.slug if pastor_record is not None else str(source.pastor_id)
+        pastor_record = (
+            database.get_pastor_by_id(source.pastor_id)
+            if source.pastor_id is not None
+            else None
+        )
+        organization_record = (
+            database.get_organization_by_id(source.organization_id)
+            if source.organization_id is not None
+            else None
+        )
+        publisher_label = (
+            organization_record.slug
+            if organization_record is not None
+            else "organization-unknown"
+        )
+        if pastor_record is not None:
+            context_label = (
+                f"for pastor {pastor_record.slug} target; "
+                f"publisher {publisher_label}"
+            )
+        else:
+            context_label = f"for publisher {publisher_label}"
         console.print(
-            f"[{index}/{total_sources}] Discovering source #{source.id} for pastor {pastor_slug}: {source.url}",
+            f"[{index}/{total_sources}] Discovering source #{source.id} "
+            f"{context_label}: {source.url}",
             markup=False,
         )
         try:
@@ -2504,15 +3070,14 @@ def discover_sources_service(
                 duration_seconds=discovered.duration_seconds,
                 status=VideoStatus.DISCOVERED,
             )
-            if pastor_record is not None:
-                persist_metadata_snapshot(
-                    database,
-                    app_paths,
-                    video=video,
-                    pastor=pastor_record,
-                    source_kind="yt_dlp_flat_playlist",
-                    raw_metadata=discovered.metadata,
-                )
+            persist_metadata_snapshot(
+                database,
+                app_paths,
+                video=video,
+                pastor=pastor_record,
+                source_kind="yt_dlp_flat_playlist",
+                raw_metadata=discovered.metadata,
+            )
             discovered_count += 1
             source_discovered_count += 1
             existing_ids.add(discovered.youtube_video_id)
@@ -2823,9 +3388,6 @@ def fetch_captions_service(
     unavailable = 0
     failed = 0
     for video in videos:
-        if video.pastor_id is None:
-            skipped += 1
-            continue
         transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
         if any(artifact.source_kind == TranscriptSourceKind.CAPTIONS for artifact in transcript_artifacts):
             skipped += 1
