@@ -108,9 +108,6 @@ def extract_batch(
     skipped = 0
     eligible_videos = []
     for video in videos:
-        if video.pastor_id is None:
-            skipped += 1
-            continue
         latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
         if latest_artifact is None:
             skipped += 1

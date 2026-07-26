@@ -36,10 +36,12 @@ that pastor is selected as a processing target.
 - Existing artifact files and `proposed.json` are never moved or rewritten by
   the ownership migration.
 
-Discovery, caption fetching, transcription, media registration, and archival
-can operate without a target pastor. Extraction remains target-dependent and
-conservatively skips targetless videos until target-neutral extraction is
-designed and validated as a separate increment.
+Discovery, caption fetching, transcription, extraction, reclassification, media
+registration, and archival can operate without a target pastor. For targetless
+videos, content artifacts remain video-scoped, target-relative guest-speaker
+flags are left unset, and shadow identity assessment is skipped until a target
+pastor is explicitly selected. Pastor review remains a downstream projection
+through explicit video target contexts.
 
 ## Manual workflows
 

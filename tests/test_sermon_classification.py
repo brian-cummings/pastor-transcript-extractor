@@ -712,13 +712,23 @@ class HybridClassificationTests(unittest.TestCase):
             ),
         )
 
-    def test_reclassify_updates_only_existing_extraction_artifacts_and_reuses_result(self) -> None:
+    def test_targetless_reclassify_updates_only_existing_extraction_artifacts_and_reuses_result(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             paths = build_paths(Path(tmp))
             ensure_directories(paths)
-            video = SimpleNamespace(id=7, pastor_id=3, youtube_video_id="abc123", title="Fixture")
-            pastor = SimpleNamespace(id=3, slug="fixture-pastor")
-            video_paths = build_video_artifact_paths(paths, pastor.slug, video.youtube_video_id)
+            video = SimpleNamespace(
+                id=7,
+                pastor_id=None,
+                youtube_video_id="abc123",
+                title="Fixture",
+            )
+            video_paths = build_video_artifact_paths(
+                paths,
+                "fixture-pastor",
+                video.youtube_video_id,
+            )
             video_paths.extracted.mkdir(parents=True, exist_ok=True)
             proposed_path = video_paths.extracted / "proposed.json"
             proposed_path.write_text(
@@ -743,7 +753,6 @@ class HybridClassificationTests(unittest.TestCase):
             )
             database = MagicMock()
             database.get_video_by_id.return_value = video
-            database.get_pastor_by_id.return_value = pastor
             database.get_latest_extraction_result_for_video.return_value = SimpleNamespace(
                 proposed_json_path=str(proposed_path)
             )

@@ -331,8 +331,6 @@ def reclassify_video(
     if video is None:
         raise ValueError(f"Unknown video id: {video_id}")
     pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
-    if pastor is None:
-        raise ValueError(f"Video {video_id} is missing a linked pastor")
     latest_extraction = database.get_latest_extraction_result_for_video(video.id)
     if latest_extraction is None or not latest_extraction.proposed_json_path:
         raise ValueError(f"Video {video_id} has no proposed extraction to reclassify")
@@ -631,7 +629,7 @@ def _effective_sermon_window(
 def _build_proposed_markdown(
     title: str,
     url: str,
-    pastor_slug: str,
+    pastor_slug: str | None,
     transcript_source: TranscriptSourceKind,
     sermon_window: dict[str, Any],
     final_disposition: dict[str, Any],
@@ -649,7 +647,7 @@ def _build_proposed_markdown(
     lines = [
         f"# {title}",
         "",
-        f"- Pastor: {pastor_slug}",
+        f"- Pastor: {pastor_slug or '(unassigned)'}",
         f"- Source: {url}",
         f"- Transcript Source: {transcript_source.value}",
         f"- Duration: {_format_timestamp(duration)}" if duration is not None else "- Duration: unknown",
@@ -706,8 +704,6 @@ def extract_video(
         raise ValueError(f"Unknown video id: {video_id}")
 
     pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
-    if pastor is None:
-        raise ValueError(f"Video {video_id} is missing a linked pastor")
 
     transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
     if not transcript_artifacts:
@@ -763,11 +759,15 @@ def extract_video(
                 "suspicious_boundary_reasons": hybrid_result.warnings,
             }
         )
-    guest_flags = detect_guest_speaker_flags(
-        video_title=video.title,
-        drafts=drafts,
-        pastor_name=pastor.display_name,
-        sermon_window=detected_window,
+    guest_flags = (
+        detect_guest_speaker_flags(
+            video_title=video.title,
+            drafts=drafts,
+            pastor_name=pastor.display_name,
+            sermon_window=detected_window,
+        )
+        if pastor is not None
+        else GuestSpeakerFlags(suspected=False, name_candidates=[], reasons=[])
     )
     serialized_segments = [
         {
@@ -833,7 +833,7 @@ def extract_video(
     proposed_text = _build_proposed_markdown(
         video.title,
         video.url,
-        pastor.slug,
+        pastor.slug if pastor is not None else None,
         transcript_artifact.source_kind,
         sermon_window,
         final_disposition,
@@ -849,7 +849,7 @@ def extract_video(
     proposed_json = {
         "video_id": video.id,
         "youtube_video_id": video.youtube_video_id,
-        "pastor_slug": pastor.slug,
+        "pastor_slug": pastor.slug if pastor is not None else None,
         "source_url": video.url,
         "transcript_source": transcript_artifact.source_kind.value,
         "sermon_window": sermon_window,

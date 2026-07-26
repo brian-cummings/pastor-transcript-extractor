@@ -13,6 +13,33 @@ from pastor_transcript_extractor.models import VideoStatus
 
 
 class ExtractionParallelismTests(unittest.TestCase):
+    def test_extract_batch_includes_targetless_video(self) -> None:
+        video = SimpleNamespace(
+            id=1,
+            pastor_id=None,
+            title="Publisher Video",
+            status=VideoStatus.TRANSCRIBED_LOCAL,
+        )
+        database = SimpleNamespace(
+            list_videos=lambda: [video],
+            get_latest_transcript_artifact_for_video=lambda _: SimpleNamespace(),
+            get_latest_extraction_result_for_video=lambda _: None,
+            update_video_status=lambda *args: None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "pastor_transcript_extractor.application.extract_video",
+        ) as extract:
+            result = extract_batch(
+                database,
+                build_paths(Path(tmp)),
+                classifier="rules",
+            )
+
+        self.assertEqual(1, result.processed)
+        self.assertEqual(0, result.skipped)
+        extract.assert_called_once()
+
     def test_extract_batch_runs_independent_videos_with_requested_workers(self) -> None:
         videos = [
             SimpleNamespace(id=1, pastor_id=1, title="First", status=VideoStatus.DISCOVERED),

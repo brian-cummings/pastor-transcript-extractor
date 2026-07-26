@@ -12,11 +12,16 @@ from typer.testing import CliRunner
 from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.discovery import DiscoveredVideo
+from pastor_transcript_extractor.extraction import extract_video
 from pastor_transcript_extractor.exporting import (
     export_organization_review_markdown,
     export_pastor_review_markdown,
 )
-from pastor_transcript_extractor.models import SourceType
+from pastor_transcript_extractor.models import (
+    SourceType,
+    TranscriptSourceKind,
+    VideoStatus,
+)
 from pastor_transcript_extractor.source_ownership import (
     audit_source_ownership,
     backfill_source_ownership,
@@ -548,6 +553,93 @@ class SourceOwnershipMigrationTests(unittest.TestCase):
                     str(root.resolve() / "artifacts" / "videos" / "neutral001x")
                 )
             )
+
+    def test_targetless_video_extracts_in_neutral_namespace_without_identity_assessment(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = build_paths(root)
+            database = Database(paths.database)
+            database.initialize()
+            organization = database.add_organization(
+                "publisher",
+                "Publisher",
+                "network",
+            )
+            source = database.add_source(
+                "https://www.youtube.com/@publisher",
+                SourceType.CHANNEL,
+                pastor_id=None,
+                organization_id=organization.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=None,
+                youtube_video_id="neutralextract1",
+                title="Sunday Message",
+                url="https://www.youtube.com/watch?v=neutralextract1",
+                status=VideoStatus.TRANSCRIBED_LOCAL,
+            )
+            video_root = root / "artifacts" / "videos" / video.youtube_video_id
+            raw_root = video_root / "raw"
+            raw_root.mkdir(parents=True)
+            raw_json_path = raw_root / "captions.json"
+            raw_text_path = raw_root / "captions.txt"
+            raw_json_path.write_text(
+                json.dumps(
+                    {
+                        "text": "Turn in your Bibles. The word of God shows us grace.",
+                        "segments": [
+                            {
+                                "start": 0.0,
+                                "end": 600.0,
+                                "text": "Turn in your Bibles to Romans chapter five.",
+                            },
+                            {
+                                "start": 600.0,
+                                "end": 1200.0,
+                                "text": "The word of God shows us grace in this passage.",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            raw_text_path.write_text(
+                "Turn in your Bibles.\nThe word of God shows us grace.",
+                encoding="utf-8",
+            )
+            database.add_transcript_artifact(
+                video_id=video.id,
+                source_kind=TranscriptSourceKind.CAPTIONS,
+                audio_path=None,
+                raw_json_path=str(raw_json_path),
+                raw_text_path=str(raw_text_path),
+            )
+
+            result = extract_video(database, paths, video.id)
+
+            proposed = json.loads(
+                result.proposed_json_path.read_text(encoding="utf-8")
+            )
+            refreshed = database.get_video_by_id(video.id)
+            organization_review = export_organization_review_markdown(
+                database,
+                paths,
+                organization.slug,
+            )
+            self.assertEqual(
+                video_root.resolve() / "extracted" / "proposed.json",
+                result.proposed_json_path,
+            )
+            self.assertIsNone(proposed["pastor_slug"])
+            self.assertFalse(proposed["guest_speaker_suspected"])
+            self.assertEqual(VideoStatus.EXTRACTED, refreshed.status)
+            self.assertIsNone(
+                database.get_latest_identity_assessment_for_video(video.id)
+            )
+            self.assertEqual(1, organization_review.video_count)
 
     def test_organization_b_video_can_attach_to_pastor_a_without_republishing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
