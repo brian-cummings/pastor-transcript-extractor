@@ -198,6 +198,7 @@ class AudioSpanCache:
             [
                 self.ffmpeg,
                 "-hide_banner",
+                "-nostdin",
                 "-loglevel",
                 "error",
                 "-y",
@@ -217,6 +218,7 @@ class AudioSpanCache:
                 str(wav_path),
             ],
             check=True,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
         )

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -146,8 +147,10 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         source.write_bytes(b"source-present")
         cache = AudioSpanCache(self.root / "audio-cache")
         span = select_diagnostic_spans(self.a, count=3)[0]
+        ffmpeg_calls = []
 
-        def fake_ffmpeg(arguments, **_kwargs):
+        def fake_ffmpeg(arguments, **kwargs):
+            ffmpeg_calls.append((arguments, kwargs))
             with wave.open(arguments[-1], "wb") as destination:
                 destination.setnchannels(1)
                 destination.setsampwidth(2)
@@ -164,6 +167,10 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         self.assertFalse(first.cache_hit)
         self.assertTrue(replay.cache_hit)
         self.assertEqual(first.wav_sha256, replay.wav_sha256)
+        self.assertEqual(1, len(ffmpeg_calls))
+        arguments, kwargs = ffmpeg_calls[0]
+        self.assertIn("-nostdin", arguments)
+        self.assertEqual(subprocess.DEVNULL, kwargs["stdin"])
 
     def test_approved_policy_has_wide_same_different_and_abstention_regions(self):
         same = self._analyze(
