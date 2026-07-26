@@ -14,12 +14,16 @@ from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
     CachedSpan,
+    SpanSpec,
     select_diagnostic_spans,
     validate_reviewed_pair_fixture,
 )
 
 
-REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v1"
+REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v2"
+CLIP_ACTIVITY_POLICY_VERSION = "speaker_pair_clip_activity_v1"
+DEFAULT_MIN_NON_SILENT_FRACTION = 0.40
+DEFAULT_MIN_CLIP_RMS_DBFS = -52.0
 STANDARD_VARIATION_TAGS = (
     "different_date",
     "different_microphone",
@@ -39,6 +43,17 @@ class PairJudgment(StrEnum):
     SAME_SPEAKER = "same_speaker"
     DIFFERENT_SPEAKER = "different_speaker"
     CANNOT_DETERMINE = "cannot_determine"
+
+
+class InsufficientSpeechActivityError(ValueError):
+    def __init__(self, observation_fingerprint: str, summary: dict[str, Any]):
+        self.observation_fingerprint = observation_fingerprint
+        self.summary = summary
+        super().__init__(
+            f"insufficient_speech_activity for observation "
+            f"{observation_fingerprint}: found {summary['qualified_clip_count']} "
+            f"qualified clip(s), require at least {summary['minimum_clip_count']}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,10 +83,15 @@ def create_review_draft(
     evaluation_root: Path,
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
+    min_qualified_spans: int = 3,
+    min_non_silent_fraction: float = DEFAULT_MIN_NON_SILENT_FRACTION,
+    fallback_candidate_multiplier: int = 3,
     selection_manifest: dict[str, object] | None = None,
 ) -> ReviewDraft:
     if observation_a.input_fingerprint == observation_b.input_fingerprint:
         raise ValueError("a pair review requires two distinct observations")
+    if fallback_candidate_multiplier < 1:
+        raise ValueError("fallback candidate multiplier must be positive")
     ordered_inputs = sorted(
         (
             (observation_a.input_fingerprint, video_id_a, observation_a, audio_path_a),
@@ -92,21 +112,39 @@ def create_review_draft(
     observations: dict[str, Any] = {}
     presentation: dict[str, Any] = {}
     for source_key, (video_id, observation, audio_path) in source_observations.items():
-        specs = select_diagnostic_spans(
+        primary_specs = select_diagnostic_spans(
             observation,
             count=span_count,
             duration_seconds=span_duration_seconds,
         )
-        if not specs:
+        if not primary_specs:
             raise ValueError(f"observation {observation.input_fingerprint} is too short for review")
-        spans = [
-            span_cache.prepare(
+        fallback_specs = select_diagnostic_spans(
+            observation,
+            count=span_count * fallback_candidate_multiplier,
+            duration_seconds=span_duration_seconds,
+        )
+        candidate_specs = _unique_span_specs((*primary_specs, *fallback_specs))
+        try:
+            spans, clip_selection = _prepare_review_spans(
                 observation=observation,
-                source_audio_path=audio_path,
-                span=span,
+                audio_path=audio_path,
+                span_cache=span_cache,
+                candidate_specs=candidate_specs,
+                requested_count=span_count,
+                minimum_count=min_qualified_spans,
+                min_non_silent_fraction=min_non_silent_fraction,
             )
-            for span in specs
-        ]
+        except InsufficientSpeechActivityError as error:
+            rejection_path = _record_activity_rejection(
+                pair_id=pair_id,
+                source_observations=source_observations,
+                failed_source_key=source_key,
+                error=error,
+                selection_manifest=selection_manifest,
+                evaluation_root=evaluation_root,
+            )
+            raise ValueError(f"{error}; recorded selection rejection: {rejection_path}") from None
         observations[source_key] = {
             "youtube_video_id": video_id,
             "input_fingerprint": observation.input_fingerprint,
@@ -115,6 +153,7 @@ def create_review_draft(
                 "end_seconds": observation.end_seconds,
             },
             "clips": [_draft_clip(span) for span in spans],
+            "clip_selection": clip_selection,
         }
 
     for label, source_key in zip(("A", "B"), presentation_sources):
@@ -193,6 +232,7 @@ def submit_review(
         "pair_judgment": pair_judgment,
         "variation_tags": normalized_tags,
         "notes": notes.strip(),
+        "clip_quality": _review_clip_quality(draft),
         "approval_confirmed": approval_confirmed,
         "fixture_eligible": (
             qualified
@@ -241,6 +281,8 @@ def _fixture_from_review(draft: dict[str, Any], event: dict[str, Any]) -> dict[s
                     "start_seconds": clip["start_seconds"],
                     "end_seconds": clip["end_seconds"],
                     "wav_sha256": clip["wav_sha256"],
+                    "rms_dbfs": clip["rms_dbfs"],
+                    "non_silent_fraction": clip["non_silent_fraction"],
                 }
                 for clip in source["clips"]
             ],
@@ -316,7 +358,159 @@ def _draft_clip(span: CachedSpan) -> dict[str, Any]:
         "duration_seconds": span.duration_seconds,
         "rms_dbfs": span.rms_dbfs,
         "clipped_fraction": span.clipped_fraction,
+        "non_silent_fraction": span.non_silent_fraction,
     }
+
+
+def _prepare_review_spans(
+    *,
+    observation: SpeakerObservation,
+    audio_path: Path,
+    span_cache: AudioSpanCache,
+    candidate_specs: Sequence[SpanSpec],
+    requested_count: int,
+    minimum_count: int,
+    min_non_silent_fraction: float,
+) -> tuple[list[CachedSpan], dict[str, Any]]:
+    if requested_count < 2 or minimum_count < 2 or minimum_count > requested_count:
+        raise ValueError("review clip counts require 2 <= minimum <= requested")
+    if not 0.0 <= min_non_silent_fraction <= 1.0:
+        raise ValueError("minimum non-silent fraction must be between zero and one")
+    qualified: list[CachedSpan] = []
+    attempts: list[dict[str, Any]] = []
+    for spec in candidate_specs:
+        span = span_cache.prepare(
+            observation=observation,
+            source_audio_path=audio_path,
+            span=spec,
+        )
+        activity_available = span.non_silent_fraction is not None
+        accepted = (
+            activity_available
+            and span.rms_dbfs >= DEFAULT_MIN_CLIP_RMS_DBFS
+            and span.non_silent_fraction >= min_non_silent_fraction
+        )
+        attempts.append(
+            {
+                "start_seconds": span.start_seconds,
+                "end_seconds": span.end_seconds,
+                "wav_sha256": span.wav_sha256,
+                "rms_dbfs": span.rms_dbfs,
+                "non_silent_fraction": span.non_silent_fraction,
+                "accepted": accepted,
+                "reason": (
+                    "qualified"
+                    if accepted
+                    else (
+                        "activity_measurement_unavailable"
+                        if not activity_available
+                        else (
+                            "clip_rms_too_low"
+                            if span.rms_dbfs < DEFAULT_MIN_CLIP_RMS_DBFS
+                            else "majority_silence"
+                        )
+                    )
+                ),
+            }
+        )
+        if accepted:
+            qualified.append(span)
+            if len(qualified) == requested_count:
+                break
+    summary = {
+        "policy_version": CLIP_ACTIVITY_POLICY_VERSION,
+        "requested_clip_count": requested_count,
+        "minimum_clip_count": minimum_count,
+        "candidate_clip_count": len(candidate_specs),
+        "prepared_clip_count": len(attempts),
+        "qualified_clip_count": len(qualified),
+        "selection_outcome": (
+            "complete" if len(qualified) == requested_count else "partial"
+        ),
+        "thresholds": {
+            "min_rms_dbfs": DEFAULT_MIN_CLIP_RMS_DBFS,
+            "min_non_silent_fraction": min_non_silent_fraction,
+        },
+        "attempts": attempts,
+    }
+    if len(qualified) < minimum_count:
+        raise InsufficientSpeechActivityError(
+            observation.input_fingerprint,
+            summary,
+        )
+    return qualified, summary
+
+
+def _unique_span_specs(specs: Sequence[SpanSpec]) -> tuple[SpanSpec, ...]:
+    unique: list[SpanSpec] = []
+    seen: set[tuple[float, float]] = set()
+    for spec in specs:
+        key = (spec.start_seconds, spec.end_seconds)
+        if key not in seen:
+            seen.add(key)
+            unique.append(spec)
+    return tuple(unique)
+
+
+def _review_clip_quality(draft: dict[str, Any]) -> dict[str, Any]:
+    quality: dict[str, Any] = {}
+    for label in ("A", "B"):
+        source_key = draft["presentation"][label]["source_key"]
+        source = draft["observations"][source_key]
+        quality[label] = {
+            "clip_selection": source.get("clip_selection"),
+            "clips": [
+                {
+                    "wav_sha256": clip["wav_sha256"],
+                    "rms_dbfs": clip.get("rms_dbfs"),
+                    "non_silent_fraction": clip.get("non_silent_fraction"),
+                }
+                for clip in source["clips"]
+            ],
+        }
+    return quality
+
+
+def _record_activity_rejection(
+    *,
+    pair_id: str,
+    source_observations: dict[
+        str, tuple[str, SpeakerObservation, Path]
+    ],
+    failed_source_key: str,
+    error: InsufficientSpeechActivityError,
+    selection_manifest: dict[str, object] | None,
+    evaluation_root: Path,
+) -> Path:
+    observations = {
+        source_key: {
+            "youtube_video_id": video_id,
+            "input_fingerprint": observation.input_fingerprint,
+            "observation_window": {
+                "start_seconds": observation.start_seconds,
+                "end_seconds": observation.end_seconds,
+            },
+        }
+        for source_key, (video_id, observation, _audio_path) in source_observations.items()
+    }
+    observations[failed_source_key]["clip_selection"] = error.summary
+    stable = {
+        "schema_version": 1,
+        "workflow_version": REVIEW_WORKFLOW_VERSION,
+        "event_kind": "speaker_pair_automatic_selection_rejection",
+        "review_status": "rejected_automatically",
+        "pair_id": pair_id,
+        "reason": "insufficient_speech_activity",
+        "failed_observation_fingerprint": error.observation_fingerprint,
+        "observations": observations,
+    }
+    if selection_manifest is not None:
+        stable["selection_manifest"] = selection_manifest
+    rejection_id = _sha256_json(stable)
+    payload = {**stable, "rejection_id": rejection_id}
+    path = evaluation_root / "drafts" / f"{pair_id}.rejected.{rejection_id[:12]}.json"
+    _write_json_idempotent(path, payload)
+    return path
 
 
 def _fixture_evidence_identity(fixture: dict[str, Any]) -> object:

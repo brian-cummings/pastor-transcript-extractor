@@ -20,8 +20,10 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     EmbeddingCache,
     ModelSpec,
     PairOutcome,
+    SpanSpec,
     analyze_observation_pair,
     evaluate_reviewed_pair_results,
+    measure_non_silent_fraction,
     select_diagnostic_spans,
     validate_reviewed_pair_fixture,
     write_pair_result,
@@ -167,10 +169,27 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         self.assertFalse(first.cache_hit)
         self.assertTrue(replay.cache_hit)
         self.assertEqual(first.wav_sha256, replay.wav_sha256)
+        self.assertEqual(1.0, replay.non_silent_fraction)
         self.assertEqual(1, len(ffmpeg_calls))
         arguments, kwargs = ffmpeg_calls[0]
         self.assertIn("-nostdin", arguments)
         self.assertEqual(subprocess.DEVNULL, kwargs["stdin"])
+
+    def test_frame_activity_detects_a_clip_that_is_mostly_silent(self):
+        path = self.root / "mostly-silent.wav"
+        with wave.open(str(path), "wb") as destination:
+            destination.setnchannels(1)
+            destination.setsampwidth(2)
+            destination.setframerate(16000)
+            destination.writeframes(b"\0\0" * (16000 * 10))
+            destination.writeframes(
+                (1000).to_bytes(2, "little", signed=True) * (16000 * 2)
+            )
+
+        fraction = measure_non_silent_fraction(path)
+
+        self.assertGreater(fraction, 0.15)
+        self.assertLess(fraction, 0.18)
 
     def test_approved_policy_has_wide_same_different_and_abstention_regions(self):
         same = self._analyze(
@@ -190,6 +209,26 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         self.assertEqual(PairOutcome.DIFFERENT_SPEAKER, different["outcome"])
         self.assertEqual(PairOutcome.INSUFFICIENT_EVIDENCE, borderline["outcome"])
         self.assertEqual("ambiguous_similarity", borderline["reason"])
+
+    def test_explicit_reviewed_span_specs_are_replayed_instead_of_regenerated(self):
+        backend = FakeBackend({"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)})
+        specs_a = (SpanSpec(300.0, 312.0), SpanSpec(600.0, 612.0))
+        specs_b = (SpanSpec(350.0, 362.0), SpanSpec(650.0, 662.0))
+
+        result = analyze_observation_pair(
+            observation_a=self.a,
+            observation_b=self.b,
+            audio_path_a=Path("a.wav"),
+            audio_path_b=Path("b.wav"),
+            span_cache=FakeSpanCache(self.root),
+            embedding_cache=EmbeddingCache(self.root / "explicit-cache"),
+            backend=backend,
+            span_specs_a=specs_a,
+            span_specs_b=specs_b,
+        )
+
+        self.assertEqual([300.0, 600.0], [span["start_seconds"] for span in result["spans"]["a"]])
+        self.assertEqual([350.0, 650.0], [span["start_seconds"] for span in result["spans"]["b"]])
 
     def test_missing_evidence_is_distinct_from_technical_failure(self):
         backend = FakeBackend({"obsA": (1.0, 0.0), "obsB": (0.0, 1.0)})

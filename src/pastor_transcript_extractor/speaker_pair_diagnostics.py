@@ -17,6 +17,7 @@ from pastor_transcript_extractor.models import SpeakerObservation
 
 SPAN_EXTRACTOR_VERSION = "speaker_span_v1"
 ANALYZER_VERSION = "speaker_pair_diagnostic_v1"
+SPEECH_ACTIVITY_MEASURER_VERSION = "frame_rms_activity_v1"
 
 
 class PairOutcome(StrEnum):
@@ -59,6 +60,7 @@ class CachedSpan:
     rms_dbfs: float
     clipped_fraction: float
     cache_hit: bool
+    non_silent_fraction: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,7 +191,12 @@ class AudioSpanCache:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             if _sha256_file(wav_path) != manifest.get("span", {}).get("wav_sha256"):
                 raise RuntimeError(f"cached span checksum mismatch: {wav_path}")
-            return CachedSpan(**{**manifest["span"], "cache_hit": True})
+            span_payload = dict(manifest["span"])
+            if span_payload.get("non_silent_fraction") is None:
+                span_payload["non_silent_fraction"] = measure_non_silent_fraction(wav_path)
+                manifest["span"] = span_payload
+                _write_json(manifest_path, manifest)
+            return CachedSpan(**{**span_payload, "cache_hit": True})
         if not source_audio_path.exists():
             raise AcousticEvidenceUnavailableError(f"local audio is unavailable: {source_audio_path}")
         wav_path.parent.mkdir(parents=True, exist_ok=True)
@@ -222,7 +229,9 @@ class AudioSpanCache:
             capture_output=True,
             text=True,
         )
-        measured_duration, rms_dbfs, clipped_fraction = _wav_quality(wav_path)
+        measured_duration, rms_dbfs, clipped_fraction, non_silent_fraction = _wav_quality(
+            wav_path
+        )
         cached = CachedSpan(
             observation_fingerprint=observation.input_fingerprint,
             start_seconds=span.start_seconds,
@@ -233,6 +242,7 @@ class AudioSpanCache:
             rms_dbfs=rms_dbfs,
             clipped_fraction=clipped_fraction,
             cache_hit=False,
+            non_silent_fraction=non_silent_fraction,
         )
         manifest = {"schema_version": 1, "cache_key": key, "input": key_payload, "span": asdict(cached)}
         manifest["span"].pop("cache_hit")
@@ -286,6 +296,8 @@ def analyze_observation_pair(
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
     min_rms_dbfs: float = -52.0,
+    span_specs_a: Sequence[SpanSpec] | None = None,
+    span_specs_b: Sequence[SpanSpec] | None = None,
 ) -> dict[str, Any]:
     base = {
         "schema_version": 1,
@@ -299,10 +311,10 @@ def analyze_observation_pair(
         return {**base, "outcome": PairOutcome.INSUFFICIENT_EVIDENCE, "reason": "observation_unavailable"}
     if audio_path_a is None or audio_path_b is None:
         return {**base, "outcome": PairOutcome.INSUFFICIENT_EVIDENCE, "reason": "local_audio_unavailable"}
-    specs_a = select_diagnostic_spans(
+    specs_a = tuple(span_specs_a) if span_specs_a is not None else select_diagnostic_spans(
         observation_a, count=span_count, duration_seconds=span_duration_seconds
     )
-    specs_b = select_diagnostic_spans(
+    specs_b = tuple(span_specs_b) if span_specs_b is not None else select_diagnostic_spans(
         observation_b, count=span_count, duration_seconds=span_duration_seconds
     )
     if not specs_a or not specs_b:
@@ -632,7 +644,28 @@ def _percentile(ordered: Sequence[float], fraction: float) -> float:
     return ordered[lower] + ((ordered[upper] - ordered[lower]) * (position - lower))
 
 
-def _wav_quality(path: Path) -> tuple[float, float, float]:
+def measure_non_silent_fraction(
+    path: Path,
+    *,
+    frame_duration_ms: float = 30.0,
+    silence_threshold_dbfs: float = -50.0,
+) -> float:
+    """Measure non-silent PCM frames without claiming that they contain speech."""
+    with wave.open(str(path), "rb") as source:
+        if source.getnchannels() != 1 or source.getsampwidth() != 2:
+            raise ValueError("activity measurement requires mono 16-bit PCM")
+        rate = source.getframerate()
+        samples = array("h")
+        samples.frombytes(source.readframes(source.getnframes()))
+    return _non_silent_fraction(
+        samples,
+        rate,
+        frame_duration_ms=frame_duration_ms,
+        silence_threshold_dbfs=silence_threshold_dbfs,
+    )
+
+
+def _wav_quality(path: Path) -> tuple[float, float, float, float]:
     with wave.open(str(path), "rb") as source:
         frames = source.getnframes()
         rate = source.getframerate()
@@ -644,7 +677,36 @@ def _wav_quality(path: Path) -> tuple[float, float, float]:
     rms = math.sqrt(mean_square)
     rms_dbfs = 20.0 * math.log10(max(rms / 32768.0, 1e-12))
     clipped = sum(abs(value) >= 32760 for value in samples) / len(samples)
-    return frames / rate, rms_dbfs, clipped
+    return (
+        frames / rate,
+        rms_dbfs,
+        clipped,
+        _non_silent_fraction(samples, rate),
+    )
+
+
+def _non_silent_fraction(
+    samples: Sequence[int],
+    sample_rate: int,
+    *,
+    frame_duration_ms: float = 30.0,
+    silence_threshold_dbfs: float = -50.0,
+) -> float:
+    if not samples or sample_rate <= 0:
+        raise ValueError("audio samples are empty")
+    if frame_duration_ms <= 0:
+        raise ValueError("frame duration must be positive")
+    frame_size = max(1, round(sample_rate * frame_duration_ms / 1000.0))
+    active_frames = 0
+    total_frames = 0
+    for start in range(0, len(samples), frame_size):
+        frame = samples[start : start + frame_size]
+        mean_square = sum(float(value) * float(value) for value in frame) / len(frame)
+        rms = math.sqrt(mean_square)
+        rms_dbfs = 20.0 * math.log10(max(rms / 32768.0, 1e-12))
+        active_frames += rms_dbfs >= silence_threshold_dbfs
+        total_frames += 1
+    return active_frames / total_frames
 
 
 def _sha256_file(path: Path) -> str:

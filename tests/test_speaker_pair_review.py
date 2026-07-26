@@ -13,17 +13,27 @@ from unittest.mock import patch
 from pastor_transcript_extractor.cli import review_speaker_pair
 from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import CachedSpan
+from pastor_transcript_extractor.speaker_pair_diagnostics import select_diagnostic_spans
 from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
     PairJudgment,
     create_review_draft,
     submit_review,
 )
+from pastor_transcript_extractor.speaker_pair_selector import (
+    selection_history_from_artifacts,
+)
 
 
 class FakeSpanCache:
-    def __init__(self, root: Path):
+    def __init__(
+        self,
+        root: Path,
+        *,
+        silent_starts: set[float] | None = None,
+    ):
         self.root = root
+        self.silent_starts = silent_starts or set()
 
     def prepare(self, *, observation, source_audio_path, span):
         key = f"{observation.input_fingerprint}-{span.start_seconds:.3f}"
@@ -41,6 +51,9 @@ class FakeSpanCache:
             rms_dbfs=-20.0,
             clipped_fraction=0.0,
             cache_hit=False,
+            non_silent_fraction=(
+                0.1 if span.start_seconds in self.silent_starts else 0.9
+            ),
         )
 
 
@@ -132,6 +145,91 @@ class SpeakerPairReviewTests(unittest.TestCase):
         self.assertIn("Observation B", packet)
         self.assertEqual(5, len(first.payload["presentation"]["A"]["clips"]))
         self.assertEqual(5, len(first.payload["presentation"]["B"]["clips"]))
+        self.assertEqual(
+            "complete",
+            first.payload["observations"]["source_a"]["clip_selection"][
+                "selection_outcome"
+            ],
+        )
+
+    def test_majority_silence_uses_deterministic_replacement_spans(self):
+        primary_starts = {
+            span.start_seconds
+            for span in select_diagnostic_spans(self.observation_a, count=5)
+        }
+        span_cache = FakeSpanCache(
+            self.root / "silence-aware-cache",
+            silent_starts=primary_starts,
+        )
+
+        draft = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=span_cache,
+            evaluation_root=self.evaluation_root,
+        )
+
+        for observation_payload in draft.payload["observations"].values():
+            selection = observation_payload["clip_selection"]
+            self.assertEqual(5, selection["qualified_clip_count"])
+            self.assertGreater(selection["prepared_clip_count"], 5)
+            self.assertTrue(
+                all(
+                    clip["non_silent_fraction"] >= 0.4
+                    for clip in observation_payload["clips"]
+                )
+            )
+            self.assertIn(
+                "majority_silence",
+                {attempt["reason"] for attempt in selection["attempts"]},
+            )
+
+    def test_insufficient_activity_is_recorded_and_excluded_from_reselection(self):
+        all_candidate_starts = {
+            span.start_seconds
+            for count in (5, 15)
+            for span in select_diagnostic_spans(self.observation_a, count=count)
+        }
+        span_cache = FakeSpanCache(
+            self.root / "silent-cache",
+            silent_starts=all_candidate_starts,
+        )
+        manifest = {
+            "selection_origin": "automatic",
+            "selection_stratum": "unattributed",
+        }
+
+        with self.assertRaisesRegex(ValueError, "recorded selection rejection"):
+            create_review_draft(
+                observation_a=self.observation_a,
+                observation_b=self.observation_b,
+                video_id_a="video-a",
+                video_id_b="video-b",
+                audio_path_a=Path("audio-a.wav"),
+                audio_path_b=Path("audio-b.wav"),
+                span_cache=span_cache,
+                evaluation_root=self.evaluation_root,
+                selection_manifest=manifest,
+            )
+
+        paths = list((self.evaluation_root / "drafts").glob("*.rejected.*.json"))
+        self.assertEqual(1, len(paths))
+        rejection = json.loads(paths[0].read_text(encoding="utf-8"))
+        self.assertEqual("insufficient_speech_activity", rejection["reason"])
+        self.assertEqual(2, len(rejection["observations"]))
+        history = selection_history_from_artifacts(
+            drafts=[rejection],
+            reviews=[],
+            fixtures=[],
+        )
+        self.assertIn(
+            frozenset(("observation-a", "observation-b")),
+            history.excluded_pairs,
+        )
 
     def test_qualified_explicit_review_creates_exact_frozen_fixture(self):
         manifest = {
@@ -164,6 +262,13 @@ class SpeakerPairReviewTests(unittest.TestCase):
         self.assertEqual(5, len(fixture["observations"]["a"]["reviewed_spans"]))
         self.assertEqual(5, len(fixture["observations"]["b"]["reviewed_spans"]))
         self.assertNotIn("wav_path", fixture["observations"]["a"]["reviewed_spans"][0])
+        self.assertEqual(
+            0.9,
+            fixture["observations"]["a"]["reviewed_spans"][0][
+                "non_silent_fraction"
+            ],
+        )
+        self.assertIn("clip_quality", event)
         canonical_prior_use = {"source_a": 3, "source_b": 7}
         expected_prior_use = {
             "a": canonical_prior_use[draft.payload["presentation"]["A"]["source_key"]],
