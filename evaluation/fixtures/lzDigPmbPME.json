@@ -1,0 +1,40 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 1313.0,
+      "start_seconds": 40.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-26T22:43:56.745010+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "085caad03af719f7f8ec530797586143a485114c0515263f87d9ada6f0af8f98",
+    "evaluation_partition": "development",
+    "nomination_signals": [
+      "candidate_near_recording_boundary"
+    ],
+    "reason_codes": [
+      "stratum_standard_candidate"
+    ],
+    "recording_condition_group_id": "recording-condition-ba4345ac1974d838",
+    "selection_origin": "automatic",
+    "selection_stratum": "standard_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 3.081,
+      "continuity_probe_block_count": 1,
+      "discarded_retained_component_count": 0,
+      "mean_caption_deduplication_ratio": 0.633184,
+      "rule_llm_agreement": 0.570423,
+      "transcript_time_coverage": 0.989329
+    },
+    "source_family_id": "youtube-adairsville-sda"
+  },
+  "video_id": "lzDigPmbPME"
+}

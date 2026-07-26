@@ -1,0 +1,40 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 5345.0,
+      "start_seconds": 2767.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-07-26T22:46:40.464489+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "32976e058f89bcf913ed33bd5168b74908b823c6d0fe16b8fc6a0a957dd19d20",
+    "evaluation_partition": "development",
+    "nomination_signals": [
+      "long_continuity_expansion"
+    ],
+    "reason_codes": [
+      "stratum_standard_candidate"
+    ],
+    "recording_condition_group_id": "recording-condition-cbb25541ec1d3573",
+    "selection_origin": "automatic",
+    "selection_stratum": "standard_candidate",
+    "selector_version": "sermon_fixture_selector_v2",
+    "signal_metrics": {
+      "candidate_recording_edge_distance_seconds": 431.73,
+      "continuity_probe_block_count": 8,
+      "discarded_retained_component_count": 0,
+      "mean_caption_deduplication_ratio": 0.628884,
+      "rule_llm_agreement": 0.516746,
+      "transcript_time_coverage": 0.99789
+    },
+    "source_family_id": "youtube-duluth-sda"
+  },
+  "video_id": "Sy2wJ6q8xsM"
+}

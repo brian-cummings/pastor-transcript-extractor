@@ -1,0 +1,32 @@
+{
+  "approval_confirmed": false,
+  "draft_id": "e329c9ffb38ce672fabf323b0fe6a5b65e35c8c05a585b9ab4e6b03be307ab1d",
+  "event_kind": "speaker_pair_human_review",
+  "fixture_eligible": false,
+  "notes": "",
+  "pair_id": "pair-00015296d89ce9e0",
+  "pair_judgment": "cannot_determine",
+  "qualification": {
+    "A": "invalid_audio",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "3fbd66c34a998cbfbf1539ec9e6bd8fcc5f0a7f2592ea119bd358a5b4f3607d5",
+  "reviewed_at": "2026-07-26T23:31:11.115175+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "fa94b47931080b03dacee1171bc712386f74181b82fea3b6c1ce38bdcc3a8bd8",
+    "observation_prior_use": {
+      "a": 0,
+      "b": 0
+    },
+    "reason_codes": [
+      "both_observations_unused"
+    ],
+    "selection_origin": "automatic",
+    "selection_stratum": "unattributed",
+    "selector_version": "speaker_pair_selector_v1"
+  },
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v1"
+}

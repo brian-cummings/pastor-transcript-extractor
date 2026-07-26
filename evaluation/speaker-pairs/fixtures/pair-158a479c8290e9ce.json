@@ -1,0 +1,93 @@
+{
+  "expected_outcome": "same_speaker",
+  "notes": "",
+  "observations": {
+    "a": {
+      "input_fingerprint": "2bf5a1942875352e2467eac516fc7d75e517f428af5e7eda6e11c29ec5857996",
+      "reviewed_spans": [
+        {
+          "end_seconds": 477.204,
+          "start_seconds": 465.204,
+          "wav_sha256": "d590f547b3d5675cd58abc62b50a4012f6ad3df1bef6a8798e43504aba3f9d69"
+        },
+        {
+          "end_seconds": 997.342,
+          "start_seconds": 985.342,
+          "wav_sha256": "024b88f8808f5ec83351b3fe9a47bd3b61e88563d23273c93fbaa66c3d9a48d5"
+        },
+        {
+          "end_seconds": 1517.48,
+          "start_seconds": 1505.48,
+          "wav_sha256": "220b0c050f119e0277ff6de2a21b6266da4ce74d7227e9ae4c90b741ee653cee"
+        },
+        {
+          "end_seconds": 2037.618,
+          "start_seconds": 2025.618,
+          "wav_sha256": "78e650a44e94398d00504e80b3a880666ea66ed6d9768feddf337b8ab0c5a1a9"
+        },
+        {
+          "end_seconds": 2557.756,
+          "start_seconds": 2545.756,
+          "wav_sha256": "1129f2d5912dfdab70c98637e02bf6ae15cd4a08905c581870a6658938dedfcf"
+        }
+      ],
+      "youtube_video_id": "8sXBzBAhVrk"
+    },
+    "b": {
+      "input_fingerprint": "c0d583973ba8777e4fb90a05840e5f0d046a0d4d0fba428a69c30c823f25db4a",
+      "reviewed_spans": [
+        {
+          "end_seconds": 3706.815,
+          "start_seconds": 3694.815,
+          "wav_sha256": "a4de363a09d0938ec7bd6d002835706c03eb251350938c70de39775fec359763"
+        },
+        {
+          "end_seconds": 3875.205,
+          "start_seconds": 3863.205,
+          "wav_sha256": "ba80af7322d308b71a8879a8121c23c2a46db53f12929365c88863eb7fbbb2db"
+        },
+        {
+          "end_seconds": 4043.595,
+          "start_seconds": 4031.595,
+          "wav_sha256": "43f239eb19db48edb429cecc195f710d8dc777c4514084919e3ba021c3978912"
+        },
+        {
+          "end_seconds": 4211.985,
+          "start_seconds": 4199.985,
+          "wav_sha256": "3de4326132a29fd186ce6658bbee8224012c55ff2a18f481b3ea488b9390ee63"
+        },
+        {
+          "end_seconds": 4380.374,
+          "start_seconds": 4368.374,
+          "wav_sha256": "8947ef50791ec5cfc4b12e6016fe750073393e6893286dee7c08d59e216dd9dd"
+        }
+      ],
+      "youtube_video_id": "ImtjKx7lQ6U"
+    }
+  },
+  "pair_id": "pair-158a479c8290e9ce",
+  "qualification": {
+    "A": "qualified_single_speaker",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "73a299b294d1524f8418111419f179bd01f3a98feeff92df914b55e70da815cc",
+  "review_status": "approved",
+  "reviewed_at": "2026-07-26T23:21:43.592904+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "fa94b47931080b03dacee1171bc712386f74181b82fea3b6c1ce38bdcc3a8bd8",
+    "observation_prior_use": {
+      "a": 0,
+      "b": 0
+    },
+    "reason_codes": [
+      "both_observations_unused"
+    ],
+    "selection_origin": "automatic",
+    "selection_stratum": "shared_attribution",
+    "selector_version": "speaker_pair_selector_v1"
+  },
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v1"
+}
