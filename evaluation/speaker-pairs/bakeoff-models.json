@@ -1,0 +1,81 @@
+{
+  "models": [
+    {
+      "backend": "sherpa-onnx",
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://github.com/modelscope/3D-Speaker/blob/main/LICENSE",
+        "verified": true
+      },
+      "model_path": "evaluation/speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+      "model_sha256": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b",
+      "preprocessing": {
+        "channels": 1,
+        "sample_format": "pcm_s16le",
+        "sample_rate_hz": 16000,
+        "span_duration_seconds": 12.0,
+        "span_extractor_version": "speaker_span_v1"
+      },
+      "runtime": {
+        "package": "sherpa-onnx",
+        "version": "1.13.1"
+      },
+      "source": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models"
+      },
+      "stable_key": "3dspeaker-campplus-en-voxceleb"
+    },
+    {
+      "backend": "sherpa-onnx",
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://github.com/modelscope/3D-Speaker/blob/main/LICENSE",
+        "verified": true
+      },
+      "model_path": "evaluation/speaker-pairs/models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+      "model_sha256": "c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5",
+      "preprocessing": {
+        "channels": 1,
+        "sample_format": "pcm_s16le",
+        "sample_rate_hz": 16000,
+        "span_duration_seconds": 12.0,
+        "span_extractor_version": "speaker_span_v1"
+      },
+      "runtime": {
+        "package": "sherpa-onnx",
+        "version": "1.13.1"
+      },
+      "source": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models"
+      },
+      "stable_key": "3dspeaker-eres2net-en-voxceleb"
+    },
+    {
+      "backend": "sherpa-onnx",
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://github.com/wenet-e2e/wespeaker/blob/master/LICENSE",
+        "verified": true
+      },
+      "model_path": "evaluation/speaker-pairs/models/wespeaker_en_voxceleb_resnet34_LM.onnx",
+      "model_sha256": "e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012",
+      "preprocessing": {
+        "channels": 1,
+        "sample_format": "pcm_s16le",
+        "sample_rate_hz": 16000,
+        "span_duration_seconds": 12.0,
+        "span_extractor_version": "speaker_span_v1"
+      },
+      "runtime": {
+        "package": "sherpa-onnx",
+        "version": "1.13.1"
+      },
+      "source": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models"
+      },
+      "stable_key": "wespeaker-resnet34-lm-en-voxceleb"
+    }
+  ],
+  "schema_version": 1,
+  "selection_status": "experimental_candidates"
+}
