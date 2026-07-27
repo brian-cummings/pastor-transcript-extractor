@@ -84,6 +84,29 @@ The default output is `runs/VIDEO_A--VIDEO_B.json`. Pass an approved policy
 with `--policy-path` only after a reviewed development set has established
 conservative thresholds.
 
+## Running the model bake-off
+
+The bake-off command always validates fixtures, verifies model files and exact
+runtime versions, audits partitions, and persists its deterministic plan before
+acoustic execution:
+
+```bash
+pte identity run-speaker-model-bakeoff \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The default `development` scope includes legacy fixtures created before
+partition assignment, but does not execute validation or held-out fixtures.
+Use `--preflight-only` to stop after validation and planning. Validation and
+held-out execution require an explicit `--evaluation-scope`; do not use
+`held_out` during model or threshold selection.
+
+Results are namespaced by the complete model execution fingerprint. Reruns
+checksum-validate and reuse completed jobs, while missing jobs resume from the
+same plan. Every result must replay the exact reviewed WAV hashes and explicitly
+prohibit registry mutation. The report summarizes raw similarity separation but
+does not select a model or create a decision policy.
+
 ## Ground truth
 
 Titles, descriptions, channel assignment, and name claims may help select

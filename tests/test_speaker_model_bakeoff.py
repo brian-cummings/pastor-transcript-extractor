@@ -9,8 +9,10 @@ from pathlib import Path
 from pastor_transcript_extractor.speaker_model_bakeoff import (
     audit_model_files,
     audit_fixture_partitions,
+    build_bakeoff_preflight,
     build_bakeoff_plan,
     evaluate_bakeoff,
+    execute_bakeoff_plan,
     load_bakeoff_manifest,
     stamp_bakeoff_result,
 )
@@ -208,6 +210,85 @@ class SpeakerModelBakeoffTests(unittest.TestCase):
             [entry["status"] for entry in audit["models"]],
         )
         self.assertFalse(audit["all_models_verified"])
+
+    def test_preflight_combines_model_runtime_partition_and_plan_checks(self):
+        model_bytes = b"verified model"
+        model_path = self.root / "models" / "a.onnx"
+        model_path.parent.mkdir()
+        model_path.write_bytes(model_bytes)
+        entry = {
+            **manifest_entry("model-a", "1", "a.onnx"),
+            "model_sha256": hashlib.sha256(model_bytes).hexdigest(),
+        }
+        models = load_bakeoff_manifest(self._write_manifest([entry]))
+        fixtures = [
+            fixture(
+                "pair-1",
+                "obs-a",
+                "obs-b",
+                "same_speaker",
+                partition="development",
+            )
+        ]
+
+        preflight = build_bakeoff_preflight(
+            fixtures,
+            models,
+            repository_root=self.root,
+            result_root=self.root / "runs",
+            installed_versions={"fake-runtime": "1.2.3"},
+        )
+
+        self.assertTrue(preflight["execution_allowed"])
+        self.assertEqual([], preflight["blocking_reasons"])
+        self.assertEqual(1, len(preflight["plan"]["jobs"]))
+
+    def test_execute_plan_reuses_checksum_verified_namespaced_result(self):
+        models = load_bakeoff_manifest(
+            self._write_manifest([manifest_entry("model-a", "1", "a.onnx")])
+        )
+        reviewed = fixture("pair-1", "obs-a", "obs-b", "same_speaker")
+        plan = build_bakeoff_plan(
+            [reviewed],
+            models,
+            result_root=self.root / "runs",
+        )
+        calls = 0
+
+        def analyze(pair_fixture, model):
+            nonlocal calls
+            calls += 1
+            diagnostic = result(model, pair_fixture, "insufficient_evidence")
+            diagnostic.pop("bakeoff_execution")
+            diagnostic["metrics"] = {
+                "cross": {"median": 0.8},
+            }
+            return diagnostic
+
+        first = execute_bakeoff_plan(
+            [reviewed],
+            models,
+            plan=plan,
+            analyze_fixture=analyze,
+        )
+        second = execute_bakeoff_plan(
+            [reviewed],
+            models,
+            plan=plan,
+            analyze_fixture=analyze,
+        )
+
+        self.assertEqual(1, calls)
+        self.assertEqual(1, first["jobs_completed"])
+        self.assertEqual(0, first["jobs_replayed"])
+        self.assertEqual(0, second["jobs_completed"])
+        self.assertEqual(1, second["jobs_replayed"])
+        self.assertEqual(
+            1,
+            second["report"]["models"]["model-a"]["raw_similarity"][
+                "cross_median_by_expected_outcome"
+            ]["same_speaker"]["count"],
+        )
 
     def test_comparison_keeps_errors_abstention_and_slices_visible(self):
         models = load_bakeoff_manifest(

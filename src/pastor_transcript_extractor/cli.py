@@ -111,10 +111,17 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     DecisionPolicy,
     EmbeddingCache,
     SherpaOnnxEmbeddingBackend,
+    SpanSpec,
     analyze_observation_pair,
     evaluate_reviewed_pair_results,
     validate_reviewed_pair_fixture,
     write_pair_result,
+)
+from pastor_transcript_extractor.speaker_model_bakeoff import (
+    BakeoffModel,
+    build_bakeoff_preflight,
+    execute_bakeoff_plan,
+    load_bakeoff_manifest,
 )
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
@@ -940,6 +947,277 @@ def compare_speakers(
     write_pair_result(destination, result)
     console.print(f"{result['outcome']}: {result['reason']}")
     console.print(f"Wrote deterministic diagnostic evidence to {destination}")
+
+
+@identity_app.command(
+    "run-speaker-model-bakeoff",
+    help="Preflight and execute the resumable exact-span speaker-model bake-off.",
+)
+def run_speaker_model_bakeoff(
+    fixture_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/fixtures"),
+        help="Approved exact-span speaker-pair fixtures.",
+    ),
+    manifest_path: Path = typer.Option(
+        Path("evaluation/speaker-pairs/bakeoff-models.json"),
+        help="Experimental candidate model manifest.",
+    ),
+    result_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs/runs/by-model"),
+        help="Model-fingerprint-qualified deterministic result root.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored exact-span and embedding cache.",
+    ),
+    preflight_path: Path = typer.Option(
+        Path("evaluation/speaker-pairs/reports/bakeoff-preflight.json"),
+        help="Persisted preflight and execution plan.",
+    ),
+    report_path: Path = typer.Option(
+        Path("evaluation/speaker-pairs/reports/bakeoff-latest.json"),
+        help="Threshold-free model comparison report.",
+    ),
+    preflight_only: bool = typer.Option(
+        False,
+        "--preflight-only",
+        help="Validate and persist the plan without running acoustic models.",
+    ),
+    evaluation_scope: str = typer.Option(
+        "development",
+        "--evaluation-scope",
+        help=(
+            "Fixture partition to execute: development, validation, held_out, or all. "
+            "Development also includes legacy unassigned fixtures."
+        ),
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    repository_root = Path.cwd().resolve()
+    fixture_root = fixture_dir.expanduser().resolve()
+    manifest = manifest_path.expanduser().resolve()
+    results_destination = result_root.expanduser().resolve()
+    try:
+        fixture_paths = sorted(fixture_root.glob("*.json"))
+        if not fixture_paths:
+            raise ValueError(f"no reviewed pair fixtures found in {fixture_root}")
+        all_fixtures = _load_json_artifacts(fixture_paths)
+        fixtures = _select_bakeoff_fixtures(all_fixtures, evaluation_scope)
+        models = load_bakeoff_manifest(manifest)
+        preflight = build_bakeoff_preflight(
+            fixtures,
+            models,
+            repository_root=repository_root,
+            result_root=results_destination,
+        )
+        preflight["fixture_scope"] = {
+            "requested": evaluation_scope,
+            "selected_fixture_count": len(fixtures),
+            "corpus_fixture_count": len(all_fixtures),
+            "legacy_unassigned_included": evaluation_scope == "development",
+        }
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    preflight_destination = preflight_path.expanduser().resolve()
+    preflight_destination.parent.mkdir(parents=True, exist_ok=True)
+    preflight_destination.write_text(
+        json.dumps(preflight, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    console.print(
+        f"Preflight: fixtures={len(fixtures)}/{len(all_fixtures)} "
+        f"scope={evaluation_scope} models={len(models)} "
+        f"jobs={len(preflight['plan']['jobs'])}; "
+        f"report={preflight_destination}"
+    )
+    if not preflight["execution_allowed"]:
+        raise typer.BadParameter(
+            "bake-off preflight blocked execution: "
+            + ", ".join(preflight["blocking_reasons"])
+        )
+    if preflight_only:
+        console.print("Preflight passed; acoustic execution was not requested.")
+        return
+
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    backends: dict[str, SherpaOnnxEmbeddingBackend] = {}
+    try:
+        for model in models:
+            _validate_bakeoff_preprocessing(model, fixtures)
+            model_file = Path(model.model_path)
+            if not model_file.is_absolute():
+                model_file = repository_root / model_file
+            backend = SherpaOnnxEmbeddingBackend(
+                model_file,
+                expected_sha256=model.model_sha256,
+            )
+            _validate_bakeoff_backend(model, backend)
+            backends[model.stable_key] = backend
+    except (OSError, RuntimeError, ValueError) as error:
+        raise typer.BadParameter(f"bake-off backend preflight failed: {error}") from error
+
+    span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
+    embedding_cache = EmbeddingCache(cache_dir.expanduser().resolve())
+
+    def analyze_fixture(
+        fixture: dict[str, object],
+        model: BakeoffModel,
+    ) -> dict[str, object]:
+        observations = [
+            database.get_speaker_observation_by_fingerprint(
+                str(fixture["observations"][side]["input_fingerprint"])
+            )
+            for side in ("a", "b")
+        ]
+        audio_paths = [
+            (
+                resolve_normalized_audio_path(database, observation.video_id)
+                if observation is not None
+                else None
+            )
+            for observation in observations
+        ]
+        span_specs = [
+            [
+                SpanSpec(
+                    float(span["start_seconds"]),
+                    float(span["end_seconds"]),
+                )
+                for span in fixture["observations"][side]["reviewed_spans"]
+            ]
+            for side in ("a", "b")
+        ]
+        result = analyze_observation_pair(
+            observation_a=observations[0],
+            observation_b=observations[1],
+            audio_path_a=audio_paths[0],
+            audio_path_b=audio_paths[1],
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backends[model.stable_key],
+            policy=None,
+            span_specs_a=span_specs[0],
+            span_specs_b=span_specs[1],
+        )
+        # Even a technical failure must remain tied to the exact intended
+        # reviewed evidence so it is reported as analysis_failed, not missing.
+        result.setdefault(
+            "observations",
+            {
+                side: fixture["observations"][side]["input_fingerprint"]
+                for side in ("a", "b")
+            },
+        )
+        result.setdefault(
+            "spans",
+            {
+                side: list(fixture["observations"][side]["reviewed_spans"])
+                for side in ("a", "b")
+            },
+        )
+        return result
+
+    def show_progress(index: int, total: int, model_key: str, pair_id: str) -> None:
+        console.print(f"[{index}/{total}] {model_key}: {pair_id}")
+
+    try:
+        execution = execute_bakeoff_plan(
+            fixtures,
+            models,
+            plan=preflight["plan"],
+            analyze_fixture=analyze_fixture,
+            progress=show_progress,
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    destination = report_path.expanduser().resolve()
+    execution["report"]["fixture_scope"] = preflight["fixture_scope"]
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(execution["report"], indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    console.print(
+        f"Bake-off complete: new={execution['jobs_completed']} "
+        f"replayed={execution['jobs_replayed']}; report={destination}"
+    )
+
+
+def _select_bakeoff_fixtures(
+    fixtures: Sequence[dict[str, object]],
+    evaluation_scope: str,
+) -> list[dict[str, object]]:
+    allowed = {"development", "validation", "held_out", "all"}
+    if evaluation_scope not in allowed:
+        raise ValueError(
+            "evaluation scope must be one of: development, validation, held_out, all"
+        )
+    if evaluation_scope == "all":
+        selected = list(fixtures)
+    elif evaluation_scope == "development":
+        selected = [
+            fixture
+            for fixture in fixtures
+            if fixture.get("evaluation_partition") in {None, "development"}
+        ]
+    else:
+        selected = [
+            fixture
+            for fixture in fixtures
+            if fixture.get("evaluation_partition") == evaluation_scope
+        ]
+    if not selected:
+        raise ValueError(f"no fixtures are assigned to evaluation scope {evaluation_scope}")
+    return selected
+
+
+def _validate_bakeoff_backend(
+    model: BakeoffModel,
+    backend: SherpaOnnxEmbeddingBackend,
+) -> None:
+    if (
+        backend.spec.backend != model.backend
+        or backend.spec.model_name != model.model_name
+        or backend.spec.model_sha256 != model.model_sha256
+        or backend.spec.runtime_version != model.runtime_version
+    ):
+        raise ValueError(
+            f"{model.stable_key} backend does not match its manifest execution"
+        )
+
+
+def _validate_bakeoff_preprocessing(
+    model: BakeoffModel,
+    fixtures: Sequence[dict[str, object]],
+) -> None:
+    supported = {
+        "sample_rate_hz": 16_000,
+        "channels": 1,
+        "sample_format": "pcm_s16le",
+        "span_extractor_version": "speaker_span_v1",
+    }
+    for key, expected in supported.items():
+        if model.preprocessing.get(key) != expected:
+            raise ValueError(
+                f"{model.stable_key} uses unsupported {key}: "
+                f"{model.preprocessing.get(key)!r}"
+            )
+    duration = model.preprocessing.get("span_duration_seconds")
+    if not isinstance(duration, (int, float)) or duration <= 0:
+        raise ValueError(f"{model.stable_key} requires a positive span duration")
+    for fixture in fixtures:
+        for side in ("a", "b"):
+            for span in fixture["observations"][side]["reviewed_spans"]:
+                actual = float(span["end_seconds"]) - float(span["start_seconds"])
+                if abs(actual - float(duration)) > 0.001:
+                    raise ValueError(
+                        f"{fixture['pair_id']} reviewed span duration does not match "
+                        f"{model.stable_key} preprocessing"
+                    )
 
 
 @identity_app.command(
