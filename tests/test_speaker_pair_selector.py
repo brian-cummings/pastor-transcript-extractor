@@ -301,6 +301,72 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             set(selected.manifest["evaluation_partitions"].values()),
         )
 
+    def test_explicit_evaluation_scope_only_nominates_from_that_partition(self) -> None:
+        candidates = [
+            candidate(
+                "dev",
+                name="alex",
+                source_family="development-family",
+                partition="development",
+            ),
+            candidate(
+                "validation-a",
+                name="alex",
+                source_family="validation-family-a",
+                partition="validation",
+            ),
+            candidate(
+                "validation-b",
+                name="alex",
+                source_family="validation-family-b",
+                partition="validation",
+            ),
+            candidate(
+                "held",
+                name="alex",
+                source_family="held-family",
+                partition="held_out",
+            ),
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(automatic_selection_count=1),
+            evaluation_partition="validation",
+        )
+
+        self.assertEqual(
+            {"validation-a", "validation-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual("validation", selected.manifest["evaluation_scope"])
+        self.assertEqual(
+            {"validation"},
+            set(selected.manifest["evaluation_partitions"].values()),
+        )
+
+    def test_explicit_evaluation_scope_requires_two_candidates(self) -> None:
+        with self.assertRaisesRegex(ValueError, "fewer than two.*validation"):
+            select_next_speaker_pair(
+                [
+                    candidate(
+                        "validation-only",
+                        source_family="validation-family",
+                        partition="validation",
+                    ),
+                    candidate(
+                        "development",
+                        source_family="development-family",
+                        partition="development",
+                    ),
+                ],
+                PairSelectionHistory(),
+                evaluation_partition="validation",
+            )
+
     def test_underrepresented_source_family_wins_within_relation(self) -> None:
         candidates = [
             candidate(

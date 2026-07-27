@@ -1,0 +1,23 @@
+{
+  "approval_allowed": false,
+  "candidate_id": "campplus-development-candidate-v1",
+  "derivation": {
+    "fixture_fingerprint": "d5a95de43289496ba9e1742d53d90915f9ffe488c693d4458072b746d919ac7e",
+    "scope": "development_with_legacy_unassigned"
+  },
+  "model": {
+    "execution_fingerprint": "18355d3e5c2d331a18c42b44bcb223d45f7d463010502bf462f84ea666795c8a",
+    "stable_key": "3dspeaker-campplus-en-voxceleb"
+  },
+  "policy": {
+    "different_max_cross_p90": 0.3,
+    "min_valid_spans": 5,
+    "min_within_median": 0.7,
+    "same_min_cross_median": 0.7,
+    "same_min_cross_p10": 0.6,
+    "version": "campplus-development-candidate-v1"
+  },
+  "registry_mutation_allowed": false,
+  "review_status": "experimental_candidate",
+  "schema_version": 1
+}

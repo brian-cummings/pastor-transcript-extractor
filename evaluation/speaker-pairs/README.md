@@ -107,6 +107,19 @@ same plan. Every result must replay the exact reviewed WAV hashes and explicitly
 prohibit registry mutation. The report summarizes raw similarity separation but
 does not select a model or create a decision policy.
 
+The first development-derived CAMPPlus policy remains a non-approved experiment.
+Replay it against cached development metrics with:
+
+```bash
+pte identity evaluate-speaker-policy-candidate
+```
+
+The policy artifact is bound to the exact development fixture fingerprint and
+model execution. Changing either invalidates replay. This command cannot load
+validation or held-out fixtures, approve the policy, enable registry mutation,
+or make the production `compare-speakers` command accept it as an approved
+decision policy.
+
 ## Ground truth
 
 Titles, descriptions, channel assignment, and name claims may help select
@@ -140,6 +153,21 @@ pte identity review-next-speaker-pair \
   --reviewer REVIEWER_ID \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
+
+After freezing a development policy candidate, collect validation fixtures
+without changing its development fingerprint:
+
+```bash
+pte identity review-next-speaker-pair \
+  --evaluation-scope validation \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The scoped selector admits only observations whose source families belong to
+that partition, persists the requested scope, and still prohibits
+cross-partition pairs. Held-out nomination requires an explicit
+`--evaluation-scope held_out`; routine validation never accesses it.
 
 It rotates through shared-attribution, contradicting-attribution, and
 unattributed nomination strata; excludes drafted and reviewed pairs; favors

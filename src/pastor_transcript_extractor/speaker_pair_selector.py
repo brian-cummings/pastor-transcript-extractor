@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v2"
+SELECTOR_VERSION = "speaker_pair_selector_v3"
 
 
 class SelectionStratum(StrEnum):
@@ -173,11 +173,24 @@ def selection_history_from_artifacts(
 def select_next_speaker_pair(
     observations: Sequence[PairCandidateObservation],
     history: PairSelectionHistory,
+    *,
+    evaluation_partition: str | None = None,
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
-    candidates = sorted(observations, key=lambda item: item.input_fingerprint)
-    if len({item.input_fingerprint for item in candidates}) != len(candidates):
+    ordered = sorted(observations, key=lambda item: item.input_fingerprint)
+    if len({item.input_fingerprint for item in ordered}) != len(ordered):
         raise ValueError("candidate observation fingerprints must be unique")
+    candidates = [
+        item
+        for item in ordered
+        if evaluation_partition is None
+        or item.evaluation_partition == evaluation_partition
+    ]
+    if len(candidates) < 2:
+        scope = evaluation_partition or "all partitions"
+        raise ValueError(
+            f"fewer than two eligible speaker observations remain in {scope}"
+        )
 
     pairs: list[
         tuple[
@@ -309,6 +322,7 @@ def select_next_speaker_pair(
             "a": observation_a.evaluation_partition,
             "b": observation_b.evaluation_partition,
         },
+        "evaluation_scope": evaluation_partition or "all_partitions",
         "corpus_snapshot_fingerprint": _sha256_json(snapshot),
         "observation_prior_use": {"a": prior_a, "b": prior_b},
         "reason_codes": reason_codes,

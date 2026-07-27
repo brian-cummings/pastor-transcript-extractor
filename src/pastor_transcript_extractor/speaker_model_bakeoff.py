@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import hashlib
 from importlib import metadata
 import json
@@ -10,6 +10,9 @@ import statistics
 from typing import Any, Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
+    DecisionPolicy,
+    PairOutcome,
+    apply_decision_policy,
     evaluate_reviewed_pair_results,
     validate_reviewed_pair_fixture,
 )
@@ -78,6 +81,18 @@ class BakeoffModel:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ExperimentalPolicyCandidate:
+    """A development-derived policy that is structurally unable to imply approval."""
+
+    candidate_id: str
+    model_stable_key: str
+    model_execution_fingerprint: str
+    derivation_scope: str
+    derivation_fixture_fingerprint: str
+    policy: DecisionPolicy
+
+
 def load_bakeoff_manifest(path: Path) -> tuple[BakeoffModel, ...]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("schema_version") != BAKEOFF_SCHEMA_VERSION:
@@ -144,6 +159,178 @@ def load_bakeoff_manifest(path: Path) -> tuple[BakeoffModel, ...]:
         execution_fingerprints.add(model.execution_fingerprint)
         models.append(model)
     return tuple(models)
+
+
+def fixture_set_fingerprint(fixtures: Sequence[Mapping[str, Any]]) -> str:
+    """Bind policy derivation to exact labels, observations, and reviewed WAVs."""
+    stable = []
+    for fixture in sorted(fixtures, key=lambda item: str(item["pair_id"])):
+        stable.append(
+            {
+                "pair_id": fixture["pair_id"],
+                "expected_outcome": fixture["expected_outcome"],
+                "evaluation_partition": fixture.get("evaluation_partition"),
+                "observations": {
+                    side: {
+                        "input_fingerprint": fixture["observations"][side][
+                            "input_fingerprint"
+                        ],
+                        "reviewed_wav_sha256": [
+                            span["wav_sha256"]
+                            for span in fixture["observations"][side]["reviewed_spans"]
+                        ],
+                    }
+                    for side in ("a", "b")
+                },
+            }
+        )
+    return _sha256_json(stable)
+
+
+def load_experimental_policy_candidate(
+    path: Path,
+    *,
+    fixtures: Sequence[dict[str, Any]],
+    models: Sequence[BakeoffModel],
+) -> tuple[ExperimentalPolicyCandidate, BakeoffModel]:
+    for fixture in fixtures:
+        validate_reviewed_pair_fixture(fixture)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != BAKEOFF_SCHEMA_VERSION:
+        raise ValueError("unsupported experimental speaker policy schema")
+    if payload.get("review_status") != "experimental_candidate":
+        raise ValueError("policy replay requires an experimental candidate")
+    if payload.get("approval_allowed") is not False:
+        raise ValueError("experimental policy must explicitly prohibit approval")
+    if payload.get("registry_mutation_allowed") is not False:
+        raise ValueError("experimental policy must prohibit registry mutation")
+    model_payload = payload.get("model")
+    derivation = payload.get("derivation")
+    policy_payload = payload.get("policy")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (model_payload, derivation, policy_payload)
+    ):
+        raise ValueError("experimental policy requires model, derivation, and policy")
+    model_matches = [
+        model
+        for model in models
+        if model.stable_key == model_payload.get("stable_key")
+        and model.execution_fingerprint
+        == model_payload.get("execution_fingerprint")
+    ]
+    if len(model_matches) != 1:
+        raise ValueError("experimental policy model does not match the bake-off manifest")
+    expected_fixture_fingerprint = fixture_set_fingerprint(fixtures)
+    if derivation.get("fixture_fingerprint") != expected_fixture_fingerprint:
+        raise ValueError("experimental policy fixture set has changed since derivation")
+    if derivation.get("scope") != "development_with_legacy_unassigned":
+        raise ValueError("experimental policy must be derived only from development fixtures")
+    policy = DecisionPolicy(
+        **{
+            field: policy_payload[field]
+            for field in DecisionPolicy.__dataclass_fields__
+        }
+    )
+    candidate_id = payload.get("candidate_id")
+    if not isinstance(candidate_id, str) or not _STABLE_KEY_PATTERN.fullmatch(
+        candidate_id
+    ):
+        raise ValueError("experimental policy candidate_id must be filesystem-safe")
+    return (
+        ExperimentalPolicyCandidate(
+            candidate_id=candidate_id,
+            model_stable_key=model_matches[0].stable_key,
+            model_execution_fingerprint=model_matches[0].execution_fingerprint,
+            derivation_scope=str(derivation["scope"]),
+            derivation_fixture_fingerprint=expected_fixture_fingerprint,
+            policy=policy,
+        ),
+        model_matches[0],
+    )
+
+
+def load_namespaced_bakeoff_results(
+    result_root: Path,
+    model: BakeoffModel,
+    *,
+    pair_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    namespace = result_root / model.result_namespace
+    for pair_id in sorted(pair_ids):
+        path = namespace / f"{pair_id}.json"
+        if path.exists():
+            results.append(_load_bakeoff_result(path))
+    return results
+
+
+def evaluate_experimental_policy_candidate(
+    fixtures: Sequence[dict[str, Any]],
+    raw_results: Sequence[dict[str, Any]],
+    candidate: ExperimentalPolicyCandidate,
+    model: BakeoffModel,
+) -> dict[str, Any]:
+    """Replay a candidate on cached metrics without approving or executing it."""
+    if (
+        candidate.model_stable_key != model.stable_key
+        or candidate.model_execution_fingerprint != model.execution_fingerprint
+    ):
+        raise ValueError("experimental policy candidate does not match model")
+    decided_results: list[dict[str, Any]] = []
+    for raw in raw_results:
+        if not model.matches_result(raw):
+            raise ValueError("raw result does not match candidate model")
+        decided = dict(raw)
+        spans = raw.get("spans")
+        if not isinstance(spans, Mapping):
+            raise ValueError("raw result lacks exact reviewed spans")
+        if any(
+            len(spans.get(side, [])) < candidate.policy.min_valid_spans
+            for side in ("a", "b")
+        ):
+            outcome = PairOutcome.INSUFFICIENT_EVIDENCE
+            reason = "too_few_valid_spans"
+        else:
+            metrics = raw.get("metrics")
+            if not isinstance(metrics, Mapping):
+                if raw.get("outcome") == PairOutcome.ANALYSIS_FAILED:
+                    outcome = PairOutcome.ANALYSIS_FAILED
+                    reason = str(raw.get("reason", "technical_failure"))
+                else:
+                    raise ValueError("raw result lacks acoustic metrics")
+            else:
+                outcome, reason = apply_decision_policy(
+                    metrics,
+                    candidate.policy,
+                    decision_reason_prefix="experimental_policy",
+                )
+        decided["policy_version"] = candidate.policy.version
+        decided["policy"] = asdict(candidate.policy)
+        decided["outcome"] = outcome
+        decided["reason"] = reason
+        decided_results.append(decided)
+    evaluation = evaluate_reviewed_pair_results(fixtures, decided_results)
+    evaluation["gates"]["promotion_ready"] = False
+    evaluation["gates"]["experimental_policy_unapproved"] = True
+    return {
+        "schema_version": BAKEOFF_SCHEMA_VERSION,
+        "purpose": "experimental_speaker_policy_replay",
+        "review_status": "experimental_candidate",
+        "candidate_id": candidate.candidate_id,
+        "model": {
+            "stable_key": model.stable_key,
+            "execution_fingerprint": model.execution_fingerprint,
+        },
+        "derivation": {
+            "scope": candidate.derivation_scope,
+            "fixture_fingerprint": candidate.derivation_fixture_fingerprint,
+        },
+        "policy": asdict(candidate.policy),
+        "evaluation": evaluation,
+        "approval_allowed": False,
+        "registry_mutation_allowed": False,
+    }
 
 
 def build_bakeoff_plan(

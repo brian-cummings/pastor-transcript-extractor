@@ -10,7 +10,7 @@ from pathlib import Path
 import statistics
 import subprocess
 import wave
-from typing import Any, Protocol, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from pastor_transcript_extractor.models import SpeakerObservation
 
@@ -375,27 +375,8 @@ def analyze_observation_pair(
                 "outcome": PairOutcome.INSUFFICIENT_EVIDENCE,
                 "reason": "decision_policy_unavailable",
             }
-        if (
-            metrics["within_a"]["median"] < policy.min_within_median
-            or metrics["within_b"]["median"] < policy.min_within_median
-        ):
-            return {
-                **result,
-                "outcome": PairOutcome.INSUFFICIENT_EVIDENCE,
-                "reason": "within_observation_inconsistent",
-            }
-        if (
-            metrics["cross"]["p10"] >= policy.same_min_cross_p10
-            and metrics["cross"]["median"] >= policy.same_min_cross_median
-        ):
-            return {**result, "outcome": PairOutcome.SAME_SPEAKER, "reason": "approved_policy_same_band"}
-        if metrics["cross"]["p90"] <= policy.different_max_cross_p90:
-            return {
-                **result,
-                "outcome": PairOutcome.DIFFERENT_SPEAKER,
-                "reason": "approved_policy_different_band",
-            }
-        return {**result, "outcome": PairOutcome.INSUFFICIENT_EVIDENCE, "reason": "ambiguous_similarity"}
+        outcome, reason = apply_decision_policy(metrics, policy)
+        return {**result, "outcome": outcome, "reason": reason}
     except AcousticEvidenceUnavailableError as error:
         return {
             **base,
@@ -411,6 +392,33 @@ def analyze_observation_pair(
             "error_type": type(error).__name__,
             "error": str(error),
         }
+
+
+def apply_decision_policy(
+    metrics: Mapping[str, Any],
+    policy: DecisionPolicy,
+    *,
+    decision_reason_prefix: str = "approved_policy",
+) -> tuple[PairOutcome, str]:
+    """Apply a policy to immutable metrics without recomputing embeddings."""
+    within_a = metrics.get("within_a")
+    within_b = metrics.get("within_b")
+    cross = metrics.get("cross")
+    if not all(isinstance(value, Mapping) for value in (within_a, within_b, cross)):
+        raise ValueError("speaker decision metrics are incomplete")
+    if (
+        float(within_a["median"]) < policy.min_within_median
+        or float(within_b["median"]) < policy.min_within_median
+    ):
+        return PairOutcome.INSUFFICIENT_EVIDENCE, "within_observation_inconsistent"
+    if (
+        float(cross["p10"]) >= policy.same_min_cross_p10
+        and float(cross["median"]) >= policy.same_min_cross_median
+    ):
+        return PairOutcome.SAME_SPEAKER, f"{decision_reason_prefix}_same_band"
+    if float(cross["p90"]) <= policy.different_max_cross_p90:
+        return PairOutcome.DIFFERENT_SPEAKER, f"{decision_reason_prefix}_different_band"
+    return PairOutcome.INSUFFICIENT_EVIDENCE, "ambiguous_similarity"
 
 
 def validate_reviewed_pair_fixture(payload: dict[str, Any]) -> None:

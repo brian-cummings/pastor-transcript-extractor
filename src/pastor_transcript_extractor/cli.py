@@ -120,8 +120,11 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_model_bakeoff import (
     BakeoffModel,
     build_bakeoff_preflight,
+    evaluate_experimental_policy_candidate,
     execute_bakeoff_plan,
+    load_experimental_policy_candidate,
     load_bakeoff_manifest,
+    load_namespaced_bakeoff_results,
 )
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
@@ -1147,6 +1150,79 @@ def run_speaker_model_bakeoff(
     )
 
 
+@identity_app.command(
+    "evaluate-speaker-policy-candidate",
+    help="Replay a non-approved policy on development bake-off metrics only.",
+)
+def evaluate_speaker_policy_candidate(
+    policy_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        help="Development-derived experimental policy candidate.",
+    ),
+    fixture_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/fixtures"),
+        help="Approved exact-span speaker-pair fixtures.",
+    ),
+    manifest_path: Path = typer.Option(
+        Path("evaluation/speaker-pairs/bakeoff-models.json"),
+        help="Experimental candidate model manifest.",
+    ),
+    result_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs/runs/by-model"),
+        help="Existing model-fingerprint-qualified bake-off results.",
+    ),
+    report_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/reports/"
+            "campplus-development-candidate-v1.json"
+        ),
+        help="Development-only experimental policy report.",
+    ),
+) -> None:
+    try:
+        fixture_paths = sorted(fixture_dir.expanduser().resolve().glob("*.json"))
+        all_fixtures = _load_json_artifacts(fixture_paths)
+        fixtures = _select_bakeoff_fixtures(all_fixtures, "development")
+        models = load_bakeoff_manifest(manifest_path.expanduser().resolve())
+        candidate, model = load_experimental_policy_candidate(
+            policy_path.expanduser().resolve(),
+            fixtures=fixtures,
+            models=models,
+        )
+        results = load_namespaced_bakeoff_results(
+            result_root.expanduser().resolve(),
+            model,
+            pair_ids=[str(fixture["pair_id"]) for fixture in fixtures],
+        )
+        report = evaluate_experimental_policy_candidate(
+            fixtures,
+            results,
+            candidate,
+            model,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    destination = report_path.expanduser().resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    counts = report["evaluation"]["counts"]
+    console.print(
+        f"Development replay: true_same={counts['true_same']} "
+        f"true_different={counts['true_different']} "
+        f"false_same={counts['false_same']} "
+        f"false_different={counts['false_different']} "
+        f"abstained={counts['insufficient_evidence']} "
+        f"failed={counts['analysis_failed']}; report={destination}"
+    )
+    console.print("Policy remains experimental, non-gating, and unapproved.")
+
+
 def _select_bakeoff_fixtures(
     fixtures: Sequence[dict[str, object]],
     evaluation_scope: str,
@@ -1461,6 +1537,11 @@ def review_next_speaker_pair(
     prepare_only: bool = typer.Option(
         False, "--prepare-only", help="Create the selected packet without prompting for adjudication."
     ),
+    evaluation_scope: str = typer.Option(
+        "all",
+        "--evaluation-scope",
+        help="Nominate only from all, development, validation, or held_out source families.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     paths = build_paths(base_dir)
@@ -1520,7 +1601,18 @@ def review_next_speaker_pair(
                 evaluation_partition=family.partition.value,
             )
             candidates.append(candidate)
-        selection = select_next_speaker_pair(candidates, history)
+        allowed_scopes = {"all", "development", "validation", "held_out"}
+        if evaluation_scope not in allowed_scopes:
+            raise ValueError(
+                "evaluation scope must be one of: all, development, validation, held_out"
+            )
+        selection = select_next_speaker_pair(
+            candidates,
+            history,
+            evaluation_partition=(
+                None if evaluation_scope == "all" else evaluation_scope
+            ),
+        )
         if unregistered_source_urls:
             selection.manifest["unregistered_source_count"] = len(
                 unregistered_source_urls
@@ -1534,7 +1626,8 @@ def review_next_speaker_pair(
             "source(s); run `pte sync-source-families` before nomination."
         )
     console.print(
-        f"Selected {selection.manifest['selection_stratum']}/"
+        f"Selected scope={selection.manifest['evaluation_scope']} "
+        f"{selection.manifest['selection_stratum']}/"
         f"{selection.manifest['source_relation']} pair "
         f"({selection.observation_a.video_id}, {selection.observation_b.video_id}); "
         f"reasons={','.join(selection.manifest['reason_codes'])}"

@@ -12,7 +12,10 @@ from pastor_transcript_extractor.speaker_model_bakeoff import (
     build_bakeoff_preflight,
     build_bakeoff_plan,
     evaluate_bakeoff,
+    evaluate_experimental_policy_candidate,
     execute_bakeoff_plan,
+    fixture_set_fingerprint,
+    load_experimental_policy_candidate,
     load_bakeoff_manifest,
     stamp_bakeoff_result,
 )
@@ -289,6 +292,82 @@ class SpeakerModelBakeoffTests(unittest.TestCase):
                 "cross_median_by_expected_outcome"
             ]["same_speaker"]["count"],
         )
+
+    def test_experimental_policy_is_fixture_bound_and_cannot_imply_approval(self):
+        models = load_bakeoff_manifest(
+            self._write_manifest([manifest_entry("model-a", "1", "a.onnx")])
+        )
+        same = fixture("pair-1", "obs-a", "obs-b", "same_speaker")
+        different = fixture("pair-2", "obs-c", "obs-d", "different_speaker")
+        fixtures = [same, different]
+        policy_path = self.root / "candidate.json"
+        policy_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "review_status": "experimental_candidate",
+                    "approval_allowed": False,
+                    "registry_mutation_allowed": False,
+                    "candidate_id": "candidate-v1",
+                    "model": {
+                        "stable_key": models[0].stable_key,
+                        "execution_fingerprint": models[0].execution_fingerprint,
+                    },
+                    "derivation": {
+                        "scope": "development_with_legacy_unassigned",
+                        "fixture_fingerprint": fixture_set_fingerprint(fixtures),
+                    },
+                    "policy": {
+                        "version": "candidate-v1",
+                        "min_valid_spans": 2,
+                        "min_within_median": 0.7,
+                        "same_min_cross_p10": 0.6,
+                        "same_min_cross_median": 0.7,
+                        "different_max_cross_p90": 0.3,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        candidate, model = load_experimental_policy_candidate(
+            policy_path,
+            fixtures=fixtures,
+            models=models,
+        )
+        same_result = result(model, same, "insufficient_evidence")
+        same_result["metrics"] = {
+            "within_a": {"median": 0.9},
+            "within_b": {"median": 0.9},
+            "cross": {"p10": 0.8, "median": 0.8, "p90": 0.9},
+        }
+        different_result = result(model, different, "insufficient_evidence")
+        different_result["metrics"] = {
+            "within_a": {"median": 0.9},
+            "within_b": {"median": 0.9},
+            "cross": {"p10": 0.1, "median": 0.1, "p90": 0.2},
+        }
+
+        report = evaluate_experimental_policy_candidate(
+            fixtures,
+            [same_result, different_result],
+            candidate,
+            model,
+        )
+
+        self.assertEqual(1, report["evaluation"]["counts"]["true_same"])
+        self.assertEqual(1, report["evaluation"]["counts"]["true_different"])
+        self.assertFalse(report["evaluation"]["gates"]["promotion_ready"])
+        self.assertTrue(
+            report["evaluation"]["gates"]["experimental_policy_unapproved"]
+        )
+        self.assertFalse(report["approval_allowed"])
+        self.assertFalse(report["registry_mutation_allowed"])
+        with self.assertRaisesRegex(ValueError, "fixture set has changed"):
+            load_experimental_policy_candidate(
+                policy_path,
+                fixtures=[same],
+                models=models,
+            )
 
     def test_comparison_keeps_errors_abstention_and_slices_visible(self):
         models = load_bakeoff_manifest(
