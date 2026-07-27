@@ -1,0 +1,113 @@
+{
+  "expected_outcome": "different_speaker",
+  "notes": "",
+  "observations": {
+    "a": {
+      "input_fingerprint": "bf54c028cf1a274bb85fac31a372dfad5450ad09910c5b629927720c5424cfc8",
+      "reviewed_spans": [
+        {
+          "end_seconds": 413.959,
+          "non_silent_fraction": 0.6575,
+          "rms_dbfs": -23.122067455008906,
+          "start_seconds": 401.959,
+          "wav_sha256": "baebbbb2e620952a1dc51ee761c9abf6cc811b8ee1400e5fb205315f55f64273"
+        },
+        {
+          "end_seconds": 1232.559,
+          "non_silent_fraction": 0.8125,
+          "rms_dbfs": -24.915491080421532,
+          "start_seconds": 1220.559,
+          "wav_sha256": "b77d267277c6b00ccb81697706429e828f8448c39cddba462204bac1cbd38c72"
+        },
+        {
+          "end_seconds": 1641.86,
+          "non_silent_fraction": 0.625,
+          "rms_dbfs": -22.674907908538714,
+          "start_seconds": 1629.86,
+          "wav_sha256": "f9198ce32a25234765db64d17474f61e50310e57d1805fe1e9d733d17b5564d0"
+        },
+        {
+          "end_seconds": 2051.16,
+          "non_silent_fraction": 0.66,
+          "rms_dbfs": -25.627404585964193,
+          "start_seconds": 2039.16,
+          "wav_sha256": "3b6f77331b0471a2efceb96b48ea2f8b3934f736d19cc613e532dc16768283e7"
+        },
+        {
+          "end_seconds": 530.902,
+          "non_silent_fraction": 0.785,
+          "rms_dbfs": -24.41110470594985,
+          "start_seconds": 518.902,
+          "wav_sha256": "875b140dfbd11d32b299fa296c7ac1e3b09e0254c43ece89d485ecd2aa7be7de"
+        }
+      ],
+      "youtube_video_id": "TlPl8GBo7rU"
+    },
+    "b": {
+      "input_fingerprint": "afc0d8fec4a2764e3420eb3204e794b7b0a221e89cb487a5a28a23236632a743",
+      "reviewed_spans": [
+        {
+          "end_seconds": 1061.072,
+          "non_silent_fraction": 0.64,
+          "rms_dbfs": -32.91903398175175,
+          "start_seconds": 1049.072,
+          "wav_sha256": "38da03349eb9c9d0670373dabe235b461e2fc87f9f0aa9987bbd71883c23b670"
+        },
+        {
+          "end_seconds": 2280.776,
+          "non_silent_fraction": 0.8,
+          "rms_dbfs": -27.724263155860953,
+          "start_seconds": 2268.776,
+          "wav_sha256": "29f0415c72da3cdd3e687861a8ef44d182ef1fa03a38ce37221cd526c9f665c1"
+        },
+        {
+          "end_seconds": 3500.48,
+          "non_silent_fraction": 0.7425,
+          "rms_dbfs": -30.7488662243015,
+          "start_seconds": 3488.48,
+          "wav_sha256": "c12a7c70e093894eedd3d58d01c783d4314430e628e15248e35d8351a2eb0ee1"
+        },
+        {
+          "end_seconds": 4720.184,
+          "non_silent_fraction": 0.89,
+          "rms_dbfs": -25.481635309237486,
+          "start_seconds": 4708.184,
+          "wav_sha256": "284bb02dc925c137350934b288a744fa549c63b7c2865adbae2080aa435684b2"
+        },
+        {
+          "end_seconds": 5939.888,
+          "non_silent_fraction": 0.6825,
+          "rms_dbfs": -27.846533103036553,
+          "start_seconds": 5927.888,
+          "wav_sha256": "f68f4165958598338700330fe69170392f04c18d118c93ca79f9ca8183affa19"
+        }
+      ],
+      "youtube_video_id": "ZmIkQZGq4Jg"
+    }
+  },
+  "pair_id": "pair-0257cfb4eb64b21e",
+  "qualification": {
+    "A": "qualified_single_speaker",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "540955af3dc73ad2459af8a6c72e7630e55005e7b8734dbcd1bf722925c1e48c",
+  "review_status": "approved",
+  "reviewed_at": "2026-07-27T00:12:27.905338+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "fa94b47931080b03dacee1171bc712386f74181b82fea3b6c1ce38bdcc3a8bd8",
+    "observation_prior_use": {
+      "a": 0,
+      "b": 0
+    },
+    "reason_codes": [
+      "both_observations_unused"
+    ],
+    "selection_origin": "automatic",
+    "selection_stratum": "contradicting_attribution",
+    "selector_version": "speaker_pair_selector_v1"
+  },
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v2"
+}
