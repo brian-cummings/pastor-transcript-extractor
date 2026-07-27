@@ -138,6 +138,23 @@ Drafts belong under ignored `drafts/`. Only approved fixtures belong under
 
 ## Review workflow
 
+Preprocess the validation observations before a review session:
+
+```bash
+pte identity prepare-speaker-review-audio \
+  --evaluation-scope validation \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+This performs the slow work without selecting pairs or creating drafts,
+reviews, or fixtures. It full-hash verifies each source artifact, records a
+local verification receipt tied to the file's path, size, inode, and
+modification time, then prepares the same deterministic speech-qualified clips
+used by review. Subsequent review commands reuse a receipt only while the
+source file is unchanged and checksum-validate every cached clip. Media audit
+continues to perform independent full-content verification. Use `--limit N`
+for a short trial, and match `--evaluation-scope` to the review session.
+
 Prepare and review a candidate pair with:
 
 ```bash

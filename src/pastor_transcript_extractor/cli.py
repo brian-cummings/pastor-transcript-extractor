@@ -86,7 +86,11 @@ from pastor_transcript_extractor.recording_verifier import (
     validate_partition_access,
 )
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
-from pastor_transcript_extractor.models import TranscriptSourceKind, VideoStatus
+from pastor_transcript_extractor.models import (
+    SpeakerObservation,
+    TranscriptSourceKind,
+    VideoStatus,
+)
 from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
 from pastor_transcript_extractor.media_archive import (
     ArchivePreflightEvent,
@@ -97,6 +101,7 @@ from pastor_transcript_extractor.media_archive import (
     media_archive_lock_held,
 )
 from pastor_transcript_extractor.media_artifacts import (
+    MediaVerificationCache,
     audit_media_coverage,
     backfill_existing_media_artifacts,
     ensure_audio_for_video,
@@ -130,10 +135,12 @@ from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
 )
 from pastor_transcript_extractor.speaker_pair_review import (
+    InsufficientSpeechActivityError,
     ObservationQualification,
     PairJudgment,
     STANDARD_VARIATION_TAGS,
     create_review_draft,
+    prepare_review_observation,
     submit_review,
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
@@ -1394,7 +1401,15 @@ def review_speaker_pair(
     observations = [database.get_latest_speaker_observation_for_video(video.id) for video in videos]
     if observations[0] is None or observations[1] is None:
         raise typer.BadParameter("Both videos require immutable speaker observations")
-    audio_paths = [resolve_normalized_audio_path(database, video.id) for video in videos]
+    verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
+    audio_paths = [
+        resolve_normalized_audio_path(
+            database,
+            video.id,
+            verification_cache=verification_cache,
+        )
+        for video in videos
+    ]
     if any(path is None for path in audio_paths):
         raise typer.BadParameter("Both observations require local audio")
     try:
@@ -1516,6 +1531,131 @@ def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
 
 
 @identity_app.command(
+    "prepare-speaker-review-audio",
+    help="Prewarm deterministic speech-qualified clips without creating review drafts.",
+)
+def prepare_speaker_review_audio(
+    evaluation_scope: str = typer.Option(
+        "validation",
+        "--evaluation-scope",
+        help="Prepare observations from validation, development, held_out, or all families.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        help="Prepare at most this many observations; default prepares the full scope.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored exact-span audio cache shared with pair review.",
+    ),
+    source_family_registry: Path = typer.Option(
+        Path("evaluation/source-families.json"),
+        help="Frozen source-family registry used for partition scoping.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    allowed_scopes = {"all", "development", "validation", "held_out"}
+    if evaluation_scope not in allowed_scopes:
+        raise typer.BadParameter(
+            "evaluation scope must be one of: all, development, validation, held_out"
+        )
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
+    try:
+        registry = load_source_family_registry(
+            source_family_registry.expanduser().resolve()
+        )
+        inputs: list[tuple[str, SpeakerObservation, Path]] = []
+        unregistered_source_urls: set[str] = set()
+        for video in database.list_videos():
+            source = database.get_source_by_id(video.source_id)
+            if source is None:
+                continue
+            family = registry.resolve_source_url(source.url)
+            if family is None:
+                unregistered_source_urls.add(source.url)
+                continue
+            if (
+                evaluation_scope != "all"
+                and family.partition.value != evaluation_scope
+            ):
+                continue
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                video.id,
+                verification_cache=verification_cache,
+            )
+            if not eligibility.eligible:
+                continue
+            observation = eligibility.observation
+            media = eligibility.media_artifact
+            assert observation is not None
+            assert media is not None
+            inputs.append(
+                (video.youtube_video_id, observation, Path(media.artifact_path))
+            )
+        inputs.sort(key=lambda item: item[1].input_fingerprint)
+        if limit is not None:
+            inputs = inputs[:limit]
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    if not inputs:
+        raise typer.BadParameter(
+            f"no eligible observations found in evaluation scope {evaluation_scope}"
+        )
+
+    span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
+    prepared_count = 0
+    insufficient_count = 0
+    failed_count = 0
+    for index, (youtube_video_id, observation, audio_path) in enumerate(
+        inputs,
+        start=1,
+    ):
+        try:
+            prepared = prepare_review_observation(
+                observation=observation,
+                audio_path=audio_path,
+                span_cache=span_cache,
+            )
+        except InsufficientSpeechActivityError as error:
+            insufficient_count += 1
+            console.print(
+                f"[{index}/{len(inputs)}] {youtube_video_id}: insufficient "
+                f"({error.summary['qualified_clip_count']}/"
+                f"{error.summary['minimum_clip_count']} clips)"
+            )
+            continue
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+            failed_count += 1
+            console.print(
+                f"[{index}/{len(inputs)}] {youtube_video_id}: failed "
+                f"({type(error).__name__}: {error})"
+            )
+            continue
+        prepared_count += 1
+        cache_hits = sum(span.cache_hit for span in prepared.spans)
+        console.print(
+            f"[{index}/{len(inputs)}] {youtube_video_id}: prepared "
+            f"({len(prepared.spans)} clips; qualified cache hits={cache_hits})"
+        )
+    if unregistered_source_urls:
+        console.print(
+            f"Skipped {len(unregistered_source_urls)} unregistered source(s)."
+        )
+    console.print(
+        f"Review audio preparation complete: prepared={prepared_count} "
+        f"insufficient={insufficient_count} failed={failed_count}; "
+        "no drafts or review events were created."
+    )
+
+
+@identity_app.command(
     "review-next-speaker-pair",
     help="Deterministically nominate and adjudicate the next unseen blinded speaker pair.",
 )
@@ -1549,7 +1689,13 @@ def review_next_speaker_pair(
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
     root = evaluation_root.expanduser().resolve()
+    verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
     try:
+        allowed_scopes = {"all", "development", "validation", "held_out"}
+        if evaluation_scope not in allowed_scopes:
+            raise ValueError(
+                "evaluation scope must be one of: all, development, validation, held_out"
+            )
         registry = load_source_family_registry(
             source_family_registry.expanduser().resolve()
         )
@@ -1565,13 +1711,6 @@ def review_next_speaker_pair(
         candidates: list[PairCandidateObservation] = []
         unregistered_source_urls: set[str] = set()
         for video in database.list_videos():
-            eligibility = assess_automatic_speaker_observation(database, video.id)
-            if not eligibility.eligible:
-                continue
-            observation = eligibility.observation
-            media = eligibility.media_artifact
-            assert observation is not None
-            assert media is not None
             source = database.get_source_by_id(video.source_id)
             if source is None:
                 continue
@@ -1579,6 +1718,22 @@ def review_next_speaker_pair(
             if family is None:
                 unregistered_source_urls.add(source.url)
                 continue
+            if (
+                evaluation_scope != "all"
+                and family.partition.value != evaluation_scope
+            ):
+                continue
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                video.id,
+                verification_cache=verification_cache,
+            )
+            if not eligibility.eligible:
+                continue
+            observation = eligibility.observation
+            media = eligibility.media_artifact
+            assert observation is not None
+            assert media is not None
             claims = database.list_speaker_name_claims_for_video(video.id)
             names = frozenset(
                 claim.normalized_name
@@ -1601,11 +1756,6 @@ def review_next_speaker_pair(
                 evaluation_partition=family.partition.value,
             )
             candidates.append(candidate)
-        allowed_scopes = {"all", "development", "validation", "held_out"}
-        if evaluation_scope not in allowed_scopes:
-            raise ValueError(
-                "evaluation scope must be one of: all, development, validation, held_out"
-            )
         selection = select_next_speaker_pair(
             candidates,
             history,

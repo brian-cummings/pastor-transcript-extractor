@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.disposition import ACCEPTED_SERMON
 from pastor_transcript_extractor.media_artifacts import (
+    MediaVerificationCache,
     get_verified_normalized_media_artifact,
 )
 from pastor_transcript_extractor.models import MediaArtifact, SpeakerObservation
@@ -34,6 +35,8 @@ class AutomaticSpeakerObservationEligibility:
 def assess_automatic_speaker_observation(
     database: Database,
     video_id: int,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
 ) -> AutomaticSpeakerObservationEligibility:
     """Admit only an observation derived from the current accepted sermon window."""
     extraction = database.get_latest_extraction_result_for_video(video_id)
@@ -80,7 +83,11 @@ def assess_automatic_speaker_observation(
         return AutomaticSpeakerObservationEligibility("diagnostic_spans_unavailable")
 
     try:
-        media = get_verified_normalized_media_artifact(database, video_id)
+        media = get_verified_normalized_media_artifact(
+            database,
+            video_id,
+            verification_cache=verification_cache,
+        )
     except OSError:
         media = None
     if media is None:

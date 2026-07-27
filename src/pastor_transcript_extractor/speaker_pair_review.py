@@ -71,6 +71,57 @@ class ReviewSubmission:
     fixture_status: str
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedReviewObservation:
+    spans: tuple[CachedSpan, ...]
+    clip_selection: dict[str, Any]
+
+
+def prepare_review_observation(
+    *,
+    observation: SpeakerObservation,
+    audio_path: Path,
+    span_cache: AudioSpanCache,
+    span_count: int = 5,
+    span_duration_seconds: float = 12.0,
+    min_qualified_spans: int | None = None,
+    min_non_silent_fraction: float = DEFAULT_MIN_NON_SILENT_FRACTION,
+    fallback_candidate_multiplier: int = 3,
+) -> PreparedReviewObservation:
+    """Prepare the exact deterministic clips used by blinded pair review."""
+    if fallback_candidate_multiplier < 1:
+        raise ValueError("fallback candidate multiplier must be positive")
+    if min_qualified_spans is None:
+        min_qualified_spans = span_count
+    if min_qualified_spans < 1 or min_qualified_spans > span_count:
+        raise ValueError("minimum qualified spans must be between one and span count")
+    primary_specs = select_diagnostic_spans(
+        observation,
+        count=span_count,
+        duration_seconds=span_duration_seconds,
+    )
+    if not primary_specs:
+        raise ValueError(
+            f"observation {observation.input_fingerprint} is too short for review"
+        )
+    fallback_specs = select_diagnostic_spans(
+        observation,
+        count=span_count * fallback_candidate_multiplier,
+        duration_seconds=span_duration_seconds,
+    )
+    candidate_specs = _unique_span_specs((*primary_specs, *fallback_specs))
+    spans, clip_selection = _prepare_review_spans(
+        observation=observation,
+        audio_path=audio_path,
+        span_cache=span_cache,
+        candidate_specs=candidate_specs,
+        requested_count=span_count,
+        minimum_count=min_qualified_spans,
+        min_non_silent_fraction=min_non_silent_fraction,
+    )
+    return PreparedReviewObservation(tuple(spans), clip_selection)
+
+
 def create_review_draft(
     *,
     observation_a: SpeakerObservation,
@@ -90,12 +141,8 @@ def create_review_draft(
 ) -> ReviewDraft:
     if observation_a.input_fingerprint == observation_b.input_fingerprint:
         raise ValueError("a pair review requires two distinct observations")
-    if fallback_candidate_multiplier < 1:
-        raise ValueError("fallback candidate multiplier must be positive")
     if min_qualified_spans is None:
         min_qualified_spans = span_count
-    if min_qualified_spans < 1 or min_qualified_spans > span_count:
-        raise ValueError("minimum qualified spans must be between one and span count")
     ordered_inputs = sorted(
         (
             (observation_a.input_fingerprint, video_id_a, observation_a, audio_path_a),
@@ -123,28 +170,16 @@ def create_review_draft(
     observations: dict[str, Any] = {}
     presentation: dict[str, Any] = {}
     for source_key, (video_id, observation, audio_path) in source_observations.items():
-        primary_specs = select_diagnostic_spans(
-            observation,
-            count=span_count,
-            duration_seconds=span_duration_seconds,
-        )
-        if not primary_specs:
-            raise ValueError(f"observation {observation.input_fingerprint} is too short for review")
-        fallback_specs = select_diagnostic_spans(
-            observation,
-            count=span_count * fallback_candidate_multiplier,
-            duration_seconds=span_duration_seconds,
-        )
-        candidate_specs = _unique_span_specs((*primary_specs, *fallback_specs))
         try:
-            spans, clip_selection = _prepare_review_spans(
+            prepared = prepare_review_observation(
                 observation=observation,
                 audio_path=audio_path,
                 span_cache=span_cache,
-                candidate_specs=candidate_specs,
-                requested_count=span_count,
-                minimum_count=min_qualified_spans,
+                span_count=span_count,
+                span_duration_seconds=span_duration_seconds,
+                min_qualified_spans=min_qualified_spans,
                 min_non_silent_fraction=min_non_silent_fraction,
+                fallback_candidate_multiplier=fallback_candidate_multiplier,
             )
         except InsufficientSpeechActivityError as error:
             rejection_path = _record_activity_rejection(
@@ -156,6 +191,8 @@ def create_review_draft(
                 evaluation_root=evaluation_root,
             )
             raise ValueError(f"{error}; recorded selection rejection: {rejection_path}") from None
+        spans = prepared.spans
+        clip_selection = prepared.clip_selection
         observations[source_key] = {
             "youtube_video_id": video_id,
             "input_fingerprint": observation.input_fingerprint,

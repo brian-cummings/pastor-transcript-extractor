@@ -27,11 +27,13 @@ from pastor_transcript_extractor.media_archive import (
     media_archive_lock_held,
 )
 from pastor_transcript_extractor.media_artifacts import (
+    MediaVerificationCache,
     audit_media_coverage,
     backfill_existing_media_artifacts,
     ensure_audio_for_video,
     register_media_file,
     resolve_normalized_audio_path,
+    verify_media_artifact,
 )
 from pastor_transcript_extractor.models import SourceType, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.storage import Database
@@ -246,6 +248,57 @@ class MediaArtifactTests(unittest.TestCase):
         self.assertEqual(
             Path(first.artifact.artifact_path),
             resolve_normalized_audio_path(self.database, video.id),
+        )
+
+    def test_verification_cache_reuses_hash_only_while_file_is_unchanged(self) -> None:
+        video, _ = self._video("verifycache1")
+        audio_path = (
+            build_video_artifact_paths(
+                self.paths,
+                self.pastor.slug,
+                video.youtube_video_id,
+            ).audio
+            / "media"
+            / "normalized.wav"
+        )
+        write_wav(audio_path)
+        artifact = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=audio_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        verification_cache = MediaVerificationCache(self.paths.root / "review-cache")
+
+        self.assertTrue(
+            verify_media_artifact(
+                artifact,
+                verification_cache=verification_cache,
+            )
+        )
+        with patch(
+            "pastor_transcript_extractor.media_artifacts._sha256_file",
+            side_effect=AssertionError("cache hit must not rehash the file"),
+        ):
+            self.assertTrue(
+                verify_media_artifact(
+                    artifact,
+                    verification_cache=verification_cache,
+                )
+            )
+
+        original = audio_path.read_bytes()
+        audio_path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+        self.assertFalse(
+            verify_media_artifact(
+                artifact,
+                verification_cache=verification_cache,
+            )
         )
 
     def test_unavailable_and_failed_are_persisted_separately(self) -> None:

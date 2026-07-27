@@ -409,6 +409,18 @@ usable diagnostic spans, and verified normalized media. Review-required,
 rejected, malformed, and stale observations are excluded conservatively.
 Explicit `review-speaker-pair` requests remain a manual workflow.
 
+Prewarm deterministic review clips and unchanged-file media-verification
+receipts before a validation review session:
+
+```bash
+pte identity prepare-speaker-review-audio \
+  --evaluation-scope validation \
+  --base-dir /path/to/app-data
+```
+
+This cache-only operation creates no pair drafts, reviews, fixtures, registry
+memberships, or identity claims.
+
 Backfill shadow identity artifacts for existing extractions without invoking
 classification or rewriting sermon artifacts:
 

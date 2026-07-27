@@ -30,6 +30,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 MEDIA_SERVICE_VERSION = "media_foundation_v1"
+MEDIA_VERIFICATION_RECEIPT_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +61,72 @@ class MediaCoverageReport:
     failed: tuple[str, ...]
     corrupt: tuple[str, ...]
     missing: tuple[str, ...]
+
+
+class MediaVerificationCache:
+    """Reuse a full artifact hash while the underlying file is unchanged."""
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    def verify(self, artifact: MediaArtifact) -> bool:
+        path = Path(artifact.artifact_path)
+        try:
+            file_stat = path.stat()
+        except OSError:
+            return False
+        if file_stat.st_size != artifact.byte_size:
+            return False
+
+        receipt_path = self._receipt_path(artifact)
+        expected_stat = {
+            "device": file_stat.st_dev,
+            "inode": file_stat.st_ino,
+            "size": file_stat.st_size,
+            "mtime_ns": file_stat.st_mtime_ns,
+        }
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            receipt = None
+        if (
+            isinstance(receipt, dict)
+            and receipt.get("schema_version") == MEDIA_VERIFICATION_RECEIPT_VERSION
+            and receipt.get("artifact") == self._artifact_identity(artifact)
+            and receipt.get("file_stat") == expected_stat
+        ):
+            return True
+
+        if _sha256_file(path) != artifact.content_sha256:
+            return False
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": MEDIA_VERIFICATION_RECEIPT_VERSION,
+            "artifact": self._artifact_identity(artifact),
+            "file_stat": expected_stat,
+        }
+        receipt_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return True
+
+    def _receipt_path(self, artifact: MediaArtifact) -> Path:
+        identity = json.dumps(
+            self._artifact_identity(artifact),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return self.root / "media-verifications" / f"{hashlib.sha256(identity).hexdigest()}.json"
+
+    @staticmethod
+    def _artifact_identity(artifact: MediaArtifact) -> dict[str, object]:
+        return {
+            "artifact_id": artifact.id,
+            "artifact_path": artifact.artifact_path,
+            "byte_size": artifact.byte_size,
+            "content_sha256": artifact.content_sha256,
+        }
 
 
 def video_has_isolated_sermon(database: Database, video_id: int) -> tuple[bool, str]:
@@ -502,8 +569,17 @@ def audit_media_coverage(database: Database) -> MediaCoverageReport:
     )
 
 
-def resolve_normalized_audio_path(database: Database, video_id: int) -> Path | None:
-    artifact = get_verified_normalized_media_artifact(database, video_id)
+def resolve_normalized_audio_path(
+    database: Database,
+    video_id: int,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
+) -> Path | None:
+    artifact = get_verified_normalized_media_artifact(
+        database,
+        video_id,
+        verification_cache=verification_cache,
+    )
     if artifact is not None:
         return Path(artifact.artifact_path)
     if any(
@@ -521,13 +597,19 @@ def resolve_normalized_audio_path(database: Database, video_id: int) -> Path | N
 
 
 def get_verified_normalized_media_artifact(
-    database: Database, video_id: int
+    database: Database,
+    video_id: int,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
 ) -> MediaArtifact | None:
     artifacts = database.list_media_artifacts_for_video(video_id)
     for artifact in reversed(artifacts):
         if artifact.artifact_kind != "normalized_audio":
             continue
-        if verify_media_artifact(artifact) and media_artifact_covers_isolated_sermon(
+        if verify_media_artifact(
+            artifact,
+            verification_cache=verification_cache,
+        ) and media_artifact_covers_isolated_sermon(
             database, artifact
         ):
             return artifact
@@ -550,7 +632,13 @@ def get_archive_safe_normalized_media_artifact(
     return None
 
 
-def verify_media_artifact(artifact: MediaArtifact) -> bool:
+def verify_media_artifact(
+    artifact: MediaArtifact,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
+) -> bool:
+    if verification_cache is not None:
+        return verification_cache.verify(artifact)
     path = Path(artifact.artifact_path)
     return (
         path.exists()

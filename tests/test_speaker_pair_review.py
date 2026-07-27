@@ -18,6 +18,7 @@ from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
     PairJudgment,
     create_review_draft,
+    prepare_review_observation,
     submit_review,
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
@@ -40,7 +41,9 @@ class FakeSpanCache:
         digest = hashlib.sha256(key.encode()).hexdigest()
         wav_path = self.root / f"{digest}.wav"
         wav_path.parent.mkdir(parents=True, exist_ok=True)
-        wav_path.write_bytes(key.encode())
+        cache_hit = wav_path.exists()
+        if not cache_hit:
+            wav_path.write_bytes(key.encode())
         return CachedSpan(
             observation_fingerprint=observation.input_fingerprint,
             start_seconds=span.start_seconds,
@@ -50,7 +53,7 @@ class FakeSpanCache:
             duration_seconds=span.end_seconds - span.start_seconds,
             rms_dbfs=-20.0,
             clipped_fraction=0.0,
-            cache_hit=False,
+            cache_hit=cache_hit,
             non_silent_fraction=(
                 0.1 if span.start_seconds in self.silent_starts else 0.9
             ),
@@ -151,6 +154,27 @@ class SpeakerPairReviewTests(unittest.TestCase):
                 "selection_outcome"
             ],
         )
+
+    def test_prepared_observation_is_reused_by_pair_review(self):
+        prepared = prepare_review_observation(
+            observation=self.observation_a,
+            audio_path=Path("audio-a.wav"),
+            span_cache=self.span_cache,
+        )
+        replayed = prepare_review_observation(
+            observation=self.observation_a,
+            audio_path=Path("audio-a.wav"),
+            span_cache=self.span_cache,
+        )
+        draft = self._draft()
+        source_a = draft.payload["observations"]["source_a"]
+
+        self.assertEqual(
+            [span.wav_sha256 for span in prepared.spans],
+            [clip["wav_sha256"] for clip in source_a["clips"]],
+        )
+        self.assertTrue(all(span.cache_hit for span in replayed.spans))
+        self.assertEqual("complete", replayed.clip_selection["selection_outcome"])
 
     def test_explicit_review_resumes_existing_automatic_selection_manifest(self):
         manifest = {
