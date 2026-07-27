@@ -109,6 +109,13 @@ def create_review_draft(
     }
     canonical_fingerprints = [value[0] for value in ordered_inputs]
     pair_id = f"pair-{_sha256_json(canonical_fingerprints)[:16]}"
+    existing_draft = _load_existing_review_draft(
+        pair_id=pair_id,
+        evaluation_root=evaluation_root,
+        canonical_fingerprints=canonical_fingerprints,
+    )
+    if selection_manifest is None and existing_draft is not None:
+        return existing_draft
     presentation_sources = ["source_a", "source_b"]
     rng = random.Random(pair_id)
     rng.shuffle(presentation_sources)
@@ -194,6 +201,32 @@ def create_review_draft(
     packet = _review_packet(payload)
     _write_text_idempotent(packet_path, packet)
     return ReviewDraft(pair_id, draft_path, packet_path, payload)
+
+
+def _load_existing_review_draft(
+    *,
+    pair_id: str,
+    evaluation_root: Path,
+    canonical_fingerprints: Sequence[str],
+) -> ReviewDraft | None:
+    """Load an immutable draft when an interrupted review reopens its pair."""
+    draft_path = evaluation_root / "drafts" / f"{pair_id}.json"
+    if not draft_path.exists():
+        return None
+    existing = json.loads(draft_path.read_text(encoding="utf-8"))
+    if not isinstance(existing, dict):
+        raise ValueError(f"{draft_path}: expected a JSON object")
+    _validate_draft(existing)
+    persisted_fingerprints = sorted(
+        str(observation.get("input_fingerprint", ""))
+        for observation in existing["observations"].values()
+    )
+    if persisted_fingerprints != sorted(canonical_fingerprints):
+        raise ValueError(f"{draft_path}: observation fingerprints do not match requested pair")
+    packet_path = evaluation_root / "drafts" / f"{pair_id}.html"
+    if not packet_path.exists():
+        _write_text_idempotent(packet_path, _review_packet(existing))
+    return ReviewDraft(pair_id, draft_path, packet_path, existing)
 
 
 def submit_review(

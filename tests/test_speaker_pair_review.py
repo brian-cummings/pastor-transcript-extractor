@@ -152,6 +152,44 @@ class SpeakerPairReviewTests(unittest.TestCase):
             ],
         )
 
+    def test_explicit_review_resumes_existing_automatic_selection_manifest(self):
+        manifest = {
+            "selector_version": "speaker_pair_selector_v2",
+            "selection_origin": "automatic",
+            "selection_stratum": "contradicting_attribution",
+            "source_relation": "cross_source_family",
+            "source_family_ids": {"a": "family-a", "b": "family-b"},
+            "evaluation_partitions": {"a": "development", "b": "development"},
+        }
+        automatic = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+            selection_manifest=manifest,
+        )
+
+        resumed = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+        )
+
+        self.assertEqual(automatic.payload, resumed.payload)
+        self.assertEqual(
+            automatic.payload["selection_manifest"],
+            resumed.payload["selection_manifest"],
+        )
+
     def test_majority_silence_uses_deterministic_replacement_spans(self):
         primary_starts = {
             span.start_seconds
