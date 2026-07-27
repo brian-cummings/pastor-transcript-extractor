@@ -21,7 +21,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 
 
 REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v2"
-CLIP_ACTIVITY_POLICY_VERSION = "speaker_pair_clip_activity_v1"
+CLIP_ACTIVITY_POLICY_VERSION = "speaker_pair_clip_activity_v2"
 DEFAULT_MIN_NON_SILENT_FRACTION = 0.40
 DEFAULT_MIN_CLIP_RMS_DBFS = -52.0
 STANDARD_VARIATION_TAGS = (
@@ -83,7 +83,7 @@ def create_review_draft(
     evaluation_root: Path,
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
-    min_qualified_spans: int = 3,
+    min_qualified_spans: int | None = None,
     min_non_silent_fraction: float = DEFAULT_MIN_NON_SILENT_FRACTION,
     fallback_candidate_multiplier: int = 3,
     selection_manifest: dict[str, object] | None = None,
@@ -92,6 +92,10 @@ def create_review_draft(
         raise ValueError("a pair review requires two distinct observations")
     if fallback_candidate_multiplier < 1:
         raise ValueError("fallback candidate multiplier must be positive")
+    if min_qualified_spans is None:
+        min_qualified_spans = span_count
+    if min_qualified_spans < 1 or min_qualified_spans > span_count:
+        raise ValueError("minimum qualified spans must be between one and span count")
     ordered_inputs = sorted(
         (
             (observation_a.input_fingerprint, video_id_a, observation_a, audio_path_a),
@@ -303,6 +307,13 @@ def _fixture_from_review(draft: dict[str, Any], event: dict[str, Any]) -> dict[s
     }
     if "selection_manifest" in draft:
         fixture["selection_manifest"] = draft["selection_manifest"]
+        partitions = draft["selection_manifest"].get("evaluation_partitions")
+        if (
+            isinstance(partitions, dict)
+            and partitions.get("a")
+            and partitions.get("a") == partitions.get("b")
+        ):
+            fixture["evaluation_partition"] = partitions["a"]
     return fixture
 
 
@@ -531,14 +542,23 @@ def _selection_manifest_for_presentation(
 ) -> dict[str, object]:
     """Align canonical selector a/b reuse counts with blinded packet A/B sides."""
     manifest = dict(selection_manifest)
-    prior_use = selection_manifest.get("observation_prior_use")
-    if not isinstance(prior_use, dict) or set(prior_use) != {"a", "b"}:
-        return manifest
-    canonical = {"source_a": prior_use["a"], "source_b": prior_use["b"]}
-    manifest["observation_prior_use"] = {
-        "a": canonical[presentation["A"]["source_key"]],
-        "b": canonical[presentation["B"]["source_key"]],
-    }
+    for field in (
+        "observation_prior_use",
+        "source_family_ids",
+        "source_family_prior_use",
+        "evaluation_partitions",
+    ):
+        side_values = selection_manifest.get(field)
+        if not isinstance(side_values, dict) or set(side_values) != {"a", "b"}:
+            continue
+        canonical = {
+            "source_a": side_values["a"],
+            "source_b": side_values["b"],
+        }
+        manifest[field] = {
+            "a": canonical[presentation["A"]["source_key"]],
+            "b": canonical[presentation["B"]["source_key"]],
+        }
     return manifest
 
 

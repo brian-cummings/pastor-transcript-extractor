@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v1"
+SELECTOR_VERSION = "speaker_pair_selector_v2"
 
 
 class SelectionStratum(StrEnum):
@@ -17,10 +17,21 @@ class SelectionStratum(StrEnum):
     UNATTRIBUTED = "unattributed"
 
 
+class SourceRelation(StrEnum):
+    SAME_SOURCE_FAMILY = "same_source_family"
+    CROSS_SOURCE_FAMILY = "cross_source_family"
+    UNKNOWN = "source_relation_unknown"
+
+
 STRATUM_ROTATION = (
     SelectionStratum.SHARED_ATTRIBUTION,
     SelectionStratum.CONTRADICTING_ATTRIBUTION,
     SelectionStratum.UNATTRIBUTED,
+)
+
+SOURCE_RELATION_ROTATION = (
+    SourceRelation.SAME_SOURCE_FAMILY,
+    SourceRelation.CROSS_SOURCE_FAMILY,
 )
 
 
@@ -31,6 +42,8 @@ class PairCandidateObservation:
     recording_date: datetime | None
     explicit_attributions: frozenset[str] = frozenset()
     quality_signature: tuple[object, ...] = ()
+    source_family_id: str | None = None
+    evaluation_partition: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +56,8 @@ class PairSelectionHistory:
     disfavored_sources: Mapping[str, int] | None = None
     automatic_selection_count: int = 0
     objective_condition_counts: Mapping[str, int] | None = None
+    source_family_use: Mapping[str, int] | None = None
+    source_relation_counts: Mapping[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +84,9 @@ def selection_history_from_artifacts(
     disfavored: dict[str, int] = {}
     disfavored_sources: dict[str, int] = {}
     objective_counts: dict[str, int] = {}
+    source_family_use: dict[str, int] = {}
+    source_relation_counts: dict[str, int] = {}
+    source_context_pair_ids: set[str] = set()
     automatic_pair_ids: set[str] = set()
     sources_by_pair: dict[str, list[str]] = {}
 
@@ -81,6 +99,12 @@ def selection_history_from_artifacts(
             excluded_source_pairs.add(frozenset(sources))
             sources_by_pair[str(draft.get("pair_id") or f"draft-{index}")] = sources
         _record_automatic_pair(draft, automatic_pair_ids)
+        _record_source_context_once(
+            draft,
+            source_context_pair_ids=source_context_pair_ids,
+            source_family_use=source_family_use,
+            source_relation_counts=source_relation_counts,
+        )
 
     for index, fixture in enumerate(fixtures):
         fingerprints = _fixture_fingerprints(fixture)
@@ -100,6 +124,12 @@ def selection_history_from_artifacts(
                 if isinstance(reason, str):
                     objective_counts[reason] = objective_counts.get(reason, 0) + 1
         _record_automatic_pair(fixture, automatic_pair_ids)
+        _record_source_context_once(
+            fixture,
+            source_context_pair_ids=source_context_pair_ids,
+            source_family_use=source_family_use,
+            source_relation_counts=source_relation_counts,
+        )
 
     for review in reviews:
         pair_id = str(review.get("pair_id", ""))
@@ -135,6 +165,8 @@ def selection_history_from_artifacts(
         disfavored_sources=disfavored_sources,
         automatic_selection_count=len(automatic_pair_ids),
         objective_condition_counts=objective_counts,
+        source_family_use=source_family_use,
+        source_relation_counts=source_relation_counts,
     )
 
 
@@ -147,7 +179,14 @@ def select_next_speaker_pair(
     if len({item.input_fingerprint for item in candidates}) != len(candidates):
         raise ValueError("candidate observation fingerprints must be unique")
 
-    pairs: list[tuple[PairCandidateObservation, PairCandidateObservation, SelectionStratum]] = []
+    pairs: list[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ] = []
     for index, observation_a in enumerate(candidates):
         for observation_b in candidates[index + 1 :]:
             pair_key = frozenset((observation_a.input_fingerprint, observation_b.input_fingerprint))
@@ -155,9 +194,17 @@ def select_next_speaker_pair(
             if (
                 pair_key in history.excluded_pairs
                 or source_pair_key in history.excluded_source_pairs
+                or _crosses_evaluation_partitions(observation_a, observation_b)
             ):
                 continue
-            pairs.append((observation_a, observation_b, _pair_stratum(observation_a, observation_b)))
+            pairs.append(
+                (
+                    observation_a,
+                    observation_b,
+                    _pair_stratum(observation_a, observation_b),
+                    _source_relation(observation_a, observation_b),
+                )
+            )
     if not pairs:
         raise ValueError("no unreviewed or undrafted eligible speaker pairs remain")
 
@@ -167,16 +214,39 @@ def select_next_speaker_pair(
         stratum for stratum in rotated if any(pair[2] == stratum for pair in pairs)
     )
     stratum_pairs = [pair for pair in pairs if pair[2] == chosen_stratum]
+    relation_counts = history.source_relation_counts or {}
+    relation_start = history.automatic_selection_count % len(SOURCE_RELATION_ROTATION)
+    relation_rotation = (
+        SOURCE_RELATION_ROTATION[relation_start:]
+        + SOURCE_RELATION_ROTATION[:relation_start]
+    )
+    available_relations = {pair[3] for pair in stratum_pairs}
+    known_relations = [
+        relation for relation in relation_rotation if relation in available_relations
+    ]
+    if known_relations:
+        chosen_relation = min(
+            known_relations,
+            key=lambda relation: (
+                int(relation_counts.get(relation.value, 0)),
+                relation_rotation.index(relation),
+            ),
+        )
+    else:
+        chosen_relation = SourceRelation.UNKNOWN
+    relation_pairs = [pair for pair in stratum_pairs if pair[3] == chosen_relation]
     observation_use = history.observation_use or {}
     source_use = history.source_use or {}
+    source_family_use = history.source_family_use or {}
     disfavored = history.disfavored_observations or {}
     disfavored_sources = history.disfavored_sources or {}
     condition_counts = history.objective_condition_counts or {}
-    observation_a, observation_b, _ = min(
-        stratum_pairs,
+    observation_a, observation_b, _, _ = min(
+        relation_pairs,
         key=lambda pair: _rank_pair(
             pair[0],
             pair[1],
+            source_family_use,
             observation_use,
             source_use,
             disfavored,
@@ -193,7 +263,23 @@ def select_next_speaker_pair(
         int(source_use.get(observation_b.video_id, 0)),
         int(observation_use.get(observation_b.input_fingerprint, 0)),
     )
-    reason_codes = _reason_codes(observation_a, observation_b, prior_a, prior_b)
+    source_family_prior_a = _source_family_prior_use(
+        observation_a,
+        source_family_use,
+    )
+    source_family_prior_b = _source_family_prior_use(
+        observation_b,
+        source_family_use,
+    )
+    reason_codes = _reason_codes(
+        observation_a,
+        observation_b,
+        prior_a,
+        prior_b,
+        chosen_relation,
+        source_family_prior_a,
+        source_family_prior_b,
+    )
     snapshot = [
         {
             "input_fingerprint": item.input_fingerprint,
@@ -201,6 +287,8 @@ def select_next_speaker_pair(
             "recording_date": item.recording_date.isoformat() if item.recording_date else None,
             "explicit_attributions": sorted(item.explicit_attributions),
             "quality_signature": item.quality_signature,
+            "source_family_id": item.source_family_id,
+            "evaluation_partition": item.evaluation_partition,
         }
         for item in candidates
     ]
@@ -208,6 +296,19 @@ def select_next_speaker_pair(
         "selector_version": SELECTOR_VERSION,
         "selection_origin": "automatic",
         "selection_stratum": chosen_stratum,
+        "source_relation": chosen_relation,
+        "source_family_ids": {
+            "a": observation_a.source_family_id,
+            "b": observation_b.source_family_id,
+        },
+        "source_family_prior_use": {
+            "a": source_family_prior_a,
+            "b": source_family_prior_b,
+        },
+        "evaluation_partitions": {
+            "a": observation_a.evaluation_partition,
+            "b": observation_b.evaluation_partition,
+        },
         "corpus_snapshot_fingerprint": _sha256_json(snapshot),
         "observation_prior_use": {"a": prior_a, "b": prior_b},
         "reason_codes": reason_codes,
@@ -226,6 +327,28 @@ def _pair_stratum(
     if names_a & names_b:
         return SelectionStratum.SHARED_ATTRIBUTION
     return SelectionStratum.CONTRADICTING_ATTRIBUTION
+
+
+def _source_relation(
+    observation_a: PairCandidateObservation,
+    observation_b: PairCandidateObservation,
+) -> SourceRelation:
+    if not observation_a.source_family_id or not observation_b.source_family_id:
+        return SourceRelation.UNKNOWN
+    if observation_a.source_family_id == observation_b.source_family_id:
+        return SourceRelation.SAME_SOURCE_FAMILY
+    return SourceRelation.CROSS_SOURCE_FAMILY
+
+
+def _crosses_evaluation_partitions(
+    observation_a: PairCandidateObservation,
+    observation_b: PairCandidateObservation,
+) -> bool:
+    return (
+        bool(observation_a.evaluation_partition)
+        and bool(observation_b.evaluation_partition)
+        and observation_a.evaluation_partition != observation_b.evaluation_partition
+    )
 
 
 def _draft_fingerprints(payload: Mapping[str, Any]) -> list[str]:
@@ -267,15 +390,65 @@ def _record_automatic_pair(payload: Mapping[str, Any], pair_ids: set[str]) -> No
         pair_ids.add(str(pair_id))
 
 
+def _record_source_context(
+    manifest: Mapping[str, Any],
+    *,
+    source_family_use: dict[str, int],
+    source_relation_counts: dict[str, int],
+) -> None:
+    family_ids = manifest.get("source_family_ids")
+    if isinstance(family_ids, Mapping):
+        for family_id in family_ids.values():
+            if isinstance(family_id, str) and family_id:
+                source_family_use[family_id] = source_family_use.get(family_id, 0) + 1
+    relation = manifest.get("source_relation")
+    if isinstance(relation, str) and relation:
+        source_relation_counts[relation] = source_relation_counts.get(relation, 0) + 1
+
+
+def _record_source_context_once(
+    payload: Mapping[str, Any],
+    *,
+    source_context_pair_ids: set[str],
+    source_family_use: dict[str, int],
+    source_relation_counts: dict[str, int],
+) -> None:
+    pair_id = payload.get("pair_id")
+    manifest = payload.get("selection_manifest")
+    if (
+        not isinstance(pair_id, str)
+        or not pair_id
+        or pair_id in source_context_pair_ids
+        or not isinstance(manifest, Mapping)
+    ):
+        return
+    _record_source_context(
+        manifest,
+        source_family_use=source_family_use,
+        source_relation_counts=source_relation_counts,
+    )
+    source_context_pair_ids.add(pair_id)
+
+
 def _rank_pair(
     observation_a: PairCandidateObservation,
     observation_b: PairCandidateObservation,
+    source_family_use: Mapping[str, int],
     observation_use: Mapping[str, int],
     source_use: Mapping[str, int],
     disfavored: Mapping[str, int],
     disfavored_sources: Mapping[str, int],
     condition_counts: Mapping[str, int],
 ) -> tuple[object, ...]:
+    family_ids = {
+        family_id
+        for family_id in (
+            observation_a.source_family_id,
+            observation_b.source_family_id,
+        )
+        if family_id
+    }
+    family_uses = [int(source_family_use.get(family_id, 0)) for family_id in family_ids]
     source_use_a = int(source_use.get(observation_a.video_id, 0))
     source_use_b = int(source_use.get(observation_b.video_id, 0))
     observation_use_a = int(observation_use.get(observation_a.input_fingerprint, 0))
@@ -295,16 +468,24 @@ def _rank_pair(
     pair_hash = _sha256_json(
         sorted((observation_a.input_fingerprint, observation_b.input_fingerprint))
     )
+    disfavored_count = (
+        int(disfavored.get(observation_a.input_fingerprint, 0))
+        + int(disfavored.get(observation_b.input_fingerprint, 0))
+        + int(disfavored_sources.get(observation_a.video_id, 0))
+        + int(disfavored_sources.get(observation_b.video_id, 0))
+    )
     return (
+        # Known review failures are a safety constraint, not a coverage
+        # objective. Never select one merely to represent a new source family.
+        disfavored_count,
+        sum(use > 0 for use in family_uses),
+        sum(family_uses),
+        max(family_uses, default=0),
         int(source_use_a > 0) + int(source_use_b > 0),
         source_use_a + source_use_b,
         max(source_use_a, source_use_b),
         int(observation_use_a > 0) + int(observation_use_b > 0),
         observation_use_a + observation_use_b,
-        int(disfavored.get(observation_a.input_fingerprint, 0))
-        + int(disfavored.get(observation_b.input_fingerprint, 0))
-        + int(disfavored_sources.get(observation_a.video_id, 0))
-        + int(disfavored_sources.get(observation_b.video_id, 0)),
         0 if dates_differ else 1,
         -separation,
         objective_count,
@@ -326,6 +507,9 @@ def _reason_codes(
     observation_b: PairCandidateObservation,
     prior_a: int,
     prior_b: int,
+    source_relation: SourceRelation,
+    source_family_prior_a: int,
+    source_family_prior_b: int,
 ) -> list[str]:
     reasons: list[str] = []
     if prior_a == 0 and prior_b == 0:
@@ -334,6 +518,15 @@ def _reason_codes(
         reasons.append("one_observation_unused")
     else:
         reasons.append("least_used_observations")
+    reasons.append(source_relation.value)
+    if source_relation == SourceRelation.UNKNOWN:
+        reasons.append("source_family_context_unavailable")
+    elif source_family_prior_a == 0 and source_family_prior_b == 0:
+        reasons.append("source_families_unrepresented")
+    elif source_family_prior_a == 0 or source_family_prior_b == 0:
+        reasons.append("one_source_family_unrepresented")
+    else:
+        reasons.append("least_used_source_families")
     if _date_separation_days(observation_a, observation_b) > 0:
         reasons.append("different_date")
     if (
@@ -343,6 +536,15 @@ def _reason_codes(
     ):
         reasons.append("varied_audio_quality")
     return reasons
+
+
+def _source_family_prior_use(
+    observation: PairCandidateObservation,
+    source_family_use: Mapping[str, int],
+) -> int:
+    if not observation.source_family_id:
+        return 0
+    return int(source_family_use.get(observation.source_family_id, 0))
 
 
 def _sha256_json(value: object) -> str:

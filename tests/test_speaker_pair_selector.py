@@ -7,6 +7,7 @@ from pastor_transcript_extractor.speaker_pair_selector import (
     PairCandidateObservation,
     PairSelectionHistory,
     SelectionStratum,
+    SourceRelation,
     select_next_speaker_pair,
     selection_history_from_artifacts,
 )
@@ -17,6 +18,8 @@ def candidate(
     *,
     name: str | None = None,
     day: int = 1,
+    source_family: str | None = None,
+    partition: str | None = None,
 ) -> PairCandidateObservation:
     return PairCandidateObservation(
         input_fingerprint=fingerprint,
@@ -24,6 +27,8 @@ def candidate(
         recording_date=datetime(2026, 7, day, tzinfo=timezone.utc),
         explicit_attributions=frozenset((name,)) if name else frozenset(),
         quality_signature=("wav", 16_000, 1),
+        source_family_id=source_family,
+        evaluation_partition=partition,
     )
 
 
@@ -218,6 +223,204 @@ class SpeakerPairSelectorTests(unittest.TestCase):
 
         self.assertEqual("contradicting_attribution", contradicting.manifest["selection_stratum"])
         self.assertEqual("unattributed", unattributed.manifest["selection_stratum"])
+
+    def test_source_relation_rotates_between_same_and_cross_family_pairs(self) -> None:
+        candidates = [
+            candidate(
+                "same-a",
+                name="alex",
+                source_family="family-a",
+                partition="development",
+            ),
+            candidate(
+                "same-b",
+                name="alex",
+                source_family="family-a",
+                partition="development",
+            ),
+            candidate(
+                "cross",
+                name="alex",
+                source_family="family-b",
+                partition="development",
+            ),
+        ]
+
+        same = select_next_speaker_pair(candidates, PairSelectionHistory())
+        cross = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(automatic_selection_count=1),
+        )
+
+        self.assertEqual(
+            SourceRelation.SAME_SOURCE_FAMILY,
+            same.manifest["source_relation"],
+        )
+        self.assertEqual(
+            SourceRelation.CROSS_SOURCE_FAMILY,
+            cross.manifest["source_relation"],
+        )
+        self.assertNotIn("expected_outcome", same.manifest)
+
+    def test_cross_family_pairs_never_cross_evaluation_partitions(self) -> None:
+        candidates = [
+            candidate(
+                "dev-a",
+                name="alex",
+                source_family="family-a",
+                partition="development",
+            ),
+            candidate(
+                "held",
+                name="alex",
+                source_family="family-b",
+                partition="held_out",
+            ),
+            candidate(
+                "dev-b",
+                name="alex",
+                source_family="family-c",
+                partition="development",
+            ),
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(automatic_selection_count=1),
+        )
+
+        self.assertEqual(
+            {"dev-a", "dev-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            {"development"},
+            set(selected.manifest["evaluation_partitions"].values()),
+        )
+
+    def test_underrepresented_source_family_wins_within_relation(self) -> None:
+        candidates = [
+            candidate(
+                "used-a",
+                name="alex",
+                source_family="used-family",
+                partition="development",
+            ),
+            candidate(
+                "used-b",
+                name="alex",
+                source_family="used-family",
+                partition="development",
+            ),
+            candidate(
+                "new-a",
+                name="alex",
+                source_family="new-family",
+                partition="development",
+            ),
+            candidate(
+                "new-b",
+                name="alex",
+                source_family="new-family",
+                partition="development",
+            ),
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(source_family_use={"used-family": 4}),
+        )
+
+        self.assertEqual(
+            {"new-a", "new-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertIn(
+            "source_families_unrepresented",
+            selected.manifest["reason_codes"],
+        )
+
+    def test_known_quality_failure_outranks_source_family_coverage(self) -> None:
+        candidates = [
+            candidate(
+                "clean-a",
+                name="alex",
+                source_family="represented-family",
+                partition="development",
+            ),
+            candidate(
+                "clean-b",
+                name="alex",
+                source_family="represented-family",
+                partition="development",
+            ),
+            candidate(
+                "failed-a",
+                name="alex",
+                source_family="unrepresented-family",
+                partition="development",
+            ),
+            candidate(
+                "failed-b",
+                name="alex",
+                source_family="unrepresented-family",
+                partition="development",
+            ),
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                source_family_use={"represented-family": 4},
+                disfavored_observations={"failed-a": 1},
+            ),
+        )
+
+        self.assertEqual(
+            {"clean-a", "clean-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+
+    def test_source_context_history_counts_each_pair_once(self) -> None:
+        manifest = {
+            "selection_origin": "automatic",
+            "source_relation": "cross_source_family",
+            "source_family_ids": {"a": "family-a", "b": "family-b"},
+        }
+        draft = {
+            "pair_id": "pair-ab",
+            "selection_manifest": manifest,
+            "observations": {},
+        }
+        fixture = {
+            "pair_id": "pair-ab",
+            "selection_manifest": manifest,
+            "observations": {},
+        }
+
+        history = selection_history_from_artifacts(
+            drafts=[draft],
+            reviews=[],
+            fixtures=[fixture],
+        )
+
+        self.assertEqual(
+            {"family-a": 1, "family-b": 1},
+            history.source_family_use,
+        )
+        self.assertEqual(
+            {"cross_source_family": 1},
+            history.source_relation_counts,
+        )
 
 
 if __name__ == "__main__":

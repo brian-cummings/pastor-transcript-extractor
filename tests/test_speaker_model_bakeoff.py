@@ -33,7 +33,10 @@ def fixture(
         "reviewed_at": "2026-07-26T12:00:00Z",
         "expected_outcome": expected,
         "variation_tags": ["different_date"],
-        "selection_manifest": {"selection_stratum": stratum},
+        "selection_manifest": {
+            "selection_stratum": stratum,
+            "source_relation": "same_source_family",
+        },
         "observations": {
             "a": {
                 "input_fingerprint": observation_a,
@@ -256,6 +259,12 @@ class SpeakerModelBakeoffTests(unittest.TestCase):
         self.assertEqual(
             {"correct": 1},
             report["models"]["model-a"]["slices"]["by_selection_stratum"]["hard_negative"],
+        )
+        self.assertEqual(
+            {"correct": 2},
+            report["models"]["model-a"]["slices"]["by_source_relation"][
+                "same_source_family"
+            ],
         )
         self.assertFalse(report["comparison"]["winner_selected"])
         self.assertFalse(report["registry_mutation_allowed"])

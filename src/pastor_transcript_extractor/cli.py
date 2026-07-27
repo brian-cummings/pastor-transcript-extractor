@@ -1173,6 +1173,10 @@ def review_next_speaker_pair(
     cache_dir: Path = typer.Option(
         Path("evaluation/speaker-pairs/cache"), help="Ignored exact-span audio cache."
     ),
+    source_family_registry: Path = typer.Option(
+        Path("evaluation/source-families.json"),
+        help="Frozen source-family registry used for partition-safe pair nomination.",
+    ),
     open_packet: bool = typer.Option(
         True, "--open-packet/--no-open-packet", help="Open the blinded local HTML listening packet."
     ),
@@ -1187,6 +1191,9 @@ def review_next_speaker_pair(
     database = Database(paths.database, readonly=True)
     root = evaluation_root.expanduser().resolve()
     try:
+        registry = load_source_family_registry(
+            source_family_registry.expanduser().resolve()
+        )
         drafts = _load_json_artifacts(sorted((root / "drafts").glob("*.json")))
         reviews = _load_json_artifacts(sorted((root / "reviews").glob("*/*.json")))
         fixtures = _load_json_artifacts(sorted((root / "fixtures").glob("*.json")))
@@ -1197,6 +1204,7 @@ def review_next_speaker_pair(
         )
 
         candidates: list[PairCandidateObservation] = []
+        unregistered_source_urls: set[str] = set()
         for video in database.list_videos():
             eligibility = assess_automatic_speaker_observation(database, video.id)
             if not eligibility.eligible:
@@ -1205,6 +1213,13 @@ def review_next_speaker_pair(
             media = eligibility.media_artifact
             assert observation is not None
             assert media is not None
+            source = database.get_source_by_id(video.source_id)
+            if source is None:
+                continue
+            family = registry.resolve_source_url(source.url)
+            if family is None:
+                unregistered_source_urls.add(source.url)
+                continue
             claims = database.list_speaker_name_claims_for_video(video.id)
             names = frozenset(
                 claim.normalized_name
@@ -1223,14 +1238,26 @@ def review_next_speaker_pair(
                     media.sample_rate_hz,
                     media.channel_count,
                 ),
+                source_family_id=family.source_family_id,
+                evaluation_partition=family.partition.value,
             )
             candidates.append(candidate)
         selection = select_next_speaker_pair(candidates, history)
+        if unregistered_source_urls:
+            selection.manifest["unregistered_source_count"] = len(
+                unregistered_source_urls
+            )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
 
+    if selection.manifest.get("unregistered_source_count"):
+        console.print(
+            f"Skipped {selection.manifest['unregistered_source_count']} unregistered "
+            "source(s); run `pte sync-source-families` before nomination."
+        )
     console.print(
-        f"Selected {selection.manifest['selection_stratum']} pair "
+        f"Selected {selection.manifest['selection_stratum']}/"
+        f"{selection.manifest['source_relation']} pair "
         f"({selection.observation_a.video_id}, {selection.observation_b.video_id}); "
         f"reasons={','.join(selection.manifest['reason_codes'])}"
     )

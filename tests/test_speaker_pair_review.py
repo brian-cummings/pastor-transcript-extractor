@@ -231,6 +231,48 @@ class SpeakerPairReviewTests(unittest.TestCase):
             history.excluded_pairs,
         )
 
+    def test_partial_four_clip_packet_is_rejected_by_default(self):
+        candidate_spans = []
+        seen = set()
+        for count in (5, 15):
+            for span in select_diagnostic_spans(self.observation_a, count=count):
+                key = (span.start_seconds, span.end_seconds)
+                if key not in seen:
+                    seen.add(key)
+                    candidate_spans.append(span)
+        silent_starts = {
+            span.start_seconds
+            for span in candidate_spans[4:]
+        }
+        span_cache = FakeSpanCache(
+            self.root / "partial-cache",
+            silent_starts=silent_starts,
+        )
+
+        with self.assertRaisesRegex(ValueError, "found 4 qualified clip"):
+            create_review_draft(
+                observation_a=self.observation_a,
+                observation_b=self.observation_b,
+                video_id_a="video-a",
+                video_id_b="video-b",
+                audio_path_a=Path("audio-a.wav"),
+                audio_path_b=Path("audio-b.wav"),
+                span_cache=span_cache,
+                evaluation_root=self.evaluation_root,
+            )
+
+        rejection_path = next(
+            (self.evaluation_root / "drafts").glob("*.rejected.*.json")
+        )
+        rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+        failed = next(
+            item
+            for item in rejection["observations"].values()
+            if item.get("clip_selection")
+        )
+        self.assertEqual(4, failed["clip_selection"]["qualified_clip_count"])
+        self.assertEqual(5, failed["clip_selection"]["minimum_clip_count"])
+
     def test_qualified_explicit_review_creates_exact_frozen_fixture(self):
         manifest = {
             "selector_version": "speaker_pair_selector_v1",
@@ -238,6 +280,13 @@ class SpeakerPairReviewTests(unittest.TestCase):
             "selection_stratum": "shared_attribution",
             "corpus_snapshot_fingerprint": "f" * 64,
             "observation_prior_use": {"a": 3, "b": 7},
+            "source_relation": "cross_source_family",
+            "source_family_ids": {"a": "family-a", "b": "family-b"},
+            "source_family_prior_use": {"a": 2, "b": 4},
+            "evaluation_partitions": {
+                "a": "development",
+                "b": "development",
+            },
             "reason_codes": ["both_observations_unused"],
         }
         draft = create_review_draft(
@@ -274,9 +323,26 @@ class SpeakerPairReviewTests(unittest.TestCase):
             "a": canonical_prior_use[draft.payload["presentation"]["A"]["source_key"]],
             "b": canonical_prior_use[draft.payload["presentation"]["B"]["source_key"]],
         }
+        canonical_families = {
+            "source_a": "family-a",
+            "source_b": "family-b",
+        }
+        expected_families = {
+            "a": canonical_families[
+                draft.payload["presentation"]["A"]["source_key"]
+            ],
+            "b": canonical_families[
+                draft.payload["presentation"]["B"]["source_key"]
+            ],
+        }
         self.assertEqual(expected_prior_use, event["selection_manifest"]["observation_prior_use"])
         self.assertEqual(event["selection_manifest"], fixture["selection_manifest"])
         self.assertEqual({"a": 3, "b": 7}, manifest["observation_prior_use"])
+        self.assertEqual("development", fixture["evaluation_partition"])
+        self.assertEqual(
+            expected_families,
+            fixture["selection_manifest"]["source_family_ids"],
+        )
         self.assertNotIn("expected_outcome", manifest)
         packet = draft.packet_path.read_text(encoding="utf-8")
         self.assertNotIn("shared_attribution", packet)

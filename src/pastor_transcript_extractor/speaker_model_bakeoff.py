@@ -327,6 +327,7 @@ def _fixture_inventory(fixtures: Sequence[dict[str, Any]]) -> dict[str, Any]:
     expected_outcomes: dict[str, int] = {}
     variation_tags: dict[str, int] = {}
     selection_strata: dict[str, int] = {}
+    source_relations: dict[str, int] = {}
     for fixture in fixtures:
         expected = str(fixture["expected_outcome"])
         expected_outcomes[expected] = expected_outcomes.get(expected, 0) + 1
@@ -343,6 +344,12 @@ def _fixture_inventory(fixtures: Sequence[dict[str, Any]]) -> dict[str, Any]:
             else "manual_or_unspecified"
         )
         selection_strata[stratum] = selection_strata.get(stratum, 0) + 1
+        relation = (
+            str(manifest.get("source_relation"))
+            if isinstance(manifest, dict) and manifest.get("source_relation")
+            else "legacy_or_unspecified"
+        )
+        source_relations[relation] = source_relations.get(relation, 0) + 1
     reuse_histogram: dict[str, int] = {}
     for uses in observation_uses.values():
         key = str(uses)
@@ -356,6 +363,7 @@ def _fixture_inventory(fixtures: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "expected_outcomes": dict(sorted(expected_outcomes.items())),
         "variation_tags": dict(sorted(variation_tags.items())),
         "selection_strata": dict(sorted(selection_strata.items())),
+        "source_relations": dict(sorted(source_relations.items())),
     }
 
 
@@ -364,6 +372,7 @@ def _case_slices(
 ) -> dict[str, Any]:
     case_by_pair = {str(case["pair_id"]): case for case in cases}
     strata: dict[str, dict[str, int]] = {}
+    source_relations: dict[str, dict[str, int]] = {}
     tags: dict[str, dict[str, int]] = {}
     for fixture in fixtures:
         pair_id = str(fixture["pair_id"])
@@ -375,10 +384,17 @@ def _case_slices(
             else "manual_or_unspecified"
         )
         _increment_nested(strata, stratum, status)
+        relation = (
+            str(manifest.get("source_relation"))
+            if isinstance(manifest, dict) and manifest.get("source_relation")
+            else "legacy_or_unspecified"
+        )
+        _increment_nested(source_relations, relation, status)
         for tag in fixture["variation_tags"]:
             _increment_nested(tags, str(tag), status)
     return {
         "by_selection_stratum": dict(sorted(strata.items())),
+        "by_source_relation": dict(sorted(source_relations.items())),
         "by_variation_tag": dict(sorted(tags.items())),
     }
 
