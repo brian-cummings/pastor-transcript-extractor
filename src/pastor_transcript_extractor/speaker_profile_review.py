@@ -24,6 +24,7 @@ def write_profile_review_packet(
     spans: Sequence[CachedSpan],
     representatives: Sequence[ProfileReviewRepresentative],
     output_root: Path,
+    qualification_already_reviewed: bool = False,
 ) -> Path:
     sections = [
         _audio_section(
@@ -42,6 +43,15 @@ def write_profile_review_packet(
                 detail="One explicitly reviewed member observation.",
             )
         )
+    review_instruction = (
+        "This observation was already qualified as one consistent principal "
+        "speaker in prior pair review. Compare it with displayed profile "
+        "representatives; do not repeat qualification."
+        if qualification_already_reviewed
+        else
+        "First decide whether every clip under review contains one consistent "
+        "principal speaker. Continue to grouping only when it qualifies."
+    )
     packet = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -59,7 +69,8 @@ def write_profile_review_packet(
 <body>
   <h1>Anonymous speaker profile review</h1>
   <p class="warning">Use only the reviewed voices. A source-family filter, when used, only bounds the queue and is not identity evidence. Acoustic predictions are not shown.</p>
-  <p>First decide whether every clip under review contains one consistent principal speaker. Attach it only when the voice matches an existing profile; otherwise create a new anonymous profile or leave it unresolved.</p>
+  <p>{html.escape(review_instruction)}</p>
+  <p>Attach only after an explicit voice match. A separate anonymous profile is conservative fragmentation and does not assert a different speaker.</p>
   {''.join(sections)}
 </body>
 </html>

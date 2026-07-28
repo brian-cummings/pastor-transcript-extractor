@@ -69,6 +69,21 @@ class SpeakerProfileReviewPacketTests(unittest.TestCase):
             )
             self.assertNotIn("acoustic score", packet.lower())
 
+    def test_packet_marks_prior_qualification_as_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            packet_path = write_profile_review_packet(
+                observation_fingerprint="already-qualified",
+                spans=(cached_span(root / "current.wav", "current"),),
+                representatives=(),
+                output_root=root,
+                qualification_already_reviewed=True,
+            )
+
+            packet = packet_path.read_text(encoding="utf-8")
+            self.assertIn("already qualified", packet)
+            self.assertIn("do not repeat qualification", packet)
+
 
 if __name__ == "__main__":
     unittest.main()

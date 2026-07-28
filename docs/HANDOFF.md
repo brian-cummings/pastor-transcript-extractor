@@ -155,6 +155,7 @@ append-only event tables record:
 
 - reviewer-attributed anonymous-profile creation;
 - observation qualification, unresolved, multiple-speaker, or invalid review;
+- a separate reversible deferral when a qualified observation remains ungrouped;
 - reversible profile attachment/detachment;
 - reversible, explicit different-speaker constraints between two observations.
 
@@ -164,6 +165,26 @@ existing event; reusing a key with different content fails. An observation
 cannot be attached to a second effective profile until its existing membership
 is explicitly detached. Profile creation and every review mutation retain the
 reviewer and reason.
+
+Existing pair-review work is the initial registry evidence, not work to repeat.
+Synchronize it explicitly with:
+
+```bash
+pte identity sync-reviewed-speaker-evidence \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The sync joins append-only review events to their immutable drafts, reuses
+consistent per-observation qualifications, and derives confirmed same/different
+relations only from approved binary pair reviews. Confirmed same edges form
+reviewed connected components. A component creates one deterministic anonymous
+profile or joins its one existing profile. A component touching multiple
+profiles is reported for adjudication and never auto-merged. Confirmed
+different edges create exact observation constraints. Qualification conflicts,
+pair conflicts, transitive same/different contradictions, missing observations,
+and manual qualification overrides block affected mutations. Replay adds no
+duplicate events. Use `--dry-run` to inspect the derivation without applying
+reviewed evidence.
 
 Review the next current, accepted-sermon observation from the global queue:
 
@@ -175,11 +196,21 @@ pte identity review-next-speaker-observation \
 
 Pass `--source-family SOURCE_FAMILY_ID` only when a reviewer wants to bound the
 queue to one family. It is not stored as membership evidence and does not
-restrict which existing anonymous profiles can be compared. The packet reuses
-the speech-qualified exact-span cache from pair review and shows one reviewed
-member from each available anonymous profile. Use `--prepare-only` to inspect
-the packet without recording an event, or `--video-id YOUTUBE_ID` to revisit an
-unresolved or previously reviewed observation.
+restrict which existing anonymous profiles can be compared. The command first
+replays reviewed pair evidence, then skips observations already grouped,
+multiple-speaker, invalid, or explicitly deferred. Consistently qualified
+single-speaker observations proceed directly to grouping; only unseen or
+conflicting qualifications ask for single/multiple/invalid/cannot adjudication.
+
+The packet reuses the speech-qualified exact-span cache from pair review and
+shows one reviewed member from each available anonymous profile. `same` attaches
+after an explicit voice match. `different` records a constraint only against
+the displayed representative. `separate` creates a conservative profile bucket
+without asserting that other profiles contain different people. `unresolved`
+keeps the observation qualified but defers grouping. Use `--prepare-only` to
+inspect the packet without a new interactive review; existing pair evidence is
+still synchronized. Use `--video-id YOUTUBE_ID` to revisit an unresolved or
+previously reviewed observation.
 
 Detach without deleting history:
 

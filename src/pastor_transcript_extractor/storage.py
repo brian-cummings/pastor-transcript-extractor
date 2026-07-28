@@ -365,6 +365,17 @@ CREATE TABLE IF NOT EXISTS speaker_observation_review_events (
     FOREIGN KEY(observation_id) REFERENCES speaker_observations(id)
 );
 
+CREATE TABLE IF NOT EXISTS speaker_observation_grouping_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    observation_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('defer', 'clear')),
+    reviewer TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(observation_id) REFERENCES speaker_observations(id)
+);
+
 CREATE TABLE IF NOT EXISTS speaker_observation_difference_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     observation_a_id INTEGER NOT NULL,
@@ -430,6 +441,9 @@ ON profile_observation_events(profile_id, observation_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_speaker_observation_review_events_observation
 ON speaker_observation_review_events(observation_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_observation_grouping_events_observation
+ON speaker_observation_grouping_events(observation_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_speaker_observation_difference_events_pair
 ON speaker_observation_difference_events(observation_a_id, observation_b_id, id);
@@ -1945,6 +1959,13 @@ class Database:
         )
         connection.execute(
             """
+            DELETE FROM speaker_observation_grouping_events
+            WHERE observation_id IN (SELECT id FROM speaker_observations WHERE video_id = ?)
+            """,
+            (video_id,),
+        )
+        connection.execute(
+            """
             DELETE FROM speaker_observation_review_events
             WHERE observation_id IN (SELECT id FROM speaker_observations WHERE video_id = ?)
             """,
@@ -2881,6 +2902,22 @@ class Database:
             event_fingerprint=event_fingerprint,
         )
 
+    def add_speaker_observation_grouping_event(
+        self,
+        *,
+        observation_id: int,
+        action: str,
+        reviewer: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="speaker_observation_grouping_events",
+            columns=("observation_id", "action", "reviewer", "reason"),
+            values=(observation_id, action, reviewer, reason),
+            event_fingerprint=event_fingerprint,
+        )
+
     def add_speaker_observation_difference_event(
         self,
         *,
@@ -2956,6 +2993,7 @@ class Database:
             "profile_observation_events",
             "speaker_profile_creation_events",
             "speaker_observation_review_events",
+            "speaker_observation_grouping_events",
             "speaker_observation_difference_events",
             "profile_name_claim_events",
             "speaker_profile_redirect_events",
@@ -3055,11 +3093,39 @@ class Database:
     def get_effective_observation_review_action(
         self, observation_id: int
     ) -> str | None:
+        event = self.get_effective_observation_review_event(observation_id)
+        return event[0] if event is not None else None
+
+    def get_effective_observation_review_event(
+        self, observation_id: int
+    ) -> tuple[str, str, str] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action, reviewer, reason
+                FROM speaker_observation_review_events
+                WHERE observation_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (observation_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return (
+            str(row["action"]),
+            str(row["reviewer"]),
+            str(row["reason"]),
+        )
+
+    def get_effective_observation_grouping_action(
+        self, observation_id: int
+    ) -> str | None:
         with self.connect() as connection:
             row = connection.execute(
                 """
                 SELECT action
-                FROM speaker_observation_review_events
+                FROM speaker_observation_grouping_events
                 WHERE observation_id = ?
                 ORDER BY id DESC
                 LIMIT 1

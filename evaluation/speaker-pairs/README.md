@@ -145,6 +145,22 @@ explicit different-speaker constraints all retain reviewer attribution and can
 be replayed. Source family may bound a review session but never supplies
 membership evidence. Acoustic predictions cannot create any of these events.
 
+The existing review ledger is synchronized into registry state with:
+
+```bash
+pte identity sync-reviewed-speaker-evidence \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Consistent observation qualifications are reused. Approved `same_speaker`
+reviews form connected components that create or join curated anonymous
+profiles; approved `different_speaker` reviews create exact constraints.
+Conflicts, missing observations, transitive contradictions, and components
+that already span multiple profiles are reported and not guessed through.
+Every derived mutation cites an original reviewer and review event, and replay
+is idempotent. This is reviewed component materialization, not acoustic
+clustering.
+
 The single-observation workflow reuses this experiment's speech-qualified
 exact-span cache:
 
@@ -156,7 +172,11 @@ pte identity review-next-speaker-observation \
 
 The command selects globally by default. `--source-family SOURCE_FAMILY_ID` is
 an optional queue filter only and does not restrict the global profiles offered
-for comparison.
+for comparison. It synchronizes the review ledger before selection, skips work
+already resolved by pair review, and asks for qualification only when an
+observation is unseen or has conflicting qualification evidence. Qualified but
+ungrouped observations go directly to explicit `same`, `different`, `separate`,
+or `unresolved` grouping actions.
 
 Selector v7 may use two explicit curated relations to nominate an unseen pair:
 

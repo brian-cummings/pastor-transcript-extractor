@@ -378,6 +378,40 @@ def record_observation_disposition(
     )
 
 
+def record_observation_grouping_review(
+    database: Database,
+    *,
+    observation_id: int,
+    deferred: bool,
+    reviewer: str,
+    reason: str,
+    review_event_key: str,
+) -> int:
+    reviewer = reviewer.strip()
+    reason = reason.strip()
+    review_event_key = review_event_key.strip()
+    if not reviewer or not reason or not review_event_key:
+        raise ValueError("reviewer, reason, and review event key are required")
+    if database.get_speaker_observation(observation_id) is None:
+        raise ValueError(f"Unknown speaker observation: {observation_id}")
+    action = "defer" if deferred else "clear"
+    fingerprint = _sha256(
+        {
+            "kind": "speaker_observation_grouping_review",
+            "review_event_key": review_event_key,
+            "observation_id": observation_id,
+            "action": action,
+        }
+    )
+    return database.add_speaker_observation_grouping_event(
+        observation_id=observation_id,
+        action=action,
+        reviewer=reviewer,
+        reason=reason,
+        event_fingerprint=fingerprint,
+    )
+
+
 def attach_reviewed_observation(
     database: Database,
     *,
@@ -433,6 +467,18 @@ def attach_reviewed_observation(
         reason=reason,
         review_event_key=f"{review_event_key}:membership",
     )
+    if (
+        database.get_effective_observation_grouping_action(observation_id)
+        == "defer"
+    ):
+        record_observation_grouping_review(
+            database,
+            observation_id=observation_id,
+            deferred=False,
+            reviewer=reviewer,
+            reason=reason,
+            review_event_key=f"{review_event_key}:grouping-clear",
+        )
     return disposition_event_id, membership_event_id
 
 

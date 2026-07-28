@@ -85,6 +85,14 @@ from pastor_transcript_extractor.recording_verifier import (
     run_diagnostics as run_recording_verifier_diagnostics,
     validate_partition_access,
 )
+from pastor_transcript_extractor.reviewed_speaker_evidence import (
+    ReviewedSpeakerEvidence,
+    ReviewedEvidenceSyncResult,
+    load_reviewed_speaker_evidence,
+    observation_review_queue_priority,
+    qualification_conflict_requires_adjudication,
+    sync_reviewed_speaker_evidence,
+)
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.models import (
     SpeakerObservation,
@@ -157,6 +165,7 @@ from pastor_transcript_extractor.speaker_registry import (
     create_anonymous_profile,
     record_observation_difference,
     record_observation_disposition,
+    record_observation_grouping_review,
     record_observation_review,
 )
 from pastor_transcript_extractor.sermon_fixture_selector import (
@@ -1541,6 +1550,66 @@ def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
     return payloads
 
 
+def _print_reviewed_evidence_summary(
+    evidence: ReviewedSpeakerEvidence,
+    result: ReviewedEvidenceSyncResult | None,
+) -> None:
+    console.print(
+        "Reviewed evidence: "
+        f"events={evidence.review_event_count} "
+        f"qualifications={len(evidence.qualifications)} "
+        f"same_components={len(evidence.same_components())} "
+        f"pair_relations={len(evidence.pair_relations)} "
+        f"conflicts={len(evidence.qualification_conflicts) + len(evidence.pair_conflicts)}"
+    )
+    if result is None:
+        return
+    console.print(
+        "Registry sync: "
+        f"qualification_events={result.qualification_events_added} "
+        f"profiles={result.profiles_added} "
+        f"memberships={result.membership_events_added} "
+        f"different_constraints={result.difference_events_added} "
+        f"missing={len(result.missing_observations)} "
+        f"conflicts={len(result.conflicts)}"
+    )
+    for conflict in result.conflicts:
+        console.print(f"[yellow]Review conflict:[/yellow] {conflict}")
+
+
+@identity_app.command(
+    "sync-reviewed-speaker-evidence",
+    help="Replay confirmed pair reviews into curated anonymous registry state.",
+)
+def sync_reviewed_speaker_evidence_command(
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair drafts, reviews, and fixtures root.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Derive and report reviewed evidence without registry mutations.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None, help="Override app data directory."
+    ),
+) -> None:
+    try:
+        evidence = load_reviewed_speaker_evidence(
+            evaluation_root.expanduser().resolve()
+        )
+        result = None
+        if not dry_run:
+            database = get_database(base_dir)
+            result = sync_reviewed_speaker_evidence(database, evidence)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_reviewed_evidence_summary(evidence, result)
+    if dry_run:
+        console.print("Dry run complete; no reviewed evidence was synchronized.")
+
+
 @identity_app.command(
     "review-next-speaker-observation",
     help="Review the next observation into a curated anonymous speaker profile.",
@@ -1563,6 +1632,10 @@ def review_next_speaker_observation(
         Path("evaluation/speaker-pairs/cache"),
         help="Ignored exact-span audio cache shared with pair review.",
     ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair review evidence synchronized before selection.",
+    ),
     source_family_registry: Path = typer.Option(
         Path("evaluation/source-families.json"),
         help="Frozen registry used to resolve the optional queue filter.",
@@ -1575,7 +1648,7 @@ def review_next_speaker_observation(
     prepare_only: bool = typer.Option(
         False,
         "--prepare-only",
-        help="Prepare the selected packet without recording a review.",
+        help="Sync prior evidence and prepare a packet without a new interactive review.",
     ),
     review_event_key: str | None = typer.Option(
         None,
@@ -1589,6 +1662,12 @@ def review_next_speaker_observation(
     cache_root = cache_dir.expanduser().resolve()
     verification_cache = MediaVerificationCache(cache_root)
     try:
+        reviewed_evidence = load_reviewed_speaker_evidence(
+            evaluation_root.expanduser().resolve()
+        )
+        sync_result = sync_reviewed_speaker_evidence(
+            database, reviewed_evidence
+        )
         registry = None
         if source_family is not None:
             registry = load_source_family_registry(
@@ -1598,7 +1677,14 @@ def review_next_speaker_observation(
                 family.source_family_id for family in registry.families
             }:
                 raise ValueError(f"unknown source family: {source_family}")
-        selected: tuple[object, SpeakerObservation, Path] | None = None
+        selected: tuple[
+            int,
+            object,
+            SpeakerObservation,
+            Path,
+            str | None,
+            bool,
+        ] | None = None
         for video in database.list_videos():
             if (
                 youtube_video_id is not None
@@ -1623,24 +1709,50 @@ def review_next_speaker_observation(
             )
             if not eligibility.eligible or eligibility.observation is None:
                 continue
-            if (
-                youtube_video_id is None
-                and database.get_effective_observation_review_action(
-                    eligibility.observation.id
-                )
-                is not None
-            ):
-                continue
             assert eligibility.media_artifact is not None
+            observation = eligibility.observation
+            qualification_action = (
+                database.get_effective_observation_review_action(observation.id)
+            )
+            grouping_action = (
+                database.get_effective_observation_grouping_action(
+                    observation.id
+                )
+            )
+            attached_profile_ids = (
+                database.list_effective_profile_ids_for_observation(
+                    observation.id
+                )
+            )
+            qualification_conflict = (
+                qualification_conflict_requires_adjudication(
+                    database,
+                    reviewed_evidence,
+                    observation_id=observation.id,
+                    observation_fingerprint=observation.input_fingerprint,
+                )
+            )
+            priority = observation_review_queue_priority(
+                qualification_action=qualification_action,
+                grouping_action=grouping_action,
+                attached_profile_ids=attached_profile_ids,
+                qualification_conflict=qualification_conflict,
+                explicitly_targeted=youtube_video_id is not None,
+            )
+            if priority is None:
+                continue
             candidate = (
+                priority,
                 video,
-                eligibility.observation,
+                observation,
                 Path(eligibility.media_artifact.artifact_path),
+                qualification_action,
+                qualification_conflict,
             )
             if (
                 selected is None
-                or eligibility.observation.input_fingerprint
-                < selected[1].input_fingerprint
+                or (priority, observation.input_fingerprint)
+                < (selected[0], selected[2].input_fingerprint)
             ):
                 selected = candidate
         if selected is None:
@@ -1655,7 +1767,14 @@ def review_next_speaker_observation(
                 else "the global review queue"
             )
             raise ValueError(f"no eligible observation{target} remains in {scope}")
-        video, observation, audio_path = selected
+        (
+            _priority,
+            video,
+            observation,
+            audio_path,
+            qualification_action,
+            qualification_conflict,
+        ) = selected
         span_cache = AudioSpanCache(cache_root)
         prepared = prepare_review_observation(
             observation=observation,
@@ -1663,6 +1782,7 @@ def review_next_speaker_observation(
             span_cache=span_cache,
         )
         representatives: list[ProfileReviewRepresentative] = []
+        representative_observations: dict[int, SpeakerObservation] = {}
         for profile in database.list_speaker_profiles():
             if (
                 profile.lifecycle_state != "active"
@@ -1706,11 +1826,16 @@ def review_next_speaker_observation(
                     spans=representative_prepared.spans,
                 )
             )
+            representative_observations[profile.id] = representative
         packet_path = write_profile_review_packet(
             observation_fingerprint=observation.input_fingerprint,
             spans=prepared.spans,
             representatives=representatives,
             output_root=cache_root,
+            qualification_already_reviewed=(
+                qualification_action == "qualified_single_speaker"
+                and not qualification_conflict
+            ),
         )
     except (
         OSError,
@@ -1721,6 +1846,7 @@ def review_next_speaker_observation(
     ) as error:
         raise typer.BadParameter(str(error)) from error
 
+    _print_reviewed_evidence_summary(reviewed_evidence, sync_result)
     scope = (
         f"source family {source_family}"
         if source_family is not None
@@ -1740,39 +1866,102 @@ def review_next_speaker_observation(
     if open_packet:
         webbrowser.open(packet_path.resolve().as_uri())
     if prepare_only:
-        console.print("No registry event was recorded.")
+        console.print(
+            "Existing pair evidence was synchronized; no new interactive "
+            "review was recorded."
+        )
         return
 
-    action = _prompt_review_choice(
-        "Review action",
-        {
-            "existing": "existing",
-            "new": "new",
-            "unresolved": "unresolved",
-            "multiple": "multiple_speakers",
-            "invalid": "invalid",
-        },
+    reviewer_value: str | None = None
+    reason: str | None = None
+    needs_qualification = (
+        qualification_action != "qualified_single_speaker"
+        or qualification_conflict
     )
-    reviewer_value = (reviewer or typer.prompt("Reviewed by")).strip()
-    reason = typer.prompt("Review reason").strip()
+    if needs_qualification:
+        if qualification_conflict:
+            console.print(
+                "[yellow]Existing pair reviews conflict on this observation's "
+                "qualification; adjudication is required.[/yellow]"
+            )
+        qualification_choice = _prompt_review_choice(
+            "Observation qualification",
+            {
+                "single": "qualified_single_speaker",
+                "multiple": "multiple_speakers",
+                "invalid": "invalid",
+                "cannot": "unresolved",
+            },
+        )
+        reviewer_value = (reviewer or typer.prompt("Reviewed by")).strip()
+        reason = typer.prompt("Review reason").strip()
+        qualification_key = review_event_key or (
+            f"anonymous-speaker-qualification-v2:"
+            f"{observation.input_fingerprint}:{reviewer_value}:"
+            f"{qualification_choice}:{reason}"
+        )
+        try:
+            record_observation_disposition(
+                database,
+                observation_id=observation.id,
+                action=str(qualification_choice),
+                reviewer=reviewer_value,
+                reason=reason,
+                review_event_key=f"{qualification_key}:qualification",
+            )
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        if qualification_choice != "qualified_single_speaker":
+            console.print(
+                f"Recorded {qualification_choice} for observation "
+                f"#{observation.id}; no grouping decision was requested."
+            )
+            return
+
+    grouping_choices = {
+        "separate": "separate",
+        "unresolved": "unresolved",
+    }
+    if representatives:
+        grouping_choices = {
+            "same": "same",
+            "different": "different",
+            **grouping_choices,
+        }
+        console.print(
+            "Grouping actions:\n"
+            "  same       explicitly matches one displayed profile representative\n"
+            "  different  explicitly differs from one displayed representative\n"
+            "  separate   create a conservative profile bucket without asserting difference\n"
+            "  unresolved leave qualified but ungrouped"
+        )
+    else:
+        console.print(
+            "Grouping actions:\n"
+            "  separate   seed a conservative anonymous profile bucket\n"
+            "  unresolved leave qualified but ungrouped"
+        )
+    grouping_action = _prompt_review_choice(
+        "Grouping action",
+        grouping_choices,
+    )
+    if reviewer_value is None:
+        reviewer_value = (reviewer or typer.prompt("Reviewed by")).strip()
+    if reason is None:
+        reason = typer.prompt("Review reason").strip()
     profile_id: int | None = None
-    if action == "existing":
+    if grouping_action in {"same", "different"}:
         profile_id = typer.prompt("Anonymous profile id", type=int)
-        profile = database.get_speaker_profile(profile_id)
-        if (
-            profile is None
-            or profile.lifecycle_state != "active"
-            or profile.created_reason != "reviewed_anonymous_speaker"
-        ):
+        if profile_id not in representative_observations:
             raise typer.BadParameter(
-                f"{profile_id} is not a curated anonymous speaker profile"
+                f"profile #{profile_id} has no representative in this packet"
             )
     event_key = review_event_key or (
-        f"anonymous-speaker-review-v1:{observation.input_fingerprint}:"
-        f"{reviewer_value}:{action}:{profile_id}:{reason}"
+        f"anonymous-speaker-grouping-v2:{observation.input_fingerprint}:"
+        f"{reviewer_value}:{grouping_action}:{profile_id}:{reason}"
     )
     try:
-        if action == "new":
+        if grouping_action == "separate":
             profile = create_anonymous_profile(
                 database,
                 reviewer=reviewer_value,
@@ -1788,7 +1977,7 @@ def review_next_speaker_observation(
                 reason=reason,
                 review_event_key=event_key,
             )
-        elif action == "existing":
+        elif grouping_action == "same":
             assert profile_id is not None
             attach_reviewed_observation(
                 database,
@@ -1798,26 +1987,57 @@ def review_next_speaker_observation(
                 reason=reason,
                 review_event_key=event_key,
             )
-        else:
-            record_observation_disposition(
+        elif grouping_action == "different":
+            assert profile_id is not None
+            representative = representative_observations[profile_id]
+            record_observation_difference(
                 database,
-                observation_id=observation.id,
-                action=str(action),
+                observation_a_id=observation.id,
+                observation_b_id=representative.id,
+                different=True,
                 reviewer=reviewer_value,
                 reason=reason,
-                review_event_key=event_key,
+                review_event_key=f"{event_key}:different",
+            )
+            record_observation_grouping_review(
+                database,
+                observation_id=observation.id,
+                deferred=True,
+                reviewer=reviewer_value,
+                reason=reason,
+                review_event_key=f"{event_key}:grouping-defer",
+            )
+        else:
+            record_observation_grouping_review(
+                database,
+                observation_id=observation.id,
+                deferred=True,
+                reviewer=reviewer_value,
+                reason=reason,
+                review_event_key=f"{event_key}:grouping-defer",
             )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     if profile_id is not None:
+        if grouping_action == "same":
+            console.print(
+                f"Observation #{observation.id} is attached to anonymous "
+                f"profile #{profile_id} by append-only review events."
+            )
+        else:
+            console.print(
+                f"Recorded an exact different-speaker constraint against "
+                f"profile #{profile_id}'s displayed representative; the "
+                "observation remains ungrouped."
+            )
+    elif grouping_action == "separate":
         console.print(
-            f"Observation #{observation.id} is attached to anonymous profile "
-            f"#{profile_id} by append-only review events."
+            f"Observation #{observation.id} seeded anonymous profile "
+            f"#{profile.id}; this does not assert difference from other profiles."
         )
     else:
         console.print(
-            f"Recorded {action} for observation #{observation.id} as an "
-            "append-only review event."
+            f"Observation #{observation.id} remains qualified but ungrouped."
         )
 
 

@@ -18,6 +18,7 @@ from pastor_transcript_extractor.speaker_registry import (
     record_name_claim_review,
     record_observation_difference,
     record_observation_disposition,
+    record_observation_grouping_review,
     record_observation_review,
     record_profile_redirect,
 )
@@ -324,6 +325,52 @@ class SpeakerRegistryTests(unittest.TestCase):
                     "SELECT COUNT(*) FROM speaker_observation_review_events"
                 ).fetchone()[0],
             )
+
+    def test_grouping_deferral_is_separate_from_qualification_and_clears_on_attach(self) -> None:
+        result = self._persist()
+        observation_id = result.observation.id
+        record_observation_disposition(
+            self.database,
+            observation_id=observation_id,
+            action="qualified_single_speaker",
+            reviewer="reviewer",
+            reason="Five clips contain one principal speaker",
+            review_event_key="qualified-before-grouping",
+        )
+        record_observation_grouping_review(
+            self.database,
+            observation_id=observation_id,
+            deferred=True,
+            reviewer="reviewer",
+            reason="No profile comparison established a match",
+            review_event_key="grouping-defer",
+        )
+        self.assertEqual(
+            "qualified_single_speaker",
+            self.database.get_effective_observation_review_action(observation_id),
+        )
+        self.assertEqual(
+            "defer",
+            self.database.get_effective_observation_grouping_action(observation_id),
+        )
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="Conservative separate profile",
+            review_event_key="grouping-profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=observation_id,
+            reviewer="reviewer",
+            reason="Reviewed profile assignment",
+            review_event_key="grouping-attach",
+        )
+        self.assertEqual(
+            "clear",
+            self.database.get_effective_observation_grouping_action(observation_id),
+        )
 
     def test_different_constraint_is_explicit_reversible_and_idempotent(self) -> None:
         first = self._persist()
