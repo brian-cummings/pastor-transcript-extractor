@@ -8,12 +8,14 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v3"
+SELECTOR_VERSION = "speaker_pair_selector_v6"
+SAME_SPEAKER_BALANCE_GAP = 2
 
 
 class SelectionStratum(StrEnum):
     SHARED_ATTRIBUTION = "shared_attribution"
     CONTRADICTING_ATTRIBUTION = "contradicting_attribution"
+    PARTIAL_ATTRIBUTION = "partial_attribution"
     UNATTRIBUTED = "unattributed"
 
 
@@ -26,6 +28,7 @@ class SourceRelation(StrEnum):
 STRATUM_ROTATION = (
     SelectionStratum.SHARED_ATTRIBUTION,
     SelectionStratum.CONTRADICTING_ATTRIBUTION,
+    SelectionStratum.PARTIAL_ATTRIBUTION,
     SelectionStratum.UNATTRIBUTED,
 )
 
@@ -58,6 +61,8 @@ class PairSelectionHistory:
     objective_condition_counts: Mapping[str, int] | None = None
     source_family_use: Mapping[str, int] | None = None
     source_relation_counts: Mapping[str, int] | None = None
+    reviewed_pair_outcomes: Mapping[frozenset[str], str] | None = None
+    reviewed_pair_partitions: Mapping[frozenset[str], str | None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +91,8 @@ def selection_history_from_artifacts(
     objective_counts: dict[str, int] = {}
     source_family_use: dict[str, int] = {}
     source_relation_counts: dict[str, int] = {}
+    reviewed_pair_outcomes: dict[frozenset[str], str] = {}
+    reviewed_pair_partitions: dict[frozenset[str], str | None] = {}
     source_context_pair_ids: set[str] = set()
     automatic_pair_ids: set[str] = set()
     sources_by_pair: dict[str, list[str]] = {}
@@ -109,9 +116,19 @@ def selection_history_from_artifacts(
     for index, fixture in enumerate(fixtures):
         fingerprints = _fixture_fingerprints(fixture)
         if len(fingerprints) == 2:
-            excluded_pairs.add(frozenset(fingerprints))
+            pair_key = frozenset(fingerprints)
+            excluded_pairs.add(pair_key)
             for fingerprint in fingerprints:
                 observation_use[fingerprint] = observation_use.get(fingerprint, 0) + 1
+            outcome = fixture.get("expected_outcome")
+            if outcome in {"same_speaker", "different_speaker"}:
+                prior_outcome = reviewed_pair_outcomes.get(pair_key)
+                reviewed_pair_outcomes[pair_key] = (
+                    str(outcome)
+                    if prior_outcome in {None, outcome}
+                    else "conflicting"
+                )
+                reviewed_pair_partitions[pair_key] = _fixture_partition(fixture)
         sources = _fixture_sources(fixture)
         if len(sources) == 2:
             excluded_source_pairs.add(frozenset(sources))
@@ -167,6 +184,8 @@ def selection_history_from_artifacts(
         objective_condition_counts=objective_counts,
         source_family_use=source_family_use,
         source_relation_counts=source_relation_counts,
+        reviewed_pair_outcomes=reviewed_pair_outcomes,
+        reviewed_pair_partitions=reviewed_pair_partitions,
     )
 
 
@@ -221,6 +240,265 @@ def select_next_speaker_pair(
     if not pairs:
         raise ValueError("no unreviewed or undrafted eligible speaker pairs remain")
 
+    observation_use = history.observation_use or {}
+    source_use = history.source_use or {}
+    source_family_use = history.source_family_use or {}
+    disfavored = history.disfavored_observations or {}
+    disfavored_sources = history.disfavored_sources or {}
+    condition_counts = history.objective_condition_counts or {}
+    outcome_counts = _reviewed_outcome_counts(
+        history,
+        evaluation_partition=evaluation_partition,
+    )
+    anchor_selection = _select_same_speaker_anchor_expansion(
+        pairs,
+        history,
+        outcome_counts=outcome_counts,
+        source_family_use=source_family_use,
+        observation_use=observation_use,
+        source_use=source_use,
+        disfavored=disfavored,
+        disfavored_sources=disfavored_sources,
+        condition_counts=condition_counts,
+    )
+    if anchor_selection is not None:
+        observation_a, observation_b, chosen_stratum, chosen_relation, anchor_component = (
+            anchor_selection
+        )
+        selection_objective = "same_speaker_anchor_expansion"
+    else:
+        observation_a, observation_b, chosen_stratum, chosen_relation = (
+            _select_rotating_pair(
+                pairs,
+                history,
+                source_family_use=source_family_use,
+                observation_use=observation_use,
+                source_use=source_use,
+                disfavored=disfavored,
+                disfavored_sources=disfavored_sources,
+                condition_counts=condition_counts,
+            )
+        )
+        anchor_component = None
+        selection_objective = "diversity_rotation"
+
+    prior_a = max(
+        int(source_use.get(observation_a.video_id, 0)),
+        int(observation_use.get(observation_a.input_fingerprint, 0)),
+    )
+    prior_b = max(
+        int(source_use.get(observation_b.video_id, 0)),
+        int(observation_use.get(observation_b.input_fingerprint, 0)),
+    )
+    source_family_prior_a = _source_family_prior_use(
+        observation_a,
+        source_family_use,
+    )
+    source_family_prior_b = _source_family_prior_use(
+        observation_b,
+        source_family_use,
+    )
+    reason_codes = _reason_codes(
+        observation_a,
+        observation_b,
+        prior_a,
+        prior_b,
+        chosen_relation,
+        source_family_prior_a,
+        source_family_prior_b,
+    )
+    if anchor_component is not None:
+        reason_codes.insert(0, "reviewed_same_anchor_expansion")
+    elif _same_speaker_balance_needed(outcome_counts):
+        reason_codes.insert(0, "same_likely_candidates_exhausted")
+    snapshot = [
+        {
+            "input_fingerprint": item.input_fingerprint,
+            "video_id": item.video_id,
+            "recording_date": item.recording_date.isoformat() if item.recording_date else None,
+            "explicit_attributions": sorted(item.explicit_attributions),
+            "quality_signature": item.quality_signature,
+            "source_family_id": item.source_family_id,
+            "evaluation_partition": item.evaluation_partition,
+        }
+        for item in candidates
+    ]
+    manifest: dict[str, object] = {
+        "selector_version": SELECTOR_VERSION,
+        "selection_origin": "automatic",
+        "selection_objective": selection_objective,
+        "selection_stratum": chosen_stratum,
+        "source_relation": chosen_relation,
+        "source_family_ids": {
+            "a": observation_a.source_family_id,
+            "b": observation_b.source_family_id,
+        },
+        "source_family_prior_use": {
+            "a": source_family_prior_a,
+            "b": source_family_prior_b,
+        },
+        "evaluation_partitions": {
+            "a": observation_a.evaluation_partition,
+            "b": observation_b.evaluation_partition,
+        },
+        "evaluation_scope": evaluation_partition or "all_partitions",
+        "corpus_snapshot_fingerprint": _sha256_json(snapshot),
+        "observation_prior_use": {"a": prior_a, "b": prior_b},
+        "reviewed_outcome_counts": outcome_counts,
+        "reason_codes": reason_codes,
+    }
+    if anchor_component is not None:
+        manifest["anchor_component_fingerprints"] = sorted(anchor_component)
+    return PairSelection(observation_a, observation_b, manifest)
+
+
+def _select_same_speaker_anchor_expansion(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    history: PairSelectionHistory,
+    *,
+    outcome_counts: Mapping[str, int],
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+    frozenset[str],
+] | None:
+    if not _same_speaker_balance_needed(outcome_counts):
+        return None
+    reviewed_outcomes = history.reviewed_pair_outcomes or {}
+    same_components = _reviewed_same_speaker_components(reviewed_outcomes)
+    if not same_components:
+        return None
+    different_pairs = {
+        pair_key
+        for pair_key, outcome in reviewed_outcomes.items()
+        if outcome == "different_speaker"
+    }
+    expansions: list[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+            frozenset[str],
+        ]
+    ] = []
+    for observation_a, observation_b, stratum, relation in pairs:
+        fingerprints = {
+            observation_a.input_fingerprint,
+            observation_b.input_fingerprint,
+        }
+        for anchor_component in same_components:
+            overlap = fingerprints & anchor_component
+            if len(overlap) != 1:
+                continue
+            candidate_fingerprint = next(iter(fingerprints - anchor_component))
+            if any(
+                frozenset((candidate_fingerprint, anchor_fingerprint))
+                in different_pairs
+                for anchor_fingerprint in anchor_component
+            ):
+                continue
+            if stratum != SelectionStratum.SHARED_ATTRIBUTION:
+                continue
+            expansions.append(
+                (
+                    observation_a,
+                    observation_b,
+                    stratum,
+                    relation,
+                    anchor_component,
+                )
+            )
+    if not expansions:
+        return None
+    return min(
+        expansions,
+        key=lambda item: (
+            0 if item[2] == SelectionStratum.SHARED_ATTRIBUTION else 1,
+            _rank_pair(
+                item[0],
+                item[1],
+                source_family_use,
+                observation_use,
+                source_use,
+                disfavored,
+                disfavored_sources,
+                condition_counts,
+            ),
+        ),
+    )
+
+
+def _reviewed_same_speaker_components(
+    reviewed_outcomes: Mapping[frozenset[str], str],
+) -> tuple[frozenset[str], ...]:
+    adjacency: dict[str, set[str]] = {}
+    for pair_key, outcome in reviewed_outcomes.items():
+        if outcome != "same_speaker" or len(pair_key) != 2:
+            continue
+        fingerprint_a, fingerprint_b = tuple(pair_key)
+        adjacency.setdefault(fingerprint_a, set()).add(fingerprint_b)
+        adjacency.setdefault(fingerprint_b, set()).add(fingerprint_a)
+
+    components: list[frozenset[str]] = []
+    unseen = set(adjacency)
+    while unseen:
+        pending = [min(unseen)]
+        component: set[str] = set()
+        while pending:
+            fingerprint = pending.pop()
+            if fingerprint in component:
+                continue
+            component.add(fingerprint)
+            pending.extend(sorted(adjacency.get(fingerprint, ()), reverse=True))
+        unseen.difference_update(component)
+        components.append(frozenset(component))
+    return tuple(
+        sorted(
+            components,
+            key=lambda component: tuple(sorted(component)),
+        )
+    )
+
+
+def _select_rotating_pair(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    history: PairSelectionHistory,
+    *,
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+]:
     start = history.automatic_selection_count % len(STRATUM_ROTATION)
     rotated = STRATUM_ROTATION[start:] + STRATUM_ROTATION[:start]
     chosen_stratum = next(
@@ -248,12 +526,6 @@ def select_next_speaker_pair(
     else:
         chosen_relation = SourceRelation.UNKNOWN
     relation_pairs = [pair for pair in stratum_pairs if pair[3] == chosen_relation]
-    observation_use = history.observation_use or {}
-    source_use = history.source_use or {}
-    source_family_use = history.source_family_use or {}
-    disfavored = history.disfavored_observations or {}
-    disfavored_sources = history.disfavored_sources or {}
-    condition_counts = history.objective_condition_counts or {}
     observation_a, observation_b, _, _ = min(
         relation_pairs,
         key=lambda pair: _rank_pair(
@@ -267,67 +539,7 @@ def select_next_speaker_pair(
             condition_counts,
         ),
     )
-
-    prior_a = max(
-        int(source_use.get(observation_a.video_id, 0)),
-        int(observation_use.get(observation_a.input_fingerprint, 0)),
-    )
-    prior_b = max(
-        int(source_use.get(observation_b.video_id, 0)),
-        int(observation_use.get(observation_b.input_fingerprint, 0)),
-    )
-    source_family_prior_a = _source_family_prior_use(
-        observation_a,
-        source_family_use,
-    )
-    source_family_prior_b = _source_family_prior_use(
-        observation_b,
-        source_family_use,
-    )
-    reason_codes = _reason_codes(
-        observation_a,
-        observation_b,
-        prior_a,
-        prior_b,
-        chosen_relation,
-        source_family_prior_a,
-        source_family_prior_b,
-    )
-    snapshot = [
-        {
-            "input_fingerprint": item.input_fingerprint,
-            "video_id": item.video_id,
-            "recording_date": item.recording_date.isoformat() if item.recording_date else None,
-            "explicit_attributions": sorted(item.explicit_attributions),
-            "quality_signature": item.quality_signature,
-            "source_family_id": item.source_family_id,
-            "evaluation_partition": item.evaluation_partition,
-        }
-        for item in candidates
-    ]
-    manifest: dict[str, object] = {
-        "selector_version": SELECTOR_VERSION,
-        "selection_origin": "automatic",
-        "selection_stratum": chosen_stratum,
-        "source_relation": chosen_relation,
-        "source_family_ids": {
-            "a": observation_a.source_family_id,
-            "b": observation_b.source_family_id,
-        },
-        "source_family_prior_use": {
-            "a": source_family_prior_a,
-            "b": source_family_prior_b,
-        },
-        "evaluation_partitions": {
-            "a": observation_a.evaluation_partition,
-            "b": observation_b.evaluation_partition,
-        },
-        "evaluation_scope": evaluation_partition or "all_partitions",
-        "corpus_snapshot_fingerprint": _sha256_json(snapshot),
-        "observation_prior_use": {"a": prior_a, "b": prior_b},
-        "reason_codes": reason_codes,
-    }
-    return PairSelection(observation_a, observation_b, manifest)
+    return observation_a, observation_b, chosen_stratum, chosen_relation
 
 
 def _pair_stratum(
@@ -336,11 +548,21 @@ def _pair_stratum(
 ) -> SelectionStratum:
     names_a = observation_a.explicit_attributions
     names_b = observation_b.explicit_attributions
-    if not names_a or not names_b:
+    if bool(names_a) != bool(names_b):
+        return SelectionStratum.PARTIAL_ATTRIBUTION
+    if not names_a:
         return SelectionStratum.UNATTRIBUTED
     if names_a & names_b:
         return SelectionStratum.SHARED_ATTRIBUTION
     return SelectionStratum.CONTRADICTING_ATTRIBUTION
+
+
+def _same_speaker_balance_needed(outcome_counts: Mapping[str, int]) -> bool:
+    return (
+        int(outcome_counts.get("different_speaker", 0))
+        - int(outcome_counts.get("same_speaker", 0))
+        >= SAME_SPEAKER_BALANCE_GAP
+    )
 
 
 def _source_relation(
@@ -379,6 +601,38 @@ def _fixture_fingerprints(payload: Mapping[str, Any]) -> list[str]:
         for side in ("a", "b")
         if payload.get("observations", {}).get(side, {}).get("input_fingerprint")
     ]
+
+
+def _fixture_partition(payload: Mapping[str, Any]) -> str | None:
+    partition = payload.get("evaluation_partition")
+    if isinstance(partition, str) and partition:
+        return partition
+    manifest = payload.get("selection_manifest")
+    if isinstance(manifest, Mapping):
+        scope = manifest.get("evaluation_scope")
+        if scope in {"development", "validation", "held_out"}:
+            return str(scope)
+    return None
+
+
+def _reviewed_outcome_counts(
+    history: PairSelectionHistory,
+    *,
+    evaluation_partition: str | None,
+) -> dict[str, int]:
+    counts = {"same_speaker": 0, "different_speaker": 0}
+    outcomes = history.reviewed_pair_outcomes or {}
+    partitions = history.reviewed_pair_partitions or {}
+    for pair_key, outcome in outcomes.items():
+        if outcome not in counts:
+            continue
+        if (
+            evaluation_partition is not None
+            and partitions.get(pair_key) != evaluation_partition
+        ):
+            continue
+        counts[outcome] += 1
+    return counts
 
 
 def _draft_sources(payload: Mapping[str, Any]) -> list[str]:

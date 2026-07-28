@@ -162,6 +162,29 @@ excluded. Accepted manual window overrides remain eligible when their current
 observation matches the override. This is derived at selection time and adds no
 database migration or lifecycle state.
 
+Selector v6 also derives partition-scoped frozen-fixture outcome counts. When
+`different_speaker` exceeds `same_speaker` by at least two, it may nominate a
+same-likely pair by expanding a frozen reviewed-same anchor toward an unused
+observation only when both have the same exact grounded name attribution.
+Church or source-family context is never sufficient. One-sided name evidence
+is represented as `partial_attribution`, and exhaustion of the grounded
+same-likely pool is explicit in the selection reasons. Reviewed different
+constraints against any member of the reviewed-same component block only that
+same-seeking expansion. The component is selection metadata only: no
+transitive fixture label, identity cluster, profile, or registry membership is
+created.
+
+Grounded attribution v3 recognizes `Sis`/`Sister` title credits, including the
+previously missed `Sis Lillie Hill - ...` case. Materialize the new append-only
+claims with:
+
+```bash
+pte identity backfill \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+This does not reclassify sermon content or rewrite extraction artifacts.
+
 The provisional local backend is sherpa-onnx 1.13.1 with an English CAMPPlus
 ONNX model whose SHA-256 is pinned by the CLI. Model files and all generated
 audio/embedding caches are ignored. There is no production dependency on this

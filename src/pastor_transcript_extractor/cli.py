@@ -1777,6 +1777,7 @@ def review_next_speaker_pair(
         )
     console.print(
         f"Selected scope={selection.manifest['evaluation_scope']} "
+        f"objective={selection.manifest['selection_objective']} "
         f"{selection.manifest['selection_stratum']}/"
         f"{selection.manifest['source_relation']} pair "
         f"({selection.observation_a.video_id}, {selection.observation_b.video_id}); "

@@ -47,6 +47,14 @@ class GroundedAttributionTests(unittest.TestCase):
         self.assertEqual("database_backfill", observation["provenance"]["metadata_source_kind"])
         self.assertEqual(title, observation["provenance"]["exact_excerpt"])
 
+    def test_sister_abbreviation_in_title_is_an_explicit_speaker_credit(self) -> None:
+        title = 'Sis Lillie Hill - "Oh How I love Thy Law!"'
+        result = analyze(metadata(title), proposed())
+
+        self.assertIn("metadata_non_target_match", result.outcomes)
+        self.assertIn("explicit_guest_attribution", result.outcomes)
+        self.assertEqual("lillie hill", result.correlation_groups[0]["normalized_person_name"])
+
     def test_target_named_in_title_is_supporting_but_does_not_confirm_identity(self) -> None:
         title = 'Duluth Seventh-Day Adventist Church - Pastor Andrew Korp - "What Jesus Noticed"'
         result = analyze(metadata(title), proposed(), target="Andrew Korp")

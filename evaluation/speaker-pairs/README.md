@@ -193,6 +193,21 @@ selection metadata only. It is hidden from the packet and never supplies the
 fixture outcome or speaker-profile membership. Repeating the command advances
 because the prior draft is part of the derived selection history.
 
+The selector also derives frozen fixture outcome balance independently within
+each requested evaluation partition. When `different_speaker` exceeds
+`same_speaker` by at least two fixtures, it first tries a conservative
+same-speaker anchor expansion: one member of a frozen, human-reviewed
+`same_speaker` pair is compared with an unused observation only when both carry
+the same exact grounded name attribution. Source-family or church membership
+alone is never a same-likelihood signal. A candidate is excluded from this
+same-seeking objective when it already has a reviewed `different_speaker`
+constraint against any member of the reviewed-same component containing that
+anchor. This component is derived only for fixture sampling. It does not create
+a transitive fixture label, identity cluster, profile, or bypass independent
+review of the nominated pair. If no qualified expansion exists, normal
+diversity rotation continues with `same_likely_candidates_exhausted` recorded
+in the selection reasons.
+
 Automatic candidates must be current observations of accepted sermons. The
 selector requires a readable latest extraction with a persisted top-level
 `accepted_sermon` disposition, a valid current sermon window, an observation

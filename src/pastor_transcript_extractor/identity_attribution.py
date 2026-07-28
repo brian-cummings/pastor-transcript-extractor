@@ -7,30 +7,31 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
-ATTRIBUTION_EXTRACTOR_VERSION = "grounded_attribution_v2"
+ATTRIBUTION_EXTRACTOR_VERSION = "grounded_attribution_v3"
 INTRO_CONTEXT_BEFORE_SECONDS = 300.0
 INTRO_CONTEXT_AFTER_SECONDS = 180.0
+_HONORIFIC_PATTERN = r"Pastor|Elder|Sis\.?|Sister|Dr\.?|Pr\.?"
 
 _HONORIFIC_RE = re.compile(
-    r"\b(?P<honorific>Pastor|Elder|Dr\.?|Pr\.?)\s+"
+    rf"\b(?P<honorific>{_HONORIFIC_PATTERN})\s+"
     r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
 )
 _SPEAKER_IS_RE = re.compile(
     r"\b(?:our|the)?\s*(?:first |second |final )?(?:speaker|preacher)"
     r"(?:\s+for\s+today|\s+today|\s+this\s+(?:morning|evening))?\s+is\s+"
-    r"(?:(?:Pastor|Elder|Dr\.?|Pr\.?)\s+)?"
+    rf"(?:(?:{_HONORIFIC_PATTERN})\s+)?"
     r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
 )
 _MESSAGE_BY_RE = re.compile(
     r"(?i:\b(?:message|sermon|word)(?:\s+for\s+today)?[^.!?\n]{0,80}?\bby\s+)"
-    r"(?:(?:Pastor|Elder|Dr\.?|Pr\.?)\s+)?"
+    rf"(?:(?:{_HONORIFIC_PATTERN})\s+)?"
     r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
 )
 _TITLE_BYLINE_RE = re.compile(
-    r"\bby\s+(?:(?:Pastor|Elder|Dr\.?|Pr\.?)\s+)?"
+    rf"\bby\s+(?:(?:{_HONORIFIC_PATTERN})\s+)?"
     r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
 )
-_HONORIFICS = {"pastor", "elder", "dr", "pr"}
+_HONORIFICS = {"pastor", "elder", "sis", "sister", "dr", "pr"}
 _MONTH_SUFFIX_RE = re.compile(
     r"-(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|"
     r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)$",
@@ -133,9 +134,16 @@ def _candidate_mentions(text: str, target_name: str) -> list[tuple[str, int, int
 def _metadata_is_explicit(field_path: str, text: str, name_start: int, name_end: int) -> bool:
     prefix = text[:name_start].lower()
     if field_path.endswith("title"):
-        if re.search(r"\bby\s+(?:(?:pastor|elder|dr\.?|pr\.?)\s+)?$", prefix):
+        if re.search(
+            r"\bby\s+(?:(?:pastor|elder|sis\.?|sister|dr\.?|pr\.?)\s+)?$",
+            prefix,
+        ):
             return True
-        if re.search(r"(?:^|[-|–—:])\s*(?:(?:pastor|elder|dr\.?|pr\.?)\s+)?$", prefix):
+        if re.search(
+            r"(?:^|[-|–—:])\s*"
+            r"(?:(?:pastor|elder|sis\.?|sister|dr\.?|pr\.?)\s+)?$",
+            prefix,
+        ):
             return True
     context_start = max(0, name_start - 140)
     context = text[context_start:min(len(text), name_end + 140)]
@@ -143,7 +151,7 @@ def _metadata_is_explicit(field_path: str, text: str, name_start: int, name_end:
     local_end = local_start + (name_end - name_start)
     marked = context[:local_start] + " <name> " + context[local_end:]
     normalized = " ".join(marked.lower().split())
-    titled_name = r"(?:(?:pastor|elder|dr\.?|pr\.?) )?<name>"
+    titled_name = r"(?:(?:pastor|elder|sis\.?|sister|dr\.?|pr\.?) )?<name>"
     return any(
         re.search(pattern, normalized)
         for pattern in (
@@ -160,7 +168,7 @@ def _spoken_is_explicit(text: str, name_start: int, name_end: int) -> bool:
     local_end = local_start + (name_end - name_start)
     marked = context[:local_start] + " <name> " + context[local_end:]
     normalized = " ".join(marked.lower().split())
-    titled_name = r"(?:(?:pastor|elder|dr\.?|pr\.?) )?<name>"
+    titled_name = r"(?:(?:pastor|elder|sis\.?|sister|dr\.?|pr\.?) )?<name>"
     patterns = (
         rf"\b(?:our|the) (?:speaker|preacher)(?: for today| today| this morning| this evening)? is {titled_name}",
         rf"\b(?:first|second|final) speaker is {titled_name}",

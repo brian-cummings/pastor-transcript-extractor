@@ -85,6 +85,8 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         }
         fixture = {
             "pair_id": "pair-ab",
+            "expected_outcome": "same_speaker",
+            "evaluation_partition": "validation",
             "selection_manifest": manifest,
             "observations": {
                 "a": {
@@ -111,6 +113,14 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual({"a": 1}, history.disfavored_observations)
         self.assertEqual({"video-a": 1}, history.disfavored_sources)
         self.assertEqual(1, history.automatic_selection_count)
+        self.assertEqual(
+            "same_speaker",
+            history.reviewed_pair_outcomes[frozenset(("a", "b"))],
+        )
+        self.assertEqual(
+            "validation",
+            history.reviewed_pair_partitions[frozenset(("a", "b"))],
+        )
 
     def test_drafted_sources_are_deprioritized_even_without_a_fixture(self) -> None:
         candidates = [
@@ -204,6 +214,17 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertNotIn("expected_outcome", selected.manifest)
         self.assertNotIn("profile", selected.manifest)
 
+    def test_one_sided_name_evidence_is_partial_attribution(self) -> None:
+        selected = select_next_speaker_pair(
+            [candidate("named", name="alex"), candidate("unknown")],
+            PairSelectionHistory(),
+        )
+
+        self.assertEqual(
+            "partial_attribution",
+            selected.manifest["selection_stratum"],
+        )
+
     def test_rotation_advances_and_falls_back_to_available_stratum(self) -> None:
         candidates = [
             candidate("same-a", name="alex"),
@@ -216,13 +237,298 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             candidates,
             PairSelectionHistory(automatic_selection_count=1),
         )
-        unattributed = select_next_speaker_pair(
+        partial = select_next_speaker_pair(
             candidates,
             PairSelectionHistory(automatic_selection_count=2),
         )
 
         self.assertEqual("contradicting_attribution", contradicting.manifest["selection_stratum"])
-        self.assertEqual("unattributed", unattributed.manifest["selection_stratum"])
+        self.assertEqual("partial_attribution", partial.manifest["selection_stratum"])
+
+    def test_same_fixture_imbalance_selects_unused_anchor_expansion(self) -> None:
+        same_pair = frozenset(("anchor-a", "anchor-b"))
+        different_pairs = (
+            frozenset(("different-a", "different-b")),
+            frozenset(("different-c", "different-d")),
+            frozenset(("different-e", "different-f")),
+        )
+        outcomes = {
+            same_pair: "same_speaker",
+            **{pair: "different_speaker" for pair in different_pairs},
+        }
+        partitions = {pair: "validation" for pair in outcomes}
+        candidates = [
+            candidate(
+                "anchor-a",
+                name="alex",
+                source_family="family-a",
+                partition="validation",
+            ),
+            candidate(
+                "anchor-b",
+                name="alex",
+                source_family="family-a",
+                partition="validation",
+            ),
+            candidate(
+                "unused",
+                name="alex",
+                source_family="family-a",
+                partition="validation",
+            ),
+            candidate(
+                "cross-family",
+                source_family="family-b",
+                partition="validation",
+            ),
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                excluded_pairs=frozenset((same_pair,)),
+                observation_use={"anchor-a": 1, "anchor-b": 1},
+                reviewed_pair_outcomes=outcomes,
+                reviewed_pair_partitions=partitions,
+            ),
+            evaluation_partition="validation",
+        )
+
+        selected_fingerprints = {
+            selected.observation_a.input_fingerprint,
+            selected.observation_b.input_fingerprint,
+        }
+        self.assertIn("unused", selected_fingerprints)
+        self.assertTrue(selected_fingerprints & same_pair)
+        self.assertEqual(
+            "same_speaker_anchor_expansion",
+            selected.manifest["selection_objective"],
+        )
+        self.assertIn(
+            "reviewed_same_anchor_expansion",
+            selected.manifest["reason_codes"],
+        )
+        self.assertEqual(
+            {"same_speaker": 1, "different_speaker": 3},
+            selected.manifest["reviewed_outcome_counts"],
+        )
+        self.assertNotIn("expected_outcome", selected.manifest)
+        self.assertNotIn("profile", selected.manifest)
+
+    def test_same_source_family_alone_is_not_a_same_likely_candidate(self) -> None:
+        same_pair = frozenset(("anchor-a", "anchor-b"))
+        different_pairs = (
+            frozenset(("different-a", "different-b")),
+            frozenset(("different-c", "different-d")),
+            frozenset(("different-e", "different-f")),
+        )
+        outcomes = {
+            same_pair: "same_speaker",
+            **{pair: "different_speaker" for pair in different_pairs},
+        }
+        candidates = [
+            candidate(
+                "anchor-a",
+                name="alex",
+                source_family="church",
+                partition="validation",
+            ),
+            candidate(
+                "anchor-b",
+                name="alex",
+                source_family="church",
+                partition="validation",
+            ),
+            candidate(
+                "unknown",
+                source_family="church",
+                partition="validation",
+            ),
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                excluded_pairs=frozenset((same_pair,)),
+                reviewed_pair_outcomes=outcomes,
+                reviewed_pair_partitions={
+                    pair: "validation" for pair in outcomes
+                },
+            ),
+            evaluation_partition="validation",
+        )
+
+        self.assertEqual(
+            "diversity_rotation",
+            selected.manifest["selection_objective"],
+        )
+        self.assertEqual(
+            "partial_attribution",
+            selected.manifest["selection_stratum"],
+        )
+        self.assertIn(
+            "same_likely_candidates_exhausted",
+            selected.manifest["reason_codes"],
+        )
+
+    def test_anchor_expansion_respects_different_constraint_against_either_anchor(
+        self,
+    ) -> None:
+        same_pair = frozenset(("anchor-a", "anchor-b"))
+        blocked_pair = frozenset(("anchor-a", "blocked"))
+        other_different_pairs = (
+            frozenset(("different-a", "different-b")),
+            frozenset(("different-c", "different-d")),
+            frozenset(("different-e", "different-f")),
+        )
+        outcomes = {
+            same_pair: "same_speaker",
+            blocked_pair: "different_speaker",
+            **{pair: "different_speaker" for pair in other_different_pairs},
+        }
+        candidates = [
+            candidate(
+                fingerprint,
+                name="alex",
+                source_family="family-a",
+                partition="validation",
+            )
+            for fingerprint in ("anchor-a", "anchor-b", "blocked", "available")
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                excluded_pairs=frozenset((same_pair, blocked_pair)),
+                reviewed_pair_outcomes=outcomes,
+                reviewed_pair_partitions={
+                    pair: "validation" for pair in outcomes
+                },
+            ),
+            evaluation_partition="validation",
+        )
+
+        selected_fingerprints = {
+            selected.observation_a.input_fingerprint,
+            selected.observation_b.input_fingerprint,
+        }
+        self.assertIn("available", selected_fingerprints)
+        self.assertNotIn("blocked", selected_fingerprints)
+
+    def test_anchor_expansion_blocks_recomparison_across_overlapping_same_pairs(
+        self,
+    ) -> None:
+        same_ab = frozenset(("anchor-a", "anchor-b"))
+        same_bc = frozenset(("anchor-b", "anchor-c"))
+        blocked_pair = frozenset(("anchor-a", "blocked"))
+        other_different_pairs = (
+            frozenset(("different-a", "different-b")),
+            frozenset(("different-c", "different-d")),
+            frozenset(("different-e", "different-f")),
+        )
+        outcomes = {
+            same_ab: "same_speaker",
+            same_bc: "same_speaker",
+            blocked_pair: "different_speaker",
+            **{pair: "different_speaker" for pair in other_different_pairs},
+        }
+        candidates = [
+            candidate(
+                fingerprint,
+                name="alex",
+                source_family="family-a",
+                partition="validation",
+            )
+            for fingerprint in (
+                "anchor-a",
+                "anchor-b",
+                "anchor-c",
+                "blocked",
+                "available",
+            )
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                excluded_pairs=frozenset((same_ab, same_bc, blocked_pair)),
+                observation_use={
+                    "anchor-a": 1,
+                    "anchor-b": 2,
+                    "anchor-c": 1,
+                },
+                reviewed_pair_outcomes=outcomes,
+                reviewed_pair_partitions={
+                    pair: "validation" for pair in outcomes
+                },
+            ),
+            evaluation_partition="validation",
+        )
+
+        selected_fingerprints = {
+            selected.observation_a.input_fingerprint,
+            selected.observation_b.input_fingerprint,
+        }
+        self.assertIn("available", selected_fingerprints)
+        self.assertNotIn("blocked", selected_fingerprints)
+        self.assertEqual(
+            ["anchor-a", "anchor-b", "anchor-c"],
+            selected.manifest["anchor_component_fingerprints"],
+        )
+
+    def test_anchor_expansion_does_not_activate_for_other_partition_imbalance(
+        self,
+    ) -> None:
+        same_pair = frozenset(("anchor-a", "anchor-b"))
+        held_out_different_pairs = (
+            frozenset(("held-a", "held-b")),
+            frozenset(("held-c", "held-d")),
+            frozenset(("held-e", "held-f")),
+        )
+        outcomes = {
+            same_pair: "same_speaker",
+            **{pair: "different_speaker" for pair in held_out_different_pairs},
+        }
+        partitions = {
+            same_pair: "validation",
+            **{pair: "held_out" for pair in held_out_different_pairs},
+        }
+        candidates = [
+            candidate(
+                "anchor-a",
+                source_family="family-a",
+                partition="validation",
+            ),
+            candidate(
+                "anchor-b",
+                source_family="family-a",
+                partition="validation",
+            ),
+            candidate(
+                "unused",
+                source_family="family-a",
+                partition="validation",
+            ),
+        ]
+
+        selected = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                excluded_pairs=frozenset((same_pair,)),
+                reviewed_pair_outcomes=outcomes,
+                reviewed_pair_partitions=partitions,
+            ),
+            evaluation_partition="validation",
+        )
+
+        self.assertEqual(
+            "diversity_rotation",
+            selected.manifest["selection_objective"],
+        )
+        self.assertEqual(
+            {"same_speaker": 1, "different_speaker": 0},
+            selected.manifest["reviewed_outcome_counts"],
+        )
 
     def test_source_relation_rotates_between_same_and_cross_family_pairs(self) -> None:
         candidates = [
