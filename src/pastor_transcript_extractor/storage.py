@@ -339,6 +339,46 @@ CREATE TABLE IF NOT EXISTS profile_observation_events (
     FOREIGN KEY(observation_id) REFERENCES speaker_observations(id)
 );
 
+CREATE TABLE IF NOT EXISTS speaker_profile_creation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL UNIQUE,
+    reviewer TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_observation_review_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    observation_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN (
+        'qualified_single_speaker',
+        'unresolved',
+        'multiple_speakers',
+        'invalid'
+    )),
+    reviewer TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(observation_id) REFERENCES speaker_observations(id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_observation_difference_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    observation_a_id INTEGER NOT NULL,
+    observation_b_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('assert', 'clear')),
+    reviewer TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(observation_a_id) REFERENCES speaker_observations(id),
+    FOREIGN KEY(observation_b_id) REFERENCES speaker_observations(id),
+    CHECK(observation_a_id < observation_b_id)
+);
+
 CREATE TABLE IF NOT EXISTS profile_name_claim_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER NULL,
@@ -387,6 +427,12 @@ ON media_archive_attempts(archive_entry_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_profile_observation_events_pair
 ON profile_observation_events(profile_id, observation_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_observation_review_events_observation
+ON speaker_observation_review_events(observation_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_observation_difference_events_pair
+ON speaker_observation_difference_events(observation_a_id, observation_b_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_profile_redirect_events_source
 ON speaker_profile_redirect_events(from_profile_id, id);
@@ -1888,6 +1934,24 @@ class Database:
     ) -> None:
         connection.execute(
             """
+            DELETE FROM speaker_observation_difference_events
+            WHERE observation_a_id IN (
+                SELECT id FROM speaker_observations WHERE video_id = ?
+            ) OR observation_b_id IN (
+                SELECT id FROM speaker_observations WHERE video_id = ?
+            )
+            """,
+            (video_id, video_id),
+        )
+        connection.execute(
+            """
+            DELETE FROM speaker_observation_review_events
+            WHERE observation_id IN (SELECT id FROM speaker_observations WHERE video_id = ?)
+            """,
+            (video_id,),
+        )
+        connection.execute(
+            """
             DELETE FROM profile_name_claim_events
             WHERE claim_id IN (SELECT id FROM speaker_name_claims WHERE video_id = ?)
             """,
@@ -2527,6 +2591,16 @@ class Database:
             ).fetchone()
         return self._speaker_profile_from_row(row) if row is not None else None
 
+    def list_speaker_profiles(self) -> list[SpeakerProfile]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, stable_key, display_label, lifecycle_state, created_reason, created_at
+                FROM speaker_profiles ORDER BY id
+                """
+            ).fetchall()
+        return [self._speaker_profile_from_row(row) for row in rows]
+
     def ensure_pastor_speaker_binding(self, pastor_id: int, profile_id: int) -> int:
         created_at = utc_now().isoformat()
         with self.connect() as connection:
@@ -2776,6 +2850,66 @@ class Database:
             event_fingerprint=event_fingerprint,
         )
 
+    def add_speaker_profile_creation_event(
+        self,
+        *,
+        profile_id: int,
+        reviewer: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="speaker_profile_creation_events",
+            columns=("profile_id", "reviewer", "reason"),
+            values=(profile_id, reviewer, reason),
+            event_fingerprint=event_fingerprint,
+        )
+
+    def add_speaker_observation_review_event(
+        self,
+        *,
+        observation_id: int,
+        action: str,
+        reviewer: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="speaker_observation_review_events",
+            columns=("observation_id", "action", "reviewer", "reason"),
+            values=(observation_id, action, reviewer, reason),
+            event_fingerprint=event_fingerprint,
+        )
+
+    def add_speaker_observation_difference_event(
+        self,
+        *,
+        observation_a_id: int,
+        observation_b_id: int,
+        action: str,
+        reviewer: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="speaker_observation_difference_events",
+            columns=(
+                "observation_a_id",
+                "observation_b_id",
+                "action",
+                "reviewer",
+                "reason",
+            ),
+            values=(
+                observation_a_id,
+                observation_b_id,
+                action,
+                reviewer,
+                reason,
+            ),
+            event_fingerprint=event_fingerprint,
+        )
+
     def add_profile_name_claim_event(
         self,
         *,
@@ -2820,6 +2954,9 @@ class Database:
     ) -> int:
         allowed_tables = {
             "profile_observation_events",
+            "speaker_profile_creation_events",
+            "speaker_observation_review_events",
+            "speaker_observation_difference_events",
             "profile_name_claim_events",
             "speaker_profile_redirect_events",
         }
@@ -2836,11 +2973,17 @@ class Database:
                 )
             except sqlite3.IntegrityError:
                 row = connection.execute(
-                    f"SELECT id FROM {table} WHERE event_fingerprint = ?",
+                    f"SELECT id, {', '.join(columns)} FROM {table} "
+                    "WHERE event_fingerprint = ?",
                     (event_fingerprint,),
                 ).fetchone()
                 if row is None:
                     raise
+                persisted_values = tuple(row[column] for column in columns)
+                if persisted_values != values:
+                    raise ValueError(
+                        f"Registry event fingerprint collision in {table}"
+                    )
                 return int(row["id"])
         return int(cursor.lastrowid)
 
@@ -2868,6 +3011,82 @@ class Database:
                 (profile_id, observation_id),
             ).fetchone()
         return row is not None and str(row["action"]) == "attach"
+
+    def list_effective_profile_ids_for_observation(
+        self, observation_id: int
+    ) -> list[int]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event.profile_id
+                FROM profile_observation_events event
+                JOIN (
+                    SELECT profile_id, observation_id, MAX(id) AS event_id
+                    FROM profile_observation_events
+                    WHERE observation_id = ?
+                    GROUP BY profile_id, observation_id
+                ) latest ON latest.event_id = event.id
+                WHERE event.action = 'attach'
+                ORDER BY event.profile_id
+                """,
+                (observation_id,),
+            ).fetchall()
+        return [int(row["profile_id"]) for row in rows]
+
+    def list_effective_observation_ids_for_profile(self, profile_id: int) -> list[int]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event.observation_id
+                FROM profile_observation_events event
+                JOIN (
+                    SELECT profile_id, observation_id, MAX(id) AS event_id
+                    FROM profile_observation_events
+                    WHERE profile_id = ?
+                    GROUP BY profile_id, observation_id
+                ) latest ON latest.event_id = event.id
+                WHERE event.action = 'attach'
+                ORDER BY event.observation_id
+                """,
+                (profile_id,),
+            ).fetchall()
+        return [int(row["observation_id"]) for row in rows]
+
+    def get_effective_observation_review_action(
+        self, observation_id: int
+    ) -> str | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action
+                FROM speaker_observation_review_events
+                WHERE observation_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (observation_id,),
+            ).fetchone()
+        return str(row["action"]) if row is not None else None
+
+    def list_effective_observation_difference_pairs(self) -> list[tuple[int, int]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event.observation_a_id, event.observation_b_id
+                FROM speaker_observation_difference_events event
+                JOIN (
+                    SELECT observation_a_id, observation_b_id, MAX(id) AS event_id
+                    FROM speaker_observation_difference_events
+                    GROUP BY observation_a_id, observation_b_id
+                ) latest ON latest.event_id = event.id
+                WHERE event.action = 'assert'
+                ORDER BY event.observation_a_id, event.observation_b_id
+                """
+            ).fetchall()
+        return [
+            (int(row["observation_a_id"]), int(row["observation_b_id"]))
+            for row in rows
+        ]
 
     def counts_by_table(self) -> dict[str, int]:
         with self.connect() as connection:

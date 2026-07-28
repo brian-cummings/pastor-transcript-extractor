@@ -148,6 +148,17 @@ from pastor_transcript_extractor.speaker_pair_selector import (
     select_next_speaker_pair,
     selection_history_from_artifacts,
 )
+from pastor_transcript_extractor.speaker_profile_review import (
+    ProfileReviewRepresentative,
+    write_profile_review_packet,
+)
+from pastor_transcript_extractor.speaker_registry import (
+    attach_reviewed_observation,
+    create_anonymous_profile,
+    record_observation_difference,
+    record_observation_disposition,
+    record_observation_review,
+)
 from pastor_transcript_extractor.sermon_fixture_selector import (
     SermonSelectionHistory,
     select_next_sermon_fixture,
@@ -1531,6 +1542,389 @@ def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
 
 
 @identity_app.command(
+    "review-next-speaker-observation",
+    help="Review the next observation into a curated anonymous speaker profile.",
+)
+def review_next_speaker_observation(
+    source_family: str | None = typer.Option(
+        None,
+        "--source-family",
+        help="Optional source-family queue filter; never identity evidence.",
+    ),
+    reviewer: str | None = typer.Option(
+        None, help="Stable human reviewer identifier."
+    ),
+    youtube_video_id: str | None = typer.Option(
+        None,
+        "--video-id",
+        help="Revisit one observation in the selected queue scope.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored exact-span audio cache shared with pair review.",
+    ),
+    source_family_registry: Path = typer.Option(
+        Path("evaluation/source-families.json"),
+        help="Frozen registry used to resolve the optional queue filter.",
+    ),
+    open_packet: bool = typer.Option(
+        True,
+        "--open-packet/--no-open-packet",
+        help="Open the local voice-review packet.",
+    ),
+    prepare_only: bool = typer.Option(
+        False,
+        "--prepare-only",
+        help="Prepare the selected packet without recording a review.",
+    ),
+    review_event_key: str | None = typer.Option(
+        None,
+        help="Optional stable key for explicit idempotent replay.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None, help="Override app data directory."
+    ),
+) -> None:
+    database = get_database(base_dir)
+    cache_root = cache_dir.expanduser().resolve()
+    verification_cache = MediaVerificationCache(cache_root)
+    try:
+        registry = None
+        if source_family is not None:
+            registry = load_source_family_registry(
+                source_family_registry.expanduser().resolve()
+            )
+            if source_family not in {
+                family.source_family_id for family in registry.families
+            }:
+                raise ValueError(f"unknown source family: {source_family}")
+        selected: tuple[object, SpeakerObservation, Path] | None = None
+        for video in database.list_videos():
+            if (
+                youtube_video_id is not None
+                and video.youtube_video_id != youtube_video_id
+            ):
+                continue
+            source = database.get_source_by_id(video.source_id)
+            if source is None:
+                continue
+            if source_family is not None:
+                assert registry is not None
+                family = registry.resolve_source_url(source.url)
+                if (
+                    family is None
+                    or family.source_family_id != source_family
+                ):
+                    continue
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                video.id,
+                verification_cache=verification_cache,
+            )
+            if not eligibility.eligible or eligibility.observation is None:
+                continue
+            if (
+                youtube_video_id is None
+                and database.get_effective_observation_review_action(
+                    eligibility.observation.id
+                )
+                is not None
+            ):
+                continue
+            assert eligibility.media_artifact is not None
+            candidate = (
+                video,
+                eligibility.observation,
+                Path(eligibility.media_artifact.artifact_path),
+            )
+            if (
+                selected is None
+                or eligibility.observation.input_fingerprint
+                < selected[1].input_fingerprint
+            ):
+                selected = candidate
+        if selected is None:
+            target = (
+                f" for {youtube_video_id}"
+                if youtube_video_id is not None
+                else ""
+            )
+            scope = (
+                f"source family {source_family}"
+                if source_family is not None
+                else "the global review queue"
+            )
+            raise ValueError(f"no eligible observation{target} remains in {scope}")
+        video, observation, audio_path = selected
+        span_cache = AudioSpanCache(cache_root)
+        prepared = prepare_review_observation(
+            observation=observation,
+            audio_path=audio_path,
+            span_cache=span_cache,
+        )
+        representatives: list[ProfileReviewRepresentative] = []
+        for profile in database.list_speaker_profiles():
+            if (
+                profile.lifecycle_state != "active"
+                or profile.created_reason != "reviewed_anonymous_speaker"
+            ):
+                continue
+            member_ids = database.list_effective_observation_ids_for_profile(
+                profile.id
+            )
+            if not member_ids:
+                continue
+            representative = database.get_speaker_observation(member_ids[0])
+            if representative is None:
+                continue
+            representative_video = database.get_video_by_id(
+                representative.video_id
+            )
+            if representative_video is None:
+                continue
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                representative_video.id,
+                verification_cache=verification_cache,
+            )
+            if (
+                not eligibility.eligible
+                or eligibility.observation is None
+                or eligibility.media_artifact is None
+                or eligibility.observation.id != representative.id
+            ):
+                continue
+            representative_prepared = prepare_review_observation(
+                observation=representative,
+                audio_path=Path(eligibility.media_artifact.artifact_path),
+                span_cache=span_cache,
+            )
+            representatives.append(
+                ProfileReviewRepresentative(
+                    profile_id=profile.id,
+                    observation_fingerprint=representative.input_fingerprint,
+                    spans=representative_prepared.spans,
+                )
+            )
+        packet_path = write_profile_review_packet(
+            observation_fingerprint=observation.input_fingerprint,
+            spans=prepared.spans,
+            representatives=representatives,
+            output_root=cache_root,
+        )
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.SubprocessError,
+    ) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    scope = (
+        f"source family {source_family}"
+        if source_family is not None
+        else "the global review queue"
+    )
+    console.print(
+        f"Selected {video.youtube_video_id} from {scope}; "
+        f"prepared packet: {packet_path}"
+    )
+    if representatives:
+        console.print(
+            "Available anonymous profiles: "
+            + ", ".join(str(item.profile_id) for item in representatives)
+        )
+    else:
+        console.print("No anonymous profile with a reviewable member exists yet.")
+    if open_packet:
+        webbrowser.open(packet_path.resolve().as_uri())
+    if prepare_only:
+        console.print("No registry event was recorded.")
+        return
+
+    action = _prompt_review_choice(
+        "Review action",
+        {
+            "existing": "existing",
+            "new": "new",
+            "unresolved": "unresolved",
+            "multiple": "multiple_speakers",
+            "invalid": "invalid",
+        },
+    )
+    reviewer_value = (reviewer or typer.prompt("Reviewed by")).strip()
+    reason = typer.prompt("Review reason").strip()
+    profile_id: int | None = None
+    if action == "existing":
+        profile_id = typer.prompt("Anonymous profile id", type=int)
+        profile = database.get_speaker_profile(profile_id)
+        if (
+            profile is None
+            or profile.lifecycle_state != "active"
+            or profile.created_reason != "reviewed_anonymous_speaker"
+        ):
+            raise typer.BadParameter(
+                f"{profile_id} is not a curated anonymous speaker profile"
+            )
+    event_key = review_event_key or (
+        f"anonymous-speaker-review-v1:{observation.input_fingerprint}:"
+        f"{reviewer_value}:{action}:{profile_id}:{reason}"
+    )
+    try:
+        if action == "new":
+            profile = create_anonymous_profile(
+                database,
+                reviewer=reviewer_value,
+                reason=reason,
+                review_event_key=f"{event_key}:profile",
+            )
+            profile_id = profile.id
+            attach_reviewed_observation(
+                database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer=reviewer_value,
+                reason=reason,
+                review_event_key=event_key,
+            )
+        elif action == "existing":
+            assert profile_id is not None
+            attach_reviewed_observation(
+                database,
+                profile_id=profile_id,
+                observation_id=observation.id,
+                reviewer=reviewer_value,
+                reason=reason,
+                review_event_key=event_key,
+            )
+        else:
+            record_observation_disposition(
+                database,
+                observation_id=observation.id,
+                action=str(action),
+                reviewer=reviewer_value,
+                reason=reason,
+                review_event_key=event_key,
+            )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    if profile_id is not None:
+        console.print(
+            f"Observation #{observation.id} is attached to anonymous profile "
+            f"#{profile_id} by append-only review events."
+        )
+    else:
+        console.print(
+            f"Recorded {action} for observation #{observation.id} as an "
+            "append-only review event."
+        )
+
+
+@identity_app.command(
+    "detach-speaker-observation",
+    help="Append a reviewed detachment without deleting membership history.",
+)
+def detach_speaker_observation(
+    youtube_video_id: str = typer.Argument(..., help="Observation's YouTube video ID."),
+    profile_id: int = typer.Option(..., help="Anonymous profile to detach."),
+    reviewer: str = typer.Option(..., help="Stable human reviewer identifier."),
+    reason: str = typer.Option(..., help="Review reason for the detachment."),
+    review_event_key: str | None = typer.Option(
+        None, help="Optional stable key for explicit idempotent replay."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    video = database.get_video_by_youtube_id(youtube_video_id)
+    observation = (
+        database.get_latest_speaker_observation_for_video(video.id)
+        if video is not None
+        else None
+    )
+    if observation is None:
+        raise typer.BadParameter(
+            f"{youtube_video_id} has no immutable speaker observation"
+        )
+    event_key = review_event_key or (
+        f"anonymous-speaker-detach-v1:{observation.input_fingerprint}:"
+        f"{profile_id}:{reviewer}:{reason}"
+    )
+    try:
+        record_observation_review(
+            database,
+            profile_id=profile_id,
+            observation_id=observation.id,
+            attach=False,
+            reviewer=reviewer,
+            reason=reason,
+            review_event_key=event_key,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Detached observation #{observation.id} from profile #{profile_id}; "
+        "prior events remain replayable."
+    )
+
+
+@identity_app.command(
+    "record-speaker-difference",
+    help="Record or clear an explicitly reviewed different-speaker constraint.",
+)
+def record_speaker_difference(
+    video_a: str = typer.Argument(..., help="First reviewed YouTube video ID."),
+    video_b: str = typer.Argument(..., help="Second reviewed YouTube video ID."),
+    reviewer: str = typer.Option(..., help="Stable human reviewer identifier."),
+    reason: str = typer.Option(..., help="Evidence-backed review reason."),
+    different: bool = typer.Option(
+        True,
+        "--different/--clear",
+        help="Assert or clear the effective constraint without deleting history.",
+    ),
+    review_event_key: str | None = typer.Option(
+        None, help="Optional stable key for explicit idempotent replay."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    videos = [
+        database.get_video_by_youtube_id(value) for value in (video_a, video_b)
+    ]
+    observations = [
+        database.get_latest_speaker_observation_for_video(video.id)
+        if video is not None
+        else None
+        for video in videos
+    ]
+    if observations[0] is None or observations[1] is None:
+        raise typer.BadParameter(
+            "Both videos require immutable speaker observations"
+        )
+    action = "assert" if different else "clear"
+    event_key = review_event_key or (
+        f"speaker-difference-v1:{observations[0].input_fingerprint}:"
+        f"{observations[1].input_fingerprint}:{action}:{reviewer}:{reason}"
+    )
+    try:
+        record_observation_difference(
+            database,
+            observation_a_id=observations[0].id,
+            observation_b_id=observations[1].id,
+            different=different,
+            reviewer=reviewer,
+            reason=reason,
+            review_event_key=event_key,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Recorded' if different else 'Cleared'} explicit different-speaker "
+        "constraint; append-only history was preserved."
+    )
+
+
+@identity_app.command(
     "prepare-speaker-review-audio",
     help="Prewarm deterministic speech-qualified clips without creating review drafts.",
 )
@@ -1707,6 +2101,20 @@ def review_next_speaker_pair(
             reviews=reviews,
             fixtures=fixtures,
         )
+        different_fingerprints_by_observation_id: dict[int, set[str]] = {}
+        for observation_a_id, observation_b_id in (
+            database.list_effective_observation_difference_pairs()
+        ):
+            observation_a = database.get_speaker_observation(observation_a_id)
+            observation_b = database.get_speaker_observation(observation_b_id)
+            if observation_a is None or observation_b is None:
+                continue
+            different_fingerprints_by_observation_id.setdefault(
+                observation_a_id, set()
+            ).add(observation_b.input_fingerprint)
+            different_fingerprints_by_observation_id.setdefault(
+                observation_b_id, set()
+            ).add(observation_a.input_fingerprint)
 
         candidates: list[PairCandidateObservation] = []
         unregistered_source_urls: set[str] = set()
@@ -1754,6 +2162,16 @@ def review_next_speaker_pair(
                 ),
                 source_family_id=family.source_family_id,
                 evaluation_partition=family.partition.value,
+                reviewed_profile_ids=frozenset(
+                    database.list_effective_profile_ids_for_observation(
+                        observation.id
+                    )
+                ),
+                explicitly_different_from=frozenset(
+                    different_fingerprints_by_observation_id.get(
+                        observation.id, set()
+                    )
+                ),
             )
             candidates.append(candidate)
         selection = select_next_speaker_pair(

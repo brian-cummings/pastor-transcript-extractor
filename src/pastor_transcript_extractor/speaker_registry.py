@@ -25,6 +25,14 @@ from pastor_transcript_extractor.storage import Database
 
 SPEAKER_EVIDENCE_VERSION = "speaker_evidence_v1"
 SPEAKER_REGISTRY_POLICY_VERSION = "speaker_registry_shadow_v1"
+OBSERVATION_REVIEW_ACTIONS = frozenset(
+    {
+        "qualified_single_speaker",
+        "unresolved",
+        "multiple_speakers",
+        "invalid",
+    }
+)
 
 _HONORIFICS = {"pastor", "elder", "dr", "pr"}
 _OUTCOME_ORDER = (
@@ -300,6 +308,189 @@ def create_profile(
     )
 
 
+def create_anonymous_profile(
+    database: Database,
+    *,
+    reviewer: str,
+    reason: str,
+    review_event_key: str,
+) -> SpeakerProfile:
+    reviewer = reviewer.strip()
+    reason = reason.strip()
+    review_event_key = review_event_key.strip()
+    if not reviewer or not reason or not review_event_key:
+        raise ValueError("reviewer, reason, and review event key are required")
+    stable_key = f"speaker:anonymous:{_sha256({'review_event_key': review_event_key})[:24]}"
+    profile = create_profile(
+        database,
+        display_label=None,
+        stable_key=stable_key,
+        created_reason="reviewed_anonymous_speaker",
+    )
+    fingerprint = _sha256(
+        {
+            "kind": "anonymous_profile_creation",
+            "review_event_key": review_event_key,
+            "profile_id": profile.id,
+        }
+    )
+    database.add_speaker_profile_creation_event(
+        profile_id=profile.id,
+        reviewer=reviewer,
+        reason=reason,
+        event_fingerprint=fingerprint,
+    )
+    return profile
+
+
+def record_observation_disposition(
+    database: Database,
+    *,
+    observation_id: int,
+    action: str,
+    reviewer: str,
+    reason: str,
+    review_event_key: str,
+) -> int:
+    reviewer = reviewer.strip()
+    reason = reason.strip()
+    review_event_key = review_event_key.strip()
+    if not reviewer or not reason or not review_event_key:
+        raise ValueError("reviewer, reason, and review event key are required")
+    if action not in OBSERVATION_REVIEW_ACTIONS:
+        raise ValueError(f"Unsupported observation review action: {action}")
+    if database.get_speaker_observation(observation_id) is None:
+        raise ValueError(f"Unknown speaker observation: {observation_id}")
+    fingerprint = _sha256(
+        {
+            "kind": "speaker_observation_review",
+            "review_event_key": review_event_key,
+            "observation_id": observation_id,
+            "action": action,
+        }
+    )
+    return database.add_speaker_observation_review_event(
+        observation_id=observation_id,
+        action=action,
+        reviewer=reviewer,
+        reason=reason,
+        event_fingerprint=fingerprint,
+    )
+
+
+def attach_reviewed_observation(
+    database: Database,
+    *,
+    profile_id: int,
+    observation_id: int,
+    reviewer: str,
+    reason: str,
+    review_event_key: str,
+) -> tuple[int, int]:
+    attached_profile_ids = database.list_effective_profile_ids_for_observation(
+        observation_id
+    )
+    conflicting_profile_ids = [
+        attached_profile_id
+        for attached_profile_id in attached_profile_ids
+        if attached_profile_id != profile_id
+    ]
+    if conflicting_profile_ids:
+        raise ValueError(
+            "Observation is already attached to profile(s) "
+            + ", ".join(str(value) for value in conflicting_profile_ids)
+            + "; detach it explicitly before reattaching"
+        )
+    different_pairs = set(database.list_effective_observation_difference_pairs())
+    conflicting_members = [
+        member_id
+        for member_id in database.list_effective_observation_ids_for_profile(
+            profile_id
+        )
+        if tuple(sorted((member_id, observation_id))) in different_pairs
+    ]
+    if conflicting_members:
+        raise ValueError(
+            "Observation has an explicit different-speaker constraint against "
+            "profile member(s) "
+            + ", ".join(str(value) for value in conflicting_members)
+            + "; clear the constraint before attaching"
+        )
+    disposition_event_id = record_observation_disposition(
+        database,
+        observation_id=observation_id,
+        action="qualified_single_speaker",
+        reviewer=reviewer,
+        reason=reason,
+        review_event_key=f"{review_event_key}:qualification",
+    )
+    membership_event_id = record_observation_review(
+        database,
+        profile_id=profile_id,
+        observation_id=observation_id,
+        attach=True,
+        reviewer=reviewer,
+        reason=reason,
+        review_event_key=f"{review_event_key}:membership",
+    )
+    return disposition_event_id, membership_event_id
+
+
+def record_observation_difference(
+    database: Database,
+    *,
+    observation_a_id: int,
+    observation_b_id: int,
+    different: bool,
+    reviewer: str,
+    reason: str,
+    review_event_key: str,
+) -> int:
+    reviewer = reviewer.strip()
+    reason = reason.strip()
+    review_event_key = review_event_key.strip()
+    if not reviewer or not reason or not review_event_key:
+        raise ValueError("reviewer, reason, and review event key are required")
+    if observation_a_id == observation_b_id:
+        raise ValueError("A speaker observation cannot differ from itself")
+    for observation_id in (observation_a_id, observation_b_id):
+        if database.get_speaker_observation(observation_id) is None:
+            raise ValueError(f"Unknown speaker observation: {observation_id}")
+    if different:
+        shared_profile_ids = set(
+            database.list_effective_profile_ids_for_observation(observation_a_id)
+        ) & set(
+            database.list_effective_profile_ids_for_observation(observation_b_id)
+        )
+        if shared_profile_ids:
+            raise ValueError(
+                "Observations share effective profile(s) "
+                + ", ".join(str(value) for value in sorted(shared_profile_ids))
+                + "; detach the incorrect membership before asserting a difference"
+            )
+    observation_a_id, observation_b_id = sorted(
+        (observation_a_id, observation_b_id)
+    )
+    action = "assert" if different else "clear"
+    fingerprint = _sha256(
+        {
+            "kind": "speaker_observation_difference",
+            "review_event_key": review_event_key,
+            "observation_a_id": observation_a_id,
+            "observation_b_id": observation_b_id,
+            "action": action,
+        }
+    )
+    return database.add_speaker_observation_difference_event(
+        observation_a_id=observation_a_id,
+        observation_b_id=observation_b_id,
+        action=action,
+        reviewer=reviewer,
+        reason=reason,
+        event_fingerprint=fingerprint,
+    )
+
+
 def record_observation_review(
     database: Database,
     *,
@@ -310,6 +501,11 @@ def record_observation_review(
     reason: str,
     review_event_key: str,
 ) -> int:
+    reviewer = reviewer.strip()
+    reason = reason.strip()
+    review_event_key = review_event_key.strip()
+    if not reviewer or not reason or not review_event_key:
+        raise ValueError("reviewer, reason, and review event key are required")
     if database.get_speaker_profile(profile_id) is None:
         raise ValueError(f"Unknown speaker profile: {profile_id}")
     if database.get_speaker_observation(observation_id) is None:

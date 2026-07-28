@@ -44,6 +44,8 @@ Implemented:
 - reviewed pair fixtures pin observation fingerprints and exact WAV hashes; evaluation separates recognition errors, abstention, and analysis failure
 - a blinded pair-review workflow now qualifies each observation before allowing a binary same/different judgment
 - review submissions are append-only; indeterminate reviews never become fixtures and re-reviews never overwrite frozen truth
+- anonymous speaker grouping now has reviewer-attributed, append-only profile creation, observation disposition, membership, and different-speaker events
+- reviewed same-profile memberships and explicit different constraints can nominate pair candidates, but exact spans still require independent pair review before fixture creation
 - media foundation separates immutable source/normalized audio from transcript artifacts
 - caption-backed isolated sermons can acquire verified audio without invoking local ASR
 - historical local-ASR audio migrates as reconstructed provenance without file modification
@@ -145,6 +147,63 @@ pte media archive-sources \
 The destination argument is omitted because it is already persisted. Inspect
 progress or retry state with `pte media archive-status --base-dir ...`.
 
+## Anonymous Speaker Grouping
+
+The registry now exposes the narrow manual lifecycle needed by the pair
+experiment without introducing an acoustic cluster or naming workflow. New
+append-only event tables record:
+
+- reviewer-attributed anonymous-profile creation;
+- observation qualification, unresolved, multiple-speaker, or invalid review;
+- reversible profile attachment/detachment;
+- reversible, explicit different-speaker constraints between two observations.
+
+Effective membership and constraints replay from the latest event for each
+exact relationship. Repeating an operation with the same event key reuses the
+existing event; reusing a key with different content fails. An observation
+cannot be attached to a second effective profile until its existing membership
+is explicitly detached. Profile creation and every review mutation retain the
+reviewer and reason.
+
+Review the next current, accepted-sermon observation from the global queue:
+
+```bash
+pte identity review-next-speaker-observation \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Pass `--source-family SOURCE_FAMILY_ID` only when a reviewer wants to bound the
+queue to one family. It is not stored as membership evidence and does not
+restrict which existing anonymous profiles can be compared. The packet reuses
+the speech-qualified exact-span cache from pair review and shows one reviewed
+member from each available anonymous profile. Use `--prepare-only` to inspect
+the packet without recording an event, or `--video-id YOUTUBE_ID` to revisit an
+unresolved or previously reviewed observation.
+
+Detach without deleting history:
+
+```bash
+pte identity detach-speaker-observation YOUTUBE_ID \
+  --profile-id PROFILE_ID \
+  --reviewer REVIEWER_ID \
+  --reason "REVIEWED CORRECTION" \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Record a different-speaker constraint only after the reviewer has actually
+established it:
+
+```bash
+pte identity record-speaker-difference VIDEO_A VIDEO_B \
+  --reviewer REVIEWER_ID \
+  --reason "REVIEWED EXACT-SPAN COMPARISON" \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Pass `--clear` to reverse its effective state while preserving history.
+Separate profiles never imply a different-speaker constraint.
+
 ## Acoustic Pair Experiment
 
 The next recognition question is intentionally limited to whether two reviewed
@@ -162,7 +221,15 @@ excluded. Accepted manual window overrides remain eligible when their current
 observation matches the override. This is derived at selection time and adds no
 database migration or lifecycle state.
 
-Selector v6 also derives partition-scoped frozen-fixture outcome counts. When
+Selector v7 first checks for unreviewed pairs nominated by explicit curated
+relations. Two observations reviewed into the same effective profile may
+nominate a positive pair; an explicit effective different-speaker constraint
+may nominate its exact negative pair. Neither relation supplies an expected
+outcome, and both still pass through the blinded, exact-span pair review before
+a fixture can be frozen. Merely belonging to different profiles supplies no
+negative evidence.
+
+Selector v7 also derives partition-scoped frozen-fixture outcome counts. When
 `different_speaker` exceeds `same_speaker` by at least two, it may nominate a
 same-likely pair by expanding a frozen reviewed-same anchor toward an unused
 observation only when both have the same exact grounded name attribution.

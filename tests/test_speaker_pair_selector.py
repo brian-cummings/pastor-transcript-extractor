@@ -20,6 +20,8 @@ def candidate(
     day: int = 1,
     source_family: str | None = None,
     partition: str | None = None,
+    profile_ids: frozenset[int] = frozenset(),
+    different_from: frozenset[str] = frozenset(),
 ) -> PairCandidateObservation:
     return PairCandidateObservation(
         input_fingerprint=fingerprint,
@@ -29,10 +31,73 @@ def candidate(
         quality_signature=("wav", 16_000, 1),
         source_family_id=source_family,
         evaluation_partition=partition,
+        reviewed_profile_ids=profile_ids,
+        explicitly_different_from=different_from,
     )
 
 
 class SpeakerPairSelectorTests(unittest.TestCase):
+    def test_same_profile_membership_nominates_positive_pair_without_assigning_truth(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("profile-a", profile_ids=frozenset((7,))),
+                candidate("profile-b", profile_ids=frozenset((7,))),
+                candidate("other"),
+            ],
+            PairSelectionHistory(),
+        )
+
+        self.assertEqual(
+            {"profile-a", "profile-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "reviewed_same_profile_nomination",
+            selected.manifest["selection_objective"],
+        )
+        self.assertNotIn("expected_outcome", selected.manifest)
+
+    def test_different_profiles_do_not_nominate_negative_pair(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("a", profile_ids=frozenset((1,))),
+                candidate("b", profile_ids=frozenset((2,))),
+                candidate("c"),
+            ],
+            PairSelectionHistory(),
+        )
+
+        self.assertNotEqual(
+            "reviewed_different_constraint_nomination",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_explicit_different_constraint_nominates_only_that_pair(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("a", different_from=frozenset(("b",))),
+                candidate("b"),
+                candidate("c"),
+            ],
+            PairSelectionHistory(),
+        )
+
+        self.assertEqual(
+            {"a", "b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "reviewed_different_constraint_nomination",
+            selected.manifest["selection_objective"],
+        )
+        self.assertNotIn("expected_outcome", selected.manifest)
+
     def test_replay_is_deterministic_regardless_of_input_order(self) -> None:
         candidates = [
             candidate("a", name="alex", day=1),

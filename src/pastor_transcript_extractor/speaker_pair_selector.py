@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v6"
+SELECTOR_VERSION = "speaker_pair_selector_v7"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -47,6 +47,8 @@ class PairCandidateObservation:
     quality_signature: tuple[object, ...] = ()
     source_family_id: str | None = None
     evaluation_partition: str | None = None
+    reviewed_profile_ids: frozenset[int] = frozenset()
+    explicitly_different_from: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,10 +252,8 @@ def select_next_speaker_pair(
         history,
         evaluation_partition=evaluation_partition,
     )
-    anchor_selection = _select_same_speaker_anchor_expansion(
+    curated_selection = _select_curated_relation_pair(
         pairs,
-        history,
-        outcome_counts=outcome_counts,
         source_family_use=source_family_use,
         observation_use=observation_use,
         source_use=source_use,
@@ -261,12 +261,31 @@ def select_next_speaker_pair(
         disfavored_sources=disfavored_sources,
         condition_counts=condition_counts,
     )
-    if anchor_selection is not None:
+    anchor_selection = None
+    if curated_selection is not None:
+        observation_a, observation_b, chosen_stratum, chosen_relation, curated_relation = (
+            curated_selection
+        )
+        anchor_component = None
+        selection_objective = curated_relation
+    else:
+        anchor_selection = _select_same_speaker_anchor_expansion(
+            pairs,
+            history,
+            outcome_counts=outcome_counts,
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        )
+    if curated_selection is None and anchor_selection is not None:
         observation_a, observation_b, chosen_stratum, chosen_relation, anchor_component = (
             anchor_selection
         )
         selection_objective = "same_speaker_anchor_expansion"
-    else:
+    elif curated_selection is None:
         observation_a, observation_b, chosen_stratum, chosen_relation = (
             _select_rotating_pair(
                 pairs,
@@ -307,7 +326,9 @@ def select_next_speaker_pair(
         source_family_prior_a,
         source_family_prior_b,
     )
-    if anchor_component is not None:
+    if curated_selection is not None:
+        reason_codes.insert(0, selection_objective)
+    elif anchor_component is not None:
         reason_codes.insert(0, "reviewed_same_anchor_expansion")
     elif _same_speaker_balance_needed(outcome_counts):
         reason_codes.insert(0, "same_likely_candidates_exhausted")
@@ -320,6 +341,8 @@ def select_next_speaker_pair(
             "quality_signature": item.quality_signature,
             "source_family_id": item.source_family_id,
             "evaluation_partition": item.evaluation_partition,
+            "reviewed_profile_ids": sorted(item.reviewed_profile_ids),
+            "explicitly_different_from": sorted(item.explicitly_different_from),
         }
         for item in candidates
     ]
@@ -350,6 +373,64 @@ def select_next_speaker_pair(
     if anchor_component is not None:
         manifest["anchor_component_fingerprints"] = sorted(anchor_component)
     return PairSelection(observation_a, observation_b, manifest)
+
+
+def _select_curated_relation_pair(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    *,
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+    str,
+] | None:
+    same_profile = [
+        pair
+        for pair in pairs
+        if pair[0].reviewed_profile_ids & pair[1].reviewed_profile_ids
+    ]
+    explicitly_different = [
+        pair
+        for pair in pairs
+        if (
+            pair[1].input_fingerprint in pair[0].explicitly_different_from
+            or pair[0].input_fingerprint in pair[1].explicitly_different_from
+        )
+    ]
+    for candidates, objective in (
+        (same_profile, "reviewed_same_profile_nomination"),
+        (explicitly_different, "reviewed_different_constraint_nomination"),
+    ):
+        if candidates:
+            selected = min(
+                candidates,
+                key=lambda pair: _rank_pair(
+                    pair[0],
+                    pair[1],
+                    source_family_use,
+                    observation_use,
+                    source_use,
+                    disfavored,
+                    disfavored_sources,
+                    condition_counts,
+                ),
+            )
+            return (*selected, objective)
+    return None
 
 
 def _select_same_speaker_anchor_expansion(

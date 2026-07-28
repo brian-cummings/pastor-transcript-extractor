@@ -136,6 +136,40 @@ listen to the exact cached spans and approve each fixture. Every fixture pins:
 Drafts belong under ignored `drafts/`. Only approved fixtures belong under
 `fixtures/`.
 
+## Anonymous-profile interaction
+
+Anonymous speaker profiles belong to the curated registry, not to this
+evaluation directory. Their lifecycle is reviewer-driven and append-only:
+profile creation, observation qualification, attachment/detachment, and
+explicit different-speaker constraints all retain reviewer attribution and can
+be replayed. Source family may bound a review session but never supplies
+membership evidence. Acoustic predictions cannot create any of these events.
+
+The single-observation workflow reuses this experiment's speech-qualified
+exact-span cache:
+
+```bash
+pte identity review-next-speaker-observation \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The command selects globally by default. `--source-family SOURCE_FAMILY_ID` is
+an optional queue filter only and does not restrict the global profiles offered
+for comparison.
+
+Selector v7 may use two explicit curated relations to nominate an unseen pair:
+
+- observations effectively attached to the same reviewed profile are strong
+  positive candidates;
+- an effective explicit different-speaker constraint nominates that exact
+  negative pair.
+
+These are nomination signals, not evaluation labels. The selected exact pair
+and exact cached spans must still pass the blinded workflow below before a
+fixture can be frozen. Separate profiles do not imply different speakers, and
+source-family co-membership does not imply the same speaker.
+
 ## Review workflow
 
 Preprocess the validation observations before a review session:

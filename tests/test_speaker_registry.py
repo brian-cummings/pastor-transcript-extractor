@@ -9,11 +9,15 @@ from pastor_transcript_extractor.config import build_paths, build_video_artifact
 from pastor_transcript_extractor.identity_attribution import extract_grounded_attributions
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_registry import (
+    attach_reviewed_observation,
+    create_anonymous_profile,
     create_profile,
     neutral_claim_payloads,
     persist_neutral_speaker_evidence,
     project_target_attribution_outcomes,
     record_name_claim_review,
+    record_observation_difference,
+    record_observation_disposition,
     record_observation_review,
     record_profile_redirect,
 )
@@ -219,6 +223,227 @@ class SpeakerRegistryTests(unittest.TestCase):
             review_event_key="review-2",
         )
         self.assertFalse(self.database.is_observation_attached(profile.id, observation_id))
+
+    def test_reviewed_anonymous_profile_creation_and_attachment_are_idempotent(self) -> None:
+        result = self._persist()
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="No existing voice matched",
+            review_event_key="anonymous-profile-1",
+        )
+        replayed_profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="No existing voice matched",
+            review_event_key="anonymous-profile-1",
+        )
+        first = attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=result.observation.id,
+            reviewer="reviewer",
+            reason="Consistent principal voice",
+            review_event_key="anonymous-attach-1",
+        )
+        replay = attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=result.observation.id,
+            reviewer="reviewer",
+            reason="Consistent principal voice",
+            review_event_key="anonymous-attach-1",
+        )
+
+        self.assertEqual(profile.id, replayed_profile.id)
+        self.assertEqual(first, replay)
+        self.assertEqual("reviewed_anonymous_speaker", profile.created_reason)
+        self.assertEqual(
+            "qualified_single_speaker",
+            self.database.get_effective_observation_review_action(
+                result.observation.id
+            ),
+        )
+        self.assertEqual(
+            [profile.id],
+            self.database.list_effective_profile_ids_for_observation(
+                result.observation.id
+            ),
+        )
+        with self.database.connect() as connection:
+            self.assertEqual(
+                1,
+                connection.execute(
+                    "SELECT COUNT(*) FROM speaker_profile_creation_events"
+                ).fetchone()[0],
+            )
+            self.assertEqual(
+                1,
+                connection.execute(
+                    "SELECT COUNT(*) FROM speaker_observation_review_events"
+                ).fetchone()[0],
+            )
+            self.assertEqual(
+                1,
+                connection.execute(
+                    "SELECT COUNT(*) FROM profile_observation_events"
+                ).fetchone()[0],
+            )
+
+    def test_unresolved_multiple_and_invalid_reviews_are_append_only(self) -> None:
+        result = self._persist()
+        observation_id = result.observation.id
+        actions = ("unresolved", "multiple_speakers", "invalid")
+        for index, action in enumerate(actions):
+            event_id = record_observation_disposition(
+                self.database,
+                observation_id=observation_id,
+                action=action,
+                reviewer="reviewer",
+                reason=f"Reviewed as {action}",
+                review_event_key=f"disposition-{index}",
+            )
+            replay = record_observation_disposition(
+                self.database,
+                observation_id=observation_id,
+                action=action,
+                reviewer="reviewer",
+                reason=f"Reviewed as {action}",
+                review_event_key=f"disposition-{index}",
+            )
+            self.assertEqual(event_id, replay)
+
+        self.assertEqual(
+            "invalid",
+            self.database.get_effective_observation_review_action(observation_id),
+        )
+        with self.database.connect() as connection:
+            self.assertEqual(
+                3,
+                connection.execute(
+                    "SELECT COUNT(*) FROM speaker_observation_review_events"
+                ).fetchone()[0],
+            )
+
+    def test_different_constraint_is_explicit_reversible_and_idempotent(self) -> None:
+        first = self._persist()
+        second_video = self.database.add_video(
+            source_id=self.source.id,
+            pastor_id=self.pastor.id,
+            youtube_video_id="other123456",
+            title="Worship Service",
+            url="https://www.youtube.com/watch?v=other123456",
+            status=VideoStatus.EXTRACTED,
+        )
+        second_extraction = self.database.add_extraction_result(
+            video_id=second_video.id,
+            version=1,
+            proposed_text_path="other.md",
+            proposed_json_path="other.json",
+        )
+        second_observation = self.database.add_speaker_observation(
+            video_id=second_video.id,
+            extraction_result_id=second_extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=100.0,
+            end_seconds=1000.0,
+            artifact_path="other-speaker.json",
+            content_sha256="other-content",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="other-observation",
+        )
+        event_id = record_observation_difference(
+            self.database,
+            observation_a_id=first.observation.id,
+            observation_b_id=second_observation.id,
+            different=True,
+            reviewer="reviewer",
+            reason="Reviewed exact spans",
+            review_event_key="different-1",
+        )
+        replay = record_observation_difference(
+            self.database,
+            observation_a_id=second_observation.id,
+            observation_b_id=first.observation.id,
+            different=True,
+            reviewer="reviewer",
+            reason="Reviewed exact spans",
+            review_event_key="different-1",
+        )
+
+        self.assertEqual(event_id, replay)
+        self.assertEqual(
+            [(first.observation.id, second_observation.id)],
+            self.database.list_effective_observation_difference_pairs(),
+        )
+        record_observation_difference(
+            self.database,
+            observation_a_id=first.observation.id,
+            observation_b_id=second_observation.id,
+            different=False,
+            reviewer="reviewer",
+            reason="Review corrected",
+            review_event_key="different-2",
+        )
+        self.assertEqual(
+            [], self.database.list_effective_observation_difference_pairs()
+        )
+
+    def test_different_constraint_and_same_profile_membership_cannot_conflict(self) -> None:
+        first = self._persist()
+        second_video = self.database.add_video(
+            source_id=self.source.id,
+            pastor_id=self.pastor.id,
+            youtube_video_id="second12345",
+            title="Worship Service",
+            url="https://www.youtube.com/watch?v=second12345",
+            status=VideoStatus.EXTRACTED,
+        )
+        second_extraction = self.database.add_extraction_result(
+            video_id=second_video.id,
+            version=1,
+            proposed_text_path="second.md",
+            proposed_json_path="second.json",
+        )
+        second = self.database.add_speaker_observation(
+            video_id=second_video.id,
+            extraction_result_id=second_extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=100.0,
+            end_seconds=1000.0,
+            artifact_path="second-speaker.json",
+            content_sha256="second-content",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="second-observation",
+        )
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="New voice",
+            review_event_key="conflict-profile",
+        )
+        for index, observation_id in enumerate((first.observation.id, second.id)):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation_id,
+                reviewer="reviewer",
+                reason="Same reviewed voice",
+                review_event_key=f"conflict-attach-{index}",
+            )
+
+        with self.assertRaises(ValueError):
+            record_observation_difference(
+                self.database,
+                observation_a_id=first.observation.id,
+                observation_b_id=second.id,
+                different=True,
+                reviewer="reviewer",
+                reason="Contradictory review",
+                review_event_key="conflict-different",
+            )
 
     def test_name_claim_attach_and_reject_require_review_events(self) -> None:
         result = self._persist()
