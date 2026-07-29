@@ -124,29 +124,6 @@ def qualification_conflict_requires_adjudication(
     )
 
 
-def observation_review_queue_priority(
-    *,
-    qualification_action: str | None,
-    grouping_action: str | None,
-    attached_profile_ids: Sequence[int],
-    qualification_conflict: bool,
-    explicitly_targeted: bool,
-) -> int | None:
-    if explicitly_targeted:
-        return 0
-    if qualification_conflict:
-        return 0
-    if (
-        qualification_action == "qualified_single_speaker"
-        and not attached_profile_ids
-        and grouping_action != "defer"
-    ):
-        return 1
-    if qualification_action is None:
-        return 2
-    return None
-
-
 def load_reviewed_speaker_evidence(evaluation_root: Path) -> ReviewedSpeakerEvidence:
     root = evaluation_root.expanduser().resolve()
     drafts = _load_objects(sorted((root / "drafts").glob("*.json")))

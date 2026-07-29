@@ -9,7 +9,6 @@ from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     load_reviewed_speaker_evidence,
-    observation_review_queue_priority,
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.speaker_registry import (
@@ -19,59 +18,6 @@ from pastor_transcript_extractor.storage import Database
 
 
 class ReviewedSpeakerEvidenceTests(unittest.TestCase):
-    def test_review_queue_reuses_qualification_and_skips_resolved_work(self) -> None:
-        self.assertEqual(
-            1,
-            observation_review_queue_priority(
-                qualification_action="qualified_single_speaker",
-                grouping_action=None,
-                attached_profile_ids=(),
-                qualification_conflict=False,
-                explicitly_targeted=False,
-            ),
-        )
-        for qualification, grouping, profiles in (
-            ("qualified_single_speaker", None, (7,)),
-            ("qualified_single_speaker", "defer", ()),
-            ("multiple_speakers", None, ()),
-            ("invalid", None, ()),
-            ("unresolved", None, ()),
-        ):
-            with self.subTest(
-                qualification=qualification,
-                grouping=grouping,
-                profiles=profiles,
-            ):
-                self.assertIsNone(
-                    observation_review_queue_priority(
-                        qualification_action=qualification,
-                        grouping_action=grouping,
-                        attached_profile_ids=profiles,
-                        qualification_conflict=False,
-                        explicitly_targeted=False,
-                    )
-                )
-        self.assertEqual(
-            2,
-            observation_review_queue_priority(
-                qualification_action=None,
-                grouping_action=None,
-                attached_profile_ids=(),
-                qualification_conflict=False,
-                explicitly_targeted=False,
-            ),
-        )
-        self.assertEqual(
-            0,
-            observation_review_queue_priority(
-                qualification_action="invalid",
-                grouping_action=None,
-                attached_profile_ids=(),
-                qualification_conflict=False,
-                explicitly_targeted=True,
-            ),
-        )
-
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)

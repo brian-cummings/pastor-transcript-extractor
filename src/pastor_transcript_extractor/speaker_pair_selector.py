@@ -8,8 +8,13 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v7"
+SELECTOR_VERSION = "speaker_pair_selector_v8"
 SAME_SPEAKER_BALANCE_GAP = 2
+
+
+class SelectionGoal(StrEnum):
+    EVALUATION = "evaluation"
+    PROFILE_GROWTH = "profile-growth"
 
 
 class SelectionStratum(StrEnum):
@@ -65,6 +70,7 @@ class PairSelectionHistory:
     source_relation_counts: Mapping[str, int] | None = None
     reviewed_pair_outcomes: Mapping[frozenset[str], str] | None = None
     reviewed_pair_partitions: Mapping[frozenset[str], str | None] | None = None
+    reviewed_identity_outcomes: Mapping[frozenset[str], str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +101,7 @@ def selection_history_from_artifacts(
     source_relation_counts: dict[str, int] = {}
     reviewed_pair_outcomes: dict[frozenset[str], str] = {}
     reviewed_pair_partitions: dict[frozenset[str], str | None] = {}
+    reviewed_identity_outcomes: dict[frozenset[str], str] = {}
     source_context_pair_ids: set[str] = set()
     automatic_pair_ids: set[str] = set()
     sources_by_pair: dict[str, list[str]] = {}
@@ -131,6 +138,12 @@ def selection_history_from_artifacts(
                     else "conflicting"
                 )
                 reviewed_pair_partitions[pair_key] = _fixture_partition(fixture)
+                identity_outcome = reviewed_identity_outcomes.get(pair_key)
+                reviewed_identity_outcomes[pair_key] = (
+                    str(outcome)
+                    if identity_outcome in {None, outcome}
+                    else "conflicting"
+                )
         sources = _fixture_sources(fixture)
         if len(sources) == 2:
             excluded_source_pairs.add(frozenset(sources))
@@ -156,7 +169,24 @@ def selection_history_from_artifacts(
         if draft is not None:
             fingerprints = _draft_fingerprints(draft)
             if len(fingerprints) == 2:
-                excluded_pairs.add(frozenset(fingerprints))
+                pair_key = frozenset(fingerprints)
+                excluded_pairs.add(pair_key)
+                judgment = review.get("pair_judgment")
+                qualifications = review.get("qualification", {})
+                if (
+                    judgment in {"same_speaker", "different_speaker"}
+                    and isinstance(qualifications, Mapping)
+                    and qualifications.get("A")
+                    == "qualified_single_speaker"
+                    and qualifications.get("B")
+                    == "qualified_single_speaker"
+                ):
+                    prior_outcome = reviewed_identity_outcomes.get(pair_key)
+                    reviewed_identity_outcomes[pair_key] = (
+                        str(judgment)
+                        if prior_outcome in {None, judgment}
+                        else "conflicting"
+                    )
             for label in ("A", "B"):
                 qualification = review.get("qualification", {}).get(label)
                 if qualification not in {"invalid_audio", "multiple_speakers"}:
@@ -188,6 +218,7 @@ def selection_history_from_artifacts(
         source_relation_counts=source_relation_counts,
         reviewed_pair_outcomes=reviewed_pair_outcomes,
         reviewed_pair_partitions=reviewed_pair_partitions,
+        reviewed_identity_outcomes=reviewed_identity_outcomes,
     )
 
 
@@ -196,8 +227,15 @@ def select_next_speaker_pair(
     history: PairSelectionHistory,
     *,
     evaluation_partition: str | None = None,
+    selection_goal: SelectionGoal | str = SelectionGoal.EVALUATION,
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
+    try:
+        goal = SelectionGoal(selection_goal)
+    except ValueError as error:
+        raise ValueError(
+            "selection goal must be one of: evaluation, profile-growth"
+        ) from error
     ordered = sorted(observations, key=lambda item: item.input_fingerprint)
     if len({item.input_fingerprint for item in ordered}) != len(ordered):
         raise ValueError("candidate observation fingerprints must be unique")
@@ -252,23 +290,58 @@ def select_next_speaker_pair(
         history,
         evaluation_partition=evaluation_partition,
     )
-    curated_selection = _select_curated_relation_pair(
-        pairs,
-        source_family_use=source_family_use,
-        observation_use=observation_use,
-        source_use=source_use,
-        disfavored=disfavored,
-        disfavored_sources=disfavored_sources,
-        condition_counts=condition_counts,
+    growth_selection = (
+        _select_profile_growth_pair(
+            pairs,
+            candidates=candidates,
+            history=history,
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        )
+        if goal == SelectionGoal.PROFILE_GROWTH
+        else None
+    )
+    if goal == SelectionGoal.PROFILE_GROWTH and growth_selection is None:
+        raise ValueError(
+            "no unreviewed profile-growth pair remains after reviewed "
+            "same/different and qualification exclusions"
+        )
+    curated_selection = (
+        _select_curated_relation_pair(
+            pairs,
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        )
+        if goal == SelectionGoal.EVALUATION
+        else None
     )
     anchor_selection = None
-    if curated_selection is not None:
+    if growth_selection is not None:
+        (
+            observation_a,
+            observation_b,
+            chosen_stratum,
+            chosen_relation,
+            selection_objective,
+            growth_components,
+        ) = growth_selection
+        anchor_component = None
+    elif curated_selection is not None:
         observation_a, observation_b, chosen_stratum, chosen_relation, curated_relation = (
             curated_selection
         )
         anchor_component = None
         selection_objective = curated_relation
-    else:
+        growth_components = None
+    elif goal == SelectionGoal.EVALUATION:
         anchor_selection = _select_same_speaker_anchor_expansion(
             pairs,
             history,
@@ -285,7 +358,8 @@ def select_next_speaker_pair(
             anchor_selection
         )
         selection_objective = "same_speaker_anchor_expansion"
-    elif curated_selection is None:
+        growth_components = None
+    elif goal == SelectionGoal.EVALUATION and curated_selection is None:
         observation_a, observation_b, chosen_stratum, chosen_relation = (
             _select_rotating_pair(
                 pairs,
@@ -300,6 +374,7 @@ def select_next_speaker_pair(
         )
         anchor_component = None
         selection_objective = "diversity_rotation"
+        growth_components = None
 
     prior_a = max(
         int(source_use.get(observation_a.video_id, 0)),
@@ -326,11 +401,16 @@ def select_next_speaker_pair(
         source_family_prior_a,
         source_family_prior_b,
     )
-    if curated_selection is not None:
+    if growth_selection is not None:
+        reason_codes.insert(0, selection_objective)
+    elif curated_selection is not None:
         reason_codes.insert(0, selection_objective)
     elif anchor_component is not None:
         reason_codes.insert(0, "reviewed_same_anchor_expansion")
-    elif _same_speaker_balance_needed(outcome_counts):
+    elif (
+        goal == SelectionGoal.EVALUATION
+        and _same_speaker_balance_needed(outcome_counts)
+    ):
         reason_codes.insert(0, "same_likely_candidates_exhausted")
     snapshot = [
         {
@@ -349,6 +429,7 @@ def select_next_speaker_pair(
     manifest: dict[str, object] = {
         "selector_version": SELECTOR_VERSION,
         "selection_origin": "automatic",
+        "selection_goal": goal.value,
         "selection_objective": selection_objective,
         "selection_stratum": chosen_stratum,
         "source_relation": chosen_relation,
@@ -372,7 +453,193 @@ def select_next_speaker_pair(
     }
     if anchor_component is not None:
         manifest["anchor_component_fingerprints"] = sorted(anchor_component)
+    if growth_components is not None:
+        manifest["profile_growth_components"] = [
+            sorted(component) for component in growth_components
+        ]
     return PairSelection(observation_a, observation_b, manifest)
+
+
+def _select_profile_growth_pair(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    *,
+    candidates: Sequence[PairCandidateObservation],
+    history: PairSelectionHistory,
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+    str,
+    tuple[frozenset[str], frozenset[str]],
+] | None:
+    components = _profile_growth_components(candidates, history)
+    candidate_by_fingerprint = {
+        candidate.input_fingerprint: candidate for candidate in candidates
+    }
+    anchored_components = {
+        component
+        for component in set(components.values())
+        if len(component) > 1
+        or any(
+            candidate_by_fingerprint[fingerprint].reviewed_profile_ids
+            for fingerprint in component
+        )
+    }
+    identity_outcomes = (
+        history.reviewed_identity_outcomes
+        if history.reviewed_identity_outcomes is not None
+        else history.reviewed_pair_outcomes
+    ) or {}
+    different_pairs = {
+        pair_key
+        for pair_key, outcome in identity_outcomes.items()
+        if outcome == "different_speaker"
+    }
+    for candidate in candidates:
+        different_pairs.update(
+            frozenset((candidate.input_fingerprint, other))
+            for other in candidate.explicitly_different_from
+        )
+
+    growth_pairs: list[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+            str,
+            tuple[frozenset[str], frozenset[str]],
+        ]
+    ] = []
+    for observation_a, observation_b, stratum, relation in pairs:
+        if (
+            disfavored.get(observation_a.input_fingerprint, 0)
+            or disfavored.get(observation_b.input_fingerprint, 0)
+        ):
+            continue
+        component_a = components[observation_a.input_fingerprint]
+        component_b = components[observation_b.input_fingerprint]
+        if component_a == component_b:
+            continue
+        if any(
+            frozenset((fingerprint_a, fingerprint_b)) in different_pairs
+            for fingerprint_a in component_a
+            for fingerprint_b in component_b
+        ):
+            continue
+        anchored_a = component_a in anchored_components
+        anchored_b = component_b in anchored_components
+        if anchored_a != anchored_b:
+            objective = "profile_growth_frontier"
+        elif anchored_a:
+            objective = "profile_growth_component_bridge"
+        else:
+            objective = "profile_growth_seed"
+        growth_pairs.append(
+            (
+                observation_a,
+                observation_b,
+                stratum,
+                relation,
+                objective,
+                (component_a, component_b),
+            )
+        )
+    if not growth_pairs:
+        return None
+    stratum_rank = {
+        SelectionStratum.SHARED_ATTRIBUTION: 0,
+        SelectionStratum.PARTIAL_ATTRIBUTION: 1,
+        SelectionStratum.UNATTRIBUTED: 2,
+        SelectionStratum.CONTRADICTING_ATTRIBUTION: 3,
+    }
+    objective_rank = {
+        "profile_growth_frontier": 0,
+        "profile_growth_seed": 1,
+        "profile_growth_component_bridge": 2,
+    }
+    return min(
+        growth_pairs,
+        key=lambda item: (
+            stratum_rank[item[2]],
+            objective_rank[item[4]],
+            _rank_pair(
+                item[0],
+                item[1],
+                source_family_use,
+                observation_use,
+                source_use,
+                disfavored,
+                disfavored_sources,
+                condition_counts,
+            ),
+        ),
+    )
+
+
+def _profile_growth_components(
+    candidates: Sequence[PairCandidateObservation],
+    history: PairSelectionHistory,
+) -> dict[str, frozenset[str]]:
+    fingerprints = {
+        candidate.input_fingerprint for candidate in candidates
+    }
+    adjacency = {fingerprint: set() for fingerprint in fingerprints}
+    members_by_profile: dict[int, list[str]] = {}
+    for candidate in candidates:
+        for profile_id in candidate.reviewed_profile_ids:
+            members_by_profile.setdefault(profile_id, []).append(
+                candidate.input_fingerprint
+            )
+    for members in members_by_profile.values():
+        for member in members:
+            adjacency[member].update(
+                other for other in members if other != member
+            )
+    identity_outcomes = (
+        history.reviewed_identity_outcomes
+        if history.reviewed_identity_outcomes is not None
+        else history.reviewed_pair_outcomes
+    ) or {}
+    for pair_key, outcome in identity_outcomes.items():
+        if outcome != "same_speaker" or len(pair_key) != 2:
+            continue
+        fingerprint_a, fingerprint_b = tuple(pair_key)
+        if fingerprint_a not in adjacency or fingerprint_b not in adjacency:
+            continue
+        adjacency[fingerprint_a].add(fingerprint_b)
+        adjacency[fingerprint_b].add(fingerprint_a)
+
+    result: dict[str, frozenset[str]] = {}
+    unseen = set(fingerprints)
+    while unseen:
+        pending = [min(unseen)]
+        component: set[str] = set()
+        while pending:
+            fingerprint = pending.pop()
+            if fingerprint in component:
+                continue
+            component.add(fingerprint)
+            pending.extend(adjacency[fingerprint] - component)
+        frozen = frozenset(component)
+        for fingerprint in component:
+            result[fingerprint] = frozen
+        unseen.difference_update(component)
+    return result
 
 
 def _select_curated_relation_pair(

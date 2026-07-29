@@ -89,8 +89,6 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedSpeakerEvidence,
     ReviewedEvidenceSyncResult,
     load_reviewed_speaker_evidence,
-    observation_review_queue_priority,
-    qualification_conflict_requires_adjudication,
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
@@ -153,19 +151,12 @@ from pastor_transcript_extractor.speaker_pair_review import (
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
     PairCandidateObservation,
+    SelectionGoal,
     select_next_speaker_pair,
     selection_history_from_artifacts,
 )
-from pastor_transcript_extractor.speaker_profile_review import (
-    ProfileReviewRepresentative,
-    write_profile_review_packet,
-)
 from pastor_transcript_extractor.speaker_registry import (
-    attach_reviewed_observation,
-    create_anonymous_profile,
     record_observation_difference,
-    record_observation_disposition,
-    record_observation_grouping_review,
     record_observation_review,
 )
 from pastor_transcript_extractor.sermon_fixture_selector import (
@@ -1611,437 +1602,6 @@ def sync_reviewed_speaker_evidence_command(
 
 
 @identity_app.command(
-    "review-next-speaker-observation",
-    help="Review the next observation into a curated anonymous speaker profile.",
-)
-def review_next_speaker_observation(
-    source_family: str | None = typer.Option(
-        None,
-        "--source-family",
-        help="Optional source-family queue filter; never identity evidence.",
-    ),
-    reviewer: str | None = typer.Option(
-        None, help="Stable human reviewer identifier."
-    ),
-    youtube_video_id: str | None = typer.Option(
-        None,
-        "--video-id",
-        help="Revisit one observation in the selected queue scope.",
-    ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"),
-        help="Ignored exact-span audio cache shared with pair review.",
-    ),
-    evaluation_root: Path = typer.Option(
-        Path("evaluation/speaker-pairs"),
-        help="Speaker-pair review evidence synchronized before selection.",
-    ),
-    source_family_registry: Path = typer.Option(
-        Path("evaluation/source-families.json"),
-        help="Frozen registry used to resolve the optional queue filter.",
-    ),
-    open_packet: bool = typer.Option(
-        True,
-        "--open-packet/--no-open-packet",
-        help="Open the local voice-review packet.",
-    ),
-    prepare_only: bool = typer.Option(
-        False,
-        "--prepare-only",
-        help="Sync prior evidence and prepare a packet without a new interactive review.",
-    ),
-    review_event_key: str | None = typer.Option(
-        None,
-        help="Optional stable key for explicit idempotent replay.",
-    ),
-    base_dir: Path | None = typer.Option(
-        None, help="Override app data directory."
-    ),
-) -> None:
-    database = get_database(base_dir)
-    cache_root = cache_dir.expanduser().resolve()
-    verification_cache = MediaVerificationCache(cache_root)
-    try:
-        reviewed_evidence = load_reviewed_speaker_evidence(
-            evaluation_root.expanduser().resolve()
-        )
-        sync_result = sync_reviewed_speaker_evidence(
-            database, reviewed_evidence
-        )
-        registry = None
-        if source_family is not None:
-            registry = load_source_family_registry(
-                source_family_registry.expanduser().resolve()
-            )
-            if source_family not in {
-                family.source_family_id for family in registry.families
-            }:
-                raise ValueError(f"unknown source family: {source_family}")
-        selected: tuple[
-            int,
-            object,
-            SpeakerObservation,
-            Path,
-            str | None,
-            bool,
-        ] | None = None
-        for video in database.list_videos():
-            if (
-                youtube_video_id is not None
-                and video.youtube_video_id != youtube_video_id
-            ):
-                continue
-            source = database.get_source_by_id(video.source_id)
-            if source is None:
-                continue
-            if source_family is not None:
-                assert registry is not None
-                family = registry.resolve_source_url(source.url)
-                if (
-                    family is None
-                    or family.source_family_id != source_family
-                ):
-                    continue
-            eligibility = assess_automatic_speaker_observation(
-                database,
-                video.id,
-                verification_cache=verification_cache,
-            )
-            if not eligibility.eligible or eligibility.observation is None:
-                continue
-            assert eligibility.media_artifact is not None
-            observation = eligibility.observation
-            qualification_action = (
-                database.get_effective_observation_review_action(observation.id)
-            )
-            grouping_action = (
-                database.get_effective_observation_grouping_action(
-                    observation.id
-                )
-            )
-            attached_profile_ids = (
-                database.list_effective_profile_ids_for_observation(
-                    observation.id
-                )
-            )
-            qualification_conflict = (
-                qualification_conflict_requires_adjudication(
-                    database,
-                    reviewed_evidence,
-                    observation_id=observation.id,
-                    observation_fingerprint=observation.input_fingerprint,
-                )
-            )
-            priority = observation_review_queue_priority(
-                qualification_action=qualification_action,
-                grouping_action=grouping_action,
-                attached_profile_ids=attached_profile_ids,
-                qualification_conflict=qualification_conflict,
-                explicitly_targeted=youtube_video_id is not None,
-            )
-            if priority is None:
-                continue
-            candidate = (
-                priority,
-                video,
-                observation,
-                Path(eligibility.media_artifact.artifact_path),
-                qualification_action,
-                qualification_conflict,
-            )
-            if (
-                selected is None
-                or (priority, observation.input_fingerprint)
-                < (selected[0], selected[2].input_fingerprint)
-            ):
-                selected = candidate
-        if selected is None:
-            target = (
-                f" for {youtube_video_id}"
-                if youtube_video_id is not None
-                else ""
-            )
-            scope = (
-                f"source family {source_family}"
-                if source_family is not None
-                else "the global review queue"
-            )
-            raise ValueError(f"no eligible observation{target} remains in {scope}")
-        (
-            _priority,
-            video,
-            observation,
-            audio_path,
-            qualification_action,
-            qualification_conflict,
-        ) = selected
-        span_cache = AudioSpanCache(cache_root)
-        prepared = prepare_review_observation(
-            observation=observation,
-            audio_path=audio_path,
-            span_cache=span_cache,
-        )
-        representatives: list[ProfileReviewRepresentative] = []
-        representative_observations: dict[int, SpeakerObservation] = {}
-        for profile in database.list_speaker_profiles():
-            if (
-                profile.lifecycle_state != "active"
-                or profile.created_reason != "reviewed_anonymous_speaker"
-            ):
-                continue
-            member_ids = database.list_effective_observation_ids_for_profile(
-                profile.id
-            )
-            if not member_ids:
-                continue
-            representative = database.get_speaker_observation(member_ids[0])
-            if representative is None:
-                continue
-            representative_video = database.get_video_by_id(
-                representative.video_id
-            )
-            if representative_video is None:
-                continue
-            eligibility = assess_automatic_speaker_observation(
-                database,
-                representative_video.id,
-                verification_cache=verification_cache,
-            )
-            if (
-                not eligibility.eligible
-                or eligibility.observation is None
-                or eligibility.media_artifact is None
-                or eligibility.observation.id != representative.id
-            ):
-                continue
-            representative_prepared = prepare_review_observation(
-                observation=representative,
-                audio_path=Path(eligibility.media_artifact.artifact_path),
-                span_cache=span_cache,
-            )
-            representatives.append(
-                ProfileReviewRepresentative(
-                    profile_id=profile.id,
-                    observation_fingerprint=representative.input_fingerprint,
-                    spans=representative_prepared.spans,
-                )
-            )
-            representative_observations[profile.id] = representative
-        packet_path = write_profile_review_packet(
-            observation_fingerprint=observation.input_fingerprint,
-            spans=prepared.spans,
-            representatives=representatives,
-            output_root=cache_root,
-            qualification_already_reviewed=(
-                qualification_action == "qualified_single_speaker"
-                and not qualification_conflict
-            ),
-        )
-    except (
-        OSError,
-        RuntimeError,
-        ValueError,
-        json.JSONDecodeError,
-        subprocess.SubprocessError,
-    ) as error:
-        raise typer.BadParameter(str(error)) from error
-
-    _print_reviewed_evidence_summary(reviewed_evidence, sync_result)
-    scope = (
-        f"source family {source_family}"
-        if source_family is not None
-        else "the global review queue"
-    )
-    console.print(
-        f"Selected {video.youtube_video_id} from {scope}; "
-        f"prepared packet: {packet_path}"
-    )
-    if representatives:
-        console.print(
-            "Available anonymous profiles: "
-            + ", ".join(str(item.profile_id) for item in representatives)
-        )
-    else:
-        console.print("No anonymous profile with a reviewable member exists yet.")
-    if open_packet:
-        webbrowser.open(packet_path.resolve().as_uri())
-    if prepare_only:
-        console.print(
-            "Existing pair evidence was synchronized; no new interactive "
-            "review was recorded."
-        )
-        return
-
-    reviewer_value: str | None = None
-    reason: str | None = None
-    needs_qualification = (
-        qualification_action != "qualified_single_speaker"
-        or qualification_conflict
-    )
-    if needs_qualification:
-        if qualification_conflict:
-            console.print(
-                "[yellow]Existing pair reviews conflict on this observation's "
-                "qualification; adjudication is required.[/yellow]"
-            )
-        qualification_choice = _prompt_review_choice(
-            "Observation qualification",
-            {
-                "single": "qualified_single_speaker",
-                "multiple": "multiple_speakers",
-                "invalid": "invalid",
-                "cannot": "unresolved",
-            },
-        )
-        reviewer_value = (reviewer or typer.prompt("Reviewed by")).strip()
-        reason = typer.prompt("Review reason").strip()
-        qualification_key = review_event_key or (
-            f"anonymous-speaker-qualification-v2:"
-            f"{observation.input_fingerprint}:{reviewer_value}:"
-            f"{qualification_choice}:{reason}"
-        )
-        try:
-            record_observation_disposition(
-                database,
-                observation_id=observation.id,
-                action=str(qualification_choice),
-                reviewer=reviewer_value,
-                reason=reason,
-                review_event_key=f"{qualification_key}:qualification",
-            )
-        except ValueError as error:
-            raise typer.BadParameter(str(error)) from error
-        if qualification_choice != "qualified_single_speaker":
-            console.print(
-                f"Recorded {qualification_choice} for observation "
-                f"#{observation.id}; no grouping decision was requested."
-            )
-            return
-
-    grouping_choices = {
-        "separate": "separate",
-        "unresolved": "unresolved",
-    }
-    if representatives:
-        grouping_choices = {
-            "same": "same",
-            "different": "different",
-            **grouping_choices,
-        }
-        console.print(
-            "Grouping actions:\n"
-            "  same       explicitly matches one displayed profile representative\n"
-            "  different  explicitly differs from one displayed representative\n"
-            "  separate   create a conservative profile bucket without asserting difference\n"
-            "  unresolved leave qualified but ungrouped"
-        )
-    else:
-        console.print(
-            "Grouping actions:\n"
-            "  separate   seed a conservative anonymous profile bucket\n"
-            "  unresolved leave qualified but ungrouped"
-        )
-    grouping_action = _prompt_review_choice(
-        "Grouping action",
-        grouping_choices,
-    )
-    if reviewer_value is None:
-        reviewer_value = (reviewer or typer.prompt("Reviewed by")).strip()
-    if reason is None:
-        reason = typer.prompt("Review reason").strip()
-    profile_id: int | None = None
-    if grouping_action in {"same", "different"}:
-        profile_id = typer.prompt("Anonymous profile id", type=int)
-        if profile_id not in representative_observations:
-            raise typer.BadParameter(
-                f"profile #{profile_id} has no representative in this packet"
-            )
-    event_key = review_event_key or (
-        f"anonymous-speaker-grouping-v2:{observation.input_fingerprint}:"
-        f"{reviewer_value}:{grouping_action}:{profile_id}:{reason}"
-    )
-    try:
-        if grouping_action == "separate":
-            profile = create_anonymous_profile(
-                database,
-                reviewer=reviewer_value,
-                reason=reason,
-                review_event_key=f"{event_key}:profile",
-            )
-            profile_id = profile.id
-            attach_reviewed_observation(
-                database,
-                profile_id=profile.id,
-                observation_id=observation.id,
-                reviewer=reviewer_value,
-                reason=reason,
-                review_event_key=event_key,
-            )
-        elif grouping_action == "same":
-            assert profile_id is not None
-            attach_reviewed_observation(
-                database,
-                profile_id=profile_id,
-                observation_id=observation.id,
-                reviewer=reviewer_value,
-                reason=reason,
-                review_event_key=event_key,
-            )
-        elif grouping_action == "different":
-            assert profile_id is not None
-            representative = representative_observations[profile_id]
-            record_observation_difference(
-                database,
-                observation_a_id=observation.id,
-                observation_b_id=representative.id,
-                different=True,
-                reviewer=reviewer_value,
-                reason=reason,
-                review_event_key=f"{event_key}:different",
-            )
-            record_observation_grouping_review(
-                database,
-                observation_id=observation.id,
-                deferred=True,
-                reviewer=reviewer_value,
-                reason=reason,
-                review_event_key=f"{event_key}:grouping-defer",
-            )
-        else:
-            record_observation_grouping_review(
-                database,
-                observation_id=observation.id,
-                deferred=True,
-                reviewer=reviewer_value,
-                reason=reason,
-                review_event_key=f"{event_key}:grouping-defer",
-            )
-    except ValueError as error:
-        raise typer.BadParameter(str(error)) from error
-    if profile_id is not None:
-        if grouping_action == "same":
-            console.print(
-                f"Observation #{observation.id} is attached to anonymous "
-                f"profile #{profile_id} by append-only review events."
-            )
-        else:
-            console.print(
-                f"Recorded an exact different-speaker constraint against "
-                f"profile #{profile_id}'s displayed representative; the "
-                "observation remains ungrouped."
-            )
-    elif grouping_action == "separate":
-        console.print(
-            f"Observation #{observation.id} seeded anonymous profile "
-            f"#{profile.id}; this does not assert difference from other profiles."
-        )
-    else:
-        console.print(
-            f"Observation #{observation.id} remains qualified but ungrouped."
-        )
-
-
-@identity_app.command(
     "detach-speaker-observation",
     help="Append a reviewed detachment without deleting membership history.",
 )
@@ -2296,6 +1856,14 @@ def review_next_speaker_pair(
         "--evaluation-scope",
         help="Nominate only from all, development, validation, or held_out source families.",
     ),
+    selection_objective: SelectionGoal = typer.Option(
+        SelectionGoal.EVALUATION,
+        "--selection-objective",
+        help=(
+            "Use evaluation for the tuned fixture selector or profile-growth "
+            "for reviewed component expansion."
+        ),
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     paths = build_paths(base_dir)
@@ -2400,6 +1968,7 @@ def review_next_speaker_pair(
             evaluation_partition=(
                 None if evaluation_scope == "all" else evaluation_scope
             ),
+            selection_goal=selection_objective,
         )
         if unregistered_source_urls:
             selection.manifest["unregistered_source_count"] = len(
@@ -2415,6 +1984,7 @@ def review_next_speaker_pair(
         )
     console.print(
         f"Selected scope={selection.manifest['evaluation_scope']} "
+        f"goal={selection.manifest['selection_goal']} "
         f"objective={selection.manifest['selection_objective']} "
         f"{selection.manifest['selection_stratum']}/"
         f"{selection.manifest['source_relation']} pair "

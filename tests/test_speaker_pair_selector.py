@@ -37,6 +37,166 @@ def candidate(
 
 
 class SpeakerPairSelectorTests(unittest.TestCase):
+    def test_default_selection_goal_preserves_evaluation_selector(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("profile-a", profile_ids=frozenset((7,))),
+                candidate("profile-b", profile_ids=frozenset((7,))),
+                candidate("other"),
+            ],
+            PairSelectionHistory(),
+        )
+
+        self.assertEqual("evaluation", selected.manifest["selection_goal"])
+        self.assertEqual(
+            "reviewed_same_profile_nomination",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_profile_growth_prefers_profile_frontier_without_reconfirming_members(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "profile-a",
+                    name="alex",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate(
+                    "profile-b",
+                    name="alex",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate("frontier", name="alex"),
+                candidate("seed-a", name="blair"),
+                candidate("seed-b", name="blair"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+        )
+
+        selected_fingerprints = {
+            selected.observation_a.input_fingerprint,
+            selected.observation_b.input_fingerprint,
+        }
+        self.assertIn("frontier", selected_fingerprints)
+        self.assertEqual(
+            1,
+            len(selected_fingerprints & {"profile-a", "profile-b"}),
+        )
+        self.assertEqual("profile-growth", selected.manifest["selection_goal"])
+        self.assertEqual(
+            "profile_growth_frontier",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_profile_growth_respects_difference_against_any_component_member(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "profile-a",
+                    name="alex",
+                    profile_ids=frozenset((7,)),
+                    different_from=frozenset(("blocked",)),
+                ),
+                candidate(
+                    "profile-b",
+                    name="alex",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate("blocked", name="alex"),
+                candidate("seed-a", name="blair"),
+                candidate("seed-b", name="blair"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+        )
+
+        self.assertEqual(
+            {"seed-a", "seed-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "profile_growth_seed",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_profile_growth_expands_reviewed_component_before_registry_sync(
+        self,
+    ) -> None:
+        same_pair = frozenset(("anchor-a", "anchor-b"))
+        selected = select_next_speaker_pair(
+            [
+                candidate("anchor-a", name="alex"),
+                candidate("anchor-b", name="alex"),
+                candidate("frontier", name="alex"),
+                candidate("other", name="blair"),
+            ],
+            PairSelectionHistory(
+                excluded_pairs=frozenset((same_pair,)),
+                reviewed_pair_outcomes={same_pair: "same_speaker"},
+            ),
+            selection_goal="profile-growth",
+        )
+
+        selected_fingerprints = {
+            selected.observation_a.input_fingerprint,
+            selected.observation_b.input_fingerprint,
+        }
+        self.assertIn("frontier", selected_fingerprints)
+        self.assertTrue(
+            selected_fingerprints & {"anchor-a", "anchor-b"}
+        )
+        self.assertEqual(
+            "profile_growth_frontier",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_unknown_selection_goal_fails_closed(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "selection goal must be one of",
+        ):
+            select_next_speaker_pair(
+                [candidate("a"), candidate("b")],
+                PairSelectionHistory(),
+                selection_goal="unknown",
+            )
+
+    def test_profile_growth_excludes_prior_multiple_or_invalid_observations(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "profile",
+                    name="alex",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate("unqualified", name="alex"),
+                candidate("seed-a", name="blair"),
+                candidate("seed-b", name="blair"),
+            ],
+            PairSelectionHistory(
+                disfavored_observations={"unqualified": 1},
+            ),
+            selection_goal="profile-growth",
+        )
+
+        self.assertEqual(
+            {"seed-a", "seed-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+
     def test_same_profile_membership_nominates_positive_pair_without_assigning_truth(self) -> None:
         selected = select_next_speaker_pair(
             [
@@ -185,6 +345,51 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual(
             "validation",
             history.reviewed_pair_partitions[frozenset(("a", "b"))],
+        )
+        self.assertEqual(
+            "same_speaker",
+            history.reviewed_identity_outcomes[frozenset(("a", "b"))],
+        )
+
+    def test_review_event_expands_components_without_a_frozen_fixture(
+        self,
+    ) -> None:
+        draft = {
+            "pair_id": "pair-ab",
+            "selection_manifest": {"evaluation_scope": "validation"},
+            "observations": {
+                "source_a": {
+                    "input_fingerprint": "a",
+                    "youtube_video_id": "video-a",
+                },
+                "source_b": {
+                    "input_fingerprint": "b",
+                    "youtube_video_id": "video-b",
+                },
+            },
+        }
+        review = {
+            "pair_id": "pair-ab",
+            "qualification": {
+                "A": "qualified_single_speaker",
+                "B": "qualified_single_speaker",
+            },
+            "pair_judgment": "same_speaker",
+        }
+
+        history = selection_history_from_artifacts(
+            drafts=[draft],
+            reviews=[review],
+            fixtures=[],
+        )
+
+        self.assertEqual(
+            "same_speaker",
+            history.reviewed_identity_outcomes[frozenset(("a", "b"))],
+        )
+        self.assertNotIn(
+            frozenset(("a", "b")),
+            history.reviewed_pair_outcomes,
         )
 
     def test_drafted_sources_are_deprioritized_even_without_a_fixture(self) -> None:

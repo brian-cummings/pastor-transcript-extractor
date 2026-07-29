@@ -186,31 +186,44 @@ and manual qualification overrides block affected mutations. Replay adds no
 duplicate events. Use `--dry-run` to inspect the derivation without applying
 reviewed evidence.
 
-Review the next current, accepted-sermon observation from the global queue:
+Continue identity review through the existing blinded pair workflow:
 
 ```bash
-pte identity review-next-speaker-observation \
+pte identity review-next-speaker-pair \
   --reviewer REVIEWER_ID \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Pass `--source-family SOURCE_FAMILY_ID` only when a reviewer wants to bound the
-queue to one family. It is not stored as membership evidence and does not
-restrict which existing anonymous profiles can be compared. The command first
-replays reviewed pair evidence, then skips observations already grouped,
-multiple-speaker, invalid, or explicitly deferred. Consistently qualified
-single-speaker observations proceed directly to grouping; only unseen or
-conflicting qualifications ask for single/multiple/invalid/cannot adjudication.
+This remains the only human speaker-identity adjudication interface. It asks
+the reviewer to qualify both observations and, when both contain one consistent
+principal speaker, make the blinded `same`/`different` pair judgment already
+used by the experiment. The selector can use reviewed same-speaker components
+and curated profile relations to nominate useful follow-up pairs, but it does
+not expose those relations in the listening packet.
 
-The packet reuses the speech-qualified exact-span cache from pair review and
-shows one reviewed member from each available anonymous profile. `same` attaches
-after an explicit voice match. `different` records a constraint only against
-the displayed representative. `separate` creates a conservative profile bucket
-without asserting that other profiles contain different people. `unresolved`
-keeps the observation qualified but defers grouping. Use `--prepare-only` to
-inspect the packet without a new interactive review; existing pair evidence is
-still synchronized. Use `--video-id YOUTUBE_ID` to revisit an unresolved or
-previously reviewed observation.
+Run `sync-reviewed-speaker-evidence` after a review session to materialize all
+approved pair judgments into anonymous profiles and exact different-speaker
+constraints. There is no separate single-observation grouping review: profile
+membership is derived from the same pair evidence rather than asking the
+reviewer to repeat the recognition task.
+
+The default `--selection-objective evaluation` preserves the tuned fixture
+selector. To spend the same pairwise review effort on profile creation and
+growth instead, use:
+
+```bash
+pte identity review-next-speaker-pair \
+  --selection-objective profile-growth \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Profile-growth nomination prefers an ungrouped observation on the frontier of
+a reviewed profile/component, then ungrouped pairs that can seed a component,
+then bridges between separate reviewed components. Shared explicit attribution
+is a nomination signal, not identity truth. Pairs already connected by reviewed
+same evidence or blocked by a reviewed different constraint anywhere across
+the two components are excluded. The packet remains blinded and unchanged.
 
 Detach without deleting history:
 
@@ -252,7 +265,8 @@ excluded. Accepted manual window overrides remain eligible when their current
 observation matches the override. This is derived at selection time and adds no
 database migration or lifecycle state.
 
-Selector v7 first checks for unreviewed pairs nominated by explicit curated
+Selector v8 in the default evaluation objective first checks for unreviewed
+pairs nominated by explicit curated
 relations. Two observations reviewed into the same effective profile may
 nominate a positive pair; an explicit effective different-speaker constraint
 may nominate its exact negative pair. Neither relation supplies an expected
@@ -260,7 +274,8 @@ outcome, and both still pass through the blinded, exact-span pair review before
 a fixture can be frozen. Merely belonging to different profiles supplies no
 negative evidence.
 
-Selector v7 also derives partition-scoped frozen-fixture outcome counts. When
+The evaluation objective also derives partition-scoped frozen-fixture outcome
+counts. When
 `different_speaker` exceeds `same_speaker` by at least two, it may nominate a
 same-likely pair by expanding a frozen reviewed-same anchor toward an unused
 observation only when both have the same exact grounded name attribution.

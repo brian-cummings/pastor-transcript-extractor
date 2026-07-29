@@ -161,24 +161,34 @@ Every derived mutation cites an original reviewer and review event, and replay
 is idempotent. This is reviewed component materialization, not acoustic
 clustering.
 
-The single-observation workflow reuses this experiment's speech-qualified
-exact-span cache:
+The pair workflow is also the sole human input for anonymous-speaker grouping:
 
 ```bash
-pte identity review-next-speaker-observation \
+pte identity review-next-speaker-pair \
   --reviewer REVIEWER_ID \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-The command selects globally by default. `--source-family SOURCE_FAMILY_ID` is
-an optional queue filter only and does not restrict the global profiles offered
-for comparison. It synchronizes the review ledger before selection, skips work
-already resolved by pair review, and asks for qualification only when an
-observation is unseen or has conflicting qualification evidence. Qualified but
-ungrouped observations go directly to explicit `same`, `different`, `separate`,
-or `unresolved` grouping actions.
+Do not run a second profile-assignment listening workflow. The established
+packet already supplies observation qualification and blinded pairwise
+same/different evidence. The selector may nominate follow-up pairs using
+reviewed same-speaker components or curated registry relations. After a review
+session, `sync-reviewed-speaker-evidence` derives anonymous profiles and exact
+different-speaker constraints from those approved pair reviews. Thus profiles
+contain only observations connected by explicit same-speaker evidence, without
+presenting intentionally different observations as one group.
 
-Selector v7 may use two explicit curated relations to nominate an unseen pair:
+The default `--selection-objective evaluation` retains the existing
+coverage-balanced selector. Use `--selection-objective profile-growth` to keep
+the identical blinded packet and adjudication while changing nomination
+priority. Profile-growth mode favors reviewed-component frontiers, new component
+seeds, and component bridges; it excludes already-connected components and any
+candidate components separated by an explicit reviewed different constraint.
+Source-family membership remains partition and queue context, never
+same-speaker evidence.
+
+Selector v8 in the default evaluation objective may use two explicit curated
+relations to nominate an unseen pair:
 
 - observations effectively attached to the same reviewed profile are strong
   positive candidates;
