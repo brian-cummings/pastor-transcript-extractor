@@ -155,6 +155,9 @@ from pastor_transcript_extractor.speaker_pair_selector import (
     select_next_speaker_pair,
     selection_history_from_artifacts,
 )
+from pastor_transcript_extractor.speaker_profile_status import (
+    build_profile_pipeline_status,
+)
 from pastor_transcript_extractor.speaker_registry import (
     record_observation_difference,
     record_observation_review,
@@ -1604,6 +1607,111 @@ def sync_reviewed_speaker_evidence_command(
     _print_reviewed_evidence_summary(evidence, result)
     if dry_run:
         console.print("Dry run complete; no reviewed evidence was synchronized.")
+
+
+@identity_app.command(
+    "profile-status",
+    help="Report the reviewed identity pipeline and what each profile needs next.",
+)
+def profile_status_command(
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair drafts, reviews, and fixtures root.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None, help="Override app data directory."
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    try:
+        evidence = load_reviewed_speaker_evidence(
+            evaluation_root.expanduser().resolve()
+        )
+        status = build_profile_pipeline_status(
+            Database(paths.database, readonly=True),
+            evidence,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    qualifications = status.qualification_counts
+    console.print("[bold]Speaker identity pipeline[/bold]")
+    console.print(
+        f"Registry observations: {status.registry_observation_count} | "
+        f"single={qualifications.get('qualified_single_speaker', 0)} "
+        f"multiple={qualifications.get('multiple_speakers', 0)} "
+        f"invalid={qualifications.get('invalid', 0)} "
+        f"unresolved={qualifications.get('unresolved', 0)} "
+        f"unreviewed={qualifications.get('unreviewed', 0)}"
+    )
+    console.print(
+        f"Reviewed evidence: events={status.review_event_count} "
+        f"pair_relations={status.pair_relation_count} "
+        f"same_components={status.same_component_count} "
+        f"conflicts={status.evidence_conflict_count}"
+    )
+    console.print(
+        f"Pending sync: qualifications={status.pending_qualification_count} "
+        f"same_components={status.pending_same_component_count} "
+        f"different_relations={status.pending_difference_count} "
+        f"missing_observations={status.missing_reviewed_observation_count}"
+    )
+    console.print(
+        f"Profiles: canonical={status.canonical_profile_count} "
+        f"retired_redirects={status.retired_profile_count} "
+        f"member_observations={status.profile_member_count} "
+        f"attached_name_claims={status.attached_name_claim_count} "
+        f"configured_links={status.configured_identity_count}"
+    )
+    console.print(
+        f"Reviewed single-speaker backlog: "
+        f"ungrouped={status.ungrouped_single_count} "
+        f"named={status.named_ungrouped_single_count} "
+        f"unnamed={status.unnamed_ungrouped_single_count} "
+        f"merge_candidate_profiles={status.merge_candidate_count} "
+        f"attribution_conflict_profiles={status.attribution_conflict_count}"
+    )
+
+    table = Table(title="Canonical reviewed profiles")
+    table.add_column("Profile", justify="right", no_wrap=True)
+    table.add_column("State", no_wrap=True)
+    table.add_column("Evidence", no_wrap=True)
+    table.add_column("Identity evidence")
+    table.add_column("Next need")
+    for profile in status.profiles:
+        identity = ", ".join(
+            profile.configured_identities or profile.names
+        ) or "unnamed"
+        table.add_row(
+            str(profile.profile_id),
+            profile.state,
+            (
+                f"{profile.member_count} obs / "
+                f"{profile.recording_count} rec / "
+                f"{profile.source_count} src"
+            ),
+            identity,
+            profile.next_need,
+        )
+    console.print(table)
+
+    console.print("[bold]What to do next[/bold]")
+    for action in status.next_actions:
+        console.print(f"- {action}")
+    console.print(
+        "\nReview: pte identity review-next-speaker-pair "
+        "--selection-objective profile-growth --reviewer REVIEWER_ID "
+        "--base-dir BASE_DIR"
+    )
+    console.print(
+        "Materialize: pte identity sync-reviewed-speaker-evidence "
+        "--base-dir BASE_DIR"
+    )
+    console.print("This report is read-only and does not create or mature profiles.")
 
 
 @identity_app.command(

@@ -483,6 +483,9 @@ clustering backend is active.
 - `pte video excluded`
 - `pte pastor add <slug> <display-name>`
 - `pte pastor list`
+- `pte identity profile-status --base-dir <app-data>`
+- `pte identity review-next-speaker-pair --selection-objective profile-growth`
+- `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`
 
 ## Planning Docs
 

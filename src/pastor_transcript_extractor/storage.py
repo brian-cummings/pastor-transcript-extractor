@@ -2748,6 +2748,19 @@ class Database:
             ).fetchone()
         return self._speaker_observation_from_row(row) if row is not None else None
 
+    def list_speaker_observations(self) -> list[SpeakerObservation]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, video_id, extraction_result_id, role, multiplicity_state,
+                       start_seconds, end_seconds, artifact_path, content_sha256,
+                       extractor_version, input_fingerprint, created_at
+                FROM speaker_observations
+                ORDER BY id
+                """
+            ).fetchall()
+        return [self._speaker_observation_from_row(row) for row in rows]
+
     def get_latest_speaker_observation_for_video(
         self, video_id: int
     ) -> SpeakerObservation | None:
@@ -2849,6 +2862,20 @@ class Database:
                 FROM speaker_name_claims WHERE video_id = ? ORDER BY id
                 """,
                 (video_id,),
+            ).fetchall()
+        return [self._speaker_name_claim_from_row(row) for row in rows]
+
+    def list_speaker_name_claims(self) -> list[SpeakerNameClaim]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, video_id, observation_id, display_name, normalized_name,
+                       claim_kind, channel, explicit_speaker_attribution,
+                       correlation_group_id, provenance_json, artifact_path,
+                       claim_fingerprint, extractor_version, created_at
+                FROM speaker_name_claims
+                ORDER BY id
+                """
             ).fetchall()
         return [self._speaker_name_claim_from_row(row) for row in rows]
 

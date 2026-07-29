@@ -167,7 +167,44 @@ is explicitly detached. Profile creation and every review mutation retain the
 reviewer and reason.
 
 Existing pair-review work is the initial registry evidence, not work to repeat.
-Synchronize it explicitly with:
+Inspect the current funnel and profile backlog at any time with:
+
+```bash
+pte identity profile-status \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+`profile-status` is read-only. It reports registry observations by effective
+qualification, reviewed pair relations and components, canonical and retired
+profiles, profile members, attached name claims, configured-identity links,
+and the reviewed single-speaker observations that remain ungrouped. Its
+per-profile table deliberately shows raw evidence dimensions—member
+observations, distinct recordings, distinct source records, attribution/link
+state, and attributed frontier candidates—instead of assigning an unsupported
+maturity score. A source count describes recording coverage only; source or
+source-family membership is never identity evidence.
+
+The reported states mean:
+
+- `anonymous`: reviewed voice membership exists but no consistent explicit
+  name is present;
+- `attributed`: the reviewed component has a consistent explicit name but is
+  not linked to a configured pastor;
+- `attribution-pending`: consistent name claims or their configured-identity
+  link have not yet been materialized by reviewed-evidence sync;
+- `linked`: attribution has reconciled the reviewed voice component to a
+  configured pastor identity;
+- `merge-candidate`: the same explicit attribution spans separate profiles and
+  needs a blinded bridge comparison;
+- `attribution-conflict`: conflicting names or a reviewed different-speaker
+  constraint requires adjudication.
+
+The “next need” column and final action list describe how to mature each
+profile. They do not imply that every unreviewed registry observation is
+currently eligible for nomination: the pair selector separately rejects stale,
+non-accepted, malformed, or otherwise unusable observations.
+
+Synchronize reviewed work explicitly with:
 
 ```bash
 pte identity sync-reviewed-speaker-evidence \
@@ -243,6 +280,23 @@ explicit attribution is a nomination signal, not identity truth. Pairs already
 connected by reviewed same evidence or blocked by a reviewed different
 constraint anywhere across the two components are excluded. The packet remains
 blinded and unchanged.
+
+The normal operator loop is therefore:
+
+1. Run `profile-status` to see the funnel and highest-value unmet needs.
+2. Run `review-next-speaker-pair --selection-objective profile-growth`; keep
+   making the same single/multiple/invalid qualification and blinded pairwise
+   same/different decision used by the tuned workflow.
+3. Run `sync-reviewed-speaker-evidence` to replay confirmed evidence into
+   profiles, claims, redirects, and different-speaker constraints.
+4. Run `profile-status` again to see which profiles grew and what remains.
+
+A profile is first created when a confirmed same-speaker pair forms a reviewed
+component. Later confirmed same-speaker frontier comparisons add observations;
+bridge comparisons can merge reviewed anonymous components. Explicit
+observation-scoped attribution can name that voice component, and a unique
+configured-name match can link it to an attributed pastor profile. Naming and
+source context alone never establish speaker identity.
 
 ### Future Automatic Anonymous Profile Assembly
 

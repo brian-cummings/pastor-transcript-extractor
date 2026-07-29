@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from pastor_transcript_extractor.config import build_paths, ensure_directories
+from pastor_transcript_extractor.models import SourceType, VideoStatus
+from pastor_transcript_extractor.reviewed_speaker_evidence import (
+    ObservationQualification,
+    PairRelation,
+    ReviewProvenance,
+    ReviewedSpeakerEvidence,
+)
+from pastor_transcript_extractor.speaker_profile_status import (
+    build_profile_pipeline_status,
+)
+from pastor_transcript_extractor.speaker_registry import (
+    attach_reviewed_observation,
+    create_anonymous_profile,
+    ensure_configured_pastor_profile,
+    record_name_claim_review,
+    record_observation_disposition,
+    record_profile_redirect,
+)
+from pastor_transcript_extractor.storage import Database
+
+
+class SpeakerProfileStatusTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.paths = build_paths(Path(self.tempdir.name))
+        ensure_directories(self.paths)
+        self.database = Database(self.paths.database)
+        self.database.initialize()
+        self.source_a = self.database.add_source(
+            "https://www.youtube.com/@one",
+            SourceType.CHANNEL,
+            pastor_id=None,
+        )
+        self.source_b = self.database.add_source(
+            "https://www.youtube.com/@two",
+            SourceType.CHANNEL,
+            pastor_id=None,
+        )
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _observation(self, key: str, *, second_source: bool = False):
+        source = self.source_b if second_source else self.source_a
+        video = self.database.add_video(
+            source_id=source.id,
+            pastor_id=None,
+            youtube_video_id=f"video-{key}",
+            title=f"Video {key}",
+            url=f"https://www.youtube.com/watch?v=video-{key}",
+            status=VideoStatus.EXTRACTED,
+        )
+        extraction = self.database.add_extraction_result(
+            video_id=video.id,
+            version=1,
+            proposed_text_path=f"{key}.md",
+            proposed_json_path=f"{key}.json",
+        )
+        return self.database.add_speaker_observation(
+            video_id=video.id,
+            extraction_result_id=extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=100.0,
+            end_seconds=1000.0,
+            artifact_path=f"{key}.speaker.json",
+            content_sha256=f"content-{key}",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint=key,
+        )
+
+    def _claim(self, observation, name: str):
+        return self.database.add_speaker_name_claim(
+            video_id=observation.video_id,
+            observation_id=observation.id,
+            display_name=name,
+            normalized_name=name.lower(),
+            claim_kind="explicit_speaker_attribution",
+            channel="metadata",
+            explicit_speaker_attribution=True,
+            correlation_group_id=f"group-{observation.id}",
+            provenance_json="{}",
+            artifact_path=observation.artifact_path,
+            claim_fingerprint=f"claim-{observation.id}",
+            extractor_version="speaker_evidence_v1",
+        )
+
+    def test_report_explains_linked_profile_and_review_backlog(self) -> None:
+        observation_a = self._observation("a")
+        observation_b = self._observation("b", second_source=True)
+        frontier = self._observation("c")
+        multiple = self._observation("d")
+        self._observation("e")
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same pair",
+            review_event_key="profile-a",
+        )
+        for observation in (observation_a, observation_b):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="same pair",
+                review_event_key=f"attach-{observation.id}",
+            )
+        claim_a = self._claim(observation_a, "Alice Example")
+        self._claim(frontier, "Alice Example")
+        record_name_claim_review(
+            self.database,
+            claim_id=claim_a.id,
+            profile_id=profile.id,
+            attach=True,
+            reviewer="reviewer",
+            reason="consistent attribution",
+            review_event_key="claim-a",
+        )
+        record_observation_disposition(
+            self.database,
+            observation_id=frontier.id,
+            action="qualified_single_speaker",
+            reviewer="reviewer",
+            reason="pair review",
+            review_event_key="frontier-single",
+        )
+        record_observation_disposition(
+            self.database,
+            observation_id=multiple.id,
+            action="multiple_speakers",
+            reviewer="reviewer",
+            reason="pair review",
+            review_event_key="multiple",
+        )
+        pastor = self.database.add_pastor("alice", "Alice Example")
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        record_profile_redirect(
+            self.database,
+            from_profile_id=configured.id,
+            to_profile_id=profile.id,
+            reviewer="reviewer",
+            reason="reviewed attribution",
+            review_event_key="configured-link",
+        )
+        evidence = ReviewedSpeakerEvidence(
+            qualifications={},
+            qualification_conflicts={},
+            pair_relations={},
+            pair_conflicts={},
+            review_event_count=7,
+        )
+
+        status = build_profile_pipeline_status(self.database, evidence)
+
+        self.assertEqual(status.registry_observation_count, 5)
+        self.assertEqual(status.qualification_counts["qualified_single_speaker"], 3)
+        self.assertEqual(status.qualification_counts["multiple_speakers"], 1)
+        self.assertEqual(status.qualification_counts["unreviewed"], 1)
+        self.assertEqual(status.canonical_profile_count, 1)
+        self.assertEqual(status.profile_member_count, 2)
+        self.assertEqual(status.named_ungrouped_single_count, 1)
+        self.assertEqual(status.unnamed_ungrouped_single_count, 0)
+        self.assertEqual(status.attached_name_claim_count, 1)
+        self.assertEqual(status.configured_identity_count, 1)
+        self.assertEqual(
+            status.profiles[0].configured_identities, ("Alice Example",)
+        )
+        self.assertEqual(status.profiles[0].state, "linked")
+        self.assertEqual(status.profiles[0].source_count, 2)
+        self.assertEqual(status.profiles[0].attributed_frontier_count, 1)
+        self.assertIn("1 attributed frontier", status.profiles[0].next_need)
+        self.assertEqual(status.pending_qualification_count, 0)
+        self.assertEqual(status.pending_same_component_count, 0)
+        self.assertEqual(status.pending_difference_count, 0)
+
+    def test_same_name_profiles_are_reported_as_merge_candidates(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c", "d")]
+        profiles = [
+            create_anonymous_profile(
+                self.database,
+                reviewer="reviewer",
+                reason="same pair",
+                review_event_key=f"profile-{index}",
+            )
+            for index in range(2)
+        ]
+        for index, profile in enumerate(profiles):
+            for observation in observations[index * 2 : index * 2 + 2]:
+                attach_reviewed_observation(
+                    self.database,
+                    profile_id=profile.id,
+                    observation_id=observation.id,
+                    reviewer="reviewer",
+                    reason="same pair",
+                    review_event_key=f"attach-{observation.id}",
+                )
+                self._claim(observation, "Jordan Fowler")
+        evidence = ReviewedSpeakerEvidence({}, {}, {}, {}, 2)
+
+        status = build_profile_pipeline_status(self.database, evidence)
+
+        self.assertEqual(status.merge_candidate_count, 2)
+        self.assertEqual(
+            {profile.state for profile in status.profiles},
+            {"merge-candidate"},
+        )
+        self.assertIn("merge candidates", status.next_actions[0])
+
+    def test_report_detects_reviewed_evidence_that_needs_sync(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c", "d")]
+        provenance = (ReviewProvenance("event", "pair", "reviewer"),)
+        evidence = ReviewedSpeakerEvidence(
+            qualifications={
+                observation.input_fingerprint: ObservationQualification(
+                    "qualified_single_speaker",
+                    provenance,
+                )
+                for observation in observations
+            },
+            qualification_conflicts={},
+            pair_relations={
+                frozenset(("a", "b")): PairRelation(
+                    frozenset(("a", "b")),
+                    "same_speaker",
+                    provenance,
+                ),
+                frozenset(("c", "d")): PairRelation(
+                    frozenset(("c", "d")),
+                    "different_speaker",
+                    provenance,
+                ),
+            },
+            pair_conflicts={},
+            review_event_count=1,
+        )
+
+        status = build_profile_pipeline_status(self.database, evidence)
+
+        self.assertEqual(status.pending_qualification_count, 4)
+        self.assertEqual(status.pending_same_component_count, 1)
+        self.assertEqual(status.pending_difference_count, 1)
+        self.assertIn("Run reviewed-evidence sync", status.next_actions[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
