@@ -323,10 +323,12 @@ pte identity review-next-speaker-pair \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-This objective first selects an unseen internal comparison in a reviewed
-profile with at least three members. If none remains, it falls back to normal
-profile-growth selection. It never tells the reviewer that the observations
-are currently grouped and never assumes that grouping is correct.
+This objective first selects an unseen internal comparison whose added edge
+would remove one or more bridge dependencies from a reviewed profile graph.
+Already bridge-free profiles are skipped. If no useful reinforcement remains,
+it falls back to normal profile-growth selection. It never tells the reviewer
+that the observations are currently grouped and never assumes that grouping
+is correct.
 
 Inspect corpus and profile eligibility without acoustic execution:
 

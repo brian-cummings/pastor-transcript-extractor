@@ -145,6 +145,65 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest["selection_objective"],
         )
 
+    def test_automation_readiness_skips_profile_without_bridge_edges(self) -> None:
+        ready_edges = {
+            frozenset(("ready-a", "ready-b")),
+            frozenset(("ready-b", "ready-c")),
+            frozenset(("ready-c", "ready-d")),
+            frozenset(("ready-d", "ready-a")),
+        }
+        bridge_edges = {
+            frozenset(("bridge-a", "bridge-b")),
+            frozenset(("bridge-b", "bridge-c")),
+        }
+        reviewed_edges = ready_edges | bridge_edges
+        selected = select_next_speaker_pair(
+            [
+                *[
+                    candidate(
+                        fingerprint,
+                        profile_ids=frozenset((7,)),
+                    )
+                    for fingerprint in (
+                        "ready-a",
+                        "ready-b",
+                        "ready-c",
+                        "ready-d",
+                    )
+                ],
+                *[
+                    candidate(
+                        fingerprint,
+                        profile_ids=frozenset((8,)),
+                    )
+                    for fingerprint in (
+                        "bridge-a",
+                        "bridge-b",
+                        "bridge-c",
+                    )
+                ],
+            ],
+            PairSelectionHistory(
+                excluded_pairs=frozenset(reviewed_edges),
+                reviewed_identity_outcomes={
+                    edge: "same_speaker" for edge in reviewed_edges
+                },
+            ),
+            selection_goal="automation-readiness",
+        )
+
+        self.assertEqual(
+            {"bridge-a", "bridge-c"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "profile_reinforcement",
+            selected.manifest["selection_objective"],
+        )
+
     def test_profile_growth_respects_difference_against_any_component_member(
         self,
     ) -> None:

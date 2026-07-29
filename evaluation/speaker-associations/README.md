@@ -42,9 +42,11 @@ pte identity review-next-speaker-pair \
 ```
 
 That objective first nominates an unseen pair of observations already in the
-same profile with at least three members. If no reinforcement pair remains, it
-falls back to the existing profile-growth priorities. The listening packet and
-human same/different decision are unchanged.
+same profile when adding that edge would remove one or more bridge
+dependencies from its reviewed graph. Profiles that are already bridge-free
+are skipped. If no useful reinforcement pair remains, it falls back to the
+existing profile-growth priorities. The listening packet and human
+same/different decision are unchanged.
 
 ## Association decision
 

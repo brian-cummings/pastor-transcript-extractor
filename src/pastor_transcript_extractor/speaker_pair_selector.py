@@ -664,32 +664,82 @@ def _select_profile_reinforcement_pair(
         for profile_id, fingerprints in members_by_profile.items()
         if len(fingerprints) >= 3
     }
-    reinforcement_pairs = [
-        pair
-        for pair in pairs
+    identity_outcomes = (
+        history.reviewed_identity_outcomes
+        if history.reviewed_identity_outcomes is not None
+        else history.reviewed_pair_outcomes
+    ) or {}
+    adjacency_by_profile = {
+        profile_id: {
+            fingerprint: set()
+            for fingerprint in members_by_profile[profile_id]
+        }
+        for profile_id in eligible_profile_ids
+    }
+    for pair_key, outcome in identity_outcomes.items():
+        if outcome != "same_speaker" or len(pair_key) != 2:
+            continue
+        fingerprint_a, fingerprint_b = tuple(pair_key)
+        for adjacency in adjacency_by_profile.values():
+            if fingerprint_a in adjacency and fingerprint_b in adjacency:
+                adjacency[fingerprint_a].add(fingerprint_b)
+                adjacency[fingerprint_b].add(fingerprint_a)
+    bridges_by_profile = {
+        profile_id: _graph_bridges(adjacency)
+        for profile_id, adjacency in adjacency_by_profile.items()
+    }
+    reinforcement_pairs: list[
+        tuple[
+            int,
+            tuple[
+                PairCandidateObservation,
+                PairCandidateObservation,
+                SelectionStratum,
+                SourceRelation,
+            ],
+        ]
+    ] = []
+    for pair in pairs:
         if (
-            not disfavored.get(pair[0].input_fingerprint, 0)
-            and not disfavored.get(pair[1].input_fingerprint, 0)
-            and (
-                pair[0].reviewed_profile_ids
-                & pair[1].reviewed_profile_ids
-                & eligible_profile_ids
-            )
+            disfavored.get(pair[0].input_fingerprint, 0)
+            or disfavored.get(pair[1].input_fingerprint, 0)
+        ):
+            continue
+        shared_profile_ids = (
+            pair[0].reviewed_profile_ids
+            & pair[1].reviewed_profile_ids
+            & eligible_profile_ids
         )
-    ]
+        reinforcement_value = max(
+            (
+                _bridges_removed_by_edge(
+                    adjacency_by_profile[profile_id],
+                    bridges_by_profile[profile_id],
+                    pair[0].input_fingerprint,
+                    pair[1].input_fingerprint,
+                )
+                for profile_id in shared_profile_ids
+            ),
+            default=0,
+        )
+        if reinforcement_value:
+            reinforcement_pairs.append((reinforcement_value, pair))
     if not reinforcement_pairs:
         return None
-    selected = min(
+    _, selected = min(
         reinforcement_pairs,
-        key=lambda pair: _rank_pair(
-            pair[0],
-            pair[1],
-            source_family_use,
-            observation_use,
-            source_use,
-            disfavored,
-            disfavored_sources,
-            condition_counts,
+        key=lambda valued_pair: (
+            -valued_pair[0],
+            _rank_pair(
+                valued_pair[1][0],
+                valued_pair[1][1],
+                source_family_use,
+                observation_use,
+                source_use,
+                disfavored,
+                disfavored_sources,
+                condition_counts,
+            ),
         ),
     )
     component = components[selected[0].input_fingerprint]
@@ -698,6 +748,68 @@ def _select_profile_reinforcement_pair(
         "profile_reinforcement",
         (component, component),
     )
+
+
+def _graph_bridges(
+    adjacency: Mapping[str, set[str]],
+) -> frozenset[frozenset[str]]:
+    discovery: dict[str, int] = {}
+    low: dict[str, int] = {}
+    parent: dict[str, str | None] = {}
+    bridges: set[frozenset[str]] = set()
+    time = 0
+
+    def visit(node: str) -> None:
+        nonlocal time
+        time += 1
+        discovery[node] = low[node] = time
+        for neighbor in adjacency[node]:
+            if neighbor not in discovery:
+                parent[neighbor] = node
+                visit(neighbor)
+                low[node] = min(low[node], low[neighbor])
+                if low[neighbor] > discovery[node]:
+                    bridges.add(frozenset((node, neighbor)))
+            elif parent.get(node) != neighbor:
+                low[node] = min(low[node], discovery[neighbor])
+
+    for node in adjacency:
+        if node not in discovery:
+            parent[node] = None
+            visit(node)
+    return frozenset(bridges)
+
+
+def _bridges_removed_by_edge(
+    adjacency: Mapping[str, set[str]],
+    bridges: frozenset[frozenset[str]],
+    start: str,
+    end: str,
+) -> int:
+    if start not in adjacency or end not in adjacency or start == end:
+        return 0
+    parent: dict[str, str | None] = {start: None}
+    pending = [start]
+    while pending and end not in parent:
+        node = pending.pop()
+        for neighbor in adjacency[node]:
+            if neighbor in parent:
+                continue
+            parent[neighbor] = node
+            pending.append(neighbor)
+    if end not in parent:
+        # Registry co-membership says these observations are the same reviewed
+        # profile, but the loaded review graph cannot replay that connection.
+        # A direct comparison repairs the missing support.
+        return len(adjacency) + 1
+    removed = 0
+    node = end
+    while parent[node] is not None:
+        previous = parent[node]
+        if frozenset((node, previous)) in bridges:
+            removed += 1
+        node = previous
+    return removed
 
 
 def _profile_growth_components(
