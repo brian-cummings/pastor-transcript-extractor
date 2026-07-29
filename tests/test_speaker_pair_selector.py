@@ -158,6 +158,39 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest["selection_objective"],
         )
 
+    def test_profile_growth_nominates_shared_name_profile_bridge_for_reconciliation(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "profile-a",
+                    name="jordan fowler",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate(
+                    "profile-b",
+                    name="jordan fowler",
+                    profile_ids=frozenset((8,)),
+                ),
+                candidate("unattributed"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+        )
+
+        self.assertEqual(
+            {"profile-a", "profile-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "attribution_reconciliation_bridge",
+            selected.manifest["selection_objective"],
+        )
+
     def test_unknown_selection_goal_fails_closed(self) -> None:
         with self.assertRaisesRegex(
             ValueError,

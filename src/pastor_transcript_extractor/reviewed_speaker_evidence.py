@@ -9,13 +9,18 @@ from typing import Any, Mapping, Sequence
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
     create_anonymous_profile,
+    normalize_person_name,
+    record_name_claim_review,
     record_observation_difference,
     record_observation_disposition,
+    record_observation_review,
+    record_profile_redirect,
 )
 from pastor_transcript_extractor.storage import Database
 
 
 REVIEWED_EVIDENCE_SYNC_VERSION = "reviewed_speaker_evidence_sync_v1"
+ATTRIBUTION_RECONCILIATION_VERSION = "reviewed_profile_attribution_sync_v1"
 _DERIVED_QUALIFICATION_REASON_PREFIX = (
     "Derived from consistent speaker-pair qualification review(s): "
 )
@@ -87,7 +92,10 @@ class ReviewedEvidenceSyncResult:
     difference_events_added: int
     profiles_added: int
     membership_events_added: int
+    name_claim_events_added: int
+    profile_redirect_events_added: int
     missing_observations: tuple[str, ...]
+    merge_candidates: tuple[str, ...]
     conflicts: tuple[str, ...]
 
 
@@ -102,6 +110,14 @@ class _QualificationRecord:
 class _PairRecord:
     fingerprints: frozenset[str]
     outcome: str
+    provenance: ReviewProvenance
+
+
+@dataclass(frozen=True, slots=True)
+class _ProfileAttributionCandidate:
+    profile_id: int
+    normalized_name: str
+    claim_ids: tuple[int, ...]
     provenance: ReviewProvenance
 
 
@@ -222,6 +238,7 @@ def sync_reviewed_speaker_evidence(
 ) -> ReviewedEvidenceSyncResult:
     before = _event_counts(database)
     missing: set[str] = set()
+    merge_candidates: list[str] = []
     conflicts = [
         f"qualification conflict for {fingerprint}: {', '.join(actions)}"
         for fingerprint, actions in sorted(evidence.qualification_conflicts.items())
@@ -343,6 +360,7 @@ def sync_reviewed_speaker_evidence(
         for pair, relation in evidence.pair_relations.items()
         if relation.outcome == "different_speaker"
     }
+    attribution_candidates: list[_ProfileAttributionCandidate] = []
     for component in evidence.same_components():
         qualification_conflicts = {
             fingerprint
@@ -401,14 +419,6 @@ def sync_reviewed_speaker_evidence(
                 observation.id
             )
         }
-        if len(profile_ids) > 1:
-            conflicts.append(
-                "same component spans multiple profiles "
-                + ", ".join(str(value) for value in sorted(profile_ids))
-                + ": "
-                + ", ".join(sorted(component))
-            )
-            continue
         component_relations = [
             relation
             for pair, relation in evidence.pair_relations.items()
@@ -423,7 +433,17 @@ def sync_reviewed_speaker_evidence(
             key=lambda item: item.review_event_id,
         )
         component_key = _sha256(sorted(component))
-        if profile_ids:
+        if len(profile_ids) > 1:
+            profile_id = _merge_reviewed_component_profiles(
+                database,
+                profile_ids=profile_ids,
+                provenance=canonical,
+                component_key=component_key,
+                conflicts=conflicts,
+            )
+            if profile_id is None:
+                continue
+        elif profile_ids:
             profile_id = next(iter(profile_ids))
         else:
             profile = create_anonymous_profile(
@@ -473,6 +493,57 @@ def sync_reviewed_speaker_evidence(
                 conflicts.append(
                     f"component membership {observation.input_fingerprint}: {error}"
                 )
+        profile_observations = [
+            observation
+            for observation_id in (
+                database.list_effective_observation_ids_for_profile(profile_id)
+            )
+            if (
+                observation := database.get_speaker_observation(
+                    observation_id
+                )
+            )
+            is not None
+        ]
+        explicit_claims = []
+        for observation in profile_observations:
+            explicit_claims.extend(
+                claim
+                for claim in database.list_speaker_name_claims_for_video(
+                    observation.video_id
+                )
+                if (
+                    claim.observation_id == observation.id
+                    and claim.explicit_speaker_attribution
+                    and claim.normalized_name.strip()
+                )
+            )
+        normalized_names = {
+            claim.normalized_name.strip() for claim in explicit_claims
+        }
+        if len(normalized_names) > 1:
+            conflicts.append(
+                f"profile {profile_id} has conflicting explicit attributions: "
+                + ", ".join(sorted(normalized_names))
+            )
+        elif len(normalized_names) == 1:
+            attribution_candidates.append(
+                _ProfileAttributionCandidate(
+                    profile_id=profile_id,
+                    normalized_name=next(iter(normalized_names)),
+                    claim_ids=tuple(
+                        sorted({claim.id for claim in explicit_claims})
+                    ),
+                    provenance=canonical,
+                )
+            )
+
+    _reconcile_profile_attributions(
+        database,
+        candidates=attribution_candidates,
+        merge_candidates=merge_candidates,
+        conflicts=conflicts,
+    )
 
     after = _event_counts(database)
     return ReviewedEvidenceSyncResult(
@@ -489,9 +560,319 @@ def sync_reviewed_speaker_evidence(
             after["profile_observation_events"]
             - before["profile_observation_events"]
         ),
+        name_claim_events_added=(
+            after["profile_name_claim_events"]
+            - before["profile_name_claim_events"]
+        ),
+        profile_redirect_events_added=(
+            after["speaker_profile_redirect_events"]
+            - before["speaker_profile_redirect_events"]
+        ),
         missing_observations=tuple(sorted(missing)),
+        merge_candidates=tuple(sorted(set(merge_candidates))),
         conflicts=tuple(sorted(set(conflicts))),
     )
+
+
+def _merge_reviewed_component_profiles(
+    database: Database,
+    *,
+    profile_ids: set[int],
+    provenance: ReviewProvenance,
+    component_key: str,
+    conflicts: list[str],
+) -> int | None:
+    ordered_profile_ids = sorted(profile_ids)
+    profiles = [
+        database.get_speaker_profile(profile_id)
+        for profile_id in ordered_profile_ids
+    ]
+    if any(
+        profile is None
+        or profile.created_reason != "reviewed_anonymous_speaker"
+        for profile in profiles
+    ):
+        conflicts.append(
+            "same component spans profiles that are not all reviewed "
+            "anonymous profiles: "
+            + ", ".join(str(profile_id) for profile_id in ordered_profile_ids)
+        )
+        return None
+    canonical_profile_id = ordered_profile_ids[0]
+    if database.get_effective_profile_redirect(canonical_profile_id) is not None:
+        conflicts.append(
+            f"canonical reviewed profile {canonical_profile_id} already "
+            "has an effective redirect"
+        )
+        return None
+    for profile_id in ordered_profile_ids[1:]:
+        redirected = database.get_effective_profile_redirect(profile_id)
+        if (
+            redirected is not None
+            and database.resolve_speaker_profile_id(profile_id)
+            != canonical_profile_id
+        ):
+            conflicts.append(
+                f"reviewed profile {profile_id} has incompatible redirect "
+                f"to profile {redirected}"
+            )
+            return None
+
+    members_by_profile = {
+        profile_id: database.list_effective_observation_ids_for_profile(
+            profile_id
+        )
+        for profile_id in ordered_profile_ids
+    }
+    different_pairs = set(database.list_effective_observation_difference_pairs())
+    member_owner = {
+        member_id: profile_id
+        for profile_id, member_ids in members_by_profile.items()
+        for member_id in member_ids
+    }
+    cross_profile_differences = [
+        pair
+        for pair in different_pairs
+        if (
+            pair[0] in member_owner
+            and pair[1] in member_owner
+            and member_owner[pair[0]] != member_owner[pair[1]]
+        )
+    ]
+    if cross_profile_differences:
+        conflicts.append(
+            "reviewed profile merge is blocked by different-speaker "
+            "constraint(s): "
+            + ", ".join(
+                f"{observation_a_id}-{observation_b_id}"
+                for observation_a_id, observation_b_id in (
+                    cross_profile_differences
+                )
+            )
+        )
+        return None
+
+    reason = (
+        "Merged reviewed anonymous profiles through confirmed same-speaker "
+        f"component {component_key}"
+    )
+    for profile_id in ordered_profile_ids[1:]:
+        for observation_id in members_by_profile[profile_id]:
+            record_observation_review(
+                database,
+                profile_id=profile_id,
+                observation_id=observation_id,
+                attach=False,
+                reviewer=provenance.reviewer,
+                reason=reason,
+                review_event_key=(
+                    f"{REVIEWED_EVIDENCE_SYNC_VERSION}:merge-detach:"
+                    f"{component_key}:{profile_id}:{observation_id}"
+                ),
+            )
+            if not database.is_observation_attached(
+                canonical_profile_id,
+                observation_id,
+            ):
+                attach_reviewed_observation(
+                    database,
+                    profile_id=canonical_profile_id,
+                    observation_id=observation_id,
+                    reviewer=provenance.reviewer,
+                    reason=reason,
+                    review_event_key=(
+                        f"{REVIEWED_EVIDENCE_SYNC_VERSION}:merge-attach:"
+                        f"{component_key}:{canonical_profile_id}:"
+                        f"{observation_id}"
+                    ),
+                )
+        if database.get_effective_profile_redirect(profile_id) is None:
+            record_profile_redirect(
+                database,
+                from_profile_id=profile_id,
+                to_profile_id=canonical_profile_id,
+                reviewer=provenance.reviewer,
+                reason=reason,
+                review_event_key=(
+                    f"{REVIEWED_EVIDENCE_SYNC_VERSION}:merge-redirect:"
+                    f"{component_key}:{profile_id}:"
+                    f"{canonical_profile_id}"
+                ),
+            )
+    return canonical_profile_id
+
+
+def _reconcile_profile_attributions(
+    database: Database,
+    *,
+    candidates: Sequence[_ProfileAttributionCandidate],
+    merge_candidates: list[str],
+    conflicts: list[str],
+) -> None:
+    candidates_by_name: dict[str, list[_ProfileAttributionCandidate]] = {}
+    for candidate in candidates:
+        candidates_by_name.setdefault(candidate.normalized_name, []).append(
+            candidate
+        )
+
+    configured_by_name: dict[str, list[int]] = {}
+    for pastor in database.list_pastors():
+        profile_id = database.get_pastor_speaker_profile_id(pastor.id)
+        if profile_id is None:
+            continue
+        normalized_name = normalize_person_name(pastor.display_name)
+        if normalized_name:
+            configured_by_name.setdefault(normalized_name, []).append(
+                profile_id
+            )
+
+    for normalized_name, named_candidates in sorted(
+        candidates_by_name.items()
+    ):
+        profile_ids = sorted(
+            {candidate.profile_id for candidate in named_candidates}
+        )
+        if len(profile_ids) > 1:
+            members_by_profile = {
+                profile_id: (
+                    database.list_effective_observation_ids_for_profile(
+                        profile_id
+                    )
+                )
+                for profile_id in profile_ids
+            }
+            different_pairs = set(
+                database.list_effective_observation_difference_pairs()
+            )
+            blocked = any(
+                tuple(sorted((member_a, member_b))) in different_pairs
+                for index, profile_a in enumerate(profile_ids)
+                for profile_b in profile_ids[index + 1 :]
+                for member_a in members_by_profile[profile_a]
+                for member_b in members_by_profile[profile_b]
+            )
+            message = (
+                f"explicit attribution {normalized_name!r} spans reviewed "
+                "profiles "
+                + ", ".join(str(profile_id) for profile_id in profile_ids)
+            )
+            if blocked:
+                conflicts.append(
+                    message
+                    + " with an effective different-speaker constraint"
+                )
+            else:
+                merge_candidates.append(message)
+            continue
+        candidate = named_candidates[0]
+        conflicting_claim_reviews = []
+        for claim_id in candidate.claim_ids:
+            effective = database.get_effective_name_claim_review(claim_id)
+            if effective is None:
+                continue
+            action, attached_profile_id = effective
+            if (
+                action == "attach"
+                and attached_profile_id is not None
+                and database.resolve_speaker_profile_id(attached_profile_id)
+                == candidate.profile_id
+            ):
+                continue
+            conflicting_claim_reviews.append((claim_id, effective))
+        if conflicting_claim_reviews:
+            conflicts.append(
+                f"profile {candidate.profile_id} attribution "
+                f"{normalized_name!r} conflicts with effective claim review(s): "
+                + ", ".join(
+                    f"{claim_id}:{action}:{profile_id}"
+                    for claim_id, (action, profile_id) in conflicting_claim_reviews
+                )
+            )
+            continue
+
+        for claim_id in candidate.claim_ids:
+            effective = database.get_effective_name_claim_review(claim_id)
+            if effective == ("attach", candidate.profile_id):
+                continue
+            record_name_claim_review(
+                database,
+                claim_id=claim_id,
+                profile_id=candidate.profile_id,
+                attach=True,
+                reviewer=candidate.provenance.reviewer,
+                reason=(
+                    "Consistent explicit attribution across reviewed "
+                    f"same-speaker component: {normalized_name}"
+                ),
+                review_event_key=(
+                    f"{ATTRIBUTION_RECONCILIATION_VERSION}:claim:"
+                    f"{claim_id}:profile:{candidate.profile_id}"
+                ),
+            )
+
+        configured_profile_ids = sorted(
+            set(configured_by_name.get(normalized_name, ()))
+        )
+        if not configured_profile_ids:
+            continue
+        if len(configured_profile_ids) > 1:
+            conflicts.append(
+                f"explicit attribution {normalized_name!r} matches multiple "
+                "configured pastor profiles "
+                + ", ".join(
+                    str(profile_id)
+                    for profile_id in configured_profile_ids
+                )
+            )
+            continue
+        configured_profile_id = configured_profile_ids[0]
+        if database.list_effective_observation_ids_for_profile(
+            configured_profile_id
+        ):
+            conflicts.append(
+                f"configured profile {configured_profile_id} for "
+                f"{normalized_name!r} already has direct observation membership"
+            )
+            continue
+        anonymous_redirect = database.get_effective_profile_redirect(
+            candidate.profile_id
+        )
+        if anonymous_redirect is not None:
+            conflicts.append(
+                f"reviewed profile {candidate.profile_id} for "
+                f"{normalized_name!r} already redirects to profile "
+                f"{anonymous_redirect}"
+            )
+            continue
+        configured_redirect = database.get_effective_profile_redirect(
+            configured_profile_id
+        )
+        if configured_redirect is not None:
+            if (
+                database.resolve_speaker_profile_id(configured_profile_id)
+                == candidate.profile_id
+            ):
+                continue
+            conflicts.append(
+                f"configured profile {configured_profile_id} for "
+                f"{normalized_name!r} already redirects to profile "
+                f"{configured_redirect}"
+            )
+            continue
+        record_profile_redirect(
+            database,
+            from_profile_id=configured_profile_id,
+            to_profile_id=candidate.profile_id,
+            reviewer=candidate.provenance.reviewer,
+            reason=(
+                "Configured identity reconciled from consistent explicit "
+                f"attribution across reviewed voice component: {normalized_name}"
+            ),
+            review_event_key=(
+                f"{ATTRIBUTION_RECONCILIATION_VERSION}:configured:"
+                f"{configured_profile_id}:reviewed:{candidate.profile_id}"
+            ),
+        )
 
 
 def _derive_qualifications(
@@ -623,6 +1004,8 @@ def _event_counts(database: Database) -> dict[str, int]:
         "speaker_observation_review_events",
         "speaker_observation_difference_events",
         "profile_observation_events",
+        "profile_name_claim_events",
+        "speaker_profile_redirect_events",
     )
     with database.connect() as connection:
         return {

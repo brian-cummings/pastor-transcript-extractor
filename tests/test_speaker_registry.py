@@ -548,6 +548,10 @@ class SpeakerRegistryTests(unittest.TestCase):
             review_event_key="merge-1",
         )
         self.assertEqual(second.id, self.database.get_effective_profile_redirect(first.id))
+        self.assertEqual(
+            second.id,
+            self.database.resolve_speaker_profile_id(first.id),
+        )
         with self.assertRaises(ValueError):
             record_profile_redirect(
                 self.database,

@@ -178,13 +178,30 @@ The sync joins append-only review events to their immutable drafts, reuses
 consistent per-observation qualifications, and derives confirmed same/different
 relations only from approved binary pair reviews. Confirmed same edges form
 reviewed connected components. A component creates one deterministic anonymous
-profile or joins its one existing profile. A component touching multiple
-profiles is reported for adjudication and never auto-merged. Confirmed
-different edges create exact observation constraints. Qualification conflicts,
-pair conflicts, transitive same/different contradictions, missing observations,
-and manual qualification overrides block affected mutations. Replay adds no
-duplicate events. Use `--dry-run` to inspect the derivation without applying
-reviewed evidence.
+profile or joins its one existing profile. When a newly confirmed same-speaker
+bridge connects multiple reviewed-anonymous profiles, synchronization
+consolidates them into the lowest-ID profile through append-only membership
+moves and profile redirects. Profiles created for any other reason are never
+auto-merged. Confirmed different edges create exact observation constraints.
+Qualification conflicts, pair conflicts, transitive same/different
+contradictions, missing observations, incompatible redirects, and manual
+qualification overrides block affected mutations. Replay adds no duplicate
+events. Use `--dry-run` to inspect the derivation without applying reviewed
+evidence.
+
+After component materialization, the same sync conservatively reconciles
+observation-scoped explicit attribution claims. A reviewed component with one
+consistent normalized name receives append-only claim attachments. When that
+name uniquely matches a configured pastor identity, the configured placeholder
+profile redirects to the reviewed anonymous voice component; voice memberships
+remain on the reviewed component and are never copied from attribution alone.
+One attribution spanning multiple reviewed profiles is reported as a pending
+merge candidate because profile separation is not different-speaker evidence.
+If an effective different-speaker constraint crosses those profiles, it becomes
+a true attribution conflict instead. Multiple names inside one component,
+multiple configured matches, a manual claim decision, an incompatible
+redirect, or direct membership on the configured placeholder also blocks the
+affected identity link and is reported as a conflict.
 
 Continue identity review through the existing blinded pair workflow:
 
@@ -218,12 +235,56 @@ pte identity review-next-speaker-pair \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Profile-growth nomination prefers an ungrouped observation on the frontier of
-a reviewed profile/component, then ungrouped pairs that can seed a component,
-then bridges between separate reviewed components. Shared explicit attribution
-is a nomination signal, not identity truth. Pairs already connected by reviewed
-same evidence or blocked by a reviewed different constraint anywhere across
-the two components are excluded. The packet remains blinded and unchanged.
+Profile-growth nomination prioritizes a shared-attribution bridge between
+separate reviewed profiles when it can resolve an attribution split, then an
+ungrouped observation on the frontier of a reviewed profile/component,
+ungrouped pairs that can seed a component, and other component bridges. Shared
+explicit attribution is a nomination signal, not identity truth. Pairs already
+connected by reviewed same evidence or blocked by a reviewed different
+constraint anywhere across the two components are excluded. The packet remains
+blinded and unchanged.
+
+### Future Automatic Anonymous Profile Assembly
+
+The reviewed corpus may eventually support evidence-backed anonymous profile
+assembly without a human deciding every pair, but pair-policy promotion and
+durable profile mutation are separate gates. The current acoustic promotion
+contract requires at least 300 non-abstaining decisions in each direction,
+zero observed false-same and false-different decisions, complete recording
+variation coverage, one pinned model and approved policy, no missing results or
+technical failures, and one untouched held-out evaluation. Passing that gate
+permits consideration of automatic pair decisions; it does not by itself
+permit profile creation, growth, or merging. With zero errors in 300 decisions,
+the rule-of-three approximate 95% upper error bound is still about 1%, and one
+false-same edge can contaminate an entire transitive component.
+
+The intended progression is:
+
+1. Keep automatic evidence limited to pair nomination while reviewed coverage
+   grows.
+2. After pair-policy promotion, generate versioned, disposable shadow clusters
+   with complete model, policy, span, and input provenance. Shadow clusters do
+   not write registry events.
+3. Measure component-level false merges, splits, contradiction rates, and
+   stability across dates, rooms, microphones, channels, and source families.
+   Source-family membership remains context only and never identity evidence.
+4. Consider reversible provisional unnamed profiles only when at least three
+   observations from independent recording conditions have multi-edge or
+   complete-link same-speaker support, no reviewed or predicted different edge,
+   no conflicting attribution, and no unresolved required comparison.
+5. Consider conservative automatic growth only when a new observation agrees
+   with multiple independent members of an existing provisional profile.
+   A single machine same-speaker edge never creates, grows, or merges a durable
+   profile.
+6. Keep profile-to-profile merges, configured-pastor reconciliation, naming,
+   attribution conflicts, and any reviewed-evidence contradiction behind
+   blinded human pair review.
+
+Any future automatic registry mutation requires a separately approved,
+versioned component policy, an append-only machine-evidence ledger, reversible
+events, shadow replay demonstrating stability, and an explicit rollback path.
+Until those conditions are implemented and promoted, reviewed profiles remain
+the only durable profiles and machine clustering remains hypothetical.
 
 Detach without deleting history:
 

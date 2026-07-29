@@ -546,7 +546,11 @@ def _select_profile_growth_pair(
         if anchored_a != anchored_b:
             objective = "profile_growth_frontier"
         elif anchored_a:
-            objective = "profile_growth_component_bridge"
+            objective = (
+                "attribution_reconciliation_bridge"
+                if stratum == SelectionStratum.SHARED_ATTRIBUTION
+                else "profile_growth_component_bridge"
+            )
         else:
             objective = "profile_growth_seed"
         growth_pairs.append(
@@ -568,9 +572,10 @@ def _select_profile_growth_pair(
         SelectionStratum.CONTRADICTING_ATTRIBUTION: 3,
     }
     objective_rank = {
-        "profile_growth_frontier": 0,
-        "profile_growth_seed": 1,
-        "profile_growth_component_bridge": 2,
+        "attribution_reconciliation_bridge": 0,
+        "profile_growth_frontier": 1,
+        "profile_growth_seed": 2,
+        "profile_growth_component_bridge": 3,
     }
     return min(
         growth_pairs,

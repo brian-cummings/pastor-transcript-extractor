@@ -12,6 +12,8 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.speaker_registry import (
+    ensure_configured_pastor_profile,
+    record_name_claim_review,
     record_observation_disposition,
 )
 from pastor_transcript_extractor.storage import Database
@@ -96,6 +98,27 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         (self.evaluation_root / "fixtures" / f"{pair_id}.json").write_text(
             json.dumps(payload),
             encoding="utf-8",
+        )
+
+    def _add_explicit_claim(
+        self,
+        fingerprint: str,
+        normalized_name: str,
+    ):
+        observation = self.observations[fingerprint]
+        return self.database.add_speaker_name_claim(
+            video_id=observation.video_id,
+            observation_id=observation.id,
+            display_name=normalized_name.title(),
+            normalized_name=normalized_name,
+            claim_kind="explicit_speaker_attribution",
+            channel="metadata",
+            explicit_speaker_attribution=True,
+            correlation_group_id=f"group-{fingerprint}-{normalized_name}",
+            provenance_json="{}",
+            artifact_path=f"{fingerprint}.speaker.json",
+            claim_fingerprint=f"claim-{fingerprint}-{normalized_name}",
+            extractor_version="speaker_evidence_v1",
         )
 
     def _write_review(
@@ -183,6 +206,190 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertEqual(0, replay.difference_events_added)
         self.assertEqual(0, replay.qualification_events_added)
         self.assertEqual((), replay.conflicts)
+
+    def test_sync_attaches_consistent_name_and_links_configured_identity(
+        self,
+    ) -> None:
+        pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        claim_a = self._add_explicit_claim("a", "andrew korp")
+        claim_b = self._add_explicit_claim("b", "andrew korp")
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+
+        evidence = load_reviewed_speaker_evidence(self.evaluation_root)
+        first = sync_reviewed_speaker_evidence(self.database, evidence)
+        replay = sync_reviewed_speaker_evidence(self.database, evidence)
+
+        profile_id = self.database.list_effective_profile_ids_for_observation(
+            self.observations["a"].id
+        )[0]
+        self.assertEqual(
+            [claim_a.id, claim_b.id],
+            self.database.list_effective_name_claim_ids_for_profile(
+                profile_id
+            ),
+        )
+        self.assertEqual(
+            profile_id,
+            self.database.get_effective_profile_redirect(configured.id),
+        )
+        self.assertEqual(2, first.name_claim_events_added)
+        self.assertEqual(1, first.profile_redirect_events_added)
+        self.assertEqual(0, replay.name_claim_events_added)
+        self.assertEqual(0, replay.profile_redirect_events_added)
+        self.assertEqual((), replay.conflicts)
+
+    def test_sync_blocks_name_spanning_multiple_reviewed_profiles(
+        self,
+    ) -> None:
+        pastor = self.database.add_pastor("jordan-fowler", "Jordan Fowler")
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        claims = [
+            self._add_explicit_claim(fingerprint, "jordan fowler")
+            for fingerprint in ("a", "b", "c", "d")
+        ]
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+        self._write_fixture("pair-cd", "c", "d", "same_speaker")
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(0, result.name_claim_events_added)
+        self.assertEqual(0, result.profile_redirect_events_added)
+        self.assertIsNone(
+            self.database.get_effective_profile_redirect(configured.id)
+        )
+        self.assertTrue(
+            any(
+                "spans reviewed profiles" in candidate
+                for candidate in result.merge_candidates
+            )
+        )
+        self.assertEqual((), result.conflicts)
+        self.assertTrue(
+            all(
+                self.database.get_effective_name_claim_review(claim.id)
+                is None
+                for claim in claims
+            )
+        )
+
+    def test_confirmed_bridge_merges_reviewed_profiles_and_reconciles_name(
+        self,
+    ) -> None:
+        pastor = self.database.add_pastor("jordan-fowler", "Jordan Fowler")
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        claims = [
+            self._add_explicit_claim(fingerprint, "jordan fowler")
+            for fingerprint in ("a", "b", "c", "d")
+        ]
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+        self._write_fixture("pair-cd", "c", "d", "same_speaker")
+        first_evidence = load_reviewed_speaker_evidence(
+            self.evaluation_root
+        )
+        sync_reviewed_speaker_evidence(self.database, first_evidence)
+        first_profile_id = (
+            self.database.list_effective_profile_ids_for_observation(
+                self.observations["a"].id
+            )[0]
+        )
+        second_profile_id = (
+            self.database.list_effective_profile_ids_for_observation(
+                self.observations["c"].id
+            )[0]
+        )
+        self.assertNotEqual(first_profile_id, second_profile_id)
+
+        self._write_fixture("pair-bc", "b", "c", "same_speaker")
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        canonical_profile_id = min(first_profile_id, second_profile_id)
+        retired_profile_id = max(first_profile_id, second_profile_id)
+        for observation in self.observations.values():
+            self.assertEqual(
+                [canonical_profile_id],
+                self.database.list_effective_profile_ids_for_observation(
+                    observation.id
+                ),
+            )
+        self.assertEqual(
+            canonical_profile_id,
+            self.database.get_effective_profile_redirect(retired_profile_id),
+        )
+        self.assertEqual(
+            canonical_profile_id,
+            self.database.get_effective_profile_redirect(configured.id),
+        )
+        self.assertEqual(
+            sorted(claim.id for claim in claims),
+            self.database.list_effective_name_claim_ids_for_profile(
+                canonical_profile_id
+            ),
+        )
+        self.assertEqual(4, result.name_claim_events_added)
+        self.assertEqual(2, result.profile_redirect_events_added)
+        self.assertEqual((), result.conflicts)
+
+    def test_same_name_profiles_with_different_constraint_are_a_conflict(
+        self,
+    ) -> None:
+        for fingerprint in ("a", "b", "c", "d"):
+            self._add_explicit_claim(fingerprint, "jordan fowler")
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+        self._write_fixture("pair-cd", "c", "d", "same_speaker")
+        self._write_fixture("pair-bc", "b", "c", "different_speaker")
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual((), result.merge_candidates)
+        self.assertTrue(
+            any(
+                "effective different-speaker constraint" in conflict
+                for conflict in result.conflicts
+            )
+        )
+
+    def test_manual_claim_review_blocks_automatic_reconciliation(self) -> None:
+        pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        claim_a = self._add_explicit_claim("a", "andrew korp")
+        self._add_explicit_claim("b", "andrew korp")
+        record_name_claim_review(
+            self.database,
+            claim_id=claim_a.id,
+            profile_id=None,
+            attach=False,
+            reviewer="Manual Reviewer",
+            reason="Explicit attribution was not the principal speaker",
+            review_event_key="manual-reject-claim-a",
+        )
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(0, result.name_claim_events_added)
+        self.assertEqual(0, result.profile_redirect_events_added)
+        self.assertIsNone(
+            self.database.get_effective_profile_redirect(configured.id)
+        )
+        self.assertTrue(
+            any(
+                "conflicts with effective claim review" in conflict
+                for conflict in result.conflicts
+            )
+        )
 
     def test_conflicting_qualifications_are_not_materialized(self) -> None:
         self._write_review(

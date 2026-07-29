@@ -65,7 +65,7 @@ def _sha256(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
-def _normalized_person(value: str) -> str:
+def normalize_person_name(value: str) -> str:
     tokens = re.findall(r"[a-z]+", value.lower())
     while tokens and tokens[0] in _HONORIFICS:
         tokens.pop(0)
@@ -109,7 +109,7 @@ def project_target_attribution_outcomes(
     target_name: str,
 ) -> tuple[str, ...]:
     """Project identity-neutral claims into the legacy target-centered shadow vocabulary."""
-    target = _normalized_person(target_name)
+    target = normalize_person_name(target_name)
     normalized: list[dict[str, Any]] = []
     for claim in claims:
         if isinstance(claim, SpeakerNameClaim):

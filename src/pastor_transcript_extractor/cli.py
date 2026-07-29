@@ -1561,9 +1561,14 @@ def _print_reviewed_evidence_summary(
         f"profiles={result.profiles_added} "
         f"memberships={result.membership_events_added} "
         f"different_constraints={result.difference_events_added} "
+        f"name_claims={result.name_claim_events_added} "
+        f"profile_redirects={result.profile_redirect_events_added} "
         f"missing={len(result.missing_observations)} "
+        f"merge_candidates={len(result.merge_candidates)} "
         f"conflicts={len(result.conflicts)}"
     )
+    for candidate in result.merge_candidates:
+        console.print(f"[cyan]Merge candidate:[/cyan] {candidate}")
     for conflict in result.conflicts:
         console.print(f"[yellow]Review conflict:[/yellow] {conflict}")
 

@@ -2641,6 +2641,18 @@ class Database:
             raise RuntimeError("Pastor speaker binding was not persisted")
         return int(row["profile_id"])
 
+    def get_pastor_speaker_profile_id(self, pastor_id: int) -> int | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT profile_id
+                FROM pastor_speaker_bindings
+                WHERE pastor_id = ?
+                """,
+                (pastor_id,),
+            ).fetchone()
+        return int(row["profile_id"]) if row is not None else None
+
     def add_speaker_observation(
         self,
         *,
@@ -3038,6 +3050,62 @@ class Database:
         if row is None or str(row["action"]) == "clear":
             return None
         return int(row["to_profile_id"])
+
+    def resolve_speaker_profile_id(self, profile_id: int) -> int:
+        if self.get_speaker_profile(profile_id) is None:
+            raise ValueError(f"Unknown speaker profile: {profile_id}")
+        visited: set[int] = set()
+        current = profile_id
+        while True:
+            if current in visited:
+                raise ValueError("Speaker profile redirect cycle detected")
+            visited.add(current)
+            redirected = self.get_effective_profile_redirect(current)
+            if redirected is None:
+                return current
+            current = redirected
+
+    def get_effective_name_claim_review(
+        self, claim_id: int
+    ) -> tuple[str, int | None] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action, profile_id
+                FROM profile_name_claim_events
+                WHERE claim_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (claim_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        profile_id = row["profile_id"]
+        return (
+            str(row["action"]),
+            int(profile_id) if profile_id is not None else None,
+        )
+
+    def list_effective_name_claim_ids_for_profile(
+        self, profile_id: int
+    ) -> list[int]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event.claim_id
+                FROM profile_name_claim_events event
+                JOIN (
+                    SELECT claim_id, MAX(id) AS event_id
+                    FROM profile_name_claim_events
+                    GROUP BY claim_id
+                ) latest ON latest.event_id = event.id
+                WHERE event.action = 'attach' AND event.profile_id = ?
+                ORDER BY event.claim_id
+                """,
+                (profile_id,),
+            ).fetchall()
+        return [int(row["claim_id"]) for row in rows]
 
     def is_observation_attached(self, profile_id: int, observation_id: int) -> bool:
         with self.connect() as connection:

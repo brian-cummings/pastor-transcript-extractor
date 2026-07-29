@@ -155,11 +155,24 @@ pte identity sync-reviewed-speaker-evidence \
 Consistent observation qualifications are reused. Approved `same_speaker`
 reviews form connected components that create or join curated anonymous
 profiles; approved `different_speaker` reviews create exact constraints.
-Conflicts, missing observations, transitive contradictions, and components
-that already span multiple profiles are reported and not guessed through.
-Every derived mutation cites an original reviewer and review event, and replay
-is idempotent. This is reviewed component materialization, not acoustic
-clustering.
+Confirmed same-speaker bridges between existing reviewed-anonymous profiles
+consolidate those profiles through append-only membership moves and redirects;
+profiles from other origins are never auto-merged. Conflicts, missing
+observations, transitive contradictions, incompatible redirects, and manual
+overrides are reported and not guessed through. Every derived mutation cites
+an original reviewer and review event, and replay is idempotent. This is
+reviewed component materialization, not acoustic clustering.
+
+The sync then reconciles explicit attribution without treating a name as voice
+proof. One consistent normalized name across a reviewed component attaches its
+observation-scoped claims to that component. A unique configured pastor match
+redirects the configured placeholder to the reviewed component. Duplicate
+profile/name matches are reported as merge candidates, not conflicts, because
+separate profiles do not imply different speakers. Component-level name
+conflicts, manual claim decisions, incompatible existing state, and a reviewed
+different constraint crossing same-name profiles remain true conflicts. A name
+shared by separate anonymous profiles remains unresolved until a blinded pair
+review connects or separates those components.
 
 The pair workflow is also the sole human input for anonymous-speaker grouping:
 
@@ -181,11 +194,12 @@ presenting intentionally different observations as one group.
 The default `--selection-objective evaluation` retains the existing
 coverage-balanced selector. Use `--selection-objective profile-growth` to keep
 the identical blinded packet and adjudication while changing nomination
-priority. Profile-growth mode favors reviewed-component frontiers, new component
-seeds, and component bridges; it excludes already-connected components and any
-candidate components separated by an explicit reviewed different constraint.
-Source-family membership remains partition and queue context, never
-same-speaker evidence.
+priority. Profile-growth mode first favors shared-attribution bridges that can
+resolve split named components, followed by reviewed-component frontiers, new
+component seeds, and other component bridges. It excludes already-connected
+components and any candidate components separated by an explicit reviewed
+different constraint. Source-family membership remains partition and queue
+context, never same-speaker evidence.
 
 Selector v8 in the default evaluation objective may use two explicit curated
 relations to nominate an unseen pair:
@@ -345,3 +359,37 @@ Threshold selection must use a development split. The promotion gate must be
 measured once on a held-out split containing unseen dates and, where possible,
 unseen channels/rooms. Repeated tuning against the held-out split invalidates
 it.
+
+## Future automatic profile assembly
+
+Pair-policy promotion is necessary but insufficient for automatic durable
+profile mutation. Even zero observed errors in 300 same decisions gives an
+approximate 95% upper false-same bound near 1%. Pair errors are local; a
+false-same clustering edge can transitively contaminate an entire component.
+
+After a pair policy passes the promotion gate, the next increment should create
+only versioned shadow clusters. Those clusters must retain the complete model,
+policy, input, exact-span, and edge provenance and must never write profile,
+membership, name-claim, or redirect events. Promotion beyond shadow operation
+requires component-level evaluation of false merges, false splits,
+contradictions, and replay stability across recording dates, rooms,
+microphones, channels, and source families.
+
+A future provisional unnamed profile may be considered only when:
+
+- it contains at least three observations from independent recording
+  conditions;
+- membership has multi-edge or complete-link same-speaker support rather than
+  one transitive bridge;
+- no reviewed or predicted different-speaker edge crosses the component;
+- no required comparison abstains or remains unresolved;
+- explicit attribution is absent or internally consistent;
+- source-family membership is never used as same-speaker evidence.
+
+Automatic growth should require agreement with multiple independent profile
+members. One machine edge must never create, grow, or merge a durable profile.
+Profile-to-profile merges, configured-pastor links, naming, attribution
+conflicts, and contradictions with reviewed evidence remain human-reviewed
+actions. Any future automatic mutation also requires a separately approved,
+versioned component policy, append-only machine-evidence events, shadow replay,
+and a tested rollback path.
