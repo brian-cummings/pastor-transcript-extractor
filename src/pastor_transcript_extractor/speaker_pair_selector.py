@@ -8,13 +8,14 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v8"
+SELECTOR_VERSION = "speaker_pair_selector_v9"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
 class SelectionGoal(StrEnum):
     EVALUATION = "evaluation"
     PROFILE_GROWTH = "profile-growth"
+    AUTOMATION_READINESS = "automation-readiness"
 
 
 class SelectionStratum(StrEnum):
@@ -234,7 +235,8 @@ def select_next_speaker_pair(
         goal = SelectionGoal(selection_goal)
     except ValueError as error:
         raise ValueError(
-            "selection goal must be one of: evaluation, profile-growth"
+            "selection goal must be one of: evaluation, profile-growth, "
+            "automation-readiness"
         ) from error
     ordered = sorted(observations, key=lambda item: item.input_fingerprint)
     if len({item.input_fingerprint for item in ordered}) != len(ordered):
@@ -290,7 +292,7 @@ def select_next_speaker_pair(
         history,
         evaluation_partition=evaluation_partition,
     )
-    growth_selection = (
+    objective_selection = (
         _select_profile_growth_pair(
             pairs,
             candidates=candidates,
@@ -305,9 +307,37 @@ def select_next_speaker_pair(
         if goal == SelectionGoal.PROFILE_GROWTH
         else None
     )
-    if goal == SelectionGoal.PROFILE_GROWTH and growth_selection is None:
+    if goal == SelectionGoal.AUTOMATION_READINESS:
+        objective_selection = _select_profile_reinforcement_pair(
+            pairs,
+            candidates=candidates,
+            history=history,
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        ) or _select_profile_growth_pair(
+            pairs,
+            candidates=candidates,
+            history=history,
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        )
+    if (
+        goal in {
+            SelectionGoal.PROFILE_GROWTH,
+            SelectionGoal.AUTOMATION_READINESS,
+        }
+        and objective_selection is None
+    ):
         raise ValueError(
-            "no unreviewed profile-growth pair remains after reviewed "
+            f"no unreviewed {goal.value} pair remains after reviewed "
             "same/different and qualification exclusions"
         )
     curated_selection = (
@@ -324,7 +354,7 @@ def select_next_speaker_pair(
         else None
     )
     anchor_selection = None
-    if growth_selection is not None:
+    if objective_selection is not None:
         (
             observation_a,
             observation_b,
@@ -332,7 +362,7 @@ def select_next_speaker_pair(
             chosen_relation,
             selection_objective,
             growth_components,
-        ) = growth_selection
+        ) = objective_selection
         anchor_component = None
     elif curated_selection is not None:
         observation_a, observation_b, chosen_stratum, chosen_relation, curated_relation = (
@@ -401,7 +431,7 @@ def select_next_speaker_pair(
         source_family_prior_a,
         source_family_prior_b,
     )
-    if growth_selection is not None:
+    if objective_selection is not None:
         reason_codes.insert(0, selection_objective)
     elif curated_selection is not None:
         reason_codes.insert(0, selection_objective)
@@ -593,6 +623,80 @@ def _select_profile_growth_pair(
                 condition_counts,
             ),
         ),
+    )
+
+
+def _select_profile_reinforcement_pair(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    *,
+    candidates: Sequence[PairCandidateObservation],
+    history: PairSelectionHistory,
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+    str,
+    tuple[frozenset[str], frozenset[str]],
+] | None:
+    components = _profile_growth_components(candidates, history)
+    members_by_profile: dict[int, set[str]] = {}
+    for candidate in candidates:
+        for profile_id in candidate.reviewed_profile_ids:
+            members_by_profile.setdefault(profile_id, set()).add(
+                candidate.input_fingerprint
+            )
+    eligible_profile_ids = {
+        profile_id
+        for profile_id, fingerprints in members_by_profile.items()
+        if len(fingerprints) >= 3
+    }
+    reinforcement_pairs = [
+        pair
+        for pair in pairs
+        if (
+            not disfavored.get(pair[0].input_fingerprint, 0)
+            and not disfavored.get(pair[1].input_fingerprint, 0)
+            and (
+                pair[0].reviewed_profile_ids
+                & pair[1].reviewed_profile_ids
+                & eligible_profile_ids
+            )
+        )
+    ]
+    if not reinforcement_pairs:
+        return None
+    selected = min(
+        reinforcement_pairs,
+        key=lambda pair: _rank_pair(
+            pair[0],
+            pair[1],
+            source_family_use,
+            observation_use,
+            source_use,
+            disfavored,
+            disfavored_sources,
+            condition_counts,
+        ),
+    )
+    component = components[selected[0].input_fingerprint]
+    return (
+        *selected,
+        "profile_reinforcement",
+        (component, component),
     )
 
 

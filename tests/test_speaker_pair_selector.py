@@ -91,6 +91,60 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest["selection_objective"],
         )
 
+    def test_automation_readiness_prioritizes_profile_reinforcement(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("profile-a", profile_ids=frozenset((7,))),
+                candidate("profile-b", profile_ids=frozenset((7,))),
+                candidate("profile-c", profile_ids=frozenset((7,))),
+                candidate("frontier"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+        )
+
+        self.assertEqual(
+            2,
+            len(
+                {
+                    selected.observation_a.input_fingerprint,
+                    selected.observation_b.input_fingerprint,
+                }
+                & {"profile-a", "profile-b", "profile-c"}
+            ),
+        )
+        self.assertEqual(
+            "automation-readiness",
+            selected.manifest["selection_goal"],
+        )
+        self.assertEqual(
+            "profile_reinforcement",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_automation_readiness_falls_back_to_profile_growth(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("profile-a", profile_ids=frozenset((7,))),
+                candidate("profile-b", profile_ids=frozenset((7,))),
+                candidate("frontier"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+        )
+
+        self.assertIn(
+            "frontier",
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "profile_growth_frontier",
+            selected.manifest["selection_objective"],
+        )
+
     def test_profile_growth_respects_difference_against_any_component_member(
         self,
     ) -> None:

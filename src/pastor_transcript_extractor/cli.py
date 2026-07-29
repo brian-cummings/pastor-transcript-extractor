@@ -158,6 +158,15 @@ from pastor_transcript_extractor.speaker_pair_selector import (
 from pastor_transcript_extractor.speaker_profile_status import (
     build_profile_pipeline_status,
 )
+from pastor_transcript_extractor.speaker_shadow_association import (
+    ShadowExemplar,
+    assess_profile_association_readiness,
+    evaluate_shadow_association,
+    load_shadow_policy,
+    select_profile_exemplars,
+    summarize_shadow_associations,
+    write_shadow_association,
+)
 from pastor_transcript_extractor.speaker_registry import (
     record_observation_difference,
     record_observation_review,
@@ -1668,6 +1677,12 @@ def profile_status_command(
         f"configured_links={status.configured_identity_count}"
     )
     console.print(
+        f"Association readiness: "
+        f"shadow_ready_profiles={status.shadow_ready_profile_count} "
+        f"automatic_profile_ready={status.automatic_profile_ready_count} "
+        "(system promotion remains separate)"
+    )
+    console.print(
         f"Reviewed single-speaker backlog: "
         f"ungrouped={status.ungrouped_single_count} "
         f"named={status.named_ungrouped_single_count} "
@@ -1680,8 +1695,8 @@ def profile_status_command(
     table.add_column("Profile", justify="right", no_wrap=True)
     table.add_column("State", no_wrap=True)
     table.add_column("Evidence", no_wrap=True)
+    table.add_column("Automation", no_wrap=True)
     table.add_column("Identity evidence")
-    table.add_column("Next need")
     for profile in status.profiles:
         identity = ", ".join(
             profile.configured_identities or profile.names
@@ -1694,17 +1709,31 @@ def profile_status_command(
                 f"{profile.recording_count} rec / "
                 f"{profile.source_count} src"
             ),
+            (
+                "profile-ready"
+                if profile.automatic_profile_ready
+                else "shadow"
+                if profile.shadow_ready
+                else "blocked"
+            ),
             identity,
-            profile.next_need,
         )
     console.print(table)
 
+    console.print("[bold]Profile next needs[/bold]")
+    for profile in status.profiles:
+        console.print(f"- Profile {profile.profile_id}: {profile.next_need}")
     console.print("[bold]What to do next[/bold]")
     for action in status.next_actions:
         console.print(f"- {action}")
     console.print(
-        "\nReview: pte identity review-next-speaker-pair "
+        "\nGrow: pte identity review-next-speaker-pair "
         "--selection-objective profile-growth --reviewer REVIEWER_ID "
+        "--base-dir BASE_DIR"
+    )
+    console.print(
+        "Reinforce: pte identity review-next-speaker-pair "
+        "--selection-objective automation-readiness --reviewer REVIEWER_ID "
         "--base-dir BASE_DIR"
     )
     console.print(
@@ -1712,6 +1741,390 @@ def profile_status_command(
         "--base-dir BASE_DIR"
     )
     console.print("This report is read-only and does not create or mature profiles.")
+
+
+@identity_app.command(
+    "shadow-associate-speakers",
+    help="Propose multi-exemplar profile matches without changing registry membership.",
+)
+def shadow_associate_speakers_command(
+    youtube_video_id: str | None = typer.Option(
+        None,
+        "--youtube-video-id",
+        help="Evaluate one YouTube video.",
+    ),
+    all_eligible: bool = typer.Option(
+        False,
+        "--all-eligible",
+        help="Evaluate every currently eligible unassigned sermon observation.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        min=1,
+        help="Maximum candidates to evaluate when using --all-eligible.",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Report readiness and candidate coverage without acoustic execution.",
+    ),
+    minimum_profile_members: int = typer.Option(
+        3,
+        min=3,
+        help="Distinct reviewed members required for shadow profile matching.",
+    ),
+    maximum_exemplars: int = typer.Option(
+        3,
+        min=2,
+        help="Maximum independently recorded exemplars compared per profile.",
+    ),
+    minimum_same_exemplars: int = typer.Option(
+        2,
+        min=2,
+        help="Same-speaker comparisons required to propose one profile.",
+    ),
+    model_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        help="Local ONNX speaker-embedding model.",
+    ),
+    model_sha256: str = typer.Option(
+        DEFAULT_SPEAKER_MODEL_SHA256,
+        help="Required checksum for the local model.",
+    ),
+    policy_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        help="Pinned approved or experimental shadow decision policy.",
+    ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair drafts, reviews, and fixtures root.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored exact-span, embedding, and media-verification cache.",
+    ),
+    output_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Ignored versioned shadow-association artifacts.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    if (youtube_video_id is None) == (not all_eligible):
+        raise typer.BadParameter(
+            "Pass exactly one of --youtube-video-id or --all-eligible."
+        )
+    if minimum_same_exemplars > maximum_exemplars:
+        raise typer.BadParameter(
+            "--minimum-same-exemplars cannot exceed --maximum-exemplars."
+        )
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    database = Database(paths.database, readonly=True)
+    cache_root = cache_dir.expanduser().resolve()
+    verification_cache = MediaVerificationCache(
+        cache_root / "media-verification"
+    )
+    try:
+        evidence = load_reviewed_speaker_evidence(
+            evaluation_root.expanduser().resolve()
+        )
+        policy_spec = load_shadow_policy(policy_path)
+        readiness = assess_profile_association_readiness(
+            database,
+            evidence,
+            minimum_members=minimum_profile_members,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    videos_by_id = {video.id: video for video in database.list_videos()}
+    eligible_exemplars: list[ShadowExemplar] = []
+    for profile in readiness:
+        if not profile.shadow_ready:
+            continue
+        for observation_id in profile.member_observation_ids:
+            observation = database.get_speaker_observation(observation_id)
+            if observation is None:
+                continue
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                observation.video_id,
+                verification_cache=verification_cache,
+            )
+            if (
+                not eligibility.eligible
+                or eligibility.observation is None
+                or eligibility.media_artifact is None
+                or eligibility.observation.id != observation.id
+            ):
+                continue
+            eligible_exemplars.append(
+                ShadowExemplar(
+                    profile_id=profile.profile_id,
+                    observation=observation,
+                    audio_path=Path(eligibility.media_artifact.artifact_path),
+                )
+            )
+
+    usable_profiles = []
+    for profile in readiness:
+        if not profile.shadow_ready:
+            continue
+        exemplars = select_profile_exemplars(
+            profile,
+            eligible_exemplars,
+            videos_by_id=videos_by_id,
+            maximum_exemplars=maximum_exemplars,
+        )
+        if len(exemplars) >= minimum_same_exemplars:
+            usable_profiles.append((profile, exemplars))
+
+    requested_videos = []
+    if youtube_video_id is not None:
+        video = database.get_video_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise typer.BadParameter(
+                f"Unknown YouTube video ID: {youtube_video_id}"
+            )
+        requested_videos = [video]
+    else:
+        requested_videos = list(videos_by_id.values())
+
+    candidates = []
+    ineligible_reasons: dict[str, int] = {}
+    for video in requested_videos:
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verification_cache=verification_cache,
+        )
+        if not eligibility.eligible or eligibility.observation is None:
+            ineligible_reasons[eligibility.reason_code] = (
+                ineligible_reasons.get(eligibility.reason_code, 0) + 1
+            )
+            continue
+        if database.list_effective_profile_ids_for_observation(
+            eligibility.observation.id
+        ):
+            ineligible_reasons["already_profiled"] = (
+                ineligible_reasons.get("already_profiled", 0) + 1
+            )
+            continue
+        review_action = database.get_effective_observation_review_action(
+            eligibility.observation.id
+        )
+        if review_action not in {None, "qualified_single_speaker"}:
+            reason = f"reviewed_{review_action}"
+            ineligible_reasons[reason] = ineligible_reasons.get(reason, 0) + 1
+            continue
+        if eligibility.media_artifact is None:
+            ineligible_reasons["verified_normalized_media_unavailable"] = (
+                ineligible_reasons.get(
+                    "verified_normalized_media_unavailable",
+                    0,
+                )
+                + 1
+            )
+            continue
+        candidates.append((video, eligibility))
+        if all_eligible and limit is not None and len(candidates) >= limit:
+            break
+
+    shadow_ready_count = sum(profile.shadow_ready for profile in readiness)
+    automatic_profile_ready_count = sum(
+        profile.automatic_profile_ready for profile in readiness
+    )
+    console.print(
+        "Profile readiness: "
+        f"canonical={len(readiness)} "
+        f"shadow_ready={shadow_ready_count} "
+        f"automatic_profile_ready={automatic_profile_ready_count} "
+        f"acoustically_usable={len(usable_profiles)}"
+    )
+    for profile in readiness:
+        blockers = (
+            ",".join(profile.automatic_blockers)
+            if profile.automatic_blockers
+            else "none"
+        )
+        console.print(
+            f"Profile {profile.profile_id}: members="
+            f"{len(profile.member_observation_ids)} "
+            f"recordings={profile.recording_count} "
+            f"shadow_ready={profile.shadow_ready} "
+            f"automatic_profile_ready={profile.automatic_profile_ready} "
+            f"automatic_blockers={blockers}"
+        )
+    console.print(
+        f"Candidate observations: eligible_unassigned={len(candidates)} "
+        f"ineligible={sum(ineligible_reasons.values())}"
+    )
+    if ineligible_reasons:
+        console.print(
+            "Ineligible reasons: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(ineligible_reasons.items())
+            )
+        )
+    if plan_only:
+        console.print(
+            "Plan only; no acoustic comparisons or association artifacts were created."
+        )
+        return
+    if not usable_profiles:
+        raise typer.BadParameter(
+            "No shadow-ready profile has enough eligible acoustic exemplars."
+        )
+    if not candidates:
+        raise typer.BadParameter(
+            "No eligible unassigned candidate observation was selected."
+        )
+
+    try:
+        backend = SherpaOnnxEmbeddingBackend(
+            model_path.expanduser().resolve(),
+            expected_sha256=model_sha256,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    span_cache = AudioSpanCache(cache_root)
+    embedding_cache = EmbeddingCache(cache_root)
+    candidate_names_by_observation: dict[int, set[str]] = {}
+    for claim in database.list_speaker_name_claims():
+        if (
+            claim.observation_id is not None
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        ):
+            candidate_names_by_observation.setdefault(
+                claim.observation_id,
+                set(),
+            ).add(claim.normalized_name.strip())
+
+    def compare(
+        candidate: SpeakerObservation,
+        exemplar: SpeakerObservation,
+        candidate_audio_path: Path,
+        exemplar_audio_path: Path,
+    ) -> dict[str, object]:
+        return analyze_observation_pair(
+            observation_a=candidate,
+            observation_b=exemplar,
+            audio_path_a=candidate_audio_path,
+            audio_path_b=exemplar_audio_path,
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
+            policy=policy_spec.policy,
+        )
+
+    outcome_counts: dict[str, int] = {}
+    for index, (video, eligibility) in enumerate(candidates, start=1):
+        observation = eligibility.observation
+        media_artifact = eligibility.media_artifact
+        if observation is None or media_artifact is None:
+            continue
+        report = evaluate_shadow_association(
+            candidate=observation,
+            candidate_audio_path=Path(media_artifact.artifact_path),
+            candidate_normalized_names=sorted(
+                candidate_names_by_observation.get(observation.id, ())
+            ),
+            profiles=usable_profiles,
+            compare=compare,
+            policy_spec=policy_spec,
+            model_fingerprint=backend.spec.fingerprint,
+            minimum_same_exemplars=minimum_same_exemplars,
+            reviewed_difference_pairs=(
+                database.list_effective_observation_difference_pairs()
+            ),
+        )
+        destination = write_shadow_association(output_root, report)
+        outcome = str(report["outcome"])
+        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+        console.print(
+            f"[{index}/{len(candidates)}] {video.youtube_video_id}: "
+            f"{outcome} profile={report['proposed_profile_id']} "
+            f"artifact={destination}"
+        )
+    console.print(
+        "Shadow association complete: "
+        + " ".join(
+            f"{outcome}={count}"
+            for outcome, count in sorted(outcome_counts.items())
+        )
+    )
+    console.print(
+        f"Policy status={policy_spec.review_status}; registry mutations=0."
+    )
+
+
+@identity_app.command(
+    "shadow-association-status",
+    help="Measure saved shadow proposals against later reviewed registry state.",
+)
+def shadow_association_status_command(
+    input_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Versioned shadow-association artifact root.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    try:
+        reports = _load_json_artifacts(
+            sorted(input_root.expanduser().resolve().glob("*/*.json"))
+        )
+        summary = summarize_shadow_associations(
+            Database(paths.database, readonly=True),
+            reports,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    outcomes = summary["outcome_counts"]
+    validation = summary["validation_counts"]
+    console.print(
+        f"Shadow associations: reports={summary['report_count']} "
+        + " ".join(
+            f"{outcome}={count}"
+            for outcome, count in sorted(outcomes.items())
+        )
+    )
+    console.print(
+        "Reviewed replay: "
+        f"confirmed={validation['confirmed_proposal']} "
+        f"contradicted={validation['contradicted_proposal']} "
+        f"pending_proposals={validation['pending_proposal']} "
+        f"resolved_abstentions={validation['resolved_abstention']} "
+        f"pending_abstentions={validation['pending_abstention']} "
+        f"invalid={validation['invalid_artifact']}"
+    )
+    precision = summary["decided_proposal_precision"]
+    console.print(
+        "Decided proposal precision: "
+        + (f"{precision:.4f}" if precision is not None else "not yet measurable")
+    )
+    console.print("This command is read-only; registry mutations=0.")
 
 
 @identity_app.command(
@@ -1974,7 +2387,8 @@ def review_next_speaker_pair(
         "--selection-objective",
         help=(
             "Use evaluation for the tuned fixture selector or profile-growth "
-            "for reviewed component expansion."
+            "for reviewed component expansion; automation-readiness first "
+            "reinforces profiles with redundant internal comparisons."
         ),
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),

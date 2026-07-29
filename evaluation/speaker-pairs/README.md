@@ -360,20 +360,21 @@ measured once on a held-out split containing unseen dates and, where possible,
 unseen channels/rooms. Repeated tuning against the held-out split invalidates
 it.
 
-## Future automatic profile assembly
+## Shadow association and future automatic profile assembly
 
 Pair-policy promotion is necessary but insufficient for automatic durable
 profile mutation. Even zero observed errors in 300 same decisions gives an
 approximate 95% upper false-same bound near 1%. Pair errors are local; a
 false-same clustering edge can transitively contaminate an entire component.
 
-After a pair policy passes the promotion gate, the next increment should create
-only versioned shadow clusters. Those clusters must retain the complete model,
-policy, input, exact-span, and edge provenance and must never write profile,
-membership, name-claim, or redirect events. Promotion beyond shadow operation
+The versioned multi-exemplar shadow-association increment is implemented as
+`pte identity shadow-associate-speakers`. It retains the complete model,
+policy, input, exact-span, and edge provenance and never writes profile,
+membership, name-claim, or redirect events. The current experimental policy is
+admitted only for shadow measurement. Promotion beyond shadow operation
 requires component-level evaluation of false merges, false splits,
-contradictions, and replay stability across recording dates, rooms,
-microphones, channels, and source families.
+contradictions, association precision and coverage, and replay stability
+across recording dates, rooms, microphones, channels, and source families.
 
 A future provisional unnamed profile may be considered only when:
 

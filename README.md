@@ -485,13 +485,17 @@ clustering backend is active.
 - `pte pastor list`
 - `pte identity profile-status --base-dir <app-data>`
 - `pte identity review-next-speaker-pair --selection-objective profile-growth`
+- `pte identity review-next-speaker-pair --selection-objective automation-readiness`
 - `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`
+- `pte identity shadow-associate-speakers --all-eligible --plan-only`
+- `pte identity shadow-association-status --base-dir <app-data>`
 
 ## Planning Docs
 
 - `docs/V1_SPEC.md`
 - `docs/HANDOFF.md`
 - `evaluation/speaker-pairs/README.md` for the offline, abstention-first acoustic pair experiment
+- `evaluation/speaker-associations/README.md` for non-mutating profile association
 - `docs/MEDIA_FOUNDATION.md` for transcript-independent audio acquisition and migration
 - `docs/SOURCE_OWNERSHIP.md` for publisher ownership, target contexts, and migration validation
 

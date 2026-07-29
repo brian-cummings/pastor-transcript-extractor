@@ -298,6 +298,74 @@ observation-scoped attribution can name that voice component, and a unique
 configured-name match can link it to an attributed pastor profile. Naming and
 source context alone never establish speaker identity.
 
+### Shadow Association of New Sermons
+
+The first non-mutating corpus association layer is now implemented. Profile
+readiness is deliberately split:
+
+- **shadow-ready** requires at least three reviewed members from three distinct
+  recordings, complete member observations, no internal reviewed
+  different-speaker constraint, and no conflicting explicit attribution;
+- **automatic-profile-ready** additionally requires the reviewed same-speaker
+  graph to be connected with no bridge edge, so membership has redundant human
+  support instead of depending on one transitive link.
+
+These are profile gates only. The independent model/policy promotion gate must
+also pass before automatic registry mutation can be considered.
+`profile-status` reports both readiness counts and each profile's state.
+
+Build missing redundant profile evidence through the same blinded workflow:
+
+```bash
+pte identity review-next-speaker-pair \
+  --selection-objective automation-readiness \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+This objective first selects an unseen internal comparison in a reviewed
+profile with at least three members. If none remains, it falls back to normal
+profile-growth selection. It never tells the reviewer that the observations
+are currently grouped and never assumes that grouping is correct.
+
+Inspect corpus and profile eligibility without acoustic execution:
+
+```bash
+pte identity shadow-associate-speakers \
+  --all-eligible \
+  --plan-only \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Execute the shadow matcher with `--all-eligible`, or use
+`--youtube-video-id VIDEO_ID` for one sermon. It compares an eligible,
+unassigned observation against up to three eligible exemplars per shadow-ready
+profile. A proposal requires at least two same-speaker decisions, no
+different-speaker result, no technical failure, exactly one matching profile,
+and no conflicting explicit attribution. Reviewed different-speaker
+constraints override acoustic output.
+
+Versioned artifacts are written below the ignored
+`evaluation/speaker-associations/shadow-runs/` directory. They retain the
+candidate and exemplar fingerprints, full pair results, model fingerprint,
+policy hash and state, profile readiness, outcome, and deterministic result
+hash. Outcomes are `proposed_match`, `no_match`, `ambiguous`,
+`conflicting_attribution`, `insufficient_evidence`, or `analysis_failed`.
+Every artifact explicitly prohibits registry mutation and automatic
+assignment. The current default policy remains an experimental development
+candidate and is usable only for shadow measurement.
+
+Measure saved proposals against registry evidence reviewed later with:
+
+```bash
+pte identity shadow-association-status \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The read-only replay separates confirmed, contradicted, and pending proposals
+and reports abstentions that were later resolved. Pending proposals do not
+count toward precision.
+
 ### Future Automatic Anonymous Profile Assembly
 
 The reviewed corpus may eventually support evidence-backed anonymous profile
@@ -316,9 +384,9 @@ The intended progression is:
 
 1. Keep automatic evidence limited to pair nomination while reviewed coverage
    grows.
-2. After pair-policy promotion, generate versioned, disposable shadow clusters
-   with complete model, policy, span, and input provenance. Shadow clusters do
-   not write registry events.
+2. Use the implemented versioned shadow-association layer to measure
+   multi-exemplar profile proposals with complete model, policy, span, and
+   input provenance. Shadow proposals do not write registry events.
 3. Measure component-level false merges, splits, contradiction rates, and
    stability across dates, rooms, microphones, channels, and source families.
    Source-family membership remains context only and never identity evidence.

@@ -8,6 +8,9 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedSpeakerEvidence,
 )
 from pastor_transcript_extractor.speaker_registry import normalize_person_name
+from pastor_transcript_extractor.speaker_shadow_association import (
+    assess_profile_association_readiness,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -24,6 +27,9 @@ class ProfileStatus:
     configured_identities: tuple[str, ...]
     attributed_frontier_count: int
     state: str
+    shadow_ready: bool
+    automatic_profile_ready: bool
+    automatic_blockers: tuple[str, ...]
     next_need: str
 
 
@@ -45,6 +51,8 @@ class ProfilePipelineStatus:
     unnamed_ungrouped_single_count: int
     merge_candidate_count: int
     attribution_conflict_count: int
+    shadow_ready_profile_count: int
+    automatic_profile_ready_count: int
     pending_qualification_count: int
     pending_same_component_count: int
     pending_difference_count: int
@@ -93,6 +101,10 @@ def build_profile_pipeline_status(
         if database.resolve_speaker_profile_id(profile.id) == profile.id
     }
     retired_profile_count = len(reviewed_profiles) - len(canonical_ids)
+    association_readiness = {
+        item.profile_id: item
+        for item in assess_profile_association_readiness(database, evidence)
+    }
 
     members_by_profile: dict[int, set[int]] = {
         profile_id: set() for profile_id in canonical_ids
@@ -282,6 +294,7 @@ def build_profile_pipeline_status(
         configured = tuple(
             sorted(configured_identities_by_profile.get(profile_id, ()))
         )
+        profile_readiness = association_readiness[profile_id]
         frontier_count = attributed_frontier_by_profile.get(profile_id, 0)
         configured_name_ambiguity = (
             len(names) == 1
@@ -332,6 +345,19 @@ def build_profile_pipeline_status(
         else:
             state = "anonymous"
             next_need = "grow voice evidence and obtain explicit attribution"
+        if (
+            state in {"linked", "attributed"}
+            and not frontier_count
+            and profile_readiness.shadow_ready
+            and not profile_readiness.automatic_profile_ready
+        ):
+            next_need = "review internal reinforcement for automation readiness"
+        elif (
+            state in {"linked", "attributed"}
+            and not frontier_count
+            and profile_readiness.automatic_profile_ready
+        ):
+            next_need = "run shadow association and accumulate validation evidence"
         profile_rows.append(
             ProfileStatus(
                 profile_id=profile_id,
@@ -342,6 +368,11 @@ def build_profile_pipeline_status(
                 configured_identities=configured,
                 attributed_frontier_count=frontier_count,
                 state=state,
+                shadow_ready=profile_readiness.shadow_ready,
+                automatic_profile_ready=(
+                    profile_readiness.automatic_profile_ready
+                ),
+                automatic_blockers=profile_readiness.automatic_blockers,
                 next_need=next_need,
             )
         )
@@ -401,6 +432,13 @@ def build_profile_pipeline_status(
         merge_candidate_count=len(merge_profile_ids),
         attribution_conflict_count=len(
             attribution_conflict_profile_ids | claim_review_conflict_profile_ids
+        ),
+        shadow_ready_profile_count=sum(
+            item.shadow_ready for item in association_readiness.values()
+        ),
+        automatic_profile_ready_count=sum(
+            item.automatic_profile_ready
+            for item in association_readiness.values()
         ),
         pending_qualification_count=pending_qualification_count,
         pending_same_component_count=pending_same_component_count,
