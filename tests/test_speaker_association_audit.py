@@ -14,11 +14,15 @@ from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_association_audit import (
     audit_speaker_association_coverage,
 )
+from pastor_transcript_extractor.speaker_profile_discovery import (
+    TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+)
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
     create_anonymous_profile,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
+    SHADOW_ASSOCIATION_VERSION,
     write_shadow_association,
 )
 from pastor_transcript_extractor.storage import Database
@@ -50,6 +54,7 @@ class SpeakerAssociationAuditTests(unittest.TestCase):
         *,
         observation: bool = False,
         malformed: bool = False,
+        speech_grounded: bool = True,
     ):
         video = self.database.add_video(
             source_id=self.source.id,
@@ -73,6 +78,20 @@ class SpeakerAssociationAuditTests(unittest.TestCase):
                             "start_seconds": 100.0,
                             "end_seconds": 1000.0,
                         },
+                        "segments": [
+                            {
+                                "start_seconds": start,
+                                "end_seconds": start + 15.0,
+                                "label": "sermon",
+                                "text": (
+                                    "This sustained sermon sentence contains "
+                                    "enough distinct words for speaker evidence."
+                                ),
+                            }
+                            for start in (150.0, 300.0, 450.0, 600.0, 750.0)
+                        ]
+                        if speech_grounded
+                        else [],
                     }
                 ),
                 encoding="utf-8",
@@ -99,10 +118,16 @@ class SpeakerAssociationAuditTests(unittest.TestCase):
             )
         return video, extraction, speaker_observation
 
-    def _association_attempt(self, observation, *, outcome: str) -> Path:
+    def _association_attempt(
+        self,
+        observation,
+        *,
+        outcome: str,
+        association_version: str = SHADOW_ASSOCIATION_VERSION,
+    ) -> Path:
         report = {
             "schema_version": 1,
-            "association_version": "speaker_shadow_association_v1",
+            "association_version": association_version,
             "artifact_kind": "speaker_profile_shadow_association",
             "shadow_mode": True,
             "registry_mutation_allowed": False,
@@ -121,6 +146,9 @@ class SpeakerAssociationAuditTests(unittest.TestCase):
                 "automatic_use_allowed": False,
             },
             "minimum_same_exemplars": 2,
+            "span_selection": {
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            },
             "outcome": outcome,
             "reason": "test",
             "proposed_profile_id": None,
@@ -298,6 +326,51 @@ class SpeakerAssociationAuditTests(unittest.TestCase):
         self.assertEqual(
             1,
             len(result.payload["cases"][0]["stale_association_attempts"]),
+        )
+
+    def test_legacy_sampling_attempt_is_stale(self) -> None:
+        _, _, observation = self._extraction(
+            "legacy-attempt",
+            "accepted_sermon",
+            observation=True,
+        )
+        self._association_attempt(
+            observation,
+            outcome="no_match",
+            association_version="speaker_shadow_association_v1",
+        )
+
+        result = audit_speaker_association_coverage(
+            self.database,
+            association_root=self.association_root,
+            output_root=self.output_root,
+        )
+
+        self.assertEqual(1, result.unaccounted_count)
+        self.assertEqual(
+            "association_attempt_stale",
+            result.payload["cases"][0]["reason_code"],
+        )
+
+    def test_missing_speech_grounded_spans_is_an_accounted_blocker(self) -> None:
+        video, _, _ = self._extraction(
+            "non-speech",
+            "accepted_sermon",
+            observation=True,
+            speech_grounded=False,
+        )
+        self._verified_media(video, "non-speech")
+
+        result = audit_speaker_association_coverage(
+            self.database,
+            association_root=self.association_root,
+            output_root=self.output_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            "speech_grounded_spans_unavailable",
+            result.payload["cases"][0]["reason_code"],
         )
 
     def test_invalid_association_artifact_fails_audit_integrity(self) -> None:

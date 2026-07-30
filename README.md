@@ -452,7 +452,11 @@ explicit blocker such as unavailable verified media. Rejected and
 review-required content is recorded as content-terminal. Failed attempts,
 missing/stale observations, stale-policy attempts, and eligible observations
 without an attempt are gaps. Invalid association artifacts also fail strict
-mode. Use `--allow-gaps` only when collecting a baseline report.
+mode. Association attempts produced by the legacy non-speech-grounded sampler
+are stale; current attempts must use the versioned transcript-grounded span
+contract. Accepted observations without enough meaningful sermon-labeled text
+are recorded as an explicit blocker. Use `--allow-gaps` only when collecting a
+baseline report.
 
 The grounded-attribution shadow pass extracts only exact names from title,
 description, chapter, introduction, and handoff evidence. Metadata observations
@@ -469,8 +473,31 @@ The neutral registry separates speaker observations, disposable future cluster
 hypotheses, curated profiles, and grounded name claims. Configured pastors are
 created as named but unprofiled query identities. Sermon observations and names
 are never attached to profiles automatically; membership, naming, and merge
-redirects require append-only review events. No acoustic recognition or
-clustering backend is active.
+redirects require append-only review events. A shadow profile-discovery backend
+can now propose conservative anonymous components, but it cannot mutate the
+registry.
+
+Inspect profile-discovery coverage without acoustic execution:
+
+```bash
+pte identity shadow-discover-profiles \
+  --plan-only \
+  --base-dir /path/to/app-data
+```
+
+Execute the shadow discovery pass by omitting `--plan-only`. It prepares one
+deterministic acoustic signature per eligible unassigned observation from five
+distributed 12-second spans grounded in meaningful sermon-labeled transcript
+text. The same exact spans are reused in every pair decision. It then nominates a
+bounded nearest-neighbor graph, applies the pinned pair policy, and proposes a
+provisional anonymous profile only for a complete-link same-speaker component
+with at least three distinct recordings. Non-speech/repetitive transcript
+regions, reviewed different-speaker constraints, unresolved required
+comparisons, and conflicting explicit names block or exclude evidence.
+Versioned artifacts are written below
+`evaluation/speaker-profile-discovery/shadow-runs/`; registry mutations remain
+zero. A calibrated observation-consistency report can be supplied with
+`--consistency-report` and `--minimum-consistency-score`.
 
 ## Commands
 
@@ -511,6 +538,7 @@ clustering backend is active.
 - `pte pastor list`
 - `pte identity profile-status --base-dir <app-data>`
 - `pte identity association-audit --base-dir <app-data>`
+- `pte identity shadow-discover-profiles --plan-only --base-dir <app-data>`
 - `pte identity review-next-speaker-pair --selection-objective profile-growth`
 - `pte identity review-next-speaker-pair --selection-objective automation-readiness`
 - `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`
@@ -523,6 +551,7 @@ clustering backend is active.
 - `docs/HANDOFF.md`
 - `evaluation/speaker-pairs/README.md` for the offline, abstention-first acoustic pair experiment
 - `evaluation/speaker-associations/README.md` for non-mutating profile association
+- `evaluation/speaker-profile-discovery/README.md` for non-mutating anonymous profile discovery
 - `docs/MEDIA_FOUNDATION.md` for transcript-independent audio acquisition and migration
 - `docs/SOURCE_OWNERSHIP.md` for publisher ownership, target contexts, and migration validation
 

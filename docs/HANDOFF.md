@@ -375,7 +375,10 @@ pte identity shadow-associate-speakers \
 Execute the shadow matcher with `--all-eligible`, or use
 `--youtube-video-id VIDEO_ID` for one sermon. It compares an eligible,
 unassigned observation against up to three eligible exemplars per shadow-ready
-profile. A proposal requires at least two same-speaker decisions, no
+profile. Candidates and exemplars use the same five transcript-grounded
+sermon-speech spans as profile discovery; legacy artifacts from the earlier
+non-speech-grounded sampler do not satisfy the strict association audit. A
+proposal requires at least two same-speaker decisions, no
 different-speaker result, no technical failure, exactly one matching profile,
 and no conflicting explicit attribution. Reviewed different-speaker
 constraints override acoustic output.
@@ -401,32 +404,65 @@ The read-only replay separates confirmed, contradicted, and pending proposals
 and reports abstentions that were later resolved. Pending proposals do not
 count toward precision.
 
+### Shadow Anonymous Profile Discovery
+
+The profile matcher cannot bootstrap a new voice identity because it requires
+existing profile exemplars. The separate discovery pass compares eligible,
+unassigned observations with one another:
+
+```bash
+pte identity shadow-discover-profiles \
+  --plan-only \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Omit `--plan-only` to compute deterministic five-span signatures. Each 12-second
+span must overlap meaningful sermon-labeled transcript text; repetitive,
+non-sermon, and transcript-empty regions are excluded. The same spans are reused
+for pair decisions. Discovery then nominates up to eight centroid-nearest
+observations per candidate, replays nominated pairs through the pinned
+abstention-first policy, and builds same-speaker components. A provisional
+profile candidate requires at least three distinct recordings and a complete-link
+same-speaker graph. Any missing/abstaining required edge, reviewed
+different-speaker constraint, or conflicting explicit name blocks the component.
+The result is a content-addressed artifact under the ignored
+`evaluation/speaker-profile-discovery/shadow-runs/` tree. It never creates a
+registry profile or membership.
+
+The optional `--consistency-report` and `--minimum-consistency-score` arguments
+are the integration boundary for the separately calibrated observation
+consistency scorer. Without a calibrated threshold, discovery records
+threshold-free within-observation metrics but does not treat them as an
+automatic qualification decision.
+
 ### Future Automatic Anonymous Profile Assembly
 
-The reviewed corpus may eventually support evidence-backed anonymous profile
-assembly without a human deciding every pair, but pair-policy promotion and
-durable profile mutation are separate gates. The current acoustic promotion
-contract requires at least 300 non-abstaining decisions in each direction,
-zero observed false-same and false-different decisions, complete recording
-variation coverage, one pinned model and approved policy, no missing results or
-technical failures, and one untouched held-out evaluation. Passing that gate
-permits consideration of automatic pair decisions; it does not by itself
-permit profile creation, growth, or merging. With zero errors in 300 decisions,
-the rule-of-three approximate 95% upper error bound is still about 1%, and one
+The shadow discovery layer now produces evidence-backed anonymous component
+proposals without a human deciding every pair, but pair-policy promotion and
+durable profile mutation remain separate gates. The current acoustic promotion
+contract requires at least 300 non-abstaining decisions in each direction, zero
+observed false-same and false-different decisions, complete recording variation
+coverage, one pinned model and approved policy, no missing results or technical
+failures, and one untouched held-out evaluation. Passing that gate permits
+consideration of automatic pair decisions; it does not by itself permit profile
+creation, growth, or merging. With zero errors in 300 decisions, the
+rule-of-three approximate 95% upper error bound is still about 1%, and one
 false-same edge can contaminate an entire transitive component.
 
 The intended progression is:
 
 1. Keep automatic evidence limited to pair nomination while reviewed coverage
    grows.
-2. Use the implemented versioned shadow-association layer to measure
-   multi-exemplar profile proposals with complete model, policy, span, and
-   input provenance. Shadow proposals do not write registry events.
+2. Use the implemented versioned shadow-association and shadow-discovery layers
+   to measure multi-exemplar profile matches and complete-link anonymous
+   components with complete model, policy, span, and input provenance. Shadow
+   proposals do not write registry events.
 3. Measure component-level false merges, splits, contradiction rates, and
    stability across dates, rooms, microphones, channels, and source families.
    Source-family membership remains context only and never identity evidence.
-4. Consider reversible provisional unnamed profiles only when at least three
-   observations from independent recording conditions have multi-edge or
+4. Promote the implemented shadow component contract to reversible provisional
+   unnamed profiles only after its policy gates are approved. It already
+   requires at least three observations from independent recordings,
    complete-link same-speaker support, no reviewed or predicted different edge,
    no conflicting attribution, and no unresolved required comparison.
 5. Consider conservative automatic growth only when a new observation agrees

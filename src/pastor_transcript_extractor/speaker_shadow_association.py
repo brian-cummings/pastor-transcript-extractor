@@ -14,11 +14,12 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     DecisionPolicy,
     PairOutcome,
+    SpanSpec,
 )
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v1"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v2"
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 
 
@@ -49,6 +50,7 @@ class ShadowExemplar:
     profile_id: int
     observation: SpeakerObservation
     audio_path: Path
+    span_specs: tuple[SpanSpec, ...] = ()
 
 
 PairComparer = Callable[
@@ -333,6 +335,7 @@ def evaluate_shadow_association(
     model_fingerprint: str,
     minimum_same_exemplars: int = 2,
     reviewed_difference_pairs: Sequence[tuple[int, int]] = (),
+    span_selection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if minimum_same_exemplars < 2:
         raise ValueError("a shadow match requires at least two same exemplars")
@@ -458,6 +461,7 @@ def evaluate_shadow_association(
             "automatic_use_allowed": policy_spec.automatic_use_allowed,
         },
         "minimum_same_exemplars": minimum_same_exemplars,
+        "span_selection": dict(span_selection) if span_selection else None,
         "outcome": outcome,
         "reason": reason,
         "proposed_profile_id": proposed_profile_id,
@@ -470,6 +474,7 @@ def evaluate_shadow_association(
             "model_fingerprint": model_fingerprint,
             "policy": report["policy"],
             "minimum_same_exemplars": minimum_same_exemplars,
+            "span_selection": report["span_selection"],
             "profile_inputs": [
                 {
                     "profile_id": result["profile_id"],

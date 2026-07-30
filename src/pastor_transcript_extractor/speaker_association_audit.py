@@ -11,8 +11,15 @@ from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
 )
+from pastor_transcript_extractor.speaker_profile_discovery import (
+    TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+    select_transcript_grounded_spans,
+)
+from pastor_transcript_extractor.speaker_shadow_association import (
+    SHADOW_ASSOCIATION_VERSION,
+)
 from pastor_transcript_extractor.storage import Database
-from pastor_transcript_extractor.models import utc_now
+from pastor_transcript_extractor.models import SpeakerObservation, utc_now
 
 
 ASSOCIATION_AUDIT_VERSION = "speaker_association_coverage_v1"
@@ -141,7 +148,10 @@ def audit_speaker_association_coverage(
             video.id,
             verification_cache=verification_cache,
         )
-        observation = database.get_latest_speaker_observation_for_video(video.id)
+        observation = (
+            eligibility.observation
+            or database.get_latest_speaker_observation_for_video(video.id)
+        )
         if eligibility.reason_code in STRUCTURAL_GAP_REASONS or observation is None:
             cases.append(
                 {
@@ -179,6 +189,15 @@ def audit_speaker_association_coverage(
             attempt
             for attempt in all_attempts
             if (
+                attempt.get("association_version")
+                == SHADOW_ASSOCIATION_VERSION
+            )
+            and (
+                isinstance(attempt.get("span_selection"), dict)
+                and attempt["span_selection"].get("version")
+                == TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION
+            )
+            and (
                 required_policy_sha256 is None
                 or (
                     isinstance(attempt.get("policy"), dict)
@@ -207,6 +226,19 @@ def audit_speaker_association_coverage(
                     "coverage_state": "associated",
                     "accounted": True,
                     "reason_code": "effective_profile_membership",
+                }
+            )
+            continue
+        if not _has_transcript_grounded_spans(
+            extraction.proposed_json_path,
+            observation,
+        ):
+            cases.append(
+                {
+                    **common,
+                    "coverage_state": "blocked",
+                    "accounted": True,
+                    "reason_code": "speech_grounded_spans_unavailable",
                 }
             )
             continue
@@ -294,6 +326,10 @@ def audit_speaker_association_coverage(
         "association_root": str(association_root.expanduser().resolve()),
         "required_policy_sha256": required_policy_sha256,
         "required_model_fingerprint": required_model_fingerprint,
+        "required_association_version": SHADOW_ASSOCIATION_VERSION,
+        "required_span_selection_version": (
+            TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION
+        ),
         "counts": {
             "extractions": len(cases),
             "accounted": len(cases) - unaccounted,
@@ -394,10 +430,29 @@ def _load_shadow_attempts(
                 "proposed_profile_id": payload.get("proposed_profile_id"),
                 "model_fingerprint": payload.get("model_fingerprint"),
                 "policy": payload.get("policy"),
+                "association_version": payload.get("association_version"),
+                "span_selection": payload.get("span_selection"),
                 "result_sha256": result_sha256,
             }
         )
     return attempts, invalid
+
+
+def _has_transcript_grounded_spans(
+    proposed_json_path: str | None,
+    observation: SpeakerObservation,
+) -> bool:
+    if not proposed_json_path:
+        return False
+    try:
+        payload = json.loads(
+            Path(proposed_json_path).expanduser().read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and bool(
+        select_transcript_grounded_spans(payload, observation)
+    )
 
 
 def _sha256_json(value: object) -> str:

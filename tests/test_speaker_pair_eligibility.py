@@ -116,6 +116,19 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
         self.assertEqual(5, len(result.diagnostic_spans))
         self.assertIs(self.media, result.media_artifact)
 
+    def test_matching_window_wins_over_later_incompatible_observation(self) -> None:
+        self._add_observation(
+            extraction_result_id=self.extraction.id,
+            start_seconds=120.0,
+            end_seconds=1600.0,
+            fingerprint="later-incompatible-observation",
+        )
+
+        result = self._assess()
+
+        self.assertTrue(result.eligible)
+        self.assertEqual(self.observation.id, result.observation.id)
+
     def test_unreadable_latest_extraction_is_excluded(self) -> None:
         self.proposed_path.unlink()
 

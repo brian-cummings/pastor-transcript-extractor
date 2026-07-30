@@ -169,6 +169,15 @@ from pastor_transcript_extractor.speaker_pair_selector import (
 from pastor_transcript_extractor.speaker_profile_status import (
     build_profile_pipeline_status,
 )
+from pastor_transcript_extractor.speaker_profile_discovery import (
+    DiscoveryCandidate,
+    TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+    build_discovery_signature,
+    evaluate_shadow_profile_discovery,
+    nominate_discovery_pairs,
+    select_transcript_grounded_spans,
+    write_shadow_profile_discovery,
+)
 from pastor_transcript_extractor.speaker_shadow_association import (
     ShadowExemplar,
     assess_profile_association_readiness,
@@ -1966,6 +1975,397 @@ def association_audit_command(
 
 
 @identity_app.command(
+    "shadow-discover-profiles",
+    help="Discover provisional anonymous profiles among unassigned observations.",
+)
+def shadow_discover_profiles_command(
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Report candidate coverage without acoustic execution.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        min=1,
+        help="Maximum eligible observations to include.",
+    ),
+    nearest_neighbors: int = typer.Option(
+        8,
+        min=2,
+        help="Centroid-nearest observations nominated per candidate.",
+    ),
+    maximum_pairs: int | None = typer.Option(
+        None,
+        min=1,
+        help="Optional global cap on nominated acoustic comparisons.",
+    ),
+    minimum_component_members: int = typer.Option(
+        3,
+        min=3,
+        help="Distinct recordings required for a provisional profile proposal.",
+    ),
+    consistency_report: Path | None = typer.Option(
+        None,
+        help="Optional threshold-free observation-consistency report.",
+    ),
+    minimum_consistency_score: float | None = typer.Option(
+        None,
+        min=-1.0,
+        max=1.0,
+        help="Require a scored observation at or above this calibrated value.",
+    ),
+    model_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        help="Local ONNX speaker-embedding model.",
+    ),
+    model_sha256: str = typer.Option(
+        DEFAULT_SPEAKER_MODEL_SHA256,
+        help="Required checksum for the local model.",
+    ),
+    policy_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        help="Pinned approved or experimental shadow decision policy.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored exact-span, embedding, and media-verification cache.",
+    ),
+    output_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+        help="Ignored versioned shadow profile-discovery artifacts.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    if minimum_consistency_score is not None and consistency_report is None:
+        raise typer.BadParameter(
+            "--minimum-consistency-score requires --consistency-report"
+        )
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    database = Database(paths.database, readonly=True)
+    cache_root = cache_dir.expanduser().resolve()
+    verification_cache = MediaVerificationCache(
+        cache_root / "media-verification"
+    )
+    try:
+        policy_spec = load_shadow_policy(policy_path)
+        consistency_index = (
+            load_consistency_score_index(
+                consistency_report.expanduser().resolve()
+            )
+            if consistency_report is not None
+            else None
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    names_by_observation: dict[int, set[str]] = {}
+    for claim in database.list_speaker_name_claims():
+        if (
+            claim.observation_id is not None
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        ):
+            names_by_observation.setdefault(claim.observation_id, set()).add(
+                claim.normalized_name.strip()
+            )
+
+    candidates: list[DiscoveryCandidate] = []
+    excluded_reasons: dict[str, int] = {}
+    for video in database.list_videos():
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verification_cache=verification_cache,
+        )
+        if (
+            not eligibility.eligible
+            or eligibility.observation is None
+            or eligibility.media_artifact is None
+        ):
+            reason = eligibility.reason_code
+            excluded_reasons[reason] = excluded_reasons.get(reason, 0) + 1
+            continue
+        observation = eligibility.observation
+        if database.list_effective_profile_ids_for_observation(observation.id):
+            excluded_reasons["already_profiled"] = (
+                excluded_reasons.get("already_profiled", 0) + 1
+            )
+            continue
+        review_action = database.get_effective_observation_review_action(
+            observation.id
+        )
+        if review_action not in {None, "qualified_single_speaker"}:
+            reason = f"reviewed_{review_action}"
+            excluded_reasons[reason] = excluded_reasons.get(reason, 0) + 1
+            continue
+        extraction = database.get_latest_extraction_result_for_video(video.id)
+        try:
+            proposed_payload = (
+                json.loads(
+                    Path(extraction.proposed_json_path).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                if extraction is not None and extraction.proposed_json_path
+                else None
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            proposed_payload = None
+        if not isinstance(proposed_payload, dict):
+            excluded_reasons["speech_grounding_artifact_unavailable"] = (
+                excluded_reasons.get(
+                    "speech_grounding_artifact_unavailable", 0
+                )
+                + 1
+            )
+            continue
+        span_specs = select_transcript_grounded_spans(
+            proposed_payload,
+            observation,
+        )
+        if not span_specs:
+            excluded_reasons["speech_grounded_spans_unavailable"] = (
+                excluded_reasons.get(
+                    "speech_grounded_spans_unavailable", 0
+                )
+                + 1
+            )
+            continue
+        consistency_score = (
+            consistency_index.scores.get(observation.input_fingerprint)
+            if consistency_index is not None
+            else None
+        )
+        if minimum_consistency_score is not None:
+            if consistency_score is None:
+                excluded_reasons["consistency_score_missing"] = (
+                    excluded_reasons.get("consistency_score_missing", 0) + 1
+                )
+                continue
+            if consistency_score < minimum_consistency_score:
+                excluded_reasons["consistency_score_below_threshold"] = (
+                    excluded_reasons.get(
+                        "consistency_score_below_threshold", 0
+                    )
+                    + 1
+                )
+                continue
+        candidates.append(
+            DiscoveryCandidate(
+                observation=observation,
+                audio_path=Path(eligibility.media_artifact.artifact_path),
+                source_id=video.source_id,
+                normalized_names=tuple(
+                    sorted(names_by_observation.get(observation.id, ()))
+                ),
+                consistency_score=consistency_score,
+                span_specs=span_specs,
+            )
+        )
+    candidates.sort(
+        key=lambda item: item.observation.input_fingerprint
+    )
+    if limit is not None:
+        candidates = candidates[:limit]
+
+    estimated_pairs = min(
+        len(candidates) * nearest_neighbors,
+        len(candidates) * max(0, len(candidates) - 1) // 2,
+    )
+    if maximum_pairs is not None:
+        estimated_pairs = min(estimated_pairs, maximum_pairs)
+    console.print(
+        "Profile discovery plan: "
+        f"eligible_unassigned={len(candidates)} "
+        f"excluded={sum(excluded_reasons.values())} "
+        f"nearest_neighbors={nearest_neighbors} "
+        f"estimated_pair_upper_bound={estimated_pairs}"
+    )
+    if excluded_reasons:
+        console.print(
+            "Excluded reasons: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(excluded_reasons.items())
+            )
+        )
+    if plan_only:
+        console.print(
+            "Plan only; no embeddings, comparisons, discovery artifacts, "
+            "or registry mutations were created."
+        )
+        return
+    if len(candidates) < minimum_component_members:
+        raise typer.BadParameter(
+            "Too few eligible observations for provisional profile discovery."
+        )
+
+    try:
+        backend = SherpaOnnxEmbeddingBackend(
+            model_path.expanduser().resolve(),
+            expected_sha256=model_sha256,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    span_cache = AudioSpanCache(cache_root)
+    embedding_cache = EmbeddingCache(cache_root)
+    signatures = []
+    signature_failures: list[dict[str, object]] = []
+    for index, candidate in enumerate(candidates, start=1):
+        try:
+            signatures.append(
+                build_discovery_signature(
+                    candidate,
+                    span_cache=span_cache,
+                    embedding_cache=embedding_cache,
+                    backend=backend,
+                    policy=policy_spec.policy,
+                )
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            reason = str(error) or type(error).__name__
+            signature_failures.append(
+                {
+                    "observation_id": candidate.observation.id,
+                    "video_id": candidate.observation.video_id,
+                    "observation_fingerprint": (
+                        candidate.observation.input_fingerprint
+                    ),
+                    "reason": reason,
+                    "error_type": type(error).__name__,
+                }
+            )
+        console.print(
+            f"Signature {index}/{len(candidates)}: "
+            f"{candidate.observation.input_fingerprint[:16]}"
+        )
+    if len(signatures) < minimum_component_members:
+        raise typer.BadParameter(
+            "Too few observations produced usable discovery signatures."
+        )
+    nominations = nominate_discovery_pairs(
+        signatures,
+        nearest_neighbors=nearest_neighbors,
+        maximum_pairs=maximum_pairs,
+    )
+    if not nominations:
+        raise typer.BadParameter("No discovery pairs were nominated.")
+
+    signatures_by_observation_id = {
+        signature.candidate.observation.id: signature
+        for signature in signatures
+    }
+    pair_index = 0
+
+    def compare(
+        observation_a: SpeakerObservation,
+        observation_b: SpeakerObservation,
+        audio_path_a: Path,
+        audio_path_b: Path,
+    ) -> dict[str, object]:
+        nonlocal pair_index
+        pair_index += 1
+        console.print(
+            f"Pair {pair_index}/{len(nominations)}: "
+            f"{observation_a.input_fingerprint[:8]}:"
+            f"{observation_b.input_fingerprint[:8]}"
+        )
+        signature_a = signatures_by_observation_id[observation_a.id]
+        signature_b = signatures_by_observation_id[observation_b.id]
+        return analyze_observation_pair(
+            observation_a=observation_a,
+            observation_b=observation_b,
+            audio_path_a=audio_path_a,
+            audio_path_b=audio_path_b,
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
+            policy=policy_spec.policy,
+            span_specs_a=signature_a.candidate.span_specs,
+            span_specs_b=signature_b.candidate.span_specs,
+        )
+
+    report = evaluate_shadow_profile_discovery(
+        signatures=signatures,
+        nominations=nominations,
+        compare=compare,
+        policy_spec=policy_spec,
+        model_fingerprint=backend.spec.fingerprint,
+        minimum_component_members=minimum_component_members,
+        reviewed_difference_pairs=(
+            database.list_effective_observation_difference_pairs()
+        ),
+        consistency_report_sha256=(
+            consistency_index.report_sha256
+            if consistency_index is not None
+            else None
+        ),
+        minimum_consistency_score=minimum_consistency_score,
+        signature_failures=signature_failures,
+        nearest_neighbors=nearest_neighbors,
+        maximum_pairs=maximum_pairs,
+    )
+    destination = write_shadow_profile_discovery(output_root, report)
+    counts = report["counts"]
+    console.print(
+        "Shadow profile discovery complete: "
+        f"signatures={counts['eligible_signatures']} "
+        f"signature_failures={counts['signature_failures']} "
+        f"pairs={counts['nominated_pairs']} "
+        f"provisional_profiles="
+        f"{counts['provisional_profile_candidates']} "
+        f"blocked_components={counts['blocked_components']}"
+    )
+    console.print(
+        "Pair outcomes: "
+        + ", ".join(
+            f"{outcome}={count}"
+            for outcome, count in report["pair_outcome_counts"].items()
+        )
+    )
+    if signature_failures:
+        failure_counts: dict[str, int] = {}
+        for failure in signature_failures:
+            reason = str(failure["reason"])
+            failure_counts[reason] = failure_counts.get(reason, 0) + 1
+        console.print(
+            "Signature failures: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(failure_counts.items())
+            )
+        )
+    for component in report["components"]:
+        if component["outcome"] != "provisional_profile_candidate":
+            continue
+        names = ",".join(component["normalized_names"]) or "anonymous"
+        console.print(
+            f"Provisional component {component['component_id'][:12]}: "
+            f"members={component['member_count']} "
+            f"recordings={component['recording_count']} "
+            f"sources={component['source_count']} "
+            f"names={names}"
+        )
+    console.print(f"Wrote shadow profile discovery to {destination}")
+    console.print(
+        f"Policy status={policy_spec.review_status}; registry mutations=0."
+    )
+
+
+@identity_app.command(
     "shadow-associate-speakers",
     help="Propose multi-exemplar profile matches without changing registry membership.",
 )
@@ -2071,8 +2471,26 @@ def shadow_associate_speakers_command(
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
 
+    def transcript_grounded_spans(
+        video_id: int,
+        observation: SpeakerObservation,
+    ) -> tuple[SpanSpec, ...]:
+        extraction = database.get_latest_extraction_result_for_video(video_id)
+        if extraction is None or not extraction.proposed_json_path:
+            return ()
+        try:
+            payload = json.loads(
+                Path(extraction.proposed_json_path).read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return ()
+        if not isinstance(payload, dict):
+            return ()
+        return select_transcript_grounded_spans(payload, observation)
+
     videos_by_id = {video.id: video for video in database.list_videos()}
     eligible_exemplars: list[ShadowExemplar] = []
+    span_specs_by_observation_id: dict[int, tuple[SpanSpec, ...]] = {}
     for profile in readiness:
         if not profile.shadow_ready:
             continue
@@ -2092,11 +2510,19 @@ def shadow_associate_speakers_command(
                 or eligibility.observation.id != observation.id
             ):
                 continue
+            span_specs = transcript_grounded_spans(
+                observation.video_id,
+                observation,
+            )
+            if not span_specs:
+                continue
+            span_specs_by_observation_id[observation.id] = span_specs
             eligible_exemplars.append(
                 ShadowExemplar(
                     profile_id=profile.profile_id,
                     observation=observation,
                     audio_path=Path(eligibility.media_artifact.artifact_path),
+                    span_specs=span_specs,
                 )
             )
 
@@ -2160,7 +2586,20 @@ def shadow_associate_speakers_command(
                 + 1
             )
             continue
-        candidates.append((video, eligibility))
+        span_specs = transcript_grounded_spans(
+            video.id,
+            eligibility.observation,
+        )
+        if not span_specs:
+            ineligible_reasons["speech_grounded_spans_unavailable"] = (
+                ineligible_reasons.get(
+                    "speech_grounded_spans_unavailable", 0
+                )
+                + 1
+            )
+            continue
+        span_specs_by_observation_id[eligibility.observation.id] = span_specs
+        candidates.append((video, eligibility, span_specs))
         if all_eligible and limit is not None and len(candidates) >= limit:
             break
 
@@ -2251,10 +2690,15 @@ def shadow_associate_speakers_command(
             embedding_cache=embedding_cache,
             backend=backend,
             policy=policy_spec.policy,
+            span_specs_a=span_specs_by_observation_id[candidate.id],
+            span_specs_b=span_specs_by_observation_id[exemplar.id],
         )
 
     outcome_counts: dict[str, int] = {}
-    for index, (video, eligibility) in enumerate(candidates, start=1):
+    for index, (video, eligibility, _span_specs) in enumerate(
+        candidates,
+        start=1,
+    ):
         observation = eligibility.observation
         media_artifact = eligibility.media_artifact
         if observation is None or media_artifact is None:
@@ -2273,12 +2717,21 @@ def shadow_associate_speakers_command(
             reviewed_difference_pairs=(
                 database.list_effective_observation_difference_pairs()
             ),
+            span_selection={
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+                "required_label": "sermon",
+                "span_count": 5,
+                "duration_seconds": 12.0,
+                "minimum_words": 8,
+                "minimum_unique_words": 4,
+            },
         )
         destination = write_shadow_association(output_root, report)
         outcome = str(report["outcome"])
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
         console.print(
-            f"[{index}/{len(candidates)}] {video.youtube_video_id}: "
+            f"Association {index}/{len(candidates)}: "
+            f"{video.youtube_video_id} "
             f"{outcome} profile={report['proposed_profile_id']} "
             f"artifact={destination}"
         )

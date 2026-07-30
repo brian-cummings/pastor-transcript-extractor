@@ -65,18 +65,30 @@ def assess_automatic_speaker_observation(
     if window is None:
         return AutomaticSpeakerObservationEligibility("sermon_window_invalid")
 
-    observation = database.get_latest_speaker_observation_for_video(video_id)
+    observation = database.get_speaker_observation_for_extraction_window(
+        video_id,
+        extraction.id,
+        start_seconds=window[0],
+        end_seconds=window[1],
+    )
     if observation is None:
-        return AutomaticSpeakerObservationEligibility("observation_unavailable")
-    if (
-        observation.video_id != video_id
-        or observation.extraction_result_id != extraction.id
-    ):
-        return AutomaticSpeakerObservationEligibility(
-            "observation_not_current_extraction"
+        latest_observation = database.get_latest_speaker_observation_for_video(
+            video_id
         )
-    if not _observation_matches_window(observation, window):
-        return AutomaticSpeakerObservationEligibility("observation_window_mismatch")
+        if latest_observation is None:
+            return AutomaticSpeakerObservationEligibility(
+                "observation_unavailable"
+            )
+        if (
+            latest_observation.video_id != video_id
+            or latest_observation.extraction_result_id != extraction.id
+        ):
+            return AutomaticSpeakerObservationEligibility(
+                "observation_not_current_extraction"
+            )
+        return AutomaticSpeakerObservationEligibility(
+            "observation_window_mismatch"
+        )
 
     diagnostic_spans = select_diagnostic_spans(observation)
     if not diagnostic_spans:
@@ -117,18 +129,3 @@ def _finite_number(value: object) -> float | None:
         return None
     number = float(value)
     return number if math.isfinite(number) else None
-
-
-def _observation_matches_window(
-    observation: SpeakerObservation,
-    window: tuple[float, float],
-    *,
-    tolerance_seconds: float = 0.001,
-) -> bool:
-    boundaries = (observation.start_seconds, observation.end_seconds)
-    if any(not math.isfinite(value) for value in boundaries):
-        return False
-    return all(
-        math.isclose(observed, current, rel_tol=0.0, abs_tol=tolerance_seconds)
-        for observed, current in zip(boundaries, window)
-    )

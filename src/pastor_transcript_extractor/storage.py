@@ -2776,6 +2776,40 @@ class Database:
             ).fetchone()
         return self._speaker_observation_from_row(row) if row is not None else None
 
+    def get_speaker_observation_for_extraction_window(
+        self,
+        video_id: int,
+        extraction_result_id: int,
+        *,
+        start_seconds: float,
+        end_seconds: float,
+        tolerance_seconds: float = 0.001,
+    ) -> SpeakerObservation | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, extraction_result_id, role, multiplicity_state,
+                       start_seconds, end_seconds, artifact_path, content_sha256,
+                       extractor_version, input_fingerprint, created_at
+                FROM speaker_observations
+                WHERE video_id = ?
+                  AND extraction_result_id = ?
+                  AND ABS(start_seconds - ?) <= ?
+                  AND ABS(end_seconds - ?) <= ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (
+                    video_id,
+                    extraction_result_id,
+                    start_seconds,
+                    tolerance_seconds,
+                    end_seconds,
+                    tolerance_seconds,
+                ),
+            ).fetchone()
+        return self._speaker_observation_from_row(row) if row is not None else None
+
     def add_speaker_name_claim(
         self,
         *,

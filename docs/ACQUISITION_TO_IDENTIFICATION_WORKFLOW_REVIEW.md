@@ -133,8 +133,9 @@ The identity subsystem is intentionally conservative:
   profiles;
 - `shadow-associate-speakers` can propose a profile but explicitly cannot change
   registry membership;
-- the current documentation states that automatic clustering and acoustic-driven
-  registry mutation are unimplemented or unapproved.
+- `shadow-discover-profiles` can now propose complete-link anonymous components,
+  but explicitly cannot create provisional registry profiles;
+- acoustic-driven registry mutation remains unapproved.
 
 These are good safety properties for model development, but they mean the user goal
 cannot be met by orchestration alone. There is no command or service that evaluates
@@ -157,6 +158,13 @@ three outcomes:
 Keep merges, naming, contradictory attribution, and low-margin matches manual. Make
 all automatic membership events append-only and reversible, with model, policy,
 exemplar, audio-span, and score provenance.
+
+> Implementation update: the non-mutating bootstrap half now exists.
+> `shadow-discover-profiles` builds a bounded nearest-neighbor acoustic graph
+> among unassigned observations and emits a provisional component only for at
+> least three distinct recordings with complete-link same-speaker support and
+> no difference, attribution, or unresolved-edge blocker. Durable provisional
+> profile creation and automatic growth remain intentionally gated.
 
 ### 3. Critical: the single `videos.status` field conflates unrelated concerns
 
@@ -573,11 +581,15 @@ After this phase, every eligible imported sermon reaches the identity backlog.
 1. Freeze and approve an acoustic model and decision policy using the existing
    evaluation framework.
 2. Add profile candidate retrieval and multi-exemplar scoring.
-3. Implement reversible automatic membership for unique, high-confidence,
+3. Validate the implemented shadow anonymous-component discovery against
+   reviewed outcomes and calibrated observation-consistency scores.
+4. Implement reversible automatic membership for unique, high-confidence,
    conflict-free matches.
-4. Keep new-profile creation provisional and more conservative than profile growth.
-5. Keep naming, merging, and conflicting evidence manual.
-6. Measure automatic coverage, error rate, abstention rate, and later-overturned
+5. Promote approved complete-link component proposals into reversible
+   provisional profiles.
+6. Keep new-profile creation more conservative than profile growth.
+7. Keep naming, merging, and conflicting evidence manual.
+8. Measure automatic coverage, error rate, abstention rate, and later-overturned
    decisions continuously.
 
 ### Phase 4: unify human review and delivery
