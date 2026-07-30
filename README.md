@@ -437,6 +437,23 @@ rewriting sermon artifacts:
 pte identity backfill --base-dir /path/to/app-data
 ```
 
+Audit end-to-end association coverage after backfill or association runs:
+
+```bash
+pte identity association-audit \
+  --base-dir /path/to/app-data
+```
+
+The audit writes an immutable, content-addressed report under
+`logs/association-audits/` and exits nonzero unless every latest extraction is
+accounted for. Accepted sermons must have a current observation that is already
+profiled, has a valid association attempt from the required policy, or has an
+explicit blocker such as unavailable verified media. Rejected and
+review-required content is recorded as content-terminal. Failed attempts,
+missing/stale observations, stale-policy attempts, and eligible observations
+without an attempt are gaps. Invalid association artifacts also fail strict
+mode. Use `--allow-gaps` only when collecting a baseline report.
+
 The grounded-attribution shadow pass extracts only exact names from title,
 description, chapter, introduction, and handoff evidence. Metadata observations
 retain their artifact hash, source kind, field path, and exact excerpt. Spoken
@@ -493,6 +510,7 @@ clustering backend is active.
 - `pte pastor add <slug> <display-name>`
 - `pte pastor list`
 - `pte identity profile-status --base-dir <app-data>`
+- `pte identity association-audit --base-dir <app-data>`
 - `pte identity review-next-speaker-pair --selection-objective profile-growth`
 - `pte identity review-next-speaker-pair --selection-objective automation-readiness`
 - `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`

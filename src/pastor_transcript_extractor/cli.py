@@ -137,6 +137,9 @@ from pastor_transcript_extractor.speaker_model_bakeoff import (
     load_bakeoff_manifest,
     load_namespaced_bakeoff_results,
 )
+from pastor_transcript_extractor.speaker_association_audit import (
+    audit_speaker_association_coverage,
+)
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
 )
@@ -1865,6 +1868,101 @@ def profile_status_command(
         "--base-dir BASE_DIR"
     )
     console.print("This report is read-only and does not create or mature profiles.")
+
+
+@identity_app.command(
+    "association-audit",
+    help="Verify that every latest extraction has a terminal association-coverage state.",
+)
+def association_audit_command(
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Versioned speaker-association attempt artifacts.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Media-verification cache used for current eligibility checks.",
+    ),
+    policy_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        help="Require association attempts produced with this exact policy artifact.",
+    ),
+    required_model_fingerprint: str | None = typer.Option(
+        None,
+        help="Optionally require one exact acoustic model fingerprint.",
+    ),
+    output_root: Path | None = typer.Option(
+        None,
+        help="Audit artifact directory; defaults under the application logs directory.",
+    ),
+    strict: bool = typer.Option(
+        True,
+        "--strict/--allow-gaps",
+        help="Exit nonzero when any latest extraction is unaccounted.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    destination_root = (
+        output_root.expanduser().resolve()
+        if output_root is not None
+        else paths.logs / "association-audits"
+    )
+    try:
+        policy_spec = load_shadow_policy(policy_path)
+        result = audit_speaker_association_coverage(
+            Database(paths.database, readonly=True),
+            association_root=association_root,
+            output_root=destination_root,
+            verification_cache=MediaVerificationCache(
+                cache_dir.expanduser().resolve() / "media-verification"
+            ),
+            required_policy_sha256=policy_spec.artifact_sha256,
+            required_model_fingerprint=required_model_fingerprint,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    counts = result.payload["counts"]
+    console.print(
+        "Association coverage: "
+        f"extractions={counts['extractions']} "
+        f"accounted={counts['accounted']} "
+        f"unaccounted={counts['unaccounted']} "
+        f"invalid_artifacts={counts['invalid_association_artifacts']}."
+    )
+    console.print(
+        "Coverage states: "
+        + ", ".join(
+            f"{state}={count}"
+            for state, count in result.payload["coverage_state_counts"].items()
+        )
+    )
+    unaccounted_reasons: dict[str, int] = {}
+    for case in result.payload["cases"]:
+        if case["accounted"] is False:
+            reason = str(case["reason_code"])
+            unaccounted_reasons[reason] = unaccounted_reasons.get(reason, 0) + 1
+    if unaccounted_reasons:
+        console.print(
+            "Unaccounted reasons: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(unaccounted_reasons.items())
+            )
+        )
+    console.print(f"Wrote association coverage audit to {result.report_path}")
+    if strict and not result.ok:
+        raise typer.Exit(code=1)
 
 
 @identity_app.command(

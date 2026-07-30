@@ -6,7 +6,9 @@
 > this review has since been fixed in the current workspace. Valid sermon
 > extractions now create neutral speaker observations even when no pastor is
 > preselected. The remaining production association and workflow-state findings
-> still apply.
+> still apply. A strict `pte identity association-audit` command now also writes
+> a versioned coverage ledger and fails when an extraction or current observation
+> is not accounted for.
 
 The repository has strong individual components for YouTube acquisition, transcript
 creation, sermon localization, evidence preservation, and conservative speaker
