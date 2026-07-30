@@ -174,8 +174,17 @@ def selection_history_from_artifacts(
                 excluded_pairs.add(pair_key)
                 judgment = review.get("pair_judgment")
                 qualifications = review.get("qualification", {})
+                identity_evidence_eligible = review.get(
+                    "identity_evidence_eligible"
+                )
+                if identity_evidence_eligible is None:
+                    identity_evidence_eligible = (
+                        review.get("approval_confirmed") is True
+                        and review.get("fixture_eligible") is True
+                    )
                 if (
-                    judgment in {"same_speaker", "different_speaker"}
+                    identity_evidence_eligible is True
+                    and judgment in {"same_speaker", "different_speaker"}
                     and isinstance(qualifications, Mapping)
                     and qualifications.get("A")
                     == "qualified_single_speaker"

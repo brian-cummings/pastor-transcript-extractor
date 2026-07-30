@@ -497,7 +497,7 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             history.reviewed_identity_outcomes[frozenset(("a", "b"))],
         )
 
-    def test_review_event_expands_components_without_a_frozen_fixture(
+    def test_visual_review_event_expands_components_without_an_acoustic_fixture(
         self,
     ) -> None:
         draft = {
@@ -516,6 +516,10 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         }
         review = {
             "pair_id": "pair-ab",
+            "approval_confirmed": True,
+            "fixture_eligible": False,
+            "identity_evidence_eligible": True,
+            "review_evidence_mode": "audio_plus_visual",
             "qualification": {
                 "A": "qualified_single_speaker",
                 "B": "qualified_single_speaker",
@@ -536,6 +540,36 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertNotIn(
             frozenset(("a", "b")),
             history.reviewed_pair_outcomes,
+        )
+
+    def test_unapproved_review_does_not_expand_identity_components(self) -> None:
+        draft = {
+            "pair_id": "pair-ab",
+            "observations": {
+                "source_a": {"input_fingerprint": "a"},
+                "source_b": {"input_fingerprint": "b"},
+            },
+        }
+        review = {
+            "pair_id": "pair-ab",
+            "approval_confirmed": False,
+            "fixture_eligible": False,
+            "qualification": {
+                "A": "qualified_single_speaker",
+                "B": "qualified_single_speaker",
+            },
+            "pair_judgment": "same_speaker",
+        }
+
+        history = selection_history_from_artifacts(
+            drafts=[draft],
+            reviews=[review],
+            fixtures=[],
+        )
+
+        self.assertNotIn(
+            frozenset(("a", "b")),
+            history.reviewed_identity_outcomes,
         )
 
     def test_drafted_sources_are_deprioritized_even_without_a_fixture(self) -> None:

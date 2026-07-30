@@ -144,6 +144,7 @@ from pastor_transcript_extractor.speaker_pair_review import (
     InsufficientSpeechActivityError,
     ObservationQualification,
     PairJudgment,
+    ReviewEvidenceMode,
     STANDARD_VARIATION_TAGS,
     create_review_draft,
     prepare_review_observation,
@@ -1392,7 +1393,7 @@ def _prompt_review_choice(prompt: str, choices: dict[str, object]) -> object:
 
 @identity_app.command(
     "review-speaker-pair",
-    help="Prepare and adjudicate a blinded, exact-span speaker-pair fixture.",
+    help="Prepare and adjudicate an exact-span speaker-pair review.",
 )
 def review_speaker_pair(
     video_a: str = typer.Argument(..., help="First candidate YouTube video ID."),
@@ -1405,7 +1406,7 @@ def review_speaker_pair(
         Path("evaluation/speaker-pairs/cache"), help="Ignored exact-span audio cache."
     ),
     open_packet: bool = typer.Option(
-        True, "--open-packet/--no-open-packet", help="Open the blinded local HTML listening packet."
+        True, "--open-packet/--no-open-packet", help="Open the local HTML review packet."
     ),
     prepare_only: bool = typer.Option(
         False, "--prepare-only", help="Create the packet without prompting for adjudication."
@@ -1454,7 +1455,15 @@ def review_speaker_pair(
         )
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         raise typer.BadParameter(str(error)) from error
-    console.print(f"Prepared blinded packet: {draft.packet_path}")
+    evidence_mode = ReviewEvidenceMode(
+        draft.payload.get(
+            "review_evidence_mode",
+            ReviewEvidenceMode.AUDIO_ONLY,
+        )
+    )
+    console.print(
+        f"Prepared {evidence_mode.value} packet: {draft.packet_path}"
+    )
     if open_packet:
         webbrowser.open(draft.packet_path.resolve().as_uri())
     if prepare_only:
@@ -1509,14 +1518,24 @@ def review_speaker_pair(
         show_default=False,
     )
     notes = typer.prompt("Review notes", default="", show_default=False)
-    fixture_eligible = both_qualified and pair_judgment in {
+    identity_evidence_eligible = both_qualified and pair_judgment in {
         PairJudgment.SAME_SPEAKER,
         PairJudgment.DIFFERENT_SPEAKER,
     }
-    approval_confirmed = fixture_eligible and typer.confirm(
-        "Freeze this exact-span binary judgment as an approved fixture?",
-        default=True,
-    )
+    approval_confirmed = False
+    if identity_evidence_eligible:
+        approval_confirmed = typer.confirm(
+            (
+                "Freeze this exact-span binary judgment as an approved "
+                "acoustic fixture?"
+                if evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
+                else (
+                    "Approve this audio-plus-visual judgment as profile "
+                    "identity evidence?"
+                )
+            ),
+            default=True,
+        )
     try:
         submission = submit_review(
             draft=draft.payload,
@@ -1539,6 +1558,10 @@ def review_speaker_pair(
         console.print("Existing frozen fixture agrees; it was not overwritten.")
     elif submission.fixture_status == "existing_conflict_preserved":
         console.print("Review conflicts with the frozen fixture; both were preserved for adjudication.")
+    elif submission.fixture_status == "identity_only":
+        console.print(
+            "Approved identity evidence; no acoustic fixture was created."
+        )
     else:
         console.print("Review was preserved but did not create a fixture.")
 
@@ -2357,7 +2380,7 @@ def prepare_speaker_review_audio(
 
 @identity_app.command(
     "review-next-speaker-pair",
-    help="Deterministically nominate and adjudicate the next unseen blinded speaker pair.",
+    help="Deterministically nominate and adjudicate the next unseen speaker pair.",
 )
 def review_next_speaker_pair(
     reviewer: str | None = typer.Option(None, help="Stable human reviewer identifier."),
@@ -2372,7 +2395,7 @@ def review_next_speaker_pair(
         help="Frozen source-family registry used for partition-safe pair nomination.",
     ),
     open_packet: bool = typer.Option(
-        True, "--open-packet/--no-open-packet", help="Open the blinded local HTML listening packet."
+        True, "--open-packet/--no-open-packet", help="Open the local HTML review packet."
     ),
     prepare_only: bool = typer.Option(
         False, "--prepare-only", help="Create the selected packet without prompting for adjudication."

@@ -31,8 +31,8 @@ Readiness has two intentionally separate levels:
 
 Neither level means the whole system is approved for automatic mutation. The
 acoustic model and decision policy have an independent promotion gate.
-`profile-status` reports both counts. The existing blinded pair workflow can
-prioritize missing internal support with:
+`profile-status` reports both counts. The existing exact-span pair workflow can
+prioritize missing internal support with timestamped source-video links:
 
 ```bash
 pte identity review-next-speaker-pair \

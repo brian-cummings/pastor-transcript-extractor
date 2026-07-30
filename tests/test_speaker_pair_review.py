@@ -17,6 +17,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import select_diagnost
 from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
     PairJudgment,
+    ReviewEvidenceMode,
     create_review_draft,
     prepare_review_observation,
     submit_review,
@@ -144,6 +145,10 @@ class SpeakerPairReviewTests(unittest.TestCase):
         self.assertNotIn("video-a", packet)
         self.assertNotIn("video-b", packet)
         self.assertNotIn("observation-a", packet)
+        self.assertEqual(
+            ReviewEvidenceMode.AUDIO_ONLY,
+            first.payload["review_evidence_mode"],
+        )
         self.assertIn("Observation A", packet)
         self.assertIn("Observation B", packet)
         self.assertEqual(5, len(first.payload["presentation"]["A"]["clips"]))
@@ -154,6 +159,44 @@ class SpeakerPairReviewTests(unittest.TestCase):
                 "selection_outcome"
             ],
         )
+
+    def test_profile_review_packet_links_each_clip_to_youtube_timestamp(self):
+        draft = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+            selection_manifest={
+                "selection_goal": "profile-growth",
+            },
+        )
+
+        packet = draft.packet_path.read_text(encoding="utf-8")
+        self.assertEqual(
+            ReviewEvidenceMode.AUDIO_PLUS_VISUAL,
+            draft.payload["review_evidence_mode"],
+        )
+        self.assertFalse(
+            draft.payload["blinding"]["packet_hides_video_ids"]
+        )
+        self.assertIn("watch?v=video-a&amp;t=", packet)
+        self.assertIn("watch?v=video-b&amp;t=", packet)
+        self.assertEqual(10, packet.count('class="source-link"'))
+        self.assertIn("visual identity confirmation", packet)
+
+        submission = self._submit(draft)
+        event = json.loads(
+            submission.event_path.read_text(encoding="utf-8")
+        )
+        self.assertEqual("identity_only", submission.fixture_status)
+        self.assertTrue(event["identity_evidence_eligible"])
+        self.assertFalse(event["fixture_eligible"])
+        self.assertEqual("audio_plus_visual", event["review_evidence_mode"])
+        self.assertIsNone(submission.fixture_path)
 
     def test_prepared_observation_is_reused_by_pair_review(self):
         prepared = prepare_review_observation(
@@ -380,6 +423,9 @@ class SpeakerPairReviewTests(unittest.TestCase):
             ],
         )
         self.assertIn("clip_quality", event)
+        self.assertTrue(event["identity_evidence_eligible"])
+        self.assertTrue(event["fixture_eligible"])
+        self.assertEqual("audio_only", event["review_evidence_mode"])
         canonical_prior_use = {"source_a": 3, "source_b": 7}
         expected_prior_use = {
             "a": canonical_prior_use[draft.payload["presentation"]["A"]["source_key"]],
@@ -526,7 +572,7 @@ class SpeakerPairReviewTests(unittest.TestCase):
             )
 
         confirm.assert_called_once_with(
-            "Freeze this exact-span binary judgment as an approved fixture?",
+            "Freeze this exact-span binary judgment as an approved acoustic fixture?",
             default=True,
         )
 

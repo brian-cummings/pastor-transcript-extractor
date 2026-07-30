@@ -48,6 +48,24 @@ An approved policy uses:
 
 No prediction becomes a profile exemplar or registry membership.
 
+## Review evidence modes
+
+Pair observations are reusable across identity work, but review judgments have
+two evidence modes:
+
+- `audio_only` packets hide source identity and may create both approved
+  identity evidence and frozen acoustic fixtures;
+- `audio_plus_visual` packets retain the exact audio clips and add a YouTube
+  link at each clip timestamp. Their approved judgments are identity evidence
+  but never acoustic fixtures.
+
+The evaluation objective always uses `audio_only`. Profile-growth and
+automation-readiness use `audio_plus_visual`. The registry sync replays approved
+binary identity evidence from either mode. Existing review events without an
+explicit mode retain their original audio-only semantics. An observation used
+in a visual review remains available in other comparisons, although that exact
+pair is already reviewed and cannot later become a blind evaluation case.
+
 ## Local model
 
 The provisional backend is sherpa-onnx 1.13.1 with the English CAMPPlus
@@ -171,8 +189,8 @@ profile/name matches are reported as merge candidates, not conflicts, because
 separate profiles do not imply different speakers. Component-level name
 conflicts, manual claim decisions, incompatible existing state, and a reviewed
 different constraint crossing same-name profiles remain true conflicts. A name
-shared by separate anonymous profiles remains unresolved until a blinded pair
-review connects or separates those components.
+shared by separate anonymous profiles remains unresolved until an exact-span
+identity review connects or separates those components.
 
 The pair workflow is also the sole human input for anonymous-speaker grouping:
 
@@ -182,9 +200,9 @@ pte identity review-next-speaker-pair \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Do not run a second profile-assignment listening workflow. The established
-packet already supplies observation qualification and blinded pairwise
-same/different evidence. The selector may nominate follow-up pairs using
+Do not run a second profile-assignment workflow. The established packet already
+supplies observation qualification and pairwise same/different evidence. The
+selector may nominate follow-up pairs using
 reviewed same-speaker components or curated registry relations. After a review
 session, `sync-reviewed-speaker-evidence` derives anonymous profiles and exact
 different-speaker constraints from those approved pair reviews. Thus profiles
@@ -192,9 +210,10 @@ contain only observations connected by explicit same-speaker evidence, without
 presenting intentionally different observations as one group.
 
 The default `--selection-objective evaluation` retains the existing
-coverage-balanced selector. Use `--selection-objective profile-growth` to keep
-the identical blinded packet and adjudication while changing nomination
-priority. Profile-growth mode first favors shared-attribution bridges that can
+coverage-balanced selector and fully blinded audio-only packet. Use
+`--selection-objective profile-growth` for the same exact clips and
+adjudication with timestamped YouTube links for visual identity confirmation.
+Profile-growth mode first favors shared-attribution bridges that can
 resolve split named components, followed by reviewed-component frontiers, new
 component seeds, and other component bridges. It excludes already-connected
 components and any candidate components separated by an explicit reviewed
@@ -209,10 +228,11 @@ relations to nominate an unseen pair:
 - an effective explicit different-speaker constraint nominates that exact
   negative pair.
 
-These are nomination signals, not evaluation labels. The selected exact pair
-and exact cached spans must still pass the blinded workflow below before a
-fixture can be frozen. Separate profiles do not imply different speakers, and
-source-family co-membership does not imply the same speaker.
+These are nomination signals, not evaluation labels. Under the evaluation
+objective, the selected exact pair and cached spans must still pass the blind
+audio-only workflow below before a fixture can be frozen. Separate profiles do
+not imply different speakers, and source-family co-membership does not imply
+the same speaker.
 
 ## Review workflow
 

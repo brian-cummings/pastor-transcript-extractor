@@ -170,9 +170,18 @@ def load_reviewed_speaker_evidence(evaluation_root: Path) -> ReviewedSpeakerEvid
             label_fingerprints=label_fingerprints,
             provenance=provenance,
         )
+        identity_evidence_eligible = review.get(
+            "identity_evidence_eligible"
+        )
+        if identity_evidence_eligible is None:
+            # Reviews written before evidence-mode separation used fixture
+            # eligibility for both acoustic evaluation and identity replay.
+            identity_evidence_eligible = (
+                review.get("approval_confirmed") is True
+                and review.get("fixture_eligible") is True
+            )
         if (
-            review.get("approval_confirmed") is True
-            and review.get("fixture_eligible") is True
+            identity_evidence_eligible is True
             and review.get("pair_judgment") in _PAIR_OUTCOMES
             and len(set(label_fingerprints.values())) == 2
         ):

@@ -42,7 +42,9 @@ Implemented:
 - acoustic increment 4 adds a read-only, local pairwise speaker diagnostic with exact cached audio spans and pinned model provenance
 - acoustic outcomes remain non-gating; no default threshold exists and uncalibrated comparisons abstain
 - reviewed pair fixtures pin observation fingerprints and exact WAV hashes; evaluation separates recognition errors, abstention, and analysis failure
-- a blinded pair-review workflow now qualifies each observation before allowing a binary same/different judgment
+- an evidence-mode pair-review workflow qualifies each observation before a
+  binary same/different judgment; acoustic evaluation stays blind while
+  profile-oriented review may use timestamped video
 - review submissions are append-only; indeterminate reviews never become fixtures and re-reviews never overwrite frozen truth
 - anonymous speaker grouping now has reviewer-attributed, append-only profile creation, observation disposition, membership, and different-speaker events
 - reviewed same-profile memberships and explicit different constraints can nominate pair candidates, but exact spans still require independent pair review before fixture creation
@@ -195,7 +197,7 @@ The reported states mean:
 - `linked`: attribution has reconciled the reviewed voice component to a
   configured pastor identity;
 - `merge-candidate`: the same explicit attribution spans separate profiles and
-  needs a blinded bridge comparison;
+  needs an exact-span bridge comparison;
 - `attribution-conflict`: conflicting names or a reviewed different-speaker
   constraint requires adjudication.
 
@@ -240,7 +242,7 @@ multiple configured matches, a manual claim decision, an incompatible
 redirect, or direct membership on the configured placeholder also blocks the
 affected identity link and is reported as a conflict.
 
-Continue identity review through the existing blinded pair workflow:
+Continue identity review through the existing pair workflow:
 
 ```bash
 pte identity review-next-speaker-pair \
@@ -250,10 +252,18 @@ pte identity review-next-speaker-pair \
 
 This remains the only human speaker-identity adjudication interface. It asks
 the reviewer to qualify both observations and, when both contain one consistent
-principal speaker, make the blinded `same`/`different` pair judgment already
-used by the experiment. The selector can use reviewed same-speaker components
-and curated profile relations to nominate useful follow-up pairs, but it does
-not expose those relations in the listening packet.
+principal speaker, make the same `same`/`different` judgment. Evaluation
+packets remain audio-only and blind. Profile-growth and automation-readiness
+packets add a YouTube link beside every exact clip timestamp so the reviewer
+can visually confirm identity; selection relations are still not shown.
+
+Review events record `audio_only` or `audio_plus_visual` evidence mode.
+Approved binary judgments in either mode are eligible for identity replay.
+Only approved `audio_only` judgments are eligible to become acoustic
+evaluation fixtures. Reviews written before this separation remain
+backward-compatible as audio-only evidence. The observations themselves remain
+reusable in other identity comparisons; only an exact visually reviewed pair
+is excluded from later blind evaluation.
 
 Run `sync-reviewed-speaker-evidence` after a review session to materialize all
 approved pair judgments into anonymous profiles and exact different-speaker
@@ -278,15 +288,17 @@ ungrouped observation on the frontier of a reviewed profile/component,
 ungrouped pairs that can seed a component, and other component bridges. Shared
 explicit attribution is a nomination signal, not identity truth. Pairs already
 connected by reviewed same evidence or blocked by a reviewed different
-constraint anywhere across the two components are excluded. The packet remains
-blinded and unchanged.
+constraint anywhere across the two components are excluded. The exact audio
+clips and qualification prompts remain unchanged; the profile-oriented packet
+also exposes timestamped source-video links.
 
 The normal operator loop is therefore:
 
 1. Run `profile-status` to see the funnel and highest-value unmet needs.
 2. Run `review-next-speaker-pair --selection-objective profile-growth`; keep
-   making the same single/multiple/invalid qualification and blinded pairwise
-   same/different decision used by the tuned workflow.
+   making the same single/multiple/invalid qualification and pairwise
+   same/different decision, using source-video links when visual confirmation
+   is useful.
 3. Run `sync-reviewed-speaker-evidence` to replay confirmed evidence into
    profiles, claims, redirects, and different-speaker constraints.
 4. Run `profile-status` again to see which profiles grew and what remains.
@@ -314,7 +326,7 @@ These are profile gates only. The independent model/policy promotion gate must
 also pass before automatic registry mutation can be considered.
 `profile-status` reports both readiness counts and each profile's state.
 
-Build missing redundant profile evidence through the same blinded workflow:
+Build missing redundant profile evidence through the same exact-span workflow:
 
 ```bash
 pte identity review-next-speaker-pair \
@@ -328,7 +340,7 @@ would remove one or more bridge dependencies from a reviewed profile graph.
 Already bridge-free profiles are skipped. If no useful reinforcement remains,
 it falls back to normal profile-growth selection. It never tells the reviewer
 that the observations are currently grouped and never assumes that grouping
-is correct.
+is correct; timestamped source-video links are available for confirmation.
 
 Inspect corpus and profile eligibility without acoustic execution:
 
@@ -402,7 +414,7 @@ The intended progression is:
    profile.
 6. Keep profile-to-profile merges, configured-pastor reconciliation, naming,
    attribution conflicts, and any reviewed-evidence contradiction behind
-   blinded human pair review.
+   explicit human pair review.
 
 Any future automatic registry mutation requires a separately approved,
 versioned component policy, an append-only machine-evidence ledger, reversible

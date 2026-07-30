@@ -20,7 +20,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 )
 
 
-REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v2"
+REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v3"
 CLIP_ACTIVITY_POLICY_VERSION = "speaker_pair_clip_activity_v2"
 DEFAULT_MIN_NON_SILENT_FRACTION = 0.40
 DEFAULT_MIN_CLIP_RMS_DBFS = -52.0
@@ -43,6 +43,11 @@ class PairJudgment(StrEnum):
     SAME_SPEAKER = "same_speaker"
     DIFFERENT_SPEAKER = "different_speaker"
     CANNOT_DETERMINE = "cannot_determine"
+
+
+class ReviewEvidenceMode(StrEnum):
+    AUDIO_ONLY = "audio_only"
+    AUDIO_PLUS_VISUAL = "audio_plus_visual"
 
 
 class InsufficientSpeechActivityError(ValueError):
@@ -161,8 +166,9 @@ def create_review_draft(
         evaluation_root=evaluation_root,
         canonical_fingerprints=canonical_fingerprints,
     )
-    if selection_manifest is None and existing_draft is not None:
+    if existing_draft is not None:
         return existing_draft
+    evidence_mode = _review_evidence_mode(selection_manifest)
     presentation_sources = ["source_a", "source_b"]
     rng = random.Random(pair_id)
     rng.shuffle(presentation_sources)
@@ -216,9 +222,12 @@ def create_review_draft(
         "schema_version": 1,
         "workflow_version": REVIEW_WORKFLOW_VERSION,
         "review_status": "draft",
+        "review_evidence_mode": evidence_mode,
         "pair_id": pair_id,
         "blinding": {
-            "packet_hides_video_ids": True,
+            "packet_hides_video_ids": (
+                evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
+            ),
             "packet_hides_titles_names_and_channels": True,
             "presentation_order_deterministic": True,
         },
@@ -287,6 +296,15 @@ def submit_review(
         qualification_a == ObservationQualification.QUALIFIED_SINGLE_SPEAKER
         and qualification_b == ObservationQualification.QUALIFIED_SINGLE_SPEAKER
     )
+    evidence_mode = ReviewEvidenceMode(
+        draft.get("review_evidence_mode", ReviewEvidenceMode.AUDIO_ONLY)
+    )
+    identity_evidence_eligible = (
+        qualified
+        and pair_judgment
+        in {PairJudgment.SAME_SPEAKER, PairJudgment.DIFFERENT_SPEAKER}
+        and approval_confirmed
+    )
     if not qualified and pair_judgment != PairJudgment.CANNOT_DETERMINE:
         raise ValueError("an unqualified observation requires cannot_determine pair judgment")
     normalized_tags = sorted({tag.strip() for tag in variation_tags if tag.strip()})
@@ -304,14 +322,15 @@ def submit_review(
             "B": qualification_b,
         },
         "pair_judgment": pair_judgment,
+        "review_evidence_mode": evidence_mode,
         "variation_tags": normalized_tags,
         "notes": notes.strip(),
         "clip_quality": _review_clip_quality(draft),
         "approval_confirmed": approval_confirmed,
+        "identity_evidence_eligible": identity_evidence_eligible,
         "fixture_eligible": (
-            qualified
-            and pair_judgment in {PairJudgment.SAME_SPEAKER, PairJudgment.DIFFERENT_SPEAKER}
-            and approval_confirmed
+            identity_evidence_eligible
+            and evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
         ),
     }
     if "selection_manifest" in draft:
@@ -324,7 +343,15 @@ def submit_review(
     _write_json_idempotent(event_path, event)
 
     if not event["fixture_eligible"]:
-        return ReviewSubmission(event_path, None, "not_eligible")
+        return ReviewSubmission(
+            event_path,
+            None,
+            (
+                "identity_only"
+                if event["identity_evidence_eligible"]
+                else "not_eligible"
+            ),
+        )
 
     fixture = _fixture_from_review(draft, event)
     validate_reviewed_pair_fixture(fixture)
@@ -370,6 +397,7 @@ def _fixture_from_review(draft: dict[str, Any], event: dict[str, Any]) -> dict[s
         "reviewed_at": event["reviewed_at"],
         "review_event_id": event["review_event_id"],
         "expected_outcome": event["pair_judgment"],
+        "review_evidence_mode": ReviewEvidenceMode.AUDIO_ONLY,
         "variation_tags": event["variation_tags"],
         "notes": event["notes"],
         "qualification": event["qualification"],
@@ -394,14 +422,39 @@ def _review_packet(draft: dict[str, Any]) -> str:
         for clip in observation["clips"]
     }
     groups: list[str] = []
+    evidence_mode = ReviewEvidenceMode(
+        draft.get("review_evidence_mode", ReviewEvidenceMode.AUDIO_ONLY)
+    )
+    packet_title = (
+        "Blinded speaker pair review"
+        if evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
+        else "Audio-plus-visual speaker identity review"
+    )
     for label in ("A", "B"):
+        source_key = draft["presentation"][label]["source_key"]
+        observation = draft["observations"][source_key]
         players: list[str] = []
         for index, clip_hash in enumerate(draft["presentation"][label]["clips"], start=1):
             clip = clips_by_hash[clip_hash]
             source = Path(clip["wav_path"]).expanduser().resolve().as_uri()
+            video_link = ""
+            if evidence_mode == ReviewEvidenceMode.AUDIO_PLUS_VISUAL:
+                start_seconds = max(0, int(float(clip["start_seconds"])))
+                video_url = (
+                    "https://www.youtube.com/watch?v="
+                    f"{observation['youtube_video_id']}&t={start_seconds}s"
+                )
+                minutes, seconds = divmod(start_seconds, 60)
+                video_link = (
+                    '<a class="source-link" target="_blank" '
+                    'rel="noopener noreferrer" '
+                    f'href="{html.escape(video_url, quote=True)}">'
+                    f"View video at {minutes}:{seconds:02d}</a>"
+                )
             players.append(
-                f'<li><span>Clip {index}</span><audio controls preload="metadata" '
-                f'src="{html.escape(source, quote=True)}"></audio></li>'
+                f'<li><span>Clip {index}</span><div><audio controls '
+                f'preload="metadata" src="{html.escape(source, quote=True)}">'
+                f"</audio>{video_link}</div></li>"
             )
         groups.append(
             f'<section><h2>Observation {label}</h2><ol>{"".join(players)}</ol></section>'
@@ -411,23 +464,41 @@ def _review_packet(draft: dict[str, Any]) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Blinded speaker pair review</title>
+  <title>{packet_title}</title>
   <style>
     body {{ font: 16px/1.5 system-ui, sans-serif; max-width: 920px; margin: 2rem auto; padding: 0 1rem; }}
     section {{ border: 1px solid #ccc; border-radius: 8px; margin: 1rem 0; padding: 1rem; }}
     li {{ margin: .8rem 0; display: grid; grid-template-columns: 6rem 1fr; align-items: center; }}
     audio {{ width: 100%; }}
+    .source-link {{ display: inline-block; margin-top: .35rem; }}
     .warning {{ background: #fff4d6; border-left: 4px solid #b77900; padding: .8rem; }}
   </style>
 </head>
 <body>
-  <h1>Blinded speaker pair review</h1>
-  <p class="warning">Judge only the voices in these clips. Names, titles, channels, and metadata are intentionally hidden.</p>
+  <h1>Speaker pair review</h1>
+  <p class="warning">{(
+      "Judge only the voices in these clips. Names, titles, channels, and metadata are intentionally hidden."
+      if evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
+      else "Timestamp links are available for visual identity confirmation. Titles, names, and channels are not shown in this packet."
+  )}</p>
   <p>First decide whether every clip in each observation contains one consistent principal speaker. Compare A and B only if both observations qualify.</p>
   {''.join(groups)}
 </body>
 </html>
 """
+
+
+def _review_evidence_mode(
+    selection_manifest: dict[str, object] | None,
+) -> ReviewEvidenceMode:
+    selection_goal = (
+        selection_manifest.get("selection_goal")
+        if selection_manifest is not None
+        else None
+    )
+    if selection_goal in {"profile-growth", "automation-readiness"}:
+        return ReviewEvidenceMode.AUDIO_PLUS_VISUAL
+    return ReviewEvidenceMode.AUDIO_ONLY
 
 
 def _draft_clip(span: CachedSpan) -> dict[str, Any]:

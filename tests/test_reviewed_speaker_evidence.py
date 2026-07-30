@@ -207,6 +207,46 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertEqual(0, replay.qualification_events_added)
         self.assertEqual((), replay.conflicts)
 
+    def test_visual_identity_review_replays_without_acoustic_fixture(self) -> None:
+        self._write_review(
+            pair_id="pair-ab",
+            event_id="event-ab",
+            fingerprint_a="a",
+            fingerprint_b="b",
+            qualification_a="qualified_single_speaker",
+            qualification_b="qualified_single_speaker",
+        )
+        path = (
+            self.evaluation_root
+            / "reviews"
+            / "pair-ab"
+            / "event-ab.json"
+        )
+        review = json.loads(path.read_text(encoding="utf-8"))
+        review.update(
+            {
+                "pair_judgment": "same_speaker",
+                "approval_confirmed": True,
+                "review_evidence_mode": "audio_plus_visual",
+                "identity_evidence_eligible": True,
+                "fixture_eligible": False,
+            }
+        )
+        path.write_text(json.dumps(review), encoding="utf-8")
+
+        evidence = load_reviewed_speaker_evidence(self.evaluation_root)
+        result = sync_reviewed_speaker_evidence(self.database, evidence)
+
+        self.assertEqual(
+            "same_speaker",
+            evidence.pair_relations[frozenset(("a", "b"))].outcome,
+        )
+        self.assertEqual(1, result.profiles_added)
+        self.assertEqual(2, result.membership_events_added)
+        self.assertFalse(
+            (self.evaluation_root / "fixtures" / "pair-ab.json").exists()
+        )
+
     def test_sync_attaches_consistent_name_and_links_configured_identity(
         self,
     ) -> None:
