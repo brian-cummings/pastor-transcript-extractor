@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v9"
+SELECTOR_VERSION = "speaker_pair_selector_v10"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -72,6 +72,7 @@ class PairSelectionHistory:
     reviewed_pair_outcomes: Mapping[frozenset[str], str] | None = None
     reviewed_pair_partitions: Mapping[frozenset[str], str | None] | None = None
     reviewed_identity_outcomes: Mapping[frozenset[str], str] | None = None
+    profile_growth_selections: tuple[frozenset[str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +107,7 @@ def selection_history_from_artifacts(
     source_context_pair_ids: set[str] = set()
     automatic_pair_ids: set[str] = set()
     sources_by_pair: dict[str, list[str]] = {}
+    profile_growth_selections_by_pair: dict[str, frozenset[str]] = {}
 
     for index, draft in enumerate(drafts):
         fingerprints = _draft_fingerprints(draft)
@@ -116,6 +118,10 @@ def selection_history_from_artifacts(
             excluded_source_pairs.add(frozenset(sources))
             sources_by_pair[str(draft.get("pair_id") or f"draft-{index}")] = sources
         _record_automatic_pair(draft, automatic_pair_ids)
+        _record_profile_growth_selection_once(
+            draft,
+            profile_growth_selections_by_pair,
+        )
         _record_source_context_once(
             draft,
             source_context_pair_ids=source_context_pair_ids,
@@ -157,6 +163,10 @@ def selection_history_from_artifacts(
                 if isinstance(reason, str):
                     objective_counts[reason] = objective_counts.get(reason, 0) + 1
         _record_automatic_pair(fixture, automatic_pair_ids)
+        _record_profile_growth_selection_once(
+            fixture,
+            profile_growth_selections_by_pair,
+        )
         _record_source_context_once(
             fixture,
             source_context_pair_ids=source_context_pair_ids,
@@ -210,6 +220,10 @@ def selection_history_from_artifacts(
                 if isinstance(video_id, str) and video_id:
                     disfavored_sources[video_id] = disfavored_sources.get(video_id, 0) + 1
         _record_automatic_pair(review, automatic_pair_ids)
+        _record_profile_growth_selection_once(
+            review,
+            profile_growth_selections_by_pair,
+        )
 
     for sources in sources_by_pair.values():
         for source in sources:
@@ -229,6 +243,10 @@ def selection_history_from_artifacts(
         reviewed_pair_outcomes=reviewed_pair_outcomes,
         reviewed_pair_partitions=reviewed_pair_partitions,
         reviewed_identity_outcomes=reviewed_identity_outcomes,
+        profile_growth_selections=tuple(
+            profile_growth_selections_by_pair[pair_id]
+            for pair_id in sorted(profile_growth_selections_by_pair)
+        ),
     )
 
 
@@ -538,6 +556,12 @@ def _select_profile_growth_pair(
             for fingerprint in component
         )
     }
+    anchored_attributions = frozenset(
+        attribution
+        for component in anchored_components
+        for fingerprint in component
+        for attribution in candidate_by_fingerprint[fingerprint].explicit_attributions
+    )
     identity_outcomes = (
         history.reviewed_identity_outcomes
         if history.reviewed_identity_outcomes is not None
@@ -591,7 +615,15 @@ def _select_profile_growth_pair(
                 else "profile_growth_component_bridge"
             )
         else:
-            objective = "profile_growth_seed"
+            objective = (
+                "profile_growth_deferred_frontier_seed"
+                if (
+                    observation_a.explicit_attributions
+                    | observation_b.explicit_attributions
+                )
+                & anchored_attributions
+                else "profile_growth_seed"
+            )
         growth_pairs.append(
             (
                 observation_a,
@@ -610,17 +642,17 @@ def _select_profile_growth_pair(
         SelectionStratum.UNATTRIBUTED: 2,
         SelectionStratum.CONTRADICTING_ATTRIBUTION: 3,
     }
-    objective_rank = {
-        "attribution_reconciliation_bridge": 0,
-        "profile_growth_frontier": 1,
-        "profile_growth_seed": 2,
-        "profile_growth_component_bridge": 3,
-    }
     return min(
         growth_pairs,
         key=lambda item: (
+            _profile_growth_marginal_rank(
+                objective=item[4],
+                components=item[5],
+                anchored_components=anchored_components,
+                prior_selections=history.profile_growth_selections,
+                stratum=item[2],
+            ),
             stratum_rank[item[2]],
-            objective_rank[item[4]],
             _rank_pair(
                 item[0],
                 item[1],
@@ -633,6 +665,59 @@ def _select_profile_growth_pair(
             ),
         ),
     )
+
+
+def _profile_growth_marginal_rank(
+    *,
+    objective: str,
+    components: tuple[frozenset[str], frozenset[str]],
+    anchored_components: set[frozenset[str]],
+    prior_selections: Sequence[frozenset[str]],
+    stratum: SelectionStratum,
+) -> tuple[int, int, int]:
+    anchored = [
+        component
+        for component in components
+        if component in anchored_components
+    ]
+    if objective == "attribution_reconciliation_bridge":
+        phase = 0
+    elif (
+        objective == "profile_growth_frontier"
+        and stratum != SelectionStratum.CONTRADICTING_ATTRIBUTION
+        and any(len(component) < 3 for component in anchored)
+    ):
+        # First make blocked two-member profiles large enough to approach
+        # automation readiness.
+        phase = 1
+    elif objective == "profile_growth_seed":
+        # Once small existing profiles have a frontier opportunity, create
+        # additional anonymous evidence-backed profiles before repeatedly
+        # enlarging an already mature component.
+        phase = 2
+    elif (
+        objective == "profile_growth_frontier"
+        and stratum != SelectionStratum.CONTRADICTING_ATTRIBUTION
+    ):
+        phase = 3
+    else:
+        phase = 4
+    target_components = anchored or list(components)
+    prior_use = min(
+        (
+            sum(
+                bool(component & selected)
+                for selected in prior_selections
+            )
+            for component in target_components
+        ),
+        default=0,
+    )
+    target_size = min(
+        (len(component) for component in target_components),
+        default=0,
+    )
+    return phase, prior_use, target_size
 
 
 def _select_profile_reinforcement_pair(
@@ -1232,8 +1317,47 @@ def _fixture_sources(payload: Mapping[str, Any]) -> list[str]:
 def _record_automatic_pair(payload: Mapping[str, Any], pair_ids: set[str]) -> None:
     manifest = payload.get("selection_manifest")
     pair_id = payload.get("pair_id")
-    if isinstance(manifest, dict) and manifest.get("selection_origin") == "automatic" and pair_id:
+    if (
+        isinstance(manifest, dict)
+        and manifest.get("selection_origin") == "automatic"
+        and pair_id
+    ):
         pair_ids.add(str(pair_id))
+
+
+def _record_profile_growth_selection_once(
+    payload: Mapping[str, Any],
+    selections_by_pair: dict[str, frozenset[str]],
+) -> None:
+    pair_id = payload.get("pair_id")
+    manifest = payload.get("selection_manifest")
+    if (
+        not isinstance(pair_id, str)
+        or not pair_id
+        or pair_id in selections_by_pair
+        or not isinstance(manifest, Mapping)
+        or manifest.get("selection_goal")
+        not in {
+            SelectionGoal.PROFILE_GROWTH,
+            SelectionGoal.AUTOMATION_READINESS,
+        }
+    ):
+        return
+    components = manifest.get("profile_growth_components")
+    if not isinstance(components, Sequence) or isinstance(
+        components, (str, bytes)
+    ):
+        return
+    fingerprints = frozenset(
+        str(fingerprint)
+        for component in components
+        if isinstance(component, Sequence)
+        and not isinstance(component, (str, bytes))
+        for fingerprint in component
+        if isinstance(fingerprint, str) and fingerprint
+    )
+    if fingerprints:
+        selections_by_pair[pair_id] = fingerprints
 
 
 def _record_source_context(

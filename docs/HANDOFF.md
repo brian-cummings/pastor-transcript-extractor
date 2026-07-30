@@ -283,14 +283,16 @@ pte identity review-next-speaker-pair \
 ```
 
 Profile-growth nomination prioritizes a shared-attribution bridge between
-separate reviewed profiles when it can resolve an attribution split, then an
-ungrouped observation on the frontier of a reviewed profile/component,
-ungrouped pairs that can seed a component, and other component bridges. Shared
-explicit attribution is a nomination signal, not identity truth. Pairs already
-connected by reviewed same evidence or blocked by a reviewed different
-constraint anywhere across the two components are excluded. The exact audio
-clips and qualification prompts remain unchanged; the profile-oriented packet
-also exposes timestamped source-video links.
+separate reviewed profiles when it can resolve an attribution split. It then
+favors compatible frontiers for blocked components with fewer than three
+members, new component seeds, further expansion of mature components, and
+other component bridges. Prior profile-growth selections rotate
+otherwise-equivalent targets so one large linked profile cannot monopolize the
+queue. Shared explicit attribution is a nomination signal, not identity truth.
+Pairs already connected by reviewed same evidence or blocked by a reviewed
+different constraint anywhere across the two components are excluded. The
+exact audio clips and qualification prompts remain unchanged; the
+profile-oriented packet also exposes timestamped source-video links.
 
 The normal operator loop is therefore:
 
@@ -462,7 +464,7 @@ excluded. Accepted manual window overrides remain eligible when their current
 observation matches the override. This is derived at selection time and adds no
 database migration or lifecycle state.
 
-Selector v8 in the default evaluation objective first checks for unreviewed
+Selector v10 in the default evaluation objective first checks for unreviewed
 pairs nominated by explicit curated
 relations. Two observations reviewed into the same effective profile may
 nominate a positive pair; an explicit effective different-speaker constraint

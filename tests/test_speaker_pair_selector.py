@@ -91,6 +91,89 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest["selection_objective"],
         )
 
+    def test_profile_growth_seeds_new_profile_before_expanding_mature_profile(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                *[
+                    candidate(
+                        f"mature-{index}",
+                        name="jordan",
+                        profile_ids=frozenset((7,)),
+                    )
+                    for index in range(4)
+                ],
+                candidate("mature-frontier-a", name="jordan"),
+                candidate("mature-frontier-b", name="jordan"),
+                candidate("seed-a", name="blair"),
+                candidate("seed-b", name="blair"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+        )
+
+        self.assertEqual(
+            {"seed-a", "seed-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "profile_growth_seed",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_profile_growth_rotates_between_equally_blocked_profiles(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "used-a",
+                    name="jordan",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate(
+                    "used-b",
+                    name="jordan",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate("used-frontier", name="jordan"),
+                candidate(
+                    "fresh-a",
+                    name="blair",
+                    profile_ids=frozenset((8,)),
+                ),
+                candidate(
+                    "fresh-b",
+                    name="blair",
+                    profile_ids=frozenset((8,)),
+                ),
+                candidate("fresh-frontier", name="blair"),
+            ],
+            PairSelectionHistory(
+                profile_growth_selections=(
+                    frozenset(("used-a", "used-b", "prior-frontier")),
+                ),
+            ),
+            selection_goal="profile-growth",
+        )
+
+        self.assertIn(
+            "fresh-frontier",
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertTrue(
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            }
+            & {"fresh-a", "fresh-b"}
+        )
+
     def test_automation_readiness_prioritizes_profile_reinforcement(self) -> None:
         selected = select_next_speaker_pair(
             [
@@ -430,7 +513,12 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual({"b", "c"}, {selected.observation_a.input_fingerprint, selected.observation_b.input_fingerprint})
 
     def test_history_is_derived_from_drafts_reviews_and_fixtures(self) -> None:
-        manifest = {"selection_origin": "automatic", "reason_codes": ["varied_audio_quality"]}
+        manifest = {
+            "selection_origin": "automatic",
+            "selection_goal": "profile-growth",
+            "profile_growth_components": [["a"], ["b"]],
+            "reason_codes": ["varied_audio_quality"],
+        }
         draft = {
             "pair_id": "pair-ab",
             "selection_manifest": manifest,
@@ -495,6 +583,10 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual(
             "same_speaker",
             history.reviewed_identity_outcomes[frozenset(("a", "b"))],
+        )
+        self.assertEqual(
+            (frozenset(("a", "b")),),
+            history.profile_growth_selections,
         )
 
     def test_visual_review_event_expands_components_without_an_acoustic_fixture(

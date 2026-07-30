@@ -213,14 +213,17 @@ The default `--selection-objective evaluation` retains the existing
 coverage-balanced selector and fully blinded audio-only packet. Use
 `--selection-objective profile-growth` for the same exact clips and
 adjudication with timestamped YouTube links for visual identity confirmation.
-Profile-growth mode first favors shared-attribution bridges that can
-resolve split named components, followed by reviewed-component frontiers, new
-component seeds, and other component bridges. It excludes already-connected
-components and any candidate components separated by an explicit reviewed
-different constraint. Source-family membership remains partition and queue
-context, never same-speaker evidence.
+Profile-growth mode first favors shared-attribution bridges that can resolve
+split named components. It then favors compatible frontiers for blocked
+components with fewer than three members, new component seeds, further
+expansion of mature components, and other component bridges. Prior
+profile-growth selections rotate otherwise-equivalent targets so one large
+linked profile cannot monopolize consecutive reviews. It excludes
+already-connected components and any candidate components separated by an
+explicit reviewed different constraint. Source-family membership remains
+partition and queue context, never same-speaker evidence.
 
-Selector v8 in the default evaluation objective may use two explicit curated
+Selector v10 in the default evaluation objective may use two explicit curated
 relations to nominate an unseen pair:
 
 - observations effectively attached to the same reviewed profile are strong
