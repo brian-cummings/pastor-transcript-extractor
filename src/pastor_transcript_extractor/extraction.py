@@ -9,7 +9,10 @@ from typing import Any
 from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths_at_root
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED, build_final_disposition
-from pastor_transcript_extractor.identity import record_shadow_identity_assessment
+from pastor_transcript_extractor.identity import (
+    record_neutral_speaker_evidence,
+    record_shadow_identity_assessment,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.recording_verifier import (
@@ -54,7 +57,7 @@ class ReclassificationRunResult:
     recording_verifier_cache_hit: bool = False
 
 
-def _record_identity_shadow_safely(
+def _record_speaker_evidence_safely(
     database: Database,
     app_paths: AppPaths,
     *,
@@ -63,25 +66,32 @@ def _record_identity_shadow_safely(
     extraction_result: ExtractionResult,
     content_disposition: dict[str, Any],
 ) -> None:
-    """Keep shadow identity instrumentation from becoming a content-path dependency."""
+    """Persist neutral speaker evidence without making it a content-path dependency."""
     if (
         not isinstance(getattr(video, "id", None), int)
-        or not isinstance(getattr(pastor, "id", None), int)
         or not isinstance(getattr(extraction_result, "id", None), int)
     ):
         return
     try:
-        record_shadow_identity_assessment(
-            database,
-            app_paths,
-            video=video,
-            pastor=pastor,
-            extraction_result=extraction_result,
-            content_disposition=content_disposition,
-        )
+        if isinstance(getattr(pastor, "id", None), int):
+            record_shadow_identity_assessment(
+                database,
+                app_paths,
+                video=video,
+                pastor=pastor,
+                extraction_result=extraction_result,
+                content_disposition=content_disposition,
+            )
+        else:
+            record_neutral_speaker_evidence(
+                database,
+                app_paths,
+                video=video,
+                extraction_result=extraction_result,
+            )
     except Exception as error:  # pragma: no cover - defensive production isolation
         warnings.warn(
-            f"Shadow identity assessment failed for video {video.id}: {error}",
+            f"Speaker evidence persistence failed for video {video.id}: {error}",
             RuntimeWarning,
             stacklevel=2,
         )
@@ -367,7 +377,7 @@ def reclassify_video(
             existing["final_disposition"] = disposition
             proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
             classification_path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
-        _record_identity_shadow_safely(
+        _record_speaker_evidence_safely(
             database,
             app_paths,
             video=video,
@@ -490,7 +500,7 @@ def reclassify_video(
         json.dumps(recording_verification, indent=2, sort_keys=True),
         encoding="utf-8",
     )
-    _record_identity_shadow_safely(
+    _record_speaker_evidence_safely(
         database,
         app_paths,
         video=video,
@@ -877,7 +887,7 @@ def extract_video(
         proposed_json_path=str(proposed_json_path),
     )
     database.update_video_status(video.id, VideoStatus.EXTRACTED)
-    _record_identity_shadow_safely(
+    _record_speaker_evidence_safely(
         database,
         app_paths,
         video=video,

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.config import build_paths, build_video_artifact_paths, ensure_directories
 from pastor_transcript_extractor.identity import (
     backfill_shadow_identity_assessments,
@@ -223,6 +224,65 @@ class IdentityPersistenceTests(unittest.TestCase):
         self.assertEqual(0, repeated.created)
         self.assertEqual(1, repeated.reused)
         self.assertEqual(1, self.database.counts_by_table()["identity_assessments"])
+
+    def test_backfill_creates_and_reuses_targetless_speaker_observation(self) -> None:
+        source = self.database.add_source(
+            "https://www.youtube.com/@publisher",
+            SourceType.CHANNEL,
+            pastor_id=None,
+        )
+        video = self.database.add_video(
+            source_id=source.id,
+            pastor_id=None,
+            youtube_video_id="targetless01",
+            title='"Grace" by Elder Robert McLean',
+            url="https://www.youtube.com/watch?v=targetless01",
+            status=VideoStatus.EXTRACTED,
+        )
+        video_paths = resolve_video_artifact_paths(self.database, self.paths, video)
+        video_paths.extracted.mkdir(parents=True, exist_ok=True)
+        proposed_text = video_paths.extracted / "proposed.md"
+        proposed_json = video_paths.extracted / "proposed.json"
+        proposed_text.write_text("sermon\n", encoding="utf-8")
+        proposed_json.write_text(
+            json.dumps(
+                {
+                    "sermon_window": {
+                        "start_seconds": 120.0,
+                        "end_seconds": 1800.0,
+                    },
+                    "segments": [],
+                    "final_disposition": {"status": "accepted_sermon"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.database.add_extraction_result(
+            video_id=video.id,
+            version=1,
+            proposed_text_path=str(proposed_text),
+            proposed_json_path=str(proposed_json),
+        )
+
+        first = backfill_shadow_identity_assessments(
+            self.database,
+            self.paths,
+            video_id=video.id,
+        )
+        repeated = backfill_shadow_identity_assessments(
+            self.database,
+            self.paths,
+            video_id=video.id,
+        )
+
+        self.assertEqual(1, first.created)
+        self.assertEqual(1, repeated.reused)
+        self.assertIsNotNone(
+            self.database.get_latest_speaker_observation_for_video(video.id)
+        )
+        self.assertIsNone(
+            self.database.get_latest_identity_assessment_for_video(video.id)
+        )
 
 
 if __name__ == "__main__":

@@ -176,6 +176,40 @@ class SpeakerRegistryTests(unittest.TestCase):
                 0, connection.execute("SELECT COUNT(*) FROM profile_name_claim_events").fetchone()[0]
             )
 
+    def test_targetless_persistence_creates_observation_without_configured_profile(self) -> None:
+        attribution = extract_grounded_attributions(
+            metadata_payload={
+                "source_kind": "database_backfill",
+                "video": {"title": '"Grace" by Elder Robert McLean'},
+                "raw_metadata": {},
+            },
+            proposed_payload=self.proposed_payload,
+            target_name=None,
+            metadata_artifact_id=7,
+            metadata_content_sha256="abc123",
+        )
+
+        result = persist_neutral_speaker_evidence(
+            self.database,
+            self.paths,
+            video=self.video,
+            pastor=None,
+            extraction_result=self.extraction,
+            proposed_payload=self.proposed_payload,
+            attribution=attribution,
+        )
+
+        self.assertIsNone(result.configured_profile)
+        self.assertEqual((), result.compatibility_outcomes)
+        self.assertIsNotNone(result.observation)
+        self.assertEqual(1, len(result.claims))
+        self.assertEqual("robert mclean", result.claims[0].normalized_name)
+        self.assertEqual(result.observation.id, result.claims[0].observation_id)
+        self.assertEqual(0, self.database.counts_by_table()["speaker_profiles"])
+        payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+        self.assertIsNone(payload["configured_requested_identity"])
+        self.assertIsNone(payload["compatibility_projection"])
+
     def test_no_window_does_not_invent_a_voice_observation(self) -> None:
         payload = {"sermon_window": {"start_seconds": None, "end_seconds": None}, "segments": []}
         result = self._persist(payload=payload)

@@ -10,6 +10,7 @@ from pastor_transcript_extractor.artifact_namespace import resolve_video_artifac
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.identity_attribution import (
     ATTRIBUTION_EXTRACTOR_VERSION,
+    AttributionResult,
     extract_grounded_attributions,
 )
 from pastor_transcript_extractor.models import (
@@ -22,7 +23,10 @@ from pastor_transcript_extractor.models import (
     Video,
     utc_now,
 )
-from pastor_transcript_extractor.speaker_registry import persist_neutral_speaker_evidence
+from pastor_transcript_extractor.speaker_registry import (
+    NeutralSpeakerEvidence,
+    persist_neutral_speaker_evidence,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -47,6 +51,13 @@ class IdentityBackfillResult:
     reused: int
     skipped: int
     failed: int
+
+
+@dataclass(frozen=True, slots=True)
+class SpeakerEvidenceRecordResult:
+    metadata_artifact: MetadataArtifact
+    attribution: AttributionResult
+    neutral_evidence: NeutralSpeakerEvidence
 
 
 def _canonical_json(value: object) -> str:
@@ -185,16 +196,15 @@ def coordinate_decision(
     }
 
 
-def record_shadow_identity_assessment(
+def record_neutral_speaker_evidence(
     database: Database,
     app_paths: AppPaths,
     *,
     video: Video,
-    pastor: Pastor,
     extraction_result: ExtractionResult,
-    content_disposition: dict[str, Any],
-) -> ShadowIdentityResult:
-    """Record the identity contract before any recognition backend is enabled."""
+    pastor: Pastor | None = None,
+) -> SpeakerEvidenceRecordResult:
+    """Persist a sermon-speaker observation without requiring a target identity."""
     metadata_artifact = database.get_latest_metadata_artifact_for_video(video.id)
     if metadata_artifact is None:
         metadata_artifact = persist_metadata_snapshot(
@@ -206,19 +216,22 @@ def record_shadow_identity_assessment(
         )
 
     if not extraction_result.proposed_json_path:
-        raise ValueError("Identity assessment requires a proposed JSON artifact")
-    metadata_payload = json.loads(Path(metadata_artifact.artifact_path).read_text(encoding="utf-8"))
-    proposed_payload = json.loads(Path(extraction_result.proposed_json_path).read_text(encoding="utf-8"))
+        raise ValueError("Speaker evidence requires a proposed JSON artifact")
+    metadata_payload = json.loads(
+        Path(metadata_artifact.artifact_path).read_text(encoding="utf-8")
+    )
+    proposed_payload = json.loads(
+        Path(extraction_result.proposed_json_path).read_text(encoding="utf-8")
+    )
     if not isinstance(metadata_payload, dict) or not isinstance(proposed_payload, dict):
-        raise ValueError("Identity inputs must be JSON objects")
+        raise ValueError("Speaker evidence inputs must be JSON objects")
     attribution = extract_grounded_attributions(
         metadata_payload=metadata_payload,
         proposed_payload=proposed_payload,
-        target_name=pastor.display_name,
+        target_name=pastor.display_name if pastor is not None else None,
         metadata_artifact_id=metadata_artifact.id,
         metadata_content_sha256=metadata_artifact.content_sha256,
     )
-    attribution_payload = attribution.to_dict()
     neutral_evidence = persist_neutral_speaker_evidence(
         database,
         app_paths,
@@ -228,8 +241,43 @@ def record_shadow_identity_assessment(
         proposed_payload=proposed_payload,
         attribution=attribution,
     )
-    if tuple(attribution.outcomes) != neutral_evidence.compatibility_outcomes:
-        raise ValueError("Neutral speaker claims did not reproduce target attribution outcomes")
+    if (
+        pastor is not None
+        and tuple(attribution.outcomes) != neutral_evidence.compatibility_outcomes
+    ):
+        raise ValueError(
+            "Neutral speaker claims did not reproduce target attribution outcomes"
+        )
+    return SpeakerEvidenceRecordResult(
+        metadata_artifact=metadata_artifact,
+        attribution=attribution,
+        neutral_evidence=neutral_evidence,
+    )
+
+
+def record_shadow_identity_assessment(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    video: Video,
+    pastor: Pastor,
+    extraction_result: ExtractionResult,
+    content_disposition: dict[str, Any],
+) -> ShadowIdentityResult:
+    """Record the identity contract before any recognition backend is enabled."""
+    speaker_record = record_neutral_speaker_evidence(
+        database,
+        app_paths,
+        video=video,
+        pastor=pastor,
+        extraction_result=extraction_result,
+    )
+    metadata_artifact = speaker_record.metadata_artifact
+    attribution = speaker_record.attribution
+    attribution_payload = attribution.to_dict()
+    neutral_evidence = speaker_record.neutral_evidence
+    if neutral_evidence.configured_profile is None:
+        raise ValueError("Targeted identity assessment requires a configured profile")
 
     state = IdentityState.PROFILE_UNAVAILABLE
     action = recommended_action_for_state(state)
@@ -404,7 +452,7 @@ def backfill_shadow_identity_assessments(
     for video in videos:
         extraction = database.get_latest_extraction_result_for_video(video.id)
         pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
-        if extraction is None or pastor is None or not extraction.proposed_json_path:
+        if extraction is None or not extraction.proposed_json_path:
             skipped += 1
             continue
         proposed_path = Path(extraction.proposed_json_path)
@@ -420,19 +468,41 @@ def backfill_shadow_identity_assessments(
                     guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
                     recording_verification=payload.get("recording_verification"),
                 )
-            before = database.get_latest_identity_assessment_for_video(video.id)
-            result = record_shadow_identity_assessment(
-                database,
-                app_paths,
-                video=video,
-                pastor=pastor,
-                extraction_result=extraction,
-                content_disposition=content_disposition,
-            )
+            if pastor is None:
+                before_observation = database.get_latest_speaker_observation_for_video(
+                    video.id
+                )
+                speaker_record = record_neutral_speaker_evidence(
+                    database,
+                    app_paths,
+                    video=video,
+                    extraction_result=extraction,
+                )
+            else:
+                before = database.get_latest_identity_assessment_for_video(video.id)
+                result = record_shadow_identity_assessment(
+                    database,
+                    app_paths,
+                    video=video,
+                    pastor=pastor,
+                    extraction_result=extraction,
+                    content_disposition=content_disposition,
+                )
         except (OSError, ValueError, json.JSONDecodeError):
             failed += 1
             continue
-        if before is not None and before.id == result.assessment.id:
+        if pastor is None:
+            after_observation = speaker_record.neutral_evidence.observation
+            if after_observation is None:
+                skipped += 1
+            elif (
+                before_observation is not None
+                and before_observation.id == after_observation.id
+            ):
+                reused += 1
+            else:
+                created += 1
+        elif before is not None and before.id == result.assessment.id:
             reused += 1
         else:
             created += 1

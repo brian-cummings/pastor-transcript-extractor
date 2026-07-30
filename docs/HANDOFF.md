@@ -38,6 +38,7 @@ Implemented:
 - identity increment 2 extracts exact metadata and spoken-attribution evidence with correlation grouping
 - grounded attribution remains shadow-only and never uses sermon topic, style, or theology
 - identity increment 3 separates neutral speaker observations, claims, profiles, and target-policy projection
+- valid targetless sermon extractions now create identity-neutral principal-speaker observations and grounded claims; configured pastor profiles and target-specific assessments remain optional projections
 - profile membership and naming require explicit review events; clustering and acoustic-driven registry matching remain unimplemented
 - acoustic increment 4 adds a read-only, local pairwise speaker diagnostic with exact cached audio spans and pinned model provenance
 - acoustic outcomes remain non-gating; no default threshold exists and uncalibrated comparisons abstain

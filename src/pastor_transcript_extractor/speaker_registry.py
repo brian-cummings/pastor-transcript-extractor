@@ -49,7 +49,7 @@ _OUTCOME_ORDER = (
 
 @dataclass(frozen=True, slots=True)
 class NeutralSpeakerEvidence:
-    configured_profile: SpeakerProfile
+    configured_profile: SpeakerProfile | None
     observation: SpeakerObservation | None
     claims: tuple[SpeakerNameClaim, ...]
     artifact_path: Path
@@ -172,17 +172,25 @@ def persist_neutral_speaker_evidence(
     app_paths: AppPaths,
     *,
     video: Video,
-    pastor: Pastor,
+    pastor: Pastor | None,
     extraction_result: ExtractionResult,
     proposed_payload: dict[str, Any],
     attribution: AttributionResult,
 ) -> NeutralSpeakerEvidence:
-    configured_profile = ensure_configured_pastor_profile(database, pastor)
+    configured_profile = (
+        ensure_configured_pastor_profile(database, pastor)
+        if pastor is not None
+        else None
+    )
     window = _valid_sermon_window(proposed_payload)
     claim_payloads = neutral_claim_payloads(attribution)
-    compatibility_outcomes = project_target_attribution_outcomes(
-        claim_payloads,
-        target_name=pastor.display_name,
+    compatibility_outcomes = (
+        project_target_attribution_outcomes(
+            claim_payloads,
+            target_name=pastor.display_name,
+        )
+        if pastor is not None
+        else ()
     )
     content = {
         "schema_version": 1,
@@ -191,11 +199,15 @@ def persist_neutral_speaker_evidence(
         "video_id": video.id,
         "youtube_video_id": video.youtube_video_id,
         "extraction_result_id": extraction_result.id,
-        "configured_requested_identity": {
-            "pastor_id": pastor.id,
-            "speaker_profile_stable_key": configured_profile.stable_key,
-            "semantics": "query_identity_not_observation_membership",
-        },
+        "configured_requested_identity": (
+            {
+                "pastor_id": pastor.id,
+                "speaker_profile_stable_key": configured_profile.stable_key,
+                "semantics": "query_identity_not_observation_membership",
+            }
+            if pastor is not None and configured_profile is not None
+            else None
+        ),
         "observation": (
             {
                 "role": "principal_speaker_candidate",
@@ -207,10 +219,14 @@ def persist_neutral_speaker_evidence(
             else None
         ),
         "name_claims": list(claim_payloads),
-        "compatibility_projection": {
-            "target_name": pastor.display_name,
-            "attribution_outcomes": list(compatibility_outcomes),
-        },
+        "compatibility_projection": (
+            {
+                "target_name": pastor.display_name,
+                "attribution_outcomes": list(compatibility_outcomes),
+            }
+            if pastor is not None
+            else None
+        ),
         "safety_contract": {
             "automatic_profile_creation_from_observation": False,
             "automatic_observation_attachment": False,

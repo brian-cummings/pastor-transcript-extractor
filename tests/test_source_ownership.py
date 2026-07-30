@@ -639,6 +639,11 @@ class SourceOwnershipMigrationTests(unittest.TestCase):
             self.assertIsNone(
                 database.get_latest_identity_assessment_for_video(video.id)
             )
+            observation = database.get_latest_speaker_observation_for_video(video.id)
+            self.assertIsNotNone(observation)
+            self.assertEqual(result.extraction_result.id, observation.extraction_result_id)
+            self.assertEqual("principal_speaker_candidate", observation.role)
+            self.assertEqual(0, database.counts_by_table()["speaker_profiles"])
             self.assertEqual(1, organization_review.video_count)
 
     def test_organization_b_video_can_attach_to_pastor_a_without_republishing(self) -> None:

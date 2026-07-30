@@ -112,9 +112,12 @@ def _metadata_fields(payload: dict[str, Any]) -> Iterable[tuple[str, str]]:
                 yield f"raw_metadata.chapters[{index}].title", str(chapter["title"])
 
 
-def _candidate_mentions(text: str, target_name: str) -> list[tuple[str, int, int]]:
+def _candidate_mentions(
+    text: str,
+    target_name: str | None,
+) -> list[tuple[str, int, int]]:
     candidates: list[tuple[str, int, int]] = []
-    target_pattern = _target_pattern(target_name)
+    target_pattern = _target_pattern(target_name) if target_name else None
     if target_pattern is not None:
         for match in target_pattern.finditer(text):
             candidates.append((match.group(0), match.start(), match.end()))
@@ -206,12 +209,12 @@ def extract_grounded_attributions(
     *,
     metadata_payload: dict[str, Any],
     proposed_payload: dict[str, Any],
-    target_name: str,
+    target_name: str | None,
     metadata_artifact_id: int,
     metadata_content_sha256: str,
 ) -> AttributionResult:
     """Extract only exact, attributable names; never infer identity from content style."""
-    target_normalized = _normalized_person(target_name)
+    target_normalized = _normalized_person(target_name) if target_name else None
     observations: list[dict[str, Any]] = []
 
     for field_path, text in _metadata_fields(metadata_payload):
@@ -219,10 +222,20 @@ def extract_grounded_attributions(
             normalized = _normalized_person(name)
             if not normalized:
                 continue
-            person_kind = "target" if normalized == target_normalized else "non_target"
+            person_kind = (
+                "target"
+                if target_normalized is not None and normalized == target_normalized
+                else "non_target"
+                if target_normalized is not None
+                else "unresolved"
+            )
             observations.append({
                 "channel": "metadata",
-                "signal_type": f"metadata_{person_kind}_match",
+                "signal_type": (
+                    f"metadata_{person_kind}_match"
+                    if person_kind != "unresolved"
+                    else "metadata_name_claim"
+                ),
                 "person_kind": person_kind,
                 "person_name": name,
                 "normalized_person_name": normalized,
@@ -247,10 +260,20 @@ def extract_grounded_attributions(
             normalized = _normalized_person(name)
             if not normalized:
                 continue
-            person_kind = "target" if normalized == target_normalized else "non_target"
+            person_kind = (
+                "target"
+                if target_normalized is not None and normalized == target_normalized
+                else "non_target"
+                if target_normalized is not None
+                else "unresolved"
+            )
             observations.append({
                 "channel": "spoken",
-                "signal_type": f"spoken_introduction_{'target' if person_kind == 'target' else 'guest'}",
+                "signal_type": (
+                    f"spoken_introduction_{'target' if person_kind == 'target' else 'guest'}"
+                    if person_kind != "unresolved"
+                    else "spoken_speaker_attribution"
+                ),
                 "person_kind": person_kind,
                 "person_name": name,
                 "normalized_person_name": normalized,
@@ -325,24 +348,25 @@ def extract_grounded_attributions(
     target_observations = [item for item in deduplicated if item["person_kind"] == "target"]
     guest_observations = [item for item in deduplicated if item["person_kind"] == "non_target"]
     outcomes: set[str] = set()
-    if any(item["channel"] == "metadata" for item in target_observations):
-        outcomes.add("metadata_target_match")
-    if any(item["channel"] == "metadata" for item in guest_observations):
-        outcomes.add("metadata_non_target_match")
-    if any(item["signal_type"] == "spoken_introduction_target" for item in target_observations):
-        outcomes.add("spoken_introduction_target")
-    if any(item["signal_type"] == "spoken_introduction_guest" for item in guest_observations):
-        outcomes.add("spoken_introduction_guest")
-    if any(item["explicit_speaker_attribution"] for item in target_observations):
-        outcomes.add("explicit_target_attribution")
-    if any(item["explicit_speaker_attribution"] for item in guest_observations):
-        outcomes.add("explicit_guest_attribution")
-    if (
-        any(item["explicit_speaker_attribution"] for item in target_observations)
-        and any(item["explicit_speaker_attribution"] for item in guest_observations)
-    ):
-        outcomes.add("conflicting_attribution")
-    if not deduplicated:
+    if target_normalized is not None:
+        if any(item["channel"] == "metadata" for item in target_observations):
+            outcomes.add("metadata_target_match")
+        if any(item["channel"] == "metadata" for item in guest_observations):
+            outcomes.add("metadata_non_target_match")
+        if any(item["signal_type"] == "spoken_introduction_target" for item in target_observations):
+            outcomes.add("spoken_introduction_target")
+        if any(item["signal_type"] == "spoken_introduction_guest" for item in guest_observations):
+            outcomes.add("spoken_introduction_guest")
+        if any(item["explicit_speaker_attribution"] for item in target_observations):
+            outcomes.add("explicit_target_attribution")
+        if any(item["explicit_speaker_attribution"] for item in guest_observations):
+            outcomes.add("explicit_guest_attribution")
+        if (
+            any(item["explicit_speaker_attribution"] for item in target_observations)
+            and any(item["explicit_speaker_attribution"] for item in guest_observations)
+        ):
+            outcomes.add("conflicting_attribution")
+    if not deduplicated and target_normalized is not None:
         outcomes.add("no_attribution_evidence")
 
     ordered_outcomes = tuple(outcome for outcome in _OUTCOME_ORDER if outcome in outcomes)

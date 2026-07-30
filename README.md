@@ -396,6 +396,14 @@ and a `profile_unavailable` identity assessment under each video's `identity/`
 directory. These assessments run in shadow mode: they show that identity would
 require review, but do not change existing extraction or review exports.
 
+Extraction now creates an identity-neutral principal-speaker observation for
+every valid sermon window, including organization-owned imported videos that
+have no preselected pastor. Those targetless observations retain grounded name
+claims and can enter speaker-pair/profile workflows without creating a pastor
+profile or treating publisher context as identity proof. When a pastor target is
+present, the existing target-specific shadow assessment is added as a separate
+compatibility projection.
+
 Video target context is explicitly recorded as an expectation, not proof that
 the requested pastor delivered the sermon. Publishing organization and pastor
 affiliation are not identity proof. Manual sermon-window overrides apply only
@@ -421,8 +429,9 @@ pte identity prepare-speaker-review-audio \
 This cache-only operation creates no pair drafts, reviews, fixtures, registry
 memberships, or identity claims.
 
-Backfill shadow identity artifacts for existing extractions without invoking
-classification or rewriting sermon artifacts:
+Backfill neutral speaker observations and, where a pastor target exists, shadow
+identity artifacts for existing extractions without invoking classification or
+rewriting sermon artifacts:
 
 ```bash
 pte identity backfill --base-dir /path/to/app-data
