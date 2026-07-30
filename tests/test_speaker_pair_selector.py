@@ -22,6 +22,7 @@ def candidate(
     partition: str | None = None,
     profile_ids: frozenset[int] = frozenset(),
     different_from: frozenset[str] = frozenset(),
+    consistency_score: float | None = None,
 ) -> PairCandidateObservation:
     return PairCandidateObservation(
         input_fingerprint=fingerprint,
@@ -33,6 +34,7 @@ def candidate(
         evaluation_partition=partition,
         reviewed_profile_ids=profile_ids,
         explicitly_different_from=different_from,
+        observation_consistency_score=consistency_score,
     )
 
 
@@ -172,6 +174,104 @@ class SpeakerPairSelectorTests(unittest.TestCase):
                 selected.observation_b.input_fingerprint,
             }
             & {"fresh-a", "fresh-b"}
+        )
+
+    def test_profile_growth_balances_known_quality_with_unknown_exploration(
+        self,
+    ) -> None:
+        candidates = [
+            candidate(
+                "profile-a",
+                name="alex",
+                profile_ids=frozenset((7,)),
+            ),
+            candidate(
+                "profile-b",
+                name="alex",
+                profile_ids=frozenset((7,)),
+            ),
+            candidate("known-frontier", name="alex"),
+            candidate("unknown-frontier", name="alex"),
+        ]
+        exploit = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                qualified_single_observations=frozenset(
+                    ("known-frontier",)
+                ),
+            ),
+            selection_goal="profile-growth",
+        )
+        explore = select_next_speaker_pair(
+            candidates,
+            PairSelectionHistory(
+                profile_growth_selections=(
+                    frozenset(("prior-a",)),
+                    frozenset(("prior-b",)),
+                ),
+                qualified_single_observations=frozenset(
+                    ("known-frontier",)
+                ),
+            ),
+            selection_goal="profile-growth",
+        )
+
+        self.assertIn(
+            "known-frontier",
+            {
+                exploit.observation_a.input_fingerprint,
+                exploit.observation_b.input_fingerprint,
+            },
+        )
+        self.assertIn(
+            "unknown-frontier",
+            {
+                explore.observation_a.input_fingerprint,
+                explore.observation_b.input_fingerprint,
+            },
+        )
+
+    def test_profile_growth_prefers_stronger_shadow_consistency_score(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "profile-a",
+                    name="alex",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate(
+                    "profile-b",
+                    name="alex",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate("weak", name="alex", consistency_score=0.2),
+                candidate("strong", name="alex", consistency_score=0.8),
+            ],
+            PairSelectionHistory(
+                profile_growth_selections=(
+                    frozenset(("prior-a",)),
+                    frozenset(("prior-b",)),
+                ),
+            ),
+            selection_goal="profile-growth",
+        )
+
+        self.assertIn(
+            "strong",
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            0.8,
+            selected.manifest["observation_consistency_scores"][
+                (
+                    "a"
+                    if selected.observation_a.input_fingerprint == "strong"
+                    else "b"
+                )
+            ],
         )
 
     def test_automation_readiness_prioritizes_profile_reinforcement(self) -> None:

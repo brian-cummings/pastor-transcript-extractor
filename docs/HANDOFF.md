@@ -295,6 +295,23 @@ different constraint anywhere across the two components are excluded. The
 exact audio clips and qualification prompts remain unchanged; the
 profile-oriented packet also exposes timestamped source-video links.
 
+Observation suitability is now a separate shadow-calibration concern. Existing
+`qualified_single_speaker`, `multiple_speakers`, and `invalid_audio` decisions
+can be deduplicated and inspected without acoustic execution:
+
+```bash
+pte identity evaluate-observation-consistency
+```
+
+Brian may explicitly run the acoustic calibration with `--execute`. It reuses
+the exact reviewed clips and embedding cache to measure weakest-clip coherence,
+pairwise spread, and the strongest two-cluster split. The resulting ignored
+report is threshold-free, cannot qualify observations, and cannot mutate the
+registry. If present, its scores are used only for nomination ranking.
+Profile-growth uses a two-exploitation/one-exploration cadence so known good
+evidence improves review yield without exhausting the qualified backlog or
+preventing discovery of new observations.
+
 The normal operator loop is therefore:
 
 1. Run `profile-status` to see the funnel and highest-value unmet needs.
@@ -465,7 +482,7 @@ excluded. Accepted manual window overrides remain eligible when their current
 observation matches the override. This is derived at selection time and adds no
 database migration or lifecycle state.
 
-Selector v10 in the default evaluation objective first checks for unreviewed
+Selector v11 in the default evaluation objective first checks for unreviewed
 pairs nominated by explicit curated
 relations. Two observations reviewed into the same effective profile may
 nominate a positive pair; an explicit effective different-speaker constraint

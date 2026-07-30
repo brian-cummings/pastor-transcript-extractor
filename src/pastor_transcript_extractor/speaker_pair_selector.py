@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v10"
+SELECTOR_VERSION = "speaker_pair_selector_v11"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -55,6 +55,7 @@ class PairCandidateObservation:
     evaluation_partition: str | None = None
     reviewed_profile_ids: frozenset[int] = frozenset()
     explicitly_different_from: frozenset[str] = frozenset()
+    observation_consistency_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ class PairSelectionHistory:
     reviewed_pair_partitions: Mapping[frozenset[str], str | None] | None = None
     reviewed_identity_outcomes: Mapping[frozenset[str], str] | None = None
     profile_growth_selections: tuple[frozenset[str], ...] = ()
+    qualified_single_observations: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +110,7 @@ def selection_history_from_artifacts(
     automatic_pair_ids: set[str] = set()
     sources_by_pair: dict[str, list[str]] = {}
     profile_growth_selections_by_pair: dict[str, frozenset[str]] = {}
+    qualified_single_observations: set[str] = set()
 
     for index, draft in enumerate(drafts):
         fingerprints = _draft_fingerprints(draft)
@@ -162,6 +165,18 @@ def selection_history_from_artifacts(
             for reason in manifest.get("reason_codes", []):
                 if isinstance(reason, str):
                     objective_counts[reason] = objective_counts.get(reason, 0) + 1
+        qualifications = fixture.get("qualification", {})
+        if isinstance(qualifications, Mapping):
+            for label, side in (("A", "a"), ("B", "b")):
+                if qualifications.get(label) != "qualified_single_speaker":
+                    continue
+                fingerprint = (
+                    fixture.get("observations", {})
+                    .get(side, {})
+                    .get("input_fingerprint")
+                )
+                if isinstance(fingerprint, str):
+                    qualified_single_observations.add(fingerprint)
         _record_automatic_pair(fixture, automatic_pair_ids)
         _record_profile_growth_selection_once(
             fixture,
@@ -209,11 +224,16 @@ def selection_history_from_artifacts(
                     )
             for label in ("A", "B"):
                 qualification = review.get("qualification", {}).get(label)
-                if qualification not in {"invalid_audio", "multiple_speakers"}:
-                    continue
                 source_key = draft.get("presentation", {}).get(label, {}).get("source_key")
                 source = draft.get("observations", {}).get(source_key, {})
                 fingerprint = source.get("input_fingerprint")
+                if (
+                    qualification == "qualified_single_speaker"
+                    and isinstance(fingerprint, str)
+                ):
+                    qualified_single_observations.add(fingerprint)
+                if qualification not in {"invalid_audio", "multiple_speakers"}:
+                    continue
                 if isinstance(fingerprint, str):
                     disfavored[fingerprint] = disfavored.get(fingerprint, 0) + 1
                 video_id = source.get("youtube_video_id")
@@ -246,6 +266,9 @@ def selection_history_from_artifacts(
         profile_growth_selections=tuple(
             profile_growth_selections_by_pair[pair_id]
             for pair_id in sorted(profile_growth_selections_by_pair)
+        ),
+        qualified_single_observations=frozenset(
+            qualified_single_observations
         ),
     )
 
@@ -514,6 +537,16 @@ def select_next_speaker_pair(
         manifest["profile_growth_components"] = [
             sorted(component) for component in growth_components
         ]
+    consistency_scores = {
+        side: observation.observation_consistency_score
+        for side, observation in (
+            ("a", observation_a),
+            ("b", observation_b),
+        )
+        if observation.observation_consistency_score is not None
+    }
+    if consistency_scores:
+        manifest["observation_consistency_scores"] = consistency_scores
     return PairSelection(observation_a, observation_b, manifest)
 
 
@@ -645,6 +678,13 @@ def _select_profile_growth_pair(
     return min(
         growth_pairs,
         key=lambda item: (
+            0 if item[4] == "attribution_reconciliation_bridge" else 1,
+            _profile_growth_consistency_rank(
+                observations=(item[0], item[1]),
+                components=item[5],
+                anchored_components=anchored_components,
+                history=history,
+            ),
             _profile_growth_marginal_rank(
                 objective=item[4],
                 components=item[5],
@@ -665,6 +705,47 @@ def _select_profile_growth_pair(
             ),
         ),
     )
+
+
+def _profile_growth_consistency_rank(
+    *,
+    observations: tuple[
+        PairCandidateObservation,
+        PairCandidateObservation,
+    ],
+    components: tuple[frozenset[str], frozenset[str]],
+    anchored_components: set[frozenset[str]],
+    history: PairSelectionHistory,
+) -> tuple[int, float]:
+    targets = [
+        observation
+        for observation, component in zip(observations, components)
+        if component not in anchored_components
+    ] or list(observations)
+    known = history.qualified_single_observations
+    unknown = [
+        observation
+        for observation in targets
+        if observation.input_fingerprint not in known
+    ]
+    explore_unknown = len(history.profile_growth_selections) % 3 == 2
+    if explore_unknown:
+        bucket = 0 if unknown else 1
+        scored = [
+            observation.observation_consistency_score
+            for observation in unknown
+            if observation.observation_consistency_score is not None
+        ]
+    else:
+        scored = [
+            observation.observation_consistency_score
+            for observation in targets
+            if observation.observation_consistency_score is not None
+        ]
+        bucket = 0 if not unknown else (1 if scored else 2)
+    # Scores are shadow ranking evidence only. Missing scores remain eligible
+    # and are deliberately sampled by the exploration turn.
+    return bucket, -max(scored, default=float("-inf"))
 
 
 def _profile_growth_marginal_rank(

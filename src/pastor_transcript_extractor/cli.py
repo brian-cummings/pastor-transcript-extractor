@@ -150,6 +150,13 @@ from pastor_transcript_extractor.speaker_pair_review import (
     prepare_review_observation,
     submit_review,
 )
+from pastor_transcript_extractor.speaker_observation_consistency import (
+    build_observation_consistency_plan,
+    collect_reviewed_observation_examples,
+    evaluate_observation_consistency_examples,
+    load_consistency_score_index,
+    write_observation_consistency_report,
+)
 from pastor_transcript_extractor.speaker_pair_selector import (
     PairCandidateObservation,
     SelectionGoal,
@@ -981,6 +988,100 @@ def compare_speakers(
     write_pair_result(destination, result)
     console.print(f"{result['outcome']}: {result['reason']}")
     console.print(f"Wrote deterministic diagnostic evidence to {destination}")
+
+
+@identity_app.command(
+    "evaluate-observation-consistency",
+    help=(
+        "Plan or run threshold-free within-observation acoustic calibration "
+        "against human qualification labels."
+    ),
+)
+def evaluate_observation_consistency(
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair drafts and review events root.",
+    ),
+    model_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        help="Local ONNX speaker-embedding model.",
+    ),
+    model_sha256: str = typer.Option(
+        DEFAULT_SPEAKER_MODEL_SHA256,
+        help="Required checksum for the local model.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored embedding cache.",
+    ),
+    output_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/runs/"
+            "observation-consistency-v1.json"
+        ),
+        help="Threshold-free calibration report.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Run acoustic embeddings; without this flag only print the plan.",
+    ),
+) -> None:
+    root = evaluation_root.expanduser().resolve()
+    drafts = _load_json_artifacts(sorted((root / "drafts").glob("*.json")))
+    reviews = _load_json_artifacts(
+        sorted((root / "reviews").glob("*/*.json"))
+    )
+    examples, conflicts = collect_reviewed_observation_examples(
+        drafts=drafts,
+        reviews=reviews,
+    )
+    plan = build_observation_consistency_plan(
+        examples=examples,
+        conflicts=conflicts,
+    )
+    counts = plan["qualification_counts"]
+    console.print(
+        "Observation consistency calibration: "
+        f"examples={plan['reviewed_example_count']} "
+        f"single={counts['qualified_single_speaker']} "
+        f"multiple={counts['multiple_speakers']} "
+        f"invalid={counts['invalid_audio']} "
+        f"conflicts={plan['conflict_count']}"
+    )
+    if not execute:
+        console.print(
+            "Plan only; no embeddings or report artifacts were created."
+        )
+        return
+    try:
+        backend = SherpaOnnxEmbeddingBackend(
+            model_path.expanduser().resolve(),
+            expected_sha256=model_sha256,
+        )
+        report = evaluate_observation_consistency_examples(
+            examples=examples,
+            conflicts=conflicts,
+            embedding_cache=EmbeddingCache(
+                cache_dir.expanduser().resolve()
+            ),
+            backend=backend,
+        )
+        destination = output_path.expanduser().resolve()
+        write_observation_consistency_report(destination, report)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Scored {report['scored_case_count']} reviewed observation(s)."
+    )
+    console.print(
+        "Threshold-free only; automatic qualification and registry mutation "
+        "remain disabled."
+    )
+    console.print(f"Wrote observation consistency report to {destination}")
 
 
 @identity_app.command(
@@ -2414,6 +2515,16 @@ def review_next_speaker_pair(
             "reinforces profiles with redundant internal comparisons."
         ),
     ),
+    observation_consistency_report: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/runs/"
+            "observation-consistency-v1.json"
+        ),
+        help=(
+            "Optional threshold-free consistency scores used only for "
+            "balanced nomination ranking."
+        ),
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     paths = build_paths(base_dir)
@@ -2438,6 +2549,9 @@ def review_next_speaker_pair(
             drafts=drafts,
             reviews=reviews,
             fixtures=fixtures,
+        )
+        consistency_index = load_consistency_score_index(
+            observation_consistency_report.expanduser().resolve()
         )
         different_fingerprints_by_observation_id: dict[int, set[str]] = {}
         for observation_a_id, observation_b_id in (
@@ -2510,6 +2624,9 @@ def review_next_speaker_pair(
                         observation.id, set()
                     )
                 ),
+                observation_consistency_score=consistency_index.scores.get(
+                    observation.input_fingerprint
+                ),
             )
             candidates.append(candidate)
         selection = select_next_speaker_pair(
@@ -2520,6 +2637,13 @@ def review_next_speaker_pair(
             ),
             selection_goal=selection_objective,
         )
+        if (
+            consistency_index.report_sha256
+            and selection.manifest.get("observation_consistency_scores")
+        ):
+            selection.manifest[
+                "observation_consistency_report_sha256"
+            ] = consistency_index.report_sha256
         if unregistered_source_urls:
             selection.manifest["unregistered_source_count"] = len(
                 unregistered_source_urls

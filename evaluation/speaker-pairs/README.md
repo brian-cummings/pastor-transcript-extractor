@@ -66,6 +66,35 @@ explicit mode retain their original audio-only semantics. An observation used
 in a visual review remains available in other comparisons, although that exact
 pair is already reviewed and cannot later become a blind evaluation case.
 
+## Observation consistency calibration
+
+Human `single`, `multiple`, and `invalid` observation qualifications also form
+a labeled dataset for improving candidate quality. Plan the threshold-free
+within-observation calibration with:
+
+```bash
+pte identity evaluate-observation-consistency
+```
+
+The plan reports deduplicated labels and conflicts without running acoustic
+models. Execute the reviewed-label calibration explicitly with:
+
+```bash
+pte identity evaluate-observation-consistency --execute
+```
+
+The ignored report measures pairwise similarity among each observation's exact
+review clips, weakest-clip coherence, overall similarity spread, and the
+strongest possible two-cluster split. It recommends no threshold and cannot
+qualify an observation or mutate the registry.
+
+When the report exists, profile-growth nomination may use its persisted score
+only as shadow ranking evidence. The queue balances exploitation and discovery:
+two turns favor already qualified or scored observations, while every third
+turn deliberately explores an unknown observation. Profile and source rotation
+still apply, missing scores remain eligible, and known qualifications are not
+exhausted before discovery continues.
+
 ## Local model
 
 The provisional backend is sherpa-onnx 1.13.1 with the English CAMPPlus
@@ -223,7 +252,7 @@ already-connected components and any candidate components separated by an
 explicit reviewed different constraint. Source-family membership remains
 partition and queue context, never same-speaker evidence.
 
-Selector v10 in the default evaluation objective may use two explicit curated
+Selector v11 in the default evaluation objective may use two explicit curated
 relations to nominate an unseen pair:
 
 - observations effectively attached to the same reviewed profile are strong

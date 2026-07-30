@@ -611,6 +611,124 @@ def _pairwise(
     return values
 
 
+def observation_consistency_metrics(
+    embeddings: Sequence[Sequence[float]],
+) -> dict[str, Any]:
+    """Describe whether distributed clips form one compact voice cluster."""
+    if len(embeddings) < 3:
+        raise ValueError("observation consistency requires at least three embeddings")
+    pairwise = _pairwise(embeddings, embeddings, triangular=True)
+    clip_coherence = [
+        statistics.median(
+            _cosine(embedding, other)
+            for other_index, other in enumerate(embeddings)
+            if other_index != index
+        )
+        for index, embedding in enumerate(embeddings)
+    ]
+    split = _strongest_two_cluster_split(embeddings)
+    return {
+        "pairwise_similarity": _distribution(pairwise),
+        "clip_coherence": _distribution(clip_coherence),
+        "weakest_clip_coherence": min(clip_coherence),
+        "pairwise_spread": max(pairwise) - min(pairwise),
+        "strongest_two_cluster_split": split,
+    }
+
+
+def analyze_cached_observation_consistency(
+    *,
+    spans: Sequence[CachedSpan],
+    embedding_cache: EmbeddingCache,
+    backend: EmbeddingBackend,
+    min_rms_dbfs: float = -52.0,
+) -> dict[str, Any]:
+    valid = [span for span in spans if span.rms_dbfs >= min_rms_dbfs]
+    if len(valid) < 3:
+        return {
+            "status": "insufficient_evidence",
+            "reason": "too_few_valid_spans",
+            "valid_span_count": len(valid),
+        }
+    try:
+        embedded = [
+            embedding_cache.get_or_compute(span, backend)
+            for span in valid
+        ]
+        metrics = observation_consistency_metrics(
+            [embedding for embedding, _ in embedded]
+        )
+        return {
+            "status": "scored",
+            "valid_span_count": len(valid),
+            "embedding_cache_hits": sum(cache_hit for _, cache_hit in embedded),
+            "metrics": metrics,
+        }
+    except (OSError, RuntimeError, ValueError) as error:
+        return {
+            "status": "analysis_failed",
+            "reason": "technical_failure",
+            "error_type": type(error).__name__,
+            "error": str(error),
+        }
+
+
+def _strongest_two_cluster_split(
+    embeddings: Sequence[Sequence[float]],
+) -> dict[str, Any]:
+    best: tuple[float, tuple[int, ...], tuple[int, ...], float, float] | None = None
+    size = len(embeddings)
+    # Keep clip zero in the left cluster to avoid evaluating mirror partitions.
+    for mask in range(0, 1 << (size - 1)):
+        left = (0,) + tuple(
+            index
+            for index in range(1, size)
+            if mask & (1 << (index - 1))
+        )
+        right = tuple(index for index in range(size) if index not in left)
+        if not right or len(left) == size:
+            continue
+        within = [
+            *_pairwise(
+                [embeddings[index] for index in left],
+                [embeddings[index] for index in left],
+                triangular=True,
+            ),
+            *_pairwise(
+                [embeddings[index] for index in right],
+                [embeddings[index] for index in right],
+                triangular=True,
+            ),
+        ]
+        if not within:
+            continue
+        cross = _pairwise(
+            [embeddings[index] for index in left],
+            [embeddings[index] for index in right],
+        )
+        within_median = statistics.median(within)
+        cross_median = statistics.median(cross)
+        separation = within_median - cross_median
+        candidate = (
+            separation,
+            left,
+            right,
+            within_median,
+            cross_median,
+        )
+        if best is None or candidate[0] > best[0]:
+            best = candidate
+    if best is None:
+        raise ValueError("no valid two-cluster split")
+    return {
+        "separation": best[0],
+        "left_clip_indexes": list(best[1]),
+        "right_clip_indexes": list(best[2]),
+        "within_median": best[3],
+        "cross_median": best[4],
+    }
+
+
 def _span_evidence(span: CachedSpan) -> dict[str, object]:
     evidence = asdict(span)
     evidence.pop("cache_hit")
