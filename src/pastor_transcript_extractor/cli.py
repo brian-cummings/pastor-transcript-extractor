@@ -92,6 +92,10 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
+from pastor_transcript_extractor.identity_coordination import (
+    build_identity_coordination_report,
+    write_identity_coordination_report,
+)
 from pastor_transcript_extractor.models import (
     SpeakerObservation,
     TranscriptSourceKind,
@@ -2528,6 +2532,230 @@ def confirm_discovered_profiles_command(
             "No discovery profile received an independent confirmation; "
             "profile readiness is unchanged."
         )
+
+
+@identity_app.command(
+    "coordinate",
+    help="Plan or execute the non-mutating identity workflow for current extractions.",
+)
+def coordinate_identity_command(
+    youtube_video_id: str | None = typer.Option(
+        None,
+        "--youtube-video-id",
+        help="Coordinate one newly extracted YouTube video.",
+    ),
+    all_extractions: bool = typer.Option(
+        False,
+        "--all",
+        help="Build a read-only coordination report for all latest extractions.",
+    ),
+    execute_shadow: bool = typer.Option(
+        False,
+        "--execute-shadow",
+        help=(
+            "Run missing shadow association for the requested video; never "
+            "apply registry mutations."
+        ),
+    ),
+    discovery_report: Path | None = typer.Option(
+        None,
+        "--discovery-report",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Optional discovery artifact to include in promotion planning.",
+    ),
+    model_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        help="Local ONNX speaker-embedding model.",
+    ),
+    model_sha256: str = typer.Option(
+        DEFAULT_SPEAKER_MODEL_SHA256,
+        help="Required checksum for the local model.",
+    ),
+    policy_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        help="Pinned shadow decision policy.",
+    ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair review and fixture root.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored acoustic and media-verification cache.",
+    ),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Versioned shadow-association artifact root.",
+    ),
+    output_root: Path | None = typer.Option(
+        None,
+        help="Coordination report directory; defaults under application logs.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    if (youtube_video_id is None) == (not all_extractions):
+        raise typer.BadParameter(
+            "Pass exactly one of --youtube-video-id or --all."
+        )
+    if execute_shadow and youtube_video_id is None:
+        raise typer.BadParameter(
+            "--execute-shadow currently requires --youtube-video-id; "
+            "corpus discovery remains a separately scheduled batch."
+        )
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    coordination_root = (
+        output_root.expanduser().resolve()
+        if output_root is not None
+        else paths.logs / "identity-coordination"
+    )
+    audit_root = paths.logs / "association-audits"
+    verification_cache = MediaVerificationCache(
+        cache_dir.expanduser().resolve() / "media-verification"
+    )
+    try:
+        policy_spec = load_shadow_policy(policy_path)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    def audit() -> object:
+        return audit_speaker_association_coverage(
+            Database(paths.database, readonly=True),
+            association_root=association_root,
+            output_root=audit_root,
+            verification_cache=verification_cache,
+            required_policy_sha256=policy_spec.artifact_sha256,
+        )
+
+    try:
+        audit_result = audit()
+        preliminary = build_identity_coordination_report(
+            audit_result.payload,
+            youtube_video_id=youtube_video_id,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    executed_association = False
+    association_execution_error: str | None = None
+    if execute_shadow:
+        case = preliminary["cases"][0]
+        if case["next_action"] == "run_shadow_association":
+            try:
+                shadow_associate_speakers_command(
+                    youtube_video_id=youtube_video_id,
+                    all_eligible=False,
+                    limit=None,
+                    plan_only=False,
+                    minimum_profile_members=3,
+                    maximum_exemplars=3,
+                    minimum_same_exemplars=2,
+                    model_path=model_path,
+                    model_sha256=model_sha256,
+                    policy_path=policy_path,
+                    evaluation_root=evaluation_root,
+                    cache_dir=cache_dir,
+                    output_root=association_root,
+                    base_dir=base_dir,
+                )
+                executed_association = True
+                audit_result = audit()
+            except (OSError, RuntimeError, ValueError, typer.BadParameter) as error:
+                association_execution_error = str(error)
+                console.print(
+                    "Shadow association could not execute: "
+                    f"{association_execution_error}"
+                )
+        else:
+            console.print(
+                "Shadow association not run: current next action is "
+                f"{case['next_action']}."
+            )
+
+    association_paths = sorted(
+        association_root.expanduser().resolve().glob("*/*.json")
+    )
+    confirmation_plan = plan_candidate_confirmations(
+        Database(paths.database, readonly=True),
+        association_paths,
+    )
+    promotion_summary = None
+    if discovery_report is not None:
+        try:
+            promotion_plan = plan_discovery_promotions(
+                Database(paths.database, readonly=True),
+                discovery_report,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            raise typer.BadParameter(str(error)) from error
+        promotion_summary = {
+            "discovery_report": str(
+                discovery_report.expanduser().resolve()
+            ),
+            "eligible_components": len(promotion_plan.candidates),
+            "skipped_components": len(promotion_plan.skipped),
+            "apply_allowed_by_coordinator": False,
+        }
+    report = build_identity_coordination_report(
+        audit_result.payload,
+        youtube_video_id=youtube_video_id,
+        confirmation_observation_ids=(
+            candidate.observation_id
+            for candidate in confirmation_plan.candidates
+        ),
+        promotion_summary=promotion_summary,
+        execution_summary={
+            "association_requested": execute_shadow,
+            "association_executed": executed_association,
+            "association_error": association_execution_error,
+            "registry_mutations": 0,
+        },
+    )
+    destination = write_identity_coordination_report(
+        coordination_root,
+        report,
+    )
+    counts = report["counts"]
+    console.print(
+        "Identity coordination: "
+        f"extractions={counts['extractions']} "
+        f"terminal={counts['terminal']} "
+        f"action_required={counts['action_required']} "
+        f"association_executed={executed_association}"
+    )
+    console.print(
+        "Workflow states: "
+        + ", ".join(
+            f"{state}={count}"
+            for state, count in report["workflow_state_counts"].items()
+        )
+    )
+    console.print(
+        "Next actions: "
+        + ", ".join(
+            f"{action}={count}"
+            for action, count in report["next_action_counts"].items()
+        )
+    )
+    console.print(f"Wrote identity coordination report to {destination}")
+    console.print(
+        "Coordinator policy: shadow-only; registry mutations=0. "
+        "Discovery remains a separately scheduled corpus batch."
+    )
 
 
 @identity_app.command(

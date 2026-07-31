@@ -458,6 +458,23 @@ contract. Accepted observations without enough meaningful sermon-labeled text
 are recorded as an explicit blocker. Use `--allow-gaps` only when collecting a
 baseline report.
 
+Coordinate the shadow identity state for one new extraction:
+
+```bash
+pte identity coordinate \
+  --youtube-video-id YOUTUBE_ID \
+  --base-dir /path/to/app-data
+```
+
+This read-only mode combines strict association coverage, current proposal
+state, provisional confirmation opportunities, and the next required action
+into one content-addressed report under `logs/identity-coordination/`. Add
+`--execute-shadow` to run a missing association for that one extraction before
+reconciling the report. It never promotes components, confirms memberships, or
+performs any other registry mutation. Use `--all` for a read-only corpus-wide
+action inventory. Anonymous profile discovery remains a separately scheduled
+batch because a single extraction cannot establish a three-recording component.
+
 The grounded-attribution shadow pass extracts only exact names from title,
 description, chapter, introduction, and handoff evidence. Metadata observations
 retain their artifact hash, source kind, field path, and exact excerpt. Spoken
@@ -548,6 +565,8 @@ model/policy approval remains a separate gate.
 - `pte pastor list`
 - `pte identity profile-status --base-dir <app-data>`
 - `pte identity association-audit --base-dir <app-data>`
+- `pte identity coordinate --all --base-dir <app-data>`
+- `pte identity coordinate --youtube-video-id <id> --execute-shadow --base-dir <app-data>`
 - `pte identity shadow-discover-profiles --plan-only --base-dir <app-data>`
 - `pte identity review-next-speaker-pair --selection-objective profile-growth`
 - `pte identity review-next-speaker-pair --selection-objective automation-readiness`

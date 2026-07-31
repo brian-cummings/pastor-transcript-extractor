@@ -446,6 +446,17 @@ that observation, and records the association artifact as confirmation. This
 clears the profile-level confirmation blocker. It does not approve the
 experimental acoustic policy or enable automatic mutation globally.
 
+`identity coordinate` is the first non-mutating orchestration boundary. With
+`--youtube-video-id`, it audits one current extraction and emits exactly one
+workflow state and next action. `--execute-shadow` runs association only when
+that extraction is missing a current attempt, then re-audits and writes a
+content-addressed report below `logs/identity-coordination/`. With `--all`, it
+builds a read-only corpus action inventory. The coordinator recognizes content
+terminal, content review, explicit blocker, associated, association-required,
+profile-proposal, discovery-batch, identity-conflict, and provisional-confirmation
+states. It cannot apply registry mutations, and corpus discovery remains a
+separate scheduled batch.
+
 The optional `--consistency-report` and `--minimum-consistency-score` arguments
 are the integration boundary for the separately calibrated observation
 consistency scorer. Without a calibrated threshold, discovery records

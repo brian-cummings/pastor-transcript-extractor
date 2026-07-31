@@ -41,6 +41,7 @@ approved unattended production service.
 | Every profile had to originate in human pair review | **Resolved for provisional profiles** through complete-link discovery and guarded promotion |
 | New observations could not reinforce provisional profiles | **Resolved as an explicit plan/apply confirmation path** |
 | Automatic approved registry association | **Open**; policy remains experimental |
+| Per-extraction shadow orchestration | **Partially resolved** by `identity coordinate` |
 | One continuous production orchestrator and exception queue | **Open** |
 | Independent stage state and truthful delivery/export state | **Open** |
 
@@ -92,6 +93,7 @@ No corpus reclassification or evaluation job was run.
 | Detect sermon | Optional `--extract` | Segments, proposed sermon window, classification, disposition | Yes |
 | Create speaker observation | Side effect of extraction or `identity backfill` | Targetless observation, neutral claims, shadow assessment | Yes |
 | Prove identity coverage | `identity association-audit` | Content-addressed coverage ledger with exact reason per extraction | Manual command; strict and complete |
+| Coordinate one extraction | `identity coordinate` | One durable workflow state and exact next action | Shadow-only; optional association execution |
 | Build reviewed profiles | `review-next-speaker-pair`, then `sync-reviewed-speaker-evidence` | Reviewed anonymous profile membership and name evidence | Manual, multi-command |
 | Discover new profiles | `shadow-discover-profiles` | Complete-link provisional component proposals | Manual and shadow-only |
 | Promote discovered profiles | `promote-discovered-profiles --apply` | Reversible provisional profile plus seed memberships and provenance | Guarded explicit mutation |
@@ -397,10 +399,14 @@ unique existing person as a *candidate*, not as observed speaker truth. Use curr
 temporal affiliation only to prioritize candidate profiles for acoustic comparison;
 never use it as sufficient identity evidence.
 
-### 12. Medium: human identity work is fragmented across several commands
+### 12. Partially resolved: human identity work is fragmented across several commands
 
-The original reviewed-evidence loop remains, and the safe automatic-candidate
-primitives add explicit stages:
+`identity coordinate` now collapses coverage inspection, missing-association
+execution, confirmation detection, and next-action classification for one
+extraction. It can also produce a read-only corpus-wide action inventory. It never
+applies registry mutations.
+
+The reviewed-evidence and batch-profile loop still contains explicit stages:
 
 1. inspect `profile-status`;
 2. run `review-next-speaker-pair`;
@@ -410,12 +416,14 @@ primitives add explicit stages:
 6. plan and apply `promote-discovered-profiles`;
 7. run `shadow-associate-speakers`;
 8. plan and apply `confirm-discovered-profiles`;
-9. run `association-audit`.
+9. run corpus discovery on a schedule when coordination reports discovery
+   candidates.
 
 The review itself can require audio preparation, visual confirmation, observation
-qualification, and a binary pair judgment. The synchronization step is easy to
-forget, and the newer commands are safe but not yet orchestrated. A completed stage
-may therefore wait indefinitely for the operator to invoke its successor.
+qualification, and a binary pair judgment. Promotion, confirmation apply,
+reviewed-evidence synchronization, and corpus discovery remain outside the
+coordinator. A completed batch stage may therefore still wait for an operator or
+scheduler to invoke its successor.
 
 **Recommendation:** provide one `pte work-next` queue across content, observation,
 identity, and affiliation exceptions. When a review is submitted, materialize its
@@ -643,6 +651,7 @@ Implemented foundations:
 3. Reversible provisional promotion with seed provenance.
 4. Independent-recording confirmation with append-only association provenance.
 5. Strict coverage and stale-artifact detection.
+6. Per-extraction shadow coordination with durable next-action reports.
 
 Remaining:
 
@@ -654,7 +663,8 @@ Remaining:
    confirmation loop against reviewed outcomes.
 4. Approve automatic membership only for unique, high-confidence,
    conflict-free matches after the model/policy gate passes.
-5. Integrate the implemented stages into per-observation orchestration.
+5. Invoke the coordinator automatically after extraction and schedule bounded
+   discovery batches from its discovery-candidate backlog.
 6. Keep new-profile creation more conservative than profile growth.
 7. Keep naming, merging, and conflicting evidence manual.
 8. Measure automatic coverage, error rate, abstention rate, and later-overturned
@@ -699,9 +709,11 @@ conservatively without exhaustive human pair construction. The corpus audit prov
 that no extraction currently disappears between extraction and association.
 
 The limiting factors are now policy maturity, abstention rate, and orchestration.
-The next highest-value change is not another identity data model. It is a
-per-observation coordinator that invokes the implemented association, discovery,
-promotion/confirmation, and audit contracts automatically while routing only
-content ambiguity, attribution conflict, and low-confidence identity cases to one
-human queue. Independent content, identity, and delivery state remains necessary
-so successful evaluation is not confused with approved delivery.
+The first per-observation coordinator now exists in shadow form: it reconciles
+coverage, optionally executes a missing association, recognizes discovery and
+confirmation opportunities, and emits one durable next action. The next
+highest-value step is to invoke it automatically after extraction, schedule
+bounded discovery batches from its backlog, and route content ambiguity,
+attribution conflict, and low-confidence identity cases to one human queue.
+Independent content, identity, and delivery state remains necessary so successful
+evaluation is not confused with approved delivery.
