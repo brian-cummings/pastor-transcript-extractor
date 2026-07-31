@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v12"
+SELECTOR_VERSION = "speaker_pair_selector_v13"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -539,6 +539,10 @@ def select_next_speaker_pair(
     manifest: dict[str, object] = {
         "selector_version": SELECTOR_VERSION,
         "selection_origin": "automatic",
+        "selected_observation_fingerprints": {
+            "a": observation_a.input_fingerprint,
+            "b": observation_b.input_fingerprint,
+        },
         "selection_goal": goal.value,
         "selection_objective": selection_objective,
         "selection_stratum": chosen_stratum,

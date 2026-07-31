@@ -594,6 +594,13 @@ review. The next discovery run consumes the approved pair judgment directly as
 a fingerprinted same/different constraint, allowing the answer to resolve or
 safely block the affected component before registry synchronization.
 
+Automatic nomination also binds packet preparation to the selector's exact
+immutable observation fingerprints. The review command fails closed if either
+fingerprint no longer belongs to the selected video, preventing a newer
+observation for the same recording from silently replacing the nominated
+evidence. Audit current and legacy selection provenance without mutation with
+`pte identity audit-speaker-review-selection`.
+
 ## Planning Docs
 
 - `docs/V1_SPEC.md`

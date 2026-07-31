@@ -82,6 +82,123 @@ class PreparedReviewObservation:
     clip_selection: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class ReviewSelectionAuditIssue:
+    pair_id: str
+    draft_path: Path
+    reviewed: bool
+    reason_code: str
+    actual_fingerprints: tuple[str, ...]
+    manifest_fingerprints: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewSelectionAudit:
+    draft_count: int
+    automatic_count: int
+    reviewed_count: int
+    exact_verified_count: int
+    legacy_checked_count: int
+    unverifiable_count: int
+    issues: tuple[ReviewSelectionAuditIssue, ...]
+
+
+def audit_review_selection_artifacts(
+    evaluation_root: Path,
+) -> ReviewSelectionAudit:
+    root = evaluation_root.expanduser().resolve()
+    reviewed_pair_ids = {
+        path.parent.name
+        for path in (root / "reviews").glob("*/*.json")
+    }
+    draft_paths = sorted(
+        path
+        for path in (root / "drafts").glob("*.json")
+        if ".rejected." not in path.name
+    )
+    automatic_count = 0
+    reviewed_count = 0
+    exact_verified_count = 0
+    legacy_checked_count = 0
+    unverifiable_count = 0
+    issues: list[ReviewSelectionAuditIssue] = []
+    for path in draft_paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"{path}: expected a JSON object")
+        _validate_draft(payload)
+        manifest = payload.get("selection_manifest")
+        if not isinstance(manifest, dict) or manifest.get(
+            "selection_origin"
+        ) != "automatic":
+            continue
+        automatic_count += 1
+        pair_id = str(payload["pair_id"])
+        if pair_id in reviewed_pair_ids:
+            reviewed_count += 1
+        actual = tuple(
+            sorted(
+                str(observation["input_fingerprint"])
+                for observation in payload["observations"].values()
+            )
+        )
+        exact = manifest.get("selected_observation_fingerprints")
+        if isinstance(exact, dict) and set(exact) == {"a", "b"} and all(
+            isinstance(value, str) for value in exact.values()
+        ):
+            exact_verified_count += 1
+            expected = tuple(sorted(str(value) for value in exact.values()))
+            if actual != expected:
+                issues.append(
+                    ReviewSelectionAuditIssue(
+                        pair_id=pair_id,
+                        draft_path=path,
+                        reviewed=pair_id in reviewed_pair_ids,
+                        reason_code="selected_observation_fingerprint_mismatch",
+                        actual_fingerprints=actual,
+                        manifest_fingerprints=expected,
+                    )
+                )
+            continue
+        components = manifest.get("profile_growth_components")
+        if isinstance(components, list) and all(
+            isinstance(component, list) for component in components
+        ):
+            legacy_checked_count += 1
+            expected_members = tuple(
+                sorted(
+                    {
+                        str(fingerprint)
+                        for component in components
+                        for fingerprint in component
+                        if isinstance(fingerprint, str)
+                    }
+                )
+            )
+            if not set(actual).issubset(expected_members):
+                issues.append(
+                    ReviewSelectionAuditIssue(
+                        pair_id=pair_id,
+                        draft_path=path,
+                        reviewed=pair_id in reviewed_pair_ids,
+                        reason_code="legacy_profile_growth_pair_mismatch",
+                        actual_fingerprints=actual,
+                        manifest_fingerprints=expected_members,
+                    )
+                )
+            continue
+        unverifiable_count += 1
+    return ReviewSelectionAudit(
+        draft_count=len(draft_paths),
+        automatic_count=automatic_count,
+        reviewed_count=reviewed_count,
+        exact_verified_count=exact_verified_count,
+        legacy_checked_count=legacy_checked_count,
+        unverifiable_count=unverifiable_count,
+        issues=tuple(issues),
+    )
+
+
 def prepare_review_observation(
     *,
     observation: SpeakerObservation,
@@ -684,6 +801,7 @@ def _selection_manifest_for_presentation(
     """Align canonical selector a/b reuse counts with blinded packet A/B sides."""
     manifest = dict(selection_manifest)
     for field in (
+        "selected_observation_fingerprints",
         "observation_prior_use",
         "source_family_ids",
         "source_family_prior_use",

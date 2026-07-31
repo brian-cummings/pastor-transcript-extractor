@@ -420,6 +420,12 @@ discovery artifact. Before ordinary profile reinforcement, it nominates the
 single unresolved edge with the greatest component-resolution value. The human
 still receives the standard blinded same/different pair packet; discovery
 structure changes selection priority and provenance, not the judgment format.
+The selector-to-review handoff now carries exact immutable observation
+fingerprints in addition to video IDs and fails closed on any mismatch. A
+read-only selection audit detects the earlier counterintuitive case where
+packet preparation silently substituted a newer observation from the same
+video, preserving the human judgment on the actual reviewed pair while
+preventing its inaccurate selection provenance from going unnoticed.
 
 The reviewed-evidence and batch-profile loop still contains explicit stages:
 

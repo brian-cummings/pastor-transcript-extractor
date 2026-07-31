@@ -155,6 +155,7 @@ from pastor_transcript_extractor.speaker_pair_review import (
     PairJudgment,
     ReviewEvidenceMode,
     STANDARD_VARIATION_TAGS,
+    audit_review_selection_artifacts,
     create_review_draft,
     prepare_review_observation,
     submit_review,
@@ -1478,6 +1479,36 @@ def validate_pair_fixtures(
 
 
 @identity_app.command(
+    "audit-speaker-review-selection",
+    help="Verify automatic review drafts used the exact observations selected.",
+)
+def audit_speaker_review_selection(
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair drafts and review events root.",
+    ),
+) -> None:
+    try:
+        audit = audit_review_selection_artifacts(evaluation_root)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Speaker review selection audit: "
+        f"drafts={audit.draft_count} automatic={audit.automatic_count} "
+        f"reviewed={audit.reviewed_count} exact={audit.exact_verified_count} "
+        f"legacy_checked={audit.legacy_checked_count} "
+        f"unverifiable={audit.unverifiable_count} "
+        f"mismatches={len(audit.issues)}"
+    )
+    for issue in audit.issues:
+        console.print(
+            f"Mismatch {issue.pair_id}: reason={issue.reason_code} "
+            f"reviewed={issue.reviewed} draft={issue.draft_path}"
+        )
+    console.print("Audit is read-only; no review evidence was changed.")
+
+
+@identity_app.command(
     "evaluate-pair-results",
     help="Measure pairwise errors and abstention against exact reviewed audio spans.",
 )
@@ -1538,6 +1569,8 @@ def review_speaker_pair(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
     selection_manifest_json: str | None = typer.Option(None, hidden=True),
+    observation_fingerprint_a: str | None = typer.Option(None, hidden=True),
+    observation_fingerprint_b: str | None = typer.Option(None, hidden=True),
 ) -> None:
     paths = build_paths(base_dir)
     if not paths.database.exists():
@@ -1547,9 +1580,34 @@ def review_speaker_pair(
     missing = [value for value, video in zip((video_a, video_b), videos) if video is None]
     if missing:
         raise typer.BadParameter(f"Unknown YouTube video ID(s): {', '.join(missing)}")
-    observations = [database.get_latest_speaker_observation_for_video(video.id) for video in videos]
+    requested_fingerprints = (
+        observation_fingerprint_a,
+        observation_fingerprint_b,
+    )
+    if any(requested_fingerprints) and not all(requested_fingerprints):
+        raise typer.BadParameter(
+            "automatic review requires both selected observation fingerprints"
+        )
+    observations = (
+        [
+            database.get_speaker_observation_by_fingerprint(fingerprint)
+            for fingerprint in requested_fingerprints
+        ]
+        if all(requested_fingerprints)
+        else [
+            database.get_latest_speaker_observation_for_video(video.id)
+            for video in videos
+        ]
+    )
     if observations[0] is None or observations[1] is None:
         raise typer.BadParameter("Both videos require immutable speaker observations")
+    if all(requested_fingerprints) and any(
+        observation.video_id != video.id
+        for observation, video in zip(observations, videos)
+    ):
+        raise typer.BadParameter(
+            "selected observation fingerprint does not belong to its video"
+        )
     verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
     audio_paths = [
         resolve_normalized_audio_path(
@@ -1567,6 +1625,19 @@ def review_speaker_pair(
         )
         if selection_manifest is not None and not isinstance(selection_manifest, dict):
             raise ValueError("selection manifest must be a JSON object")
+        if all(requested_fingerprints):
+            selected = (
+                selection_manifest.get("selected_observation_fingerprints")
+                if selection_manifest is not None
+                else None
+            )
+            if selected != {
+                "a": observation_fingerprint_a,
+                "b": observation_fingerprint_b,
+            }:
+                raise ValueError(
+                    "selection manifest does not match selected observations"
+                )
         draft = create_review_draft(
             observation_a=observations[0],
             observation_b=observations[1],
@@ -3746,6 +3817,12 @@ def review_next_speaker_pair(
         prepare_only=prepare_only,
         base_dir=base_dir,
         selection_manifest_json=json.dumps(selection.manifest, sort_keys=True),
+        observation_fingerprint_a=(
+            selection.observation_a.input_fingerprint
+        ),
+        observation_fingerprint_b=(
+            selection.observation_b.input_fingerprint
+        ),
     )
 
 

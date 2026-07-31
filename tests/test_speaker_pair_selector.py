@@ -55,6 +55,17 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             "reviewed_same_profile_nomination",
             selected.manifest["selection_objective"],
         )
+        self.assertEqual(
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+            set(
+                selected.manifest[
+                    "selected_observation_fingerprints"
+                ].values()
+            ),
+        )
 
     def test_profile_growth_prefers_profile_frontier_without_reconfirming_members(
         self,

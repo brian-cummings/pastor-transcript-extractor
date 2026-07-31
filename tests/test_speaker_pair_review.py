@@ -18,6 +18,7 @@ from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
     PairJudgment,
     ReviewEvidenceMode,
+    audit_review_selection_artifacts,
     create_review_draft,
     prepare_review_observation,
     submit_review,
@@ -256,6 +257,62 @@ class SpeakerPairReviewTests(unittest.TestCase):
             automatic.payload["selection_manifest"],
             resumed.payload["selection_manifest"],
         )
+
+    def test_selection_audit_detects_legacy_observation_substitution(self):
+        audit_root = self.root / "selection-audit"
+        create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=audit_root,
+            selection_manifest={
+                "selection_origin": "automatic",
+                "selection_goal": "profile-growth",
+                "profile_growth_components": [
+                    ["observation-a"],
+                    ["selected-but-substituted"],
+                ],
+            },
+        )
+
+        audit = audit_review_selection_artifacts(audit_root)
+
+        self.assertEqual(1, audit.legacy_checked_count)
+        self.assertEqual(1, len(audit.issues))
+        self.assertEqual(
+            "legacy_profile_growth_pair_mismatch",
+            audit.issues[0].reason_code,
+        )
+
+    def test_selection_audit_verifies_current_exact_fingerprints(self):
+        audit_root = self.root / "exact-selection-audit"
+        create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=audit_root,
+            selection_manifest={
+                "selection_origin": "automatic",
+                "selection_goal": "profile-growth",
+                "selected_observation_fingerprints": {
+                    "a": "observation-a",
+                    "b": "observation-b",
+                },
+            },
+        )
+
+        audit = audit_review_selection_artifacts(audit_root)
+
+        self.assertEqual(1, audit.exact_verified_count)
+        self.assertEqual((), audit.issues)
 
     def test_majority_silence_uses_deterministic_replacement_spans(self):
         primary_starts = {
@@ -569,12 +626,94 @@ class SpeakerPairReviewTests(unittest.TestCase):
                 prepare_only=False,
                 base_dir=self.root,
                 selection_manifest_json=None,
+                observation_fingerprint_a=None,
+                observation_fingerprint_b=None,
             )
 
         confirm.assert_called_once_with(
             "Freeze this exact-span binary judgment as an approved acoustic fixture?",
             default=True,
         )
+
+    def test_automatic_review_uses_exact_selected_observations(self):
+        exact_a = replace(self.observation_a, video_id=101)
+        exact_b = replace(self.observation_b, video_id=202)
+        stale_a = replace(
+            self.observation_a,
+            id=99,
+            video_id=101,
+            input_fingerprint="newer-but-not-selected",
+        )
+        videos = {
+            "video-a": SimpleNamespace(id=101),
+            "video-b": SimpleNamespace(id=202),
+        }
+        exact = {
+            exact_a.input_fingerprint: exact_a,
+            exact_b.input_fingerprint: exact_b,
+        }
+        database = SimpleNamespace(
+            get_video_by_youtube_id=lambda value: videos.get(value),
+            get_speaker_observation_by_fingerprint=lambda value: exact.get(
+                value
+            ),
+            get_latest_speaker_observation_for_video=lambda _video_id: stale_a,
+        )
+        draft = SimpleNamespace(
+            packet_path=self.evaluation_root / "drafts" / "pair.html",
+            payload={
+                "pair_id": "pair",
+                "review_evidence_mode": "audio_plus_visual",
+            },
+        )
+        manifest = {
+            "selection_origin": "automatic",
+            "selection_goal": "profile-growth",
+            "selected_observation_fingerprints": {
+                "a": exact_a.input_fingerprint,
+                "b": exact_b.input_fingerprint,
+            },
+        }
+        with (
+            patch(
+                "pastor_transcript_extractor.cli.build_paths",
+                return_value=SimpleNamespace(
+                    database=self.root / "database.sqlite3"
+                ),
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.Path.exists",
+                return_value=True,
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.Database",
+                return_value=database,
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.resolve_normalized_audio_path",
+                return_value=self.root / "audio.wav",
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.create_review_draft",
+                return_value=draft,
+            ) as create,
+        ):
+            review_speaker_pair(
+                "video-a",
+                "video-b",
+                reviewer="reviewer-1",
+                evaluation_root=self.evaluation_root,
+                cache_dir=self.root / "cache",
+                open_packet=False,
+                prepare_only=True,
+                base_dir=self.root,
+                selection_manifest_json=json.dumps(manifest),
+                observation_fingerprint_a=exact_a.input_fingerprint,
+                observation_fingerprint_b=exact_b.input_fingerprint,
+            )
+
+        self.assertIs(exact_a, create.call_args.kwargs["observation_a"])
+        self.assertIs(exact_b, create.call_args.kwargs["observation_b"])
 
 
 if __name__ == "__main__":

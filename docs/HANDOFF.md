@@ -270,6 +270,22 @@ backward-compatible as audio-only evidence. The observations themselves remain
 reusable in other identity comparisons; only an exact visually reviewed pair
 is excluded from later blind evaluation.
 
+Automatic review handoff carries both selected immutable observation
+fingerprints into packet preparation and records them in the selection
+manifest. Packet creation verifies that each fingerprint still belongs to its
+selected video and refuses substitution by a different latest observation.
+Inspect historical and current automatic drafts with:
+
+```bash
+pte identity audit-speaker-review-selection
+```
+
+The audit is read-only. Current manifests are checked against their exact
+selected pair; compatible legacy profile-growth manifests are checked by
+requiring both reviewed fingerprints to appear in their recorded target
+components. Older manifests without enough provenance are reported as
+unverifiable rather than guessed.
+
 Run `sync-reviewed-speaker-evidence` after a review session to materialize all
 approved pair judgments into anonymous profiles and exact different-speaker
 constraints. There is no separate single-observation grouping review: profile
