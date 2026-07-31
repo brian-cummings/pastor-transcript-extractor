@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -204,6 +206,102 @@ class ChurchDatabaseImportTests(unittest.TestCase):
             )
             self.assertEqual(2, len(imported_source_ids(database)))
             self.assertEqual(3, len(database.list_sources()))
+
+    def test_legacy_snapshot_payload_matches_current_fingerprint_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            church_path = self._church_database(root)
+            database = self._app_database(root)
+            pastor = database.get_pastor_by_slug("existing")
+            source = database.get_source_by_url("https://www.youtube.com/@existing")
+            self.assertIsNotNone(pastor)
+            self.assertIsNotNone(source)
+            legacy_fingerprint_payload = {
+                "channel_key": "youtube:channel:UCaaaaaaaaaaaaaaaaaaaaaa",
+                "church_name": "Existing Church",
+                "church_source_url": "https://directory.test/church/1",
+                "pastor_name": "Existing Pastor",
+            }
+            legacy_fingerprint = hashlib.sha256(
+                json.dumps(
+                    legacy_fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            legacy_payload = {
+                "church_name": "Existing Church",
+                "church_source_url": "https://directory.test/church/1",
+                "discovered_channel_url": (
+                    "https://www.youtube.com/@existing/featured"
+                ),
+                "channel_url": (
+                    "https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa"
+                ),
+                "channel_id": "UCaaaaaaaaaaaaaaaaaaaaaa",
+                "channel_key": "youtube:channel:UCaaaaaaaaaaaaaaaaaaaaaa",
+                "channel_resolved_at": "2026-07-19T00:00:00Z",
+                "channel_resolver_version": "test-resolver-v1",
+                "external_record_id": "1",
+                "external_updated_at": "2026-07-19T00:00:00Z",
+                "importer_version": "church_database_import_v2",
+                "pastor_name": "Existing Pastor",
+            }
+            with database.connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO source_import_refs (
+                        source_id, pastor_id, provider, external_entity_key,
+                        external_record_id, imported_fingerprint,
+                        import_payload_json, external_updated_at, imported_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        source.id,
+                        pastor.id,
+                        "church-youtube-finder",
+                        "church-source-url:https://directory.test/church/1",
+                        "1",
+                        legacy_fingerprint,
+                        json.dumps(legacy_payload, sort_keys=True, separators=(",", ":")),
+                        "2026-07-19T00:00:00Z",
+                        "2026-07-20T00:00:00Z",
+                    ),
+                )
+            database.initialize()
+
+            first = import_church_sources(database, church_path, dry_run=False)
+            replay = import_church_sources(database, church_path, dry_run=False)
+
+            self.assertEqual({"created": 1, "unchanged": 1}, first.counts)
+            self.assertEqual({"unchanged": 2}, replay.counts)
+            with database.connect() as connection:
+                legacy_ref = connection.execute(
+                    """
+                    SELECT id, organization_id FROM organization_external_refs
+                    WHERE provider = ? AND external_entity_key = ?
+                    """,
+                    (
+                        "church-youtube-finder",
+                        "church-source-url:https://directory.test/church/1",
+                    ),
+                ).fetchone()
+                snapshot_count = connection.execute(
+                    """
+                    SELECT COUNT(*) FROM external_record_snapshots
+                    WHERE organization_external_ref_id = ?
+                    """,
+                    (legacy_ref["id"],),
+                ).fetchone()[0]
+                claim_count = connection.execute(
+                    """
+                    SELECT COUNT(*) FROM organization_affiliation_claims
+                    WHERE organization_id = ?
+                    """,
+                    (legacy_ref["organization_id"],),
+                ).fetchone()[0]
+            self.assertEqual(1, snapshot_count)
+            self.assertEqual(1, claim_count)
 
     def test_changed_external_pastor_name_appends_evidence_without_creating_person(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

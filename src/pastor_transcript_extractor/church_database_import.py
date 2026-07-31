@@ -15,6 +15,18 @@ from pastor_transcript_extractor.storage import Database
 
 IMPORT_PROVIDER = "church-youtube-finder"
 IMPORTER_VERSION = "church_database_import_v2"
+_FINGERPRINT_FIELDS = (
+    "channel_key",
+    "channel_resolved_at",
+    "channel_resolver_version",
+    "channel_url",
+    "church_name",
+    "church_source_url",
+    "discovered_channel_url",
+    "external_record_id",
+    "external_updated_at",
+    "pastor_name",
+)
 
 
 class ChurchDatabaseImportError(ValueError):
@@ -194,7 +206,7 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
                 f"{prior_key}, {external_key}"
             )
         seen_channels[channel_key] = external_key
-        fingerprint_payload = {
+        fingerprint_payload: dict[str, object] = {
             "channel_key": channel_key,
             "channel_resolved_at": (
                 str(row["youtube_channel_resolved_at"])
@@ -212,7 +224,7 @@ def load_complete_church_sources(path: Path) -> tuple[ChurchSourceRecord, ...]:
             ),
             "pastor_name": str(row["pastor_name"] or "").strip(),
         }
-        fingerprint = _canonical_hash(fingerprint_payload)
+        fingerprint = _imported_fingerprint(fingerprint_payload)
         records.append(
             ChurchSourceRecord(
                 external_record_id=str(row["id"]),
@@ -295,13 +307,11 @@ def _import_record(
         (IMPORT_PROVIDER, record.external_entity_key),
     ).fetchone()
     if existing_ref is not None:
-        existing_snapshot = connection.execute(
-            """
-            SELECT id FROM external_record_snapshots
-            WHERE organization_external_ref_id = ? AND imported_fingerprint = ?
-            """,
-            (int(existing_ref["ref_id"]), record.fingerprint),
-        ).fetchone()
+        existing_snapshot = _matching_snapshot(
+            connection,
+            organization_external_ref_id=int(existing_ref["ref_id"]),
+            record=record,
+        )
         if existing_snapshot is not None:
             return ChurchImportItem(
                 record,
@@ -312,7 +322,7 @@ def _import_record(
                     else None
                 ),
                 str(existing_ref["slug"]),
-                "external key and imported fingerprint match",
+                "external key and imported record content match",
             )
         channel_keys = {
             str(value)
@@ -540,6 +550,38 @@ def _insert_snapshot(
     return int(row["id"])
 
 
+def _matching_snapshot(
+    connection: sqlite3.Connection,
+    *,
+    organization_external_ref_id: int,
+    record: ChurchSourceRecord,
+) -> sqlite3.Row | None:
+    snapshots = connection.execute(
+        """
+        SELECT id, imported_fingerprint, import_payload_json
+        FROM external_record_snapshots
+        WHERE organization_external_ref_id = ?
+        ORDER BY id DESC
+        """,
+        (organization_external_ref_id,),
+    ).fetchall()
+    for snapshot in snapshots:
+        if str(snapshot["imported_fingerprint"]) == record.fingerprint:
+            return snapshot
+        try:
+            payload = json.loads(str(snapshot["import_payload_json"]))
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(payload, dict) or any(
+            field not in payload for field in _FINGERPRINT_FIELDS
+        ):
+            continue
+        projected_fingerprint = _imported_fingerprint(payload)
+        if projected_fingerprint == record.fingerprint:
+            return snapshot
+    return None
+
+
 def _insert_affiliation_claim(
     connection: sqlite3.Connection,
     *,
@@ -661,3 +703,7 @@ def _source_matches_record(row: sqlite3.Row, record: ChurchSourceRecord) -> bool
 def _canonical_hash(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _imported_fingerprint(payload: dict[str, object]) -> str:
+    return _canonical_hash({field: payload[field] for field in _FINGERPRINT_FIELDS})
