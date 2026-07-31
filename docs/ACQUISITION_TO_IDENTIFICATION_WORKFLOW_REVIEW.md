@@ -2,50 +2,60 @@
 
 ## Executive summary
 
-> Implementation update: the critical targetless-observation break identified in
-> this review has since been fixed in the current workspace. Valid sermon
-> extractions now create neutral speaker observations even when no pastor is
-> preselected. The remaining production association and workflow-state findings
-> still apply. A strict `pte identity association-audit` command now also writes
-> a versioned coverage ledger and fails when an extraction or current observation
-> is not accounted for.
+> Status update (2026-07-30): the original acquisition-to-identity data break is
+> resolved. Valid targetless sermon extractions create neutral speaker
+> observations; existing extractions can be backfilled; the resolver selects the
+> observation matching the current extraction window; and
+> `pte identity association-audit` proves that every extraction is associated,
+> evaluated, explicitly blocked, or content-terminal. The current dataset audit
+> accounts for all 468 extractions with zero invalid artifacts.
 
 The repository has strong individual components for YouTube acquisition, transcript
 creation, sermon localization, evidence preservation, and conservative speaker
-comparison. It does **not yet have one continuous production workflow** that takes a
-newly acquired video through sermon detection, speaker identification, and durable
-profile association.
+comparison. It now has a complete, auditable shadow path from targetless extraction
+through profile evaluation and conservative new-profile discovery:
 
-The primary workflow break is structural:
+1. accepted targetless extractions create identity-neutral observations;
+2. association uses five distributed, transcript-grounded 12-second sermon spans;
+3. a strict audit detects missing, stale, or invalid association coverage;
+4. existing eligible profiles are evaluated with multi-exemplar matching;
+5. unassigned observations can form complete-link discovery components;
+6. verified components can be promoted into reversible provisional profiles;
+7. later independent multi-exemplar proposals can confirm those profiles.
 
-1. `import-church-db` creates organizations, organization-owned sources, and
-   unreviewed pastor affiliation claims, but intentionally does not create pastors,
-   configured speaker profiles, or source target policies.
-2. `sync-imported-sources` discovers, transcribes, and optionally extracts videos
-   from those sources with `video.pastor_id = NULL`.
-3. Extraction can localize the sermon without a pastor, but
-   `_record_identity_shadow_safely` returns immediately when there is no pastor.
-4. No `speaker_observation`, neutral name claim, or identity assessment is therefore
-   created for the preferred bulk-import workflow.
-5. Even where speaker observations do exist, acoustic association is a separate,
-   manually invoked, non-mutating shadow experiment. Durable profile membership
-   still comes only from reviewed pair evidence plus another explicit synchronization
-   command.
+The remaining break is operational rather than structural. These stages are
+separate commands, the acoustic policy is still `experimental_candidate`, registry
+mutation requires an explicit `--apply`, and most comparisons conservatively
+abstain. The system therefore reaches and accounts for every eligible video, but it
+does not yet run acquisition → extraction → association → confirmation as one
+approved unattended production service.
 
-As a result, the system can currently do either of these well:
+### Resolution status
 
-- acquire and classify organization-owned recordings without identifying the
-  speaker; or
-- evaluate speaker identity for videos that were already assigned a target pastor.
+| Original problem | Current status |
+|---|---|
+| Targetless imported extractions produced no observation | **Resolved** |
+| Existing extractions could silently miss identity processing | **Resolved** by backfill plus strict association audit |
+| The wrong historical observation could be evaluated | **Resolved** by extraction-window resolution |
+| Acoustic samples could contain silence or non-sermon material | **Resolved** by transcript-grounded span selection |
+| Every profile had to originate in human pair review | **Resolved for provisional profiles** through complete-link discovery and guarded promotion |
+| New observations could not reinforce provisional profiles | **Resolved as an explicit plan/apply confirmation path** |
+| Automatic approved registry association | **Open**; policy remains experimental |
+| One continuous production orchestrator and exception queue | **Open** |
+| Independent stage state and truthful delivery/export state | **Open** |
 
-It cannot yet start with an organization-owned video and independently determine
-which known or new speaker profile delivered the sermon.
+The latest validation snapshot supports those statuses:
 
-The recommended direction is to make sermon-speaker observations fully
-identity-neutral, give each processing concern its own state, and introduce a
-versioned association service that can automatically attach only high-confidence
-matches while routing the small ambiguous remainder to a single actionable review
-queue.
+- association coverage: 468 extractions, 468 accounted, 0 unaccounted, and
+  0 invalid artifacts;
+- coverage states: 25 associated, 38 explicitly blocked, 186 content-terminal,
+  and 219 evaluated;
+- corrected profile discovery: 210 usable signatures, 2 unblocked provisional
+  components, and 9 blocked components;
+- promoted profiles: 2 reversible three-recording seeds;
+- first post-promotion association pass: 174 insufficient-evidence outcomes,
+  38 non-matches, 1 proposal to an existing profile, and 0 independent
+  confirmations for the new profiles.
 
 ## Scope and method
 
@@ -63,7 +73,8 @@ design. The principal entry points and modules reviewed were:
   `identity.py`, `identity_attribution.py`, `speaker_registry.py`,
   `speaker_pair_selector.py`, `speaker_pair_review.py`,
   `reviewed_speaker_evidence.py`, `speaker_profile_status.py`, and
-  `speaker_shadow_association.py`;
+  `speaker_shadow_association.py`, `speaker_profile_discovery.py`,
+  `speaker_profile_promotion.py`, and `speaker_association_audit.py`;
 - persistence and output:
   `storage.py`, `source_ownership.py`, `artifact_namespace.py`, and `exporting.py`;
 - the workflow descriptions in `README.md`, `docs/V1_SPEC.md`, and
@@ -79,10 +90,14 @@ No corpus reclassification or evaluation job was run.
 | Discover | `sync-imported-sources` → `discover_sources_service` | Globally unique video row and flat-playlist metadata snapshot | Yes |
 | Acquire transcript | Caption fetch, then local ASR fallback | Caption or local-ASR transcript artifact | Yes |
 | Detect sermon | Optional `--extract` | Segments, proposed sermon window, classification, disposition | Yes |
-| Create speaker observation | Side effect of extraction | Observation, name claims, shadow assessment | **No for imported videos without a target pastor** |
+| Create speaker observation | Side effect of extraction or `identity backfill` | Targetless observation, neutral claims, shadow assessment | Yes |
+| Prove identity coverage | `identity association-audit` | Content-addressed coverage ledger with exact reason per extraction | Manual command; strict and complete |
 | Build reviewed profiles | `review-next-speaker-pair`, then `sync-reviewed-speaker-evidence` | Reviewed anonymous profile membership and name evidence | Manual, multi-command |
-| Match a new observation | `shadow-associate-speakers` | Non-mutating proposal artifact | Manual and shadow-only |
-| Associate to profile | No production automatic association path | Append-only membership event | Human-reviewed evidence only |
+| Discover new profiles | `shadow-discover-profiles` | Complete-link provisional component proposals | Manual and shadow-only |
+| Promote discovered profiles | `promote-discovered-profiles --apply` | Reversible provisional profile plus seed memberships and provenance | Guarded explicit mutation |
+| Match a new observation | `shadow-associate-speakers` | Speech-grounded multi-exemplar proposal artifact | Manual and shadow-only |
+| Confirm provisional growth | `confirm-discovered-profiles --apply` | Independent append-only confirmation membership | Guarded explicit mutation |
+| Associate under approved policy | No approved unattended production path | Reversible membership event | Not yet automatic |
 | Produce final sermon | Pastor review Markdown | Review-oriented aggregate file | Does not approve a sermon or establish speaker identity |
 
 There is also a legacy `pte run URL --pastor SLUG` path. It assumes the requested
@@ -93,37 +108,40 @@ identity is supplied first rather than discovered from the recording.
 
 ## Findings
 
-### 1. Critical: imported acquisition bypasses speaker observation creation
+### 1. Resolved: imported acquisition bypassed speaker observation creation
 
 `church_database_import._import_record` inserts imported sources with
 `pastor_id = NULL`. That is a deliberate and sensible ownership decision: the
 publisher is not necessarily the speaker.
 
-The downstream identity implementation, however, still requires the old target
+The downstream identity implementation originally still required the old target
 pastor:
 
 - `extraction.extract_video` allows a null pastor and successfully creates a sermon
   proposal;
-- `_record_identity_shadow_safely` exits unless the video, pastor, and extraction
+- `_record_identity_shadow_safely` exited unless the video, pastor, and extraction
   result all have integer IDs;
-- `speaker_registry.persist_neutral_speaker_evidence` also requires a `Pastor` and
-  creates or retrieves that pastor's configured profile as part of supposedly
+- `speaker_registry.persist_neutral_speaker_evidence` also required a `Pastor` and
+  created or retrieved that pastor's configured profile as part of supposedly
   neutral evidence persistence.
 
-The result is counterintuitive: organization-neutral acquisition works, and
-speaker-neutral schema exists, but neutral observations are not actually emitted
-unless a target identity has already been selected.
-
-**Impact:** the most scalable intake command never feeds the identity backlog.
-
-**Recommendation:** split observation creation from target projection.
-`persist_speaker_observation` should require only the video, accepted/reviewable
-sermon window, transcript, and media. Target-specific attribution should be a
-separate optional projection. Imported pastor affiliation claims may contribute
-name candidates and organization context, but must not be required to create the
+This break has been removed. Observation persistence accepts `pastor=None`,
+extraction emits neutral observations for targetless videos, and `identity
+backfill` materializes the same contract for historical extractions without
+reclassification. Observation lookup now binds evaluation to the current
+extraction result and sermon window rather than selecting the numerically latest
 observation.
 
-### 2. Critical: profile matching has no production mutation path
+The strict coverage audit closes the remaining silent-failure mode. It distinguishes
+associated, evaluated, blocked, and content-terminal cases; rejects stale
+association versions and invalid artifacts; and reports unaccounted extractions as
+failures. The validated corpus reached 468 of 468 accounted extractions.
+
+**Remaining recommendation:** invoke backfill/coverage reconciliation as part of
+normal orchestration so completeness is continuously maintained rather than
+verified by a separate operator command.
+
+### 2. Partially resolved: profile matching lacks an approved automatic mutation path
 
 The identity subsystem is intentionally conservative:
 
@@ -140,16 +158,23 @@ The identity subsystem is intentionally conservative:
   an independent recording as provisional-profile confirmation;
 - acoustic-driven registry mutation remains unapproved.
 
-These are good safety properties for model development, but they mean the user goal
-cannot be met by orchestration alone. There is no command or service that evaluates
-a new observation against eligible profiles and records a reversible production
-association under an approved policy.
+The original “profiles cannot emerge” dead end is now resolved at the provisional
+layer. Discovery compares unassigned observations with one another, requires a
+complete-link same-speaker component across at least three recordings, and blocks
+unresolved edges, differences, overlaps, and conflicting attribution. Promotion
+creates a stable `provisional` profile with append-only seed membership and exact
+artifact provenance. Subsequent shadow association includes these profiles, and a
+new independent recording can confirm one through a separate guarded command.
 
-**Impact:** every durable association ultimately depends on human-reviewed pair
-work, and the number of comparisons grows with the corpus.
+The remaining limitation is policy approval and orchestration. The pinned acoustic
+policy is still experimental, so matching and discovery do not authorize unattended
+registry mutation. Promotion and confirmation intentionally require `--apply`.
+High abstention also limits growth: in the first promoted run, neither provisional
+profile received an independent confirmation.
 
-**Recommendation:** add a versioned `associate_observation` production service with
-three outcomes:
+**Remaining recommendation:** turn the implemented primitives into a versioned
+`associate_observation` production service, after policy validation, with three
+outcomes:
 
 - `associated`: attach to exactly one eligible reviewed profile when multiple
   independent exemplars agree and all conflict guards pass;
@@ -158,9 +183,9 @@ three outcomes:
 - `review_required`: emit one compact review task with the best candidates and the
   specific blocking evidence.
 
-Keep merges, naming, contradictory attribution, and low-margin matches manual. Make
-all automatic membership events append-only and reversible, with model, policy,
-exemplar, audio-span, and score provenance.
+Keep merges, naming, contradictory attribution, and low-margin matches manual.
+Reuse the implemented append-only membership, discovery provenance, exact
+speech-span evidence, model/policy fingerprinting, and confirmation ledger.
 
 > Implementation update: the controlled bootstrap loop now exists.
 > `shadow-discover-profiles` builds a bounded nearest-neighbor acoustic graph
@@ -374,19 +399,23 @@ never use it as sufficient identity evidence.
 
 ### 12. Medium: human identity work is fragmented across several commands
 
-The documented loop is:
+The original reviewed-evidence loop remains, and the safe automatic-candidate
+primitives add explicit stages:
 
 1. inspect `profile-status`;
 2. run `review-next-speaker-pair`;
 3. repeat pair review;
 4. run `sync-reviewed-speaker-evidence`;
-5. inspect status again;
-6. run shadow association separately.
+5. run `shadow-discover-profiles`;
+6. plan and apply `promote-discovered-profiles`;
+7. run `shadow-associate-speakers`;
+8. plan and apply `confirm-discovered-profiles`;
+9. run `association-audit`.
 
 The review itself can require audio preparation, visual confirmation, observation
 qualification, and a binary pair judgment. The synchronization step is easy to
-forget, so a completed human judgment may not affect profile state until another
-command is run.
+forget, and the newer commands are safe but not yet orchestrated. A completed stage
+may therefore wait indefinitely for the operator to invoke its successor.
 
 **Recommendation:** provide one `pte work-next` queue across content, observation,
 identity, and affiliation exceptions. When a review is submitted, materialize its
@@ -394,19 +423,18 @@ append-only consequences transactionally in the same operation. Background or
 batch recomputation may remain separate internally, but should not require an
 operator to remember a second command.
 
-### 13. Medium: pairwise review is a development/evaluation workflow, not a scalable intake workflow
+### 13. Partially resolved: pairwise review is not a scalable intake workflow
 
-The speaker-pair subsystem is careful and auditable, but its fixture balancing,
-evaluation partitions, review packets, and explicit same/different judgments are
-optimized for model validation. Applying that loop to every new production video
-does not scale.
+The speaker-pair subsystem remains optimized for model validation, but routine
+intake no longer requires exhaustive human pair review. Bounded nearest-neighbor
+discovery and multi-exemplar profile association now reuse cached embeddings and
+the pinned pair policy. Both conservatively abstain and emit versioned artifacts.
 
-**Recommendation:** keep pair review for calibration, edge cases, and profile
-bootstrapping. For routine intake, compare a new observation to a bounded set of
-candidate profiles selected by reviewed acoustic centroids/exemplars and safe
-organization/time context. Ask the human one direct question only when necessary:
-“Is this speaker profile A, profile B, or neither?” Record the answer as the same
-append-only evidence primitives.
+**Remaining recommendation:** keep pair review for calibration and edge cases,
+approve the bounded association policy only after validation, and replace
+low-information abstention with one compact candidate-profile review task:
+“profile A, profile B, or neither.” Record the answer through the same append-only
+evidence primitives.
 
 ### 14. Medium: processing is incremental by artifact presence, not by input fingerprint
 
@@ -423,10 +451,16 @@ Examples:
   transcript policy changes;
 - review files overwrite a fixed `review.md` and `review.json`.
 
-**Recommendation:** define an input fingerprint for every stage. A stage is current
-only when its output fingerprint matches its input artifact hashes, tool/model
-versions, and policy version. Keep immutable run records and a pointer to the
-effective result.
+Speaker association is now a positive example: discovery and association artifacts
+bind exact observation fingerprints, extraction-window observations,
+transcript-grounding versions, span hashes, model fingerprints, and policy
+artifacts. The coverage audit treats earlier association contracts as stale rather
+than silently accepting them.
+
+**Recommendation:** extend this identity-stage contract to every stage. A stage is
+current only when its output fingerprint matches its input artifact hashes,
+tool/model versions, and policy version. Keep immutable run records and a pointer
+to the effective result.
 
 ### 15. Medium: failures and dead ends are not presented as an actionable queue
 
@@ -444,6 +478,11 @@ one broad video status. It does not summarize:
 
 Some discovery failures exist only in console output because sources have no
 discovery-attempt ledger or status.
+
+`identity association-audit` now solves this problem for the extraction-to-profile
+slice: it reports exact terminal coverage and missing-attempt reasons. It does not
+yet cover acquisition, transcript, content review, delivery, or cross-stage next
+actions.
 
 **Recommendation:** add `pte queue status` and `pte queue retry` backed by stage
 attempts. Show counts, oldest age, reason groups, and exact next action. A scheduled
@@ -509,11 +548,17 @@ The recommended changes should preserve these existing strengths:
 - append-only reviewed speaker membership, name, redirect, and difference events;
 - exact audio span hashing and model/policy provenance;
 - abstention-first acoustic evaluation;
+- targetless speaker observations and extraction-window resolution;
+- strict, content-addressed association coverage audits;
+- transcript-grounded acoustic sampling shared by discovery and association;
+- bounded complete-link provisional profile discovery;
+- reversible discovery promotion and independent confirmation provenance;
 - independent content and identity concepts;
 - archive verification and disk-reserve admission.
 
-The central opportunity is not to replace these components, but to connect them
-with identity-neutral observations and explicit stage orchestration.
+The central opportunity is no longer to invent the missing identity components.
+It is to orchestrate the implemented components, approve only validated policy
+transitions, and expose abstentions as compact actionable work.
 
 ## Recommended target workflow
 
@@ -563,14 +608,21 @@ recompute association state, and continue the recording automatically.
 This phase improves correctness and operability without enabling automatic identity
 mutation.
 
-### Phase 1: close the imported-workflow break
+### Phase 1: close the imported-workflow break — substantially complete
 
-1. Refactor neutral observation and claim persistence to accept `pastor=None`.
-2. Create observations for every accepted or reviewable sermon window.
-3. Backfill observations for existing imported extractions without reclassifying.
-4. Create reconciliation tasks from imported affiliation claims and grounded name
-   claims.
-5. Ensure organization/source ownership remains context, never speaker proof.
+Completed:
+
+1. Neutral observation and claim persistence accepts `pastor=None`.
+2. Accepted targetless sermon extractions create observations.
+3. Historical extractions can be backfilled without reclassification.
+4. Extraction-window resolution prevents stale-observation evaluation.
+5. Strict audit proves every extraction has an explicit identity terminal state.
+6. Organization/source ownership remains context, never speaker proof.
+
+Remaining:
+
+1. Create reconciliation tasks from imported affiliation and grounded name claims.
+2. Run observation creation, association, and audit automatically after extraction.
 
 After this phase, every eligible imported sermon reaches the identity backlog.
 
@@ -584,15 +636,25 @@ After this phase, every eligible imported sermon reaches the identity backlog.
 
 ### Phase 3: productionize conservative association
 
+Implemented foundations:
+
+1. Speech-grounded multi-exemplar profile scoring.
+2. Bounded candidate retrieval and complete-link anonymous-component discovery.
+3. Reversible provisional promotion with seed provenance.
+4. Independent-recording confirmation with append-only association provenance.
+5. Strict coverage and stale-artifact detection.
+
+Remaining:
+
 1. Freeze and approve an acoustic model and decision policy using the existing
    evaluation framework.
-2. Add profile candidate retrieval and multi-exemplar scoring.
-3. Validate the implemented shadow anonymous-component discovery against
+2. Validate shadow anonymous-component discovery against
    reviewed outcomes and calibrated observation-consistency scores.
-4. Validate the implemented reversible provisional promotion and independent
+3. Validate reversible provisional promotion and independent
    confirmation loop against reviewed outcomes.
-5. Approve automatic membership only for unique, high-confidence,
+4. Approve automatic membership only for unique, high-confidence,
    conflict-free matches after the model/policy gate passes.
+5. Integrate the implemented stages into per-observation orchestration.
 6. Keep new-profile creation more conservative than profile growth.
 7. Keep naming, merging, and conflicting evidence manual.
 8. Measure automatic coverage, error rate, abstention rate, and later-overturned
@@ -631,13 +693,15 @@ The end-to-end workflow should be considered complete when:
 
 ## Bottom line
 
-The repository is closer to the goal at the component level than it appears: the
-sermon detector, evidence model, reviewed profile registry, and acoustic evaluation
-foundation already exist. The limiting factor is the orchestration contract.
+The largest structural gap identified by this review is closed: targetless sermons
+now reach a complete, auditable identity funnel, and new profiles can emerge
+conservatively without exhaustive human pair construction. The corpus audit proves
+that no extraction currently disappears between extraction and association.
 
-The first change should not be a more aggressive recognition model. It should be
-to create an identity-neutral speaker observation for every eligible imported
-sermon and to represent content, identity, and delivery as separate states. Once
-that data reliably reaches the identity pipeline, the existing shadow association
-work can be promoted—under an approved, reversible policy—from an experiment into
-the limited-intervention production path.
+The limiting factors are now policy maturity, abstention rate, and orchestration.
+The next highest-value change is not another identity data model. It is a
+per-observation coordinator that invokes the implemented association, discovery,
+promotion/confirmation, and audit contracts automatically while routing only
+content ambiguity, attribution conflict, and low-confidence identity cases to one
+human queue. Independent content, identity, and delivery state remains necessary
+so successful evaluation is not confused with approved delivery.
