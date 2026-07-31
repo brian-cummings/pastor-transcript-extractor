@@ -427,6 +427,14 @@ packet preparation silently substituted a newer observation from the same
 video, preserving the human judgment on the actual reviewed pair while
 preventing its inaccurate selection provenance from going unnoticed.
 
+Anonymous-profile attribution now has a compact reviewed fallback when the
+grounded extractor finds no usable name. `review-profile-attribution` presents
+representative profile-member videos at the sermon timestamps and accepts one
+human-entered name backed by a selected video. The result is an append-only
+manual claim, not a mutable profile label. A unique configured-name match links
+the pastor placeholder; absent or ambiguous matches remain explicit workflow
+states rather than implicit identity guesses.
+
 The reviewed-evidence and batch-profile loop still contains explicit stages:
 
 1. inspect `profile-status`;

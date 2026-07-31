@@ -601,6 +601,16 @@ observation for the same recording from silently replacing the nominated
 evidence. Audit current and legacy selection provenance without mutation with
 `pte identity audit-speaker-review-selection`.
 
+When grounded attribution leaves a reviewed voice profile unnamed, run
+`pte identity review-profile-attribution --reviewer REVIEWER_ID`. The command
+selects the largest unnamed canonical profile (or accepts `--profile-id`), opens
+an HTML packet with representative member videos at their sermon timestamps,
+and prompts for the backing video and speaker name. Approval creates and
+attaches an append-only manual attribution claim. An exact unique configured
+pastor-name match links its placeholder identity to the voice profile; unmatched
+names remain attributed but unlinked, and existing links are never merged from
+name similarity alone.
+
 ## Planning Docs
 
 - `docs/V1_SPEC.md`

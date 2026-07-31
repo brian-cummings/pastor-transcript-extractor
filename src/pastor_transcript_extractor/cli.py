@@ -176,6 +176,12 @@ from pastor_transcript_extractor.speaker_pair_selector import (
 from pastor_transcript_extractor.speaker_profile_status import (
     build_profile_pipeline_status,
 )
+from pastor_transcript_extractor.speaker_profile_attribution import (
+    apply_reviewed_profile_attribution,
+    get_profile_attribution_candidate,
+    list_unnamed_profile_attribution_candidates,
+    write_profile_attribution_packet,
+)
 from pastor_transcript_extractor.speaker_profile_discovery import (
     DiscoveryCandidate,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
@@ -1991,6 +1997,133 @@ def profile_status_command(
         "--base-dir BASE_DIR"
     )
     console.print("This report is read-only and does not create or mature profiles.")
+
+
+@identity_app.command(
+    "review-profile-attribution",
+    help="Present an unnamed profile's backing videos and record its reviewed name.",
+)
+def review_profile_attribution_command(
+    reviewer: str = typer.Option(..., help="Stable human reviewer identifier."),
+    profile_id: int | None = typer.Option(
+        None,
+        help="Exact canonical profile; default selects the largest unnamed profile.",
+    ),
+    representative_videos: int = typer.Option(
+        6,
+        min=1,
+        help="Maximum backing videos shown in the review packet.",
+    ),
+    open_packet: bool = typer.Option(
+        True,
+        "--open-packet/--no-open-packet",
+        help="Open the local HTML packet containing timestamped videos.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir, remember=True)
+    database = get_database(base_dir)
+    try:
+        if profile_id is None:
+            candidates = list_unnamed_profile_attribution_candidates(
+                database,
+                representative_limit=representative_videos,
+            )
+            if not candidates:
+                console.print("No unnamed profile has reviewable backing videos.")
+                return
+            candidate = candidates[0]
+            console.print(
+                f"Selected profile {candidate.profile_id}: "
+                f"members={candidate.member_count} "
+                f"unnamed_queue={len(candidates)}"
+            )
+        else:
+            candidate = get_profile_attribution_candidate(
+                database,
+                profile_id,
+                representative_limit=representative_videos,
+            )
+        packet_path = write_profile_attribution_packet(
+            candidate,
+            paths.logs
+            / "profile-attribution-reviews"
+            / f"profile-{candidate.profile_id}.html",
+        )
+    except (OSError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    table = Table(title=f"Profile {candidate.profile_id} backing videos")
+    table.add_column("#", justify="right")
+    table.add_column("Title")
+    table.add_column("Timestamped video")
+    for index, evidence in enumerate(candidate.evidence, start=1):
+        table.add_row(
+            str(index),
+            evidence.title,
+            youtube_timestamp_url(
+                evidence.video_url,
+                evidence.timestamp_seconds,
+            ),
+        )
+    console.print(table)
+    console.print(f"Prepared profile attribution packet: {packet_path}")
+    if open_packet:
+        webbrowser.open(packet_path.as_uri())
+    name = typer.prompt(
+        "Speaker name (leave blank to defer)",
+        default="",
+        show_default=False,
+    ).strip()
+    if not name:
+        console.print("Attribution deferred; no registry mutation occurred.")
+        return
+    evidence_number = typer.prompt(
+        "Backing video number",
+        default=1,
+        type=int,
+    )
+    if evidence_number < 1 or evidence_number > len(candidate.evidence):
+        raise typer.BadParameter("backing video number is outside the packet")
+    evidence = candidate.evidence[evidence_number - 1]
+    reason = typer.prompt(
+        "Evidence/reason",
+        default=(
+            "Visually identified in backing video "
+            f"{evidence.youtube_video_id} at "
+            f"{evidence.timestamp_seconds} seconds"
+        ),
+    ).strip()
+    if not typer.confirm(
+        f"Attach {name!r} to profile {candidate.profile_id}?",
+        default=False,
+    ):
+        console.print("Attribution cancelled; no registry mutation occurred.")
+        return
+    try:
+        result = apply_reviewed_profile_attribution(
+            database,
+            profile_id=candidate.profile_id,
+            observation_id=evidence.observation_id,
+            display_name=name,
+            reviewer=reviewer,
+            reason=reason,
+            packet_path=packet_path,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Attributed profile {candidate.profile_id}: "
+        f"name={result.normalized_name} claim={result.claim_id} "
+        f"link_status={result.link_status}"
+    )
+    if result.linked_pastor_slug is not None:
+        console.print(
+            f"Linked configured pastor: {result.linked_pastor_slug}"
+        )
 
 
 @identity_app.command(

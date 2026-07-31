@@ -203,6 +203,26 @@ The reported states mean:
 - `attribution-conflict`: conflicting names or a reviewed different-speaker
   constraint requires adjudication.
 
+For an `anonymous` or unnamed `provisional` profile whose metadata and spoken
+attribution did not produce a name, use the compact reviewed fallback:
+
+```bash
+pte identity review-profile-attribution \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The command selects the largest unnamed profile by default; `--profile-id`
+targets one explicitly. Its local HTML packet presents representative member
+videos at the stored sermon timestamps. The terminal prompt records which video
+backs the identification, the entered name, reviewer, and reason. Approval
+creates an immutable manual name claim plus an append-only profile attachment.
+If the normalized name uniquely matches a configured pastor and that identity
+is not already linked elsewhere, its placeholder redirects to the voice
+profile. An unmatched name remains attributed but unlinked. Multiple configured
+matches, an existing different identity link, or conflicting profile names do
+not merge automatically.
+
 The “next need” column and final action list describe how to mature each
 profile. They do not imply that every unreviewed registry observation is
 currently eligible for nomination: the pair selector separately rejects stale,
