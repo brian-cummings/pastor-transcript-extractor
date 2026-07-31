@@ -94,6 +94,8 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
+    load_discovery_observation_states,
+    load_discovery_resolution_pairs,
     write_identity_coordination_report,
 )
 from pastor_transcript_extractor.models import (
@@ -1699,6 +1701,37 @@ def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
     return payloads
 
 
+def _reviewed_observation_pairs(
+    database: Database,
+    evidence: ReviewedSpeakerEvidence,
+    *,
+    outcome: str,
+) -> set[tuple[int, int]]:
+    observation_ids_by_fingerprint = {
+        observation.input_fingerprint: observation.id
+        for observation in database.list_speaker_observations()
+    }
+    pairs: set[tuple[int, int]] = set()
+    for relation in evidence.pair_relations.values():
+        if relation.outcome != outcome or len(relation.fingerprints) != 2:
+            continue
+        fingerprints = sorted(relation.fingerprints)
+        if not all(
+            fingerprint in observation_ids_by_fingerprint
+            for fingerprint in fingerprints
+        ):
+            continue
+        pairs.add(
+            tuple(
+                sorted(
+                    observation_ids_by_fingerprint[fingerprint]
+                    for fingerprint in fingerprints
+                )
+            )
+        )
+    return pairs
+
+
 def _print_reviewed_evidence_summary(
     evidence: ReviewedSpeakerEvidence,
     result: ReviewedEvidenceSyncResult | None,
@@ -2042,6 +2075,10 @@ def shadow_discover_profiles_command(
         ),
         help="Pinned approved or experimental shadow decision policy.",
     ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Reviewed pair evidence used as explicit discovery constraints.",
+    ),
     cache_dir: Path = typer.Option(
         Path("evaluation/speaker-pairs/cache"),
         help="Ignored exact-span, embedding, and media-verification cache.",
@@ -2071,6 +2108,9 @@ def shadow_discover_profiles_command(
     )
     try:
         policy_spec = load_shadow_policy(policy_path)
+        reviewed_evidence = load_reviewed_speaker_evidence(
+            evaluation_root.expanduser().resolve()
+        )
         consistency_index = (
             load_consistency_score_index(
                 consistency_report.expanduser().resolve()
@@ -2315,8 +2355,26 @@ def shadow_discover_profiles_command(
         policy_spec=policy_spec,
         model_fingerprint=backend.spec.fingerprint,
         minimum_component_members=minimum_component_members,
-        reviewed_difference_pairs=(
-            database.list_effective_observation_difference_pairs()
+        reviewed_same_pairs=tuple(
+            sorted(
+                _reviewed_observation_pairs(
+                    database,
+                    reviewed_evidence,
+                    outcome="same_speaker",
+                )
+            )
+        ),
+        reviewed_difference_pairs=tuple(
+            sorted(
+                set(
+                    database.list_effective_observation_difference_pairs()
+                )
+                | _reviewed_observation_pairs(
+                    database,
+                    reviewed_evidence,
+                    outcome="different_speaker",
+                )
+            )
         ),
         consistency_report_sha256=(
             consistency_index.report_sha256
@@ -2565,6 +2623,10 @@ def coordinate_identity_command(
         readable=True,
         help="Optional discovery artifact to include in promotion planning.",
     ),
+    discovery_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+        help="Discovery artifacts used to avoid redundant batch work.",
+    ),
     model_path: Path = typer.Option(
         Path(
             "evaluation/speaker-pairs/models/"
@@ -2641,11 +2703,31 @@ def coordinate_identity_command(
             required_policy_sha256=policy_spec.artifact_sha256,
         )
 
+    effective_discovery_report = (
+        discovery_report.expanduser().resolve()
+        if discovery_report is not None
+        else None
+    )
+    if effective_discovery_report is None:
+        discovery_reports = list(
+            discovery_root.expanduser().resolve().glob("*/*.json")
+        )
+        if discovery_reports:
+            effective_discovery_report = max(
+                discovery_reports,
+                key=lambda path: (path.stat().st_mtime_ns, str(path)),
+            )
     try:
+        discovery_states = (
+            load_discovery_observation_states(effective_discovery_report)
+            if effective_discovery_report is not None
+            else {}
+        )
         audit_result = audit()
         preliminary = build_identity_coordination_report(
             audit_result.payload,
             youtube_video_id=youtube_video_id,
+            discovery_observation_states=discovery_states,
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -2717,6 +2799,7 @@ def coordinate_identity_command(
             candidate.observation_id
             for candidate in confirmation_plan.candidates
         ),
+        discovery_observation_states=discovery_states,
         promotion_summary=promotion_summary,
         execution_summary={
             "association_requested": execute_shadow,
@@ -2734,6 +2817,7 @@ def coordinate_identity_command(
         "Identity coordination: "
         f"extractions={counts['extractions']} "
         f"terminal={counts['terminal']} "
+        f"waiting={counts['waiting_for_evidence']} "
         f"action_required={counts['action_required']} "
         f"association_executed={executed_association}"
     )
@@ -2752,6 +2836,11 @@ def coordinate_identity_command(
         )
     )
     console.print(f"Wrote identity coordination report to {destination}")
+    if effective_discovery_report is not None:
+        console.print(
+            "Discovery coverage source: "
+            f"{effective_discovery_report}"
+        )
     console.print(
         "Coordinator policy: shadow-only; registry mutations=0. "
         "Discovery remains a separately scheduled corpus batch."
@@ -3456,8 +3545,20 @@ def review_next_speaker_pair(
         help=(
             "Use evaluation for the tuned fixture selector or profile-growth "
             "for reviewed component expansion; automation-readiness first "
-            "reinforces profiles with redundant internal comparisons."
+            "resolves blocked discovery overlaps, then reinforces profiles."
         ),
+    ),
+    discovery_report: Path | None = typer.Option(
+        None,
+        "--discovery-report",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Optional exact discovery artifact for automation-readiness.",
+    ),
+    discovery_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+        help="Discovery artifacts used by automation-readiness nomination.",
     ),
     observation_consistency_report: Path = typer.Option(
         Path(
@@ -3493,6 +3594,31 @@ def review_next_speaker_pair(
             drafts=drafts,
             reviews=reviews,
             fixtures=fixtures,
+        )
+        effective_discovery_report = (
+            discovery_report.expanduser().resolve()
+            if discovery_report is not None
+            else None
+        )
+        if (
+            selection_objective == SelectionGoal.AUTOMATION_READINESS
+            and effective_discovery_report is None
+        ):
+            discovery_reports = list(
+                discovery_root.expanduser().resolve().glob("*/*.json")
+            )
+            if discovery_reports:
+                effective_discovery_report = max(
+                    discovery_reports,
+                    key=lambda path: (path.stat().st_mtime_ns, str(path)),
+                )
+        discovery_resolution_pairs = (
+            load_discovery_resolution_pairs(effective_discovery_report)
+            if (
+                selection_objective == SelectionGoal.AUTOMATION_READINESS
+                and effective_discovery_report is not None
+            )
+            else ()
         )
         consistency_index = load_consistency_score_index(
             observation_consistency_report.expanduser().resolve()
@@ -3580,6 +3706,7 @@ def review_next_speaker_pair(
                 None if evaluation_scope == "all" else evaluation_scope
             ),
             selection_goal=selection_objective,
+            discovery_resolution_pairs=discovery_resolution_pairs,
         )
         if (
             consistency_index.report_sha256

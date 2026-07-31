@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import unittest
 
 from pastor_transcript_extractor.speaker_pair_selector import (
+    DiscoveryResolutionPair,
     PairCandidateObservation,
     PairSelectionHistory,
     SelectionStratum,
@@ -303,6 +304,64 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual(
             "profile_reinforcement",
             selected.manifest["selection_objective"],
+        )
+
+    def test_automation_readiness_prioritizes_discovery_overlap_resolution(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("overlap-left"),
+                candidate("overlap-right"),
+                candidate("profile-a", profile_ids=frozenset((7,))),
+                candidate("profile-b", profile_ids=frozenset((7,))),
+                candidate("profile-c", profile_ids=frozenset((7,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            discovery_resolution_pairs=(
+                DiscoveryResolutionPair(
+                    fingerprint_a="overlap-left",
+                    fingerprint_b="overlap-right",
+                    component_ids=("component-a", "component-b"),
+                    member_fingerprints=(
+                        "bridge-a",
+                        "bridge-b",
+                        "overlap-left",
+                        "overlap-right",
+                    ),
+                    observations_unlocked=4,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            {"overlap-left", "overlap-right"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "discovery_component_overlap_resolution",
+            selected.manifest["selection_objective"],
+        )
+        self.assertEqual(
+            {
+                "component_ids": ["component-a", "component-b"],
+                "member_fingerprints": [
+                    "bridge-a",
+                    "bridge-b",
+                    "overlap-left",
+                    "overlap-right",
+                ],
+                "observations_unlocked": 4,
+            },
+            selected.manifest["discovery_resolution"],
+        )
+        self.assertNotIn(
+            "profile_growth_components",
+            selected.manifest,
         )
 
     def test_automation_readiness_falls_back_to_profile_growth(self) -> None:

@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v11"
+SELECTOR_VERSION = "speaker_pair_selector_v12"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -82,6 +82,21 @@ class PairSelection:
     observation_a: PairCandidateObservation
     observation_b: PairCandidateObservation
     manifest: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryResolutionPair:
+    fingerprint_a: str
+    fingerprint_b: str
+    component_ids: tuple[str, ...]
+    member_fingerprints: tuple[str, ...]
+    observations_unlocked: int
+    report_result_sha256: str | None = None
+    report_path: str | None = None
+
+    @property
+    def pair_key(self) -> frozenset[str]:
+        return frozenset((self.fingerprint_a, self.fingerprint_b))
 
 
 def selection_history_from_artifacts(
@@ -279,6 +294,7 @@ def select_next_speaker_pair(
     *,
     evaluation_partition: str | None = None,
     selection_goal: SelectionGoal | str = SelectionGoal.EVALUATION,
+    discovery_resolution_pairs: Sequence[DiscoveryResolutionPair] = (),
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
     try:
@@ -338,6 +354,9 @@ def select_next_speaker_pair(
     disfavored = history.disfavored_observations or {}
     disfavored_sources = history.disfavored_sources or {}
     condition_counts = history.objective_condition_counts or {}
+    discovery_resolution_by_pair = {
+        item.pair_key: item for item in discovery_resolution_pairs
+    }
     outcome_counts = _reviewed_outcome_counts(
         history,
         evaluation_partition=evaluation_partition,
@@ -358,7 +377,16 @@ def select_next_speaker_pair(
         else None
     )
     if goal == SelectionGoal.AUTOMATION_READINESS:
-        objective_selection = _select_profile_reinforcement_pair(
+        objective_selection = _select_discovery_resolution_pair(
+            pairs,
+            discovery_resolution_by_pair=discovery_resolution_by_pair,
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        ) or _select_profile_reinforcement_pair(
             pairs,
             candidates=candidates,
             history=history,
@@ -414,6 +442,8 @@ def select_next_speaker_pair(
             growth_components,
         ) = objective_selection
         anchor_component = None
+        if selection_objective == "discovery_component_overlap_resolution":
+            growth_components = None
     elif curated_selection is not None:
         observation_a, observation_b, chosen_stratum, chosen_relation, curated_relation = (
             curated_selection
@@ -537,6 +567,35 @@ def select_next_speaker_pair(
         manifest["profile_growth_components"] = [
             sorted(component) for component in growth_components
         ]
+    selected_resolution = discovery_resolution_by_pair.get(
+        frozenset(
+            (
+                observation_a.input_fingerprint,
+                observation_b.input_fingerprint,
+            )
+        )
+    )
+    if (
+        selection_objective == "discovery_component_overlap_resolution"
+        and selected_resolution is not None
+    ):
+        manifest["discovery_resolution"] = {
+            "component_ids": list(selected_resolution.component_ids),
+            "member_fingerprints": list(
+                selected_resolution.member_fingerprints
+            ),
+            "observations_unlocked": (
+                selected_resolution.observations_unlocked
+            ),
+        }
+        if selected_resolution.report_result_sha256 is not None:
+            manifest["discovery_resolution"][
+                "report_result_sha256"
+            ] = selected_resolution.report_result_sha256
+        if selected_resolution.report_path is not None:
+            manifest["discovery_resolution"][
+                "report_path"
+            ] = selected_resolution.report_path
     consistency_scores = {
         side: observation.observation_consistency_score
         for side, observation in (
@@ -548,6 +607,75 @@ def select_next_speaker_pair(
     if consistency_scores:
         manifest["observation_consistency_scores"] = consistency_scores
     return PairSelection(observation_a, observation_b, manifest)
+
+
+def _select_discovery_resolution_pair(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    *,
+    discovery_resolution_by_pair: Mapping[
+        frozenset[str], DiscoveryResolutionPair
+    ],
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+    str,
+    tuple[frozenset[str], frozenset[str]],
+] | None:
+    candidates = [
+        pair
+        for pair in pairs
+        if frozenset(
+            (pair[0].input_fingerprint, pair[1].input_fingerprint)
+        )
+        in discovery_resolution_by_pair
+        and not disfavored.get(pair[0].input_fingerprint, 0)
+        and not disfavored.get(pair[1].input_fingerprint, 0)
+    ]
+    if not candidates:
+        return None
+    selected = min(
+        candidates,
+        key=lambda pair: (
+            -discovery_resolution_by_pair[
+                frozenset(
+                    (
+                        pair[0].input_fingerprint,
+                        pair[1].input_fingerprint,
+                    )
+                )
+            ].observations_unlocked,
+            _rank_pair(
+                pair[0],
+                pair[1],
+                source_family_use,
+                observation_use,
+                source_use,
+                disfavored,
+                disfavored_sources,
+                condition_counts,
+            ),
+        ),
+    )
+    return (
+        *selected,
+        "discovery_component_overlap_resolution",
+        (frozenset(), frozenset()),
+    )
 
 
 def _select_profile_growth_pair(

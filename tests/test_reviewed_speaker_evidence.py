@@ -12,6 +12,7 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.speaker_registry import (
+    attach_reviewed_observation,
     ensure_configured_pastor_profile,
     record_name_claim_review,
     record_observation_disposition,
@@ -376,6 +377,72 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertEqual(2, result.profile_redirect_events_added)
         self.assertEqual((), result.conflicts)
 
+    def test_confirmed_bridge_merges_discovery_profile_into_linked_profile(
+        self,
+    ) -> None:
+        pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        claims = [
+            self._add_explicit_claim(fingerprint, "andrew korp")
+            for fingerprint in ("a", "b", "c", "d")
+        ]
+        discovery = self.database.ensure_speaker_profile(
+            stable_key="speaker:discovery:test-component",
+            display_label=None,
+            lifecycle_state="provisional",
+            created_reason="shadow_discovery_candidate",
+        )
+        for fingerprint in ("c", "d"):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=discovery.id,
+                observation_id=self.observations[fingerprint].id,
+                reviewer="system:profile-discovery-promotion",
+                reason="Test discovery seed membership",
+                review_event_key=f"test-discovery:{fingerprint}",
+            )
+
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+        sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+        linked_profile_id = self.database.resolve_speaker_profile_id(
+            configured.id
+        )
+        self.assertNotEqual(discovery.id, linked_profile_id)
+        self.assertGreater(linked_profile_id, discovery.id)
+
+        self._write_fixture("pair-bc", "b", "c", "same_speaker")
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(
+            linked_profile_id,
+            self.database.get_effective_profile_redirect(discovery.id),
+        )
+        self.assertEqual(
+            linked_profile_id,
+            self.database.resolve_speaker_profile_id(configured.id),
+        )
+        for observation in self.observations.values():
+            self.assertEqual(
+                [linked_profile_id],
+                self.database.list_effective_profile_ids_for_observation(
+                    observation.id
+                ),
+            )
+        self.assertEqual(
+            sorted(claim.id for claim in claims),
+            self.database.list_effective_name_claim_ids_for_profile(
+                linked_profile_id
+            ),
+        )
+        self.assertEqual(1, result.profile_redirect_events_added)
+        self.assertEqual((), result.conflicts)
+
     def test_same_name_profiles_with_different_constraint_are_a_conflict(
         self,
     ) -> None:
@@ -396,6 +463,58 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
                 "effective different-speaker constraint" in conflict
                 for conflict in result.conflicts
             )
+        )
+
+    def test_bridge_does_not_merge_multiple_configured_identities(self) -> None:
+        configured_profiles = []
+        for slug, display_name, fingerprints in (
+            ("alice-example", "Alice Example", ("a", "b")),
+            ("bob-example", "Bob Example", ("c", "d")),
+        ):
+            pastor = self.database.add_pastor(slug, display_name)
+            configured_profiles.append(
+                ensure_configured_pastor_profile(self.database, pastor)
+            )
+            for fingerprint in fingerprints:
+                self._add_explicit_claim(
+                    fingerprint,
+                    display_name.lower(),
+                )
+            self._write_fixture(
+                f"pair-{fingerprints[0]}{fingerprints[1]}",
+                fingerprints[0],
+                fingerprints[1],
+                "same_speaker",
+            )
+        sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+        linked_profile_ids = {
+            self.database.resolve_speaker_profile_id(profile.id)
+            for profile in configured_profiles
+        }
+        self.assertEqual(2, len(linked_profile_ids))
+
+        self._write_fixture("pair-bc", "b", "c", "same_speaker")
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertTrue(
+            any(
+                "multiple configured pastor identities" in conflict
+                for conflict in result.conflicts
+            ),
+            result.conflicts,
+        )
+        self.assertEqual(
+            linked_profile_ids,
+            {
+                self.database.resolve_speaker_profile_id(profile.id)
+                for profile in configured_profiles
+            },
         )
 
     def test_manual_claim_review_blocks_automatic_reconciliation(self) -> None:

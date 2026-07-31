@@ -24,7 +24,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v1"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v2"
 TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION = (
     "transcript_grounded_sermon_spans_v1"
 )
@@ -286,6 +286,7 @@ def evaluate_shadow_profile_discovery(
     policy_spec: ShadowPolicySpec,
     model_fingerprint: str,
     minimum_component_members: int = 3,
+    reviewed_same_pairs: Sequence[tuple[int, int]] = (),
     reviewed_difference_pairs: Sequence[tuple[int, int]] = (),
     consistency_report_sha256: str | None = None,
     minimum_consistency_score: float | None = None,
@@ -298,15 +299,29 @@ def evaluate_shadow_profile_discovery(
     reviewed_differences = {
         tuple(sorted(pair)) for pair in reviewed_difference_pairs
     }
+    reviewed_same = {tuple(sorted(pair)) for pair in reviewed_same_pairs}
+    conflicting_reviewed_pairs = reviewed_same & reviewed_differences
+    if conflicting_reviewed_pairs:
+        raise ValueError(
+            "reviewed same/different constraints conflict for observation pair(s)"
+        )
     pair_results: list[dict[str, Any]] = []
+    evaluated_pairs: set[tuple[int, int]] = set()
     for nomination in nominations:
         left = nomination.left.candidate
         right = nomination.right.candidate
         pair = nomination.observation_ids
+        evaluated_pairs.add(pair)
         if pair in reviewed_differences:
             result: Mapping[str, Any] = {
                 "outcome": PairOutcome.DIFFERENT_SPEAKER,
                 "reason": "reviewed_different_speaker_constraint",
+                "reviewed_constraint": True,
+            }
+        elif pair in reviewed_same:
+            result = {
+                "outcome": PairOutcome.SAME_SPEAKER,
+                "reason": "reviewed_same_speaker_constraint",
                 "reviewed_constraint": True,
             }
         else:
@@ -327,6 +342,41 @@ def evaluate_shadow_profile_discovery(
                 ),
                 "centroid_similarity": nomination.centroid_similarity,
                 **dict(result),
+            }
+        )
+    signatures_by_observation_id = {
+        signature.candidate.observation.id: signature
+        for signature in signatures
+    }
+    for pair in sorted((reviewed_same | reviewed_differences) - evaluated_pairs):
+        if not all(
+            observation_id in signatures_by_observation_id
+            for observation_id in pair
+        ):
+            continue
+        left = signatures_by_observation_id[pair[0]]
+        right = signatures_by_observation_id[pair[1]]
+        outcome = (
+            PairOutcome.SAME_SPEAKER
+            if pair in reviewed_same
+            else PairOutcome.DIFFERENT_SPEAKER
+        )
+        pair_results.append(
+            {
+                "observation_ids": list(pair),
+                "observation_fingerprints": sorted(
+                    (
+                        left.candidate.observation.input_fingerprint,
+                        right.candidate.observation.input_fingerprint,
+                    )
+                ),
+                "centroid_similarity": _cosine(
+                    left.centroid,
+                    right.centroid,
+                ),
+                "outcome": outcome,
+                "reason": f"reviewed_{outcome}_constraint",
+                "reviewed_constraint": True,
             }
         )
 
@@ -378,6 +428,14 @@ def evaluate_shadow_profile_discovery(
             "report_sha256": consistency_report_sha256,
             "minimum_score": minimum_consistency_score,
         },
+        "reviewed_constraints": {
+            "same_speaker_observation_pairs": [
+                list(pair) for pair in sorted(reviewed_same)
+            ],
+            "different_speaker_observation_pairs": [
+                list(pair) for pair in sorted(reviewed_differences)
+            ],
+        },
         "counts": {
             "eligible_signatures": len(signature_payloads),
             "signature_failures": len(signature_failures),
@@ -403,6 +461,7 @@ def evaluate_shadow_profile_discovery(
             "span_selection": report["span_selection"],
             "retrieval": report["retrieval"],
             "consistency_gate": report["consistency_gate"],
+            "reviewed_constraints": report["reviewed_constraints"],
             "signatures": [
                 {
                     "observation_fingerprint": item[

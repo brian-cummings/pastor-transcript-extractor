@@ -472,8 +472,11 @@ into one content-addressed report under `logs/identity-coordination/`. Add
 `--execute-shadow` to run a missing association for that one extraction before
 reconciling the report. It never promotes components, confirms memberships, or
 performs any other registry mutation. Use `--all` for a read-only corpus-wide
-action inventory. Anonymous profile discovery remains a separately scheduled
-batch because a single extraction cannot establish a three-recording component.
+action inventory. The coordinator loads the newest current discovery artifact so
+previously evaluated observations wait for new evidence instead of repeatedly
+requesting the same batch. Only observations absent from that artifact request
+discovery. Anonymous profile discovery remains a separately scheduled batch
+because a single extraction cannot establish a three-recording component.
 
 The grounded-attribution shadow pass extracts only exact names from title,
 description, chapter, introduction, and handoff evidence. Metadata observations
@@ -526,6 +529,14 @@ accepts a current multi-exemplar proposal from an independent recording.
 Confirmation is also plan-only unless `--apply` is passed; acoustic
 model/policy approval remains a separate gate.
 
+When explicit attribution places a provisional discovery profile beside an
+established profile for the same configured pastor, normal `profile-growth`
+review nominates a cross-profile bridge. A confirmed same-speaker judgment lets
+reviewed-evidence sync move the provisional members into the established linked
+profile and retire the discovery profile with an append-only redirect. The
+linked profile is preserved as canonical; multiple configured identities and
+reviewed different-speaker constraints block consolidation.
+
 ## Commands
 
 - `pte init`
@@ -573,6 +584,15 @@ model/policy approval remains a separate gate.
 - `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`
 - `pte identity shadow-associate-speakers --all-eligible --plan-only`
 - `pte identity shadow-association-status --base-dir <app-data>`
+
+`automation-readiness` reuses the normal blinded pair-review packet. It first
+selects a decisive unresolved edge from overlapping discovery components, then
+falls back to reviewed-profile reinforcement and profile growth. The selection
+manifest records the discovery artifact and downstream observations unlocked;
+undersized two-recording seeds wait for new evidence instead of consuming human
+review. The next discovery run consumes the approved pair judgment directly as
+a fingerprinted same/different constraint, allowing the answer to resolve or
+safely block the affected component before registry synchronization.
 
 ## Planning Docs
 

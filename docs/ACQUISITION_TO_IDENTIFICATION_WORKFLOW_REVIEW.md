@@ -167,6 +167,12 @@ unresolved edges, differences, overlaps, and conflicting attribution. Promotion
 creates a stable `provisional` profile with append-only seed membership and exact
 artifact provenance. Subsequent shadow association includes these profiles, and a
 new independent recording can confirm one through a separate guarded command.
+If later attribution reveals that a provisional discovery profile and an
+established linked profile represent the same configured pastor, the existing
+profile-growth bridge review can consolidate them. Synchronization preserves
+the linked profile as canonical, moves all provisional seed membership through
+append-only events, and records a reversible redirect; conflicting configured
+identities or reviewed differences block the merge.
 
 The remaining limitation is policy approval and orchestration. The pinned acoustic
 policy is still experimental, so matching and discovery do not authorize unattended
@@ -404,7 +410,16 @@ never use it as sufficient identity evidence.
 `identity coordinate` now collapses coverage inspection, missing-association
 execution, confirmation detection, and next-action classification for one
 extraction. It can also produce a read-only corpus-wide action inventory. It never
-applies registry mutations.
+applies registry mutations. Discovery-artifact indexing prevents the inventory
+from treating every prior abstention as fresh batch work: evaluated unclustered
+observations wait for new evidence, while new observations, signature failures,
+blocked components, and promotable components remain distinct states.
+
+The existing `automation-readiness` pair selector consumes the same verified
+discovery artifact. Before ordinary profile reinforcement, it nominates the
+single unresolved edge with the greatest component-resolution value. The human
+still receives the standard blinded same/different pair packet; discovery
+structure changes selection priority and provenance, not the judgment format.
 
 The reviewed-evidence and batch-profile loop still contains explicit stages:
 

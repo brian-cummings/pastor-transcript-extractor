@@ -220,10 +220,13 @@ consistent per-observation qualifications, and derives confirmed same/different
 relations only from approved binary pair reviews. Confirmed same edges form
 reviewed connected components. A component creates one deterministic anonymous
 profile or joins its one existing profile. When a newly confirmed same-speaker
-bridge connects multiple reviewed-anonymous profiles, synchronization
-consolidates them into the lowest-ID profile through append-only membership
-moves and profile redirects. Profiles created for any other reason are never
-auto-merged. Confirmed different edges create exact observation constraints.
+bridge connects multiple reviewed profiles, synchronization consolidates them
+through append-only membership moves and profile redirects. An already linked
+profile remains canonical; otherwise a reviewed-anonymous profile is preferred
+over a provisional discovery profile, followed by the lowest stable profile ID.
+Only reviewed-anonymous and provisional discovery profiles participate, and
+multiple configured identities block the merge. Confirmed different edges
+create exact observation constraints.
 Qualification conflicts, pair conflicts, transitive same/different
 contradictions, missing observations, incompatible redirects, and manual
 qualification overrides block affected mutations. Replay adds no duplicate
@@ -326,10 +329,12 @@ The normal operator loop is therefore:
 
 A profile is first created when a confirmed same-speaker pair forms a reviewed
 component. Later confirmed same-speaker frontier comparisons add observations;
-bridge comparisons can merge reviewed anonymous components. Explicit
-observation-scoped attribution can name that voice component, and a unique
-configured-name match can link it to an attributed pastor profile. Naming and
-source context alone never establish speaker identity.
+bridge comparisons can merge reviewed-anonymous components and provisional
+discovery profiles. An established linked profile remains canonical when its
+provisional counterpart is consolidated. Explicit observation-scoped
+attribution can name that voice component, and a unique configured-name match
+can link it to an attributed pastor profile. Naming and source context alone
+never establish speaker identity.
 
 ### Shadow Association of New Sermons
 
@@ -356,12 +361,29 @@ pte identity review-next-speaker-pair \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-This objective first selects an unseen internal comparison whose added edge
-would remove one or more bridge dependencies from a reviewed profile graph.
-Already bridge-free profiles are skipped. If no useful reinforcement remains,
-it falls back to normal profile-growth selection. It never tells the reviewer
-that the observations are currently grouped and never assumes that grouping
-is correct; timestamped source-video links are available for confirmation.
+This objective first loads the newest verified discovery artifact and selects
+an unresolved exclusive-member edge when one judgment can collapse overlapping
+complete-link components into a larger profile candidate. It records the
+discovery result hash, affected components, members, and number of observations
+unlocked in the ordinary pair-selection manifest. Undersized two-recording
+components are not nominated merely for being small; they wait for a third
+recording.
+
+If no discovery overlap needs resolution, the objective selects an unseen
+internal comparison whose added edge would remove one or more bridge
+dependencies from a reviewed profile graph. Already bridge-free profiles are
+skipped. If no useful reinforcement remains, it falls back to normal
+profile-growth selection. It never tells the reviewer that the observations
+are currently grouped and never assumes that grouping is correct; timestamped
+source-video links are available for confirmation.
+
+Discovery loads approved pair reviews directly as explicit constraints before
+registry synchronization. A reviewed `same` answer can supply the missing edge
+that turns overlapping cliques into one promotable complete-link component; a
+reviewed `different` answer prevents that unsafe merge. Both constraint sets
+are included in the discovery artifact fingerprint. Run discovery again after
+submitting a discovery-resolution review, then plan promotion from the new
+artifact.
 
 Inspect corpus and profile eligibility without acoustic execution:
 
@@ -454,8 +476,12 @@ content-addressed report below `logs/identity-coordination/`. With `--all`, it
 builds a read-only corpus action inventory. The coordinator recognizes content
 terminal, content review, explicit blocker, associated, association-required,
 profile-proposal, discovery-batch, identity-conflict, and provisional-confirmation
-states. It cannot apply registry mutations, and corpus discovery remains a
-separate scheduled batch.
+states. It indexes the newest current discovery artifact to distinguish newly
+eligible observations from observations already evaluated without a cluster,
+signature failures, blocked components, and promotable components. Already
+evaluated observations wait for new evidence rather than causing redundant
+discovery runs. It cannot apply registry mutations, and corpus discovery remains
+a separate scheduled batch.
 
 The optional `--consistency-report` and `--minimum-consistency-score` arguments
 are the integration boundary for the separately calibrated observation

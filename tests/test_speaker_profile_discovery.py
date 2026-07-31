@@ -135,6 +135,60 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         self.assertFalse(report["automatic_profile_creation_allowed"])
         self.assertFalse(component["automatic_profile_creation_allowed"])
 
+    def test_reviewed_same_constraint_resolves_overlapping_cliques(self) -> None:
+        signatures = (
+            self._signature("a", (1.0, 0.0)),
+            self._signature("b", (0.99, 0.01)),
+            self._signature("c", (0.98, 0.02)),
+            self._signature("d", (0.97, 0.03)),
+        )
+        observation_ids = {
+            signature.candidate.observation.input_fingerprint:
+            signature.candidate.observation.id
+            for signature in signatures
+        }
+        unresolved_pair = tuple(
+            sorted((observation_ids["c"], observation_ids["d"]))
+        )
+
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominate_discovery_pairs(
+                signatures,
+                nearest_neighbors=3,
+            ),
+            compare=lambda observation_a, observation_b, *_args: {
+                "outcome": (
+                    "insufficient_evidence"
+                    if tuple(sorted((observation_a.id, observation_b.id)))
+                    == unresolved_pair
+                    else "same_speaker"
+                ),
+                "reason": "test",
+            },
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            reviewed_same_pairs=(unresolved_pair,),
+        )
+
+        self.assertEqual(1, len(report["components"]))
+        component = report["components"][0]
+        self.assertEqual("provisional_profile_candidate", component["outcome"])
+        self.assertEqual(4, component["member_count"])
+        reviewed_result = next(
+            result
+            for result in report["pair_results"]
+            if tuple(result["observation_ids"]) == unresolved_pair
+        )
+        self.assertEqual("same_speaker", reviewed_result["outcome"])
+        self.assertTrue(reviewed_result["reviewed_constraint"])
+        self.assertEqual(
+            [list(unresolved_pair)],
+            report["reviewed_constraints"][
+                "same_speaker_observation_pairs"
+            ],
+        )
+
     def test_transcript_grounding_selects_distributed_sermon_speech(self) -> None:
         observation = self._signature(
             "speech",

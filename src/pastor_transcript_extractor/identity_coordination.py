@@ -1,14 +1,28 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from pastor_transcript_extractor.models import utc_now
+from pastor_transcript_extractor.speaker_profile_discovery import (
+    SHADOW_PROFILE_DISCOVERY_VERSION,
+    TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+)
+from pastor_transcript_extractor.speaker_pair_selector import (
+    DiscoveryResolutionPair,
+)
 
 
-IDENTITY_COORDINATION_VERSION = "identity_coordination_shadow_v1"
+IDENTITY_COORDINATION_VERSION = "identity_coordination_shadow_v2"
+SUPPORTED_DISCOVERY_VERSIONS = frozenset(
+    {
+        "speaker_profile_shadow_discovery_v1",
+        SHADOW_PROFILE_DISCOVERY_VERSION,
+    }
+)
 
 
 def build_identity_coordination_report(
@@ -16,6 +30,7 @@ def build_identity_coordination_report(
     *,
     youtube_video_id: str | None = None,
     confirmation_observation_ids: Iterable[int] = (),
+    discovery_observation_states: Mapping[int, str] | None = None,
     promotion_summary: Mapping[str, Any] | None = None,
     execution_summary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -25,6 +40,7 @@ def build_identity_coordination_report(
     if not isinstance(raw_cases, list):
         raise ValueError("association audit cases are missing")
     confirmations = {int(value) for value in confirmation_observation_ids}
+    discovery_states = discovery_observation_states or {}
     cases: list[dict[str, Any]] = []
     for raw_case in raw_cases:
         if not isinstance(raw_case, Mapping):
@@ -38,6 +54,7 @@ def build_identity_coordination_report(
             _coordination_case(
                 raw_case,
                 confirmation_observation_ids=confirmations,
+                discovery_observation_states=discovery_states,
             )
         )
     if youtube_video_id is not None and not cases:
@@ -69,8 +86,11 @@ def build_identity_coordination_report(
         "counts": {
             "extractions": len(cases),
             "terminal": sum(bool(case["terminal"]) for case in cases),
+            "waiting_for_evidence": sum(
+                bool(case["waiting_for_evidence"]) for case in cases
+            ),
             "action_required": sum(
-                not bool(case["terminal"]) for case in cases
+                bool(case["immediate_action_required"]) for case in cases
             ),
             "invalid_association_artifacts": invalid_artifacts,
         },
@@ -103,7 +123,7 @@ def write_identity_coordination_report(
     }
     destination = (
         output_root.expanduser().resolve()
-        / f"identity-coordination-v1-{fingerprint}.json"
+        / f"identity-coordination-v2-{fingerprint}.json"
     )
     if destination.exists():
         loaded = json.loads(destination.read_text(encoding="utf-8"))
@@ -126,10 +146,183 @@ def write_identity_coordination_report(
     return destination
 
 
+def load_discovery_observation_states(
+    report_path: Path,
+) -> dict[int, str]:
+    payload = _load_verified_discovery_report(report_path)
+    states: dict[int, str] = {}
+    for signature in payload.get("observation_signatures", ()):
+        if isinstance(signature, Mapping) and isinstance(
+            signature.get("observation_id"), int
+        ):
+            states[int(signature["observation_id"])] = "evaluated_unclustered"
+    for failure in payload.get("signature_failures", ()):
+        if isinstance(failure, Mapping) and isinstance(
+            failure.get("observation_id"), int
+        ):
+            states[int(failure["observation_id"])] = "signature_failed"
+    for component in payload.get("components", ()):
+        if not isinstance(component, Mapping):
+            continue
+        outcome = str(component.get("outcome", "blocked"))
+        blockers = {
+            str(value) for value in component.get("blockers", ())
+        }
+        if outcome == "provisional_profile_candidate":
+            component_state = "provisional_component"
+        elif blockers and blockers.issubset(
+            {
+                "fewer_than_minimum_members",
+                "fewer_than_minimum_distinct_recordings",
+            }
+        ):
+            component_state = "undersized_component"
+        else:
+            component_state = "blocked_component"
+        for member in component.get("members", ()):
+            if isinstance(member, Mapping) and isinstance(
+                member.get("observation_id"), int
+            ):
+                states[int(member["observation_id"])] = component_state
+    return states
+
+
+def load_discovery_resolution_pairs(
+    report_path: Path,
+) -> tuple[DiscoveryResolutionPair, ...]:
+    payload = _load_verified_discovery_report(report_path)
+    fingerprints_by_observation_id = {
+        int(signature["observation_id"]): str(
+            signature["observation_fingerprint"]
+        )
+        for signature in payload.get("observation_signatures", ())
+        if isinstance(signature, Mapping)
+        and isinstance(signature.get("observation_id"), int)
+        and isinstance(signature.get("observation_fingerprint"), str)
+    }
+    pair_outcomes = {
+        tuple(sorted(int(value) for value in result["observation_ids"])): str(
+            result.get("outcome", "missing")
+        )
+        for result in payload.get("pair_results", ())
+        if isinstance(result, Mapping)
+        and isinstance(result.get("observation_ids"), list)
+        and len(result["observation_ids"]) == 2
+        and all(isinstance(value, int) for value in result["observation_ids"])
+    }
+    overlapping = [
+        component
+        for component in payload.get("components", ())
+        if isinstance(component, Mapping)
+        and component.get("outcome") == "blocked"
+        and "overlapping_complete_link_components"
+        in component.get("blockers", ())
+    ]
+    candidates: dict[frozenset[str], DiscoveryResolutionPair] = {}
+    for left, right in itertools.combinations(overlapping, 2):
+        left_ids = _component_observation_ids(left)
+        right_ids = _component_observation_ids(right)
+        if not left_ids & right_ids:
+            continue
+        union_ids = left_ids | right_ids
+        component_ids = tuple(
+            sorted((str(left["component_id"]), str(right["component_id"])))
+        )
+        member_fingerprints = tuple(
+            sorted(
+                fingerprints_by_observation_id[observation_id]
+                for observation_id in union_ids
+                if observation_id in fingerprints_by_observation_id
+            )
+        )
+        for observation_a_id in sorted(left_ids - right_ids):
+            for observation_b_id in sorted(right_ids - left_ids):
+                outcome = pair_outcomes.get(
+                    tuple(sorted((observation_a_id, observation_b_id)))
+                )
+                if outcome in {"same_speaker", "different_speaker"}:
+                    continue
+                fingerprint_a = fingerprints_by_observation_id.get(
+                    observation_a_id
+                )
+                fingerprint_b = fingerprints_by_observation_id.get(
+                    observation_b_id
+                )
+                if fingerprint_a is None or fingerprint_b is None:
+                    continue
+                resolution = DiscoveryResolutionPair(
+                    fingerprint_a=fingerprint_a,
+                    fingerprint_b=fingerprint_b,
+                    component_ids=component_ids,
+                    member_fingerprints=member_fingerprints,
+                    observations_unlocked=len(union_ids),
+                    report_result_sha256=str(payload["result_sha256"]),
+                    report_path=str(report_path.expanduser().resolve()),
+                )
+                existing = candidates.get(resolution.pair_key)
+                if (
+                    existing is None
+                    or resolution.observations_unlocked
+                    > existing.observations_unlocked
+                ):
+                    candidates[resolution.pair_key] = resolution
+    return tuple(
+        sorted(
+            candidates.values(),
+            key=lambda item: (
+                -item.observations_unlocked,
+                item.fingerprint_a,
+                item.fingerprint_b,
+            ),
+        )
+    )
+
+
+def _load_verified_discovery_report(
+    report_path: Path,
+) -> dict[str, Any]:
+    path = report_path.expanduser().resolve()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("profile discovery artifact must be an object")
+    expected_sha256 = payload.get("result_sha256")
+    unhashed = dict(payload)
+    unhashed.pop("result_sha256", None)
+    if (
+        not isinstance(expected_sha256, str)
+        or _sha256_json(unhashed) != expected_sha256
+    ):
+        raise ValueError("profile discovery artifact checksum mismatch")
+    span_selection = payload.get("span_selection")
+    if (
+        payload.get("artifact_kind")
+        != "speaker_profile_shadow_discovery"
+        or payload.get("discovery_version")
+        not in SUPPORTED_DISCOVERY_VERSIONS
+        or not isinstance(span_selection, Mapping)
+        or span_selection.get("version")
+        != TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION
+    ):
+        raise ValueError("profile discovery artifact uses an unsupported contract")
+    return payload
+
+
+def _component_observation_ids(
+    component: Mapping[str, Any],
+) -> set[int]:
+    return {
+        int(member["observation_id"])
+        for member in component.get("members", ())
+        if isinstance(member, Mapping)
+        and isinstance(member.get("observation_id"), int)
+    }
+
+
 def _coordination_case(
     case: Mapping[str, Any],
     *,
     confirmation_observation_ids: set[int],
+    discovery_observation_states: Mapping[int, str],
 ) -> dict[str, Any]:
     coverage_state = str(case.get("coverage_state", "unaccounted"))
     reason_code = str(case.get("reason_code", "unknown"))
@@ -147,6 +340,12 @@ def _coordination_case(
             if isinstance(attempt.get("proposed_profile_id"), int)
             and attempt.get("outcome") == "proposed_match"
         }
+    )
+
+    discovery_state = (
+        discovery_observation_states.get(observation_id)
+        if isinstance(observation_id, int)
+        else None
     )
 
     if coverage_state == "associated":
@@ -182,6 +381,41 @@ def _coordination_case(
         workflow_state = "identity_review_required"
         next_action = "review_identity_conflict"
         terminal = False
+    elif (
+        coverage_state == "evaluated"
+        and discovery_state == "provisional_component"
+    ):
+        workflow_state = "profile_promotion_available"
+        next_action = "plan_provisional_profile_promotion"
+        terminal = False
+    elif (
+        coverage_state == "evaluated"
+        and discovery_state == "blocked_component"
+    ):
+        workflow_state = "identity_review_required"
+        next_action = "review_blocked_discovery_component"
+        terminal = False
+    elif (
+        coverage_state == "evaluated"
+        and discovery_state == "signature_failed"
+    ):
+        workflow_state = "acoustic_evidence_blocked"
+        next_action = "repair_acoustic_evidence"
+        terminal = False
+    elif (
+        coverage_state == "evaluated"
+        and discovery_state == "undersized_component"
+    ):
+        workflow_state = "identity_unresolved_waiting_for_evidence"
+        next_action = "await_new_evidence"
+        terminal = False
+    elif (
+        coverage_state == "evaluated"
+        and discovery_state == "evaluated_unclustered"
+    ):
+        workflow_state = "identity_unresolved_waiting_for_evidence"
+        next_action = "await_new_evidence"
+        terminal = False
     elif coverage_state == "evaluated":
         workflow_state = "discovery_batch_candidate"
         next_action = "run_shadow_profile_discovery"
@@ -212,10 +446,15 @@ def _coordination_case(
             case.get("effective_profile_ids", ())
         ),
         "association_outcomes": sorted(outcomes),
+        "discovery_state": discovery_state,
         "proposed_profile_ids": proposed_profile_ids,
         "workflow_state": workflow_state,
         "next_action": next_action,
         "terminal": terminal,
+        "waiting_for_evidence": next_action == "await_new_evidence",
+        "immediate_action_required": (
+            not terminal and next_action != "await_new_evidence"
+        ),
     }
 
 

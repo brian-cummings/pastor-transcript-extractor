@@ -32,6 +32,10 @@ _QUALIFICATION_ACTIONS = {
     "cannot_determine": "unresolved",
 }
 _PAIR_OUTCOMES = {"same_speaker", "different_speaker"}
+_MERGEABLE_PROFILE_REASONS = {
+    "reviewed_anonymous_speaker",
+    "shadow_discovery_candidate",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -592,29 +596,70 @@ def _merge_reviewed_component_profiles(
     conflicts: list[str],
 ) -> int | None:
     ordered_profile_ids = sorted(profile_ids)
-    profiles = [
-        database.get_speaker_profile(profile_id)
+    profiles_by_id = {
+        profile_id: database.get_speaker_profile(profile_id)
         for profile_id in ordered_profile_ids
-    ]
+    }
     if any(
         profile is None
-        or profile.created_reason != "reviewed_anonymous_speaker"
-        for profile in profiles
+        or profile.created_reason not in _MERGEABLE_PROFILE_REASONS
+        for profile in profiles_by_id.values()
     ):
         conflicts.append(
-            "same component spans profiles that are not all reviewed "
-            "anonymous profiles: "
+            "same component spans profiles that are not all reviewed or "
+            "provisional discovery profiles: "
             + ", ".join(str(profile_id) for profile_id in ordered_profile_ids)
         )
         return None
-    canonical_profile_id = ordered_profile_ids[0]
+    linked_profile_ids = {
+        resolved_profile_id
+        for pastor in database.list_pastors()
+        if (
+            bound_profile_id := database.get_pastor_speaker_profile_id(
+                pastor.id
+            )
+        )
+        is not None
+        and (
+            resolved_profile_id := database.resolve_speaker_profile_id(
+                bound_profile_id
+            )
+        )
+        in profile_ids
+    }
+    if len(linked_profile_ids) > 1:
+        conflicts.append(
+            "same component spans multiple configured pastor identities: "
+            + ", ".join(
+                str(profile_id) for profile_id in sorted(linked_profile_ids)
+            )
+        )
+        return None
+    reviewed_profile_ids = {
+        profile_id
+        for profile_id, profile in profiles_by_id.items()
+        if profile is not None
+        and profile.created_reason == "reviewed_anonymous_speaker"
+    }
+    canonical_profile_id = (
+        next(iter(linked_profile_ids))
+        if linked_profile_ids
+        else min(reviewed_profile_ids)
+        if reviewed_profile_ids
+        else ordered_profile_ids[0]
+    )
+    retired_profile_ids = [
+        profile_id
+        for profile_id in ordered_profile_ids
+        if profile_id != canonical_profile_id
+    ]
     if database.get_effective_profile_redirect(canonical_profile_id) is not None:
         conflicts.append(
-            f"canonical reviewed profile {canonical_profile_id} already "
+            f"canonical speaker profile {canonical_profile_id} already "
             "has an effective redirect"
         )
         return None
-    for profile_id in ordered_profile_ids[1:]:
+    for profile_id in retired_profile_ids:
         redirected = database.get_effective_profile_redirect(profile_id)
         if (
             redirected is not None
@@ -662,10 +707,10 @@ def _merge_reviewed_component_profiles(
         return None
 
     reason = (
-        "Merged reviewed anonymous profiles through confirmed same-speaker "
+        "Merged reviewed speaker profiles through confirmed same-speaker "
         f"component {component_key}"
     )
-    for profile_id in ordered_profile_ids[1:]:
+    for profile_id in retired_profile_ids:
         for observation_id in members_by_profile[profile_id]:
             record_observation_review(
                 database,
