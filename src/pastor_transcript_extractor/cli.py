@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -227,6 +228,9 @@ from pastor_transcript_extractor.source_ownership import (
     apply_source_ownership_schema,
     audit_source_ownership,
     backfill_source_ownership,
+)
+from pastor_transcript_extractor.source_processing_report import (
+    generate_source_processing_report,
 )
 from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
@@ -5252,6 +5256,56 @@ def status(
             source.url,
         )
     console.print(table)
+
+
+@app.command(
+    "source-processing-report",
+    help="Write read-only per-source processing reports as Markdown and JSON.",
+)
+def source_processing_report(
+    database_path: Path | None = typer.Option(
+        None,
+        "--database",
+        help="Explicit application database path; defaults to the configured app database.",
+    ),
+    markdown_path: Path = typer.Option(
+        Path("source_processing_report.md"),
+        "--markdown",
+        help="Markdown report output path.",
+    ),
+    json_path: Path = typer.Option(
+        Path("source_processing_report.json"),
+        "--json",
+        help="JSON report output path.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory when --database is not supplied.",
+    ),
+) -> None:
+    if database_path is not None and base_dir is not None:
+        raise typer.BadParameter("use either --database or --base-dir, not both")
+    resolved_database = (
+        database_path.expanduser().resolve()
+        if database_path is not None
+        else build_paths(base_dir).database
+    )
+    try:
+        report = generate_source_processing_report(
+            resolved_database,
+            markdown_path=markdown_path,
+            json_path=json_path,
+        )
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    summary = report["summary"]
+    console.print(f"Wrote Markdown report to {markdown_path.expanduser().resolve()}")
+    console.print(f"Wrote JSON report to {json_path.expanduser().resolve()}")
+    console.print(
+        f"Reported {summary['total_sources']} source(s) and "
+        f"{summary['total_cataloged_videos']} cataloged video(s)."
+    )
 
 
 @source_app.command("list", help="List configured sources.")

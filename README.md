@@ -99,6 +99,24 @@ By default the CLI stores local data under:
 
 You can override the data directory with `--base-dir`.
 
+Generate the read-only per-source processing report from the configured app
+database:
+
+```bash
+pte source-processing-report \
+  --markdown source_processing_report.md \
+  --json source_processing_report.json
+```
+
+To report from an explicit database instead, use `--database`:
+
+```bash
+pte source-processing-report \
+  --database /Users/briancummings/Documents/PastorSearchData/app.db \
+  --markdown source_processing_report.md \
+  --json source_processing_report.json
+```
+
 ## Workflows
 
 - `pte run <url> --pastor <slug>` runs discovery, caption fetch, optional local
