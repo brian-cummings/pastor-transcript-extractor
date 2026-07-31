@@ -53,7 +53,18 @@ The scaffold defaults to:
 
 Installed in the project venv:
 
-- `yt-dlp`
+- `yt-dlp` with its default EJS challenge-solver dependencies
+
+YouTube extraction also requires a supported JavaScript runtime. PTE detects
+Deno, Node, or QuickJS automatically (in that order). Override the detected
+runtime when needed with, for example:
+
+```bash
+export PTE_YT_DLP_JS_RUNTIMES="node:/opt/homebrew/bin/node"
+```
+
+Run `pte doctor` to verify both the runtime and EJS solver before processing
+videos.
 
 ## Quick Start
 

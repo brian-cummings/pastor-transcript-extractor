@@ -28,7 +28,12 @@ from pastor_transcript_extractor.cli import (
     app,
     discover_sources_service,
 )
-from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
+from pastor_transcript_extractor.media import (
+    NoCaptionsAvailableError,
+    VideoNotYetAvailableError,
+    VideoUnavailableError,
+    YtDlpConfigurationError,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import SourceType, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.extraction import extract_video
@@ -1890,6 +1895,137 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("No captions for video", result.output)
             self.assertIn("unavailable 1", result.output)
+            self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
+            self.assertIsNone(updated_video.failure_reason)
+
+    def test_fetch_clears_stale_unavailable_failure_when_video_has_no_captions(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.FAILED,
+                failure_reason="Video unavailable for https://www.youtube.com/watch?v=abc123def45",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=NoCaptionsAvailableError("No captions available"),
+            ):
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(video.id)
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
+            self.assertIsNone(updated_video.failure_reason)
+
+    def test_fetch_records_js_solver_failure_without_calling_video_unavailable(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=YtDlpConfigurationError("yt-dlp cannot solve YouTube JavaScript challenges"),
+            ):
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(video.id)
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("yt-dlp configuration error", result.output)
+            self.assertNotIn("Video unavailable for video", result.output)
+            self.assertEqual(VideoStatus.FAILED, updated_video.status)
+            self.assertIn("cannot solve YouTube", updated_video.failure_reason)
+
+    def test_fetch_defers_future_livestream(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Future service",
+                url="https://www.youtube.com/watch?v=abc123def45",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=VideoNotYetAvailableError("Video has not started yet"),
+            ):
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(video.id)
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("has not started yet; deferring", result.output)
+            self.assertIn("deferred 1", result.output)
+            self.assertEqual(VideoStatus.FAILED, updated_video.status)
+
+    def test_fetch_clears_deferred_state_after_livestream_starts_without_captions(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Started service",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.FAILED,
+                failure_reason="Video has not started yet for https://www.youtube.com/watch?v=abc123def45",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=NoCaptionsAvailableError("No captions available"),
+            ):
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(video.id)
+            self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
             self.assertIsNone(updated_video.failure_reason)
 

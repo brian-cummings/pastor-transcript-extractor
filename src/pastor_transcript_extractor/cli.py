@@ -4,6 +4,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_c
 from dataclasses import dataclass, replace
 from datetime import date
 import json
+from importlib import metadata as importlib_metadata
 import os
 from pathlib import Path
 import re
@@ -103,7 +104,12 @@ from pastor_transcript_extractor.models import (
     TranscriptSourceKind,
     VideoStatus,
 )
-from pastor_transcript_extractor.media import NoCaptionsAvailableError, VideoUnavailableError
+from pastor_transcript_extractor.media import (
+    NoCaptionsAvailableError,
+    VideoNotYetAvailableError,
+    VideoUnavailableError,
+    YtDlpConfigurationError,
+)
 from pastor_transcript_extractor.media_archive import (
     ArchivePreflightEvent,
     ArchiveProgressEvent,
@@ -4208,11 +4214,25 @@ def _tool_status(command: str) -> tuple[str, str]:
     return (resolved or command, "ok" if resolved else "missing")
 
 
+def _package_status(distribution: str) -> tuple[str, str]:
+    try:
+        return (importlib_metadata.version(distribution), "ok")
+    except importlib_metadata.PackageNotFoundError:
+        return ("not installed", "missing")
+
+
 def _is_terminal_unavailable(video_status: VideoStatus, failure_reason: str | None) -> bool:
     if video_status is not VideoStatus.FAILED or not failure_reason:
         return False
     lowered = failure_reason.lower()
-    return "video unavailable" in lowered or "not available" in lowered
+    return "video unavailable" in lowered
+
+
+def _is_retryable_fetch_failure(video_status: VideoStatus, failure_reason: str | None) -> bool:
+    if video_status is not VideoStatus.FAILED or not failure_reason:
+        return False
+    lowered = failure_reason.lower()
+    return "has not started yet" in lowered or "cannot solve youtube javascript challenges" in lowered
 
 
 def _default_transcribe_jobs() -> int:
@@ -4230,7 +4250,9 @@ def _should_transcribe_video(
     video = database.get_video_by_id(video_id)
     if video is None:
         return False
-    if _is_terminal_unavailable(video.status, video.failure_reason):
+    if _is_terminal_unavailable(video.status, video.failure_reason) or _is_retryable_fetch_failure(
+        video.status, video.failure_reason
+    ):
         return False
 
     latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
@@ -5653,7 +5675,15 @@ def doctor(
     yt_dlp_resolved, yt_dlp_status = _tool_status(tools.yt_dlp_bin)
     rows.append(("ffmpeg", ffmpeg_resolved, ffmpeg_status))
     rows.append(("yt-dlp", yt_dlp_resolved, yt_dlp_status))
-    rows.append(("yt-dlp js runtimes", tools.yt_dlp_js_runtimes or "(default)", "ok"))
+    rows.append(
+        (
+            "yt-dlp js runtime",
+            tools.yt_dlp_js_runtimes or "none detected",
+            "ok" if tools.yt_dlp_js_runtimes else "missing",
+        )
+    )
+    ejs_version, ejs_status = _package_status("yt-dlp-ejs")
+    rows.append(("yt-dlp EJS solver", ejs_version, ejs_status))
     rows.append(("local LLM", llm.base_url, "enabled" if llm.enabled else "disabled"))
     rows.append(("local LLM model", llm.model, "configured" if llm.enabled else "inactive"))
     if llm.enabled:
@@ -6098,6 +6128,7 @@ def fetch_captions_service(
     processed = 0
     skipped = 0
     unavailable = 0
+    deferred = 0
     failed = 0
     for video in videos:
         transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
@@ -6109,8 +6140,22 @@ def fetch_captions_service(
             console.print(f"Fetching captions for video #{video.id}: {video.title}")
             result = fetch_captions_video(database, paths, tools, video.id)
         except NoCaptionsAvailableError:
+            if _is_terminal_unavailable(video.status, video.failure_reason) or _is_retryable_fetch_failure(
+                video.status, video.failure_reason
+            ):
+                database.update_video_status(video.id, VideoStatus.DISCOVERED)
             console.print(f"No captions for video #{video.id}; leaving it for local transcription.")
             unavailable += 1
+            continue
+        except VideoNotYetAvailableError as error:
+            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+            console.print(f"Video #{video.id} has not started yet; deferring it.")
+            deferred += 1
+            continue
+        except YtDlpConfigurationError as error:
+            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
+            console.print(f"[red]yt-dlp configuration error[/red] for video #{video.id}: {error}")
+            failed += 1
             continue
         except VideoUnavailableError as error:
             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
@@ -6126,7 +6171,8 @@ def fetch_captions_service(
         processed += 1
 
     console.print(
-        f"Fetched captions for {processed} video(s); skipped {skipped}; unavailable {unavailable}; failed {failed}."
+        f"Fetched captions for {processed} video(s); skipped {skipped}; unavailable {unavailable}; "
+        f"deferred {deferred}; failed {failed}."
     )
 
 

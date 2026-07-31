@@ -16,16 +16,39 @@ class VideoUnavailableError(YtDlpError):
     pass
 
 
+class VideoNotYetAvailableError(YtDlpError):
+    pass
+
+
+class YtDlpConfigurationError(YtDlpError):
+    pass
+
+
 def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) -> None:
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode == 0:
         return
 
-    output_lines = [line.strip() for line in (result.stderr or result.stdout).splitlines() if line.strip()]
+    raw_output = "\n".join(part for part in (result.stderr, result.stdout) if part)
+    output_lines = [line.strip() for line in raw_output.splitlines() if line.strip()]
+    full_output = "\n".join(output_lines)
+    lowered_output = full_output.lower()
     detail = output_lines[-1] if output_lines else f"yt-dlp exited with status {result.returncode}"
     lowered = detail.lower()
-    if expect_captions and "there are no subtitles for the requested languages" in lowered:
+    if expect_captions and "there are no subtitles for the requested languages" in lowered_output:
         raise NoCaptionsAvailableError(f"No captions available for {url}")
+    if "this live event will begin" in lowered_output or "premieres in" in lowered_output:
+        raise VideoNotYetAvailableError(f"Video has not started yet for {url}: {detail}")
+    configuration_markers = (
+        "no supported javascript runtime could be found",
+        "remote component challenge solver script",
+        "ensure you have a supported javascript runtime and challenge solver script distribution installed",
+    )
+    if any(marker in lowered_output for marker in configuration_markers):
+        raise YtDlpConfigurationError(
+            "yt-dlp cannot solve YouTube JavaScript challenges; install the "
+            "yt-dlp default extras and configure a supported JS runtime"
+        )
     if "this video is not available" in lowered or "video unavailable" in lowered:
         raise VideoUnavailableError(f"Video unavailable for {url}")
     raise YtDlpError(detail)
@@ -49,7 +72,6 @@ def download_captions(url: str, yt_dlp_bin: str, output_path: Path, yt_dlp_js_ru
         command.extend(["--js-runtimes", yt_dlp_js_runtimes])
     command.extend(
         [
-            "--no-warnings",
             "--no-progress",
             "-o",
             f"{base}.%(ext)s",
@@ -88,7 +110,6 @@ def download_audio(url: str, yt_dlp_bin: str, output_path: Path, yt_dlp_js_runti
         command.extend(["--js-runtimes", yt_dlp_js_runtimes])
     command.extend(
         [
-            "--no-warnings",
             "--no-progress",
             "-o",
             f"{base}.%(ext)s",
@@ -122,7 +143,6 @@ def download_source_audio(
         command.extend(["--js-runtimes", yt_dlp_js_runtimes])
     command.extend(
         [
-            "--no-warnings",
             "--no-progress",
             "-o",
             f"{base}.%(ext)s",

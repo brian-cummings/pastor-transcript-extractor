@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -178,13 +179,23 @@ def _resolve_command_path(command: str) -> str:
     return command
 
 
+def _detect_yt_dlp_js_runtime() -> str | None:
+    """Select a supported runtime, preferring yt-dlp's recommended Deno."""
+    for runtime in ("deno", "node", "quickjs"):
+        resolved = shutil.which(runtime)
+        if resolved:
+            return f"{runtime}:{resolved}"
+    return None
+
+
 def build_tool_config() -> ToolConfig:
+    configured_js_runtimes = os.environ.get("PTE_YT_DLP_JS_RUNTIMES")
     return ToolConfig(
         whisper_cpp_bin=Path(os.environ.get("PTE_WHISPER_CPP_BIN", DEFAULT_WHISPER_CPP_BIN)),
         whisper_model_path=Path(os.environ.get("PTE_WHISPER_MODEL_PATH", DEFAULT_WHISPER_MODEL_PATH)),
         ffmpeg_bin=_resolve_command_path(os.environ.get("PTE_FFMPEG_BIN", DEFAULT_FFMPEG_BIN)),
         yt_dlp_bin=_resolve_command_path(os.environ.get("PTE_YT_DLP_BIN", DEFAULT_YT_DLP_BIN)),
-        yt_dlp_js_runtimes=os.environ.get("PTE_YT_DLP_JS_RUNTIMES") or None,
+        yt_dlp_js_runtimes=configured_js_runtimes or _detect_yt_dlp_js_runtime(),
     )
 
 
