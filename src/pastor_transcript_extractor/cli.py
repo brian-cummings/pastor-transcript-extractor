@@ -2806,6 +2806,205 @@ def confirm_discovered_profiles_command(
         )
 
 
+def run_identity_workflow_service(
+    *,
+    youtube_video_id: str | None,
+    all_extractions: bool,
+    plan_only: bool,
+    skip_discovery: bool,
+    apply_confirmations: bool,
+    apply_promotions: bool,
+    base_dir: Path | None,
+) -> None:
+    if (youtube_video_id is None) == (not all_extractions):
+        raise ValueError("Pass exactly one YouTube video ID or --all.")
+    if plan_only and (apply_confirmations or apply_promotions):
+        raise ValueError(
+            "--plan-only cannot be combined with registry mutation flags"
+        )
+    if not all_extractions and apply_promotions:
+        raise ValueError("--apply-promotions requires --all")
+    paths = build_paths(base_dir, remember=not plan_only)
+    if not paths.database.exists():
+        raise ValueError(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    database_video_id = None
+    if youtube_video_id is not None:
+        video = database.get_video_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise ValueError(f"Unknown YouTube video ID: {youtube_video_id}")
+        database_video_id = video.id
+
+    console.print(
+        "[bold]Identity run[/bold] "
+        f"scope={'all' if all_extractions else youtube_video_id} "
+        f"mode={'plan' if plan_only else 'execute'}"
+    )
+    if plan_only:
+        console.print("Backfill: plan-only; no identity artifacts were written.")
+    else:
+        identity_backfill(video_id=database_video_id, base_dir=base_dir)
+
+    shadow_associate_speakers_command(
+        youtube_video_id=youtube_video_id,
+        all_eligible=all_extractions,
+        limit=None,
+        plan_only=plan_only,
+        minimum_profile_members=3,
+        maximum_exemplars=3,
+        minimum_same_exemplars=2,
+        model_path=Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+        policy_path=Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        evaluation_root=Path("evaluation/speaker-pairs"),
+        cache_dir=Path("evaluation/speaker-pairs/cache"),
+        output_root=Path("evaluation/speaker-associations/shadow-runs"),
+        base_dir=base_dir,
+    )
+
+    confirm_discovered_profiles_command(
+        input_root=Path("evaluation/speaker-associations/shadow-runs"),
+        apply=apply_confirmations and not plan_only,
+        base_dir=base_dir,
+    )
+
+    discovery_root = Path(
+        "evaluation/speaker-profile-discovery/shadow-runs"
+    )
+    if all_extractions and not skip_discovery:
+        shadow_discover_profiles_command(
+            plan_only=plan_only,
+            limit=None,
+            nearest_neighbors=8,
+            maximum_pairs=None,
+            minimum_component_members=3,
+            consistency_report=None,
+            minimum_consistency_score=None,
+            model_path=Path(
+                "evaluation/speaker-pairs/models/"
+                "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+            ),
+            model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+            policy_path=Path(
+                "evaluation/speaker-pairs/policies/"
+                "campplus-development-candidate-v1.json"
+            ),
+            evaluation_root=Path("evaluation/speaker-pairs"),
+            cache_dir=Path("evaluation/speaker-pairs/cache"),
+            output_root=discovery_root,
+            base_dir=base_dir,
+        )
+    elif all_extractions:
+        console.print("Discovery: skipped by --skip-discovery.")
+    else:
+        console.print("Discovery: deferred to a corpus-wide identity run.")
+
+    discovery_reports = list(discovery_root.resolve().glob("*/*.json"))
+    latest_discovery = (
+        max(
+            discovery_reports,
+            key=lambda path: (path.stat().st_mtime_ns, str(path)),
+        )
+        if discovery_reports
+        else None
+    )
+    if all_extractions and latest_discovery is not None:
+        promote_discovered_profiles_command(
+            discovery_report=latest_discovery,
+            apply=apply_promotions and not plan_only,
+            base_dir=base_dir,
+        )
+    elif all_extractions:
+        console.print("Discovery promotion: no completed report available.")
+
+    coordinate_identity_command(
+        youtube_video_id=youtube_video_id,
+        all_extractions=all_extractions,
+        execute_shadow=False,
+        discovery_report=latest_discovery,
+        discovery_root=discovery_root,
+        model_path=Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+        policy_path=Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        evaluation_root=Path("evaluation/speaker-pairs"),
+        cache_dir=Path("evaluation/speaker-pairs/cache"),
+        association_root=Path(
+            "evaluation/speaker-associations/shadow-runs"
+        ),
+        output_root=None,
+        base_dir=base_dir,
+    )
+    console.print(
+        "Identity run complete. Human review, naming, and unrequested "
+        "registry mutations remain explicit."
+    )
+
+
+@identity_app.command(
+    "run",
+    help="Run backfill, shadow association, discovery, and final coordination.",
+)
+def identity_run_command(
+    youtube_video_id: str | None = typer.Argument(
+        None,
+        help="One YouTube video ID; omit when using --all.",
+    ),
+    all_extractions: bool = typer.Option(
+        False,
+        "--all",
+        help="Run across all current extractions and include corpus discovery.",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Show all stages without acoustic execution or registry mutation.",
+    ),
+    skip_discovery: bool = typer.Option(
+        False,
+        "--skip-discovery",
+        help="Skip corpus profile discovery during an --all run.",
+    ),
+    apply_confirmations: bool = typer.Option(
+        False,
+        "--apply-confirmations",
+        help="Apply validated independent provisional-profile confirmations.",
+    ),
+    apply_promotions: bool = typer.Option(
+        False,
+        "--apply-promotions",
+        help="Promote verified discovery components into provisional profiles.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    try:
+        run_identity_workflow_service(
+            youtube_video_id=youtube_video_id,
+            all_extractions=all_extractions,
+            plan_only=plan_only,
+            skip_discovery=skip_discovery,
+            apply_confirmations=apply_confirmations,
+            apply_promotions=apply_promotions,
+            base_dir=base_dir,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @identity_app.command(
     "coordinate",
     help="Plan or execute the non-mutating identity workflow for current extractions.",

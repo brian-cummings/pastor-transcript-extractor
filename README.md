@@ -642,6 +642,23 @@ pastor-name match links its placeholder identity to the voice profile; unmatched
 names remain attributed but unlinked, and existing links are never merged from
 name similarity alone.
 
+Run the complete identity layer independently with the same scope convention as
+top-level `pte run`:
+
+```bash
+pte identity run YOUTUBE_VIDEO_ID --base-dir /path/to/app-data
+pte identity run --all --base-dir /path/to/app-data
+pte identity run --all --plan-only --base-dir /path/to/app-data
+```
+
+Execution chains neutral-artifact backfill, shadow association, validated
+confirmation planning, corpus discovery for `--all`, provisional-promotion
+planning, and a final coordination audit. Discovery and association remain
+shadow computations. `--apply-confirmations` and `--apply-promotions` are
+separate explicit registry-mutation boundaries; human pair review, profile
+attribution, conflicts, and policy approval are never inferred by the runner.
+Use `--skip-discovery` when only association reconciliation is wanted.
+
 ## Planning Docs
 
 - `docs/V1_SPEC.md`

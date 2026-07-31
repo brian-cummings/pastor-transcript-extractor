@@ -435,6 +435,15 @@ manual claim, not a mutable profile label. A unique configured-name match links
 the pastor placeholder; absent or ambiguous matches remain explicit workflow
 states rather than implicit identity guesses.
 
+The previously manual identity command chain now has an executable entrypoint:
+`identity run [YOUTUBE_VIDEO_ID]` or `identity run --all`. It delegates every
+stage through the same command-backed orchestration service: backfill,
+association, confirmation planning, corpus discovery, promotion planning, and
+final coordination. The runner executes shadow evidence collection by default
+like top-level `run`, offers `--plan-only`, and retains explicit flags for the
+two reversible registry mutation boundaries. This service is the integration
+point top-level acquisition `run` can invoke for newly changed extractions.
+
 The reviewed-evidence and batch-profile loop still contains explicit stages:
 
 1. inspect `profile-status`;
