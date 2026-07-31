@@ -1805,6 +1805,104 @@ class CliTests(unittest.TestCase):
             self.assertEqual(["discover", "fetch", "transcribe", "extract"], [call[0] for call in calls])
             self.assertIsNone(calls[0][2]["source_id"])
 
+    def test_run_failed_only_targets_failed_ids_and_preserves_existing_artifacts(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            failed_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="failed12345",
+                title="Failed sermon",
+                url="https://www.youtube.com/watch?v=failed12345",
+                status=VideoStatus.FAILED,
+                failure_reason="temporary failure",
+            )
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="success1234",
+                title="Successful sermon",
+                url="https://www.youtube.com/watch?v=success1234",
+                status=VideoStatus.EXTRACTED,
+            )
+            calls: list[tuple[str, dict]] = []
+
+            def fake_fetch(*_args, **kwargs):
+                calls.append(("fetch", kwargs))
+
+            def fake_transcribe(*_args, **kwargs):
+                calls.append(("transcribe", kwargs))
+
+            def fake_extract(*_args, **kwargs):
+                calls.append(("extract", kwargs))
+                return ExtractionBatchResult(0, 1, 0)
+
+            with patch(
+                "pastor_transcript_extractor.cli.discover_sources_service",
+                side_effect=AssertionError("failed-only must not discover"),
+            ), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service",
+                side_effect=fake_fetch,
+            ), patch(
+                "pastor_transcript_extractor.cli.transcribe_videos_service",
+                side_effect=fake_transcribe,
+            ), patch(
+                "pastor_transcript_extractor.cli.extract_batch",
+                side_effect=fake_extract,
+            ):
+                result = runner.invoke(
+                    app,
+                    ["run", "--failed-only", "--skip-review", "--base-dir", str(base_dir)],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("Reprocessing 1 failed video(s) systemwide", result.output)
+            self.assertEqual(["fetch", "transcribe", "extract"], [name for name, _ in calls])
+            for _, kwargs in calls:
+                self.assertEqual({failed_video.id}, kwargs["video_ids"])
+            self.assertTrue(calls[1][1]["missing_only"])
+            self.assertTrue(calls[1][1]["captions_missing_only"])
+            self.assertTrue(calls[2][1]["missing_only"])
+
+    def test_run_failed_only_exits_cleanly_when_nothing_failed(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+
+            with patch("pastor_transcript_extractor.cli.fetch_captions_service") as fetch:
+                result = runner.invoke(app, ["run", "--failed-only", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("No failed videos to reprocess", result.output)
+            fetch.assert_not_called()
+
+    def test_run_failed_only_rejects_source_arguments(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "https://www.youtube.com/@samplechurch",
+                "--pastor",
+                "sample-church",
+                "--failed-only",
+            ],
+        )
+
+        self.assertNotEqual(0, result.exit_code)
+        self.assertIn("Do not pass a URL when using --failed-only", result.output)
+
     def test_run_all_rejects_url_and_pastor_inputs(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:

@@ -123,6 +123,8 @@ pte source-processing-report \
   transcription, adaptive extraction, and pastor review export.
 - `pte run --all` performs the same workflow for every configured source and
   writes one review per pastor.
+- `pte run --failed-only` retries failed videos across all sources while
+  preserving successful transcript and extraction artifacts.
 - `pte run <url> --pastor <slug> --skip-review` intentionally stops after
   extraction.
 - `pte review <pastor-slug>`

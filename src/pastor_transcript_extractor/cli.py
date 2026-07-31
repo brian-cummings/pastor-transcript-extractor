@@ -6599,6 +6599,7 @@ def run_workflow_service(
     url: str | None = None,
     pastor: str | None = None,
     all_sources: bool = False,
+    failed_only: bool = False,
     replace_existing: bool = False,
     limit: int | None = DEFAULT_DISCOVER_LIMIT,
     all_videos: bool = False,
@@ -6610,6 +6611,70 @@ def run_workflow_service(
     skip_review: bool = False,
     base_dir: Path | None = None,
 ) -> None:
+    if failed_only:
+        if url is not None:
+            raise ValueError("Do not pass a URL when using --failed-only.")
+        if pastor is not None:
+            raise ValueError("Do not pass --pastor when using --failed-only.")
+        if all_sources:
+            raise ValueError("Use either --all or --failed-only, not both.")
+        if replace_existing:
+            raise ValueError("--replace-existing is not valid with --failed-only.")
+        database = get_database(base_dir)
+        paths = build_paths(base_dir, remember=True)
+        failed_videos = [video for video in database.list_videos() if video.status is VideoStatus.FAILED]
+        failed_video_ids = {video.id for video in failed_videos}
+        if not failed_video_ids:
+            console.print("No failed videos to reprocess.")
+            return
+
+        console.print(f"Reprocessing {len(failed_video_ids)} failed video(s) systemwide.")
+        fetch_captions_service(base_dir=base_dir, video_ids=failed_video_ids)
+        if not captions_only:
+            transcribe_videos_service(
+                missing_only=True,
+                captions_missing_only=transcribe_missing,
+                jobs=jobs,
+                base_dir=base_dir,
+                video_ids=failed_video_ids,
+            )
+        extraction = extract_batch(
+            database,
+            paths,
+            missing_only=True,
+            video_ids=failed_video_ids,
+            classifier=classifier,
+            llm_model=llm_model,
+            workers=jobs,
+            event_callback=lambda message: console.print(message, markup=False),
+            progress_callback=lambda stage, current, total: console.print(
+                f"  {stage} block {current}/{total}"
+            ),
+        )
+        console.print(
+            f"Extracted {extraction.processed} video(s); "
+            f"skipped {extraction.skipped}; failed {extraction.failed}."
+        )
+        if not skip_review:
+            pastor_slugs = {
+                pastor_record.slug
+                for video in failed_videos
+                if video.pastor_id is not None
+                for pastor_record in [database.get_pastor_by_id(video.pastor_id)]
+                if pastor_record is not None
+            }
+            for pastor_slug in sorted(pastor_slugs):
+                reviews = prepare_review_exports(
+                    database,
+                    paths,
+                    pastor_slug=pastor_slug,
+                    classifier=classifier,
+                    llm_model=llm_model,
+                    event_callback=lambda message: console.print(message, markup=False),
+                )
+                _print_review_batch(reviews)
+        return
+
     if all_sources:
         if url is not None:
             raise ValueError("Do not pass a URL when using --all. Run either a global sync or a single-source workflow.")
@@ -6704,6 +6769,11 @@ def run(
     url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
     pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
     all_sources: bool = typer.Option(False, "--all", help="Run across all configured sources."),
+    failed_only: bool = typer.Option(
+        False,
+        "--failed-only",
+        help="Reprocess only failed videos systemwide without rebuilding successful artifacts.",
+    ),
     replace_existing: bool = typer.Option(False, "--replace-existing", help="Replace a matching source first."),
     limit: int | None = typer.Option(DEFAULT_DISCOVER_LIMIT, "--limit", min=1, help="Videos per source; defaults to 26."),
     all_videos: bool = typer.Option(False, "--all-videos", help="Process all discovered videos."),
@@ -6724,6 +6794,7 @@ def run(
             url=url,
             pastor=pastor,
             all_sources=all_sources,
+            failed_only=failed_only,
             replace_existing=replace_existing,
             limit=limit,
             all_videos=all_videos,
