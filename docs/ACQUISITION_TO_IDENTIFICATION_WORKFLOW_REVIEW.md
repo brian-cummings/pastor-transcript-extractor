@@ -134,7 +134,10 @@ The identity subsystem is intentionally conservative:
 - `shadow-associate-speakers` can propose a profile but explicitly cannot change
   registry membership;
 - `shadow-discover-profiles` can now propose complete-link anonymous components,
-  but explicitly cannot create provisional registry profiles;
+  and a separate plan/apply command can promote verified components into
+  reversible provisional profiles;
+- a second plan/apply command can attach a current multi-exemplar proposal from
+  an independent recording as provisional-profile confirmation;
 - acoustic-driven registry mutation remains unapproved.
 
 These are good safety properties for model development, but they mean the user goal
@@ -159,12 +162,15 @@ Keep merges, naming, contradictory attribution, and low-margin matches manual. M
 all automatic membership events append-only and reversible, with model, policy,
 exemplar, audio-span, and score provenance.
 
-> Implementation update: the non-mutating bootstrap half now exists.
+> Implementation update: the controlled bootstrap loop now exists.
 > `shadow-discover-profiles` builds a bounded nearest-neighbor acoustic graph
 > among unassigned observations and emits a provisional component only for at
 > least three distinct recordings with complete-link same-speaker support and
-> no difference, attribution, or unresolved-edge blocker. Durable provisional
-> profile creation and automatic growth remain intentionally gated.
+> no difference, attribution, or unresolved-edge blocker.
+> `promote-discovered-profiles --apply` creates a reversible provisional seed
+> with full artifact provenance, while `confirm-discovered-profiles --apply`
+> requires a later current multi-exemplar match from an independent recording.
+> Global automatic growth remains gated on model and policy approval.
 
 ### 3. Critical: the single `videos.status` field conflates unrelated concerns
 
@@ -583,10 +589,10 @@ After this phase, every eligible imported sermon reaches the identity backlog.
 2. Add profile candidate retrieval and multi-exemplar scoring.
 3. Validate the implemented shadow anonymous-component discovery against
    reviewed outcomes and calibrated observation-consistency scores.
-4. Implement reversible automatic membership for unique, high-confidence,
-   conflict-free matches.
-5. Promote approved complete-link component proposals into reversible
-   provisional profiles.
+4. Validate the implemented reversible provisional promotion and independent
+   confirmation loop against reviewed outcomes.
+5. Approve automatic membership only for unique, high-confidence,
+   conflict-free matches after the model/policy gate passes.
 6. Keep new-profile creation more conservative than profile growth.
 7. Keep naming, merging, and conflicting evidence manual.
 8. Measure automatic coverage, error rate, abstention rate, and later-overturned

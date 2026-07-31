@@ -15,6 +15,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
+DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +94,8 @@ def build_profile_pipeline_status(
     reviewed_profiles = [
         profile
         for profile in all_profiles
-        if profile.created_reason == REVIEWED_PROFILE_REASON
+        if profile.created_reason
+        in {REVIEWED_PROFILE_REASON, DISCOVERY_PROFILE_REASON}
     ]
     canonical_ids = {
         profile.id
@@ -262,6 +264,9 @@ def build_profile_pipeline_status(
     profile_rows: list[ProfileStatus] = []
     claim_review_conflict_profile_ids: set[int] = set()
     for profile_id in sorted(canonical_ids):
+        registry_profile = next(
+            profile for profile in reviewed_profiles if profile.id == profile_id
+        )
         member_ids = members_by_profile[profile_id]
         member_claim_ids = {
             claim_id
@@ -305,7 +310,18 @@ def build_profile_pipeline_status(
         )
         if len(names) > 1 or configured_name_ambiguity:
             claim_review_conflict_profile_ids.add(profile_id)
-        if (
+        if registry_profile.created_reason == DISCOVERY_PROFILE_REASON:
+            state = (
+                "provisional-confirmed"
+                if profile_readiness.automatic_profile_ready
+                else "provisional"
+            )
+            next_need = (
+                "model/policy approval for automatic use"
+                if profile_readiness.automatic_profile_ready
+                else "confirm an independent recording through shadow association"
+            )
+        elif (
             profile_id in attribution_conflict_profile_ids
             or profile_id in claim_review_conflict_profile_ids
         ):

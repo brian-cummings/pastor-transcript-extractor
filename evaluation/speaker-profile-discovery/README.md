@@ -51,6 +51,37 @@ registry_mutation_allowed=false
 automatic_profile_creation_allowed=false
 ```
 
+## Controlled promotion
+
+A completed artifact can be validated and promoted into reversible provisional
+registry profiles:
+
+```bash
+pte identity promote-discovered-profiles \
+  --discovery-report evaluation/speaker-profile-discovery/shadow-runs/<run>/<report>.json \
+  --base-dir /path/to/app-data
+```
+
+The command is plan-only unless `--apply` is supplied. Application creates an
+unnamed `provisional` profile with a stable component-derived key, records the
+source artifact and seed observations, and attaches the verified complete-link
+members. These profiles are eligible for shadow association but are not
+automatic-profile-ready.
+
+After rerunning shadow association, validate independent proposed matches with:
+
+```bash
+pte identity confirm-discovered-profiles \
+  --base-dir /path/to/app-data
+```
+
+That command is also plan-only unless `--apply` is supplied. It accepts only
+current, checksum-valid, transcript-grounded, multi-exemplar `proposed_match`
+artifacts aimed at a discovery profile and requires a recording outside the
+seed component. One accepted independent recording clears the profile-level
+discovery confirmation blocker. Model and decision-policy approval remain a
+separate prerequisite for future automatic use.
+
 Observation consistency remains a separately calibrated gate. Supply a report
 and threshold only after that policy is approved:
 

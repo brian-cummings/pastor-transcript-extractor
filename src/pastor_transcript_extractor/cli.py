@@ -178,6 +178,12 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     select_transcript_grounded_spans,
     write_shadow_profile_discovery,
 )
+from pastor_transcript_extractor.speaker_profile_promotion import (
+    apply_candidate_confirmations,
+    apply_discovery_promotions,
+    plan_candidate_confirmations,
+    plan_discovery_promotions,
+)
 from pastor_transcript_extractor.speaker_shadow_association import (
     ShadowExemplar,
     assess_profile_association_readiness,
@@ -2363,6 +2369,165 @@ def shadow_discover_profiles_command(
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."
     )
+
+
+@identity_app.command(
+    "promote-discovered-profiles",
+    help="Promote verified discovery components into reversible provisional profiles.",
+)
+def promote_discovered_profiles_command(
+    discovery_report: Path = typer.Option(
+        ...,
+        "--discovery-report",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Completed shadow profile-discovery JSON artifact.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Create provisional profiles and attach their seed observations.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    try:
+        plan = plan_discovery_promotions(
+            Database(paths.database, readonly=True),
+            discovery_report,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Discovery promotion plan: "
+        f"eligible_components={len(plan.candidates)} "
+        f"skipped={len(plan.skipped)}"
+    )
+    for candidate in plan.candidates:
+        names = ",".join(candidate.normalized_names) or "anonymous"
+        state = (
+            f"existing_profile={candidate.existing_profile_id}"
+            if candidate.existing_profile_id is not None
+            else "new_provisional_profile"
+        )
+        console.print(
+            f"Component {candidate.component_id[:12]}: "
+            f"members={len(candidate.observation_ids)} "
+            f"recordings={len(candidate.recording_ids)} "
+            f"names={names} {state}"
+        )
+    for skipped in plan.skipped:
+        console.print(
+            f"Skipped {str(skipped['component_id'])[:12]}: "
+            f"{skipped['reason']}"
+        )
+    if not apply:
+        console.print(
+            "Plan only; pass --apply to create reversible provisional profiles."
+        )
+        return
+    database = Database(paths.database)
+    database.initialize()
+    try:
+        profile_ids = apply_discovery_promotions(database, plan)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Discovery promotion complete: "
+        f"profiles={len(profile_ids)} ids="
+        + (",".join(str(value) for value in profile_ids) or "none")
+    )
+    console.print(
+        "Profiles are shadow-usable but remain automatic-blocked until an "
+        "independent association is confirmed."
+    )
+
+
+@identity_app.command(
+    "confirm-discovered-profiles",
+    help="Attach independent proposed matches to provisional discovery profiles.",
+)
+def confirm_discovered_profiles_command(
+    input_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Versioned shadow-association artifact root.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Attach validated confirmations to their provisional profiles.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    report_paths = sorted(
+        input_root.expanduser().resolve().glob("*/*.json")
+    )
+    plan = plan_candidate_confirmations(
+        Database(paths.database, readonly=True),
+        report_paths,
+    )
+    console.print(
+        "Candidate confirmation plan: "
+        f"eligible_associations={len(plan.candidates)} "
+        f"invalid_artifacts={len(plan.skipped)} "
+        f"ignored={sum(plan.ignored_counts.values())}"
+    )
+    if plan.ignored_counts:
+        console.print(
+            "Ignored reasons: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in plan.ignored_counts.items()
+            )
+        )
+    for candidate in plan.candidates:
+        console.print(
+            f"Profile {candidate.profile_id}: "
+            f"observation={candidate.observation_id} "
+            f"video={candidate.video_id} "
+            f"artifact={candidate.report_path}"
+        )
+    if not apply:
+        console.print(
+            "Plan only; pass --apply to attach these independent recordings."
+        )
+        return
+    database = Database(paths.database)
+    database.initialize()
+    try:
+        event_ids = apply_candidate_confirmations(database, plan)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Candidate confirmation complete: "
+        f"confirmed={len(event_ids)}"
+    )
+    if event_ids:
+        console.print(
+            "Confirmed discovery profiles now satisfy the profile-level "
+            "automatic readiness gate; model/policy approval remains separate."
+        )
+    else:
+        console.print(
+            "No discovery profile received an independent confirmation; "
+            "profile readiness is unchanged."
+        )
 
 
 @identity_app.command(

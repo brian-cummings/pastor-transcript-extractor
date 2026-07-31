@@ -349,6 +349,30 @@ CREATE TABLE IF NOT EXISTS speaker_profile_creation_events (
     FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
 );
 
+CREATE TABLE IF NOT EXISTS speaker_profile_discovery_promotions (
+    profile_id INTEGER PRIMARY KEY,
+    component_id TEXT NOT NULL UNIQUE,
+    discovery_result_sha256 TEXT NOT NULL,
+    discovery_artifact_path TEXT NOT NULL,
+    seed_observation_ids_json TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_profile_candidate_confirmations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    observation_id INTEGER NOT NULL,
+    association_result_sha256 TEXT NOT NULL,
+    association_artifact_path TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id),
+    FOREIGN KEY(observation_id) REFERENCES speaker_observations(id),
+    UNIQUE(profile_id, observation_id)
+);
+
 CREATE TABLE IF NOT EXISTS speaker_observation_review_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     observation_id INTEGER NOT NULL,
@@ -2958,6 +2982,156 @@ class Database:
             values=(profile_id, reviewer, reason),
             event_fingerprint=event_fingerprint,
         )
+
+    def add_speaker_profile_discovery_promotion(
+        self,
+        *,
+        profile_id: int,
+        component_id: str,
+        discovery_result_sha256: str,
+        discovery_artifact_path: str,
+        seed_observation_ids_json: str,
+        event_fingerprint: str,
+    ) -> int:
+        created_at = utc_now().isoformat()
+        values = (
+            profile_id,
+            component_id,
+            discovery_result_sha256,
+            discovery_artifact_path,
+            seed_observation_ids_json,
+            event_fingerprint,
+            created_at,
+        )
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO speaker_profile_discovery_promotions (
+                        profile_id, component_id, discovery_result_sha256,
+                        discovery_artifact_path, seed_observation_ids_json,
+                        event_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    values,
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT profile_id, component_id, discovery_result_sha256,
+                           discovery_artifact_path, seed_observation_ids_json
+                    FROM speaker_profile_discovery_promotions
+                    WHERE event_fingerprint = ?
+                    """,
+                    (event_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                persisted = (
+                    int(row["profile_id"]),
+                    str(row["component_id"]),
+                    str(row["discovery_result_sha256"]),
+                    str(row["discovery_artifact_path"]),
+                    str(row["seed_observation_ids_json"]),
+                )
+                if persisted != values[:5]:
+                    raise ValueError(
+                        "Discovery promotion event fingerprint collision"
+                    )
+                return int(row["profile_id"])
+        return int(cursor.lastrowid)
+
+    def get_speaker_profile_discovery_promotion(
+        self, profile_id: int
+    ) -> dict[str, object] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT profile_id, component_id, discovery_result_sha256,
+                       discovery_artifact_path, seed_observation_ids_json,
+                       event_fingerprint, created_at
+                FROM speaker_profile_discovery_promotions
+                WHERE profile_id = ?
+                """,
+                (profile_id,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def add_speaker_profile_candidate_confirmation(
+        self,
+        *,
+        profile_id: int,
+        observation_id: int,
+        association_result_sha256: str,
+        association_artifact_path: str,
+        event_fingerprint: str,
+    ) -> int:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO speaker_profile_candidate_confirmations (
+                        profile_id, observation_id, association_result_sha256,
+                        association_artifact_path, event_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        profile_id,
+                        observation_id,
+                        association_result_sha256,
+                        association_artifact_path,
+                        event_fingerprint,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, profile_id, observation_id,
+                           association_result_sha256, association_artifact_path
+                    FROM speaker_profile_candidate_confirmations
+                    WHERE event_fingerprint = ?
+                    """,
+                    (event_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                persisted = (
+                    int(row["profile_id"]),
+                    int(row["observation_id"]),
+                    str(row["association_result_sha256"]),
+                    str(row["association_artifact_path"]),
+                )
+                expected = (
+                    profile_id,
+                    observation_id,
+                    association_result_sha256,
+                    association_artifact_path,
+                )
+                if persisted != expected:
+                    raise ValueError(
+                        "Candidate confirmation event fingerprint collision"
+                    )
+                return int(row["id"])
+        return int(cursor.lastrowid)
+
+    def list_speaker_profile_candidate_confirmations(
+        self, profile_id: int
+    ) -> list[dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, profile_id, observation_id,
+                       association_result_sha256, association_artifact_path,
+                       event_fingerprint, created_at
+                FROM speaker_profile_candidate_confirmations
+                WHERE profile_id = ?
+                ORDER BY id
+                """,
+                (profile_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def add_speaker_observation_review_event(
         self,

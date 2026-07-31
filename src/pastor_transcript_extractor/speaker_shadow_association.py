@@ -21,6 +21,7 @@ from pastor_transcript_extractor.storage import Database
 
 SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v2"
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
+DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +126,8 @@ def assess_profile_association_readiness(
     profiles = [
         profile
         for profile in database.list_speaker_profiles()
-        if profile.created_reason == REVIEWED_PROFILE_REASON
+        if profile.created_reason
+        in {REVIEWED_PROFILE_REASON, DISCOVERY_PROFILE_REASON}
     ]
     canonical_ids = {
         profile.id
@@ -179,7 +181,7 @@ def assess_profile_association_readiness(
         )
         shadow_blockers: list[str] = []
         if len(member_ids) < minimum_members:
-            shadow_blockers.append("fewer_than_three_reviewed_members")
+            shadow_blockers.append("fewer_than_three_profile_members")
         if len(video_ids) < minimum_members:
             shadow_blockers.append("fewer_than_three_distinct_recordings")
         if len(member_observations) != len(member_ids):
@@ -208,12 +210,35 @@ def assess_profile_association_readiness(
         profile_edges = {
             edge for edge in same_edges if edge.issubset(fingerprints)
         }
-        graph_blockers = _review_graph_blockers(
-            fingerprints,
-            profile_edges,
-        )
         automatic_blockers = list(shadow_blockers)
-        automatic_blockers.extend(graph_blockers)
+        profile = next(item for item in profiles if item.id == profile_id)
+        if profile.created_reason == DISCOVERY_PROFILE_REASON:
+            promotion = database.get_speaker_profile_discovery_promotion(
+                profile_id
+            )
+            confirmations = (
+                database.list_speaker_profile_candidate_confirmations(
+                    profile_id
+                )
+                if promotion is not None
+                else []
+            )
+            if promotion is None:
+                shadow_blockers.append("discovery_promotion_provenance_missing")
+                automatic_blockers.append(
+                    "discovery_promotion_provenance_missing"
+                )
+            if not confirmations:
+                automatic_blockers.append(
+                    "discovery_candidate_unconfirmed"
+                )
+        else:
+            automatic_blockers.extend(
+                _review_graph_blockers(
+                    fingerprints,
+                    profile_edges,
+                )
+            )
         shadow_blockers = list(dict.fromkeys(shadow_blockers))
         automatic_blockers = list(dict.fromkeys(automatic_blockers))
         readiness.append(

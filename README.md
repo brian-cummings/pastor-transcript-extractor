@@ -499,6 +499,16 @@ Versioned artifacts are written below
 zero. A calibrated observation-consistency report can be supplied with
 `--consistency-report` and `--minimum-consistency-score`.
 
+Verified components enter a reversible candidate loop with
+`pte identity promote-discovered-profiles --discovery-report <artifact>`.
+Without `--apply` it reports the exact qualifying components. With `--apply`,
+it creates stable provisional profiles and attaches their complete-link seed
+observations. Those profiles participate in subsequent shadow association but
+remain automatic-blocked until `pte identity confirm-discovered-profiles`
+accepts a current multi-exemplar proposal from an independent recording.
+Confirmation is also plan-only unless `--apply` is passed; acoustic
+model/policy approval remains a separate gate.
+
 ## Commands
 
 - `pte init`

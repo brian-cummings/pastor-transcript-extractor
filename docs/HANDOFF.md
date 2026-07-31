@@ -427,7 +427,24 @@ same-speaker graph. Any missing/abstaining required edge, reviewed
 different-speaker constraint, or conflicting explicit name blocks the component.
 The result is a content-addressed artifact under the ignored
 `evaluation/speaker-profile-discovery/shadow-runs/` tree. It never creates a
-registry profile or membership.
+registry profile or membership by itself.
+
+The artifact now has an explicit, reversible promotion boundary.
+`identity promote-discovered-profiles --discovery-report <path>` validates the
+checksum, current discovery and transcript-grounding versions, complete-link
+outcome, live observation fingerprints, distinct recordings, current
+membership, and reviewed difference constraints. `--apply` creates a stable
+`provisional` discovery profile, records artifact/seed provenance, and attaches
+the seed observations. The profile is shadow-usable immediately but carries
+`discovery_candidate_unconfirmed` as an automatic-readiness blocker.
+
+After a new shadow-association run,
+`identity confirm-discovered-profiles` validates proposed matches directed at
+discovery profiles. `--apply` accepts only current transcript-grounded,
+multi-exemplar proposals from a recording outside the seed component, attaches
+that observation, and records the association artifact as confirmation. This
+clears the profile-level confirmation blocker. It does not approve the
+experimental acoustic policy or enable automatic mutation globally.
 
 The optional `--consistency-report` and `--minimum-consistency-score` arguments
 are the integration boundary for the separately calibrated observation
@@ -460,9 +477,9 @@ The intended progression is:
 3. Measure component-level false merges, splits, contradiction rates, and
    stability across dates, rooms, microphones, channels, and source families.
    Source-family membership remains context only and never identity evidence.
-4. Promote the implemented shadow component contract to reversible provisional
-   unnamed profiles only after its policy gates are approved. It already
-   requires at least three observations from independent recordings,
+4. Use the explicit plan/apply boundary to promote verified shadow components
+   to reversible provisional unnamed profiles. Promotion requires at least
+   three observations from independent recordings,
    complete-link same-speaker support, no reviewed or predicted different edge,
    no conflicting attribution, and no unresolved required comparison.
 5. Consider conservative automatic growth only when a new observation agrees
@@ -476,8 +493,9 @@ The intended progression is:
 Any future automatic registry mutation requires a separately approved,
 versioned component policy, an append-only machine-evidence ledger, reversible
 events, shadow replay demonstrating stability, and an explicit rollback path.
-Until those conditions are implemented and promoted, reviewed profiles remain
-the only durable profiles and machine clustering remains hypothetical.
+Until the global model/policy conditions are promoted, discovery profiles and
+their confirmed growth remain provisional evidence and cannot authorize
+unattended registry mutation.
 
 Detach without deleting history:
 
