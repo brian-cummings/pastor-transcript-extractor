@@ -181,8 +181,14 @@ pte identity profile-status \
 `profile-status` is read-only. It reports registry observations by effective
 qualification, reviewed pair relations and components, canonical and retired
 profiles, profile members, attached name claims, configured-identity links,
-and the reviewed single-speaker observations that remain ungrouped. Its
-per-profile table deliberately shows raw evidence dimensions—member
+and the reviewed single-speaker observations that remain ungrouped. It also
+loads the newest valid artifact under
+`evaluation/speaker-profile-discovery/shadow-runs` and reports unpromoted
+`shadow-candidate` components separately from candidates already promoted into
+the registry. Blocked and stale discovery components are counted but are not
+presented as canonical profiles. Use `--discovery-root` when discovery reports
+live somewhere else. The per-profile table deliberately shows raw evidence
+dimensions—member
 observations, distinct recordings, distinct source records, attribution/link
 state, and attributed frontier candidates—instead of assigning an unsupported
 maturity score. A source count describes recording coverage only; source or

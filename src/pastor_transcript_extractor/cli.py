@@ -194,6 +194,7 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
     build_discovery_signature,
     evaluate_shadow_profile_discovery,
+    load_verified_shadow_profile_discovery,
     nominate_discovery_pairs,
     select_transcript_grounded_spans,
     write_shadow_profile_discovery,
@@ -1893,6 +1894,10 @@ def profile_status_command(
         Path("evaluation/speaker-pairs"),
         help="Speaker-pair drafts, reviews, and fixtures root.",
     ),
+    discovery_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+        help="Shadow profile-discovery reports to include in status.",
+    ),
     base_dir: Path | None = typer.Option(
         None, help="Override app data directory."
     ),
@@ -1906,9 +1911,29 @@ def profile_status_command(
         evidence = load_reviewed_speaker_evidence(
             evaluation_root.expanduser().resolve()
         )
+        discovery_report = None
+        discovery_report_path = None
+        invalid_discovery_artifacts = 0
+        discovery_paths = sorted(
+            discovery_root.expanduser().resolve().glob("*/*.json"),
+            key=lambda path: (path.stat().st_mtime_ns, str(path)),
+            reverse=True,
+        )
+        for candidate_path in discovery_paths:
+            try:
+                discovery_report = load_verified_shadow_profile_discovery(
+                    candidate_path
+                )
+            except (OSError, ValueError, json.JSONDecodeError):
+                invalid_discovery_artifacts += 1
+                continue
+            discovery_report_path = candidate_path
+            break
         status = build_profile_pipeline_status(
             Database(paths.database, readonly=True),
             evidence,
+            discovery_report=discovery_report,
+            discovery_report_path=discovery_report_path,
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -1956,8 +1981,23 @@ def profile_status_command(
         f"merge_candidate_profiles={status.merge_candidate_count} "
         f"attribution_conflict_profiles={status.attribution_conflict_count}"
     )
+    if status.discovery_report_path is not None:
+        console.print(
+            "Shadow discovery: "
+            f"candidates={status.shadow_discovery_candidate_count} "
+            f"promoted={status.promoted_discovery_candidate_count} "
+            f"stale={status.stale_discovery_candidate_count} "
+            f"blocked_components={status.blocked_discovery_component_count} "
+            f"report={status.discovery_result_sha256[:12]} "
+            f"invalid_artifacts_skipped={invalid_discovery_artifacts}"
+        )
+    else:
+        console.print(
+            "Shadow discovery: no valid report found "
+            f"(invalid_artifacts_skipped={invalid_discovery_artifacts})"
+        )
 
-    table = Table(title="Canonical reviewed profiles")
+    table = Table(title="Canonical and promoted profiles")
     table.add_column("Profile", justify="right", no_wrap=True)
     table.add_column("State", no_wrap=True)
     table.add_column("Evidence", no_wrap=True)
@@ -1986,6 +2026,27 @@ def profile_status_command(
         )
     console.print(table)
 
+    if status.discovered_profiles:
+        discovery_table = Table(title="Auto-discovered profile candidates")
+        discovery_table.add_column("Component", no_wrap=True)
+        discovery_table.add_column("State", no_wrap=True)
+        discovery_table.add_column("Evidence", no_wrap=True)
+        discovery_table.add_column("Identity evidence")
+        discovery_table.add_column("Next need")
+        for profile in status.discovered_profiles:
+            discovery_table.add_row(
+                profile.component_id[:12],
+                profile.state,
+                (
+                    f"{profile.member_count} obs / "
+                    f"{profile.recording_count} rec / "
+                    f"{profile.source_count} src"
+                ),
+                ", ".join(profile.names) or "unnamed",
+                profile.next_need,
+            )
+        console.print(discovery_table)
+
     console.print("[bold]Profile next needs[/bold]")
     for profile in status.profiles:
         console.print(f"- Profile {profile.profile_id}: {profile.next_need}")
@@ -2006,6 +2067,15 @@ def profile_status_command(
         "Materialize: pte identity sync-reviewed-speaker-evidence "
         "--base-dir BASE_DIR"
     )
+    if (
+        status.shadow_discovery_candidate_count
+        and status.discovery_report_path is not None
+    ):
+        console.print(
+            "Plan discovered profiles: pte identity promote-discovered-profiles "
+            f"--discovery-report {status.discovery_report_path} "
+            "--base-dir BASE_DIR"
+        )
     console.print("This report is read-only and does not create or mature profiles.")
 
 

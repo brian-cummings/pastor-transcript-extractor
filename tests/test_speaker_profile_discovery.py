@@ -11,6 +11,7 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     DiscoveryCandidate,
     DiscoverySignature,
     evaluate_shadow_profile_discovery,
+    load_verified_shadow_profile_discovery,
     nominate_discovery_pairs,
     select_transcript_grounded_spans,
     write_shadow_profile_discovery,
@@ -134,6 +135,35 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         )
         self.assertFalse(report["automatic_profile_creation_allowed"])
         self.assertFalse(component["automatic_profile_creation_allowed"])
+
+    def test_written_report_can_be_loaded_with_checksum_verification(self) -> None:
+        signatures = (
+            self._signature("a", (1.0, 0.0)),
+            self._signature("b", (0.99, 0.01)),
+            self._signature("c", (0.98, 0.02)),
+        )
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominate_discovery_pairs(
+                signatures,
+                nearest_neighbors=2,
+            ),
+            compare=lambda *_args: {
+                "outcome": "same_speaker",
+                "reason": "test_same",
+            },
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+        )
+        path = write_shadow_profile_discovery(self.root / "reports", report)
+
+        loaded = load_verified_shadow_profile_discovery(path)
+
+        self.assertEqual(loaded["result_sha256"], report["result_sha256"])
+        self.assertEqual(
+            loaded["counts"]["provisional_profile_candidates"],
+            1,
+        )
 
     def test_reviewed_same_constraint_resolves_overlapping_cliques(self) -> None:
         signatures = (

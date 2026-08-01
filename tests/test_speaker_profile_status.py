@@ -249,6 +249,107 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(status.pending_difference_count, 1)
         self.assertIn("Run reviewed-evidence sync", status.next_actions[0])
 
+    def test_report_includes_unpromoted_shadow_discovery_candidate(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c")]
+        report = {
+            "result_sha256": "a" * 64,
+            "components": [
+                {
+                    "component_id": "component-abc",
+                    "outcome": "provisional_profile_candidate",
+                    "blockers": [],
+                    "member_count": 3,
+                    "recording_count": 3,
+                    "source_count": 1,
+                    "normalized_names": [],
+                    "members": [
+                        {
+                            "observation_id": observation.id,
+                            "video_id": observation.video_id,
+                            "input_fingerprint": observation.input_fingerprint,
+                        }
+                        for observation in observations
+                    ],
+                },
+                {
+                    "component_id": "blocked-component",
+                    "outcome": "blocked",
+                },
+            ],
+        }
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+            discovery_report=report,
+            discovery_report_path=Path("discovery.json"),
+        )
+
+        self.assertEqual(status.shadow_discovery_candidate_count, 1)
+        self.assertEqual(status.promoted_discovery_candidate_count, 0)
+        self.assertEqual(status.stale_discovery_candidate_count, 0)
+        self.assertEqual(status.blocked_discovery_component_count, 1)
+        self.assertEqual(status.discovered_profiles[0].state, "shadow-candidate")
+        self.assertEqual(status.discovered_profiles[0].member_count, 3)
+        self.assertIn("reversible promotion", status.next_actions[0])
+
+    def test_report_links_promoted_discovery_candidate_to_profile(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c")]
+        component_id = "component-abc"
+        profile = self.database.ensure_speaker_profile(
+            stable_key=f"speaker:discovery:{component_id[:32]}",
+            display_label=None,
+            lifecycle_state="provisional",
+            created_reason="shadow_discovery_candidate",
+        )
+        self.database.add_speaker_profile_discovery_promotion(
+            profile_id=profile.id,
+            component_id=component_id,
+            discovery_result_sha256="a" * 64,
+            discovery_artifact_path="discovery.json",
+            seed_observation_ids_json="[]",
+            event_fingerprint="promotion-event",
+        )
+        for observation in observations:
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer="system:test",
+                reason="test discovery promotion",
+                review_event_key=f"promoted-{observation.id}",
+            )
+        report = {
+            "result_sha256": "a" * 64,
+            "components": [
+                {
+                    "component_id": component_id,
+                    "outcome": "provisional_profile_candidate",
+                    "blockers": [],
+                    "member_count": 3,
+                    "recording_count": 3,
+                    "source_count": 1,
+                    "normalized_names": [],
+                    "members": [],
+                }
+            ],
+        }
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+            discovery_report=report,
+        )
+
+        self.assertEqual(status.canonical_profile_count, 1)
+        self.assertEqual(status.shadow_discovery_candidate_count, 0)
+        self.assertEqual(status.promoted_discovery_candidate_count, 1)
+        self.assertEqual(status.discovered_profiles[0].state, "promoted")
+        self.assertEqual(
+            status.discovered_profiles[0].promoted_profile_id,
+            profile.id,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

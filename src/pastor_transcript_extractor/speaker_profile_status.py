@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Mapping
+from pathlib import Path
+from typing import Any, Mapping
 
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedSpeakerEvidence,
@@ -35,6 +36,19 @@ class ProfileStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class DiscoveredProfileStatus:
+    component_id: str
+    member_count: int
+    recording_count: int
+    source_count: int
+    names: tuple[str, ...]
+    state: str
+    promoted_profile_id: int | None
+    blockers: tuple[str, ...]
+    next_need: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProfilePipelineStatus:
     registry_observation_count: int
     qualification_counts: Mapping[str, int]
@@ -58,6 +72,13 @@ class ProfilePipelineStatus:
     pending_same_component_count: int
     pending_difference_count: int
     missing_reviewed_observation_count: int
+    discovery_report_path: str | None
+    discovery_result_sha256: str | None
+    shadow_discovery_candidate_count: int
+    promoted_discovery_candidate_count: int
+    stale_discovery_candidate_count: int
+    blocked_discovery_component_count: int
+    discovered_profiles: tuple[DiscoveredProfileStatus, ...]
     profiles: tuple[ProfileStatus, ...]
     next_actions: tuple[str, ...]
 
@@ -65,6 +86,9 @@ class ProfilePipelineStatus:
 def build_profile_pipeline_status(
     database: Database,
     evidence: ReviewedSpeakerEvidence,
+    *,
+    discovery_report: Mapping[str, Any] | None = None,
+    discovery_report_path: Path | None = None,
 ) -> ProfilePipelineStatus:
     observations = database.list_speaker_observations()
     observations_by_id = {observation.id: observation for observation in observations}
@@ -157,6 +181,103 @@ def build_profile_pipeline_status(
         tuple(sorted(pair))
         for pair in database.list_effective_observation_difference_pairs()
     }
+
+    discovery_promotions: dict[str, int] = {}
+    for profile in reviewed_profiles:
+        if profile.created_reason != DISCOVERY_PROFILE_REASON:
+            continue
+        promotion = database.get_speaker_profile_discovery_promotion(profile.id)
+        if promotion is None:
+            continue
+        component_id = str(promotion.get("component_id", ""))
+        if component_id:
+            discovery_promotions[component_id] = (
+                database.resolve_speaker_profile_id(profile.id)
+            )
+
+    discovered_profiles: list[DiscoveredProfileStatus] = []
+    blocked_discovery_component_count = 0
+    if discovery_report is not None:
+        components = discovery_report.get("components", ())
+        if not isinstance(components, list):
+            raise ValueError("profile discovery artifact components are missing")
+        for raw_component in components:
+            if not isinstance(raw_component, Mapping):
+                raise ValueError("profile discovery component must be an object")
+            outcome = str(raw_component.get("outcome", ""))
+            if outcome == "blocked":
+                blocked_discovery_component_count += 1
+                continue
+            if outcome != "provisional_profile_candidate":
+                continue
+            component_id = str(raw_component.get("component_id", ""))
+            promoted_profile_id = discovery_promotions.get(component_id)
+            blockers: list[str] = []
+            members = raw_component.get("members")
+            if not component_id or not isinstance(members, list):
+                blockers.append("invalid_component_metadata")
+                members = []
+            member_ids: list[int] = []
+            if promoted_profile_id is None:
+                for member in members:
+                    if not isinstance(member, Mapping):
+                        blockers.append("invalid_member_metadata")
+                        continue
+                    observation_id = member.get("observation_id")
+                    fingerprint = member.get("input_fingerprint")
+                    if not isinstance(observation_id, int):
+                        blockers.append("invalid_member_metadata")
+                        continue
+                    member_ids.append(observation_id)
+                    observation = observations_by_id.get(observation_id)
+                    if (
+                        observation is None
+                        or not isinstance(fingerprint, str)
+                        or observation.input_fingerprint != fingerprint
+                        or observation.video_id != member.get("video_id")
+                    ):
+                        blockers.append("observation_no_longer_matches_artifact")
+                    if database.list_effective_profile_ids_for_observation(
+                        observation_id
+                    ):
+                        blockers.append("member_already_profiled")
+                if any(
+                    tuple(sorted((left, right))) in different_pairs
+                    for index, left in enumerate(member_ids)
+                    for right in member_ids[index + 1 :]
+                ):
+                    blockers.append("reviewed_difference_inside_component")
+            blockers = list(dict.fromkeys(blockers))
+            if promoted_profile_id is not None:
+                state = "promoted"
+                next_need = (
+                    f"continue maturity work on profile {promoted_profile_id}"
+                )
+            elif blockers:
+                state = "stale"
+                next_need = "rerun shadow profile discovery"
+            else:
+                state = "shadow-candidate"
+                next_need = "plan reversible registry promotion"
+            discovered_profiles.append(
+                DiscoveredProfileStatus(
+                    component_id=component_id,
+                    member_count=int(raw_component.get("member_count", len(members))),
+                    recording_count=int(raw_component.get("recording_count", 0)),
+                    source_count=int(raw_component.get("source_count", 0)),
+                    names=tuple(
+                        sorted(
+                            str(name)
+                            for name in raw_component.get("normalized_names", ())
+                            if str(name).strip()
+                        )
+                    ),
+                    state=state,
+                    promoted_profile_id=promoted_profile_id,
+                    blockers=tuple(blockers),
+                    next_need=next_need,
+                )
+            )
     observation_ids_by_fingerprint = {
         observation.input_fingerprint: observation.id
         for observation in observations
@@ -394,6 +515,13 @@ def build_profile_pipeline_status(
         )
 
     next_actions: list[str] = []
+    if any(
+        profile.state == "shadow-candidate"
+        for profile in discovered_profiles
+    ):
+        next_actions.append(
+            "Plan reversible promotion of shadow-discovered profile candidates."
+        )
     if (
         pending_qualification_count
         or pending_same_component_count
@@ -460,6 +588,25 @@ def build_profile_pipeline_status(
         pending_same_component_count=pending_same_component_count,
         pending_difference_count=pending_difference_count,
         missing_reviewed_observation_count=len(missing_reviewed_fingerprints),
+        discovery_report_path=(
+            str(discovery_report_path) if discovery_report_path is not None else None
+        ),
+        discovery_result_sha256=(
+            str(discovery_report.get("result_sha256", ""))
+            if discovery_report is not None
+            else None
+        ),
+        shadow_discovery_candidate_count=sum(
+            item.state == "shadow-candidate" for item in discovered_profiles
+        ),
+        promoted_discovery_candidate_count=sum(
+            item.state == "promoted" for item in discovered_profiles
+        ),
+        stale_discovery_candidate_count=sum(
+            item.state == "stale" for item in discovered_profiles
+        ),
+        blocked_discovery_component_count=blocked_discovery_component_count,
+        discovered_profiles=tuple(discovered_profiles),
         profiles=tuple(profile_rows),
         next_actions=tuple(next_actions),
     )

@@ -512,6 +512,28 @@ def write_shadow_profile_discovery(
     return destination
 
 
+def load_verified_shadow_profile_discovery(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.expanduser().resolve().read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("profile discovery artifact root must be an object")
+    expected = payload.get("result_sha256")
+    content = dict(payload)
+    content.pop("result_sha256", None)
+    if not isinstance(expected, str) or expected != _sha256_json(content):
+        raise ValueError("profile discovery result checksum mismatch")
+    if (
+        payload.get("artifact_kind") != "speaker_profile_shadow_discovery"
+        or payload.get("discovery_version")
+        != SHADOW_PROFILE_DISCOVERY_VERSION
+        or payload.get("shadow_mode") is not True
+        or payload.get("registry_mutation_allowed") is not False
+        or payload.get("automatic_profile_creation_allowed") is not False
+        or not isinstance(payload.get("components"), list)
+    ):
+        raise ValueError("unsupported or unsafe profile discovery artifact")
+    return payload
+
+
 def _build_component_proposals(
     signatures: Sequence[DiscoverySignature],
     pair_results: Sequence[Mapping[str, Any]],
