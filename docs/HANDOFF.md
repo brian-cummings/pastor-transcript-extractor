@@ -550,7 +550,7 @@ artifact hash, threshold, policy status, score and tier for every signature;
 separate global, source-local, strong closure, and borderline-deferred pair
 counts; every retrieval reason and source context; and each deferred attempt's
 score, seed, endpoint comparisons, and atomic admission outcome. Discovery
-artifacts use the v6 contract; v2-v5 artifacts remain readable.
+artifacts use the v7 contract; v2-v6 artifacts remain readable.
 
 Ambiguous comparisons in the acoustic near-same band are tested hypothetically
 against the complete-link rules. When one reviewed judgment could complete a
@@ -563,10 +563,13 @@ blocked components have an actionable frontier and names that review as the next
 action.
 
 When a strong third candidate has two `ambiguous_similarity` links to a strong
-two-recording seed, neither edge can complete the triangle alone. The v6 staged
+two-recording seed, neither edge can complete the triangle alone. The v7 staged
 frontier retains at most two such candidates per blocked component, ranks bundles
 by their weaker link, and exposes only that bottleneck for the first blinded
-review. A reviewed different-speaker judgment eliminates the bundle. A reviewed
+review. The weaker link must be no more than `0.15` from the same-speaker
+boundary. Farther candidates are recorded as distance exclusions and are not
+actionable; this human-review cutoff does not modify the acoustic decision
+policy. A reviewed different-speaker judgment eliminates the bundle. A reviewed
 same-speaker judgment does not create a profile; after reviewed-evidence sync and
 a new discovery run, the remaining ambiguous link becomes an immediate frontier.
 Only two reviewed same-speaker judgments can satisfy complete-link. Missing,

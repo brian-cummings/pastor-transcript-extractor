@@ -324,6 +324,31 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(1, status.staged_discovery_frontier_component_count)
         self.assertIn("staged near-same", status.next_actions[0])
 
+    def test_report_warns_against_distant_staged_reviews(self) -> None:
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+            discovery_report={
+                "result_sha256": "c" * 64,
+                "counts": {
+                    "blocked_components_with_actionable_review_frontier": 0,
+                    "blocked_components_with_immediate_review_frontier": 0,
+                    "blocked_components_with_staged_review_frontier": 0,
+                    "blocked_components_with_only_distant_staged_candidates": 2,
+                },
+                "components": [
+                    {"component_id": "distant-a", "outcome": "blocked"},
+                    {"component_id": "distant-b", "outcome": "blocked"},
+                ],
+            },
+            discovery_report_path=Path("discovery.json"),
+        )
+
+        self.assertEqual(0, status.actionable_discovery_frontier_component_count)
+        self.assertEqual(0, status.staged_discovery_frontier_component_count)
+        self.assertEqual(2, status.distant_staged_discovery_component_count)
+        self.assertIn("Do not review distant", status.next_actions[0])
+
     def test_report_links_promoted_discovery_candidate_to_profile(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c")]
         component_id = "component-abc"

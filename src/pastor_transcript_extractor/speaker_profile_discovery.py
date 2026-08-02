@@ -27,13 +27,14 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v6"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v7"
 SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v2",
         "speaker_profile_shadow_discovery_v3",
         "speaker_profile_shadow_discovery_v4",
         "speaker_profile_shadow_discovery_v5",
+        "speaker_profile_shadow_discovery_v6",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
@@ -442,6 +443,7 @@ def evaluate_shadow_profile_discovery(
     borderline_deferred_maximum: float = 0.60,
     borderline_deferred_candidates_per_same_pair: int = 4,
     staged_review_candidates_per_component: int = 2,
+    staged_review_maximum_same_boundary_distance: float = 0.15,
 ) -> dict[str, Any]:
     if minimum_component_members < 3:
         raise ValueError("provisional profiles require at least three members")
@@ -451,6 +453,10 @@ def evaluate_shadow_profile_discovery(
         raise ValueError("borderline deferred candidate count cannot be negative")
     if staged_review_candidates_per_component < 0:
         raise ValueError("staged review candidate count cannot be negative")
+    if not 0.0 <= staged_review_maximum_same_boundary_distance <= 1.0:
+        raise ValueError(
+            "staged review maximum same-boundary distance must be within [0, 1]"
+        )
     if not (
         0.0 <= borderline_deferred_minimum < borderline_deferred_maximum <= 1.0
     ):
@@ -878,15 +884,20 @@ def evaluate_shadow_profile_discovery(
         reviewed_differences=reviewed_differences,
         policy_spec=policy_spec,
     )
-    staged_review_frontier = _build_staged_review_frontier(
-        signatures,
-        pair_results,
-        components,
-        minimum_component_members=minimum_component_members,
-        reviewed_differences=reviewed_differences,
-        consistency_policy=consistency_policy,
-        policy_spec=policy_spec,
-        candidates_per_component=staged_review_candidates_per_component,
+    staged_review_frontier, staged_review_frontier_exclusions = (
+        _build_staged_review_frontier(
+            signatures,
+            pair_results,
+            components,
+            minimum_component_members=minimum_component_members,
+            reviewed_differences=reviewed_differences,
+            consistency_policy=consistency_policy,
+            policy_spec=policy_spec,
+            candidates_per_component=staged_review_candidates_per_component,
+            maximum_same_boundary_distance=(
+                staged_review_maximum_same_boundary_distance
+            ),
+        )
     )
     immediate_actionable_component_ids = {
         component_id
@@ -896,6 +907,11 @@ def evaluate_shadow_profile_discovery(
     staged_actionable_component_ids = {
         component_id
         for item in staged_review_frontier
+        for component_id in item["component_ids"]
+    }
+    staged_distance_excluded_component_ids = {
+        component_id
+        for item in staged_review_frontier_exclusions
         for component_id in item["component_ids"]
     }
     actionable_component_ids = (
@@ -927,6 +943,9 @@ def evaluate_shadow_profile_discovery(
         "review_frontier_policy": {
             "staged_candidates_per_component": (
                 staged_review_candidates_per_component
+            ),
+            "staged_maximum_same_boundary_distance": (
+                staged_review_maximum_same_boundary_distance
             ),
             "candidate_tier": "strong",
             "required_seed_state": "strong_same_speaker_pair",
@@ -1071,11 +1090,18 @@ def evaluate_shadow_profile_discovery(
             "staged_actionable_review_frontier_pairs": len(
                 staged_review_frontier
             ),
+            "staged_review_candidates_excluded_by_distance": len(
+                staged_review_frontier_exclusions
+            ),
             "blocked_components_with_immediate_review_frontier": len(
                 immediate_actionable_component_ids
             ),
             "blocked_components_with_staged_review_frontier": len(
                 staged_actionable_component_ids
+            ),
+            "blocked_components_with_only_distant_staged_candidates": len(
+                staged_distance_excluded_component_ids
+                - staged_actionable_component_ids
             ),
             "blocked_components_with_actionable_review_frontier": len(
                 actionable_component_ids
@@ -1089,6 +1115,9 @@ def evaluate_shadow_profile_discovery(
         "borderline_deferred_closure": borderline_deferred_results,
         "review_frontier": review_frontier,
         "staged_review_frontier": staged_review_frontier,
+        "staged_review_frontier_exclusions": (
+            staged_review_frontier_exclusions
+        ),
         "components": components,
     }
     report["input_fingerprint"] = _sha256_json(
@@ -1504,10 +1533,11 @@ def _build_staged_review_frontier(
     consistency_policy: DiscoveryConsistencyPolicySpec | None,
     policy_spec: ShadowPolicySpec,
     candidates_per_component: int,
-) -> list[dict[str, Any]]:
+    maximum_same_boundary_distance: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Nominate the bottleneck edge of a two-review complete-link path."""
     if consistency_policy is None or candidates_per_component == 0:
-        return []
+        return [], []
     signatures_by_id = {
         signature.candidate.observation.id: signature
         for signature in signatures
@@ -1520,6 +1550,7 @@ def _build_staged_review_frontier(
         and all(isinstance(value, int) for value in result["observation_ids"])
     }
     staged: list[dict[str, Any]] = []
+    distance_exclusions: list[dict[str, Any]] = []
     for component in components:
         if component.get("outcome") != "blocked":
             continue
@@ -1681,7 +1712,34 @@ def _build_staged_review_frontier(
                 item["candidate_observation_fingerprint"],
             )
         )
-        staged.extend(component_candidates[:candidates_per_component])
+        for item in component_candidates[:candidates_per_component]:
+            if (
+                item["same_boundary_distance"]
+                <= maximum_same_boundary_distance
+            ):
+                staged.append(item)
+                continue
+            distance_exclusions.append(
+                {
+                    "component_ids": item["component_ids"],
+                    "candidate_observation_id": item[
+                        "candidate_observation_id"
+                    ],
+                    "candidate_observation_fingerprint": item[
+                        "candidate_observation_fingerprint"
+                    ],
+                    "same_boundary_distance": item[
+                        "same_boundary_distance"
+                    ],
+                    "maximum_same_boundary_distance": (
+                        maximum_same_boundary_distance
+                    ),
+                    "reason": "outside_staged_review_distance_limit",
+                    "source_context": item["source_context"],
+                    "review_required": False,
+                    "identity_edges_allowed": False,
+                }
+            )
     staged.sort(
         key=lambda item: (
             item["same_boundary_distance"],
@@ -1689,7 +1747,13 @@ def _build_staged_review_frontier(
             item["candidate_observation_fingerprint"],
         )
     )
-    return staged
+    distance_exclusions.sort(
+        key=lambda item: (
+            item["same_boundary_distance"],
+            item["candidate_observation_fingerprint"],
+        )
+    )
+    return staged, distance_exclusions
 
 
 def _same_boundary_metrics(

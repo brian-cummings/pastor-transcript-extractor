@@ -569,8 +569,12 @@ counts separately and expose near-same ambiguous edges for blinded review.
 One-edge frontiers are reviewed first. Strong candidates with two ambiguous seed
 links enter a bounded staged frontier: the weaker bottleneck is reviewed first,
 and only a durable same-speaker judgment plus a new discovery run can expose the
-companion edge. `profile-status` reports immediate and staged component counts,
-and `automation-readiness` prioritizes those normal visual-confirmation reviews.
+companion edge. Staged review is additionally capped at `0.15` distance from the
+same-speaker boundary; farther ambiguous results remain recorded as non-actionable
+instead of consuming human review. This review-efficiency limit does not change
+the acoustic same/different thresholds. `profile-status` reports immediate,
+staged, and distant-only component counts, and `automation-readiness` prioritizes
+only the actionable visual-confirmation reviews.
 A calibrated observation-consistency report can be supplied with
 `--consistency-report` and `--minimum-consistency-score`.
 

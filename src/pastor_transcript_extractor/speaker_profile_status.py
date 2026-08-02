@@ -81,6 +81,7 @@ class ProfilePipelineStatus:
     actionable_discovery_frontier_component_count: int
     immediate_discovery_frontier_component_count: int
     staged_discovery_frontier_component_count: int
+    distant_staged_discovery_component_count: int
     discovered_profiles: tuple[DiscoveredProfileStatus, ...]
     profiles: tuple[ProfileStatus, ...]
     next_actions: tuple[str, ...]
@@ -203,6 +204,7 @@ def build_profile_pipeline_status(
     actionable_discovery_frontier_component_count = 0
     immediate_discovery_frontier_component_count = 0
     staged_discovery_frontier_component_count = 0
+    distant_staged_discovery_component_count = 0
     if discovery_report is not None:
         components = discovery_report.get("components", ())
         if not isinstance(components, list):
@@ -224,6 +226,12 @@ def build_profile_pipeline_status(
             staged_discovery_frontier_component_count = int(
                 counts.get(
                     "blocked_components_with_staged_review_frontier",
+                    0,
+                )
+            )
+            distant_staged_discovery_component_count = int(
+                counts.get(
+                    "blocked_components_with_only_distant_staged_candidates",
                     0,
                 )
             )
@@ -558,6 +566,11 @@ def build_profile_pipeline_status(
             "Begin the staged near-same discovery frontier by reviewing each "
             "bundle's weaker bottleneck edge with the normal blinded workflow."
         )
+    if distant_staged_discovery_component_count:
+        next_actions.append(
+            "Do not review distant staged candidates; wait for closer acoustic "
+            "retrieval or qualify additional recordings for those components."
+        )
     if (
         pending_qualification_count
         or pending_same_component_count
@@ -650,6 +663,9 @@ def build_profile_pipeline_status(
         ),
         staged_discovery_frontier_component_count=(
             staged_discovery_frontier_component_count
+        ),
+        distant_staged_discovery_component_count=(
+            distant_staged_discovery_component_count
         ),
         discovered_profiles=tuple(discovered_profiles),
         profiles=tuple(profile_rows),

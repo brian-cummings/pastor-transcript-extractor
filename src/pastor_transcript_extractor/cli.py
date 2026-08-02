@@ -2023,6 +2023,8 @@ def profile_status_command(
             f"{status.immediate_discovery_frontier_component_count} "
             f"staged_frontiers="
             f"{status.staged_discovery_frontier_component_count} "
+            f"distant_staged_frontiers="
+            f"{status.distant_staged_discovery_component_count} "
             f"report={status.discovery_result_sha256[:12]} "
             f"invalid_artifacts_skipped={invalid_discovery_artifacts}"
         )
@@ -2410,6 +2412,16 @@ def shadow_discover_profiles_command(
             "per blocked component for staged blinded review."
         ),
     ),
+    staged_review_maximum_same_boundary_distance: float = typer.Option(
+        0.15,
+        min=0.0,
+        max=1.0,
+        help=(
+            "Maximum acoustic distance from the same-speaker boundary for "
+            "a staged human-review candidate; this does not change pair "
+            "decision thresholds."
+        ),
+    ),
     minimum_component_members: int = typer.Option(
         3,
         min=3,
@@ -2675,7 +2687,9 @@ def shadow_discover_profiles_command(
         f"borderline_deferred_candidates_per_same_pair="
         f"{borderline_deferred_candidates_per_same_pair} "
         f"staged_review_candidates_per_component="
-        f"{staged_review_candidates_per_component}"
+        f"{staged_review_candidates_per_component} "
+        f"staged_review_maximum_same_boundary_distance="
+        f"{staged_review_maximum_same_boundary_distance:.3f}"
     )
     console.print(
         "Consistency nomination: "
@@ -2847,6 +2861,9 @@ def shadow_discover_profiles_command(
         staged_review_candidates_per_component=(
             staged_review_candidates_per_component
         ),
+        staged_review_maximum_same_boundary_distance=(
+            staged_review_maximum_same_boundary_distance
+        ),
     )
     destination = write_shadow_profile_discovery(output_root, report)
     counts = report["counts"]
@@ -2871,7 +2888,11 @@ def shadow_discover_profiles_command(
         f"immediate_review_pairs="
         f"{counts['immediate_actionable_review_frontier_pairs']} "
         f"staged_review_pairs="
-        f"{counts['staged_actionable_review_frontier_pairs']}"
+        f"{counts['staged_actionable_review_frontier_pairs']} "
+        f"staged_pairs_excluded_by_distance="
+        f"{counts['staged_review_candidates_excluded_by_distance']} "
+        f"distant_staged_components="
+        f"{counts['blocked_components_with_only_distant_staged_candidates']}"
     )
     console.print(
         "Pair outcomes: "
@@ -3152,6 +3173,7 @@ def run_identity_workflow_service(
             borderline_deferred_maximum=0.60,
             borderline_deferred_candidates_per_same_pair=4,
             staged_review_candidates_per_component=2,
+            staged_review_maximum_same_boundary_distance=0.15,
             minimum_component_members=3,
             consistency_report=None,
             minimum_consistency_score=None,
