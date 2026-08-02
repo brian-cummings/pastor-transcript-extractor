@@ -17,6 +17,9 @@ from pastor_transcript_extractor.speaker_registry import (
     record_name_claim_review,
     record_observation_disposition,
 )
+from pastor_transcript_extractor.speaker_review_invalidation import (
+    invalidate_reviews_for_videos,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -207,6 +210,121 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertEqual(0, replay.difference_events_added)
         self.assertEqual(0, replay.qualification_events_added)
         self.assertEqual((), replay.conflicts)
+
+    def test_provenance_invalidation_revokes_review_and_clears_registry_effects(self) -> None:
+        pair_id = "pair-ab"
+        draft = {
+            "schema_version": 1,
+            "review_status": "draft",
+            "pair_id": pair_id,
+            "draft_id": "draft-ab",
+            "observations": {
+                "source_a": {
+                    "youtube_video_id": "video-a",
+                    "input_fingerprint": "a",
+                },
+                "source_b": {
+                    "youtube_video_id": "video-b",
+                    "input_fingerprint": "b",
+                },
+            },
+            "presentation": {
+                "A": {"source_key": "source_a"},
+                "B": {"source_key": "source_b"},
+            },
+        }
+        (self.evaluation_root / "drafts" / f"{pair_id}.json").write_text(
+            json.dumps(draft), encoding="utf-8"
+        )
+        self._write_fixture(pair_id, "a", "b", "different_speaker")
+        sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+        self.assertEqual(
+            [(self.observations["a"].id, self.observations["b"].id)],
+            self.database.list_effective_observation_difference_pairs(),
+        )
+
+        result = invalidate_reviews_for_videos(
+            self.database,
+            evaluation_root=self.evaluation_root,
+            youtube_video_ids={"video-a"},
+            reviewer="provenance-repair",
+            reason="Wrong normalized audio was reviewed.",
+        )
+
+        self.assertEqual(("draft-ab",), result.revoked_draft_ids)
+        self.assertEqual(("event-pair-ab",), result.revoked_review_event_ids)
+        self.assertEqual(1, result.differences_cleared)
+        self.assertEqual(
+            "unresolved",
+            self.database.get_effective_observation_review_action(
+                self.observations["a"].id
+            ),
+        )
+        self.assertEqual(
+            [], self.database.list_effective_observation_difference_pairs()
+        )
+        active = load_reviewed_speaker_evidence(self.evaluation_root)
+        self.assertEqual({}, active.pair_relations)
+        self.assertNotIn("a", active.qualifications)
+        replay = invalidate_reviews_for_videos(
+            self.database,
+            evaluation_root=self.evaluation_root,
+            youtube_video_ids={"video-a"},
+            reviewer="provenance-repair",
+            reason="Wrong normalized audio was reviewed.",
+        )
+        self.assertEqual(0, replay.dispositions_reset)
+        self.assertEqual((), replay.affected_observation_fingerprints)
+
+    def test_provenance_invalidation_detaches_affected_profile_membership(self) -> None:
+        pair_id = "pair-ab"
+        draft = {
+            "pair_id": pair_id,
+            "draft_id": "draft-ab",
+            "review_status": "draft",
+            "observations": {
+                "source_a": {
+                    "youtube_video_id": "video-a",
+                    "input_fingerprint": "a",
+                },
+                "source_b": {
+                    "youtube_video_id": "video-b",
+                    "input_fingerprint": "b",
+                },
+            },
+        }
+        (self.evaluation_root / "drafts" / f"{pair_id}.json").write_text(
+            json.dumps(draft), encoding="utf-8"
+        )
+        self._write_fixture(pair_id, "a", "b", "same_speaker")
+        sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+        self.assertTrue(
+            self.database.list_effective_profile_ids_for_observation(
+                self.observations["a"].id
+            )
+        )
+
+        result = invalidate_reviews_for_videos(
+            self.database,
+            evaluation_root=self.evaluation_root,
+            youtube_video_ids={"video-a"},
+            reviewer="provenance-repair",
+            reason="Wrong normalized audio was reviewed.",
+        )
+
+        self.assertEqual(1, result.memberships_detached)
+        self.assertEqual(
+            [],
+            self.database.list_effective_profile_ids_for_observation(
+                self.observations["a"].id
+            ),
+        )
 
     def test_visual_identity_review_replays_without_acoustic_fixture(self) -> None:
         self._write_review(

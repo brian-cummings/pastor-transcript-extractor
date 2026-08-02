@@ -18,6 +18,10 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     select_diagnostic_spans,
     validate_reviewed_pair_fixture,
 )
+from pastor_transcript_extractor.speaker_review_invalidation import (
+    load_review_revocations,
+    pair_artifact_is_revoked,
+)
 
 
 REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v3"
@@ -83,6 +87,13 @@ class PreparedReviewObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class ObservationReviewPacket:
+    manifest_path: Path
+    packet_path: Path
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
 class ReviewSelectionAuditIssue:
     pair_id: str
     draft_path: Path
@@ -107,16 +118,19 @@ def audit_review_selection_artifacts(
     evaluation_root: Path,
 ) -> ReviewSelectionAudit:
     root = evaluation_root.expanduser().resolve()
-    reviewed_pair_ids = {
-        path.parent.name
-        for path in (root / "reviews").glob("*/*.json")
-    }
+    revocations = load_review_revocations(root)
+    reviewed_pair_ids = set()
+    for path in (root / "reviews").glob("*/*.json"):
+        review = json.loads(path.read_text(encoding="utf-8"))
+        if not pair_artifact_is_revoked(review, revocations):
+            reviewed_pair_ids.add(path.parent.name)
     draft_paths = sorted(
         path
         for path in (root / "drafts").glob("*.json")
         if ".rejected." not in path.name
     )
     automatic_count = 0
+    active_draft_count = 0
     reviewed_count = 0
     exact_verified_count = 0
     legacy_checked_count = 0
@@ -126,6 +140,9 @@ def audit_review_selection_artifacts(
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError(f"{path}: expected a JSON object")
+        if pair_artifact_is_revoked(payload, revocations):
+            continue
+        active_draft_count += 1
         _validate_draft(payload)
         manifest = payload.get("selection_manifest")
         if not isinstance(manifest, dict) or manifest.get(
@@ -189,7 +206,7 @@ def audit_review_selection_artifacts(
             continue
         unverifiable_count += 1
     return ReviewSelectionAudit(
-        draft_count=len(draft_paths),
+        draft_count=active_draft_count,
         automatic_count=automatic_count,
         reviewed_count=reviewed_count,
         exact_verified_count=exact_verified_count,
@@ -244,6 +261,83 @@ def prepare_review_observation(
     return PreparedReviewObservation(tuple(spans), clip_selection)
 
 
+def create_observation_review_packet(
+    *,
+    observation: SpeakerObservation,
+    youtube_video_id: str,
+    audio_path: Path,
+    span_cache: AudioSpanCache,
+    evaluation_root: Path,
+) -> ObservationReviewPacket:
+    """Create a provenance-bound, unblinded packet for one observation."""
+    normalized_audio_sha256 = _source_audio_identity(audio_path)
+    if normalized_audio_sha256.startswith("unavailable:"):
+        raise ValueError(f"normalized audio is unavailable: {audio_path}")
+    prepared = prepare_review_observation(
+        observation=observation,
+        audio_path=audio_path,
+        span_cache=span_cache,
+    )
+    stable = {
+        "schema_version": 1,
+        "workflow_version": REVIEW_WORKFLOW_VERSION,
+        "event_kind": "single_observation_review_packet",
+        "youtube_video_id": youtube_video_id,
+        "youtube_url": f"https://www.youtube.com/watch?v={youtube_video_id}",
+        "input_fingerprint": observation.input_fingerprint,
+        "observation_window": {
+            "start_seconds": observation.start_seconds,
+            "end_seconds": observation.end_seconds,
+        },
+        "normalized_audio_path": str(audio_path.expanduser().resolve()),
+        "normalized_audio_sha256": normalized_audio_sha256,
+        "clips": [_draft_clip(span) for span in prepared.spans],
+        "clip_selection": prepared.clip_selection,
+    }
+    packet_id = _sha256_json(stable)
+    payload = {**stable, "packet_id": packet_id}
+    root = evaluation_root / "observation-reviews"
+    stem = (
+        f"{youtube_video_id}-{observation.input_fingerprint[:12]}-"
+        f"{normalized_audio_sha256[:12]}"
+    )
+    manifest_path = root / f"{stem}.json"
+    packet_path = root / f"{stem}.html"
+    _write_json_idempotent(manifest_path, payload)
+    _write_text_idempotent(packet_path, _observation_review_packet(payload))
+    return ObservationReviewPacket(manifest_path, packet_path, payload)
+
+
+def _observation_review_packet(payload: dict[str, Any]) -> str:
+    window = payload["observation_window"]
+    clips: list[str] = []
+    for index, clip in enumerate(payload["clips"], start=1):
+        start = float(clip["start_seconds"])
+        end = float(clip["end_seconds"])
+        youtube_url = f"{payload['youtube_url']}&t={max(0, int(start))}s"
+        audio_url = Path(clip["wav_path"]).expanduser().resolve().as_uri()
+        clips.append(
+            "<li>"
+            f"<strong>Clip {index}: {start:.3f}s–{end:.3f}s</strong> "
+            '<a target="_blank" rel="noopener noreferrer" '
+            f'href="{html.escape(youtube_url, quote=True)}">'
+            f"{html.escape(youtube_url)}</a>"
+            '<audio controls preload="metadata" '
+            f'src="{html.escape(audio_url, quote=True)}"></audio>'
+            "</li>"
+        )
+    exact_url = html.escape(str(payload["youtube_url"]), quote=True)
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observation review {html.escape(str(payload['youtube_video_id']))}</title>
+<style>body{{font:16px/1.5 system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem}}li{{margin:1.2rem 0}}audio{{display:block;width:100%;margin-top:.4rem}}</style></head>
+<body><h1>Single-observation review</h1>
+<p>Observation window: {float(window['start_seconds']):.3f}s–{float(window['end_seconds']):.3f}s</p>
+<p>Exact video: <a target="_blank" rel="noopener noreferrer" href="{exact_url}">{exact_url}</a></p>
+<ol>{''.join(clips)}</ol></body></html>
+"""
+
+
 def create_review_draft(
     *,
     observation_a: SpeakerObservation,
@@ -276,12 +370,27 @@ def create_review_draft(
         "source_a": ordered_inputs[0][1:],
         "source_b": ordered_inputs[1][1:],
     }
+    expected_audio_sha256 = {
+        source_key: _source_audio_identity(Path(values[2]))
+        for source_key, values in source_observations.items()
+    }
     canonical_fingerprints = [value[0] for value in ordered_inputs]
     pair_id = f"pair-{_sha256_json(canonical_fingerprints)[:16]}"
+    prior_path = evaluation_root / "drafts" / f"{pair_id}.json"
+    if prior_path.exists():
+        prior = json.loads(prior_path.read_text(encoding="utf-8"))
+        revocations = load_review_revocations(evaluation_root)
+        if prior.get("draft_id") in revocations.draft_ids:
+            replacement_identity = {
+                "observations": canonical_fingerprints,
+                "normalized_audio_sha256": expected_audio_sha256,
+            }
+            pair_id = f"pair-{_sha256_json(replacement_identity)[:16]}"
     existing_draft = _load_existing_review_draft(
         pair_id=pair_id,
         evaluation_root=evaluation_root,
         canonical_fingerprints=canonical_fingerprints,
+        expected_audio_sha256=expected_audio_sha256,
     )
     if existing_draft is not None:
         return existing_draft
@@ -323,6 +432,7 @@ def create_review_draft(
                 "start_seconds": observation.start_seconds,
                 "end_seconds": observation.end_seconds,
             },
+            "normalized_audio_sha256": expected_audio_sha256[source_key],
             "clips": [_draft_clip(span) for span in spans],
             "clip_selection": clip_selection,
         }
@@ -371,6 +481,7 @@ def _load_existing_review_draft(
     pair_id: str,
     evaluation_root: Path,
     canonical_fingerprints: Sequence[str],
+    expected_audio_sha256: dict[str, str],
 ) -> ReviewDraft | None:
     """Load an immutable draft when an interrupted review reopens its pair."""
     draft_path = evaluation_root / "drafts" / f"{pair_id}.json"
@@ -386,6 +497,15 @@ def _load_existing_review_draft(
     )
     if persisted_fingerprints != sorted(canonical_fingerprints):
         raise ValueError(f"{draft_path}: observation fingerprints do not match requested pair")
+    persisted_audio_sha256 = {
+        source_key: observation.get("normalized_audio_sha256")
+        for source_key, observation in existing["observations"].items()
+    }
+    if persisted_audio_sha256 != expected_audio_sha256:
+        raise ValueError(
+            f"{draft_path}: normalized-audio provenance mismatch; "
+            "remove or preserve the stale draft under a different path before regenerating"
+        )
     packet_path = evaluation_root / "drafts" / f"{pair_id}.html"
     if not packet_path.exists():
         _write_text_idempotent(packet_path, _review_packet(existing))
@@ -842,6 +962,18 @@ def _validate_draft(draft: dict[str, Any]) -> None:
 def _sha256_json(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _source_audio_identity(path: Path) -> str:
+    """Return content identity; the fallback supports injected test span caches."""
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return f"unavailable:{path}"
 
 
 def _write_json_idempotent(path: Path, payload: object) -> None:

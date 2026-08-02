@@ -16,6 +16,10 @@ from pastor_transcript_extractor.speaker_registry import (
     record_observation_review,
     record_profile_redirect,
 )
+from pastor_transcript_extractor.speaker_review_invalidation import (
+    filter_active_pair_artifacts,
+    load_review_revocations,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -146,9 +150,16 @@ def qualification_conflict_requires_adjudication(
 
 def load_reviewed_speaker_evidence(evaluation_root: Path) -> ReviewedSpeakerEvidence:
     root = evaluation_root.expanduser().resolve()
-    drafts = _load_objects(sorted((root / "drafts").glob("*.json")))
-    reviews = _load_objects(sorted((root / "reviews").glob("*/*.json")))
-    fixtures = _load_objects(sorted((root / "fixtures").glob("*.json")))
+    revocations = load_review_revocations(root)
+    drafts = filter_active_pair_artifacts(
+        _load_objects(sorted((root / "drafts").glob("*.json"))), revocations
+    )
+    reviews = filter_active_pair_artifacts(
+        _load_objects(sorted((root / "reviews").glob("*/*.json"))), revocations
+    )
+    fixtures = filter_active_pair_artifacts(
+        _load_objects(sorted((root / "fixtures").glob("*.json"))), revocations
+    )
     drafts_by_pair = {
         str(draft["pair_id"]): draft
         for draft in drafts

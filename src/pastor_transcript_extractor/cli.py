@@ -124,9 +124,11 @@ from pastor_transcript_extractor.media_archive import (
 from pastor_transcript_extractor.media_artifacts import (
     MediaVerificationCache,
     audit_media_coverage,
+    audit_normalized_audio_provenance,
     backfill_existing_media_artifacts,
     ensure_audio_for_video,
     get_verified_normalized_media_artifact,
+    repair_normalized_audio_provenance,
     resolve_normalized_audio_path,
     video_has_isolated_sermon,
 )
@@ -165,6 +167,7 @@ from pastor_transcript_extractor.speaker_pair_review import (
     ReviewEvidenceMode,
     STANDARD_VARIATION_TAGS,
     audit_review_selection_artifacts,
+    create_observation_review_packet,
     create_review_draft,
     prepare_review_observation,
     submit_review,
@@ -182,6 +185,13 @@ from pastor_transcript_extractor.speaker_pair_selector import (
     SelectionGoal,
     select_next_speaker_pair,
     selection_history_from_artifacts,
+)
+from pastor_transcript_extractor.speaker_review_invalidation import (
+    evaluation_root_for_pair_artifact,
+    filter_active_pair_artifacts,
+    invalidate_reviews_for_videos,
+    load_review_revocations,
+    pair_artifact_is_revoked,
 )
 from pastor_transcript_extractor.speaker_profile_status import (
     build_profile_pipeline_status,
@@ -1489,9 +1499,13 @@ def validate_pair_fixtures(
     if not paths:
         raise typer.BadParameter(f"No speaker-pair fixtures found in {root}")
     pair_ids: set[str] = set()
+    revocations = load_review_revocations(root.parent)
+    validated_count = 0
     for path in paths:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
+            if pair_artifact_is_revoked(payload, revocations):
+                continue
             validate_reviewed_pair_fixture(payload)
         except (OSError, ValueError, json.JSONDecodeError) as error:
             raise typer.BadParameter(f"{path}: {error}") from error
@@ -1499,7 +1513,8 @@ def validate_pair_fixtures(
         if not pair_id or pair_id in pair_ids:
             raise typer.BadParameter(f"{path}: pair_id must be present and unique")
         pair_ids.add(pair_id)
-    console.print(f"Validated {len(paths)} reviewed speaker-pair fixture(s).")
+        validated_count += 1
+    console.print(f"Validated {validated_count} active reviewed speaker-pair fixture(s).")
 
 
 @identity_app.command(
@@ -1544,7 +1559,7 @@ def evaluate_pair_results(
     try:
         fixture_paths = sorted(fixture_dir.expanduser().resolve().glob("*.json"))
         result_paths = sorted(result_dir.expanduser().resolve().glob("*.json"))
-        fixtures = [json.loads(path.read_text(encoding="utf-8")) for path in fixture_paths]
+        fixtures = _load_json_artifacts(fixture_paths)
         results = [json.loads(path.read_text(encoding="utf-8")) for path in result_paths]
         if not fixtures:
             raise ValueError("no reviewed pair fixtures found")
@@ -1594,6 +1609,84 @@ def _normalize_review_terminal_input() -> None:
     except (OSError, ValueError, termios.error):
         # Non-POSIX, detached, and test streams need no terminal repair.
         return
+
+
+@identity_app.command(
+    "review-observation",
+    help="Present one observation's clips with exact YouTube URLs and timestamps.",
+)
+def review_observation(
+    youtube_video_id: str | None = typer.Option(
+        None, "--youtube-video-id", help="Review one YouTube video observation."
+    ),
+    all_affected: bool = typer.Option(
+        False,
+        "--all-affected",
+        help="Prepare packets for every normalized-provenance-affected video.",
+    ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"), help="Review packet root."
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"), help="Provenance-bound clip cache."
+    ),
+    open_packet: bool = typer.Option(
+        True, "--open-packet/--no-open-packet", help="Open each local HTML packet."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    if (youtube_video_id is None) == (not all_affected):
+        raise typer.BadParameter(
+            "Pass exactly one of --youtube-video-id or --all-affected."
+        )
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    if youtube_video_id is not None:
+        video = database.get_video_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
+        videos = [video]
+    else:
+        affected_ids = {
+            record.video_id
+            for record in audit_normalized_audio_provenance(database).records
+            if record.historical_reconstructed_override
+        }
+        videos = [video for video in database.list_videos() if video.id in affected_ids]
+    if not videos:
+        console.print("No affected observations require review.")
+        return
+    span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
+    for video in videos:
+        observation = database.get_latest_speaker_observation_for_video(video.id)
+        artifact = get_verified_normalized_media_artifact(database, video.id)
+        if observation is None or artifact is None:
+            console.print(
+                f"{video.youtube_video_id}: skipped (observation or verified audio unavailable)"
+            )
+            continue
+        try:
+            packet = create_observation_review_packet(
+                observation=observation,
+                youtube_video_id=video.youtube_video_id,
+                audio_path=Path(artifact.artifact_path),
+                span_cache=span_cache,
+                evaluation_root=evaluation_root.expanduser().resolve(),
+            )
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+            raise typer.BadParameter(
+                f"{video.youtube_video_id}: {error}"
+            ) from error
+        console.print(
+            f"{video.youtube_video_id}: window "
+            f"{observation.start_seconds:.3f}-{observation.end_seconds:.3f}s; "
+            f"video=https://www.youtube.com/watch?v={video.youtube_video_id}; "
+            f"packet={packet.packet_path}"
+        )
+        if open_packet:
+            webbrowser.open(packet.packet_path.resolve().as_uri())
 
 
 @identity_app.command(
@@ -1820,6 +1913,16 @@ def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
         if not isinstance(payload, dict):
             raise ValueError(f"{path}: expected a JSON object")
         payloads.append(payload)
+    roots = {
+        root
+        for path in paths
+        if (root := evaluation_root_for_pair_artifact(path)) is not None
+    }
+    for root in roots:
+        payloads = filter_active_pair_artifacts(
+            payloads,
+            load_review_revocations(root),
+        )
     return payloads
 
 
@@ -4702,6 +4805,178 @@ def media_audit(
     ):
         if values:
             console.print(f"{label}: {', '.join(values)}")
+
+
+@media_app.command(
+    "audit-normalized-provenance",
+    help="Read-only audit of derived and reconstructed normalized-audio conflicts.",
+)
+def media_audit_normalized_provenance(
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit the complete machine-readable report."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    report = audit_normalized_audio_provenance(
+        Database(paths.database, readonly=True)
+    )
+
+    def artifact_payload(artifact) -> dict[str, object]:
+        return {
+            "artifact_id": artifact.id,
+            "path": artifact.artifact_path,
+            "created_at": artifact.created_at.isoformat(),
+            "sha256": artifact.content_sha256,
+            "duration_seconds": artifact.duration_seconds,
+            "byte_size": artifact.byte_size,
+            "manifest_path": artifact.manifest_path,
+        }
+
+    payload = {
+        "schema_version": 1,
+        "generated_at": report.generated_at.isoformat(),
+        "video_count": len(report.records),
+        "affected_count": len(report.affected),
+        "historically_affected_count": sum(
+            record.historical_reconstructed_override for record in report.records
+        ),
+        "videos": [
+            {
+                "video_id": record.video_id,
+                "youtube_video_id": record.youtube_video_id,
+                "derived_normalized_artifact": artifact_payload(record.derived_artifact),
+                "reconstructed_existing_normalized_artifact": artifact_payload(
+                    record.reconstructed_artifact
+                ),
+                "reconstructed_currently_selected": (
+                    record.reconstructed_currently_selected
+                ),
+                "legacy_reconstructed_override": record.legacy_reconstructed_override,
+                "historical_reconstructed_override": (
+                    record.historical_reconstructed_override
+                ),
+                "reconstructed_age_seconds": record.reconstructed_age_seconds,
+            }
+            for record in report.records
+        ],
+    }
+    if json_output:
+        console.print_json(json.dumps(payload, sort_keys=True))
+        return
+    console.print(
+        f"Normalized provenance pairs={len(report.records)}; "
+        f"affected={len(report.affected)}. This audit is read-only."
+    )
+    for record in report.records:
+        derived = record.derived_artifact
+        reconstructed = record.reconstructed_artifact
+        console.print(
+            f"{record.youtube_video_id}: affected={record.legacy_reconstructed_override} "
+            f"reconstructed_selected={record.reconstructed_currently_selected} "
+            f"age_days={record.reconstructed_age_seconds / 86400:.2f}\n"
+            f"  derived: {derived.artifact_path} created={derived.created_at.isoformat()} "
+            f"sha256={derived.content_sha256} duration={derived.duration_seconds} "
+            f"bytes={derived.byte_size}\n"
+            f"  reconstructed: {reconstructed.artifact_path} "
+            f"created={reconstructed.created_at.isoformat()} "
+            f"sha256={reconstructed.content_sha256} duration={reconstructed.duration_seconds} "
+            f"bytes={reconstructed.byte_size}"
+        )
+
+
+@media_app.command(
+    "repair-normalized-provenance",
+    help="Re-normalize affected audio from verified immutable source artifacts.",
+)
+def media_repair_normalized_provenance(
+    all_affected: bool = typer.Option(
+        False, "--all-affected", help="Repair every video identified by the audit."
+    ),
+    youtube_video_id: str | None = typer.Option(
+        None, "--youtube-video-id", help="Repair one affected YouTube video."
+    ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-review artifacts to revoke when they used affected audio.",
+    ),
+    reviewer: str = typer.Option(
+        "normalized-provenance-repair",
+        help="Reviewer or system actor recorded on append-only cleanup events.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    if (youtube_video_id is None) == (not all_affected):
+        raise typer.BadParameter(
+            "Pass exactly one of --youtube-video-id or --all-affected."
+        )
+    database = get_database(base_dir)
+    video_ids = None
+    if youtube_video_id is not None:
+        video = database.get_video_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
+        video_ids = {video.id}
+    try:
+        audit_report = audit_normalized_audio_provenance(database)
+        affected_records = [
+            record
+            for record in audit_report.affected
+            if video_ids is None or record.video_id in video_ids
+        ]
+        cleanup_records = [
+            record
+            for record in audit_report.records
+            if record.historical_reconstructed_override
+            and (video_ids is None or record.video_id in video_ids)
+        ]
+        cleanup = invalidate_reviews_for_videos(
+            database,
+            evaluation_root=evaluation_root,
+            youtube_video_ids={
+                record.youtube_video_id for record in cleanup_records
+            },
+            suspect_audio_sha256_by_video={
+                record.youtube_video_id: {
+                    record.reconstructed_artifact.content_sha256
+                }
+                for record in cleanup_records
+            },
+            reviewer=reviewer,
+            reason=(
+                "Invalidated because review clips were generated from a "
+                "reconstructed normalized-audio artifact that incorrectly "
+                "overrode verified media-service audio."
+            ),
+        )
+        repaired = repair_normalized_audio_provenance(
+            database,
+            build_paths(base_dir),
+            build_tool_config(),
+            video_ids=video_ids,
+        )
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Speaker evidence cleanup: "
+        f"drafts_revoked={len(cleanup.revoked_draft_ids)} "
+        f"reviews_revoked={len(cleanup.revoked_review_event_ids)} "
+        f"observations_reset={cleanup.dispositions_reset} "
+        f"memberships_detached={cleanup.memberships_detached} "
+        f"differences_cleared={cleanup.differences_cleared}."
+    )
+    for result in repaired:
+        console.print(
+            f"{result.youtube_video_id}: repaired artifact={result.artifact.artifact_path} "
+            f"source_artifact_id={result.source_artifact.id} "
+            f"manifest={result.artifact.manifest_path}"
+        )
+    console.print(
+        f"Normalized provenance repair complete: repaired={len(repaired)}; "
+        "old artifacts were preserved."
+    )
 
 
 @media_app.command(

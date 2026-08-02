@@ -29,9 +29,11 @@ from pastor_transcript_extractor.media_archive import (
 from pastor_transcript_extractor.media_artifacts import (
     MediaVerificationCache,
     audit_media_coverage,
+    audit_normalized_audio_provenance,
     backfill_existing_media_artifacts,
     ensure_audio_for_video,
     register_media_file,
+    repair_normalized_audio_provenance,
     resolve_normalized_audio_path,
     verify_media_artifact,
 )
@@ -473,6 +475,166 @@ class MediaArtifactTests(unittest.TestCase):
         )
         coverage = audit_media_coverage(self.database)
         self.assertEqual((video.youtube_video_id,), coverage.verified)
+
+    def test_reconstructed_audio_never_overrides_verified_derived_audio(self) -> None:
+        video, _ = self._video("precedence01")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        derived_path = audio_root / "media" / "normalized-derived.wav"
+        reconstructed_path = audio_root / "normalized.wav"
+        write_wav(derived_path, value=700)
+        derived = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=derived_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="ffmpeg",
+            acquisition_tool_version="1",
+        )
+        write_wav(reconstructed_path, value=900)
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=reconstructed_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="unknown_reconstructed",
+            acquisition_tool_version="unknown",
+        )
+
+        self.assertEqual(
+            Path(derived.artifact_path),
+            resolve_normalized_audio_path(self.database, video.id),
+        )
+        database_sha256 = hashlib.sha256(self.paths.database.read_bytes()).hexdigest()
+        audit = audit_normalized_audio_provenance(
+            Database(self.paths.database, readonly=True)
+        )
+        self.assertEqual(1, len(audit.affected))
+        self.assertFalse(audit.records[0].reconstructed_currently_selected)
+        self.assertEqual(
+            database_sha256,
+            hashlib.sha256(self.paths.database.read_bytes()).hexdigest(),
+        )
+        self.assertNotEqual(
+            audit.records[0].derived_artifact.content_sha256,
+            audit.records[0].reconstructed_artifact.content_sha256,
+        )
+
+    def test_reconstructed_audio_remains_fallback_without_derived_audio(self) -> None:
+        video, _ = self._video("fallbackrecon")
+        audio_path = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio / "normalized.wav"
+        write_wav(audio_path)
+        reconstructed = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=audio_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="unknown_reconstructed",
+            acquisition_tool_version="unknown",
+        )
+
+        self.assertEqual(
+            Path(reconstructed.artifact_path),
+            resolve_normalized_audio_path(self.database, video.id),
+        )
+
+    def test_provenance_repair_renormalizes_verified_source_and_preserves_artifacts(self) -> None:
+        video, _ = self._video("repairprov01")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "media" / "source-test.wav"
+        derived_path = audio_root / "media" / "normalized-old.wav"
+        reconstructed_path = audio_root / "normalized.wav"
+        write_wav(source_path, value=400)
+        source = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="original_download",
+            acquisition_tool="yt-dlp",
+            acquisition_tool_version="1",
+        )
+        write_wav(derived_path, value=600)
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=derived_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="ffmpeg",
+            acquisition_tool_version="old",
+            parent=source,
+        )
+        write_wav(reconstructed_path, value=800)
+        reconstructed = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=reconstructed_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="reconstructed_existing",
+            acquisition_tool="unknown_reconstructed",
+            acquisition_tool_version="unknown",
+            parent=source,
+        )
+        before_ids = {
+            artifact.id
+            for artifact in self.database.list_media_artifacts_for_video(video.id)
+        }
+
+        def fake_normalize(input_path, output_path, _ffmpeg):
+            self.assertEqual(source_path.resolve(), Path(input_path).resolve())
+            write_wav(output_path, value=1000)
+            return output_path
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.normalize_audio",
+            side_effect=fake_normalize,
+        ):
+            repaired = repair_normalized_audio_provenance(
+                self.database,
+                self.paths,
+                self.tools,
+                tool_version="repair-test",
+            )
+
+        self.assertEqual(1, len(repaired))
+        self.assertTrue(
+            before_ids.issubset(
+                {
+                    artifact.id
+                    for artifact in self.database.list_media_artifacts_for_video(
+                        video.id
+                    )
+                }
+            )
+        )
+        self.assertTrue(Path(reconstructed.artifact_path).exists())
+        manifest = json.loads(Path(repaired[0].artifact.manifest_path).read_text())
+        self.assertEqual("normalized_provenance_repair_v1", manifest["operation_kind"])
+        self.assertEqual(source.id, manifest["parent"]["media_artifact_id"])
+        repaired_audit = audit_normalized_audio_provenance(self.database)
+        self.assertEqual(0, len(repaired_audit.affected))
+        self.assertTrue(repaired_audit.records[0].historical_reconstructed_override)
 
     def test_source_archive_records_path_and_replaces_source_with_verified_symlink(self) -> None:
         video, _ = self._video("archive001")

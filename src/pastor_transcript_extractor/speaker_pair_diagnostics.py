@@ -15,7 +15,7 @@ from typing import Any, Mapping, Protocol, Sequence
 from pastor_transcript_extractor.models import SpeakerObservation
 
 
-SPAN_EXTRACTOR_VERSION = "speaker_span_v1"
+SPAN_EXTRACTOR_VERSION = "speaker_span_v2"
 ANALYZER_VERSION = "speaker_pair_diagnostic_v1"
 SPEECH_ACTIVITY_MEASURER_VERSION = "frame_rms_activity_v1"
 
@@ -168,6 +168,7 @@ class AudioSpanCache:
     def __init__(self, root: Path, *, ffmpeg: str = "ffmpeg"):
         self.root = root
         self.ffmpeg = ffmpeg
+        self._source_hashes: dict[tuple[str, int, int], str] = {}
 
     def prepare(
         self,
@@ -176,10 +177,12 @@ class AudioSpanCache:
         source_audio_path: Path,
         span: SpanSpec,
     ) -> CachedSpan:
+        source_audio_sha256 = self._source_audio_sha256(source_audio_path)
         key_payload = {
             "extractor_version": SPAN_EXTRACTOR_VERSION,
             "observation_fingerprint": observation.input_fingerprint,
             "source_audio_path": str(source_audio_path),
+            "source_audio_sha256": source_audio_sha256,
             "start_seconds": span.start_seconds,
             "end_seconds": span.end_seconds,
             "format": "pcm_s16le_mono_16000hz",
@@ -248,6 +251,20 @@ class AudioSpanCache:
         manifest["span"].pop("cache_hit")
         _write_json(manifest_path, manifest)
         return cached
+
+    def _source_audio_sha256(self, path: Path) -> str:
+        try:
+            file_stat = path.stat()
+        except OSError as error:
+            raise AcousticEvidenceUnavailableError(
+                f"local audio is unavailable: {path}"
+            ) from error
+        key = (str(path.expanduser().resolve()), file_stat.st_size, file_stat.st_mtime_ns)
+        content_sha256 = self._source_hashes.get(key)
+        if content_sha256 is None:
+            content_sha256 = _sha256_file(path)
+            self._source_hashes[key] = content_sha256
+        return content_sha256
 
 
 class EmbeddingCache:

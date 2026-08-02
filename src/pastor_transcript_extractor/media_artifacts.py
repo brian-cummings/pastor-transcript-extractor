@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -31,6 +32,7 @@ from pastor_transcript_extractor.storage import Database
 
 MEDIA_SERVICE_VERSION = "media_foundation_v1"
 MEDIA_VERIFICATION_RECEIPT_VERSION = 1
+NORMALIZED_PROVENANCE_REPAIR_VERSION = "normalized_provenance_repair_v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +63,38 @@ class MediaCoverageReport:
     failed: tuple[str, ...]
     corrupt: tuple[str, ...]
     missing: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedAudioProvenanceRecord:
+    video_id: int
+    youtube_video_id: str
+    derived_artifact: MediaArtifact
+    reconstructed_artifact: MediaArtifact
+    reconstructed_currently_selected: bool
+    legacy_reconstructed_override: bool
+    historical_reconstructed_override: bool
+    reconstructed_age_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedAudioProvenanceAudit:
+    generated_at: datetime
+    records: tuple[NormalizedAudioProvenanceRecord, ...]
+
+    @property
+    def affected(self) -> tuple[NormalizedAudioProvenanceRecord, ...]:
+        return tuple(
+            record for record in self.records if record.legacy_reconstructed_override
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedAudioRepairResult:
+    video_id: int
+    youtube_video_id: str
+    artifact: MediaArtifact
+    source_artifact: MediaArtifact
 
 
 class MediaVerificationCache:
@@ -168,6 +202,7 @@ def register_media_file(
     acquisition_tool: str,
     acquisition_tool_version: str,
     parent: MediaArtifact | None = None,
+    operation_kind: str | None = None,
 ) -> MediaArtifact:
     resolved_path = artifact_path.expanduser().resolve()
     if not resolved_path.exists():
@@ -184,6 +219,7 @@ def register_media_file(
         "parent_content_sha256": parent.content_sha256 if parent else None,
         "acquisition_tool": acquisition_tool,
         "acquisition_tool_version": acquisition_tool_version,
+        "operation_kind": operation_kind,
     }
     input_fingerprint = _sha256_json(fingerprint_payload)
     video_paths = resolve_video_artifact_paths(database, app_paths, video)
@@ -218,6 +254,7 @@ def register_media_file(
         ),
         "acquisition_tool": acquisition_tool,
         "acquisition_tool_version": acquisition_tool_version,
+        "operation_kind": operation_kind,
         "source_snapshot_semantics": (
             "reconstructed_without_original_tool_snapshot"
             if provenance_kind == "reconstructed_existing"
@@ -603,16 +640,185 @@ def get_verified_normalized_media_artifact(
     verification_cache: MediaVerificationCache | None = None,
 ) -> MediaArtifact | None:
     artifacts = database.list_media_artifacts_for_video(video_id)
-    for artifact in reversed(artifacts):
-        if artifact.artifact_kind != "normalized_audio":
+    # A verified media-service derivative is authoritative regardless of when
+    # a historical reconstructed path was registered. Reconstructed audio is
+    # retained as the fallback for videos without a usable derivative.
+    for provenance_kind in ("derived", "reconstructed_existing"):
+        for artifact in reversed(artifacts):
+            if (
+                artifact.artifact_kind != "normalized_audio"
+                or artifact.provenance_kind != provenance_kind
+            ):
+                continue
+            if verify_media_artifact(
+                artifact,
+                verification_cache=verification_cache,
+            ) and media_artifact_covers_isolated_sermon(database, artifact):
+                return artifact
+    return None
+
+
+def audit_normalized_audio_provenance(
+    database: Database,
+    *,
+    now: datetime | None = None,
+) -> NormalizedAudioProvenanceAudit:
+    """Report verified derived/reconstructed conflicts without modifying state."""
+    generated_at = now or datetime.now(timezone.utc)
+    records: list[NormalizedAudioProvenanceRecord] = []
+    for video in database.list_videos():
+        artifacts = database.list_media_artifacts_for_video(video.id)
+        derived = _latest_verified_normalized_artifact(
+            database, artifacts, provenance_kind="derived"
+        )
+        reconstructed = _latest_verified_normalized_artifact(
+            database, artifacts, provenance_kind="reconstructed_existing"
+        )
+        if derived is None or reconstructed is None:
             continue
-        if verify_media_artifact(
-            artifact,
-            verification_cache=verification_cache,
-        ) and media_artifact_covers_isolated_sermon(
-            database, artifact
+        selected = get_verified_normalized_media_artifact(database, video.id)
+        reconstructed_created_at = reconstructed.created_at
+        if reconstructed_created_at.tzinfo is None:
+            reconstructed_created_at = reconstructed_created_at.replace(
+                tzinfo=timezone.utc
+            )
+        records.append(
+            NormalizedAudioProvenanceRecord(
+                video_id=video.id,
+                youtube_video_id=video.youtube_video_id,
+                derived_artifact=derived,
+                reconstructed_artifact=reconstructed,
+                reconstructed_currently_selected=(
+                    selected is not None and selected.id == reconstructed.id
+                ),
+                legacy_reconstructed_override=(
+                    reconstructed.created_at > derived.created_at
+                    and reconstructed.content_sha256 != derived.content_sha256
+                ),
+                historical_reconstructed_override=any(
+                    artifact.artifact_kind == "normalized_audio"
+                    and artifact.provenance_kind == "derived"
+                    and artifact.created_at < reconstructed.created_at
+                    and artifact.content_sha256
+                    != reconstructed.content_sha256
+                    and verify_media_artifact(artifact)
+                    and media_artifact_covers_isolated_sermon(database, artifact)
+                    for artifact in artifacts
+                ),
+                reconstructed_age_seconds=max(
+                    0.0, (generated_at - reconstructed_created_at).total_seconds()
+                ),
+            )
+        )
+    return NormalizedAudioProvenanceAudit(generated_at, tuple(records))
+
+
+def repair_normalized_audio_provenance(
+    database: Database,
+    app_paths: AppPaths,
+    tools: ToolConfig,
+    *,
+    video_ids: set[int] | None = None,
+    tool_version: str | None = None,
+) -> tuple[NormalizedAudioRepairResult, ...]:
+    """Re-normalize affected videos from each derivative's verified source."""
+    affected = [
+        record
+        for record in audit_normalized_audio_provenance(database).affected
+        if video_ids is None or record.video_id in video_ids
+    ]
+    ffmpeg_version = tool_version or _tool_version(tools.ffmpeg_bin, "-version")
+    results: list[NormalizedAudioRepairResult] = []
+    for record in affected:
+        video = database.get_video_by_id(record.video_id)
+        if video is None:
+            continue
+        source = _verified_source_for_derived(database, record.derived_artifact)
+        if source is None:
+            raise ValueError(
+                f"{record.youtube_video_id}: derived normalized audio has no verified source artifact"
+            )
+        video_paths = resolve_video_artifact_paths(database, app_paths, video)
+        media_root = video_paths.audio / "media"
+        media_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".provenance-repair-", dir=video_paths.audio
+        ) as work:
+            normalized_work = normalize_audio(
+                Path(source.artifact_path),
+                Path(work) / "normalized.wav",
+                tools.ffmpeg_bin,
+            )
+            normalized_path = _materialize_content_addressed(
+                normalized_work, media_root, prefix="normalized"
+            )
+            repaired = register_media_file(
+                database,
+                app_paths,
+                video=video,
+                pastor_slug="",
+                artifact_path=normalized_path,
+                artifact_kind="normalized_audio",
+                provenance_kind="derived",
+                acquisition_tool="ffmpeg",
+                acquisition_tool_version=ffmpeg_version,
+                parent=source,
+                operation_kind=NORMALIZED_PROVENANCE_REPAIR_VERSION,
+            )
+        if not media_artifact_covers_isolated_sermon(database, repaired):
+            raise RuntimeError(
+                f"{record.youtube_video_id}: repaired audio does not cover the isolated sermon"
+            )
+        _record_attempt(
+            database,
+            video=video,
+            outcome="verified",
+            reason_code="normalized_provenance_repaired",
+            detail=(
+                f"Re-normalized from verified source artifact {source.id}; "
+                f"preserved reconstructed artifact {record.reconstructed_artifact.id}."
+            ),
+            artifact=repaired,
+        )
+        results.append(
+            NormalizedAudioRepairResult(video.id, video.youtube_video_id, repaired, source)
+        )
+    return tuple(results)
+
+
+def _latest_verified_normalized_artifact(
+    database: Database,
+    artifacts: list[MediaArtifact],
+    *,
+    provenance_kind: str,
+) -> MediaArtifact | None:
+    for artifact in reversed(artifacts):
+        if (
+            artifact.artifact_kind == "normalized_audio"
+            and artifact.provenance_kind == provenance_kind
+            and verify_media_artifact(artifact)
+            and media_artifact_covers_isolated_sermon(database, artifact)
         ):
             return artifact
+    return None
+
+
+def _verified_source_for_derived(
+    database: Database,
+    derived: MediaArtifact,
+) -> MediaArtifact | None:
+    by_id = {
+        artifact.id: artifact
+        for artifact in database.list_media_artifacts_for_video(derived.video_id)
+    }
+    parent = by_id.get(derived.parent_media_artifact_id)
+    if (
+        parent is not None
+        and parent.artifact_kind == "source_audio"
+        and parent.provenance_kind == "original_download"
+        and verify_media_artifact(parent)
+    ):
+        return parent
     return None
 
 
@@ -620,15 +826,19 @@ def get_archive_safe_normalized_media_artifact(
     database: Database, video_id: int
 ) -> MediaArtifact | None:
     artifacts = database.list_media_artifacts_for_video(video_id)
-    for artifact in reversed(artifacts):
-        if artifact.artifact_kind != "normalized_audio":
-            continue
-        if not verify_media_artifact(artifact):
-            continue
-        if media_artifact_covers_isolated_sermon(
-            database, artifact
-        ) or media_artifact_covers_complete_recording(database, artifact):
-            return artifact
+    for provenance_kind in ("derived", "reconstructed_existing"):
+        for artifact in reversed(artifacts):
+            if (
+                artifact.artifact_kind != "normalized_audio"
+                or artifact.provenance_kind != provenance_kind
+            ):
+                continue
+            if not verify_media_artifact(artifact):
+                continue
+            if media_artifact_covers_isolated_sermon(
+                database, artifact
+            ) or media_artifact_covers_complete_recording(database, artifact):
+                return artifact
     return None
 
 

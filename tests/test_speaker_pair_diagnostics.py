@@ -175,6 +175,46 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         self.assertIn("-nostdin", arguments)
         self.assertEqual(subprocess.DEVNULL, kwargs["stdin"])
 
+    def test_audio_span_cache_invalidates_when_source_content_changes(self):
+        source = self.root / "source.wav"
+        source.write_bytes(b"source-version-one")
+        cache = AudioSpanCache(self.root / "audio-cache")
+        span = select_diagnostic_spans(self.a, count=3)[0]
+        ffmpeg_calls = []
+
+        def fake_ffmpeg(arguments, **_kwargs):
+            ffmpeg_calls.append(arguments)
+            with wave.open(arguments[-1], "wb") as destination:
+                destination.setnchannels(1)
+                destination.setsampwidth(2)
+                destination.setframerate(16000)
+                destination.writeframes(
+                    (1000).to_bytes(2, "little", signed=True) * (16000 * 12)
+                )
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_diagnostics.subprocess.run",
+            side_effect=fake_ffmpeg,
+        ):
+            first = cache.prepare(
+                observation=self.a, source_audio_path=source, span=span
+            )
+            source.write_bytes(b"source-version-two-is-different")
+            second = cache.prepare(
+                observation=self.a, source_audio_path=source, span=span
+            )
+
+        self.assertFalse(first.cache_hit)
+        self.assertFalse(second.cache_hit)
+        self.assertEqual(2, len(ffmpeg_calls))
+        manifests = sorted((self.root / "audio-cache" / "spans").glob("*.json"))
+        self.assertEqual(2, len(manifests))
+        source_hashes = {
+            json.loads(path.read_text())["input"]["source_audio_sha256"]
+            for path in manifests
+        }
+        self.assertEqual(2, len(source_hashes))
+
     def test_frame_activity_detects_a_clip_that_is_mostly_silent(self):
         path = self.root / "mostly-silent.wav"
         with wave.open(str(path), "wb") as destination:

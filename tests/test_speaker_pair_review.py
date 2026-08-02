@@ -23,6 +23,7 @@ from pastor_transcript_extractor.speaker_pair_review import (
     PairJudgment,
     ReviewEvidenceMode,
     audit_review_selection_artifacts,
+    create_observation_review_packet,
     create_review_draft,
     prepare_review_observation,
     submit_review,
@@ -239,6 +240,60 @@ class SpeakerPairReviewTests(unittest.TestCase):
         )
         self.assertTrue(all(span.cache_hit for span in replayed.spans))
         self.assertEqual("complete", replayed.clip_selection["selection_outcome"])
+
+    def test_existing_draft_fails_when_normalized_audio_provenance_changes(self):
+        audio_a = self.root / "audio-a.wav"
+        audio_b = self.root / "audio-b.wav"
+        audio_a.write_bytes(b"derived-a")
+        audio_b.write_bytes(b"derived-b")
+        create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=audio_a,
+            audio_path_b=audio_b,
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+        )
+        audio_a.write_bytes(b"reconstructed-a")
+
+        with self.assertRaisesRegex(ValueError, "normalized-audio provenance mismatch"):
+            create_review_draft(
+                observation_a=self.observation_a,
+                observation_b=self.observation_b,
+                video_id_a="video-a",
+                video_id_b="video-b",
+                audio_path_a=audio_a,
+                audio_path_b=audio_b,
+                span_cache=self.span_cache,
+                evaluation_root=self.evaluation_root,
+            )
+
+    def test_single_observation_packet_has_exact_window_urls_and_provenance(self):
+        audio = self.root / "normalized.wav"
+        audio.write_bytes(b"verified-derived-audio")
+        packet = create_observation_review_packet(
+            observation=self.observation_a,
+            youtube_video_id="video-a",
+            audio_path=audio,
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+        )
+
+        html_payload = packet.packet_path.read_text(encoding="utf-8")
+        self.assertIn("Observation window: 100.000s–1100.000s", html_payload)
+        self.assertIn("https://www.youtube.com/watch?v=video-a", html_payload)
+        self.assertEqual(
+            5,
+            html_payload.count(
+                'href="https://www.youtube.com/watch?v=video-a&amp;t='
+            ),
+        )
+        self.assertEqual(
+            hashlib.sha256(audio.read_bytes()).hexdigest(),
+            packet.payload["normalized_audio_sha256"],
+        )
 
     def test_explicit_review_resumes_existing_automatic_selection_manifest(self):
         manifest = {
