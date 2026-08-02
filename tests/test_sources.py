@@ -1830,6 +1830,124 @@ class CliTests(unittest.TestCase):
             self.assertIsNone(calls[0][2]["source_id"])
             self.assertNotIn("video_ids", calls[-1][2])
 
+    def test_run_multiple_source_ids_scopes_every_downstream_stage(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            selected_one = database.add_source(
+                "https://www.youtube.com/@selectedone",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            selected_two = database.add_source(
+                "https://www.youtube.com/@selectedtwo",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            excluded = database.add_source(
+                "https://www.youtube.com/@excluded",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            selected_video_one = database.add_video(
+                source_id=selected_one.id,
+                pastor_id=pastor.id,
+                youtube_video_id="selected001",
+                title="Selected one",
+                url="https://www.youtube.com/watch?v=selected001",
+            )
+            selected_video_two = database.add_video(
+                source_id=selected_two.id,
+                pastor_id=pastor.id,
+                youtube_video_id="selected002",
+                title="Selected two",
+                url="https://www.youtube.com/watch?v=selected002",
+            )
+            database.add_video(
+                source_id=excluded.id,
+                pastor_id=pastor.id,
+                youtube_video_id="excluded001",
+                title="Excluded",
+                url="https://www.youtube.com/watch?v=excluded001",
+            )
+            selected_video_ids = {selected_video_one.id, selected_video_two.id}
+
+            with patch(
+                "pastor_transcript_extractor.cli.discover_sources_service"
+            ) as discover, patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service"
+            ) as fetch, patch(
+                "pastor_transcript_extractor.cli.transcribe_videos_service"
+            ) as transcribe, patch(
+                "pastor_transcript_extractor.cli.extract_batch",
+                return_value=ExtractionBatchResult(0, 2, 0),
+            ) as extract, patch(
+                "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+            ) as media:
+                result = runner.invoke(
+                    app,
+                    [
+                        "run",
+                        "--source-id",
+                        str(selected_one.id),
+                        "--source-id",
+                        str(selected_two.id),
+                        "--source-id",
+                        str(selected_one.id),
+                        "--skip-review",
+                        "--base-dir",
+                        str(base_dir),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual(
+                [selected_one.id, selected_two.id],
+                [call.kwargs["source_id"] for call in discover.call_args_list],
+            )
+            for stage in (fetch, transcribe, extract, media):
+                self.assertEqual(
+                    selected_video_ids,
+                    stage.call_args.kwargs["video_ids"],
+                )
+
+    def test_run_multiple_source_ids_rejects_unknown_ids_before_discovery(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+
+            with patch(
+                "pastor_transcript_extractor.cli.discover_sources_service"
+            ) as discover:
+                result = runner.invoke(
+                    app,
+                    [
+                        "run",
+                        "--source-id",
+                        "999",
+                        "--base-dir",
+                        str(base_dir),
+                    ],
+                )
+
+            self.assertNotEqual(0, result.exit_code)
+            self.assertIn("Unknown source id(s): 999", result.output)
+            discover.assert_not_called()
+
+    def test_run_source_ids_are_mutually_exclusive_with_all(self) -> None:
+        result = CliRunner().invoke(
+            app,
+            ["run", "--source-id", "1", "--all"],
+        )
+
+        self.assertNotEqual(0, result.exit_code)
+        self.assertIn("Use either --all or --source-id", result.output)
+
     def test_run_failed_only_targets_failed_ids_and_preserves_existing_artifacts(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:

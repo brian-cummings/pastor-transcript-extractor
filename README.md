@@ -124,6 +124,8 @@ pte source-processing-report \
   source archival, and pastor review export.
 - `pte run --all` performs the same workflow for every configured source and
   writes one review per pastor.
+- `pte run --source-id 12 --source-id 19` performs the workflow for exactly the
+  listed existing sources. Repeat `--source-id` for each source.
 - `pte run --failed-only` retries failed videos across all sources while
   preserving successful transcript and extraction artifacts.
 - `pte run <url> --pastor <slug> --skip-review` skips review export after
@@ -399,6 +401,13 @@ pte run --all \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
+Run a selected group of configured sources:
+
+```bash
+pte run --source-id 12 --source-id 19 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
 To complete extraction and media maintenance without creating or refreshing
 review exports:
 
@@ -601,6 +610,7 @@ reviewed different-speaker constraints block consolidation.
 - `pte diagnose-interaction --model <ollama-model>`
 - `pte run <url> --pastor <pastor-slug>`
 - `pte run --all`
+- `pte run --source-id <id> --source-id <id>`
 - `pte run <url> --pastor <pastor-slug> --skip-review`
 - `pte video exclude <video-id>`
 - `pte video unexclude <youtube-video-id>`

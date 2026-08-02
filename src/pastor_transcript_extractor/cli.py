@@ -6880,7 +6880,9 @@ def run_workflow_service(
     llm_model: str | None = None,
     skip_review: bool = False,
     base_dir: Path | None = None,
+    source_ids: Sequence[int] | None = None,
 ) -> None:
+    selected_source_ids = tuple(dict.fromkeys(source_ids or ()))
     if failed_only:
         if url is not None:
             raise ValueError("Do not pass a URL when using --failed-only.")
@@ -6888,6 +6890,8 @@ def run_workflow_service(
             raise ValueError("Do not pass --pastor when using --failed-only.")
         if all_sources:
             raise ValueError("Use either --all or --failed-only, not both.")
+        if selected_source_ids:
+            raise ValueError("Use either --source-id or --failed-only, not both.")
         if replace_existing:
             raise ValueError("--replace-existing is not valid with --failed-only.")
         database = get_database(base_dir)
@@ -6950,6 +6954,97 @@ def run_workflow_service(
                 _print_review_batch(reviews)
         return
 
+    if selected_source_ids:
+        if url is not None:
+            raise ValueError("Do not pass a URL when using --source-id.")
+        if pastor is not None:
+            raise ValueError("Do not pass --pastor when using --source-id.")
+        if all_sources:
+            raise ValueError("Use either --all or --source-id, not both.")
+        if replace_existing:
+            raise ValueError("--replace-existing is only valid for URL runs.")
+        database = get_database(base_dir)
+        unknown_source_ids = [
+            source_id
+            for source_id in selected_source_ids
+            if database.get_source_by_id(source_id) is None
+        ]
+        if unknown_source_ids:
+            rendered = ", ".join(str(source_id) for source_id in unknown_source_ids)
+            raise ValueError(f"Unknown source id(s): {rendered}")
+
+        console.print(
+            f"Running {len(selected_source_ids)} selected source(s): "
+            f"{', '.join(str(source_id) for source_id in selected_source_ids)}."
+        )
+        for source_id in selected_source_ids:
+            discover_sources_service(
+                limit=limit,
+                all_videos=all_videos,
+                source_id=source_id,
+                base_dir=base_dir,
+            )
+        selected_video_ids = {
+            video.id
+            for source_id in selected_source_ids
+            for video in database.list_videos_by_source_id(source_id)
+        }
+        fetch_captions_service(
+            base_dir=base_dir,
+            video_ids=selected_video_ids,
+        )
+        if not captions_only:
+            transcribe_videos_service(
+                missing_only=False,
+                captions_missing_only=transcribe_missing,
+                jobs=jobs,
+                base_dir=base_dir,
+                video_ids=selected_video_ids,
+            )
+        paths = build_paths(base_dir, remember=True)
+        extraction = extract_batch(
+            database,
+            paths,
+            video_ids=selected_video_ids,
+            classifier=classifier,
+            llm_model=llm_model,
+            event_callback=lambda message: console.print(message, markup=False),
+            progress_callback=lambda stage, current, total: console.print(
+                f"  {stage} block {current}/{total}"
+            ),
+        )
+        console.print(
+            f"Extracted {extraction.processed} video(s); "
+            f"skipped {extraction.skipped}; failed {extraction.failed}."
+        )
+        _ensure_and_archive_run_media(
+            database,
+            paths,
+            video_ids=selected_video_ids,
+        )
+        if not skip_review:
+            pastor_slugs = {
+                pastor_record.slug
+                for video_id in selected_video_ids
+                for video in [database.get_video_by_id(video_id)]
+                if video is not None and video.pastor_id is not None
+                for pastor_record in [database.get_pastor_by_id(video.pastor_id)]
+                if pastor_record is not None
+            }
+            for pastor_slug in sorted(pastor_slugs):
+                reviews = prepare_review_exports(
+                    database,
+                    paths,
+                    pastor_slug=pastor_slug,
+                    classifier=classifier,
+                    llm_model=llm_model,
+                    event_callback=lambda message: console.print(
+                        message, markup=False
+                    ),
+                )
+                _print_review_batch(reviews)
+        return
+
     if all_sources:
         if url is not None:
             raise ValueError("Do not pass a URL when using --all. Run either a global sync or a single-source workflow.")
@@ -6988,7 +7083,9 @@ def run_workflow_service(
         return
 
     if url is None:
-        raise ValueError("A URL is required unless you use --all.")
+        raise ValueError(
+            "A URL is required unless you use --all, --source-id, or --failed-only."
+        )
     if pastor is None:
         raise ValueError("--pastor is required unless you use --all.")
 
@@ -7145,6 +7242,11 @@ def run(
     url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
     pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
     all_sources: bool = typer.Option(False, "--all", help="Run across all configured sources."),
+    source_ids: list[int] | None = typer.Option(
+        None,
+        "--source-id",
+        help="Run one or more existing source ids; repeat this option for each source.",
+    ),
     failed_only: bool = typer.Option(
         False,
         "--failed-only",
@@ -7175,6 +7277,7 @@ def run(
             url=url,
             pastor=pastor,
             all_sources=all_sources,
+            source_ids=source_ids,
             failed_only=failed_only,
             replace_existing=replace_existing,
             limit=limit,
