@@ -375,6 +375,52 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest,
         )
 
+    def test_automation_readiness_prefers_near_same_discovery_frontier(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("near-a"),
+                candidate("near-b"),
+                candidate("overlap-a"),
+                candidate("overlap-b"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            discovery_resolution_pairs=(
+                DiscoveryResolutionPair(
+                    fingerprint_a="overlap-a",
+                    fingerprint_b="overlap-b",
+                    component_ids=("overlap",),
+                    member_fingerprints=("overlap-a", "overlap-b"),
+                    observations_unlocked=5,
+                ),
+                DiscoveryResolutionPair(
+                    fingerprint_a="near-a",
+                    fingerprint_b="near-b",
+                    component_ids=("blocked",),
+                    member_fingerprints=("near-a", "near-b"),
+                    observations_unlocked=3,
+                    resolution_kind="near_same_ambiguous_frontier",
+                    same_boundary_distance=0.01,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            {"near-a", "near-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "discovery_near_same_frontier_review",
+            selected.manifest["selection_objective"],
+        )
+        self.assertEqual(
+            "near_same_ambiguous_frontier",
+            selected.manifest["discovery_resolution"]["resolution_kind"],
+        )
+
     def test_automation_readiness_falls_back_to_profile_growth(self) -> None:
         selected = select_next_speaker_pair(
             [

@@ -141,7 +141,7 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         }
         weak_id = signatures[-1].candidate.observation.id
         self.assertNotIn(weak_id, strong_ids)
-        self.assertTrue(
+        self.assertFalse(
             any(weak_id in nomination.observation_ids for nomination in with_deferred)
         )
         self.assertTrue(
@@ -163,6 +163,8 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             signatures,
             nearest_neighbors=2,
             consistency_policy=consistency_policy,
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
         )
 
         report = evaluate_shadow_profile_discovery(
@@ -203,6 +205,8 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             signatures,
             nearest_neighbors=2,
             maximum_pairs=1,
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
             consistency_policy=consistency_policy,
         )
         compared: list[frozenset[str]] = []
@@ -257,6 +261,8 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             signatures,
             nearest_neighbors=2,
             maximum_pairs=1,
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
         )
         initial_pair = frozenset(
             signature.candidate.observation.input_fingerprint
@@ -289,6 +295,101 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
                 result["source_context_preferred"]
                 for result in report["pair_results"]
                 if result["retrieval_reason"] == "same_pair_closure"
+            )
+        )
+
+    def test_source_local_retrieval_adds_coverage_but_not_identity(self) -> None:
+        signatures = (
+            self._signature("source-a", (1.0, 0.0)),
+            self._signature("source-b", (0.99, 0.01)),
+            self._signature("source-c", (0.98, 0.02)),
+        )
+
+        nominations = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            maximum_pairs=1,
+            source_complete_link_limit=3,
+            source_nearest_neighbors=1,
+        )
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=lambda *_args: {
+                "outcome": "different_speaker",
+                "reason": "test_different",
+            },
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            source_complete_link_limit=3,
+            source_nearest_neighbors=1,
+        )
+
+        self.assertEqual(3, len(nominations))
+        self.assertEqual(1, report["counts"]["global_pairs"])
+        self.assertEqual(3, report["counts"]["source_local_pairs"])
+        self.assertEqual(0, report["counts"]["provisional_profile_candidates"])
+        self.assertTrue(
+            all(
+                result["source_context"]["identity_evidence"] is False
+                for result in report["pair_results"]
+            )
+        )
+
+    def test_borderline_deferred_candidate_requires_both_seed_matches(self) -> None:
+        signatures = (
+            self._signature("seed-a", (1.0, 0.0), consistency=0.9),
+            self._signature("seed-b", (0.999, 0.001), consistency=0.9),
+            self._signature("borderline", (0.998, 0.002), consistency=0.55),
+        )
+        consistency_policy = self._consistency_policy()
+        nominations = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            maximum_pairs=1,
+            consistency_policy=consistency_policy,
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
+        )
+
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=lambda left, right, *_paths: {
+                "outcome": (
+                    "same_speaker"
+                    if frozenset(
+                        (left.input_fingerprint, right.input_fingerprint)
+                    )
+                    in {
+                        frozenset(("seed-a", "seed-b")),
+                        frozenset(("seed-a", "borderline")),
+                    }
+                    else "different_speaker"
+                ),
+                "reason": "test",
+            },
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            consistency_policy=consistency_policy,
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
+            borderline_deferred_candidates_per_same_pair=1,
+        )
+
+        self.assertEqual(2, report["counts"]["borderline_deferred_pairs"])
+        self.assertEqual(0, report["counts"]["provisional_profile_candidates"])
+        attempt = report["borderline_deferred_closure"][0]
+        self.assertEqual("borderline_deferred", attempt["tier"])
+        self.assertEqual(
+            "rejected_incomplete_acoustic_agreement", attempt["outcome"]
+        )
+        self.assertFalse(attempt["identity_edges_allowed"])
+        self.assertTrue(
+            all(
+                result["identity_edge_allowed"] is False
+                for result in report["pair_results"]
+                if result["retrieval_reason"] == "borderline_deferred_closure"
             )
         )
 
@@ -329,6 +430,58 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         )
         self.assertFalse(report["automatic_profile_creation_allowed"])
         self.assertFalse(component["automatic_profile_creation_allowed"])
+
+    def test_near_same_ambiguous_edge_becomes_actionable_review_frontier(self) -> None:
+        signatures = (
+            self._signature("frontier-a", (1.0, 0.0)),
+            self._signature("frontier-b", (0.99, 0.01)),
+            self._signature("frontier-c", (0.98, 0.02)),
+        )
+        observation_ids = {
+            signature.candidate.observation.input_fingerprint:
+            signature.candidate.observation.id
+            for signature in signatures
+        }
+        ambiguous_pair = tuple(
+            sorted((observation_ids["frontier-b"], observation_ids["frontier-c"]))
+        )
+
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominate_discovery_pairs(
+                signatures,
+                nearest_neighbors=2,
+                source_complete_link_limit=0,
+                source_nearest_neighbors=0,
+            ),
+            compare=lambda left, right, *_paths: (
+                {
+                    "outcome": "insufficient_evidence",
+                    "reason": "ambiguous_similarity",
+                    "metrics": {
+                        "cross": {"p10": 0.59, "median": 0.69}
+                    },
+                }
+                if tuple(sorted((left.id, right.id))) == ambiguous_pair
+                else {"outcome": "same_speaker", "reason": "test_same"}
+            ),
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+        )
+
+        self.assertEqual(1, len(report["review_frontier"]))
+        frontier = report["review_frontier"][0]
+        self.assertEqual(list(ambiguous_pair), frontier["observation_ids"])
+        self.assertEqual(
+            "approved_blinded_pair_review_only",
+            frontier["durable_evidence_source"],
+        )
+        self.assertEqual(
+            1,
+            report["counts"][
+                "blocked_components_with_actionable_review_frontier"
+            ],
+        )
 
     def test_written_report_can_be_loaded_with_checksum_verification(self) -> None:
         signatures = (
@@ -476,6 +629,8 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             signatures,
             nearest_neighbors=2,
             maximum_pairs=2,
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
         )
 
         report = evaluate_shadow_profile_discovery(

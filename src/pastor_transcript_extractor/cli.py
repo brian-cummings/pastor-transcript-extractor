@@ -1990,6 +1990,8 @@ def profile_status_command(
             f"promoted={status.promoted_discovery_candidate_count} "
             f"stale={status.stale_discovery_candidate_count} "
             f"blocked_components={status.blocked_discovery_component_count} "
+            f"actionable_review_frontiers="
+            f"{status.actionable_discovery_frontier_component_count} "
             f"report={status.discovery_result_sha256[:12]} "
             f"invalid_artifacts_skipped={invalid_discovery_artifacts}"
         )
@@ -2336,6 +2338,39 @@ def shadow_discover_profiles_command(
             "same-speaker seed pair."
         ),
     ),
+    source_complete_link_limit: int = typer.Option(
+        12,
+        min=2,
+        help=(
+            "Source groups at or below this size receive complete pair "
+            "retrieval coverage; source is never identity evidence."
+        ),
+    ),
+    source_nearest_neighbors: int = typer.Option(
+        4,
+        min=1,
+        help="Per-observation source-local quota for larger source groups.",
+    ),
+    borderline_deferred_minimum: float = typer.Option(
+        0.50,
+        min=0.0,
+        max=1.0,
+        help="Inclusive lower score for guarded deferred closure.",
+    ),
+    borderline_deferred_maximum: float = typer.Option(
+        0.60,
+        min=0.0,
+        max=1.0,
+        help="Exclusive upper score for guarded deferred closure.",
+    ),
+    borderline_deferred_candidates_per_same_pair: int = typer.Option(
+        4,
+        min=0,
+        help=(
+            "Borderline-deferred third candidates compared acoustically with "
+            "both endpoints of a strong same-speaker seed."
+        ),
+    ),
     minimum_component_members: int = typer.Option(
         3,
         min=3,
@@ -2365,8 +2400,8 @@ def shadow_discover_profiles_command(
         False,
         "--include-deferred",
         help=(
-            "Also nominate below-threshold observations; they remain recorded "
-            "but deferred by default."
+            "Deprecated unsafe diagnostic override; deferred observations now "
+            "remain outside global discovery."
         ),
     ),
     model_path: Path = typer.Option(
@@ -2404,6 +2439,11 @@ def shadow_discover_profiles_command(
         help="Override app data directory.",
     ),
 ) -> None:
+    if include_deferred:
+        raise typer.BadParameter(
+            "--include-deferred is no longer supported; use the guarded "
+            "borderline-deferred closure band instead"
+        )
     if minimum_consistency_score is not None and consistency_report is None:
         raise typer.BadParameter(
             "--minimum-consistency-score requires --consistency-report"
@@ -2423,6 +2463,16 @@ def shadow_discover_profiles_command(
         consistency_policy_spec = load_discovery_consistency_policy(
             consistency_policy
         )
+        if not (
+            0.0
+            <= borderline_deferred_minimum
+            < borderline_deferred_maximum
+            <= consistency_policy_spec.strong_minimum
+        ):
+            raise ValueError(
+                "borderline deferred band must be ordered and cannot overlap "
+                "the strong tier"
+            )
         reviewed_evidence = load_reviewed_speaker_evidence(
             evaluation_root.expanduser().resolve()
         )
@@ -2546,20 +2596,45 @@ def shadow_discover_profiles_command(
     if limit is not None:
         candidates = candidates[:limit]
 
-    estimated_pairs = min(
+    estimated_global_pairs = min(
         len(candidates) * nearest_neighbors,
         len(candidates) * max(0, len(candidates) - 1) // 2,
     )
     if maximum_pairs is not None:
-        estimated_pairs = min(estimated_pairs, maximum_pairs)
+        estimated_global_pairs = min(estimated_global_pairs, maximum_pairs)
+    candidate_counts_by_source: dict[int, int] = {}
+    for candidate in candidates:
+        candidate_counts_by_source[candidate.source_id] = (
+            candidate_counts_by_source.get(candidate.source_id, 0) + 1
+        )
+    estimated_source_local_pairs = sum(
+        (
+            source_count * (source_count - 1) // 2
+            if source_count <= source_complete_link_limit
+            else min(
+                source_count * (source_count - 1) // 2,
+                source_count * source_nearest_neighbors,
+            )
+        )
+        for source_count in candidate_counts_by_source.values()
+        if source_count >= 2
+    )
     console.print(
         "Profile discovery plan: "
         f"eligible_unassigned={len(candidates)} "
         f"excluded={sum(excluded_reasons.values())} "
         f"nearest_neighbors={nearest_neighbors} "
-        f"estimated_pair_upper_bound={estimated_pairs} "
+        f"estimated_global_pair_upper_bound={estimated_global_pairs} "
+        f"estimated_source_local_pair_upper_bound="
+        f"{estimated_source_local_pairs} "
         f"closure_candidates_per_same_pair="
-        f"{closure_candidates_per_same_pair}"
+        f"{closure_candidates_per_same_pair} "
+        f"source_complete_link_limit={source_complete_link_limit} "
+        f"source_nearest_neighbors={source_nearest_neighbors} "
+        f"borderline_deferred_band=[{borderline_deferred_minimum:.2f},"
+        f"{borderline_deferred_maximum:.2f}) "
+        f"borderline_deferred_candidates_per_same_pair="
+        f"{borderline_deferred_candidates_per_same_pair}"
     )
     console.print(
         "Consistency nomination: "
@@ -2637,6 +2712,8 @@ def shadow_discover_profiles_command(
         maximum_pairs=maximum_pairs,
         consistency_policy=consistency_policy_spec,
         include_deferred=include_deferred,
+        source_complete_link_limit=source_complete_link_limit,
+        source_nearest_neighbors=source_nearest_neighbors,
     )
     if not nominations:
         raise typer.BadParameter("No discovery pairs were nominated.")
@@ -2719,6 +2796,13 @@ def shadow_discover_profiles_command(
         consistency_policy=consistency_policy_spec,
         include_deferred=include_deferred,
         closure_candidates_per_same_pair=closure_candidates_per_same_pair,
+        source_complete_link_limit=source_complete_link_limit,
+        source_nearest_neighbors=source_nearest_neighbors,
+        borderline_deferred_minimum=borderline_deferred_minimum,
+        borderline_deferred_maximum=borderline_deferred_maximum,
+        borderline_deferred_candidates_per_same_pair=(
+            borderline_deferred_candidates_per_same_pair
+        ),
     )
     destination = write_shadow_profile_discovery(output_root, report)
     counts = report["counts"]
@@ -2729,13 +2813,17 @@ def shadow_discover_profiles_command(
         f"deferred={counts['deferred_signatures']} "
         f"signature_failures={counts['signature_failures']} "
         f"pairs={counts['nominated_pairs']} "
-        f"initial_pairs={counts['initial_pairs']} "
+        f"global_pairs={counts['global_pairs']} "
+        f"source_local_pairs={counts['source_local_pairs']} "
         f"closure_pairs={counts['closure_pairs']} "
+        f"borderline_deferred_pairs={counts['borderline_deferred_pairs']} "
         f"strong_pairs={counts['strong_strong_pairs']} "
         f"deferred_pairs={counts['deferred_pairs']} "
         f"provisional_profiles="
         f"{counts['provisional_profile_candidates']} "
-        f"blocked_components={counts['blocked_components']}"
+        f"blocked_components={counts['blocked_components']} "
+        f"actionable_review_frontiers="
+        f"{counts['blocked_components_with_actionable_review_frontier']}"
     )
     console.print(
         "Pair outcomes: "
@@ -3010,6 +3098,11 @@ def run_identity_workflow_service(
             nearest_neighbors=8,
             maximum_pairs=None,
             closure_candidates_per_same_pair=8,
+            source_complete_link_limit=12,
+            source_nearest_neighbors=4,
+            borderline_deferred_minimum=0.50,
+            borderline_deferred_maximum=0.60,
+            borderline_deferred_candidates_per_same_pair=4,
             minimum_component_members=3,
             consistency_report=None,
             minimum_consistency_score=None,

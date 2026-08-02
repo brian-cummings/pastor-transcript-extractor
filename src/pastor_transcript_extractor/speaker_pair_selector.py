@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v13"
+SELECTOR_VERSION = "speaker_pair_selector_v14"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -93,6 +93,8 @@ class DiscoveryResolutionPair:
     observations_unlocked: int
     report_result_sha256: str | None = None
     report_path: str | None = None
+    resolution_kind: str = "component_overlap"
+    same_boundary_distance: float | None = None
 
     @property
     def pair_key(self) -> frozenset[str]:
@@ -442,7 +444,10 @@ def select_next_speaker_pair(
             growth_components,
         ) = objective_selection
         anchor_component = None
-        if selection_objective == "discovery_component_overlap_resolution":
+        if selection_objective in {
+            "discovery_component_overlap_resolution",
+            "discovery_near_same_frontier_review",
+        }:
             growth_components = None
     elif curated_selection is not None:
         observation_a, observation_b, chosen_stratum, chosen_relation, curated_relation = (
@@ -580,7 +585,11 @@ def select_next_speaker_pair(
         )
     )
     if (
-        selection_objective == "discovery_component_overlap_resolution"
+        selection_objective
+        in {
+            "discovery_component_overlap_resolution",
+            "discovery_near_same_frontier_review",
+        }
         and selected_resolution is not None
     ):
         manifest["discovery_resolution"] = {
@@ -592,6 +601,14 @@ def select_next_speaker_pair(
                 selected_resolution.observations_unlocked
             ),
         }
+        if selected_resolution.resolution_kind != "component_overlap":
+            manifest["discovery_resolution"]["resolution_kind"] = (
+                selected_resolution.resolution_kind
+            )
+        if selected_resolution.same_boundary_distance is not None:
+            manifest["discovery_resolution"]["same_boundary_distance"] = (
+                selected_resolution.same_boundary_distance
+            )
         if selected_resolution.report_result_sha256 is not None:
             manifest["discovery_resolution"][
                 "report_result_sha256"
@@ -652,17 +669,32 @@ def _select_discovery_resolution_pair(
     ]
     if not candidates:
         return None
+
+    def resolution_for(
+        pair: tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ],
+    ) -> DiscoveryResolutionPair:
+        return discovery_resolution_by_pair[
+            frozenset(
+                (pair[0].input_fingerprint, pair[1].input_fingerprint)
+            )
+        ]
+
     selected = min(
         candidates,
         key=lambda pair: (
-            -discovery_resolution_by_pair[
-                frozenset(
-                    (
-                        pair[0].input_fingerprint,
-                        pair[1].input_fingerprint,
-                    )
-                )
-            ].observations_unlocked,
+            0
+            if resolution_for(pair).resolution_kind
+            == "near_same_ambiguous_frontier"
+            else 1,
+            resolution_for(pair).same_boundary_distance
+            if resolution_for(pair).same_boundary_distance is not None
+            else float("inf"),
+            -resolution_for(pair).observations_unlocked,
             _rank_pair(
                 pair[0],
                 pair[1],
@@ -677,7 +709,12 @@ def _select_discovery_resolution_pair(
     )
     return (
         *selected,
-        "discovery_component_overlap_resolution",
+        (
+            "discovery_near_same_frontier_review"
+            if resolution_for(selected).resolution_kind
+            == "near_same_ambiguous_frontier"
+            else "discovery_component_overlap_resolution"
+        ),
         (frozenset(), frozenset()),
     )
 

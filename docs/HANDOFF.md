@@ -508,11 +508,27 @@ it retained 72 of 74 reviewed single-speaker examples and rejected 15 of 18
 reviewed multiple-speaker or invalid examples. This is a nomination-efficiency
 calibration, not speaker qualification or identity evidence.
 
-By default, discovery nominates up to eight centroid-nearest observations only
-among the `strong` tier. Below-threshold signatures remain fully recorded in the
-artifact as `deferred`; pass `--include-deferred` to include them in a diagnostic
-comparison run. This prevents inconsistent observations from consuming the
-normal discovery budget without permanently deleting or disqualifying them.
+By default, global discovery nominates up to eight centroid-nearest observations
+only among the `strong` tier. It also adds bounded source-local retrieval among
+strong observations: source groups of at most 12 receive complete pair coverage,
+while larger groups receive four source-local nearest neighbors per observation.
+The optional `--maximum-pairs` cap applies only to the global nearest-neighbor
+path, so it cannot silently remove small-group complete-link coverage. Source
+membership is retrieval provenance only and never supplies identity evidence.
+The limits are configurable with `--source-complete-link-limit` and
+`--source-nearest-neighbors`.
+
+Below-threshold signatures remain fully recorded as `deferred` and never enter
+global or source-local discovery. The former `--include-deferred` diagnostic
+override is rejected. A narrow guarded closure path may consider scores in
+`[0.50, 0.60)` as third candidates for an existing strong same-speaker seed. It
+compares each candidate acoustically with both seed endpoints and admits both
+identity edges atomically only when both comparisons return `same_speaker` and
+no reviewed difference exists. A failed or single matching edge remains
+diagnostic and cannot grow a profile.
+
+This prevents inconsistent observations from consuming the normal discovery
+budget without permanently deleting or disqualifying them.
 Pair results still pass through the pinned abstention-first policy before
 same-speaker components are built. Each initial same-speaker edge then opens a
 bounded closure frontier: by default, up to eight likely third observations are
@@ -530,9 +546,21 @@ different-speaker constraint, or conflicting explicit name blocks the component.
 The result is a content-addressed artifact under the ignored
 `evaluation/speaker-profile-discovery/shadow-runs/` tree. It never creates a
 registry profile or membership by itself. The report records the calibration
-artifact hash, threshold, policy status, score and tier for every signature,
-strong/deferred signature counts, initial and closure pair counts, closure seed
-IDs, and whether source context affected retrieval priority.
+artifact hash, threshold, policy status, score and tier for every signature;
+separate global, source-local, strong closure, and borderline-deferred pair
+counts; every retrieval reason and source context; and each deferred attempt's
+score, seed, endpoint comparisons, and atomic admission outcome. Discovery
+artifacts use the v5 contract; v2-v4 artifacts remain readable.
+
+Ambiguous comparisons in the acoustic near-same band are tested hypothetically
+against the complete-link rules. When one reviewed judgment could complete a
+currently blocked component, the artifact records an actionable review frontier
+ranked by distance from the same-speaker boundary. `automation-readiness` selects
+these frontiers before older overlap-resolution work, but still creates the
+normal blinded packet and visual-confirmation step. Only the approved review
+judgment becomes durable identity evidence. `profile-status` reports how many
+blocked components have an actionable frontier and names that review as the next
+action.
 
 The artifact now has an explicit, reversible promotion boundary.
 `identity promote-discovered-profiles --discovery-report <path>` validates the

@@ -78,6 +78,7 @@ class ProfilePipelineStatus:
     promoted_discovery_candidate_count: int
     stale_discovery_candidate_count: int
     blocked_discovery_component_count: int
+    actionable_discovery_frontier_component_count: int
     discovered_profiles: tuple[DiscoveredProfileStatus, ...]
     profiles: tuple[ProfileStatus, ...]
     next_actions: tuple[str, ...]
@@ -197,10 +198,19 @@ def build_profile_pipeline_status(
 
     discovered_profiles: list[DiscoveredProfileStatus] = []
     blocked_discovery_component_count = 0
+    actionable_discovery_frontier_component_count = 0
     if discovery_report is not None:
         components = discovery_report.get("components", ())
         if not isinstance(components, list):
             raise ValueError("profile discovery artifact components are missing")
+        counts = discovery_report.get("counts")
+        if isinstance(counts, Mapping):
+            actionable_discovery_frontier_component_count = int(
+                counts.get(
+                    "blocked_components_with_actionable_review_frontier",
+                    0,
+                )
+            )
         for raw_component in components:
             if not isinstance(raw_component, Mapping):
                 raise ValueError("profile discovery component must be an object")
@@ -522,6 +532,11 @@ def build_profile_pipeline_status(
         next_actions.append(
             "Plan reversible promotion of shadow-discovered profile candidates."
         )
+    if actionable_discovery_frontier_component_count:
+        next_actions.append(
+            "Review the near-same ambiguous discovery frontier with the normal "
+            "blinded visual-confirmation pair workflow."
+        )
     if (
         pending_qualification_count
         or pending_same_component_count
@@ -606,6 +621,9 @@ def build_profile_pipeline_status(
             item.state == "stale" for item in discovered_profiles
         ),
         blocked_discovery_component_count=blocked_discovery_component_count,
+        actionable_discovery_frontier_component_count=(
+            actionable_discovery_frontier_component_count
+        ),
         discovered_profiles=tuple(discovered_profiles),
         profiles=tuple(profile_rows),
         next_actions=tuple(next_actions),

@@ -27,11 +27,12 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v4"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v5"
 SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v2",
         "speaker_profile_shadow_discovery_v3",
+        "speaker_profile_shadow_discovery_v4",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
@@ -65,6 +66,8 @@ class NominatedPair:
     right: DiscoverySignature
     centroid_similarity: float
     consistency_tier: str = "unscored"
+    retrieval_reasons: tuple[str, ...] = ("global_nearest_neighbor",)
+    source_context_ids: tuple[int, ...] = ()
 
     @property
     def observation_ids(self) -> tuple[int, int]:
@@ -245,11 +248,19 @@ def nominate_discovery_pairs(
     maximum_pairs: int | None = None,
     consistency_policy: DiscoveryConsistencyPolicySpec | None = None,
     include_deferred: bool = False,
+    source_complete_link_limit: int = 12,
+    source_nearest_neighbors: int = 4,
 ) -> tuple[NominatedPair, ...]:
     if nearest_neighbors < 2:
         raise ValueError("profile discovery requires at least two nearest neighbors")
     if maximum_pairs is not None and maximum_pairs < 1:
         raise ValueError("maximum_pairs must be positive")
+    if source_complete_link_limit < 0 or source_nearest_neighbors < 0:
+        raise ValueError("source-local retrieval limits cannot be negative")
+    if (source_complete_link_limit == 0) != (source_nearest_neighbors == 0):
+        raise ValueError("both source-local retrieval limits must be zero to disable it")
+    if 0 < source_complete_link_limit < 2:
+        raise ValueError("source complete-link limit must be at least two")
     all_ordered = sorted(
         signatures,
         key=lambda item: item.candidate.observation.input_fingerprint,
@@ -258,12 +269,48 @@ def nominate_discovery_pairs(
         signature
         for signature in all_ordered
         if (
-            include_deferred
-            or consistency_policy is None
+            consistency_policy is None
             or _consistency_tier(signature, consistency_policy) == "strong"
         )
     ]
     selected: dict[tuple[int, int], NominatedPair] = {}
+
+    def add_nomination(
+        left: DiscoverySignature,
+        right: DiscoverySignature,
+        similarity: float,
+        *,
+        reason: str,
+        source_id: int | None = None,
+    ) -> None:
+        nomination = NominatedPair(
+            left,
+            right,
+            similarity,
+            _pair_consistency_tier(left, right, consistency_policy),
+            (reason,),
+            (source_id,) if source_id is not None else (),
+        )
+        key = nomination.observation_ids
+        existing = selected.get(key)
+        if existing is None:
+            selected[key] = nomination
+            return
+        selected[key] = NominatedPair(
+            existing.left,
+            existing.right,
+            max(existing.centroid_similarity, similarity),
+            existing.consistency_tier,
+            tuple(sorted(set(existing.retrieval_reasons) | {reason})),
+            tuple(
+                sorted(
+                    set(existing.source_context_ids)
+                    | ({source_id} if source_id is not None else set())
+                )
+            ),
+        )
+
+    global_selected: dict[tuple[int, int], NominatedPair] = {}
     for left in ordered:
         ranked: list[tuple[float, str, DiscoverySignature]] = []
         for right in ordered:
@@ -283,19 +330,81 @@ def nominate_discovery_pairs(
                 left,
                 right,
                 similarity,
-                _pair_consistency_tier(
-                    left,
-                    right,
-                    consistency_policy,
-                ),
+                _pair_consistency_tier(left, right, consistency_policy),
             )
             key = nomination.observation_ids
-            existing = selected.get(key)
+            existing = global_selected.get(key)
             if (
                 existing is None
                 or nomination.centroid_similarity > existing.centroid_similarity
             ):
-                selected[key] = nomination
+                global_selected[key] = nomination
+    global_nominations = sorted(
+        global_selected.values(),
+        key=lambda item: (
+            _consistency_tier_rank(item.consistency_tier),
+            -item.centroid_similarity,
+            item.left.candidate.observation.input_fingerprint,
+            item.right.candidate.observation.input_fingerprint,
+        ),
+    )
+    if maximum_pairs is not None:
+        global_nominations = global_nominations[:maximum_pairs]
+    for nomination in global_nominations:
+        add_nomination(
+            nomination.left,
+            nomination.right,
+            nomination.centroid_similarity,
+            reason="global_nearest_neighbor",
+        )
+
+    signatures_by_source: dict[int, list[DiscoverySignature]] = {}
+    for signature in ordered:
+        signatures_by_source.setdefault(signature.candidate.source_id, []).append(
+            signature
+        )
+    for source_id, source_signatures in sorted(signatures_by_source.items()):
+        if source_complete_link_limit == 0:
+            break
+        if len(source_signatures) < 2:
+            continue
+        source_pairs: set[tuple[int, int]] = set()
+        if len(source_signatures) <= source_complete_link_limit:
+            source_pairs.update(
+                (left_index, right_index)
+                for left_index in range(len(source_signatures))
+                for right_index in range(left_index + 1, len(source_signatures))
+            )
+            reason = "source_local_complete_link"
+        else:
+            reason = "source_local_nearest_neighbor"
+            for left_index, left in enumerate(source_signatures):
+                ranked = sorted(
+                    (
+                        (_cosine(left.centroid, right.centroid), right_index)
+                        for right_index, right in enumerate(source_signatures)
+                        if right_index != left_index
+                    ),
+                    key=lambda item: (
+                        -item[0],
+                        source_signatures[
+                            item[1]
+                        ].candidate.observation.input_fingerprint,
+                    ),
+                )
+                for _similarity, right_index in ranked[:source_nearest_neighbors]:
+                    source_pairs.add(tuple(sorted((left_index, right_index))))
+        for left_index, right_index in sorted(source_pairs):
+            left = source_signatures[left_index]
+            right = source_signatures[right_index]
+            add_nomination(
+                left,
+                right,
+                _cosine(left.centroid, right.centroid),
+                reason=reason,
+                source_id=source_id,
+            )
+
     nominations = sorted(
         selected.values(),
         key=lambda item: (
@@ -305,8 +414,6 @@ def nominate_discovery_pairs(
             item.right.candidate.observation.input_fingerprint,
         ),
     )
-    if maximum_pairs is not None:
-        nominations = nominations[:maximum_pairs]
     return tuple(nominations)
 
 
@@ -328,11 +435,27 @@ def evaluate_shadow_profile_discovery(
     consistency_policy: DiscoveryConsistencyPolicySpec | None = None,
     include_deferred: bool = False,
     closure_candidates_per_same_pair: int = 0,
+    source_complete_link_limit: int = 12,
+    source_nearest_neighbors: int = 4,
+    borderline_deferred_minimum: float = 0.50,
+    borderline_deferred_maximum: float = 0.60,
+    borderline_deferred_candidates_per_same_pair: int = 4,
 ) -> dict[str, Any]:
     if minimum_component_members < 3:
         raise ValueError("provisional profiles require at least three members")
     if closure_candidates_per_same_pair < 0:
         raise ValueError("closure candidate count cannot be negative")
+    if borderline_deferred_candidates_per_same_pair < 0:
+        raise ValueError("borderline deferred candidate count cannot be negative")
+    if not (
+        0.0 <= borderline_deferred_minimum < borderline_deferred_maximum <= 1.0
+    ):
+        raise ValueError("borderline deferred band must be ordered within [0, 1]")
+    if (
+        consistency_policy is not None
+        and borderline_deferred_maximum > consistency_policy.strong_minimum
+    ):
+        raise ValueError("borderline deferred band cannot overlap the strong tier")
     reviewed_differences = {
         tuple(sorted(pair)) for pair in reviewed_difference_pairs
     }
@@ -379,7 +502,13 @@ def evaluate_shadow_profile_discovery(
                 ),
                 "centroid_similarity": nomination.centroid_similarity,
                 "consistency_tier": nomination.consistency_tier,
-                "retrieval_reason": "global_nearest_neighbor",
+                "retrieval_reason": nomination.retrieval_reasons[0],
+                "retrieval_reasons": list(nomination.retrieval_reasons),
+                "source_context": {
+                    "source_ids": list(nomination.source_context_ids),
+                    "role": "retrieval_only",
+                    "identity_evidence": False,
+                },
                 **dict(result),
             }
         )
@@ -431,8 +560,7 @@ def evaluate_shadow_profile_discovery(
             signature
             for signature in signatures
             if (
-                include_deferred
-                or consistency_policy is None
+                consistency_policy is None
                 or _consistency_tier(signature, consistency_policy) == "strong"
             )
         ]
@@ -553,10 +681,171 @@ def evaluate_shadow_profile_discovery(
                         "retrieval_reason": "same_pair_closure",
                         "closure_seed_observation_ids": list(seed_pair),
                         "source_context_preferred": source_context_rank == 0,
+                        "source_context": {
+                            "source_ids": sorted(seed_source_ids),
+                            "candidate_source_id": candidate_signature.candidate.source_id,
+                            "role": "retrieval_priority_only",
+                            "identity_evidence": False,
+                        },
                         **dict(closure_result),
                     }
                     pair_results.append(result)
                     results_by_pair[pair] = result
+
+    borderline_deferred_results: list[dict[str, Any]] = []
+    if (
+        consistency_policy is not None
+        and borderline_deferred_candidates_per_same_pair
+    ):
+        results_by_pair = {
+            tuple(result["observation_ids"]): result
+            for result in pair_results
+        }
+        strong_same_seed_pairs = sorted(
+            pair
+            for pair, result in results_by_pair.items()
+            if (
+                str(result.get("outcome")) == PairOutcome.SAME_SPEAKER
+                and result.get("consistency_tier") == "strong_strong"
+                and result.get("identity_edge_allowed", True) is not False
+            )
+        )
+        borderline_signatures = [
+            signature
+            for signature in signatures
+            if (
+                (score := _consistency_score(signature, consistency_policy))
+                is not None
+                and borderline_deferred_minimum
+                <= score
+                < borderline_deferred_maximum
+                and _consistency_tier(signature, consistency_policy) == "deferred"
+            )
+        ]
+        attempted_candidates: set[tuple[tuple[int, int], int]] = set()
+        for seed_pair in strong_same_seed_pairs:
+            seed_left = signatures_by_observation_id[seed_pair[0]]
+            seed_right = signatures_by_observation_id[seed_pair[1]]
+            seed_video_ids = {
+                seed_left.candidate.observation.video_id,
+                seed_right.candidate.observation.video_id,
+            }
+            seed_source_ids = {
+                seed_left.candidate.source_id,
+                seed_right.candidate.source_id,
+            }
+            ranked = sorted(
+                (
+                    (
+                        0
+                        if candidate.candidate.source_id in seed_source_ids
+                        else 1,
+                        -min(
+                            _cosine(seed_left.centroid, candidate.centroid),
+                            _cosine(seed_right.centroid, candidate.centroid),
+                        ),
+                        candidate.candidate.observation.input_fingerprint,
+                        candidate,
+                    )
+                    for candidate in borderline_signatures
+                    if candidate.candidate.observation.id not in seed_pair
+                    and candidate.candidate.observation.video_id not in seed_video_ids
+                ),
+                key=lambda item: item[:3],
+            )
+            for source_rank, _joint_rank, _fingerprint, candidate in ranked[
+                :borderline_deferred_candidates_per_same_pair
+            ]:
+                candidate_id = candidate.candidate.observation.id
+                attempt_key = (seed_pair, candidate_id)
+                if attempt_key in attempted_candidates:
+                    continue
+                attempted_candidates.add(attempt_key)
+                candidate_score = _consistency_score(candidate, consistency_policy)
+                comparisons: list[dict[str, Any]] = []
+                acoustic_results: list[Mapping[str, Any]] = []
+                for endpoint in (seed_left, seed_right):
+                    pair = tuple(
+                        sorted((endpoint.candidate.observation.id, candidate_id))
+                    )
+                    acoustic_result = compare(
+                        endpoint.candidate.observation,
+                        candidate.candidate.observation,
+                        endpoint.candidate.audio_path,
+                        candidate.candidate.audio_path,
+                    )
+                    acoustic_results.append(acoustic_result)
+                    comparisons.append(
+                        {
+                            "observation_ids": list(pair),
+                            "outcome": str(acoustic_result.get("outcome", "invalid")),
+                            "reason": acoustic_result.get("reason"),
+                            "centroid_similarity": _cosine(
+                                endpoint.centroid, candidate.centroid
+                            ),
+                        }
+                    )
+                both_acoustically_same = all(
+                    str(result.get("outcome")) == PairOutcome.SAME_SPEAKER
+                    for result in acoustic_results
+                )
+                reviewed_difference_present = any(
+                    tuple(comparison["observation_ids"]) in reviewed_differences
+                    for comparison in comparisons
+                )
+                admitted = both_acoustically_same and not reviewed_difference_present
+                for endpoint, comparison, acoustic_result in zip(
+                    (seed_left, seed_right), comparisons, acoustic_results
+                ):
+                    pair = tuple(comparison["observation_ids"])
+                    existing = results_by_pair.get(pair)
+                    if existing is not None:
+                        comparison["existing_evidence_outcome"] = existing.get("outcome")
+                        continue
+                    result = {
+                        "observation_ids": list(pair),
+                        "observation_fingerprints": sorted(
+                            (
+                                endpoint.candidate.observation.input_fingerprint,
+                                candidate.candidate.observation.input_fingerprint,
+                            )
+                        ),
+                        "centroid_similarity": comparison["centroid_similarity"],
+                        "consistency_tier": "strong_deferred",
+                        "retrieval_reason": "borderline_deferred_closure",
+                        "closure_seed_observation_ids": list(seed_pair),
+                        "borderline_deferred_score": candidate_score,
+                        "identity_edge_allowed": admitted,
+                        "source_context_preferred": source_rank == 0,
+                        "source_context": {
+                            "source_ids": sorted(seed_source_ids),
+                            "candidate_source_id": candidate.candidate.source_id,
+                            "role": "retrieval_priority_only",
+                            "identity_evidence": False,
+                        },
+                        **dict(acoustic_result),
+                    }
+                    pair_results.append(result)
+                    results_by_pair[pair] = result
+                borderline_deferred_results.append(
+                    {
+                        "candidate_observation_id": candidate_id,
+                        "candidate_observation_fingerprint": (
+                            candidate.candidate.observation.input_fingerprint
+                        ),
+                        "score": candidate_score,
+                        "tier": "borderline_deferred",
+                        "seed_observation_ids": list(seed_pair),
+                        "comparisons": comparisons,
+                        "outcome": (
+                            "admitted_complete_link"
+                            if admitted
+                            else "rejected_incomplete_acoustic_agreement"
+                        ),
+                        "identity_edges_allowed": admitted,
+                        "source_context_preferred": source_rank == 0,
+                    }
+                )
 
     components = _build_component_proposals(
         signatures,
@@ -577,6 +866,19 @@ def evaluate_shadow_profile_discovery(
     component_counts = _counts(
         str(component["outcome"]) for component in components
     )
+    review_frontier = _build_review_frontier(
+        signatures,
+        pair_results,
+        components,
+        minimum_component_members=minimum_component_members,
+        reviewed_differences=reviewed_differences,
+        policy_spec=policy_spec,
+    )
+    actionable_component_ids = {
+        component_id
+        for item in review_frontier
+        for component_id in item["component_ids"]
+    }
     report = {
         "schema_version": 1,
         "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
@@ -601,12 +903,24 @@ def evaluate_shadow_profile_discovery(
             "minimum_unique_words": 4,
         },
         "retrieval": {
-            "method": "nearest_neighbors_with_same_pair_closure",
+            "method": "global_and_source_local_with_guarded_closure",
             "nearest_neighbors": nearest_neighbors,
             "maximum_pairs": maximum_pairs,
+            "maximum_pairs_scope": "global_nearest_neighbors_only",
+            "source_complete_link_limit": source_complete_link_limit,
+            "source_nearest_neighbors": source_nearest_neighbors,
             "closure_candidates_per_same_pair": (
                 closure_candidates_per_same_pair
             ),
+            "borderline_deferred": {
+                "minimum_inclusive": borderline_deferred_minimum,
+                "maximum_exclusive": borderline_deferred_maximum,
+                "candidates_per_same_pair": (
+                    borderline_deferred_candidates_per_same_pair
+                ),
+                "requires_acoustic_same_with_both_seed_endpoints": True,
+                "atomic_identity_edge_admission": True,
+            },
             "source_context_role": "retrieval_priority_only",
             "identity_evidence": False,
         },
@@ -621,7 +935,8 @@ def evaluate_shadow_profile_discovery(
                 ),
                 "feature": consistency_policy.feature,
                 "strong_minimum": consistency_policy.strong_minimum,
-                "include_deferred": include_deferred,
+                "include_deferred": False,
+                "legacy_include_deferred_requested": include_deferred,
                 "automatic_qualification_allowed": (
                     consistency_policy.automatic_qualification_allowed
                 ),
@@ -657,13 +972,48 @@ def evaluate_shadow_profile_discovery(
             "signature_failures": len(signature_failures),
             "nominated_pairs": len(pair_results),
             "initial_pairs": sum(
-                result.get("retrieval_reason")
-                == "global_nearest_neighbor"
+                "global_nearest_neighbor"
+                in result.get(
+                    "retrieval_reasons",
+                    [result.get("retrieval_reason")],
+                )
+                for result in pair_results
+            ),
+            "global_pairs": sum(
+                "global_nearest_neighbor"
+                in result.get(
+                    "retrieval_reasons",
+                    [result.get("retrieval_reason")],
+                )
+                for result in pair_results
+            ),
+            "source_local_pairs": sum(
+                bool(
+                    {"source_local_complete_link", "source_local_nearest_neighbor"}
+                    & set(
+                        result.get(
+                            "retrieval_reasons",
+                            [result.get("retrieval_reason")],
+                        )
+                    )
+                )
                 for result in pair_results
             ),
             "closure_pairs": sum(
                 result.get("retrieval_reason") == "same_pair_closure"
                 for result in pair_results
+            ),
+            "borderline_deferred_pairs": sum(
+                len(item["comparisons"])
+                for item in borderline_deferred_results
+            ),
+            "borderline_deferred_new_pair_results": sum(
+                result.get("retrieval_reason")
+                == "borderline_deferred_closure"
+                for result in pair_results
+            ),
+            "borderline_deferred_candidates": len(
+                borderline_deferred_results
             ),
             "reviewed_constraint_pairs": sum(
                 result.get("reviewed_constraint") is True
@@ -682,12 +1032,17 @@ def evaluate_shadow_profile_discovery(
                 "provisional_profile_candidate", 0
             ),
             "blocked_components": component_counts.get("blocked", 0),
+            "blocked_components_with_actionable_review_frontier": len(
+                actionable_component_ids
+            ),
         },
         "pair_outcome_counts": outcome_counts,
         "component_outcome_counts": component_counts,
         "observation_signatures": signature_payloads,
         "signature_failures": [dict(item) for item in signature_failures],
         "pair_results": pair_results,
+        "borderline_deferred_closure": borderline_deferred_results,
+        "review_frontier": review_frontier,
         "components": components,
     }
     report["input_fingerprint"] = _sha256_json(
@@ -718,6 +1073,10 @@ def evaluate_shadow_profile_discovery(
                     "retrieval_reason": result.get("retrieval_reason"),
                     "closure_seed_observation_ids": result.get(
                         "closure_seed_observation_ids"
+                    ),
+                    "retrieval_reasons": result.get("retrieval_reasons"),
+                    "identity_edge_allowed": result.get(
+                        "identity_edge_allowed"
                     ),
                 }
                 for result in pair_results
@@ -800,7 +1159,10 @@ def _build_component_proposals(
         observation_id: set() for observation_id in signatures_by_id
     }
     for pair, result in results_by_pair.items():
-        if str(result.get("outcome")) != PairOutcome.SAME_SPEAKER:
+        if (
+            str(result.get("outcome")) != PairOutcome.SAME_SPEAKER
+            or result.get("identity_edge_allowed", True) is False
+        ):
             continue
         left, right = pair
         adjacency[left].add(right)
@@ -885,8 +1247,14 @@ def _component_payload(
     same_pairs = {
         pair
         for pair in required_pairs
-        if str(results_by_pair.get(pair, {}).get("outcome"))
-        == PairOutcome.SAME_SPEAKER
+        if (
+            str(results_by_pair.get(pair, {}).get("outcome"))
+            == PairOutcome.SAME_SPEAKER
+            and results_by_pair.get(pair, {}).get(
+                "identity_edge_allowed", True
+            )
+            is not False
+        )
     }
     different_pairs = {
         pair
@@ -960,6 +1328,141 @@ def _component_payload(
         },
         "automatic_profile_creation_allowed": False,
     }
+
+
+def _build_review_frontier(
+    signatures: Sequence[DiscoverySignature],
+    pair_results: Sequence[Mapping[str, Any]],
+    components: Sequence[Mapping[str, Any]],
+    *,
+    minimum_component_members: int,
+    reviewed_differences: set[tuple[int, int]],
+    policy_spec: ShadowPolicySpec,
+) -> list[dict[str, Any]]:
+    """Find ambiguous edges whose reviewed resolution can complete a component."""
+    blocked_members = {
+        str(component.get("component_id")): {
+            int(member["observation_id"])
+            for member in component.get("members", ())
+            if isinstance(member, Mapping)
+            and isinstance(member.get("observation_id"), int)
+        }
+        for component in components
+        if component.get("outcome") == "blocked"
+    }
+    existing_candidates = {
+        frozenset(
+            int(member["observation_id"])
+            for member in component.get("members", ())
+            if isinstance(member, Mapping)
+            and isinstance(member.get("observation_id"), int)
+        )
+        for component in components
+        if component.get("outcome") == "provisional_profile_candidate"
+    }
+    frontier: list[dict[str, Any]] = []
+    for index, result in enumerate(pair_results):
+        if (
+            str(result.get("outcome")) != PairOutcome.INSUFFICIENT_EVIDENCE
+            or result.get("reason") != "ambiguous_similarity"
+        ):
+            continue
+        observation_ids = result.get("observation_ids")
+        if (
+            not isinstance(observation_ids, list)
+            or len(observation_ids) != 2
+            or not all(isinstance(value, int) for value in observation_ids)
+        ):
+            continue
+        hypothetical_results = [dict(item) for item in pair_results]
+        hypothetical_results[index]["outcome"] = PairOutcome.SAME_SPEAKER
+        hypothetical_results[index]["identity_edge_allowed"] = True
+        hypothetical_components = _build_component_proposals(
+            signatures,
+            hypothetical_results,
+            minimum_component_members=minimum_component_members,
+            reviewed_differences=reviewed_differences,
+        )
+        completing = [
+            component
+            for component in hypothetical_components
+            if component.get("outcome") == "provisional_profile_candidate"
+            and frozenset(
+                int(member["observation_id"])
+                for member in component.get("members", ())
+                if isinstance(member, Mapping)
+                and isinstance(member.get("observation_id"), int)
+            )
+            not in existing_candidates
+            and set(observation_ids).issubset(
+                {
+                    int(member["observation_id"])
+                    for member in component.get("members", ())
+                    if isinstance(member, Mapping)
+                    and isinstance(member.get("observation_id"), int)
+                }
+            )
+        ]
+        if not completing:
+            continue
+        completed_member_ids = {
+            int(member["observation_id"])
+            for component in completing
+            for member in component.get("members", ())
+            if isinstance(member, Mapping)
+            and isinstance(member.get("observation_id"), int)
+        }
+        component_ids = sorted(
+            component_id
+            for component_id, member_ids in blocked_members.items()
+            if member_ids and member_ids.issubset(completed_member_ids)
+        )
+        if not component_ids:
+            continue
+        metrics = result.get("metrics")
+        cross = metrics.get("cross") if isinstance(metrics, Mapping) else None
+        cross_p10 = _finite_number(
+            cross.get("p10") if isinstance(cross, Mapping) else None
+        )
+        cross_median = _finite_number(
+            cross.get("median") if isinstance(cross, Mapping) else None
+        )
+        deficits = [
+            max(0.0, policy_spec.policy.same_min_cross_p10 - cross_p10)
+            if cross_p10 is not None
+            else 1.0,
+            max(
+                0.0,
+                policy_spec.policy.same_min_cross_median - cross_median,
+            )
+            if cross_median is not None
+            else 1.0,
+        ]
+        frontier.append(
+            {
+                "observation_ids": list(sorted(observation_ids)),
+                "observation_fingerprints": list(
+                    result.get("observation_fingerprints", ())
+                ),
+                "component_ids": component_ids,
+                "observations_unlocked": len(completed_member_ids),
+                "reason": "near_same_ambiguous_can_complete_component",
+                "same_boundary_distance": max(deficits),
+                "centroid_similarity": result.get("centroid_similarity"),
+                "cross_p10": cross_p10,
+                "cross_median": cross_median,
+                "review_required": True,
+                "durable_evidence_source": "approved_blinded_pair_review_only",
+            }
+        )
+    frontier.sort(
+        key=lambda item: (
+            item["same_boundary_distance"],
+            -item["observations_unlocked"],
+            item["observation_fingerprints"],
+        )
+    )
+    return frontier
 
 
 def _maximal_cliques(

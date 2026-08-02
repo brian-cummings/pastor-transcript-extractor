@@ -551,15 +551,25 @@ Execute the shadow discovery pass by omitting `--plan-only`. It prepares one
 deterministic acoustic signature per eligible unassigned observation from five
 distributed 12-second spans grounded in meaningful sermon-labeled transcript
 text. The same exact spans are reused in every pair decision. It then nominates a
-bounded nearest-neighbor graph, applies the pinned pair policy, and proposes a
+bounded strong-only global nearest-neighbor graph plus source-local retrieval.
+Small source groups receive complete pair coverage; large source groups use a
+per-observation quota. Source is recorded as retrieval context and never counts
+as identity evidence. A guarded `[0.50, 0.60)` deferred closure may test a third
+candidate only against an existing strong same-speaker seed, and both endpoint
+comparisons must acoustically agree before either identity edge is admitted. It
+applies the pinned pair policy and proposes a
 provisional anonymous profile only for a complete-link same-speaker component
 with at least three distinct recordings. Non-speech/repetitive transcript
 regions, reviewed different-speaker constraints, unresolved required
 comparisons, and conflicting explicit names block or exclude evidence.
 Versioned artifacts are written below
 `evaluation/speaker-profile-discovery/shadow-runs/`; registry mutations remain
-zero. A calibrated observation-consistency report can be supplied with
-`--consistency-report` and `--minimum-consistency-score`.
+zero. Artifacts report global, source-local, strong closure, and guarded deferred
+counts separately and expose near-same ambiguous edges that a blinded reviewed
+judgment could use to complete a blocked component. `profile-status` reports the
+actionable frontier count, and `automation-readiness` prioritizes those normal
+visual-confirmation reviews. A calibrated observation-consistency report can be
+supplied with `--consistency-report` and `--minimum-consistency-score`.
 
 Verified components enter a reversible candidate loop with
 `pte identity promote-discovered-profiles --discovery-report <artifact>`.

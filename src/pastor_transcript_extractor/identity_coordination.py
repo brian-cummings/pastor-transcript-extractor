@@ -22,6 +22,7 @@ SUPPORTED_DISCOVERY_VERSIONS = frozenset(
         "speaker_profile_shadow_discovery_v1",
         "speaker_profile_shadow_discovery_v2",
         "speaker_profile_shadow_discovery_v3",
+        "speaker_profile_shadow_discovery_v4",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
@@ -221,6 +222,47 @@ def load_discovery_resolution_pairs(
         in component.get("blockers", ())
     ]
     candidates: dict[frozenset[str], DiscoveryResolutionPair] = {}
+    for frontier in payload.get("review_frontier", ()):
+        if not isinstance(frontier, Mapping):
+            continue
+        fingerprints = frontier.get("observation_fingerprints")
+        component_ids = frontier.get("component_ids")
+        distance = frontier.get("same_boundary_distance")
+        if (
+            not isinstance(fingerprints, list)
+            or len(fingerprints) != 2
+            or not all(isinstance(value, str) and value for value in fingerprints)
+            or not isinstance(component_ids, list)
+            or not all(isinstance(value, str) for value in component_ids)
+            or isinstance(distance, bool)
+            or not isinstance(distance, (int, float))
+        ):
+            continue
+        resolution = DiscoveryResolutionPair(
+            fingerprint_a=fingerprints[0],
+            fingerprint_b=fingerprints[1],
+            component_ids=tuple(sorted(component_ids)),
+            member_fingerprints=tuple(
+                sorted(
+                    {
+                        fingerprints_by_observation_id[observation_id]
+                        for component in payload.get("components", ())
+                        if isinstance(component, Mapping)
+                        and str(component.get("component_id")) in component_ids
+                        for observation_id in _component_observation_ids(
+                            component
+                        )
+                        if observation_id in fingerprints_by_observation_id
+                    }
+                )
+            ),
+            observations_unlocked=int(frontier.get("observations_unlocked", 0)),
+            report_result_sha256=str(payload["result_sha256"]),
+            report_path=str(report_path.expanduser().resolve()),
+            resolution_kind="near_same_ambiguous_frontier",
+            same_boundary_distance=float(distance),
+        )
+        candidates[resolution.pair_key] = resolution
     for left, right in itertools.combinations(overlapping, 2):
         left_ids = _component_observation_ids(left)
         right_ids = _component_observation_ids(right)
@@ -264,14 +306,24 @@ def load_discovery_resolution_pairs(
                 existing = candidates.get(resolution.pair_key)
                 if (
                     existing is None
-                    or resolution.observations_unlocked
-                    > existing.observations_unlocked
+                    or (
+                        existing.resolution_kind
+                        != "near_same_ambiguous_frontier"
+                        and resolution.observations_unlocked
+                        > existing.observations_unlocked
+                    )
                 ):
                     candidates[resolution.pair_key] = resolution
     return tuple(
         sorted(
             candidates.values(),
             key=lambda item: (
+                0
+                if item.resolution_kind == "near_same_ambiguous_frontier"
+                else 1,
+                item.same_boundary_distance
+                if item.same_boundary_distance is not None
+                else float("inf"),
                 -item.observations_unlocked,
                 item.fingerprint_a,
                 item.fingerprint_b,

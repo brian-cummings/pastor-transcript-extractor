@@ -253,6 +253,9 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         observations = [self._observation(key) for key in ("a", "b", "c")]
         report = {
             "result_sha256": "a" * 64,
+            "counts": {
+                "blocked_components_with_actionable_review_frontier": 1,
+            },
             "components": [
                 {
                     "component_id": "component-abc",
@@ -289,9 +292,11 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(status.promoted_discovery_candidate_count, 0)
         self.assertEqual(status.stale_discovery_candidate_count, 0)
         self.assertEqual(status.blocked_discovery_component_count, 1)
+        self.assertEqual(status.actionable_discovery_frontier_component_count, 1)
         self.assertEqual(status.discovered_profiles[0].state, "shadow-candidate")
         self.assertEqual(status.discovered_profiles[0].member_count, 3)
         self.assertIn("reversible promotion", status.next_actions[0])
+        self.assertIn("near-same ambiguous", status.next_actions[1])
 
     def test_report_links_promoted_discovery_candidate_to_profile(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c")]

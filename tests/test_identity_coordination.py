@@ -354,6 +354,58 @@ class IdentityCoordinationTests(unittest.TestCase):
             resolution.component_ids,
         )
 
+    def test_discovery_resolution_loader_exposes_near_same_frontier(self) -> None:
+        payload = {
+            "artifact_kind": "speaker_profile_shadow_discovery",
+            "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
+            "span_selection": {
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            },
+            "observation_signatures": [
+                {
+                    "observation_id": observation_id,
+                    "observation_fingerprint": fingerprint,
+                }
+                for observation_id, fingerprint in (
+                    (31, "near-a"),
+                    (32, "near-b"),
+                    (33, "anchor"),
+                )
+            ],
+            "signature_failures": [],
+            "pair_results": [],
+            "review_frontier": [
+                {
+                    "observation_fingerprints": ["near-a", "near-b"],
+                    "component_ids": ["blocked-component"],
+                    "observations_unlocked": 3,
+                    "same_boundary_distance": 0.01,
+                }
+            ],
+            "components": [
+                {
+                    "component_id": "blocked-component",
+                    "outcome": "blocked",
+                    "blockers": ["component_not_complete_link"],
+                    "members": [
+                        {"observation_id": value} for value in (31, 32, 33)
+                    ],
+                }
+            ],
+        }
+        payload["result_sha256"] = _sha256(payload)
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "discovery.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            resolutions = load_discovery_resolution_pairs(path)
+
+        self.assertEqual(1, len(resolutions))
+        self.assertEqual(
+            "near_same_ambiguous_frontier", resolutions[0].resolution_kind
+        )
+        self.assertEqual(0.01, resolutions[0].same_boundary_distance)
+
     def test_report_write_is_content_addressed_and_replayable(self) -> None:
         report = build_identity_coordination_report(
             self._audit(
