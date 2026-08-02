@@ -15,3 +15,5 @@ evaluation/speaker-pairs/reports/
 evaluation/speaker-pairs/runs/
 evaluation/speaker-associations/shadow-runs/
 evaluation/speaker-profile-discovery/shadow-runs/
+source_processing_report.json
+source_processing_report.md
