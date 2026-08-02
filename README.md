@@ -663,6 +663,15 @@ observation for the same recording from silently replacing the nominated
 evidence. Audit current and legacy selection provenance without mutation with
 `pte identity audit-speaker-review-selection`.
 
+`profile-growth` now has a precision-first nomination tier when a verified
+discovery artifact contains an unreviewed `strong_strong` pair in the pinned
+same-speaker band. It ranks otherwise-valid growth pairs by acoustic margin and
+centroid similarity before falling back to structural exploration. The cached
+result is recorded in the selection manifest as `review_ranking_only`; it is not
+identity evidence, cannot attach observations, and cannot replace the blinded
+human judgment. Reviewed different-speaker constraints and component safety
+checks remain authoritative.
+
 When grounded attribution leaves a reviewed voice profile unnamed, run
 `pte identity review-profile-attribution --reviewer REVIEWER_ID`. The command
 selects the largest unnamed canonical profile (or accepts `--profile-id`), opens

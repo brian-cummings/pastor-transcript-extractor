@@ -358,6 +358,15 @@ Profile-growth uses a two-exploitation/one-exploration cadence so known good
 evidence improves review yield without exhausting the qualified backlog or
 preventing discovery of new observations.
 
+Selector v16 adds a precision-first tier ahead of that structural cadence. The
+newest verified discovery artifact contributes only unreviewed `strong_strong`
+results already inside the pinned acoustic same-speaker band. Among otherwise
+valid growth pairs, the selector prefers the largest boundary margin and then
+centroid similarity. The manifest records the report checksum, path, metrics,
+`identity_evidence=false`, and `role=review_ranking_only`. This cached signal
+cannot create an edge or membership; only the normal approved blinded review is
+durable. Reviewed difference constraints still exclude a pair before ranking.
+
 The normal operator loop is therefore:
 
 1. Run `profile-status` to see the funnel and highest-value unmet needs.

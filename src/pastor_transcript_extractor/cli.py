@@ -97,6 +97,7 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
 from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
+    load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
     write_identity_coordination_report,
@@ -4264,7 +4265,10 @@ def review_next_speaker_pair(
         exists=True,
         dir_okay=False,
         readable=True,
-        help="Optional exact discovery artifact for automation-readiness.",
+        help=(
+            "Optional exact discovery artifact for automation-readiness or "
+            "profile-growth acoustic ranking."
+        ),
     ),
     discovery_root: Path = typer.Option(
         Path("evaluation/speaker-profile-discovery/shadow-runs"),
@@ -4311,7 +4315,11 @@ def review_next_speaker_pair(
             else None
         )
         if (
-            selection_objective == SelectionGoal.AUTOMATION_READINESS
+            selection_objective
+            in {
+                SelectionGoal.AUTOMATION_READINESS,
+                SelectionGoal.PROFILE_GROWTH,
+            }
             and effective_discovery_report is None
         ):
             discovery_reports = list(
@@ -4326,6 +4334,16 @@ def review_next_speaker_pair(
             load_discovery_resolution_pairs(effective_discovery_report)
             if (
                 selection_objective == SelectionGoal.AUTOMATION_READINESS
+                and effective_discovery_report is not None
+            )
+            else ()
+        )
+        profile_growth_acoustic_pairs = (
+            load_discovery_acoustic_ranking_pairs(
+                effective_discovery_report
+            )
+            if (
+                selection_objective == SelectionGoal.PROFILE_GROWTH
                 and effective_discovery_report is not None
             )
             else ()
@@ -4417,6 +4435,7 @@ def review_next_speaker_pair(
             ),
             selection_goal=selection_objective,
             discovery_resolution_pairs=discovery_resolution_pairs,
+            profile_growth_acoustic_pairs=profile_growth_acoustic_pairs,
         )
         if (
             consistency_index.report_sha256

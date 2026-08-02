@@ -13,6 +13,7 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
+    AcousticPairRanking,
     DiscoveryResolutionPair,
 )
 
@@ -25,6 +26,7 @@ SUPPORTED_DISCOVERY_VERSIONS = frozenset(
         "speaker_profile_shadow_discovery_v3",
         "speaker_profile_shadow_discovery_v4",
         "speaker_profile_shadow_discovery_v5",
+        "speaker_profile_shadow_discovery_v6",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
@@ -429,6 +431,101 @@ def load_discovery_resolution_pairs(
             ),
         )
     )
+
+
+def load_discovery_acoustic_ranking_pairs(
+    report_path: Path,
+) -> tuple[AcousticPairRanking, ...]:
+    """Load strong cached same results as non-durable review ranking context."""
+    payload = _load_verified_discovery_report(report_path)
+    rankings: dict[frozenset[str], AcousticPairRanking] = {}
+    for result in payload.get("pair_results", ()):
+        if (
+            not isinstance(result, Mapping)
+            or result.get("outcome") != "same_speaker"
+            or result.get("reason") != "approved_policy_same_band"
+            or result.get("consistency_tier") != "strong_strong"
+            or result.get("registry_mutation_allowed") is not False
+            or result.get("reviewed_constraint") is True
+        ):
+            continue
+        fingerprints = result.get("observation_fingerprints")
+        metrics = result.get("metrics")
+        cross = metrics.get("cross") if isinstance(metrics, Mapping) else None
+        policy = result.get("policy")
+        if (
+            not isinstance(fingerprints, list)
+            or len(fingerprints) != 2
+            or not all(
+                isinstance(value, str) and value for value in fingerprints
+            )
+            or not isinstance(cross, Mapping)
+            or not isinstance(policy, Mapping)
+        ):
+            continue
+        cross_p10 = _finite_float(cross.get("p10"))
+        cross_median = _finite_float(cross.get("median"))
+        minimum_p10 = _finite_float(policy.get("same_min_cross_p10"))
+        minimum_median = _finite_float(
+            policy.get("same_min_cross_median")
+        )
+        centroid_similarity = _finite_float(
+            result.get("centroid_similarity")
+        )
+        if None in {
+            cross_p10,
+            cross_median,
+            minimum_p10,
+            minimum_median,
+            centroid_similarity,
+        }:
+            continue
+        assert cross_p10 is not None
+        assert cross_median is not None
+        assert minimum_p10 is not None
+        assert minimum_median is not None
+        assert centroid_similarity is not None
+        margin = min(
+            cross_p10 - minimum_p10,
+            cross_median - minimum_median,
+        )
+        if margin < 0.0:
+            continue
+        ranking = AcousticPairRanking(
+            fingerprint_a=fingerprints[0],
+            fingerprint_b=fingerprints[1],
+            same_boundary_margin=margin,
+            centroid_similarity=centroid_similarity,
+            report_result_sha256=str(payload["result_sha256"]),
+            report_path=str(report_path.expanduser().resolve()),
+        )
+        existing = rankings.get(ranking.pair_key)
+        if existing is None or (
+            ranking.same_boundary_margin,
+            ranking.centroid_similarity,
+        ) > (
+            existing.same_boundary_margin,
+            existing.centroid_similarity,
+        ):
+            rankings[ranking.pair_key] = ranking
+    return tuple(
+        sorted(
+            rankings.values(),
+            key=lambda item: (
+                -item.same_boundary_margin,
+                -item.centroid_similarity,
+                item.fingerprint_a,
+                item.fingerprint_b,
+            ),
+        )
+    )
+
+
+def _finite_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    return numeric if math.isfinite(numeric) else None
 
 
 def _resolution_priority(resolution: DiscoveryResolutionPair) -> int:

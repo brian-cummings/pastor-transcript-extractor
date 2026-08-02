@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
+    load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
     write_identity_coordination_report,
@@ -353,6 +354,65 @@ class IdentityCoordinationTests(unittest.TestCase):
             ("left-component", "right-component"),
             resolution.component_ids,
         )
+
+    def test_discovery_acoustic_loader_keeps_only_strong_automatic_same_pairs(
+        self,
+    ) -> None:
+        valid = {
+            "observation_fingerprints": ["same-a", "same-b"],
+            "outcome": "same_speaker",
+            "reason": "approved_policy_same_band",
+            "consistency_tier": "strong_strong",
+            "registry_mutation_allowed": False,
+            "centroid_similarity": 0.94,
+            "metrics": {"cross": {"p10": 0.72, "median": 0.78}},
+            "policy": {
+                "same_min_cross_p10": 0.60,
+                "same_min_cross_median": 0.70,
+            },
+        }
+        payload = {
+            "artifact_kind": "speaker_profile_shadow_discovery",
+            "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
+            "span_selection": {
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            },
+            "pair_results": [
+                valid,
+                {
+                    **valid,
+                    "observation_fingerprints": [
+                        "deferred-a",
+                        "deferred-b",
+                    ],
+                    "consistency_tier": "strong_deferred",
+                },
+                {
+                    **valid,
+                    "observation_fingerprints": [
+                        "reviewed-a",
+                        "reviewed-b",
+                    ],
+                    "reviewed_constraint": True,
+                },
+            ],
+            "components": [],
+        }
+        payload["result_sha256"] = _sha256(payload)
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "discovery.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            rankings = load_discovery_acoustic_ranking_pairs(path)
+
+        self.assertEqual(1, len(rankings))
+        ranking = rankings[0]
+        self.assertEqual(
+            {"same-a", "same-b"},
+            {ranking.fingerprint_a, ranking.fingerprint_b},
+        )
+        self.assertAlmostEqual(0.08, ranking.same_boundary_margin)
+        self.assertEqual(0.94, ranking.centroid_similarity)
 
     def test_discovery_resolution_loader_exposes_near_same_frontier(self) -> None:
         payload = {

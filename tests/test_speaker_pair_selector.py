@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import unittest
 
 from pastor_transcript_extractor.speaker_pair_selector import (
+    AcousticPairRanking,
     DiscoveryResolutionPair,
     PairCandidateObservation,
     PairSelectionHistory,
@@ -285,6 +286,76 @@ class SpeakerPairSelectorTests(unittest.TestCase):
                 )
             ],
         )
+
+    def test_profile_growth_prefers_cached_acoustic_same_pair_for_review(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "bridge-a", name="alex", profile_ids=frozenset((7,))
+                ),
+                candidate(
+                    "bridge-b", name="alex", profile_ids=frozenset((8,))
+                ),
+                candidate("acoustic-a"),
+                candidate("acoustic-b"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+            profile_growth_acoustic_pairs=(
+                AcousticPairRanking(
+                    fingerprint_a="acoustic-a",
+                    fingerprint_b="acoustic-b",
+                    same_boundary_margin=0.08,
+                    centroid_similarity=0.94,
+                    report_result_sha256="a" * 64,
+                    report_path="discovery.json",
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            {"acoustic-a", "acoustic-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "profile_growth_seed", selected.manifest["selection_objective"]
+        )
+        ranking = selected.manifest["profile_growth_acoustic_ranking"]
+        self.assertEqual("review_ranking_only", ranking["role"])
+        self.assertFalse(ranking["identity_evidence"])
+        self.assertEqual(
+            "approved_blinded_pair_review_only",
+            ranking["durable_evidence_source"],
+        )
+        self.assertIn(
+            "cached_acoustic_same_ranking", selected.manifest["reason_codes"]
+        )
+
+    def test_profile_growth_rejects_unbound_acoustic_ranking_context(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(ValueError, "provenance-bound"):
+            select_next_speaker_pair(
+                [candidate("a"), candidate("b")],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                profile_growth_acoustic_pairs=(
+                    AcousticPairRanking(
+                        fingerprint_a="a",
+                        fingerprint_b="b",
+                        same_boundary_margin=0.1,
+                        centroid_similarity=0.9,
+                        report_result_sha256="",
+                        report_path="",
+                        outcome="different_speaker",
+                    ),
+                ),
+            )
 
     def test_automation_readiness_prioritizes_profile_reinforcement(self) -> None:
         selected = select_next_speaker_pair(

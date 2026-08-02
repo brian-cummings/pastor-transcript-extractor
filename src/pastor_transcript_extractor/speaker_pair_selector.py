@@ -5,10 +5,11 @@ from datetime import datetime
 from enum import StrEnum
 import hashlib
 import json
+import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v15"
+SELECTOR_VERSION = "speaker_pair_selector_v16"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -99,6 +100,23 @@ class DiscoveryResolutionPair:
     candidate_fingerprint: str | None = None
     companion_pair_fingerprints: tuple[str, ...] = ()
     required_review_count: int = 1
+
+    @property
+    def pair_key(self) -> frozenset[str]:
+        return frozenset((self.fingerprint_a, self.fingerprint_b))
+
+
+@dataclass(frozen=True, slots=True)
+class AcousticPairRanking:
+    """Cached acoustic evidence used only to rank a human review pair."""
+
+    fingerprint_a: str
+    fingerprint_b: str
+    same_boundary_margin: float
+    centroid_similarity: float
+    report_result_sha256: str
+    report_path: str
+    outcome: str = "same_speaker"
 
     @property
     def pair_key(self) -> frozenset[str]:
@@ -301,6 +319,7 @@ def select_next_speaker_pair(
     evaluation_partition: str | None = None,
     selection_goal: SelectionGoal | str = SelectionGoal.EVALUATION,
     discovery_resolution_pairs: Sequence[DiscoveryResolutionPair] = (),
+    profile_growth_acoustic_pairs: Sequence[AcousticPairRanking] = (),
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
     try:
@@ -313,6 +332,20 @@ def select_next_speaker_pair(
     ordered = sorted(observations, key=lambda item: item.input_fingerprint)
     if len({item.input_fingerprint for item in ordered}) != len(ordered):
         raise ValueError("candidate observation fingerprints must be unique")
+    if any(
+        ranking.outcome != "same_speaker"
+        or ranking.fingerprint_a == ranking.fingerprint_b
+        or ranking.same_boundary_margin < 0.0
+        or not math.isfinite(ranking.same_boundary_margin)
+        or not math.isfinite(ranking.centroid_similarity)
+        or not ranking.report_result_sha256
+        or not ranking.report_path
+        for ranking in profile_growth_acoustic_pairs
+    ):
+        raise ValueError(
+            "profile-growth acoustic rankings require finite, provenance-bound "
+            "same-speaker context"
+        )
     candidates = [
         item
         for item in ordered
@@ -363,6 +396,13 @@ def select_next_speaker_pair(
     discovery_resolution_by_pair = {
         item.pair_key: item for item in discovery_resolution_pairs
     }
+    profile_growth_acoustic_by_pair = {
+        item.pair_key: item for item in profile_growth_acoustic_pairs
+    }
+    if len(profile_growth_acoustic_by_pair) != len(
+        profile_growth_acoustic_pairs
+    ):
+        raise ValueError("profile-growth acoustic ranking pairs must be unique")
     outcome_counts = _reviewed_outcome_counts(
         history,
         evaluation_partition=evaluation_partition,
@@ -378,6 +418,7 @@ def select_next_speaker_pair(
             disfavored=disfavored,
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
+            acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
         )
         if goal == SelectionGoal.PROFILE_GROWTH
         else None
@@ -412,6 +453,7 @@ def select_next_speaker_pair(
             disfavored=disfavored,
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
+            acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
         )
     if (
         goal in {
@@ -649,6 +691,35 @@ def select_next_speaker_pair(
     }
     if consistency_scores:
         manifest["observation_consistency_scores"] = consistency_scores
+    selected_acoustic_ranking = profile_growth_acoustic_by_pair.get(
+        frozenset(
+            (
+                observation_a.input_fingerprint,
+                observation_b.input_fingerprint,
+            )
+        )
+    )
+    if (
+        growth_components is not None
+        and selected_acoustic_ranking is not None
+    ):
+        manifest["profile_growth_acoustic_ranking"] = {
+            "outcome": selected_acoustic_ranking.outcome,
+            "same_boundary_margin": (
+                selected_acoustic_ranking.same_boundary_margin
+            ),
+            "centroid_similarity": (
+                selected_acoustic_ranking.centroid_similarity
+            ),
+            "report_result_sha256": (
+                selected_acoustic_ranking.report_result_sha256
+            ),
+            "report_path": selected_acoustic_ranking.report_path,
+            "role": "review_ranking_only",
+            "identity_evidence": False,
+            "durable_evidence_source": "approved_blinded_pair_review_only",
+        }
+        reason_codes.insert(1, "cached_acoustic_same_ranking")
     return PairSelection(observation_a, observation_b, manifest)
 
 
@@ -769,6 +840,9 @@ def _select_profile_growth_pair(
     disfavored: Mapping[str, int],
     disfavored_sources: Mapping[str, int],
     condition_counts: Mapping[str, int],
+    acoustic_ranking_by_pair: Mapping[
+        frozenset[str], AcousticPairRanking
+    ],
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -879,6 +953,9 @@ def _select_profile_growth_pair(
     return min(
         growth_pairs,
         key=lambda item: (
+            *_profile_growth_acoustic_rank(
+                item[0], item[1], acoustic_ranking_by_pair
+            ),
             0 if item[4] == "attribution_reconciliation_bridge" else 1,
             _profile_growth_consistency_rank(
                 observations=(item[0], item[1]),
@@ -906,6 +983,21 @@ def _select_profile_growth_pair(
             ),
         ),
     )
+
+
+def _profile_growth_acoustic_rank(
+    observation_a: PairCandidateObservation,
+    observation_b: PairCandidateObservation,
+    ranking_by_pair: Mapping[frozenset[str], AcousticPairRanking],
+) -> tuple[int, float, float]:
+    ranking = ranking_by_pair.get(
+        frozenset(
+            (observation_a.input_fingerprint, observation_b.input_fingerprint)
+        )
+    )
+    if ranking is None:
+        return 1, 0.0, 0.0
+    return 0, -ranking.same_boundary_margin, -ranking.centroid_similarity
 
 
 def _profile_growth_consistency_rank(
