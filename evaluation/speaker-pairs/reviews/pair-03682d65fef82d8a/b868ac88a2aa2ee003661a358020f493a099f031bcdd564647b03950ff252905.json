@@ -1,0 +1,282 @@
+{
+  "approval_confirmed": true,
+  "clip_quality": {
+    "A": {
+      "clip_selection": {
+        "attempts": [
+          {
+            "accepted": true,
+            "end_seconds": 120.092,
+            "non_silent_fraction": 0.5675,
+            "reason": "qualified",
+            "rms_dbfs": -25.07209955916845,
+            "start_seconds": 108.092,
+            "wav_sha256": "0a4a2c2ff3d59db18a6bf15af1953d61edcd056ec58e71ec84aa2678281c4d18"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 241.986,
+            "non_silent_fraction": 0.555,
+            "reason": "qualified",
+            "rms_dbfs": -25.76197544145706,
+            "start_seconds": 229.986,
+            "wav_sha256": "398eda11a89043baa4955fb2b5a35160030b81f7fddda0d6cb38cdc1b63c7d82"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 363.88,
+            "non_silent_fraction": 0.52,
+            "reason": "qualified",
+            "rms_dbfs": -24.74762172032748,
+            "start_seconds": 351.88,
+            "wav_sha256": "900cfc8c94dc41e95daf6c97cc815c06c365bec0f4a6a0e74b268c0951cf1bc5"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 485.774,
+            "non_silent_fraction": 0.4325,
+            "reason": "qualified",
+            "rms_dbfs": -27.69081144610756,
+            "start_seconds": 473.774,
+            "wav_sha256": "e24a7f1e6b4e5a989db3301618f7b34f84ef6f112790037ea3dd80fea96f152b"
+          },
+          {
+            "accepted": false,
+            "end_seconds": 607.668,
+            "non_silent_fraction": 0.36,
+            "reason": "majority_silence",
+            "rms_dbfs": -32.31788115159458,
+            "start_seconds": 595.668,
+            "wav_sha256": "f860f0172b2112bbdc8acc245cb2dccea06fa1de1a80a21a292f64515928e624"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 154.919,
+            "non_silent_fraction": 0.57,
+            "reason": "qualified",
+            "rms_dbfs": -24.14237017140692,
+            "start_seconds": 142.919,
+            "wav_sha256": "048dffaa64b17aab19c074d9b9c3e23970260ab5e48a081aa3a967d76bbb8407"
+          }
+        ],
+        "candidate_clip_count": 17,
+        "minimum_clip_count": 5,
+        "policy_version": "speaker_pair_clip_activity_v2",
+        "prepared_clip_count": 6,
+        "qualified_clip_count": 5,
+        "requested_clip_count": 5,
+        "selection_outcome": "complete",
+        "thresholds": {
+          "min_non_silent_fraction": 0.4,
+          "min_rms_dbfs": -52.0
+        }
+      },
+      "clips": [
+        {
+          "non_silent_fraction": 0.5675,
+          "rms_dbfs": -25.07209955916845,
+          "wav_sha256": "0a4a2c2ff3d59db18a6bf15af1953d61edcd056ec58e71ec84aa2678281c4d18"
+        },
+        {
+          "non_silent_fraction": 0.555,
+          "rms_dbfs": -25.76197544145706,
+          "wav_sha256": "398eda11a89043baa4955fb2b5a35160030b81f7fddda0d6cb38cdc1b63c7d82"
+        },
+        {
+          "non_silent_fraction": 0.52,
+          "rms_dbfs": -24.74762172032748,
+          "wav_sha256": "900cfc8c94dc41e95daf6c97cc815c06c365bec0f4a6a0e74b268c0951cf1bc5"
+        },
+        {
+          "non_silent_fraction": 0.4325,
+          "rms_dbfs": -27.69081144610756,
+          "wav_sha256": "e24a7f1e6b4e5a989db3301618f7b34f84ef6f112790037ea3dd80fea96f152b"
+        },
+        {
+          "non_silent_fraction": 0.57,
+          "rms_dbfs": -24.14237017140692,
+          "wav_sha256": "048dffaa64b17aab19c074d9b9c3e23970260ab5e48a081aa3a967d76bbb8407"
+        }
+      ]
+    },
+    "B": {
+      "clip_selection": {
+        "attempts": [
+          {
+            "accepted": true,
+            "end_seconds": 434.246,
+            "non_silent_fraction": 0.575,
+            "reason": "qualified",
+            "rms_dbfs": -24.913194706819958,
+            "start_seconds": 422.246,
+            "wav_sha256": "801635729b416bb2261e621e67613dc732167dc82bb889af3095b2acca68d382"
+          },
+          {
+            "accepted": false,
+            "end_seconds": 912.2,
+            "non_silent_fraction": 0.3525,
+            "reason": "majority_silence",
+            "rms_dbfs": -24.317120250922596,
+            "start_seconds": 900.2,
+            "wav_sha256": "3671aeab31a0ffe4554e9cd654ab7e79e3535927f1ed3224f9d27bb2a130f2ae"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1390.155,
+            "non_silent_fraction": 0.4925,
+            "reason": "qualified",
+            "rms_dbfs": -26.012569723697684,
+            "start_seconds": 1378.155,
+            "wav_sha256": "86759f941fae994d847567285415d133e3cb9242018cf8d0a5f25d8c10ae0f93"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1868.109,
+            "non_silent_fraction": 0.6175,
+            "reason": "qualified",
+            "rms_dbfs": -25.815023263488918,
+            "start_seconds": 1856.109,
+            "wav_sha256": "babd045f974d25f91b061dd4a2a3960c01392eb25099b9c6268992213231a7f6"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 2346.063,
+            "non_silent_fraction": 0.4025,
+            "reason": "qualified",
+            "rms_dbfs": -27.651464196086344,
+            "start_seconds": 2334.063,
+            "wav_sha256": "c01a07f743f01d7a978819c0d41e2010b9b94ccff2dcabd643fe4f43a7370da4"
+          },
+          {
+            "accepted": false,
+            "end_seconds": 570.805,
+            "non_silent_fraction": 0.375,
+            "reason": "majority_silence",
+            "rms_dbfs": -28.430420570644436,
+            "start_seconds": 558.805,
+            "wav_sha256": "7695406b08691f87247a172dd2e99e470c5ae73aef0b6f7477be0c3315431a1e"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 707.363,
+            "non_silent_fraction": 0.5975,
+            "reason": "qualified",
+            "rms_dbfs": -23.796564727916373,
+            "start_seconds": 695.363,
+            "wav_sha256": "c85b5c3d7fc136f5bf7bc733d46f29c4537b6b35a1f7cdc370796662dc1ae87a"
+          }
+        ],
+        "candidate_clip_count": 17,
+        "minimum_clip_count": 5,
+        "policy_version": "speaker_pair_clip_activity_v2",
+        "prepared_clip_count": 7,
+        "qualified_clip_count": 5,
+        "requested_clip_count": 5,
+        "selection_outcome": "complete",
+        "thresholds": {
+          "min_non_silent_fraction": 0.4,
+          "min_rms_dbfs": -52.0
+        }
+      },
+      "clips": [
+        {
+          "non_silent_fraction": 0.575,
+          "rms_dbfs": -24.913194706819958,
+          "wav_sha256": "801635729b416bb2261e621e67613dc732167dc82bb889af3095b2acca68d382"
+        },
+        {
+          "non_silent_fraction": 0.4925,
+          "rms_dbfs": -26.012569723697684,
+          "wav_sha256": "86759f941fae994d847567285415d133e3cb9242018cf8d0a5f25d8c10ae0f93"
+        },
+        {
+          "non_silent_fraction": 0.6175,
+          "rms_dbfs": -25.815023263488918,
+          "wav_sha256": "babd045f974d25f91b061dd4a2a3960c01392eb25099b9c6268992213231a7f6"
+        },
+        {
+          "non_silent_fraction": 0.4025,
+          "rms_dbfs": -27.651464196086344,
+          "wav_sha256": "c01a07f743f01d7a978819c0d41e2010b9b94ccff2dcabd643fe4f43a7370da4"
+        },
+        {
+          "non_silent_fraction": 0.5975,
+          "rms_dbfs": -23.796564727916373,
+          "wav_sha256": "c85b5c3d7fc136f5bf7bc733d46f29c4537b6b35a1f7cdc370796662dc1ae87a"
+        }
+      ]
+    }
+  },
+  "draft_id": "954e4704abec3a99518c13ccbad1a4c66065e5b2e7ebfc95b6a4d47c2871acef",
+  "event_kind": "speaker_pair_human_review",
+  "fixture_eligible": false,
+  "identity_evidence_eligible": true,
+  "notes": "",
+  "pair_id": "pair-03682d65fef82d8a",
+  "pair_judgment": "same_speaker",
+  "qualification": {
+    "A": "qualified_single_speaker",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "b868ac88a2aa2ee003661a358020f493a099f031bcdd564647b03950ff252905",
+  "review_evidence_mode": "audio_plus_visual",
+  "reviewed_at": "2026-08-02T22:27:33.834902+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "selection_manifest": {
+    "corpus_snapshot_fingerprint": "02cbe6fe74888459d00a47a17c8016989777a0f5b1e51cde40a174ee5b66cc1a",
+    "evaluation_partitions": {
+      "a": "development",
+      "b": "development"
+    },
+    "evaluation_scope": "all_partitions",
+    "observation_prior_use": {
+      "a": 1,
+      "b": 1
+    },
+    "profile_growth_components": [
+      [
+        "13504807081979098ef65a763bf1591ed731120602509166b0a008e80481335a",
+        "abac770d3f31bea8ab25e65ee5bee5f31cc07b32d612fb48bd1d215dc3cfded6",
+        "d55cc4ad6732cf49ead6aa3927fe93b90b6ea3720ab3c7d6bcecf2b38d2303fc",
+        "d6d043566e34f7be5968a903c3b124a5ed3e7c00aa5022081d8b801ff3c16f56"
+      ],
+      [
+        "13504807081979098ef65a763bf1591ed731120602509166b0a008e80481335a",
+        "abac770d3f31bea8ab25e65ee5bee5f31cc07b32d612fb48bd1d215dc3cfded6",
+        "d55cc4ad6732cf49ead6aa3927fe93b90b6ea3720ab3c7d6bcecf2b38d2303fc",
+        "d6d043566e34f7be5968a903c3b124a5ed3e7c00aa5022081d8b801ff3c16f56"
+      ]
+    ],
+    "reason_codes": [
+      "profile_reinforcement",
+      "least_used_observations",
+      "same_source_family",
+      "least_used_source_families"
+    ],
+    "reviewed_outcome_counts": {
+      "different_speaker": 34,
+      "same_speaker": 20
+    },
+    "selected_observation_fingerprints": {
+      "a": "abac770d3f31bea8ab25e65ee5bee5f31cc07b32d612fb48bd1d215dc3cfded6",
+      "b": "d6d043566e34f7be5968a903c3b124a5ed3e7c00aa5022081d8b801ff3c16f56"
+    },
+    "selection_goal": "automation-readiness",
+    "selection_objective": "profile_reinforcement",
+    "selection_origin": "automatic",
+    "selection_stratum": "unattributed",
+    "selector_version": "speaker_pair_selector_v16",
+    "source_family_ids": {
+      "a": "youtube-channel-uch04bk3itqbscwn-hfpxi8g",
+      "b": "youtube-channel-uch04bk3itqbscwn-hfpxi8g"
+    },
+    "source_family_prior_use": {
+      "a": 4,
+      "b": 4
+    },
+    "source_relation": "same_source_family"
+  },
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v3"
+}
