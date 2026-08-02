@@ -1619,10 +1619,15 @@ def review_observation(
     youtube_video_id: str | None = typer.Option(
         None, "--youtube-video-id", help="Review one YouTube video observation."
     ),
+    observation_fingerprint: str | None = typer.Option(
+        None,
+        "--observation-fingerprint",
+        help="Review one exact immutable observation instead of selecting the latest.",
+    ),
     all_affected: bool = typer.Option(
         False,
         "--all-affected",
-        help="Prepare packets for every normalized-provenance-affected video.",
+        help="Prepare packets for the exact observations invalidated by provenance repair.",
     ),
     evaluation_root: Path = typer.Option(
         Path("evaluation/speaker-pairs"), help="Review packet root."
@@ -1635,32 +1640,60 @@ def review_observation(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    if (youtube_video_id is None) == (not all_affected):
+    selection_count = sum(
+        (youtube_video_id is not None, observation_fingerprint is not None, all_affected)
+    )
+    if selection_count != 1:
         raise typer.BadParameter(
-            "Pass exactly one of --youtube-video-id or --all-affected."
+            "Pass exactly one of --youtube-video-id, --observation-fingerprint, "
+            "or --all-affected."
         )
     paths = build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
-    if youtube_video_id is not None:
+    if observation_fingerprint is not None:
+        observation = database.get_speaker_observation_by_fingerprint(
+            observation_fingerprint
+        )
+        if observation is None:
+            raise typer.BadParameter(
+                f"Unknown observation fingerprint: {observation_fingerprint}"
+            )
+        video = database.get_video_by_id(observation.video_id)
+        if video is None:
+            raise typer.BadParameter(
+                f"Observation video is unavailable: {observation_fingerprint}"
+            )
+        review_inputs = [(video, observation)]
+    elif youtube_video_id is not None:
         video = database.get_video_by_youtube_id(youtube_video_id)
         if video is None:
             raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
-        videos = [video]
+        observation = database.get_latest_speaker_observation_for_video(video.id)
+        review_inputs = [(video, observation)]
     else:
-        affected_ids = {
-            record.video_id
-            for record in audit_normalized_audio_provenance(database).records
-            if record.historical_reconstructed_override
-        }
-        videos = [video for video in database.list_videos() if video.id in affected_ids]
-    if not videos:
-        console.print("No affected observations require review.")
+        revocations = load_review_revocations(
+            evaluation_root.expanduser().resolve()
+        )
+        observations = [
+            database.get_speaker_observation_by_fingerprint(fingerprint)
+            for fingerprint in sorted(
+                revocations.affected_observation_fingerprints
+            )
+        ]
+        review_inputs = [
+            (video, observation)
+            for observation in observations
+            if observation is not None
+            and (video := database.get_video_by_id(observation.video_id))
+            is not None
+        ]
+    if not review_inputs:
+        console.print("No provenance-invalidated observations require review.")
         return
     span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
-    for video in videos:
-        observation = database.get_latest_speaker_observation_for_video(video.id)
+    for video, observation in review_inputs:
         artifact = get_verified_normalized_media_artifact(database, video.id)
         if observation is None or artifact is None:
             console.print(

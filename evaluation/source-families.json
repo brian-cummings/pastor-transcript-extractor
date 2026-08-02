@@ -217,6 +217,14 @@
       ]
     },
     {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucisuaxng3oyj5w-ujjszybw",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucisuaxng3oyj5w_ujjszybw"
+      ]
+    },
+    {
       "partition": "validation",
       "partition_origin": "deterministic",
       "source_family_id": "youtube-channel-ucj3jjh1smnxin6libluwuww",
@@ -321,6 +329,14 @@
       ]
     },
     {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucocsg9uvyhoepbprglorpza",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucocsg9uvyhoepbprglorpza"
+      ]
+    },
+    {
       "partition": "held_out",
       "partition_origin": "deterministic",
       "source_family_id": "youtube-channel-ucosrv-4x5xxgerti8rfalqq",
@@ -411,9 +427,25 @@
     {
       "partition": "development",
       "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-uctznwusrgv-k74iqmssz3ta",
+      "source_urls": [
+        "https://www.youtube.com/channel/uctznwusrgv_k74iqmssz3ta"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
       "source_family_id": "youtube-channel-ucu863-n4niwsdgbcku6k75w",
       "source_urls": [
         "https://www.youtube.com/channel/ucu863-n4niwsdgbcku6k75w"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucu929mcu9ote44qv8eri2hg",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucu929mcu9ote44qv8eri2hg"
       ]
     },
     {
@@ -454,6 +486,14 @@
       "source_family_id": "youtube-channel-ucxgulnzb4atm83ku20bmq-q",
       "source_urls": [
         "https://www.youtube.com/channel/ucxgulnzb4atm83ku20bmq_q"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "youtube-channel-ucxjkctt8vlhxqnhcuee5ulw",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucxjkctt8vlhxqnhcuee5ulw"
       ]
     },
     {

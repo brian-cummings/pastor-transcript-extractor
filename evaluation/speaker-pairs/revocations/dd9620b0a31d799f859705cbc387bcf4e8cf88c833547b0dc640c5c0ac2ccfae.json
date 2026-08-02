@@ -1,0 +1,29 @@
+{
+  "affected_observation_fingerprints": [
+    "52db818e123d2510d6b53a49b632b3bc52ac5ac28eb29006f0147a0f068c2b87",
+    "5e4cfc7f69f0e644e941bb720690887ef338c1d1ebe7983333618f0e263d81cf"
+  ],
+  "affected_youtube_video_ids": [
+    "FX8u26Umjr0",
+    "Gs4Aghq9yJs",
+    "NrWbjymXwjA",
+    "Zg5_MbH0bAc",
+    "jhWvV5xbicc",
+    "nPHv7emtt4E",
+    "oYjh6SecF1Y"
+  ],
+  "event_kind": "speaker_review_provenance_revocation",
+  "invalidation_version": "normalized_audio_review_invalidation_v1",
+  "reason": "Invalidated because review clips were generated from a reconstructed normalized-audio artifact that incorrectly overrode verified media-service audio.",
+  "reviewer": "normalized-provenance-repair",
+  "revocation_id": "dd9620b0a31d799f859705cbc387bcf4e8cf88c833547b0dc640c5c0ac2ccfae",
+  "revoked_draft_ids": [
+    "3b1a1cdd79cd57efb6d5137d32d145209afdea359ee7124730d087d944b9dd49",
+    "55aa3ae733bcef6636fc34c8058bc822534b9fbcf7f7e117ffcf84fcc9fa3ee5",
+    "e87ef053641cb47100487b73d698c13519762065b579fefda2d6a31cab1940c4"
+  ],
+  "revoked_review_event_ids": [
+    "170dcf0981db04304b714fb41d40dd98e650e70c487a07e0eaa77379a018a3c4"
+  ],
+  "schema_version": 1
+}

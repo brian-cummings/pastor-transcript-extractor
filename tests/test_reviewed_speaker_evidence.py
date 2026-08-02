@@ -19,6 +19,7 @@ from pastor_transcript_extractor.speaker_registry import (
 )
 from pastor_transcript_extractor.speaker_review_invalidation import (
     invalidate_reviews_for_videos,
+    load_review_revocations,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -256,6 +257,12 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
 
         self.assertEqual(("draft-ab",), result.revoked_draft_ids)
         self.assertEqual(("event-pair-ab",), result.revoked_review_event_ids)
+        self.assertEqual(
+            frozenset(("a",)),
+            load_review_revocations(
+                self.evaluation_root
+            ).affected_observation_fingerprints,
+        )
         self.assertEqual(1, result.differences_cleared)
         self.assertEqual(
             "unresolved",

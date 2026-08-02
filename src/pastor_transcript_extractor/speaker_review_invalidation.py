@@ -21,6 +21,7 @@ REVIEW_INVALIDATION_VERSION = "normalized_audio_review_invalidation_v1"
 class ReviewRevocations:
     draft_ids: frozenset[str]
     review_event_ids: frozenset[str]
+    affected_observation_fingerprints: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +38,7 @@ class ReviewInvalidationResult:
 def load_review_revocations(evaluation_root: Path) -> ReviewRevocations:
     draft_ids: set[str] = set()
     event_ids: set[str] = set()
+    observation_fingerprints: set[str] = set()
     for path in sorted((evaluation_root / "revocations").glob("*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict) or payload.get("event_kind") != (
@@ -51,7 +53,16 @@ def load_review_revocations(evaluation_root: Path) -> ReviewRevocations:
             for value in payload.get("revoked_review_event_ids", [])
             if value
         )
-    return ReviewRevocations(frozenset(draft_ids), frozenset(event_ids))
+        observation_fingerprints.update(
+            str(value)
+            for value in payload.get("affected_observation_fingerprints", [])
+            if value
+        )
+    return ReviewRevocations(
+        frozenset(draft_ids),
+        frozenset(event_ids),
+        frozenset(observation_fingerprints),
+    )
 
 
 def pair_artifact_is_revoked(
