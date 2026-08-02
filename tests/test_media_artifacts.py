@@ -552,12 +552,18 @@ class MediaArtifactTests(unittest.TestCase):
             progress_callback=progress_events.append,
             preflight_callback=preflight_events.append,
         )
-        second = archive_source_media(
-            self.database, self.paths, video_ids={video.id}
-        )
+        with patch(
+            "pastor_transcript_extractor.media_archive."
+            "get_archive_safe_normalized_media_artifact"
+        ) as verify_normalized:
+            second = archive_source_media(
+                self.database, self.paths, video_ids={video.id}
+            )
 
         self.assertEqual(1, first.counts["archived"])
-        self.assertEqual(1, second.counts["already_archived"])
+        self.assertEqual(0, second.eligible)
+        self.assertEqual(0, second.counts["already_archived"])
+        verify_normalized.assert_not_called()
         self.assertEqual(
             [
                 "verifying local source",
@@ -597,6 +603,11 @@ class MediaArtifactTests(unittest.TestCase):
         entry = status.entries[0]
         self.assertEqual(str(source_path.resolve(strict=False)), str(archived_path.resolve()))
         self.assertEqual(str(archived_path), entry.archive_path)
+        self.database.update_media_archive_entry_status(entry.id, "pending")
+        recovered = archive_source_media(
+            self.database, self.paths, video_ids={video.id}
+        )
+        self.assertEqual(1, recovered.counts["already_archived"])
         self.assertEqual(
             ["archived", "already_archived"],
             [attempt.outcome for attempt in self.database.list_media_archive_attempts()],

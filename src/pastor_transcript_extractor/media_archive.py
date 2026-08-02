@@ -186,9 +186,19 @@ def _archive_source_media_locked(
         preflight_callback,
         "eligibility",
         "running",
-        "verifying normalized audio; normalized files are never archive candidates",
+        "verifying normalized audio for new, pending, and failed sources; "
+        "persisted archived sources are skipped",
     )
-    candidates = _eligible_source_artifacts(database, video_ids=video_ids)
+    archived_artifact_ids = {
+        entry.media_artifact_id
+        for entry in existing_entries
+        if entry.status == "archived"
+    }
+    candidates = _eligible_source_artifacts(
+        database,
+        video_ids=video_ids,
+        excluded_artifact_ids=archived_artifact_ids,
+    )
     if limit is not None:
         candidates = candidates[:limit]
     entries = [
@@ -208,7 +218,8 @@ def _archive_source_media_locked(
         preflight_callback,
         "eligibility",
         "passed",
-        f"{len(candidates)} source artifacts / {_format_bytes(eligible_bytes)}; normalized selected=0",
+        f"{len(candidates)} source artifacts / {_format_bytes(eligible_bytes)}; "
+        f"persisted archived skipped={len(archived_artifact_ids)}, normalized selected=0",
     )
     partial_count = 0
     staging_count = 0
@@ -342,19 +353,27 @@ def archive_status(database: Database) -> ArchiveStatusReport:
 
 
 def _eligible_source_artifacts(
-    database: Database, *, video_ids: set[int] | None = None
+    database: Database,
+    *,
+    video_ids: set[int] | None = None,
+    excluded_artifact_ids: set[int] | None = None,
 ) -> list[MediaArtifact]:
+    excluded = excluded_artifact_ids or set()
     candidates: list[MediaArtifact] = []
     for video in database.list_videos():
         if video_ids is not None and video.id not in video_ids:
             continue
-        if get_archive_safe_normalized_media_artifact(database, video.id) is None:
-            continue
-        candidates.extend(
+        source_artifacts = [
             artifact
             for artifact in database.list_media_artifacts_for_video(video.id)
             if artifact.artifact_kind == "source_audio"
-        )
+            and artifact.id not in excluded
+        ]
+        if not source_artifacts:
+            continue
+        if get_archive_safe_normalized_media_artifact(database, video.id) is None:
+            continue
+        candidates.extend(source_artifacts)
     return sorted(candidates, key=lambda artifact: artifact.id)
 
 
