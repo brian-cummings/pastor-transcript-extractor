@@ -190,6 +190,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
                         matching_profile.id,
                         observation,
                         Path(f"{observation.id}.wav"),
+                        f"audio-{observation.input_fingerprint}",
                     )
                     for observation in matching
                 ],
@@ -201,6 +202,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
                         other_profile.id,
                         observation,
                         Path(f"{observation.id}.wav"),
+                        f"audio-{observation.input_fingerprint}",
                     )
                     for observation in other
                 ],
@@ -218,6 +220,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         report = evaluate_shadow_association(
             candidate=candidate,
             candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
             candidate_normalized_names=("alice example",),
             profiles=profiles,
             compare=compare,
@@ -229,6 +232,10 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         self.assertEqual(report["proposed_profile_id"], matching_profile.id)
         self.assertFalse(report["automatic_assignment_allowed"])
         self.assertFalse(report["registry_mutation_allowed"])
+        self.assertEqual(
+            report["candidate"]["normalized_audio_sha256"],
+            "candidate-audio",
+        )
         destination = write_shadow_association(self.root / "runs", report)
         self.assertEqual(
             write_shadow_association(self.root / "runs", report),
@@ -238,6 +245,24 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
             json.loads(destination.read_text(encoding="utf-8"))["result_sha256"],
             report["result_sha256"],
         )
+        changed_audio_report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="corrected-candidate-audio",
+            candidate_normalized_names=("alice example",),
+            profiles=profiles,
+            compare=compare,
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+        )
+        changed_audio_destination = write_shadow_association(
+            self.root / "runs", changed_audio_report
+        )
+        self.assertNotEqual(
+            changed_audio_report["input_fingerprint"], report["input_fingerprint"]
+        )
+        self.assertNotEqual(changed_audio_destination, destination)
+        self.assertTrue(destination.exists())
         pending = summarize_shadow_associations(self.database, (report,))
         self.assertEqual(
             pending["validation_counts"]["pending_proposal"],
@@ -277,6 +302,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         report = evaluate_shadow_association(
             candidate=candidate,
             candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
             candidate_normalized_names=("bob example",),
             profiles=(
                 (
@@ -286,6 +312,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
                             1,
                             observation,
                             Path(f"{observation.id}.wav"),
+                            f"audio-{observation.input_fingerprint}",
                         )
                         for observation in exemplars
                     ),

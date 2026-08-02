@@ -3968,6 +3968,7 @@ def shadow_associate_speakers_command(
                     profile_id=profile.profile_id,
                     observation=observation,
                     audio_path=Path(eligibility.media_artifact.artifact_path),
+                    audio_sha256=eligibility.media_artifact.content_sha256,
                     span_specs=span_specs,
                 )
             )
@@ -4152,6 +4153,7 @@ def shadow_associate_speakers_command(
         report = evaluate_shadow_association(
             candidate=observation,
             candidate_audio_path=Path(media_artifact.artifact_path),
+            candidate_audio_sha256=media_artifact.content_sha256,
             candidate_normalized_names=sorted(
                 candidate_names_by_observation.get(observation.id, ())
             ),

@@ -19,7 +19,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v2"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v3"
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
 
@@ -51,6 +51,7 @@ class ShadowExemplar:
     profile_id: int
     observation: SpeakerObservation
     audio_path: Path
+    audio_sha256: str
     span_specs: tuple[SpanSpec, ...] = ()
 
 
@@ -351,6 +352,7 @@ def evaluate_shadow_association(
     *,
     candidate: SpeakerObservation,
     candidate_audio_path: Path,
+    candidate_audio_sha256: str,
     candidate_normalized_names: Sequence[str],
     profiles: Sequence[
         tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
@@ -364,6 +366,8 @@ def evaluate_shadow_association(
 ) -> dict[str, Any]:
     if minimum_same_exemplars < 2:
         raise ValueError("a shadow match requires at least two same exemplars")
+    if not candidate_audio_sha256:
+        raise ValueError("candidate normalized audio requires a SHA-256")
     reviewed_differences = {
         tuple(sorted(pair)) for pair in reviewed_difference_pairs
     }
@@ -377,6 +381,7 @@ def evaluate_shadow_association(
                     {
                         "exemplar_observation_id": exemplar.observation.id,
                         "exemplar_fingerprint": exemplar.observation.input_fingerprint,
+                        "exemplar_normalized_audio_sha256": exemplar.audio_sha256,
                         "outcome": PairOutcome.DIFFERENT_SPEAKER,
                         "reason": "reviewed_different_speaker_constraint",
                         "reviewed_constraint": True,
@@ -395,6 +400,7 @@ def evaluate_shadow_association(
                 {
                     "exemplar_observation_id": exemplar.observation.id,
                     "exemplar_fingerprint": exemplar.observation.input_fingerprint,
+                    "exemplar_normalized_audio_sha256": exemplar.audio_sha256,
                     **result,
                 }
             )
@@ -476,6 +482,7 @@ def evaluate_shadow_association(
             "observation_id": candidate.id,
             "video_id": candidate.video_id,
             "input_fingerprint": candidate.input_fingerprint,
+            "normalized_audio_sha256": candidate_audio_sha256,
             "normalized_names": sorted(candidate_names),
         },
         "model_fingerprint": model_fingerprint,
@@ -504,7 +511,14 @@ def evaluate_shadow_association(
                 {
                     "profile_id": result["profile_id"],
                     "exemplars": [
-                        comparison["exemplar_fingerprint"]
+                        {
+                            "observation_fingerprint": comparison[
+                                "exemplar_fingerprint"
+                            ],
+                            "normalized_audio_sha256": comparison[
+                                "exemplar_normalized_audio_sha256"
+                            ],
+                        }
                         for comparison in result["comparisons"]
                     ],
                 }
