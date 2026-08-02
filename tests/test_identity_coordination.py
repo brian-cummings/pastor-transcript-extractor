@@ -406,6 +406,73 @@ class IdentityCoordinationTests(unittest.TestCase):
         )
         self.assertEqual(0.01, resolutions[0].same_boundary_distance)
 
+    def test_discovery_resolution_loader_exposes_staged_bottleneck(self) -> None:
+        payload = {
+            "artifact_kind": "speaker_profile_shadow_discovery",
+            "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
+            "span_selection": {
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            },
+            "observation_signatures": [
+                {
+                    "observation_id": observation_id,
+                    "observation_fingerprint": fingerprint,
+                }
+                for observation_id, fingerprint in (
+                    (41, "seed-a"),
+                    (42, "seed-b"),
+                    (43, "candidate"),
+                )
+            ],
+            "signature_failures": [],
+            "pair_results": [],
+            "review_frontier": [],
+            "staged_review_frontier": [
+                {
+                    "component_ids": ["seed-component"],
+                    "seed_observation_fingerprints": ["seed-a", "seed-b"],
+                    "candidate_observation_fingerprint": "candidate",
+                    "observations_unlocked": 3,
+                    "required_review_count": 2,
+                    "selected_review": {
+                        "observation_fingerprints": ["candidate", "seed-b"],
+                        "same_boundary_distance": 0.06,
+                    },
+                    "companion_review": {
+                        "observation_fingerprints": ["candidate", "seed-a"],
+                        "same_boundary_distance": 0.01,
+                    },
+                }
+            ],
+            "components": [
+                {
+                    "component_id": "seed-component",
+                    "outcome": "blocked",
+                    "members": [
+                        {"observation_id": value} for value in (41, 42)
+                    ],
+                }
+            ],
+        }
+        payload["result_sha256"] = _sha256(payload)
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "discovery.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            resolutions = load_discovery_resolution_pairs(path)
+
+        self.assertEqual(1, len(resolutions))
+        resolution = resolutions[0]
+        self.assertEqual(
+            "staged_near_same_ambiguous_frontier", resolution.resolution_kind
+        )
+        self.assertEqual(("seed-a", "seed-b"), resolution.seed_fingerprints)
+        self.assertEqual("candidate", resolution.candidate_fingerprint)
+        self.assertEqual(
+            ("candidate", "seed-a"), resolution.companion_pair_fingerprints
+        )
+        self.assertEqual(2, resolution.required_review_count)
+
     def test_report_write_is_content_addressed_and_replayable(self) -> None:
         report = build_identity_coordination_report(
             self._audit(

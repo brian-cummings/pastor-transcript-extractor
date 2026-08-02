@@ -79,6 +79,8 @@ class ProfilePipelineStatus:
     stale_discovery_candidate_count: int
     blocked_discovery_component_count: int
     actionable_discovery_frontier_component_count: int
+    immediate_discovery_frontier_component_count: int
+    staged_discovery_frontier_component_count: int
     discovered_profiles: tuple[DiscoveredProfileStatus, ...]
     profiles: tuple[ProfileStatus, ...]
     next_actions: tuple[str, ...]
@@ -199,6 +201,8 @@ def build_profile_pipeline_status(
     discovered_profiles: list[DiscoveredProfileStatus] = []
     blocked_discovery_component_count = 0
     actionable_discovery_frontier_component_count = 0
+    immediate_discovery_frontier_component_count = 0
+    staged_discovery_frontier_component_count = 0
     if discovery_report is not None:
         components = discovery_report.get("components", ())
         if not isinstance(components, list):
@@ -208,6 +212,18 @@ def build_profile_pipeline_status(
             actionable_discovery_frontier_component_count = int(
                 counts.get(
                     "blocked_components_with_actionable_review_frontier",
+                    0,
+                )
+            )
+            immediate_discovery_frontier_component_count = int(
+                counts.get(
+                    "blocked_components_with_immediate_review_frontier",
+                    actionable_discovery_frontier_component_count,
+                )
+            )
+            staged_discovery_frontier_component_count = int(
+                counts.get(
+                    "blocked_components_with_staged_review_frontier",
                     0,
                 )
             )
@@ -532,10 +548,15 @@ def build_profile_pipeline_status(
         next_actions.append(
             "Plan reversible promotion of shadow-discovered profile candidates."
         )
-    if actionable_discovery_frontier_component_count:
+    if immediate_discovery_frontier_component_count:
         next_actions.append(
             "Review the near-same ambiguous discovery frontier with the normal "
             "blinded visual-confirmation pair workflow."
+        )
+    if staged_discovery_frontier_component_count:
+        next_actions.append(
+            "Begin the staged near-same discovery frontier by reviewing each "
+            "bundle's weaker bottleneck edge with the normal blinded workflow."
         )
     if (
         pending_qualification_count
@@ -623,6 +644,12 @@ def build_profile_pipeline_status(
         blocked_discovery_component_count=blocked_discovery_component_count,
         actionable_discovery_frontier_component_count=(
             actionable_discovery_frontier_component_count
+        ),
+        immediate_discovery_frontier_component_count=(
+            immediate_discovery_frontier_component_count
+        ),
+        staged_discovery_frontier_component_count=(
+            staged_discovery_frontier_component_count
         ),
         discovered_profiles=tuple(discovered_profiles),
         profiles=tuple(profile_rows),

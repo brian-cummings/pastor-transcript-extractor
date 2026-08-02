@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v14"
+SELECTOR_VERSION = "speaker_pair_selector_v15"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -95,6 +95,10 @@ class DiscoveryResolutionPair:
     report_path: str | None = None
     resolution_kind: str = "component_overlap"
     same_boundary_distance: float | None = None
+    seed_fingerprints: tuple[str, ...] = ()
+    candidate_fingerprint: str | None = None
+    companion_pair_fingerprints: tuple[str, ...] = ()
+    required_review_count: int = 1
 
     @property
     def pair_key(self) -> frozenset[str]:
@@ -447,6 +451,7 @@ def select_next_speaker_pair(
         if selection_objective in {
             "discovery_component_overlap_resolution",
             "discovery_near_same_frontier_review",
+            "discovery_staged_near_same_frontier_review",
         }:
             growth_components = None
     elif curated_selection is not None:
@@ -589,6 +594,7 @@ def select_next_speaker_pair(
         in {
             "discovery_component_overlap_resolution",
             "discovery_near_same_frontier_review",
+            "discovery_staged_near_same_frontier_review",
         }
         and selected_resolution is not None
     ):
@@ -608,6 +614,22 @@ def select_next_speaker_pair(
         if selected_resolution.same_boundary_distance is not None:
             manifest["discovery_resolution"]["same_boundary_distance"] = (
                 selected_resolution.same_boundary_distance
+            )
+        if selected_resolution.seed_fingerprints:
+            manifest["discovery_resolution"]["seed_fingerprints"] = list(
+                selected_resolution.seed_fingerprints
+            )
+        if selected_resolution.candidate_fingerprint is not None:
+            manifest["discovery_resolution"]["candidate_fingerprint"] = (
+                selected_resolution.candidate_fingerprint
+            )
+        if selected_resolution.companion_pair_fingerprints:
+            manifest["discovery_resolution"][
+                "companion_pair_fingerprints"
+            ] = list(selected_resolution.companion_pair_fingerprints)
+        if selected_resolution.required_review_count > 1:
+            manifest["discovery_resolution"]["required_review_count"] = (
+                selected_resolution.required_review_count
             )
         if selected_resolution.report_result_sha256 is not None:
             manifest["discovery_resolution"][
@@ -687,10 +709,7 @@ def _select_discovery_resolution_pair(
     selected = min(
         candidates,
         key=lambda pair: (
-            0
-            if resolution_for(pair).resolution_kind
-            == "near_same_ambiguous_frontier"
-            else 1,
+            _discovery_resolution_priority(resolution_for(pair)),
             resolution_for(pair).same_boundary_distance
             if resolution_for(pair).same_boundary_distance is not None
             else float("inf"),
@@ -713,10 +732,23 @@ def _select_discovery_resolution_pair(
             "discovery_near_same_frontier_review"
             if resolution_for(selected).resolution_kind
             == "near_same_ambiguous_frontier"
+            else "discovery_staged_near_same_frontier_review"
+            if resolution_for(selected).resolution_kind
+            == "staged_near_same_ambiguous_frontier"
             else "discovery_component_overlap_resolution"
         ),
         (frozenset(), frozenset()),
     )
+
+
+def _discovery_resolution_priority(
+    resolution: DiscoveryResolutionPair,
+) -> int:
+    return {
+        "near_same_ambiguous_frontier": 0,
+        "staged_near_same_ambiguous_frontier": 1,
+        "component_overlap": 2,
+    }.get(resolution.resolution_kind, 3)
 
 
 def _select_profile_growth_pair(

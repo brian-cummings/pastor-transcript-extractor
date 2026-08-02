@@ -550,7 +550,7 @@ artifact hash, threshold, policy status, score and tier for every signature;
 separate global, source-local, strong closure, and borderline-deferred pair
 counts; every retrieval reason and source context; and each deferred attempt's
 score, seed, endpoint comparisons, and atomic admission outcome. Discovery
-artifacts use the v5 contract; v2-v4 artifacts remain readable.
+artifacts use the v6 contract; v2-v5 artifacts remain readable.
 
 Ambiguous comparisons in the acoustic near-same band are tested hypothetically
 against the complete-link rules. When one reviewed judgment could complete a
@@ -561,6 +561,18 @@ normal blinded packet and visual-confirmation step. Only the approved review
 judgment becomes durable identity evidence. `profile-status` reports how many
 blocked components have an actionable frontier and names that review as the next
 action.
+
+When a strong third candidate has two `ambiguous_similarity` links to a strong
+two-recording seed, neither edge can complete the triangle alone. The v6 staged
+frontier retains at most two such candidates per blocked component, ranks bundles
+by their weaker link, and exposes only that bottleneck for the first blinded
+review. A reviewed different-speaker judgment eliminates the bundle. A reviewed
+same-speaker judgment does not create a profile; after reviewed-evidence sync and
+a new discovery run, the remaining ambiguous link becomes an immediate frontier.
+Only two reviewed same-speaker judgments can satisfy complete-link. Missing,
+different-speaker, internally inconsistent, deferred, or conflicting-name
+candidates never enter this staged path. The staged metadata has
+`identity_evidence=false` and cannot create registry evidence.
 
 The artifact now has an explicit, reversible promotion boundary.
 `identity promote-discovered-profiles --discovery-report <path>` validates the

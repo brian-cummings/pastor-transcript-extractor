@@ -1992,6 +1992,10 @@ def profile_status_command(
             f"blocked_components={status.blocked_discovery_component_count} "
             f"actionable_review_frontiers="
             f"{status.actionable_discovery_frontier_component_count} "
+            f"immediate_frontiers="
+            f"{status.immediate_discovery_frontier_component_count} "
+            f"staged_frontiers="
+            f"{status.staged_discovery_frontier_component_count} "
             f"report={status.discovery_result_sha256[:12]} "
             f"invalid_artifacts_skipped={invalid_discovery_artifacts}"
         )
@@ -2371,6 +2375,14 @@ def shadow_discover_profiles_command(
             "both endpoints of a strong same-speaker seed."
         ),
     ),
+    staged_review_candidates_per_component: int = typer.Option(
+        2,
+        min=0,
+        help=(
+            "Strong third candidates with two ambiguous seed edges retained "
+            "per blocked component for staged blinded review."
+        ),
+    ),
     minimum_component_members: int = typer.Option(
         3,
         min=3,
@@ -2634,7 +2646,9 @@ def shadow_discover_profiles_command(
         f"borderline_deferred_band=[{borderline_deferred_minimum:.2f},"
         f"{borderline_deferred_maximum:.2f}) "
         f"borderline_deferred_candidates_per_same_pair="
-        f"{borderline_deferred_candidates_per_same_pair}"
+        f"{borderline_deferred_candidates_per_same_pair} "
+        f"staged_review_candidates_per_component="
+        f"{staged_review_candidates_per_component}"
     )
     console.print(
         "Consistency nomination: "
@@ -2803,6 +2817,9 @@ def shadow_discover_profiles_command(
         borderline_deferred_candidates_per_same_pair=(
             borderline_deferred_candidates_per_same_pair
         ),
+        staged_review_candidates_per_component=(
+            staged_review_candidates_per_component
+        ),
     )
     destination = write_shadow_profile_discovery(output_root, report)
     counts = report["counts"]
@@ -2823,7 +2840,11 @@ def shadow_discover_profiles_command(
         f"{counts['provisional_profile_candidates']} "
         f"blocked_components={counts['blocked_components']} "
         f"actionable_review_frontiers="
-        f"{counts['blocked_components_with_actionable_review_frontier']}"
+        f"{counts['blocked_components_with_actionable_review_frontier']} "
+        f"immediate_review_pairs="
+        f"{counts['immediate_actionable_review_frontier_pairs']} "
+        f"staged_review_pairs="
+        f"{counts['staged_actionable_review_frontier_pairs']}"
     )
     console.print(
         "Pair outcomes: "
@@ -3103,6 +3124,7 @@ def run_identity_workflow_service(
             borderline_deferred_minimum=0.50,
             borderline_deferred_maximum=0.60,
             borderline_deferred_candidates_per_same_pair=4,
+            staged_review_candidates_per_component=2,
             minimum_component_members=3,
             consistency_report=None,
             minimum_consistency_score=None,
@@ -4183,7 +4205,8 @@ def review_next_speaker_pair(
         help=(
             "Use evaluation for the tuned fixture selector or profile-growth "
             "for reviewed component expansion; automation-readiness first "
-            "resolves blocked discovery overlaps, then reinforces profiles."
+            "reviews immediate and staged discovery frontiers, then resolves "
+            "overlaps and reinforces profiles."
         ),
     ),
     discovery_report: Path | None = typer.Option(

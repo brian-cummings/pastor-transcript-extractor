@@ -385,6 +385,7 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             "rejected_incomplete_acoustic_agreement", attempt["outcome"]
         )
         self.assertFalse(attempt["identity_edges_allowed"])
+        self.assertEqual([], report["staged_review_frontier"])
         self.assertTrue(
             all(
                 result["identity_edge_allowed"] is False
@@ -481,6 +482,87 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             report["counts"][
                 "blocked_components_with_actionable_review_frontier"
             ],
+        )
+
+    def test_two_ambiguous_seed_edges_stage_the_bottleneck_review(self) -> None:
+        signatures = (
+            self._signature("stage-a", (1.0, 0.0), consistency=0.9),
+            self._signature("stage-b", (0.99, 0.01), consistency=0.9),
+            self._signature("stage-c", (0.98, 0.02), consistency=0.9),
+        )
+        ids = {
+            signature.candidate.observation.input_fingerprint:
+            signature.candidate.observation.id
+            for signature in signatures
+        }
+        seed_pair = tuple(sorted((ids["stage-a"], ids["stage-b"])))
+        bottleneck_pair = tuple(sorted((ids["stage-b"], ids["stage-c"])))
+
+        def compare(left, right, *_paths):
+            pair = tuple(sorted((left.id, right.id)))
+            if pair == seed_pair:
+                return {"outcome": "same_speaker", "reason": "test_same"}
+            if pair == bottleneck_pair:
+                return {
+                    "outcome": "insufficient_evidence",
+                    "reason": "ambiguous_similarity",
+                    "metrics": {
+                        "cross": {"p10": 0.54, "median": 0.71}
+                    },
+                }
+            return {
+                "outcome": "insufficient_evidence",
+                "reason": "ambiguous_similarity",
+                "metrics": {"cross": {"p10": 0.59, "median": 0.69}},
+            }
+
+        nominations = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            consistency_policy=self._consistency_policy(),
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
+        )
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=compare,
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            consistency_policy=self._consistency_policy(),
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
+        )
+
+        self.assertEqual(0, len(report["review_frontier"]))
+        self.assertEqual(1, len(report["staged_review_frontier"]))
+        staged = report["staged_review_frontier"][0]
+        self.assertEqual(
+            list(bottleneck_pair), staged["selected_review"]["observation_ids"]
+        )
+        self.assertEqual(2, staged["required_review_count"])
+        self.assertFalse(staged["identity_edges_allowed"])
+        self.assertEqual(0, report["counts"]["provisional_profile_candidates"])
+
+        after_first_same = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=compare,
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            reviewed_same_pairs=(bottleneck_pair,),
+            consistency_policy=self._consistency_policy(),
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
+        )
+
+        self.assertEqual(1, len(after_first_same["review_frontier"]))
+        self.assertEqual(0, len(after_first_same["staged_review_frontier"]))
+        self.assertEqual(
+            tuple(
+                after_first_same["review_frontier"][0]["observation_ids"]
+            ),
+            tuple(sorted((ids["stage-a"], ids["stage-c"]))),
         )
 
     def test_written_report_can_be_loaded_with_checksum_verification(self) -> None:

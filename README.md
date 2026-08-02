@@ -565,11 +565,14 @@ comparisons, and conflicting explicit names block or exclude evidence.
 Versioned artifacts are written below
 `evaluation/speaker-profile-discovery/shadow-runs/`; registry mutations remain
 zero. Artifacts report global, source-local, strong closure, and guarded deferred
-counts separately and expose near-same ambiguous edges that a blinded reviewed
-judgment could use to complete a blocked component. `profile-status` reports the
-actionable frontier count, and `automation-readiness` prioritizes those normal
-visual-confirmation reviews. A calibrated observation-consistency report can be
-supplied with `--consistency-report` and `--minimum-consistency-score`.
+counts separately and expose near-same ambiguous edges for blinded review.
+One-edge frontiers are reviewed first. Strong candidates with two ambiguous seed
+links enter a bounded staged frontier: the weaker bottleneck is reviewed first,
+and only a durable same-speaker judgment plus a new discovery run can expose the
+companion edge. `profile-status` reports immediate and staged component counts,
+and `automation-readiness` prioritizes those normal visual-confirmation reviews.
+A calibrated observation-consistency report can be supplied with
+`--consistency-report` and `--minimum-consistency-score`.
 
 Verified components enter a reversible candidate loop with
 `pte identity promote-discovered-profiles --discovery-report <artifact>`.
@@ -639,10 +642,12 @@ reviewed different-speaker constraints block consolidation.
 - `pte identity shadow-association-status --base-dir <app-data>`
 
 `automation-readiness` reuses the normal blinded pair-review packet. It first
-selects a decisive unresolved edge from overlapping discovery components, then
-falls back to reviewed-profile reinforcement and profile growth. The selection
-manifest records the discovery artifact and downstream observations unlocked;
-undersized two-recording seeds wait for new evidence instead of consuming human
+selects an immediate near-same edge that can complete a blocked component, then
+a staged bottleneck edge from a strong two-ambiguity bundle, then a decisive
+unresolved overlap edge. It finally falls back to reviewed-profile reinforcement
+and profile growth. The selection manifest records the discovery artifact,
+stage, companion edge, and downstream observations unlocked; undersized
+two-recording seeds without a qualified frontier wait instead of consuming human
 review. The next discovery run consumes the approved pair judgment directly as
 a fingerprinted same/different constraint, allowing the answer to resolve or
 safely block the affected component before registry synchronization.

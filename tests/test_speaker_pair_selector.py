@@ -380,6 +380,8 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             [
                 candidate("near-a"),
                 candidate("near-b"),
+                candidate("staged-a"),
+                candidate("staged-b"),
                 candidate("overlap-a"),
                 candidate("overlap-b"),
             ],
@@ -402,6 +404,16 @@ class SpeakerPairSelectorTests(unittest.TestCase):
                     resolution_kind="near_same_ambiguous_frontier",
                     same_boundary_distance=0.01,
                 ),
+                DiscoveryResolutionPair(
+                    fingerprint_a="staged-a",
+                    fingerprint_b="staged-b",
+                    component_ids=("staged",),
+                    member_fingerprints=("staged-a", "staged-b"),
+                    observations_unlocked=3,
+                    resolution_kind="staged_near_same_ambiguous_frontier",
+                    same_boundary_distance=0.001,
+                    required_review_count=2,
+                ),
             ),
         )
 
@@ -419,6 +431,61 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual(
             "near_same_ambiguous_frontier",
             selected.manifest["discovery_resolution"]["resolution_kind"],
+        )
+
+    def test_automation_readiness_selects_staged_bottleneck_before_overlap(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("candidate"),
+                candidate("seed-a"),
+                candidate("seed-b"),
+                candidate("overlap-a"),
+                candidate("overlap-b"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            discovery_resolution_pairs=(
+                DiscoveryResolutionPair(
+                    fingerprint_a="overlap-a",
+                    fingerprint_b="overlap-b",
+                    component_ids=("overlap",),
+                    member_fingerprints=("overlap-a", "overlap-b"),
+                    observations_unlocked=5,
+                ),
+                DiscoveryResolutionPair(
+                    fingerprint_a="candidate",
+                    fingerprint_b="seed-b",
+                    component_ids=("seed",),
+                    member_fingerprints=("seed-a", "seed-b"),
+                    observations_unlocked=3,
+                    resolution_kind="staged_near_same_ambiguous_frontier",
+                    same_boundary_distance=0.06,
+                    seed_fingerprints=("seed-a", "seed-b"),
+                    candidate_fingerprint="candidate",
+                    companion_pair_fingerprints=("candidate", "seed-a"),
+                    required_review_count=2,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            {"candidate", "seed-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "discovery_staged_near_same_frontier_review",
+            selected.manifest["selection_objective"],
+        )
+        resolution = selected.manifest["discovery_resolution"]
+        self.assertEqual(2, resolution["required_review_count"])
+        self.assertEqual(
+            ["candidate", "seed-a"],
+            resolution["companion_pair_fingerprints"],
         )
 
     def test_automation_readiness_falls_back_to_profile_growth(self) -> None:

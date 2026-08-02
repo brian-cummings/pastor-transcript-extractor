@@ -298,6 +298,32 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertIn("reversible promotion", status.next_actions[0])
         self.assertIn("near-same ambiguous", status.next_actions[1])
 
+    def test_report_explains_staged_discovery_frontier_next_action(self) -> None:
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+            discovery_report={
+                "result_sha256": "b" * 64,
+                "counts": {
+                    "blocked_components_with_actionable_review_frontier": 1,
+                    "blocked_components_with_immediate_review_frontier": 0,
+                    "blocked_components_with_staged_review_frontier": 1,
+                },
+                "components": [
+                    {
+                        "component_id": "staged-component",
+                        "outcome": "blocked",
+                    }
+                ],
+            },
+            discovery_report_path=Path("discovery.json"),
+        )
+
+        self.assertEqual(1, status.actionable_discovery_frontier_component_count)
+        self.assertEqual(0, status.immediate_discovery_frontier_component_count)
+        self.assertEqual(1, status.staged_discovery_frontier_component_count)
+        self.assertIn("staged near-same", status.next_actions[0])
+
     def test_report_links_promoted_discovery_candidate_to_profile(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c")]
         component_id = "component-abc"
