@@ -635,6 +635,7 @@ reviewed different-speaker constraints block consolidation.
 - `pte pastor add <slug> <display-name>`
 - `pte pastor list`
 - `pte identity profile-status --base-dir <app-data>`
+- `pte identity profile-advance [--apply] --base-dir <app-data>`
 - `pte identity association-audit --base-dir <app-data>`
 - `pte identity coordinate --all --base-dir <app-data>`
 - `pte identity coordinate --youtube-video-id <id> --execute-shadow --base-dir <app-data>`
@@ -662,6 +663,13 @@ fingerprint no longer belongs to the selected video, preventing a newer
 observation for the same recording from silently replacing the nominated
 evidence. Audit current and legacy selection provenance without mutation with
 `pte identity audit-speaker-review-selection`.
+
+`profile-advance` consolidates the machine-actionable work reported by
+`profile-status`. It is plan-only by default. With `--apply`, it synchronizes
+already-reviewed speaker evidence and applies currently eligible, verified
+discovery-profile confirmations and promotions. It does not perform pair
+review, attribution, conflict adjudication, acoustic model execution, or policy
+approval.
 
 `profile-growth` now has a precision-first nomination tier when a verified
 discovery artifact contains an unreviewed `strong_strong` pair in the pinned

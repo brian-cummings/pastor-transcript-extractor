@@ -186,6 +186,10 @@ from pastor_transcript_extractor.speaker_pair_selector import (
 from pastor_transcript_extractor.speaker_profile_status import (
     build_profile_pipeline_status,
 )
+from pastor_transcript_extractor.speaker_profile_automation import (
+    apply_profile_automatic_actions,
+    plan_profile_automatic_actions,
+)
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     get_profile_attribution_candidate,
@@ -2095,14 +2099,30 @@ def profile_status_command(
     console.print("[bold]What to do next[/bold]")
     for action in status.actions:
         console.print(f"- {action.message}")
+    all_needs = (
+        *status.actions,
+        *(need for profile in status.profiles for need in profile.needs),
+    )
+    automatic_codes = {
+        "reviewed_evidence_sync",
+        "plan_discovery_promotion",
+        "apply_discovery_confirmation",
+    }
+    automatic_command = (
+        "pte identity profile-advance --apply --base-dir BASE_DIR"
+        if any(need.code in automatic_codes for need in all_needs)
+        else None
+    )
     commands = tuple(
         dict.fromkeys(
-            need.command
-            for need in (
-                *status.actions,
-                *(need for profile in status.profiles for need in profile.needs),
+            (
+                *(command for command in (automatic_command,) if command),
+                *(
+                    need.command
+                    for need in all_needs
+                    if need.actionable and need.command is not None
+                ),
             )
-            if need.actionable and need.command is not None
         )
     )
     if commands:
@@ -2110,6 +2130,109 @@ def profile_status_command(
         for command in commands:
             console.print(f"- {command}")
     console.print("This report is read-only and does not create or mature profiles.")
+
+
+@identity_app.command(
+    "profile-advance",
+    help="Plan or apply profile actions that require no new human judgment.",
+)
+def profile_advance_command(
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        help="Speaker-pair drafts, reviews, and fixtures root.",
+    ),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Existing verified shadow-association artifacts.",
+    ),
+    discovery_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+        help="Existing verified shadow-discovery artifacts.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Apply all currently eligible non-review registry actions.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    association_paths = sorted(
+        association_root.expanduser().resolve().glob("*/*.json")
+    )
+    discovery_paths = sorted(
+        discovery_root.expanduser().resolve().glob("*/*.json"),
+        key=lambda path: (path.stat().st_mtime_ns, str(path)),
+        reverse=True,
+    )
+    discovery_report_path = None
+    invalid_discovery_artifacts = 0
+    for candidate_path in discovery_paths:
+        try:
+            load_verified_shadow_profile_discovery(candidate_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            invalid_discovery_artifacts += 1
+            continue
+        discovery_report_path = candidate_path
+        break
+    try:
+        evidence = load_reviewed_speaker_evidence(
+            evaluation_root.expanduser().resolve()
+        )
+        plan = plan_profile_automatic_actions(
+            Database(paths.database, readonly=True),
+            evidence,
+            association_report_paths=association_paths,
+            discovery_report_path=discovery_report_path,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    promotion_count = (
+        len(plan.promotion_plan.candidates)
+        if plan.promotion_plan is not None
+        else 0
+    )
+    console.print(
+        "Automatic profile actions: "
+        f"pending_sync={plan.pending_sync_count} "
+        f"confirmations={len(plan.confirmation_plan.candidates)} "
+        f"promotions={promotion_count} "
+        f"invalid_discovery_artifacts={invalid_discovery_artifacts}"
+    )
+    if not apply:
+        console.print(
+            "Plan only; pass --apply to synchronize reviewed evidence and apply "
+            "currently eligible confirmations and promotions."
+        )
+        return
+    database = Database(paths.database)
+    database.initialize()
+    try:
+        result = apply_profile_automatic_actions(
+            database,
+            evidence,
+            association_report_paths=association_paths,
+            discovery_report_path=discovery_report_path,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_reviewed_evidence_summary(evidence, result.sync_result)
+    console.print(
+        "Automatic profile advance complete: "
+        f"confirmations={len(result.confirmation_event_ids)} "
+        f"promotions={len(result.promoted_profile_ids)}"
+    )
+    console.print(
+        "Human pair review, attribution, conflict adjudication, and policy "
+        "approval were not performed."
+    )
 
 
 @identity_app.command(
