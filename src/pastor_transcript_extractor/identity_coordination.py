@@ -20,6 +20,7 @@ IDENTITY_COORDINATION_VERSION = "identity_coordination_shadow_v2"
 SUPPORTED_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v1",
+        "speaker_profile_shadow_discovery_v2",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )

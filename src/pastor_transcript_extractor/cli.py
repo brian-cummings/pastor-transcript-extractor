@@ -173,6 +173,7 @@ from pastor_transcript_extractor.speaker_observation_consistency import (
     collect_reviewed_observation_examples,
     evaluate_observation_consistency_examples,
     load_consistency_score_index,
+    load_discovery_consistency_policy,
     write_observation_consistency_report,
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
@@ -2342,6 +2343,24 @@ def shadow_discover_profiles_command(
         max=1.0,
         help="Require a scored observation at or above this calibrated value.",
     ),
+    consistency_policy: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/policies/"
+            "observation-consistency-discovery-v1.json"
+        ),
+        help=(
+            "Versioned policy that tiers freshly computed discovery "
+            "consistency scores."
+        ),
+    ),
+    include_deferred: bool = typer.Option(
+        False,
+        "--include-deferred",
+        help=(
+            "Also nominate below-threshold observations; they remain recorded "
+            "but deferred by default."
+        ),
+    ),
     model_path: Path = typer.Option(
         Path(
             "evaluation/speaker-pairs/models/"
@@ -2393,6 +2412,9 @@ def shadow_discover_profiles_command(
     )
     try:
         policy_spec = load_shadow_policy(policy_path)
+        consistency_policy_spec = load_discovery_consistency_policy(
+            consistency_policy
+        )
         reviewed_evidence = load_reviewed_speaker_evidence(
             evaluation_root.expanduser().resolve()
         )
@@ -2529,6 +2551,14 @@ def shadow_discover_profiles_command(
         f"nearest_neighbors={nearest_neighbors} "
         f"estimated_pair_upper_bound={estimated_pairs}"
     )
+    console.print(
+        "Consistency nomination: "
+        f"policy={consistency_policy_spec.policy_version} "
+        f"feature={consistency_policy_spec.feature} "
+        f"strong_minimum={consistency_policy_spec.strong_minimum:.3f} "
+        f"include_deferred={include_deferred} "
+        f"status={consistency_policy_spec.review_status}"
+    )
     if excluded_reasons:
         console.print(
             "Excluded reasons: "
@@ -2595,6 +2625,8 @@ def shadow_discover_profiles_command(
         signatures,
         nearest_neighbors=nearest_neighbors,
         maximum_pairs=maximum_pairs,
+        consistency_policy=consistency_policy_spec,
+        include_deferred=include_deferred,
     )
     if not nominations:
         raise typer.BadParameter("No discovery pairs were nominated.")
@@ -2670,14 +2702,20 @@ def shadow_discover_profiles_command(
         signature_failures=signature_failures,
         nearest_neighbors=nearest_neighbors,
         maximum_pairs=maximum_pairs,
+        consistency_policy=consistency_policy_spec,
+        include_deferred=include_deferred,
     )
     destination = write_shadow_profile_discovery(output_root, report)
     counts = report["counts"]
     console.print(
         "Shadow profile discovery complete: "
         f"signatures={counts['eligible_signatures']} "
+        f"strong={counts['strong_signatures']} "
+        f"deferred={counts['deferred_signatures']} "
         f"signature_failures={counts['signature_failures']} "
         f"pairs={counts['nominated_pairs']} "
+        f"strong_pairs={counts['strong_strong_pairs']} "
+        f"deferred_pairs={counts['deferred_pairs']} "
         f"provisional_profiles="
         f"{counts['provisional_profile_candidates']} "
         f"blocked_components={counts['blocked_components']}"
@@ -2957,6 +2995,11 @@ def run_identity_workflow_service(
             minimum_component_members=3,
             consistency_report=None,
             minimum_consistency_score=None,
+            consistency_policy=Path(
+                "evaluation/speaker-pairs/policies/"
+                "observation-consistency-discovery-v1.json"
+            ),
+            include_deferred=False,
             model_path=Path(
                 "evaluation/speaker-pairs/models/"
                 "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"

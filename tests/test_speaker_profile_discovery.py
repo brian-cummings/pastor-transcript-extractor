@@ -7,6 +7,9 @@ from pathlib import Path
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_pair_diagnostics import DecisionPolicy
+from pastor_transcript_extractor.speaker_observation_consistency import (
+    DiscoveryConsistencyPolicySpec,
+)
 from pastor_transcript_extractor.speaker_profile_discovery import (
     DiscoveryCandidate,
     DiscoverySignature,
@@ -43,6 +46,7 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         centroid: tuple[float, ...],
         *,
         names: tuple[str, ...] = (),
+        consistency: float = 0.9,
     ) -> DiscoverySignature:
         video = self.database.add_video(
             source_id=self.source.id,
@@ -79,7 +83,7 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             ),
             centroid=centroid,
             span_evidence=(),
-            consistency_metrics={"weakest_clip_coherence": 0.9},
+            consistency_metrics={"weakest_clip_coherence": consistency},
             signature_sha256=f"signature-{key}",
         )
 
@@ -97,6 +101,95 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             artifact_sha256="a" * 64,
             automatic_use_allowed=False,
         )
+
+    def _consistency_policy(self) -> DiscoveryConsistencyPolicySpec:
+        return DiscoveryConsistencyPolicySpec(
+            policy_version="test-consistency-v1",
+            feature="weakest_clip_coherence",
+            strong_minimum=0.6,
+            review_status="experimental_candidate",
+            artifact_sha256="b" * 64,
+            calibration_report_sha256="c" * 64,
+            automatic_qualification_allowed=False,
+            registry_mutation_allowed=False,
+        )
+
+    def test_consistency_policy_defers_weak_signatures_by_default(self) -> None:
+        signatures = (
+            self._signature("a", (1.0, 0.0), consistency=0.9),
+            self._signature("b", (0.99, 0.01), consistency=0.8),
+            self._signature("c", (0.98, 0.02), consistency=0.7),
+            self._signature("weak", (0.97, 0.03), consistency=0.2),
+        )
+
+        strong_only = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            consistency_policy=self._consistency_policy(),
+        )
+        with_deferred = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            consistency_policy=self._consistency_policy(),
+            include_deferred=True,
+        )
+
+        strong_ids = {
+            observation_id
+            for nomination in strong_only
+            for observation_id in nomination.observation_ids
+        }
+        weak_id = signatures[-1].candidate.observation.id
+        self.assertNotIn(weak_id, strong_ids)
+        self.assertTrue(
+            any(weak_id in nomination.observation_ids for nomination in with_deferred)
+        )
+        self.assertTrue(
+            all(
+                nomination.consistency_tier == "strong_strong"
+                for nomination in strong_only
+            )
+        )
+
+    def test_discovery_report_records_calibrated_tiers(self) -> None:
+        signatures = (
+            self._signature("a", (1.0, 0.0), consistency=0.9),
+            self._signature("b", (0.99, 0.01), consistency=0.8),
+            self._signature("c", (0.98, 0.02), consistency=0.7),
+            self._signature("weak", (0.0, 1.0), consistency=0.2),
+        )
+        consistency_policy = self._consistency_policy()
+        nominations = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            consistency_policy=consistency_policy,
+        )
+
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=lambda *_args: {
+                "outcome": "same_speaker",
+                "reason": "test_same",
+            },
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            consistency_policy=consistency_policy,
+        )
+
+        self.assertEqual(report["counts"]["strong_signatures"], 3)
+        self.assertEqual(report["counts"]["deferred_signatures"], 1)
+        self.assertEqual(report["counts"]["strong_strong_pairs"], 3)
+        self.assertEqual(report["counts"]["deferred_pairs"], 0)
+        self.assertEqual(
+            report["consistency_gate"]["mode"],
+            "tiered_nomination",
+        )
+        tiers = {
+            item["observation_fingerprint"]: item["consistency_tier"]
+            for item in report["observation_signatures"]
+        }
+        self.assertEqual(tiers["weak"], "deferred")
 
     def test_complete_link_triangle_proposes_provisional_profile(self) -> None:
         signatures = (

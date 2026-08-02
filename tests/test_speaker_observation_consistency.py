@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ from pastor_transcript_extractor.speaker_observation_consistency import (
     collect_reviewed_observation_examples,
     evaluate_observation_consistency_examples,
     load_consistency_score_index,
+    load_discovery_consistency_policy,
     write_observation_consistency_report,
 )
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
@@ -47,6 +49,30 @@ def clip(name: str, index: int) -> dict[str, object]:
 
 
 class SpeakerObservationConsistencyTests(unittest.TestCase):
+    def test_loads_experimental_discovery_tiering_policy(self) -> None:
+        payload = {
+            "schema_version": 1,
+            "policy_version": "test-consistency-v1",
+            "purpose": "shadow_discovery_nomination_tiering",
+            "feature": "weakest_clip_coherence",
+            "strong_minimum": 0.6,
+            "review_status": "experimental_candidate",
+            "automatic_qualification_allowed": False,
+            "registry_mutation_allowed": False,
+            "calibration": {"report_sha256": "a" * 64},
+        }
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "policy.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            policy = load_discovery_consistency_policy(path)
+
+        self.assertEqual(policy.strong_minimum, 0.6)
+        self.assertEqual(policy.feature, "weakest_clip_coherence")
+        self.assertEqual(policy.review_status, "experimental_candidate")
+        self.assertFalse(policy.automatic_qualification_allowed)
+        self.assertFalse(policy.registry_mutation_allowed)
+
     def test_metrics_distinguish_compact_voice_from_two_clusters(self) -> None:
         compact = observation_consistency_metrics(
             [

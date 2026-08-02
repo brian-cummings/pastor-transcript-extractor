@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from pastor_transcript_extractor.speaker_profile_discovery import (
-    SHADOW_PROFILE_DISCOVERY_VERSION,
+    SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
 )
 from pastor_transcript_extractor.speaker_registry import (
@@ -256,7 +256,8 @@ def apply_candidate_confirmations(
 def _validate_discovery_report(report: Mapping[str, Any]) -> None:
     if (
         report.get("artifact_kind") != "speaker_profile_shadow_discovery"
-        or report.get("discovery_version") != SHADOW_PROFILE_DISCOVERY_VERSION
+        or report.get("discovery_version")
+        not in SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS
         or report.get("shadow_mode") is not True
         or report.get("registry_mutation_allowed") is not False
         or report.get("automatic_profile_creation_allowed") is not False

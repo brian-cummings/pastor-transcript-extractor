@@ -1,0 +1,20 @@
+{
+  "automatic_qualification_allowed": false,
+  "calibration": {
+    "negative_examples": 18,
+    "negative_rejected": 15,
+    "report_sha256": "dec21ed680bd6afa9f3e403894bb1a72c6bd4f318916711f3db4aebf3d5b4294",
+    "reviewed_examples": 92,
+    "selection_rule": "lowest round threshold retaining at least 97 percent of reviewed single-speaker observations",
+    "single_speaker_examples": 74,
+    "single_speaker_retained": 72
+  },
+  "deferred_behavior": "retained_in_artifact_but_not_nominated_by_default",
+  "feature": "weakest_clip_coherence",
+  "policy_version": "observation-consistency-discovery-v1",
+  "purpose": "shadow_discovery_nomination_tiering",
+  "registry_mutation_allowed": false,
+  "review_status": "experimental_candidate",
+  "schema_version": 1,
+  "strong_minimum": 0.6
+}

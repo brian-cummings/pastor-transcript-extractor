@@ -39,6 +39,68 @@ class ConsistencyScoreIndex:
     report_sha256: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveryConsistencyPolicySpec:
+    policy_version: str
+    feature: str
+    strong_minimum: float
+    review_status: str
+    artifact_sha256: str
+    calibration_report_sha256: str
+    automatic_qualification_allowed: bool
+    registry_mutation_allowed: bool
+
+
+def load_discovery_consistency_policy(
+    path: Path,
+) -> DiscoveryConsistencyPolicySpec:
+    resolved = path.expanduser().resolve()
+    raw = resolved.read_bytes()
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("discovery consistency policy must be a JSON object")
+    if payload.get("schema_version") != 1:
+        raise ValueError("unsupported discovery consistency policy schema")
+    if payload.get("purpose") != "shadow_discovery_nomination_tiering":
+        raise ValueError("unsupported discovery consistency policy purpose")
+    review_status = str(payload.get("review_status", ""))
+    if review_status not in {"experimental_candidate", "approved"}:
+        raise ValueError(
+            "discovery consistency policy must be approved or experimental"
+        )
+    feature = str(payload.get("feature", ""))
+    if feature != "weakest_clip_coherence":
+        raise ValueError("unsupported discovery consistency feature")
+    strong_minimum = payload.get("strong_minimum")
+    if (
+        isinstance(strong_minimum, bool)
+        or not isinstance(strong_minimum, (int, float))
+        or not math.isfinite(float(strong_minimum))
+        or not -1.0 <= float(strong_minimum) <= 1.0
+    ):
+        raise ValueError("discovery consistency threshold is invalid")
+    calibration = payload.get("calibration")
+    if not isinstance(calibration, Mapping):
+        raise ValueError("discovery consistency calibration is missing")
+    report_sha256 = calibration.get("report_sha256")
+    if not isinstance(report_sha256, str) or len(report_sha256) != 64:
+        raise ValueError("discovery consistency calibration hash is invalid")
+    automatic_allowed = payload.get("automatic_qualification_allowed") is True
+    registry_allowed = payload.get("registry_mutation_allowed") is True
+    if review_status != "approved" and (automatic_allowed or registry_allowed):
+        raise ValueError("experimental consistency policy cannot mutate state")
+    return DiscoveryConsistencyPolicySpec(
+        policy_version=str(payload.get("policy_version", "")),
+        feature=feature,
+        strong_minimum=float(strong_minimum),
+        review_status=review_status,
+        artifact_sha256=hashlib.sha256(raw).hexdigest(),
+        calibration_report_sha256=report_sha256,
+        automatic_qualification_allowed=automatic_allowed,
+        registry_mutation_allowed=registry_allowed,
+    )
+
+
 def collect_reviewed_observation_examples(
     *,
     drafts: Sequence[Mapping[str, Any]],

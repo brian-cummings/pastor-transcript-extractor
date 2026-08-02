@@ -501,15 +501,28 @@ pte identity shadow-discover-profiles \
 Omit `--plan-only` to compute deterministic five-span signatures. Each 12-second
 span must overlap meaningful sermon-labeled transcript text; repetitive,
 non-sermon, and transcript-empty regions are excluded. The same spans are reused
-for pair decisions. Discovery then nominates up to eight centroid-nearest
-observations per candidate, replays nominated pairs through the pinned
-abstention-first policy, and builds same-speaker components. A provisional
-profile candidate requires at least three distinct recordings and a complete-link
-same-speaker graph. Any missing/abstaining required edge, reviewed
+for pair decisions. Every signature is also scored with the versioned
+`observation-consistency-discovery-v1` policy. Its experimental `0.60`
+`weakest_clip_coherence` boundary was selected from 92 reviewed observations:
+it retained 72 of 74 reviewed single-speaker examples and rejected 15 of 18
+reviewed multiple-speaker or invalid examples. This is a nomination-efficiency
+calibration, not speaker qualification or identity evidence.
+
+By default, discovery nominates up to eight centroid-nearest observations only
+among the `strong` tier. Below-threshold signatures remain fully recorded in the
+artifact as `deferred`; pass `--include-deferred` to include them in a diagnostic
+comparison run. This prevents inconsistent observations from consuming the
+normal discovery budget without permanently deleting or disqualifying them.
+Pair results still pass through the pinned abstention-first policy before
+same-speaker components are built. A provisional profile candidate requires at
+least three distinct recordings and a complete-link same-speaker graph. Any
+missing/abstaining required edge, reviewed
 different-speaker constraint, or conflicting explicit name blocks the component.
 The result is a content-addressed artifact under the ignored
 `evaluation/speaker-profile-discovery/shadow-runs/` tree. It never creates a
-registry profile or membership by itself.
+registry profile or membership by itself. The report records the calibration
+artifact hash, threshold, policy status, score and tier for every signature,
+strong/deferred signature counts, and strong/deferred pair counts.
 
 The artifact now has an explicit, reversible promotion boundary.
 `identity promote-discovered-profiles --discovery-report <path>` validates the
@@ -543,11 +556,12 @@ evaluated observations wait for new evidence rather than causing redundant
 discovery runs. It cannot apply registry mutations, and corpus discovery remains
 a separate scheduled batch.
 
-The optional `--consistency-report` and `--minimum-consistency-score` arguments
-are the integration boundary for the separately calibrated observation
-consistency scorer. Without a calibrated threshold, discovery records
-threshold-free within-observation metrics but does not treat them as an
-automatic qualification decision.
+The older optional `--consistency-report` and `--minimum-consistency-score`
+arguments remain available for exact replay of legacy externally-scored runs.
+They should not be used for normal corpus discovery because those reports cover
+only already-reviewed fingerprints. Current discovery computes and tiers every
+new signature directly. The consistency policy remains an experimental shadow
+policy: it cannot qualify observations, create profiles, or mutate the registry.
 
 ### Future Automatic Anonymous Profile Assembly
 

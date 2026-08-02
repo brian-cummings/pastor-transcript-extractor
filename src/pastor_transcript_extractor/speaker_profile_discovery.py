@@ -10,6 +10,9 @@ import re
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from pastor_transcript_extractor.models import SpeakerObservation
+from pastor_transcript_extractor.speaker_observation_consistency import (
+    DiscoveryConsistencyPolicySpec,
+)
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
     CachedSpan,
@@ -24,7 +27,13 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v2"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v3"
+SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
+    {
+        "speaker_profile_shadow_discovery_v2",
+        SHADOW_PROFILE_DISCOVERY_VERSION,
+    }
+)
 TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION = (
     "transcript_grounded_sermon_spans_v1"
 )
@@ -54,6 +63,7 @@ class NominatedPair:
     left: DiscoverySignature
     right: DiscoverySignature
     centroid_similarity: float
+    consistency_tier: str = "unscored"
 
     @property
     def observation_ids(self) -> tuple[int, int]:
@@ -232,15 +242,26 @@ def nominate_discovery_pairs(
     *,
     nearest_neighbors: int = 8,
     maximum_pairs: int | None = None,
+    consistency_policy: DiscoveryConsistencyPolicySpec | None = None,
+    include_deferred: bool = False,
 ) -> tuple[NominatedPair, ...]:
     if nearest_neighbors < 2:
         raise ValueError("profile discovery requires at least two nearest neighbors")
     if maximum_pairs is not None and maximum_pairs < 1:
         raise ValueError("maximum_pairs must be positive")
-    ordered = sorted(
+    all_ordered = sorted(
         signatures,
         key=lambda item: item.candidate.observation.input_fingerprint,
     )
+    ordered = [
+        signature
+        for signature in all_ordered
+        if (
+            include_deferred
+            or consistency_policy is None
+            or _consistency_tier(signature, consistency_policy) == "strong"
+        )
+    ]
     selected: dict[tuple[int, int], NominatedPair] = {}
     for left in ordered:
         ranked: list[tuple[float, str, DiscoverySignature]] = []
@@ -257,7 +278,16 @@ def nominate_discovery_pairs(
             )
         ranked.sort(key=lambda item: (-item[0], item[1]))
         for similarity, _, right in ranked[:nearest_neighbors]:
-            nomination = NominatedPair(left, right, similarity)
+            nomination = NominatedPair(
+                left,
+                right,
+                similarity,
+                _pair_consistency_tier(
+                    left,
+                    right,
+                    consistency_policy,
+                ),
+            )
             key = nomination.observation_ids
             existing = selected.get(key)
             if (
@@ -268,6 +298,7 @@ def nominate_discovery_pairs(
     nominations = sorted(
         selected.values(),
         key=lambda item: (
+            _consistency_tier_rank(item.consistency_tier),
             -item.centroid_similarity,
             item.left.candidate.observation.input_fingerprint,
             item.right.candidate.observation.input_fingerprint,
@@ -293,6 +324,8 @@ def evaluate_shadow_profile_discovery(
     signature_failures: Sequence[Mapping[str, Any]] = (),
     nearest_neighbors: int | None = None,
     maximum_pairs: int | None = None,
+    consistency_policy: DiscoveryConsistencyPolicySpec | None = None,
+    include_deferred: bool = False,
 ) -> dict[str, Any]:
     if minimum_component_members < 3:
         raise ValueError("provisional profiles require at least three members")
@@ -341,6 +374,7 @@ def evaluate_shadow_profile_discovery(
                     )
                 ),
                 "centroid_similarity": nomination.centroid_similarity,
+                "consistency_tier": nomination.consistency_tier,
                 **dict(result),
             }
         )
@@ -374,6 +408,11 @@ def evaluate_shadow_profile_discovery(
                     left.centroid,
                     right.centroid,
                 ),
+                "consistency_tier": _pair_consistency_tier(
+                    left,
+                    right,
+                    consistency_policy,
+                ),
                 "outcome": outcome,
                 "reason": f"reviewed_{outcome}_constraint",
                 "reviewed_constraint": True,
@@ -387,7 +426,11 @@ def evaluate_shadow_profile_discovery(
         reviewed_differences=reviewed_differences,
     )
     signature_payloads = [
-        _signature_payload(signature) for signature in signatures
+        _signature_payload(
+            signature,
+            consistency_policy=consistency_policy,
+        )
+        for signature in signatures
     ]
     outcome_counts = _counts(
         str(result.get("outcome", "invalid")) for result in pair_results
@@ -424,10 +467,32 @@ def evaluate_shadow_profile_discovery(
             "maximum_pairs": maximum_pairs,
             "identity_evidence": False,
         },
-        "consistency_gate": {
-            "report_sha256": consistency_report_sha256,
-            "minimum_score": minimum_consistency_score,
-        },
+        "consistency_gate": (
+            {
+                "mode": "tiered_nomination",
+                "policy_version": consistency_policy.policy_version,
+                "policy_artifact_sha256": consistency_policy.artifact_sha256,
+                "review_status": consistency_policy.review_status,
+                "calibration_report_sha256": (
+                    consistency_policy.calibration_report_sha256
+                ),
+                "feature": consistency_policy.feature,
+                "strong_minimum": consistency_policy.strong_minimum,
+                "include_deferred": include_deferred,
+                "automatic_qualification_allowed": (
+                    consistency_policy.automatic_qualification_allowed
+                ),
+                "registry_mutation_allowed": (
+                    consistency_policy.registry_mutation_allowed
+                ),
+            }
+            if consistency_policy is not None
+            else {
+                "mode": "legacy_external_filter",
+                "report_sha256": consistency_report_sha256,
+                "minimum_score": minimum_consistency_score,
+            }
+        ),
         "reviewed_constraints": {
             "same_speaker_observation_pairs": [
                 list(pair) for pair in sorted(reviewed_same)
@@ -438,8 +503,25 @@ def evaluate_shadow_profile_discovery(
         },
         "counts": {
             "eligible_signatures": len(signature_payloads),
+            "strong_signatures": sum(
+                item.get("consistency_tier") == "strong"
+                for item in signature_payloads
+            ),
+            "deferred_signatures": sum(
+                item.get("consistency_tier") == "deferred"
+                for item in signature_payloads
+            ),
             "signature_failures": len(signature_failures),
             "nominated_pairs": len(pair_results),
+            "strong_strong_pairs": sum(
+                result.get("consistency_tier") == "strong_strong"
+                for result in pair_results
+            ),
+            "deferred_pairs": sum(
+                result.get("consistency_tier")
+                in {"strong_deferred", "deferred_deferred"}
+                for result in pair_results
+            ),
             "provisional_profile_candidates": component_counts.get(
                 "provisional_profile_candidate", 0
             ),
@@ -524,7 +606,7 @@ def load_verified_shadow_profile_discovery(path: Path) -> dict[str, Any]:
     if (
         payload.get("artifact_kind") != "speaker_profile_shadow_discovery"
         or payload.get("discovery_version")
-        != SHADOW_PROFILE_DISCOVERY_VERSION
+        not in SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS
         or payload.get("shadow_mode") is not True
         or payload.get("registry_mutation_allowed") is not False
         or payload.get("automatic_profile_creation_allowed") is not False
@@ -757,10 +839,14 @@ def _maximal_cliques(
     return tuple(cliques)
 
 
-def _signature_payload(signature: DiscoverySignature) -> dict[str, Any]:
+def _signature_payload(
+    signature: DiscoverySignature,
+    *,
+    consistency_policy: DiscoveryConsistencyPolicySpec | None = None,
+) -> dict[str, Any]:
     candidate = signature.candidate
     observation = candidate.observation
-    return {
+    payload = {
         "observation_id": observation.id,
         "video_id": observation.video_id,
         "source_id": candidate.source_id,
@@ -772,6 +858,65 @@ def _signature_payload(signature: DiscoverySignature) -> dict[str, Any]:
         "spans": list(signature.span_evidence),
         "consistency_metrics": dict(signature.consistency_metrics),
     }
+    if consistency_policy is not None:
+        payload["discovery_consistency_score"] = _consistency_score(
+            signature,
+            consistency_policy,
+        )
+        payload["consistency_tier"] = _consistency_tier(
+            signature,
+            consistency_policy,
+        )
+    return payload
+
+
+def _consistency_score(
+    signature: DiscoverySignature,
+    policy: DiscoveryConsistencyPolicySpec,
+) -> float | None:
+    value = signature.consistency_metrics.get(policy.feature)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        return None
+    return float(value)
+
+
+def _consistency_tier(
+    signature: DiscoverySignature,
+    policy: DiscoveryConsistencyPolicySpec,
+) -> str:
+    score = _consistency_score(signature, policy)
+    return (
+        "strong"
+        if score is not None and score >= policy.strong_minimum
+        else "deferred"
+    )
+
+
+def _pair_consistency_tier(
+    left: DiscoverySignature,
+    right: DiscoverySignature,
+    policy: DiscoveryConsistencyPolicySpec | None,
+) -> str:
+    if policy is None:
+        return "unscored"
+    left_tier = _consistency_tier(left, policy)
+    right_tier = _consistency_tier(right, policy)
+    if left_tier == right_tier:
+        return f"{left_tier}_{right_tier}"
+    return "strong_deferred"
+
+
+def _consistency_tier_rank(tier: str) -> int:
+    return {
+        "strong_strong": 0,
+        "strong_deferred": 1,
+        "deferred_deferred": 2,
+        "unscored": 0,
+    }.get(tier, 3)
 
 
 def _normalized_centroid(
