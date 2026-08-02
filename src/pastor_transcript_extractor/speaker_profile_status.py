@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -20,6 +20,15 @@ DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
 
 
 @dataclass(frozen=True, slots=True)
+class StatusNeed:
+    code: str
+    message: str
+    category: str
+    command: str | None = None
+    actionable: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileStatus:
     profile_id: int
     member_count: int
@@ -32,6 +41,7 @@ class ProfileStatus:
     shadow_ready: bool
     automatic_profile_ready: bool
     automatic_blockers: tuple[str, ...]
+    needs: tuple[StatusNeed, ...]
     next_need: str
 
 
@@ -63,6 +73,8 @@ class ProfilePipelineStatus:
     configured_identity_count: int
     ungrouped_single_count: int
     named_ungrouped_single_count: int
+    attributed_frontier_observation_count: int
+    unmatched_named_ungrouped_single_count: int
     unnamed_ungrouped_single_count: int
     merge_candidate_count: int
     attribution_conflict_count: int
@@ -84,6 +96,7 @@ class ProfilePipelineStatus:
     distant_staged_discovery_component_count: int
     discovered_profiles: tuple[DiscoveredProfileStatus, ...]
     profiles: tuple[ProfileStatus, ...]
+    actions: tuple[StatusNeed, ...]
     next_actions: tuple[str, ...]
 
 
@@ -419,10 +432,17 @@ def build_profile_pipeline_status(
         if len(explicit_names_by_observation.get(observation_id, ())) == 1
     }
     attributed_frontier_by_profile: dict[int, int] = defaultdict(int)
+    attributed_frontier_observation_ids: set[int] = set()
     for observation_id in named_ungrouped_ids:
         normalized_name = next(iter(explicit_names_by_observation[observation_id]))
-        for profile_id in profile_ids_by_name.get(normalized_name, ()):
+        matching_profile_ids = profile_ids_by_name.get(normalized_name, ())
+        if matching_profile_ids:
+            attributed_frontier_observation_ids.add(observation_id)
+        for profile_id in matching_profile_ids:
             attributed_frontier_by_profile[profile_id] += 1
+    unmatched_named_ungrouped_ids = (
+        named_ungrouped_ids - attributed_frontier_observation_ids
+    )
 
     profile_rows: list[ProfileStatus] = []
     claim_review_conflict_profile_ids: set[int] = set()
@@ -476,26 +496,66 @@ def build_profile_pipeline_status(
         )
         if len(names) > 1 or configured_name_ambiguity:
             claim_review_conflict_profile_ids.add(profile_id)
+        needs: list[StatusNeed] = []
         if registry_profile.created_reason == DISCOVERY_PROFILE_REASON:
             state = (
                 "provisional-confirmed"
                 if profile_readiness.automatic_profile_ready
                 else "provisional"
             )
-            next_need = (
-                "model/policy approval for automatic use"
-                if profile_readiness.automatic_profile_ready
-                else "confirm an independent recording through shadow association"
-            )
+            if profile_readiness.automatic_profile_ready:
+                needs.append(
+                    StatusNeed(
+                        "automatic_policy_approval",
+                        "profile gate is complete; model/policy approval remains separate",
+                        "policy",
+                        actionable=False,
+                    )
+                )
+            else:
+                needs.extend(
+                    (
+                        StatusNeed(
+                            "generate_discovery_confirmation_proposal",
+                            "generate a fresh independent shadow-association proposal",
+                            "discovery-confirmation",
+                            "pte identity shadow-associate-speakers --all-eligible "
+                            "--base-dir BASE_DIR",
+                        ),
+                        StatusNeed(
+                            "apply_discovery_confirmation",
+                            "plan an eligible discovery-profile confirmation; rerun "
+                            "with --apply after reviewing the plan",
+                            "discovery-confirmation",
+                            "pte identity confirm-discovered-profiles "
+                            "--base-dir BASE_DIR",
+                        ),
+                    )
+                )
         elif (
             profile_id in attribution_conflict_profile_ids
             or profile_id in claim_review_conflict_profile_ids
         ):
             state = "attribution-conflict"
-            next_need = "adjudicate conflicting attribution evidence"
+            needs.append(
+                StatusNeed(
+                    "attribution_conflict",
+                    "adjudicate conflicting attribution evidence (no dedicated CLI workflow yet)",
+                    "attribution",
+                    actionable=False,
+                )
+            )
         elif profile_id in merge_profile_ids:
             state = "merge-candidate"
-            next_need = "review a same-name profile bridge"
+            needs.append(
+                StatusNeed(
+                    "same_name_profile_bridge",
+                    "review a same-name profile bridge",
+                    "profile-growth",
+                    "pte identity review-next-speaker-pair --selection-objective "
+                    "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+                )
+            )
         elif (
             names
             and (
@@ -509,37 +569,98 @@ def build_profile_pipeline_status(
             )
         ):
             state = "attribution-pending"
-            next_need = "run reviewed-evidence sync"
+            needs.append(
+                StatusNeed(
+                    "reviewed_evidence_sync",
+                    "run reviewed-evidence sync",
+                    "materialization",
+                    "pte identity sync-reviewed-speaker-evidence --base-dir BASE_DIR",
+                )
+            )
         elif configured:
             state = "linked"
-            next_need = (
-                f"review {frontier_count} attributed frontier candidate(s)"
-                if frontier_count
-                else "continue profile-growth review for broader voice evidence"
-            )
         elif names:
             state = "attributed"
-            next_need = (
-                f"review {frontier_count} attributed frontier candidate(s)"
-                if frontier_count
-                else "link a configured identity when one exists"
-            )
         else:
             state = "anonymous"
-            next_need = "grow voice evidence and obtain explicit attribution"
+
         if (
-            state in {"linked", "attributed"}
-            and not frontier_count
-            and profile_readiness.shadow_ready
-            and not profile_readiness.automatic_profile_ready
+            registry_profile.created_reason != DISCOVERY_PROFILE_REASON
+            and state in {"linked", "attributed", "anonymous"}
         ):
-            next_need = "review internal reinforcement for automation readiness"
-        elif (
-            state in {"linked", "attributed"}
-            and not frontier_count
-            and profile_readiness.automatic_profile_ready
-        ):
-            next_need = "run shadow association and accumulate validation evidence"
+            if frontier_count:
+                needs.append(
+                    StatusNeed(
+                        "attributed_profile_frontier",
+                        f"review {frontier_count} attributed frontier candidate(s); "
+                        "selection remains globally prioritized",
+                        "profile-growth",
+                        "pte identity review-next-speaker-pair --selection-objective "
+                        "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+                    )
+                )
+            if "reviewed_same_graph_contains_bridge" in (
+                profile_readiness.automatic_blockers
+            ):
+                needs.append(
+                    StatusNeed(
+                        "reviewed_same_graph_contains_bridge",
+                        "review internal reinforcement for automation readiness",
+                        "automation-readiness",
+                        "pte identity review-next-speaker-pair --selection-objective "
+                        "automation-readiness --reviewer REVIEWER_ID "
+                        "--base-dir BASE_DIR",
+                    )
+                )
+            if state == "attributed" and not configured:
+                needs.append(
+                    StatusNeed(
+                        "configured_identity_missing",
+                        "no configured identity is currently linked for this attributed name",
+                        "attribution",
+                        actionable=False,
+                    )
+                )
+            if not profile_readiness.shadow_ready:
+                needs.append(
+                    StatusNeed(
+                        "grow_profile_evidence",
+                        "continue profile-growth review for broader voice evidence",
+                        "profile-growth",
+                        "pte identity review-next-speaker-pair --selection-objective "
+                        "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+                    )
+                )
+            if state == "anonymous":
+                needs.append(
+                    StatusNeed(
+                        "obtain_explicit_attribution",
+                        "obtain explicit attribution from the profile's backing videos",
+                        "attribution",
+                        "pte identity review-profile-attribution --reviewer REVIEWER_ID "
+                        f"--profile-id {profile_id} --base-dir BASE_DIR",
+                    )
+                )
+            if profile_readiness.automatic_profile_ready:
+                needs.append(
+                    StatusNeed(
+                        "association_validation",
+                        "run shadow association and accumulate validation evidence",
+                        "association-validation",
+                        "pte identity shadow-associate-speakers --all-eligible "
+                        "--base-dir BASE_DIR",
+                    )
+                )
+        if not needs:
+            needs.append(
+                StatusNeed(
+                    "no_immediate_profile_work",
+                    "no immediate profile-specific work is visible",
+                    "status",
+                    actionable=False,
+                )
+            )
+        next_need = needs[0].message
         profile_rows.append(
             ProfileStatus(
                 profile_id=profile_id,
@@ -555,62 +676,153 @@ def build_profile_pipeline_status(
                     profile_readiness.automatic_profile_ready
                 ),
                 automatic_blockers=profile_readiness.automatic_blockers,
+                needs=tuple(needs),
                 next_need=next_need,
             )
         )
 
-    next_actions: list[str] = []
-    if any(
-        profile.state == "shadow-candidate"
-        for profile in discovered_profiles
-    ):
-        next_actions.append(
-            "Plan reversible promotion of shadow-discovered profile candidates."
+    profile_status_by_id = {profile.profile_id: profile for profile in profile_rows}
+    discovered_profiles = [
+        replace(
+            discovered,
+            next_need=profile_status_by_id[discovered.promoted_profile_id].next_need,
         )
-    if immediate_discovery_frontier_component_count:
-        next_actions.append(
-            "Review the near-same ambiguous discovery frontier with the normal "
-            "blinded visual-confirmation pair workflow."
+        if (
+            discovered.promoted_profile_id is not None
+            and discovered.promoted_profile_id in profile_status_by_id
         )
-    if staged_discovery_frontier_component_count:
-        next_actions.append(
-            "Begin the staged near-same discovery frontier by reviewing each "
-            "bundle's weaker bottleneck edge with the normal blinded workflow."
-        )
-    if distant_staged_discovery_component_count:
-        next_actions.append(
-            "Do not review distant staged candidates; wait for closer acoustic "
-            "retrieval or qualify additional recordings for those components."
-        )
+        else discovered
+        for discovered in discovered_profiles
+    ]
+
+    actions: list[StatusNeed] = []
     if (
         pending_qualification_count
         or pending_same_component_count
         or pending_difference_count
     ):
-        next_actions.append(
-            "Run reviewed-evidence sync to materialize pending reviewed qualifications, "
-            "components, or different-speaker constraints."
+        actions.append(
+            StatusNeed(
+                "reviewed_evidence_sync",
+                "Run reviewed-evidence sync to materialize pending evidence, then "
+                "recompute profile-specific status; discovery frontiers already "
+                "consume review artifacts directly.",
+                "materialization",
+                "pte identity sync-reviewed-speaker-evidence --base-dir BASE_DIR",
+            )
+        )
+    if any(
+        profile.state == "shadow-candidate"
+        for profile in discovered_profiles
+    ):
+        promotion_command = "pte identity promote-discovered-profiles"
+        if discovery_report_path is not None:
+            promotion_command += f" --discovery-report {discovery_report_path}"
+        promotion_command += " --base-dir BASE_DIR"
+        actions.append(
+            StatusNeed(
+                "plan_discovery_promotion",
+                "Plan reversible promotion of shadow-discovered profile candidates.",
+                "discovery",
+                promotion_command,
+            )
+        )
+    if immediate_discovery_frontier_component_count:
+        actions.append(
+            StatusNeed(
+                "immediate_discovery_frontier",
+                "Review the near-same ambiguous discovery frontier with the normal "
+                "blinded visual-confirmation pair workflow.",
+                "automation-readiness",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "automation-readiness --reviewer REVIEWER_ID --base-dir BASE_DIR",
+            )
+        )
+    if staged_discovery_frontier_component_count:
+        actions.append(
+            StatusNeed(
+                "staged_discovery_frontier",
+                "Begin the staged near-same discovery frontier by reviewing each "
+                "bundle's weaker bottleneck edge with the normal blinded workflow.",
+                "automation-readiness",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "automation-readiness --reviewer REVIEWER_ID --base-dir BASE_DIR",
+            )
+        )
+    if distant_staged_discovery_component_count:
+        actions.append(
+            StatusNeed(
+                "distant_discovery_frontier_deferred",
+                "Do not review distant staged candidates; wait for closer acoustic "
+                "retrieval or qualify additional recordings for those components.",
+                "discovery",
+                actionable=False,
+            )
         )
     if merge_profile_ids:
-        next_actions.append(
-            "Resolve same-name profile merge candidates with profile-growth pair review."
+        actions.append(
+            StatusNeed(
+                "same_name_profile_merges",
+                "Resolve same-name profile merge candidates with profile-growth pair review.",
+                "profile-growth",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+            )
         )
-    if named_ungrouped_ids:
-        next_actions.append(
-            "Review attributed profile frontiers to attach named single-speaker observations."
+    if attributed_frontier_observation_ids:
+        actions.append(
+            StatusNeed(
+                "attributed_profile_frontiers",
+                f"Review {len(attributed_frontier_observation_ids)} named "
+                "single-speaker observation(s) that match existing profiles.",
+                "profile-growth",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+            )
+        )
+    if unmatched_named_ungrouped_ids:
+        actions.append(
+            StatusNeed(
+                "unmatched_named_profile_seeds",
+                f"Use {len(unmatched_named_ungrouped_ids)} named ungrouped "
+                "observation(s) as profile seeds or reconciliation candidates; "
+                "they do not match an existing attributed profile.",
+                "profile-growth",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+            )
         )
     unnamed_ungrouped_count = len(ungrouped_single_ids - named_ungrouped_ids)
     if unnamed_ungrouped_count:
-        next_actions.append(
-            "Review remaining profile frontiers or seed pairs to grow anonymous profiles."
+        actions.append(
+            StatusNeed(
+                "unnamed_profile_frontiers",
+                "Review remaining profile frontiers or seed pairs to grow anonymous profiles.",
+                "profile-growth",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+            )
         )
     if qualification_counts["unreviewed"]:
-        next_actions.append(
-            "Continue pair review to qualify eligible observations; registry totals include "
-            "observations that automatic selection may reject as stale or ineligible."
+        actions.append(
+            StatusNeed(
+                "unreviewed_observations",
+                "Continue pair review to qualify eligible observations; registry totals "
+                "include observations that automatic selection may reject as stale or ineligible.",
+                "qualification",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+            )
         )
-    if not next_actions:
-        next_actions.append("No immediate reviewed-evidence backlog is visible.")
+    if not actions:
+        actions.append(
+            StatusNeed(
+                "no_immediate_backlog",
+                "No immediate reviewed-evidence backlog is visible.",
+                "status",
+                actionable=False,
+            )
+        )
 
     return ProfilePipelineStatus(
         registry_observation_count=len(observations),
@@ -632,6 +844,12 @@ def build_profile_pipeline_status(
         ),
         ungrouped_single_count=len(ungrouped_single_ids),
         named_ungrouped_single_count=len(named_ungrouped_ids),
+        attributed_frontier_observation_count=len(
+            attributed_frontier_observation_ids
+        ),
+        unmatched_named_ungrouped_single_count=len(
+            unmatched_named_ungrouped_ids
+        ),
         unnamed_ungrouped_single_count=unnamed_ungrouped_count,
         merge_candidate_count=len(merge_profile_ids),
         attribution_conflict_count=len(
@@ -680,5 +898,6 @@ def build_profile_pipeline_status(
         ),
         discovered_profiles=tuple(discovered_profiles),
         profiles=tuple(profile_rows),
-        next_actions=tuple(next_actions),
+        actions=tuple(actions),
+        next_actions=tuple(action.message for action in actions),
     )

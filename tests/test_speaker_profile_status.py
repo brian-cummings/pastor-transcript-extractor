@@ -167,6 +167,8 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(status.canonical_profile_count, 1)
         self.assertEqual(status.profile_member_count, 2)
         self.assertEqual(status.named_ungrouped_single_count, 1)
+        self.assertEqual(status.attributed_frontier_observation_count, 1)
+        self.assertEqual(status.unmatched_named_ungrouped_single_count, 0)
         self.assertEqual(status.unnamed_ungrouped_single_count, 0)
         self.assertEqual(status.attached_name_claim_count, 1)
         self.assertEqual(status.configured_identity_count, 1)
@@ -213,6 +215,96 @@ class SpeakerProfileStatusTests(unittest.TestCase):
             {"merge-candidate"},
         )
         self.assertIn("merge candidates", status.next_actions[0])
+
+    def test_named_backlog_separates_matching_frontiers_from_seeds(self) -> None:
+        member = self._observation("member")
+        matching = self._observation("matching")
+        unmatched = self._observation("unmatched")
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same pair",
+            review_event_key="profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=member.id,
+            reviewer="reviewer",
+            reason="same pair",
+            review_event_key="attach-member",
+        )
+        self._claim(member, "Alice Example")
+        self._claim(matching, "Alice Example")
+        self._claim(unmatched, "Bob Example")
+        for observation in (matching, unmatched):
+            record_observation_disposition(
+                self.database,
+                observation_id=observation.id,
+                action="qualified_single_speaker",
+                reviewer="reviewer",
+                reason="pair review",
+                review_event_key=f"single-{observation.id}",
+            )
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+        )
+
+        self.assertEqual(status.named_ungrouped_single_count, 2)
+        self.assertEqual(status.attributed_frontier_observation_count, 1)
+        self.assertEqual(status.unmatched_named_ungrouped_single_count, 1)
+        messages = [action.message for action in status.actions]
+        self.assertTrue(any("match existing profiles" in item for item in messages))
+        self.assertTrue(any("do not match an existing" in item for item in messages))
+
+    def test_anonymous_bridge_profile_reports_both_reinforcement_and_name(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c")]
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same component",
+            review_event_key="anonymous-profile",
+        )
+        for observation in observations:
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="same component",
+                review_event_key=f"attach-{observation.id}",
+            )
+        provenance = (ReviewProvenance("event", "pair", "reviewer"),)
+        evidence = ReviewedSpeakerEvidence(
+            qualifications={},
+            qualification_conflicts={},
+            pair_relations={
+                frozenset(("a", "b")): PairRelation(
+                    frozenset(("a", "b")), "same_speaker", provenance
+                ),
+                frozenset(("b", "c")): PairRelation(
+                    frozenset(("b", "c")), "same_speaker", provenance
+                ),
+            },
+            pair_conflicts={},
+            review_event_count=2,
+        )
+
+        status = build_profile_pipeline_status(self.database, evidence)
+
+        row = status.profiles[0]
+        self.assertEqual(row.state, "anonymous")
+        self.assertTrue(row.shadow_ready)
+        self.assertFalse(row.automatic_profile_ready)
+        self.assertEqual(
+            {need.code for need in row.needs},
+            {
+                "reviewed_same_graph_contains_bridge",
+                "obtain_explicit_attribution",
+            },
+        )
 
     def test_report_detects_reviewed_evidence_that_needs_sync(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c", "d")]
@@ -404,6 +496,17 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(
             status.discovered_profiles[0].promoted_profile_id,
             profile.id,
+        )
+        self.assertEqual(
+            status.discovered_profiles[0].next_need,
+            status.profiles[0].next_need,
+        )
+        self.assertEqual(
+            {need.code for need in status.profiles[0].needs},
+            {
+                "generate_discovery_confirmation_proposal",
+                "apply_discovery_confirmation",
+            },
         )
 
 

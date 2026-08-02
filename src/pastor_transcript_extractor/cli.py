@@ -2007,6 +2007,8 @@ def profile_status_command(
         f"Reviewed single-speaker backlog: "
         f"ungrouped={status.ungrouped_single_count} "
         f"named={status.named_ungrouped_single_count} "
+        f"matched_frontiers={status.attributed_frontier_observation_count} "
+        f"unmatched_named={status.unmatched_named_ungrouped_single_count} "
         f"unnamed={status.unnamed_ungrouped_single_count} "
         f"merge_candidate_profiles={status.merge_candidate_count} "
         f"attribution_conflict_profiles={status.attribution_conflict_count}"
@@ -2087,33 +2089,26 @@ def profile_status_command(
 
     console.print("[bold]Profile next needs[/bold]")
     for profile in status.profiles:
-        console.print(f"- Profile {profile.profile_id}: {profile.next_need}")
+        for index, need in enumerate(profile.needs):
+            prefix = f"Profile {profile.profile_id}: " if index == 0 else "  also: "
+            console.print(f"- {prefix}{need.message}")
     console.print("[bold]What to do next[/bold]")
-    for action in status.next_actions:
-        console.print(f"- {action}")
-    console.print(
-        "\nGrow: pte identity review-next-speaker-pair "
-        "--selection-objective profile-growth --reviewer REVIEWER_ID "
-        "--base-dir BASE_DIR"
-    )
-    console.print(
-        "Reinforce: pte identity review-next-speaker-pair "
-        "--selection-objective automation-readiness --reviewer REVIEWER_ID "
-        "--base-dir BASE_DIR"
-    )
-    console.print(
-        "Materialize: pte identity sync-reviewed-speaker-evidence "
-        "--base-dir BASE_DIR"
-    )
-    if (
-        status.shadow_discovery_candidate_count
-        and status.discovery_report_path is not None
-    ):
-        console.print(
-            "Plan discovered profiles: pte identity promote-discovered-profiles "
-            f"--discovery-report {status.discovery_report_path} "
-            "--base-dir BASE_DIR"
+    for action in status.actions:
+        console.print(f"- {action.message}")
+    commands = tuple(
+        dict.fromkeys(
+            need.command
+            for need in (
+                *status.actions,
+                *(need for profile in status.profiles for need in profile.needs),
+            )
+            if need.actionable and need.command is not None
         )
+    )
+    if commands:
+        console.print("[bold]Applicable commands[/bold]")
+        for command in commands:
+            console.print(f"- {command}")
     console.print("This report is read-only and does not create or mature profiles.")
 
 
