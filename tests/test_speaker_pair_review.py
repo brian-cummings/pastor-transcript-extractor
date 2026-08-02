@@ -4,13 +4,17 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import hashlib
 import json
+import termios
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from pastor_transcript_extractor.cli import review_speaker_pair
+from pastor_transcript_extractor.cli import (
+    _normalize_review_terminal_input,
+    review_speaker_pair,
+)
 from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import CachedSpan
 from pastor_transcript_extractor.speaker_pair_diagnostics import select_diagnostic_spans
@@ -90,6 +94,22 @@ class SpeakerPairReviewTests(unittest.TestCase):
 
     def tearDown(self):
         self.tempdir.cleanup()
+
+    def test_review_prompt_restores_enter_translation_on_tty(self):
+        attributes = [termios.IGNCR | termios.INLCR, 0, 0, 0, 0, 0, []]
+        stdin = SimpleNamespace(fileno=lambda: 42)
+        with (
+            patch("pastor_transcript_extractor.cli.sys.stdin", stdin),
+            patch("pastor_transcript_extractor.cli.os.isatty", return_value=True),
+            patch("termios.tcgetattr", return_value=attributes),
+            patch("termios.tcsetattr") as set_attributes,
+        ):
+            _normalize_review_terminal_input()
+
+        updated = set_attributes.call_args.args[2]
+        self.assertTrue(updated[0] & termios.ICRNL)
+        self.assertFalse(updated[0] & termios.IGNCR)
+        self.assertFalse(updated[0] & termios.INLCR)
 
     def _draft(self):
         return create_review_draft(

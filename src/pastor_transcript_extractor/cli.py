@@ -1566,6 +1566,31 @@ def _prompt_review_choice(prompt: str, choices: dict[str, object]) -> object:
         console.print(f"Choose one of: {', '.join(choices)}")
 
 
+def _normalize_review_terminal_input() -> None:
+    """Restore Enter-to-newline translation before interactive review prompts."""
+    try:
+        import termios
+    except ImportError:
+        return
+
+    try:
+        stdin_fd = sys.stdin.fileno()
+        if not os.isatty(stdin_fd):
+            return
+        attributes = termios.tcgetattr(stdin_fd)
+        input_flags = attributes[0]
+        normalized_flags = (input_flags | termios.ICRNL) & ~(
+            termios.IGNCR | termios.INLCR
+        )
+        if normalized_flags == input_flags:
+            return
+        attributes[0] = normalized_flags
+        termios.tcsetattr(stdin_fd, termios.TCSANOW, attributes)
+    except (OSError, ValueError, termios.error):
+        # Non-POSIX, detached, and test streams need no terminal repair.
+        return
+
+
 @identity_app.command(
     "review-speaker-pair",
     help="Prepare and adjudicate an exact-span speaker-pair review.",
@@ -1684,6 +1709,8 @@ def review_speaker_pair(
     if prepare_only:
         console.print("Draft preserved; rerun without --prepare-only to adjudicate it.")
         return
+
+    _normalize_review_terminal_input()
 
     qualification_choices = {
         "single": ObservationQualification.QUALIFIED_SINGLE_SPEAKER,
