@@ -21,6 +21,7 @@ SUPPORTED_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v1",
         "speaker_profile_shadow_discovery_v2",
+        "speaker_profile_shadow_discovery_v3",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )

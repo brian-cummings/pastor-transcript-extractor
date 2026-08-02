@@ -514,7 +514,16 @@ artifact as `deferred`; pass `--include-deferred` to include them in a diagnosti
 comparison run. This prevents inconsistent observations from consuming the
 normal discovery budget without permanently deleting or disqualifying them.
 Pair results still pass through the pinned abstention-first policy before
-same-speaker components are built. A provisional profile candidate requires at
+same-speaker components are built. Each initial same-speaker edge then opens a
+bounded closure frontier: by default, up to eight likely third observations are
+ranked by their joint acoustic proximity to both endpoints and compared with
+each endpoint. Candidates sharing either seed source are tried first as a
+retrieval optimization only. Source membership is recorded as context and never
+counts as identity evidence or a same-speaker result. The
+`--closure-candidates-per-same-pair` option controls this bounded second phase;
+zero disables it.
+
+A provisional profile candidate requires at
 least three distinct recordings and a complete-link same-speaker graph. Any
 missing/abstaining required edge, reviewed
 different-speaker constraint, or conflicting explicit name blocks the component.
@@ -522,7 +531,8 @@ The result is a content-addressed artifact under the ignored
 `evaluation/speaker-profile-discovery/shadow-runs/` tree. It never creates a
 registry profile or membership by itself. The report records the calibration
 artifact hash, threshold, policy status, score and tier for every signature,
-strong/deferred signature counts, and strong/deferred pair counts.
+strong/deferred signature counts, initial and closure pair counts, closure seed
+IDs, and whether source context affected retrieval priority.
 
 The artifact now has an explicit, reversible promotion boundary.
 `identity promote-discovered-profiles --discovery-report <path>` validates the

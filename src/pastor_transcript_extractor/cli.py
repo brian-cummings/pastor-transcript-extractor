@@ -2328,6 +2328,14 @@ def shadow_discover_profiles_command(
         min=1,
         help="Optional global cap on nominated acoustic comparisons.",
     ),
+    closure_candidates_per_same_pair: int = typer.Option(
+        8,
+        min=0,
+        help=(
+            "Likely third observations tested against both endpoints of each "
+            "same-speaker seed pair."
+        ),
+    ),
     minimum_component_members: int = typer.Option(
         3,
         min=3,
@@ -2549,7 +2557,9 @@ def shadow_discover_profiles_command(
         f"eligible_unassigned={len(candidates)} "
         f"excluded={sum(excluded_reasons.values())} "
         f"nearest_neighbors={nearest_neighbors} "
-        f"estimated_pair_upper_bound={estimated_pairs}"
+        f"estimated_pair_upper_bound={estimated_pairs} "
+        f"closure_candidates_per_same_pair="
+        f"{closure_candidates_per_same_pair}"
     )
     console.print(
         "Consistency nomination: "
@@ -2645,9 +2655,13 @@ def shadow_discover_profiles_command(
     ) -> dict[str, object]:
         nonlocal pair_index
         pair_index += 1
+        phase = (
+            f"{pair_index}/{len(nominations)}"
+            if pair_index <= len(nominations)
+            else f"closure+{pair_index - len(nominations)}"
+        )
         console.print(
-            f"Pair {pair_index}/{len(nominations)}: "
-            f"{observation_a.input_fingerprint[:8]}:"
+            f"Pair {phase}: {observation_a.input_fingerprint[:8]}:"
             f"{observation_b.input_fingerprint[:8]}"
         )
         signature_a = signatures_by_observation_id[observation_a.id]
@@ -2704,6 +2718,7 @@ def shadow_discover_profiles_command(
         maximum_pairs=maximum_pairs,
         consistency_policy=consistency_policy_spec,
         include_deferred=include_deferred,
+        closure_candidates_per_same_pair=closure_candidates_per_same_pair,
     )
     destination = write_shadow_profile_discovery(output_root, report)
     counts = report["counts"]
@@ -2714,6 +2729,8 @@ def shadow_discover_profiles_command(
         f"deferred={counts['deferred_signatures']} "
         f"signature_failures={counts['signature_failures']} "
         f"pairs={counts['nominated_pairs']} "
+        f"initial_pairs={counts['initial_pairs']} "
+        f"closure_pairs={counts['closure_pairs']} "
         f"strong_pairs={counts['strong_strong_pairs']} "
         f"deferred_pairs={counts['deferred_pairs']} "
         f"provisional_profiles="
@@ -2992,6 +3009,7 @@ def run_identity_workflow_service(
             limit=None,
             nearest_neighbors=8,
             maximum_pairs=None,
+            closure_candidates_per_same_pair=8,
             minimum_component_members=3,
             consistency_report=None,
             minimum_consistency_score=None,

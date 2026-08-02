@@ -191,6 +191,107 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         }
         self.assertEqual(tiers["weak"], "deferred")
 
+    def test_same_pair_closure_can_complete_three_recording_profile(self) -> None:
+        signatures = (
+            self._signature("a", (1.0, 0.0), consistency=0.9),
+            self._signature("b", (0.999, 0.001), consistency=0.9),
+            self._signature("c", (0.998, 0.002), consistency=0.9),
+            self._signature("unrelated", (0.0, 1.0), consistency=0.9),
+        )
+        consistency_policy = self._consistency_policy()
+        nominations = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            maximum_pairs=1,
+            consistency_policy=consistency_policy,
+        )
+        compared: list[frozenset[str]] = []
+
+        def compare(left, right, *_paths):
+            pair = frozenset(
+                (left.input_fingerprint, right.input_fingerprint)
+            )
+            compared.append(pair)
+            return {
+                "outcome": (
+                    "same_speaker"
+                    if pair <= {"a", "b", "c"}
+                    else "different_speaker"
+                ),
+                "reason": "test",
+            }
+
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=compare,
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            consistency_policy=consistency_policy,
+            closure_candidates_per_same_pair=1,
+        )
+
+        self.assertEqual(report["counts"]["initial_pairs"], 1)
+        self.assertEqual(report["counts"]["closure_pairs"], 2)
+        self.assertEqual(report["counts"]["provisional_profile_candidates"], 1)
+        self.assertEqual(len(compared), 3)
+        closure_results = [
+            result
+            for result in report["pair_results"]
+            if result["retrieval_reason"] == "same_pair_closure"
+        ]
+        self.assertTrue(
+            all(result["source_context_preferred"] for result in closure_results)
+        )
+        self.assertTrue(
+            all(result["outcome"] == "same_speaker" for result in closure_results)
+        )
+
+    def test_source_context_never_supplies_a_closure_identity_edge(self) -> None:
+        signatures = (
+            self._signature("a", (1.0, 0.0)),
+            self._signature("b", (0.999, 0.001)),
+            self._signature("c", (0.998, 0.002)),
+        )
+        nominations = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            maximum_pairs=1,
+        )
+        initial_pair = frozenset(
+            signature.candidate.observation.input_fingerprint
+            for signature in (nominations[0].left, nominations[0].right)
+        )
+
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=lambda left, right, *_paths: {
+                "outcome": (
+                    "same_speaker"
+                    if frozenset(
+                        (left.input_fingerprint, right.input_fingerprint)
+                    )
+                    == initial_pair
+                    else "different_speaker"
+                ),
+                "reason": "test",
+            },
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            closure_candidates_per_same_pair=1,
+        )
+
+        self.assertEqual(report["counts"]["closure_pairs"], 2)
+        self.assertEqual(report["counts"]["provisional_profile_candidates"], 0)
+        self.assertTrue(
+            all(
+                result["source_context_preferred"]
+                for result in report["pair_results"]
+                if result["retrieval_reason"] == "same_pair_closure"
+            )
+        )
+
     def test_complete_link_triangle_proposes_provisional_profile(self) -> None:
         signatures = (
             self._signature("a", (1.0, 0.0)),

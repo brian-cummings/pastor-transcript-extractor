@@ -27,10 +27,11 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v3"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v4"
 SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v2",
+        "speaker_profile_shadow_discovery_v3",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
@@ -326,9 +327,12 @@ def evaluate_shadow_profile_discovery(
     maximum_pairs: int | None = None,
     consistency_policy: DiscoveryConsistencyPolicySpec | None = None,
     include_deferred: bool = False,
+    closure_candidates_per_same_pair: int = 0,
 ) -> dict[str, Any]:
     if minimum_component_members < 3:
         raise ValueError("provisional profiles require at least three members")
+    if closure_candidates_per_same_pair < 0:
+        raise ValueError("closure candidate count cannot be negative")
     reviewed_differences = {
         tuple(sorted(pair)) for pair in reviewed_difference_pairs
     }
@@ -375,6 +379,7 @@ def evaluate_shadow_profile_discovery(
                 ),
                 "centroid_similarity": nomination.centroid_similarity,
                 "consistency_tier": nomination.consistency_tier,
+                "retrieval_reason": "global_nearest_neighbor",
                 **dict(result),
             }
         )
@@ -395,6 +400,7 @@ def evaluate_shadow_profile_discovery(
             if pair in reviewed_same
             else PairOutcome.DIFFERENT_SPEAKER
         )
+        evaluated_pairs.add(pair)
         pair_results.append(
             {
                 "observation_ids": list(pair),
@@ -413,11 +419,144 @@ def evaluate_shadow_profile_discovery(
                     right,
                     consistency_policy,
                 ),
+                "retrieval_reason": "reviewed_constraint",
                 "outcome": outcome,
                 "reason": f"reviewed_{outcome}_constraint",
                 "reviewed_constraint": True,
             }
         )
+
+    if closure_candidates_per_same_pair:
+        eligible_closure_signatures = [
+            signature
+            for signature in signatures
+            if (
+                include_deferred
+                or consistency_policy is None
+                or _consistency_tier(signature, consistency_policy) == "strong"
+            )
+        ]
+        results_by_pair = {
+            tuple(result["observation_ids"]): result
+            for result in pair_results
+        }
+        same_seed_pairs = sorted(
+            pair
+            for pair, result in results_by_pair.items()
+            if str(result.get("outcome")) == PairOutcome.SAME_SPEAKER
+        )
+        for seed_pair in same_seed_pairs:
+            seed_left = signatures_by_observation_id[seed_pair[0]]
+            seed_right = signatures_by_observation_id[seed_pair[1]]
+            seed_source_ids = {
+                seed_left.candidate.source_id,
+                seed_right.candidate.source_id,
+            }
+            seed_video_ids = {
+                seed_left.candidate.observation.video_id,
+                seed_right.candidate.observation.video_id,
+            }
+            ranked_candidates: list[
+                tuple[int, float, str, DiscoverySignature]
+            ] = []
+            for candidate_signature in eligible_closure_signatures:
+                candidate_id = candidate_signature.candidate.observation.id
+                if (
+                    candidate_id in seed_pair
+                    or candidate_signature.candidate.observation.video_id
+                    in seed_video_ids
+                ):
+                    continue
+                candidate_pairs = (
+                    tuple(sorted((seed_pair[0], candidate_id))),
+                    tuple(sorted((seed_pair[1], candidate_id))),
+                )
+                if any(
+                    str(results_by_pair.get(pair, {}).get("outcome"))
+                    == PairOutcome.DIFFERENT_SPEAKER
+                    for pair in candidate_pairs
+                ):
+                    continue
+                joint_similarity = min(
+                    _cosine(seed_left.centroid, candidate_signature.centroid),
+                    _cosine(seed_right.centroid, candidate_signature.centroid),
+                )
+                ranked_candidates.append(
+                    (
+                        0
+                        if candidate_signature.candidate.source_id
+                        in seed_source_ids
+                        else 1,
+                        -joint_similarity,
+                        candidate_signature.candidate.observation.input_fingerprint,
+                        candidate_signature,
+                    )
+                )
+            ranked_candidates.sort(key=lambda item: item[:3])
+            for (
+                source_context_rank,
+                _negative_similarity,
+                _fingerprint,
+                candidate_signature,
+            ) in ranked_candidates[:closure_candidates_per_same_pair]:
+                for endpoint_signature in (seed_left, seed_right):
+                    pair = tuple(
+                        sorted(
+                            (
+                                endpoint_signature.candidate.observation.id,
+                                candidate_signature.candidate.observation.id,
+                            )
+                        )
+                    )
+                    if pair in evaluated_pairs:
+                        continue
+                    evaluated_pairs.add(pair)
+                    if pair in reviewed_differences:
+                        closure_result: Mapping[str, Any] = {
+                            "outcome": PairOutcome.DIFFERENT_SPEAKER,
+                            "reason": "reviewed_different_speaker_constraint",
+                            "reviewed_constraint": True,
+                        }
+                    elif pair in reviewed_same:
+                        closure_result = {
+                            "outcome": PairOutcome.SAME_SPEAKER,
+                            "reason": "reviewed_same_speaker_constraint",
+                            "reviewed_constraint": True,
+                        }
+                    else:
+                        closure_result = compare(
+                            endpoint_signature.candidate.observation,
+                            candidate_signature.candidate.observation,
+                            endpoint_signature.candidate.audio_path,
+                            candidate_signature.candidate.audio_path,
+                        )
+                    endpoint_fingerprint = (
+                        endpoint_signature.candidate.observation.input_fingerprint
+                    )
+                    candidate_fingerprint = (
+                        candidate_signature.candidate.observation.input_fingerprint
+                    )
+                    result = {
+                        "observation_ids": list(pair),
+                        "observation_fingerprints": sorted(
+                            (endpoint_fingerprint, candidate_fingerprint)
+                        ),
+                        "centroid_similarity": _cosine(
+                            endpoint_signature.centroid,
+                            candidate_signature.centroid,
+                        ),
+                        "consistency_tier": _pair_consistency_tier(
+                            endpoint_signature,
+                            candidate_signature,
+                            consistency_policy,
+                        ),
+                        "retrieval_reason": "same_pair_closure",
+                        "closure_seed_observation_ids": list(seed_pair),
+                        "source_context_preferred": source_context_rank == 0,
+                        **dict(closure_result),
+                    }
+                    pair_results.append(result)
+                    results_by_pair[pair] = result
 
     components = _build_component_proposals(
         signatures,
@@ -462,9 +601,13 @@ def evaluate_shadow_profile_discovery(
             "minimum_unique_words": 4,
         },
         "retrieval": {
-            "method": "observation_centroid_cosine_nearest_neighbors",
+            "method": "nearest_neighbors_with_same_pair_closure",
             "nearest_neighbors": nearest_neighbors,
             "maximum_pairs": maximum_pairs,
+            "closure_candidates_per_same_pair": (
+                closure_candidates_per_same_pair
+            ),
+            "source_context_role": "retrieval_priority_only",
             "identity_evidence": False,
         },
         "consistency_gate": (
@@ -513,6 +656,19 @@ def evaluate_shadow_profile_discovery(
             ),
             "signature_failures": len(signature_failures),
             "nominated_pairs": len(pair_results),
+            "initial_pairs": sum(
+                result.get("retrieval_reason")
+                == "global_nearest_neighbor"
+                for result in pair_results
+            ),
+            "closure_pairs": sum(
+                result.get("retrieval_reason") == "same_pair_closure"
+                for result in pair_results
+            ),
+            "reviewed_constraint_pairs": sum(
+                result.get("reviewed_constraint") is True
+                for result in pair_results
+            ),
             "strong_strong_pairs": sum(
                 result.get("consistency_tier") == "strong_strong"
                 for result in pair_results
@@ -555,7 +711,16 @@ def evaluate_shadow_profile_discovery(
             ],
             "signature_failures": [dict(item) for item in signature_failures],
             "nominations": [
-                result["observation_fingerprints"] for result in pair_results
+                {
+                    "observation_fingerprints": result[
+                        "observation_fingerprints"
+                    ],
+                    "retrieval_reason": result.get("retrieval_reason"),
+                    "closure_seed_observation_ids": result.get(
+                        "closure_seed_observation_ids"
+                    ),
+                }
+                for result in pair_results
             ],
         }
     )
