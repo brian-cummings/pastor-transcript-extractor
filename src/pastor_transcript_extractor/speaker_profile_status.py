@@ -99,6 +99,7 @@ def build_profile_pipeline_status(
     videos_by_id = {video.id: video for video in database.list_videos()}
     claims = database.list_speaker_name_claims()
     explicit_names_by_observation: dict[int, set[str]] = defaultdict(set)
+    explicit_display_names_by_observation: dict[int, set[str]] = defaultdict(set)
     explicit_claim_ids_by_observation: dict[int, set[int]] = defaultdict(set)
     for claim in claims:
         normalized_name = claim.normalized_name.strip()
@@ -108,6 +109,9 @@ def build_profile_pipeline_status(
             and normalized_name
         ):
             explicit_names_by_observation[claim.observation_id].add(normalized_name)
+            explicit_display_names_by_observation[claim.observation_id].add(
+                claim.display_name.strip() or normalized_name
+            )
             explicit_claim_ids_by_observation[claim.observation_id].add(claim.id)
 
     review_actions = {
@@ -171,13 +175,17 @@ def build_profile_pipeline_status(
             )
 
     names_by_profile: dict[int, set[str]] = defaultdict(set)
+    normalized_names_by_profile: dict[int, set[str]] = defaultdict(set)
     for profile_id, member_ids in members_by_profile.items():
         for observation_id in member_ids:
             names_by_profile[profile_id].update(
+                explicit_display_names_by_observation.get(observation_id, ())
+            )
+            normalized_names_by_profile[profile_id].update(
                 explicit_names_by_observation.get(observation_id, ())
             )
     profile_ids_by_name: dict[str, set[int]] = defaultdict(set)
-    for profile_id, names in names_by_profile.items():
+    for profile_id, names in normalized_names_by_profile.items():
         if len(names) == 1:
             profile_ids_by_name[next(iter(names))].add(profile_id)
 
@@ -451,15 +459,18 @@ def build_profile_pipeline_status(
             if video_id in videos_by_id
         }
         names = tuple(sorted(names_by_profile.get(profile_id, ())))
+        normalized_names = tuple(
+            sorted(normalized_names_by_profile.get(profile_id, ()))
+        )
         configured = tuple(
             sorted(configured_identities_by_profile.get(profile_id, ()))
         )
         profile_readiness = association_readiness[profile_id]
         frontier_count = attributed_frontier_by_profile.get(profile_id, 0)
         configured_name_ambiguity = (
-            len(names) == 1
+            len(normalized_names) == 1
             and len(
-                configured_profile_ids_by_name.get(next(iter(names)), ())
+                configured_profile_ids_by_name.get(next(iter(normalized_names)), ())
             )
             > 1
         )
@@ -492,7 +503,7 @@ def build_profile_pipeline_status(
                     attached_claim_ids_by_profile[profile_id]
                 )
                 or (
-                    next(iter(names)) in configured_profile_ids_by_name
+                    next(iter(normalized_names)) in configured_profile_ids_by_name
                     and not configured
                 )
             )
