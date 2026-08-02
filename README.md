@@ -120,13 +120,14 @@ pte source-processing-report \
 ## Workflows
 
 - `pte run <url> --pastor <slug>` runs discovery, caption fetch, optional local
-  transcription, adaptive extraction, and pastor review export.
+  transcription, adaptive extraction, isolated-sermon audio assurance, configured
+  source archival, and pastor review export.
 - `pte run --all` performs the same workflow for every configured source and
   writes one review per pastor.
 - `pte run --failed-only` retries failed videos across all sources while
   preserving successful transcript and extraction artifacts.
-- `pte run <url> --pastor <slug> --skip-review` intentionally stops after
-  extraction.
+- `pte run <url> --pastor <slug> --skip-review` skips review export after
+  extraction, audio assurance, and configured source archival.
 - `pte review <pastor-slug>`
 - `pte review-ground-truth <youtube-video-id>`
 - `pte review-next-ground-truth --reviewer "Reviewer Name"`
@@ -398,7 +399,8 @@ pte run --all \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-To stop after extraction without creating or refreshing review exports:
+To complete extraction and media maintenance without creating or refreshing
+review exports:
 
 ```bash
 pte run 'https://www.youtube.com/watch?v=abc123' \

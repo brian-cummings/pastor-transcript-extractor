@@ -31,6 +31,7 @@ from pastor_transcript_extractor.church_database_import import (
     imported_source_ids,
 )
 from pastor_transcript_extractor.config import (
+    AppPaths,
     build_llm_config,
     build_paths,
     build_pastor_paths,
@@ -6924,6 +6925,11 @@ def run_workflow_service(
             f"Extracted {extraction.processed} video(s); "
             f"skipped {extraction.skipped}; failed {extraction.failed}."
         )
+        _ensure_and_archive_run_media(
+            database,
+            paths,
+            video_ids=failed_video_ids,
+        )
         if not skip_review:
             pastor_slugs = {
                 pastor_record.slug
@@ -6968,6 +6974,7 @@ def run_workflow_service(
             progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
         )
         console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
+        _ensure_and_archive_run_media(database, paths)
         if not skip_review:
             reviews = prepare_review_exports(
                 database,
@@ -7011,6 +7018,16 @@ def run_workflow_service(
         progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
     )
     console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
+    source_video_ids = (
+        {video.id for video in database.list_videos_by_source_id(source_id)}
+        if source_id is not None
+        else set()
+    )
+    _ensure_and_archive_run_media(
+        database,
+        paths,
+        video_ids=source_video_ids,
+    )
     if not skip_review:
         reviews = prepare_review_exports(
             database,
@@ -7023,6 +7040,90 @@ def run_workflow_service(
         _print_review_batch(reviews)
 
 
+def _ensure_and_archive_run_media(
+    database: Database,
+    paths: AppPaths,
+    *,
+    video_ids: set[int] | None = None,
+) -> None:
+    videos = [
+        video
+        for video in database.list_videos()
+        if video_ids is None or video.id in video_ids
+    ]
+    eligible = [
+        video
+        for video in videos
+        if video_has_isolated_sermon(database, video.id)[0]
+        and get_verified_normalized_media_artifact(database, video.id) is None
+    ]
+    tools = build_tool_config() if eligible else None
+    counts = {"verified": 0, "unavailable": 0, "failed": 0, "skipped": 0}
+    downloaded = 0
+    for index, video in enumerate(eligible, start=1):
+        assert tools is not None
+        result = ensure_audio_for_video(
+            database,
+            paths,
+            tools,
+            video_id=video.id,
+        )
+        counts[result.outcome] += 1
+        downloaded += int(result.downloaded)
+        console.print(
+            f"Run audio [{index}/{len(eligible)}] {video.youtube_video_id}: "
+            f"{result.outcome} ({result.reason_code})"
+        )
+    console.print(
+        "Run audio ensure complete: "
+        f"eligible={len(eligible)}, verified={counts['verified']} "
+        f"(downloaded={downloaded}), unavailable={counts['unavailable']}, "
+        f"failed={counts['failed']}, skipped={counts['skipped']}."
+    )
+
+    if database.get_active_media_archive_destination() is None:
+        console.print("Run media archive skipped: no archive destination is configured.")
+        return
+
+    def report_preflight(event: ArchivePreflightEvent) -> None:
+        console.print(
+            f"Run archive preflight {event.check}: {event.status} — {event.detail}",
+            markup=False,
+        )
+
+    def report_progress(event: ArchiveProgressEvent) -> None:
+        if event.stage == "complete":
+            detail = f" ({event.detail})" if event.detail else ""
+            console.print(
+                f"Run archive [{event.index}/{event.total}] artifact "
+                f"#{event.media_artifact_id}: {event.outcome}{detail}",
+                markup=False,
+            )
+            return
+        console.print(
+            f"Run archive [{event.index}/{event.total}] "
+            f"{event.source_path.name}: {event.stage}",
+            markup=False,
+        )
+
+    archive = archive_source_media(
+        database,
+        paths,
+        video_ids=video_ids,
+        wait_for_lock=True,
+        progress_callback=report_progress,
+        preflight_callback=report_preflight,
+    )
+    archive_counts = archive.counts
+    console.print(
+        f"Run media archive complete: eligible={archive.eligible}, "
+        f"archived={archive_counts['archived']}, "
+        f"already_archived={archive_counts['already_archived']}, "
+        f"unavailable={archive_counts['destination_unavailable']}, "
+        f"failed={archive_counts['failed']}."
+    )
+
+
 def _print_review_batch(batch: ReviewBatchResult) -> None:
     for pastor_result in batch.pastors:
         result = pastor_result.export
@@ -7033,7 +7134,13 @@ def _print_review_batch(batch: ReviewBatchResult) -> None:
         console.print(f"Prepared {batch.prepared} video(s) for review; failed {batch.failed}.")
 
 
-@app.command(help="Run intake through disposition-aware pastor review export.", rich_help_panel="Workflows")
+@app.command(
+    help=(
+        "Run intake, extraction, audio assurance, source archival, and "
+        "disposition-aware pastor review export."
+    ),
+    rich_help_panel="Workflows",
+)
 def run(
     url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
     pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
@@ -7051,11 +7158,16 @@ def run(
     jobs: int = typer.Option(_default_transcribe_jobs(), "--jobs", min=1, help="Concurrent transcription jobs."),
     classifier: str = typer.Option("auto", "--classifier", help="Content classifier: auto, rules, or llm."),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured Ollama model."),
-    skip_review: bool = typer.Option(False, "--skip-review", help="Stop after extraction without writing review exports."),
+    skip_review: bool = typer.Option(
+        False,
+        "--skip-review",
+        help="Skip writing review exports after extraction and media maintenance.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     console.print(
-        "Run adds the source, discovers videos, fetches captions, optionally transcribes, extracts, "
+        "Run adds the source, discovers videos, fetches captions, optionally transcribes, "
+        "extracts, ensures isolated-sermon audio, archives eligible sources when configured, "
         "and writes disposition-aware pastor review artifacts."
     )
     try:

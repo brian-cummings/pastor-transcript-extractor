@@ -24,6 +24,7 @@ from pastor_transcript_extractor.config import (
 )
 from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.cli import (
+    _ensure_and_archive_run_media,
     _recover_stale_transcribing_videos,
     app,
     discover_sources_service,
@@ -1712,7 +1713,12 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
-            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")):
+            ), patch(
+                "pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")
+            ), patch(
+                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                side_effect=fake_stage("media"),
+            ):
                 result = runner.invoke(
                     app,
                     [
@@ -1729,6 +1735,11 @@ class CliTests(unittest.TestCase):
             self.assertEqual(26, calls[0][2]["limit"])
             self.assertFalse(calls[0][2]["all_videos"])
             self.assertIsNotNone(calls[0][2]["source_id"])
+            self.assertEqual(
+                ["discover", "fetch", "transcribe", "extract", "media"],
+                [call[0] for call in calls],
+            )
+            self.assertEqual(set(), calls[-1][2]["video_ids"])
 
     def test_run_all_videos_overrides_default_limit(self) -> None:
         runner = CliRunner()
@@ -1751,7 +1762,12 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
-            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")):
+            ), patch(
+                "pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")
+            ), patch(
+                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                side_effect=fake_stage("media"),
+            ):
                 result = runner.invoke(
                     app,
                     [
@@ -1790,7 +1806,12 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
-            ), patch("pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")):
+            ), patch(
+                "pastor_transcript_extractor.cli.extract_batch", side_effect=fake_stage("extract")
+            ), patch(
+                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                side_effect=fake_stage("media"),
+            ):
                 result = runner.invoke(
                     app,
                     [
@@ -1802,8 +1823,12 @@ class CliTests(unittest.TestCase):
                 )
 
             self.assertEqual(0, result.exit_code, msg=result.output)
-            self.assertEqual(["discover", "fetch", "transcribe", "extract"], [call[0] for call in calls])
+            self.assertEqual(
+                ["discover", "fetch", "transcribe", "extract", "media"],
+                [call[0] for call in calls],
+            )
             self.assertIsNone(calls[0][2]["source_id"])
+            self.assertNotIn("video_ids", calls[-1][2])
 
     def test_run_failed_only_targets_failed_ids_and_preserves_existing_artifacts(self) -> None:
         runner = CliRunner()
@@ -1846,6 +1871,9 @@ class CliTests(unittest.TestCase):
                 calls.append(("extract", kwargs))
                 return ExtractionBatchResult(0, 1, 0)
 
+            def fake_media(*_args, **kwargs):
+                calls.append(("media", kwargs))
+
             with patch(
                 "pastor_transcript_extractor.cli.discover_sources_service",
                 side_effect=AssertionError("failed-only must not discover"),
@@ -1858,6 +1886,9 @@ class CliTests(unittest.TestCase):
             ), patch(
                 "pastor_transcript_extractor.cli.extract_batch",
                 side_effect=fake_extract,
+            ), patch(
+                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                side_effect=fake_media,
             ):
                 result = runner.invoke(
                     app,
@@ -1866,12 +1897,78 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, result.exit_code, msg=result.output)
             self.assertIn("Reprocessing 1 failed video(s) systemwide", result.output)
-            self.assertEqual(["fetch", "transcribe", "extract"], [name for name, _ in calls])
+            self.assertEqual(
+                ["fetch", "transcribe", "extract", "media"],
+                [name for name, _ in calls],
+            )
             for _, kwargs in calls:
                 self.assertEqual({failed_video.id}, kwargs["video_ids"])
             self.assertTrue(calls[1][1]["missing_only"])
             self.assertTrue(calls[1][1]["captions_missing_only"])
             self.assertTrue(calls[2][1]["missing_only"])
+
+    def test_run_media_ensures_missing_audio_then_archives_configured_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            paths = build_paths(base_dir)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="media123456",
+                title="Media sermon",
+                url="https://www.youtube.com/watch?v=media123456",
+            )
+            database.configure_media_archive_destination(
+                str(base_dir / "archive")
+            )
+            ensure_result = SimpleNamespace(
+                outcome="verified",
+                downloaded=True,
+                reason_code="downloaded_and_normalized",
+            )
+            archive_result = SimpleNamespace(
+                eligible=1,
+                counts={
+                    "archived": 1,
+                    "already_archived": 0,
+                    "destination_unavailable": 0,
+                    "failed": 0,
+                },
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.video_has_isolated_sermon",
+                return_value=(True, "isolated_sermon"),
+            ), patch(
+                "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
+                return_value=None,
+            ), patch(
+                "pastor_transcript_extractor.cli.build_tool_config",
+                return_value=SimpleNamespace(),
+            ), patch(
+                "pastor_transcript_extractor.cli.ensure_audio_for_video",
+                return_value=ensure_result,
+            ) as ensure_audio, patch(
+                "pastor_transcript_extractor.cli.archive_source_media",
+                return_value=archive_result,
+            ) as archive:
+                _ensure_and_archive_run_media(
+                    database,
+                    paths,
+                    video_ids={video.id},
+                )
+
+            self.assertEqual(video.id, ensure_audio.call_args.kwargs["video_id"])
+            self.assertEqual({video.id}, archive.call_args.kwargs["video_ids"])
+            self.assertTrue(archive.call_args.kwargs["wait_for_lock"])
 
     def test_run_failed_only_exits_cleanly_when_nothing_failed(self) -> None:
         runner = CliRunner()
