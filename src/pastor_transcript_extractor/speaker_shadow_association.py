@@ -20,6 +20,9 @@ from pastor_transcript_extractor.storage import Database
 
 
 SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v3"
+SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
+    "speaker_shadow_association_input_v2"
+)
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
 
@@ -474,6 +477,7 @@ def evaluate_shadow_association(
     report = {
         "schema_version": 1,
         "association_version": SHADOW_ASSOCIATION_VERSION,
+        "input_fingerprint_version": SHADOW_ASSOCIATION_FINGERPRINT_VERSION,
         "artifact_kind": "speaker_profile_shadow_association",
         "shadow_mode": True,
         "registry_mutation_allowed": False,
@@ -502,6 +506,9 @@ def evaluate_shadow_association(
     report["input_fingerprint"] = _sha256_json(
         {
             "association_version": SHADOW_ASSOCIATION_VERSION,
+            "input_fingerprint_version": (
+                SHADOW_ASSOCIATION_FINGERPRINT_VERSION
+            ),
             "candidate": report["candidate"],
             "model_fingerprint": model_fingerprint,
             "policy": report["policy"],
@@ -509,7 +516,7 @@ def evaluate_shadow_association(
             "span_selection": report["span_selection"],
             "profile_inputs": [
                 {
-                    "profile_id": result["profile_id"],
+                    "readiness": asdict(readiness),
                     "exemplars": [
                         {
                             "observation_fingerprint": comparison[
@@ -518,11 +525,18 @@ def evaluate_shadow_association(
                             "normalized_audio_sha256": comparison[
                                 "exemplar_normalized_audio_sha256"
                             ],
+                            "reviewed_different_speaker_constraint": (
+                                comparison.get("reviewed_constraint") is True
+                            ),
                         }
                         for comparison in result["comparisons"]
                     ],
                 }
-                for result in profile_results
+                for (readiness, _exemplars), result in zip(
+                    profiles,
+                    profile_results,
+                    strict=True,
+                )
             ],
         }
     )

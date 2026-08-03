@@ -484,6 +484,13 @@ Every artifact explicitly prohibits registry mutation and automatic
 assignment. The current default policy remains an experimental development
 candidate and is usable only for shadow measurement.
 
+The association input fingerprint has its own explicit contract version. It
+includes each selected profile's complete membership, attribution and readiness
+state plus reviewed-different constraints for candidate/exemplar pairs. A review
+that changes automation readiness or a constraint therefore writes a new
+immutable artifact; it cannot collide with an older result that used the same
+audio exemplars.
+
 Measure saved proposals against registry evidence reviewed later with:
 
 ```bash

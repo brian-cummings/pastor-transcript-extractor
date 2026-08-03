@@ -66,10 +66,13 @@ Every candidate produces one of:
 - `insufficient_evidence`
 - `analysis_failed`
 
-Artifacts pin the observation and exemplar fingerprints, exact pair evidence,
-model fingerprint, policy artifact hash and version, readiness state, outcome,
-and complete result hash. They are written below ignored `shadow-runs/` paths
-and are idempotent for the same inputs.
+Artifacts pin the observation and exemplar fingerprints, normalized-audio hashes,
+exact pair evidence, reviewed-different constraints, model fingerprint, policy
+artifact hash and version, profile membership, attribution and readiness state,
+outcome, and complete result hash. The separately versioned input-fingerprint
+contract ensures that a review or profile change creates a new immutable artifact
+instead of colliding with an earlier run. Artifacts are written below ignored
+`shadow-runs/` paths and are idempotent for the same inputs.
 
 All artifacts explicitly set:
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import tempfile
 import unittest
@@ -21,6 +22,7 @@ from pastor_transcript_extractor.speaker_registry import (
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
+    SHADOW_ASSOCIATION_FINGERPRINT_VERSION,
     ShadowExemplar,
     ShadowPolicySpec,
     assess_profile_association_readiness,
@@ -236,6 +238,10 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
             report["candidate"]["normalized_audio_sha256"],
             "candidate-audio",
         )
+        self.assertEqual(
+            report["input_fingerprint_version"],
+            SHADOW_ASSOCIATION_FINGERPRINT_VERSION,
+        )
         destination = write_shadow_association(self.root / "runs", report)
         self.assertEqual(
             write_shadow_association(self.root / "runs", report),
@@ -263,6 +269,74 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         )
         self.assertNotEqual(changed_audio_destination, destination)
         self.assertTrue(destination.exists())
+
+        changed_readiness = replace(
+            readiness[0],
+            automatic_profile_ready=False,
+            automatic_blockers=("reviewed_same_graph_contains_bridge",),
+        )
+        changed_readiness_report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=("alice example",),
+            profiles=(
+                (changed_readiness, profiles[0][1]),
+                profiles[1],
+            ),
+            compare=compare,
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+        )
+        self.assertNotEqual(
+            changed_readiness_report["input_fingerprint"],
+            report["input_fingerprint"],
+        )
+        changed_readiness_destination = write_shadow_association(
+            self.root / "runs",
+            changed_readiness_report,
+        )
+        self.assertNotEqual(changed_readiness_destination, destination)
+
+        changed_constraint_report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=("alice example",),
+            profiles=profiles,
+            compare=compare,
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+            reviewed_difference_pairs=((candidate.id, matching[0].id),),
+        )
+        self.assertNotEqual(
+            changed_constraint_report["input_fingerprint"],
+            report["input_fingerprint"],
+        )
+
+        changed_attribution_report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=("alice example",),
+            profiles=(
+                (
+                    replace(
+                        readiness[0],
+                        normalized_names=("changed name",),
+                    ),
+                    profiles[0][1],
+                ),
+                profiles[1],
+            ),
+            compare=compare,
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+        )
+        self.assertNotEqual(
+            changed_attribution_report["input_fingerprint"],
+            report["input_fingerprint"],
+        )
         pending = summarize_shadow_associations(self.database, (report,))
         self.assertEqual(
             pending["validation_counts"]["pending_proposal"],
