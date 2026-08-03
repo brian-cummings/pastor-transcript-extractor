@@ -4565,6 +4565,17 @@ def review_next_speaker_pair(
             reviews=reviews,
             fixtures=fixtures,
         )
+        automatic_profile_ready_ids = frozenset()
+        if selection_objective == SelectionGoal.AUTOMATION_READINESS:
+            evidence = load_reviewed_speaker_evidence(root)
+            automatic_profile_ready_ids = frozenset(
+                profile.profile_id
+                for profile in assess_profile_association_readiness(
+                    database,
+                    evidence,
+                )
+                if profile.automatic_profile_ready
+            )
         effective_discovery_report = (
             discovery_report.expanduser().resolve()
             if discovery_report is not None
@@ -4692,6 +4703,7 @@ def review_next_speaker_pair(
             selection_goal=selection_objective,
             discovery_resolution_pairs=discovery_resolution_pairs,
             profile_growth_acoustic_pairs=profile_growth_acoustic_pairs,
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
         )
         if (
             consistency_index.report_sha256

@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v16"
+SELECTOR_VERSION = "speaker_pair_selector_v17"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -320,6 +320,7 @@ def select_next_speaker_pair(
     selection_goal: SelectionGoal | str = SelectionGoal.EVALUATION,
     discovery_resolution_pairs: Sequence[DiscoveryResolutionPair] = (),
     profile_growth_acoustic_pairs: Sequence[AcousticPairRanking] = (),
+    automatic_profile_ready_ids: frozenset[int] = frozenset(),
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
     try:
@@ -386,6 +387,19 @@ def select_next_speaker_pair(
             )
     if not pairs:
         raise ValueError("no unreviewed or undrafted eligible speaker pairs remain")
+
+    if goal == SelectionGoal.AUTOMATION_READINESS:
+        pairs = [
+            pair
+            for pair in pairs
+            if not (
+                (
+                    pair[0].reviewed_profile_ids
+                    | pair[1].reviewed_profile_ids
+                )
+                & automatic_profile_ready_ids
+            )
+        ]
 
     observation_use = history.observation_use or {}
     source_use = history.source_use or {}
@@ -617,6 +631,10 @@ def select_next_speaker_pair(
         "reviewed_outcome_counts": outcome_counts,
         "reason_codes": reason_codes,
     }
+    if goal == SelectionGoal.AUTOMATION_READINESS:
+        manifest["automatic_profile_ready_ids_excluded"] = sorted(
+            automatic_profile_ready_ids
+        )
     if anchor_component is not None:
         manifest["anchor_component_fingerprints"] = sorted(anchor_component)
     if growth_components is not None:

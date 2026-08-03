@@ -87,6 +87,12 @@ All artifacts explicitly set:
 The current default policy is an experimental development candidate. It is
 accepted only for shadow measurement and cannot attach an observation.
 
+The `automation-readiness` pair-review objective excludes every observation
+already attached to an `automatic_profile_ready` profile. Once a profile has
+cleared its readiness blockers, that queue spends no further reviews growing or
+reinforcing it; the separate `profile-growth` objective remains available for
+intentional expansion.
+
 Replay saved proposals against any human-reviewed registry state accumulated
 later:
 

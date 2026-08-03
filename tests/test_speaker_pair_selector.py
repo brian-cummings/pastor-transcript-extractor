@@ -388,6 +388,37 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest["selection_objective"],
         )
 
+    def test_automation_readiness_excludes_ready_profiles(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("ready-a", profile_ids=frozenset((7,))),
+                candidate("ready-b", profile_ids=frozenset((7,))),
+                candidate("ready-c", profile_ids=frozenset((7,))),
+                candidate("blocked-a", profile_ids=frozenset((8,))),
+                candidate("blocked-b", profile_ids=frozenset((8,))),
+                candidate("blocked-c", profile_ids=frozenset((8,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            automatic_profile_ready_ids=frozenset((7,)),
+        )
+
+        selected_fingerprints = {
+            selected.observation_a.input_fingerprint,
+            selected.observation_b.input_fingerprint,
+        }
+        self.assertTrue(
+            selected_fingerprints <= {
+                "blocked-a",
+                "blocked-b",
+                "blocked-c",
+            }
+        )
+        self.assertEqual(
+            [7],
+            selected.manifest["automatic_profile_ready_ids_excluded"],
+        )
+
     def test_automation_readiness_prioritizes_discovery_overlap_resolution(
         self,
     ) -> None:
