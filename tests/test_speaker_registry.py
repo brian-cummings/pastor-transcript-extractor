@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from pastor_transcript_extractor.config import build_paths, build_video_artifact_paths, ensure_directories
 from pastor_transcript_extractor.identity_attribution import extract_grounded_attributions
@@ -83,7 +84,13 @@ class SpeakerRegistryTests(unittest.TestCase):
             metadata_content_sha256="abc123",
         )
 
-    def _persist(self, title: str = "Pastor Andrew Korp - Grace", *, payload=None):
+    def _persist(
+        self,
+        title: str = "Pastor Andrew Korp - Grace",
+        *,
+        payload=None,
+        normalized_audio_artifact=None,
+    ):
         proposed_payload = payload or self.proposed_payload
         attribution = extract_grounded_attributions(
             metadata_payload={
@@ -104,6 +111,7 @@ class SpeakerRegistryTests(unittest.TestCase):
             extraction_result=self.extraction,
             proposed_payload=proposed_payload,
             attribution=attribution,
+            normalized_audio_artifact=normalized_audio_artifact,
         )
 
     def test_neutral_claim_projection_reproduces_target_outcomes(self) -> None:
@@ -175,6 +183,44 @@ class SpeakerRegistryTests(unittest.TestCase):
             self.assertEqual(
                 0, connection.execute("SELECT COUNT(*) FROM profile_name_claim_events").fetchone()[0]
             )
+
+    def test_audio_bound_persistence_regenerates_observation_fingerprint(self) -> None:
+        first_audio = SimpleNamespace(
+            id=11,
+            provenance_kind="derived",
+            content_sha256="a" * 64,
+            input_fingerprint="media-input-a",
+            manifest_path="normalized-a.json",
+        )
+        second_audio = SimpleNamespace(
+            id=12,
+            provenance_kind="derived",
+            content_sha256="b" * 64,
+            input_fingerprint="media-input-b",
+            manifest_path="normalized-b.json",
+        )
+
+        legacy = self._persist()
+        first = self._persist(normalized_audio_artifact=first_audio)
+        replay = self._persist(normalized_audio_artifact=first_audio)
+        second = self._persist(normalized_audio_artifact=second_audio)
+
+        self.assertEqual("speaker_evidence_v1", legacy.observation.extractor_version)
+        self.assertEqual("speaker_evidence_v2", first.observation.extractor_version)
+        self.assertEqual(first.observation.id, replay.observation.id)
+        self.assertNotEqual(
+            legacy.observation.input_fingerprint,
+            first.observation.input_fingerprint,
+        )
+        self.assertNotEqual(
+            first.observation.input_fingerprint,
+            second.observation.input_fingerprint,
+        )
+        payload = json.loads(first.artifact_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            "a" * 64,
+            payload["normalized_audio_provenance"]["content_sha256"],
+        )
 
     def test_targetless_persistence_creates_observation_without_configured_profile(self) -> None:
         attribution = extract_grounded_attributions(

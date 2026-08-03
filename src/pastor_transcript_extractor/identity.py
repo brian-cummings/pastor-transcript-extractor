@@ -19,6 +19,7 @@ from pastor_transcript_extractor.models import (
     IdentityAssessment,
     IdentityState,
     MetadataArtifact,
+    MediaArtifact,
     Pastor,
     Video,
     utc_now,
@@ -203,6 +204,7 @@ def record_neutral_speaker_evidence(
     video: Video,
     extraction_result: ExtractionResult,
     pastor: Pastor | None = None,
+    normalized_audio_artifact: MediaArtifact | None = None,
 ) -> SpeakerEvidenceRecordResult:
     """Persist a sermon-speaker observation without requiring a target identity."""
     metadata_artifact = database.get_latest_metadata_artifact_for_video(video.id)
@@ -240,6 +242,7 @@ def record_neutral_speaker_evidence(
         extraction_result=extraction_result,
         proposed_payload=proposed_payload,
         attribution=attribution,
+        normalized_audio_artifact=normalized_audio_artifact,
     )
     if (
         pastor is not None

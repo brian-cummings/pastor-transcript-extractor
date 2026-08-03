@@ -13,6 +13,7 @@ from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.identity_attribution import AttributionResult
 from pastor_transcript_extractor.models import (
     ExtractionResult,
+    MediaArtifact,
     Pastor,
     SpeakerNameClaim,
     SpeakerObservation,
@@ -24,6 +25,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 SPEAKER_EVIDENCE_VERSION = "speaker_evidence_v1"
+AUDIO_BOUND_SPEAKER_EVIDENCE_VERSION = "speaker_evidence_v2"
 SPEAKER_REGISTRY_POLICY_VERSION = "speaker_registry_shadow_v1"
 OBSERVATION_REVIEW_ACTIONS = frozenset(
     {
@@ -176,7 +178,24 @@ def persist_neutral_speaker_evidence(
     extraction_result: ExtractionResult,
     proposed_payload: dict[str, Any],
     attribution: AttributionResult,
+    normalized_audio_artifact: MediaArtifact | None = None,
 ) -> NeutralSpeakerEvidence:
+    extractor_version = (
+        AUDIO_BOUND_SPEAKER_EVIDENCE_VERSION
+        if normalized_audio_artifact is not None
+        else SPEAKER_EVIDENCE_VERSION
+    )
+    normalized_audio_provenance = (
+        {
+            "media_artifact_id": normalized_audio_artifact.id,
+            "provenance_kind": normalized_audio_artifact.provenance_kind,
+            "content_sha256": normalized_audio_artifact.content_sha256,
+            "input_fingerprint": normalized_audio_artifact.input_fingerprint,
+            "manifest_path": normalized_audio_artifact.manifest_path,
+        }
+        if normalized_audio_artifact is not None
+        else None
+    )
     configured_profile = (
         ensure_configured_pastor_profile(database, pastor)
         if pastor is not None
@@ -194,7 +213,7 @@ def persist_neutral_speaker_evidence(
     )
     content = {
         "schema_version": 1,
-        "extractor_version": SPEAKER_EVIDENCE_VERSION,
+        "extractor_version": extractor_version,
         "registry_policy_version": SPEAKER_REGISTRY_POLICY_VERSION,
         "video_id": video.id,
         "youtube_video_id": video.youtube_video_id,
@@ -234,9 +253,14 @@ def persist_neutral_speaker_evidence(
             "acoustic_features_present": False,
         },
     }
+    if normalized_audio_provenance is not None:
+        content["normalized_audio_provenance"] = normalized_audio_provenance
     content_sha256 = _sha256(content)
     video_paths = resolve_video_artifact_paths(database, app_paths, video)
-    artifact_path = video_paths.identity / f"speaker-evidence-v1-{content_sha256[:12]}.json"
+    artifact_path = (
+        video_paths.identity
+        / f"{extractor_version.replace('_', '-')}-{content_sha256[:12]}.json"
+    )
     if not artifact_path.exists():
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(
@@ -246,18 +270,21 @@ def persist_neutral_speaker_evidence(
 
     observation: SpeakerObservation | None = None
     if window is not None:
-        observation_fingerprint = _sha256(
-            {
-                "extractor_version": SPEAKER_EVIDENCE_VERSION,
-                "video_id": video.id,
-                "extraction_result_id": extraction_result.id,
-                "role": "principal_speaker_candidate",
-                "multiplicity_state": "unknown",
-                "start_seconds": window[0],
-                "end_seconds": window[1],
-                "artifact_content_sha256": content_sha256,
-            }
-        )
+        observation_fingerprint_payload = {
+            "extractor_version": extractor_version,
+            "video_id": video.id,
+            "extraction_result_id": extraction_result.id,
+            "role": "principal_speaker_candidate",
+            "multiplicity_state": "unknown",
+            "start_seconds": window[0],
+            "end_seconds": window[1],
+            "artifact_content_sha256": content_sha256,
+        }
+        if normalized_audio_artifact is not None:
+            observation_fingerprint_payload["normalized_audio_sha256"] = (
+                normalized_audio_artifact.content_sha256
+            )
+        observation_fingerprint = _sha256(observation_fingerprint_payload)
         observation = database.add_speaker_observation(
             video_id=video.id,
             extraction_result_id=extraction_result.id,
@@ -267,7 +294,7 @@ def persist_neutral_speaker_evidence(
             end_seconds=window[1],
             artifact_path=str(artifact_path),
             content_sha256=content_sha256,
-            extractor_version=SPEAKER_EVIDENCE_VERSION,
+            extractor_version=extractor_version,
             input_fingerprint=observation_fingerprint,
         )
 
@@ -276,7 +303,7 @@ def persist_neutral_speaker_evidence(
         observation_id = observation.id if observation is not None and claim["explicit_speaker_attribution"] else None
         claim_fingerprint = _sha256(
             {
-                "extractor_version": SPEAKER_EVIDENCE_VERSION,
+                "extractor_version": extractor_version,
                 "video_id": video.id,
                 "observation_fingerprint": observation.input_fingerprint if observation_id is not None else None,
                 "claim": claim,
@@ -296,7 +323,7 @@ def persist_neutral_speaker_evidence(
                 provenance_json=_canonical_json(claim["provenance"]),
                 artifact_path=str(artifact_path),
                 claim_fingerprint=claim_fingerprint,
-                extractor_version=SPEAKER_EVIDENCE_VERSION,
+                extractor_version=extractor_version,
             )
         )
     return NeutralSpeakerEvidence(

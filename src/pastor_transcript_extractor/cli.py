@@ -94,7 +94,11 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     load_reviewed_speaker_evidence,
     sync_reviewed_speaker_evidence,
 )
-from pastor_transcript_extractor.identity import backfill_shadow_identity_assessments, persist_metadata_snapshot
+from pastor_transcript_extractor.identity import (
+    backfill_shadow_identity_assessments,
+    persist_metadata_snapshot,
+    record_neutral_speaker_evidence,
+)
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
     load_discovery_acoustic_ranking_pairs,
@@ -4953,6 +4957,14 @@ def media_repair_normalized_provenance(
         "normalized-provenance-repair",
         help="Reviewer or system actor recorded on append-only cleanup events.",
     ),
+    regenerate_fingerprints: bool = typer.Option(
+        False,
+        "--regenerate-fingerprints",
+        help=(
+            "Append audio-bound speaker observations using the repaired "
+            "normalized-audio SHA-256."
+        ),
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     if (youtube_video_id is None) == (not all_affected):
@@ -5004,6 +5016,52 @@ def media_repair_normalized_provenance(
             build_tool_config(),
             video_ids=video_ids,
         )
+        regenerated: list[tuple[str, str | None, str]] = []
+        if regenerate_fingerprints:
+            regeneration_video_ids = {
+                record.video_id for record in cleanup_records
+            } | {result.video_id for result in repaired}
+            for regeneration_video_id in sorted(regeneration_video_ids):
+                video = database.get_video_by_id(regeneration_video_id)
+                extraction = database.get_latest_extraction_result_for_video(
+                    regeneration_video_id
+                )
+                normalized_audio = get_verified_normalized_media_artifact(
+                    database, regeneration_video_id
+                )
+                if video is None or extraction is None or normalized_audio is None:
+                    raise ValueError(
+                        f"video {regeneration_video_id}: cannot regenerate an "
+                        "audio-bound speaker fingerprint"
+                    )
+                previous = database.get_latest_speaker_observation_for_video(
+                    regeneration_video_id
+                )
+                pastor = (
+                    database.get_pastor_by_id(video.pastor_id)
+                    if video.pastor_id is not None
+                    else None
+                )
+                speaker_record = record_neutral_speaker_evidence(
+                    database,
+                    build_paths(base_dir),
+                    video=video,
+                    extraction_result=extraction,
+                    pastor=pastor,
+                    normalized_audio_artifact=normalized_audio,
+                )
+                observation = speaker_record.neutral_evidence.observation
+                if observation is None:
+                    raise ValueError(
+                        f"{video.youtube_video_id}: extraction has no valid sermon window"
+                    )
+                regenerated.append(
+                    (
+                        video.youtube_video_id,
+                        previous.input_fingerprint if previous is not None else None,
+                        observation.input_fingerprint,
+                    )
+                )
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print(
@@ -5020,9 +5078,15 @@ def media_repair_normalized_provenance(
             f"source_artifact_id={result.source_artifact.id} "
             f"manifest={result.artifact.manifest_path}"
         )
+    for youtube_id, previous_fingerprint, fingerprint in regenerated:
+        console.print(
+            f"{youtube_id}: regenerated speaker fingerprint={fingerprint} "
+            f"previous={previous_fingerprint or 'none'}"
+        )
     console.print(
         f"Normalized provenance repair complete: repaired={len(repaired)}; "
-        "old artifacts were preserved."
+        f"fingerprints_regenerated={len(regenerated)}; "
+        "old artifacts and observations were preserved."
     )
 
 
