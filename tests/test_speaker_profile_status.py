@@ -619,11 +619,9 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             {need.code for need in status.profiles[0].needs},
-            {
-                "generate_discovery_confirmation_proposal",
-                "apply_discovery_confirmation",
-            },
+            {"complete_discovery_confirmation"},
         )
+        self.assertIn("consolidated identity workflow", status.profiles[0].next_need)
 
 
 if __name__ == "__main__":

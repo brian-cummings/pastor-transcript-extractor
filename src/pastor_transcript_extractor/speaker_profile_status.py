@@ -20,8 +20,7 @@ DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
 IDENTITY_RUN_COVERED_NEED_CODES = frozenset(
     {
         "reviewed_evidence_sync",
-        "generate_discovery_confirmation_proposal",
-        "apply_discovery_confirmation",
+        "complete_discovery_confirmation",
         "plan_discovery_promotion",
         "association_validation",
     }
@@ -558,23 +557,15 @@ def build_profile_pipeline_status(
                     )
                 )
             else:
-                needs.extend(
-                    (
-                        StatusNeed(
-                            "generate_discovery_confirmation_proposal",
-                            "generate a fresh independent shadow-association proposal",
-                            "discovery-confirmation",
-                            "pte identity shadow-associate-speakers --all-eligible "
-                            "--base-dir BASE_DIR",
-                        ),
-                        StatusNeed(
-                            "apply_discovery_confirmation",
-                            "plan an eligible discovery-profile confirmation; rerun "
-                            "with --apply after reviewing the plan",
-                            "discovery-confirmation",
-                            "pte identity confirm-discovered-profiles "
-                            "--base-dir BASE_DIR",
-                        ),
+                needs.append(
+                    StatusNeed(
+                        "complete_discovery_confirmation",
+                        "run the consolidated identity workflow to generate and "
+                        "apply an eligible independent confirmation; omit "
+                        "--apply-automatic for a non-applying preview",
+                        "discovery-confirmation",
+                        "pte identity run --all --apply-automatic "
+                        "--base-dir BASE_DIR",
                     )
                 )
         elif (
