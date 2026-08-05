@@ -26,6 +26,9 @@ IDENTITY_RUN_COVERED_NEED_CODES = frozenset(
     }
 )
 PROFILE_ATTRIBUTION_NEED_CODE = "obtain_explicit_attribution"
+IDENTITY_RUN_AUTOMATIC_COMMAND = (
+    "pte identity run --all --apply-automatic --base-dir BASE_DIR"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,9 +120,7 @@ def applicable_status_commands(needs: tuple[StatusNeed, ...]) -> tuple[str, ...]
     )
     commands = []
     if run_automatic:
-        commands.append(
-            "pte identity run --all --apply-automatic --base-dir BASE_DIR"
-        )
+        commands.append(IDENTITY_RUN_AUTOMATIC_COMMAND)
     if any(
         need.actionable and need.code == PROFILE_ATTRIBUTION_NEED_CODE
         for need in needs
@@ -139,6 +140,14 @@ def applicable_status_commands(needs: tuple[StatusNeed, ...]) -> tuple[str, ...]
         )
     )
     return tuple(dict.fromkeys(commands))
+
+
+def status_need_execution_label(need: StatusNeed) -> str:
+    if need.code in IDENTITY_RUN_COVERED_NEED_CODES:
+        return "identity run"
+    if need.actionable:
+        return "manual"
+    return "informational"
 
 
 def build_profile_pipeline_status(
@@ -564,8 +573,7 @@ def build_profile_pipeline_status(
                         "apply an eligible independent confirmation; omit "
                         "--apply-automatic for a non-applying preview",
                         "discovery-confirmation",
-                        "pte identity run --all --apply-automatic "
-                        "--base-dir BASE_DIR",
+                        IDENTITY_RUN_AUTOMATIC_COMMAND,
                     )
                 )
         elif (
@@ -608,9 +616,10 @@ def build_profile_pipeline_status(
             needs.append(
                 StatusNeed(
                     "reviewed_evidence_sync",
-                    "run reviewed-evidence sync",
+                    "synchronize pending reviewed evidence in the consolidated "
+                    "identity workflow",
                     "materialization",
-                    "pte identity sync-reviewed-speaker-evidence --base-dir BASE_DIR",
+                    IDENTITY_RUN_AUTOMATIC_COMMAND,
                 )
             )
         elif configured:
@@ -681,10 +690,10 @@ def build_profile_pipeline_status(
                 needs.append(
                     StatusNeed(
                         "association_validation",
-                        "run shadow association and accumulate validation evidence",
+                        "accumulate shadow-association validation evidence in the "
+                        "consolidated identity workflow",
                         "association-validation",
-                        "pte identity shadow-associate-speakers --all-eligible "
-                        "--base-dir BASE_DIR",
+                        IDENTITY_RUN_AUTOMATIC_COMMAND,
                     )
                 )
         if not needs:
@@ -740,27 +749,25 @@ def build_profile_pipeline_status(
         actions.append(
             StatusNeed(
                 "reviewed_evidence_sync",
-                "Run reviewed-evidence sync to materialize pending evidence, then "
-                "recompute profile-specific status; discovery frontiers already "
-                "consume review artifacts directly.",
+                "Run the consolidated identity workflow to materialize pending "
+                "reviewed evidence and recompute profile-specific status; discovery "
+                "frontiers already consume review artifacts directly.",
                 "materialization",
-                "pte identity sync-reviewed-speaker-evidence --base-dir BASE_DIR",
+                IDENTITY_RUN_AUTOMATIC_COMMAND,
             )
         )
     if any(
         profile.state == "shadow-candidate"
         for profile in discovered_profiles
     ):
-        promotion_command = "pte identity promote-discovered-profiles"
-        if discovery_report_path is not None:
-            promotion_command += f" --discovery-report {discovery_report_path}"
-        promotion_command += " --base-dir BASE_DIR"
         actions.append(
             StatusNeed(
                 "plan_discovery_promotion",
-                "Plan reversible promotion of shadow-discovered profile candidates.",
+                "Use the consolidated identity workflow to plan and apply eligible "
+                "shadow-discovered profile promotions; omit --apply-automatic for "
+                "a non-applying preview.",
                 "discovery",
-                promotion_command,
+                IDENTITY_RUN_AUTOMATIC_COMMAND,
             )
         )
     if immediate_discovery_frontier_component_count:

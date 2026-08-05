@@ -16,6 +16,7 @@ from pastor_transcript_extractor.speaker_profile_status import (
     StatusNeed,
     applicable_status_commands,
     build_profile_pipeline_status,
+    status_need_execution_label,
 )
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
@@ -99,6 +100,33 @@ class SpeakerProfileStatusTests(unittest.TestCase):
                 "pte identity review-next-speaker-pair --selection-objective "
                 "automation-readiness --reviewer REVIEWER_ID "
                 "--base-dir BASE_DIR",
+            ),
+        )
+
+    def test_status_need_execution_labels_distinguish_automatic_and_human_work(
+        self,
+    ) -> None:
+        self.assertEqual(
+            "identity run",
+            status_need_execution_label(
+                StatusNeed("association_validation", "associate", "association")
+            ),
+        )
+        self.assertEqual(
+            "manual",
+            status_need_execution_label(
+                StatusNeed("grow_profile_evidence", "review", "profile-growth")
+            ),
+        )
+        self.assertEqual(
+            "informational",
+            status_need_execution_label(
+                StatusNeed(
+                    "automatic_policy_approval",
+                    "policy approval remains separate",
+                    "policy",
+                    actionable=False,
+                )
             ),
         )
 
@@ -455,7 +483,7 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(status.pending_qualification_count, 4)
         self.assertEqual(status.pending_same_component_count, 1)
         self.assertEqual(status.pending_difference_count, 1)
-        self.assertIn("Run reviewed-evidence sync", status.next_actions[0])
+        self.assertIn("consolidated identity workflow", status.next_actions[0])
 
     def test_report_includes_unpromoted_shadow_discovery_candidate(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c")]
@@ -503,7 +531,7 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(status.actionable_discovery_frontier_component_count, 1)
         self.assertEqual(status.discovered_profiles[0].state, "shadow-candidate")
         self.assertEqual(status.discovered_profiles[0].member_count, 3)
-        self.assertIn("reversible promotion", status.next_actions[0])
+        self.assertIn("consolidated identity workflow", status.next_actions[0])
         self.assertIn("near-same ambiguous", status.next_actions[1])
 
     def test_report_explains_staged_discovery_frontier_next_action(self) -> None:

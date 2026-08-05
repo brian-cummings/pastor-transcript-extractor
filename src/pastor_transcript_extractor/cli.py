@@ -208,6 +208,7 @@ from pastor_transcript_extractor.speaker_review_invalidation import (
 from pastor_transcript_extractor.speaker_profile_status import (
     applicable_status_commands,
     build_profile_pipeline_status,
+    status_need_execution_label,
 )
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
@@ -2238,9 +2239,11 @@ def profile_status_command(
 
     console.print("[bold]Profile next needs[/bold]")
     for profile in status.profiles:
-        for index, need in enumerate(profile.needs):
-            prefix = f"Profile {profile.profile_id}: " if index == 0 else "  also: "
-            console.print(f"- {prefix}{need.message}")
+        for need in profile.needs:
+            console.print(
+                f"- Profile {profile.profile_id} "
+                f"[{status_need_execution_label(need)}]: {need.message}"
+            )
     console.print("[bold]What to do next[/bold]")
     for action in status.actions:
         console.print(f"- {action.message}")
