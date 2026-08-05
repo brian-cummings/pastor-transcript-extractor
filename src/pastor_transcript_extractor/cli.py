@@ -56,7 +56,15 @@ from pastor_transcript_extractor.evaluation_partitioning import (
     extend_source_family_registry,
     load_source_family_registry,
 )
-from pastor_transcript_extractor.fixture_validation import validate_fixture_directory, validate_fixture_payload
+from pastor_transcript_extractor.fixture_correction import (
+    load_fixture_window_correction,
+    persist_fixture_window_override,
+)
+from pastor_transcript_extractor.fixture_validation import (
+    FixtureValidationError,
+    validate_fixture_directory,
+    validate_fixture_payload,
+)
 from pastor_transcript_extractor.ground_truth_review import (
     NEGATIVE_FAILURE_MODES,
     POSITIVE_FAILURE_MODES,
@@ -7267,6 +7275,200 @@ def _has_reusable_extraction_segments(extraction: object) -> bool:
         and not isinstance(segment.get("end_seconds"), bool)
         and float(segment["end_seconds"]) > float(segment["start_seconds"])
         for segment in segments
+    )
+
+
+@app.command(
+    "apply-fixture-correction",
+    help=(
+        "Apply one approved continuous sermon fixture to its production window "
+        "and speaker observation."
+    ),
+)
+def apply_fixture_correction(
+    youtube_video_id: str = typer.Argument(
+        ...,
+        help="YouTube video ID whose approved fixture supplies the correction.",
+    ),
+    fixture_dir: Path = typer.Option(
+        Path("evaluation/fixtures"),
+        "--fixture-dir",
+        help="Directory containing <youtube-video-id>.json fixtures.",
+    ),
+    llm_model: str | None = typer.Option(
+        None,
+        "--llm-model",
+        help="Override the configured local Ollama classification model.",
+    ),
+    recording_verifier_model: str = typer.Option(
+        "gemma3:12b",
+        "--recording-verifier-model",
+        help="Ollama model used only for ambiguous recording-level decisions.",
+    ),
+    inference_cache_root: Path | None = typer.Option(
+        None,
+        "--inference-cache-root",
+        help="Use a separate per-video inference cache root.",
+    ),
+    recording_verifier_cache_root: Path | None = typer.Option(
+        None,
+        "--recording-verifier-cache-root",
+        help="Use a shared recording-verifier cache root.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    try:
+        correction = load_fixture_window_correction(
+            fixture_dir,
+            youtube_video_id,
+        )
+    except FixtureValidationError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    video = database.get_video_by_youtube_id(youtube_video_id)
+    if video is None:
+        raise typer.BadParameter(
+            f"Unknown YouTube video ID: {youtube_video_id}"
+        )
+    extraction = database.get_latest_extraction_result_for_video(video.id)
+    if extraction is None or not _has_reusable_extraction_segments(extraction):
+        raise typer.BadParameter(
+            f"Video {youtube_video_id} has no reusable extraction segments"
+        )
+
+    video_paths = resolve_video_artifact_paths(database, paths, video)
+    override_path = video_paths.review / "window_override.json"
+    previous_observation = database.get_latest_speaker_observation_for_video(
+        video.id
+    )
+    persist_fixture_window_override(correction, override_path)
+    console.print(
+        f"Applied fixture {correction.fixture_path} as window override "
+        f"{correction.start_seconds:.3f}-{correction.end_seconds:.3f}s."
+    )
+
+    llm_config = build_llm_config()
+    if llm_model is not None:
+        llm_config = replace(llm_config, model=llm_model)
+    client = OllamaClient(llm_config)
+    verifier_config = replace(llm_config, model=recording_verifier_model)
+    verifier_client = OllamaClient(verifier_config)
+    resolved_inference_cache_root = (
+        inference_cache_root.expanduser().resolve()
+        if inference_cache_root is not None
+        else None
+    )
+    resolved_verifier_cache_root = (
+        recording_verifier_cache_root.expanduser().resolve()
+        if recording_verifier_cache_root is not None
+        else None
+    )
+    try:
+        result = reclassify_video(
+            database,
+            paths,
+            video.id,
+            llm_client=client,
+            prompt_version=llm_config.prompt_version,
+            force=True,
+            progress=lambda stage, current, total: console.print(
+                f"  video #{video.id} {stage} block {current}/{total}"
+            ),
+            model_digest=client.model_digest(),
+            context_size=llm_config.context_size,
+            inference_cache_dir=(
+                resolved_inference_cache_root / video.youtube_video_id
+                if resolved_inference_cache_root is not None
+                else None
+            ),
+            recording_verifier_client=verifier_client,
+            recording_verifier_model_digest=verifier_client.model_digest(),
+            recording_verifier_cache_dir=resolved_verifier_cache_root,
+        )
+        proposed = json.loads(
+            result.proposed_json_path.read_text(encoding="utf-8")
+        )
+        window = proposed.get("sermon_window")
+        if not isinstance(window, dict):
+            raise ValueError("reclassification did not persist a sermon window")
+        persisted_start = window.get("start_seconds")
+        persisted_end = window.get("end_seconds")
+        if (
+            window.get("source") != "override"
+            or not isinstance(persisted_start, (int, float))
+            or isinstance(persisted_start, bool)
+            or not isinstance(persisted_end, (int, float))
+            or isinstance(persisted_end, bool)
+            or abs(float(persisted_start) - correction.start_seconds) > 1e-6
+            or abs(float(persisted_end) - correction.end_seconds) > 1e-6
+        ):
+            raise ValueError(
+                "reclassification did not preserve the fixture-derived override"
+            )
+
+        current_extraction = database.get_latest_extraction_result_for_video(
+            video.id
+        )
+        if current_extraction is None:
+            raise ValueError("latest extraction disappeared after reclassification")
+        pastor = (
+            database.get_pastor_by_id(video.pastor_id)
+            if video.pastor_id is not None
+            else None
+        )
+        speaker_record = record_neutral_speaker_evidence(
+            database,
+            paths,
+            video=video,
+            pastor=pastor,
+            extraction_result=current_extraction,
+        )
+        observation = speaker_record.neutral_evidence.observation
+        if observation is None:
+            raise ValueError(
+                "corrected extraction did not produce a speaker observation"
+            )
+        if (
+            observation.extraction_result_id != current_extraction.id
+            or abs(observation.start_seconds - correction.start_seconds) > 1e-6
+            or abs(observation.end_seconds - correction.end_seconds) > 1e-6
+        ):
+            raise ValueError(
+                "speaker observation does not match the corrected extraction window"
+            )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(
+            f"Fixture override was saved, but correction propagation failed: {error}"
+        ) from error
+
+    previous_fingerprint = (
+        previous_observation.input_fingerprint
+        if previous_observation is not None
+        else None
+    )
+    fingerprint_state = (
+        "reused"
+        if previous_fingerprint == observation.input_fingerprint
+        else "regenerated"
+    )
+    eligibility = assess_automatic_speaker_observation(database, video.id)
+    disposition = proposed.get("final_disposition")
+    disposition_status = (
+        disposition.get("status")
+        if isinstance(disposition, dict)
+        else "unknown"
+    )
+    console.print(
+        f"Corrected video #{video.id}: disposition={disposition_status}; "
+        f"speaker_fingerprint_{fingerprint_state}="
+        f"{observation.input_fingerprint}; "
+        f"previous={previous_fingerprint or 'none'}; "
+        f"automatic_pair_eligibility={eligibility.reason_code}."
     )
 
 

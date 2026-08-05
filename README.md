@@ -234,6 +234,30 @@ Unreviewed proposals are stored under `evaluation/drafts/`. Only explicitly
 approved fixtures are written under `evaluation/fixtures/`; evaluator code must
 never treat drafts as ground truth.
 
+An approved fixture does not change production artifacts by itself. For a
+reviewed positive fixture containing one continuous sermon span, explicitly
+promote its timestamps through the production and speaker-evidence pipeline:
+
+```bash
+pte review-ground-truth YOUTUBE_VIDEO_ID \
+  --reviewer "Brian Cummings" \
+  --open-video \
+  --base-dir /path/to/app-data
+
+caffeinate pte apply-fixture-correction YOUTUBE_VIDEO_ID \
+  --fixture-dir evaluation/fixtures \
+  --base-dir /path/to/app-data
+```
+
+`apply-fixture-correction` validates the exact fixture, writes an auditable
+`review/window_override.json`, force-reclassifies only that existing extraction
+using cached inference where possible, and persists a speaker observation whose
+window and fingerprint match the corrected extraction. It reports the previous
+and current fingerprints plus automatic pair-selection eligibility. Historical
+observations remain immutable and become stale automatically. The command fails
+closed for negative fixtures, multiple retained spans, or allowed interruptions,
+because those cases cannot be represented faithfully by one observation window.
+
 `review-next-ground-truth` deterministically rotates through boundary-risk,
 no-candidate, and standard-candidate proposal strata. It excludes videos that
 already have a draft or fixture, keeps whole source families in their frozen

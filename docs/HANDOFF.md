@@ -895,6 +895,30 @@ pte reclassify \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
+To turn a manually approved continuous positive fixture into a production
+timestamp correction and a current speaker fingerprint, use the explicit
+fixture-correction workflow:
+
+```bash
+pte review-ground-truth YOUTUBE_VIDEO_ID \
+  --reviewer "Brian Cummings" \
+  --open-video \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+caffeinate pte apply-fixture-correction YOUTUBE_VIDEO_ID \
+  --fixture-dir evaluation/fixtures \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The apply command validates the one named fixture, writes its single continuous
+span to the video's namespaced `review/window_override.json`, force-reclassifies
+only that video, explicitly persists neutral speaker evidence, and verifies that
+the resulting observation belongs to the latest extraction and exactly matches
+the corrected window. It prints whether the speaker fingerprint was regenerated
+or reused and reports automatic pair-selection eligibility. Old observations
+and fingerprints remain append-only history. Negative, multi-span, and
+interrupted fixtures are rejected rather than flattened into an unsafe window.
+
 Reclassify every extracted video belonging to one source:
 
 ```bash
