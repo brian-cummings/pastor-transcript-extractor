@@ -76,7 +76,13 @@ class SpeakerProfileStatusTests(unittest.TestCase):
             input_fingerprint=key,
         )
 
-    def _claim(self, observation, name: str):
+    def _claim(
+        self,
+        observation,
+        name: str,
+        *,
+        correlation_group_id: str | None = None,
+    ):
         return self.database.add_speaker_name_claim(
             video_id=observation.video_id,
             observation_id=observation.id,
@@ -85,7 +91,9 @@ class SpeakerProfileStatusTests(unittest.TestCase):
             claim_kind="explicit_speaker_attribution",
             channel="metadata",
             explicit_speaker_attribution=True,
-            correlation_group_id=f"group-{observation.id}",
+            correlation_group_id=(
+                correlation_group_id or f"group-{observation.id}"
+            ),
             provenance_json="{}",
             artifact_path=observation.artifact_path,
             claim_fingerprint=f"claim-{observation.id}",
@@ -215,6 +223,59 @@ class SpeakerProfileStatusTests(unittest.TestCase):
             {"merge-candidate"},
         )
         self.assertIn("merge candidates", status.next_actions[0])
+
+    def test_display_name_variants_do_not_create_attribution_conflict(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b")]
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same speaker",
+            review_event_key="profile-sunia",
+        )
+        claims = []
+        for observation, display_name in zip(
+            observations,
+            ("Sunia FukoFuka", "Sunia Fukofuka"),
+            strict=True,
+        ):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="same speaker",
+                review_event_key=f"attach-{observation.id}",
+            )
+            claims.append(
+                self._claim(
+                    observation,
+                    display_name,
+                    correlation_group_id="speaker-credit-sunia",
+                )
+            )
+        for claim in claims:
+            record_name_claim_review(
+                self.database,
+                claim_id=claim.id,
+                profile_id=profile.id,
+                attach=True,
+                reviewer="reviewer",
+                reason="same normalized speaker credit",
+                review_event_key=f"claim-{claim.id}",
+            )
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+        )
+
+        row = status.profiles[0]
+        self.assertEqual(row.state, "attributed")
+        self.assertEqual(
+            row.names,
+            ("Sunia FukoFuka", "Sunia Fukofuka"),
+        )
+        self.assertEqual(status.attribution_conflict_count, 0)
 
     def test_named_backlog_separates_matching_frontiers_from_seeds(self) -> None:
         member = self._observation("member")

@@ -494,7 +494,10 @@ def build_profile_pipeline_status(
             )
             > 1
         )
-        if len(names) > 1 or configured_name_ambiguity:
+        # Display spellings are preserved for reporting, but identity conflict
+        # semantics use the normalized person name. Capitalization or other
+        # display-only variants must not turn one attribution into two people.
+        if len(normalized_names) > 1 or configured_name_ambiguity:
             claim_review_conflict_profile_ids.add(profile_id)
         needs: list[StatusNeed] = []
         if registry_profile.created_reason == DISCOVERY_PROFILE_REASON:
