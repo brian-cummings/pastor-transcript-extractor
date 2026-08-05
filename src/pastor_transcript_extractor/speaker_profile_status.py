@@ -17,6 +17,16 @@ from pastor_transcript_extractor.storage import Database
 
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
+IDENTITY_RUN_COVERED_NEED_CODES = frozenset(
+    {
+        "reviewed_evidence_sync",
+        "generate_discovery_confirmation_proposal",
+        "apply_discovery_confirmation",
+        "plan_discovery_promotion",
+        "association_validation",
+    }
+)
+PROFILE_ATTRIBUTION_NEED_CODE = "obtain_explicit_attribution"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +108,38 @@ class ProfilePipelineStatus:
     profiles: tuple[ProfileStatus, ...]
     actions: tuple[StatusNeed, ...]
     next_actions: tuple[str, ...]
+
+
+def applicable_status_commands(needs: tuple[StatusNeed, ...]) -> tuple[str, ...]:
+    """Collapse automatic pipeline stages into the single identity-run command."""
+    run_automatic = any(
+        need.actionable and need.code in IDENTITY_RUN_COVERED_NEED_CODES
+        for need in needs
+    )
+    commands = []
+    if run_automatic:
+        commands.append(
+            "pte identity run --all --apply-automatic --base-dir BASE_DIR"
+        )
+    if any(
+        need.actionable and need.code == PROFILE_ATTRIBUTION_NEED_CODE
+        for need in needs
+    ):
+        commands.append(
+            "pte identity review-profile-attribution --reviewer REVIEWER_ID "
+            "--base-dir BASE_DIR"
+        )
+    commands.extend(
+        need.command
+        for need in needs
+        if (
+            need.actionable
+            and need.command is not None
+            and need.code not in IDENTITY_RUN_COVERED_NEED_CODES
+            and need.code != PROFILE_ATTRIBUTION_NEED_CODE
+        )
+    )
+    return tuple(dict.fromkeys(commands))
 
 
 def build_profile_pipeline_status(

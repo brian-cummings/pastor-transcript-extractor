@@ -206,6 +206,7 @@ from pastor_transcript_extractor.speaker_review_invalidation import (
     pair_artifact_is_revoked,
 )
 from pastor_transcript_extractor.speaker_profile_status import (
+    applicable_status_commands,
     build_profile_pipeline_status,
 )
 from pastor_transcript_extractor.speaker_profile_attribution import (
@@ -2247,28 +2248,7 @@ def profile_status_command(
         *status.actions,
         *(need for profile in status.profiles for need in profile.needs),
     )
-    automatic_codes = {
-        "reviewed_evidence_sync",
-        "plan_discovery_promotion",
-        "apply_discovery_confirmation",
-    }
-    automatic_command = (
-        "pte identity run --all --apply-automatic --base-dir BASE_DIR"
-        if any(need.code in automatic_codes for need in all_needs)
-        else None
-    )
-    commands = tuple(
-        dict.fromkeys(
-            (
-                *(command for command in (automatic_command,) if command),
-                *(
-                    need.command
-                    for need in all_needs
-                    if need.actionable and need.command is not None
-                ),
-            )
-        )
-    )
+    commands = applicable_status_commands(all_needs)
     if commands:
         console.print("[bold]Applicable commands[/bold]")
         for command in commands:

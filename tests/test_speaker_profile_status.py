@@ -13,6 +13,8 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedSpeakerEvidence,
 )
 from pastor_transcript_extractor.speaker_profile_status import (
+    StatusNeed,
+    applicable_status_commands,
     build_profile_pipeline_status,
 )
 from pastor_transcript_extractor.speaker_registry import (
@@ -46,6 +48,59 @@ class SpeakerProfileStatusTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
+
+    def test_applicable_commands_collapse_automatic_identity_stages(self) -> None:
+        commands = applicable_status_commands(
+            (
+                StatusNeed(
+                    "reviewed_evidence_sync",
+                    "sync",
+                    "materialization",
+                    "pte identity sync-reviewed-speaker-evidence --base-dir BASE_DIR",
+                ),
+                StatusNeed(
+                    "association_validation",
+                    "associate",
+                    "association-validation",
+                    "pte identity shadow-associate-speakers --all-eligible "
+                    "--base-dir BASE_DIR",
+                ),
+                StatusNeed(
+                    "reviewed_same_graph_contains_bridge",
+                    "review",
+                    "automation-readiness",
+                    "pte identity review-next-speaker-pair --selection-objective "
+                    "automation-readiness --reviewer REVIEWER_ID "
+                    "--base-dir BASE_DIR",
+                ),
+                StatusNeed(
+                    "obtain_explicit_attribution",
+                    "name profile 74",
+                    "attribution",
+                    "pte identity review-profile-attribution --reviewer "
+                    "REVIEWER_ID --profile-id 74 --base-dir BASE_DIR",
+                ),
+                StatusNeed(
+                    "obtain_explicit_attribution",
+                    "name profile 75",
+                    "attribution",
+                    "pte identity review-profile-attribution --reviewer "
+                    "REVIEWER_ID --profile-id 75 --base-dir BASE_DIR",
+                ),
+            )
+        )
+
+        self.assertEqual(
+            commands,
+            (
+                "pte identity run --all --apply-automatic --base-dir BASE_DIR",
+                "pte identity review-profile-attribution --reviewer REVIEWER_ID "
+                "--base-dir BASE_DIR",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "automation-readiness --reviewer REVIEWER_ID "
+                "--base-dir BASE_DIR",
+            ),
+        )
 
     def _observation(self, key: str, *, second_source: bool = False):
         source = self.source_b if second_source else self.source_a
