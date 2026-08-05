@@ -24,6 +24,15 @@ class IdentityRunTests(unittest.TestCase):
                 ),
                 patch("pastor_transcript_extractor.cli.Database"),
                 patch(
+                    "pastor_transcript_extractor.cli.load_reviewed_speaker_evidence"
+                ) as load_evidence,
+                patch(
+                    "pastor_transcript_extractor.cli.sync_reviewed_speaker_evidence"
+                ) as sync_evidence,
+                patch(
+                    "pastor_transcript_extractor.cli._print_reviewed_evidence_summary"
+                ),
+                patch(
                     "pastor_transcript_extractor.cli.identity_backfill"
                 ) as backfill,
                 patch(
@@ -48,6 +57,7 @@ class IdentityRunTests(unittest.TestCase):
                     all_extractions=True,
                     plan_only=False,
                     skip_discovery=False,
+                    apply_automatic=False,
                     apply_confirmations=False,
                     apply_promotions=False,
                     base_dir=Path(tempdir),
@@ -57,6 +67,8 @@ class IdentityRunTests(unittest.TestCase):
             video_id=None,
             base_dir=Path(tempdir),
         )
+        load_evidence.assert_called_once()
+        sync_evidence.assert_called_once()
         self.assertFalse(associate.call_args.kwargs["plan_only"])
         self.assertTrue(associate.call_args.kwargs["all_eligible"])
         self.assertFalse(confirm.call_args.kwargs["apply"])
@@ -71,10 +83,65 @@ class IdentityRunTests(unittest.TestCase):
                 all_extractions=True,
                 plan_only=True,
                 skip_discovery=False,
+                apply_automatic=False,
                 apply_confirmations=True,
                 apply_promotions=False,
                 base_dir=None,
             )
+
+    def test_apply_automatic_enables_confirmations_and_promotions(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            database_path = Path(tempdir) / "app.db"
+            database_path.touch()
+            discovery_path = Path(tempdir) / "discovery.json"
+            discovery_path.touch()
+            paths = SimpleNamespace(database=database_path)
+            with (
+                patch(
+                    "pastor_transcript_extractor.cli.build_paths",
+                    return_value=paths,
+                ),
+                patch("pastor_transcript_extractor.cli.Database"),
+                patch(
+                    "pastor_transcript_extractor.cli.load_reviewed_speaker_evidence"
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.sync_reviewed_speaker_evidence"
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli._print_reviewed_evidence_summary"
+                ),
+                patch("pastor_transcript_extractor.cli.identity_backfill"),
+                patch(
+                    "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.confirm_discovered_profiles_command"
+                ) as confirm,
+                patch(
+                    "pastor_transcript_extractor.cli.shadow_discover_profiles_command"
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.promote_discovered_profiles_command"
+                ) as promote,
+                patch(
+                    "pastor_transcript_extractor.cli.coordinate_identity_command"
+                ),
+                patch.object(Path, "glob", return_value=[discovery_path]),
+            ):
+                run_identity_workflow_service(
+                    youtube_video_id=None,
+                    all_extractions=True,
+                    plan_only=False,
+                    skip_discovery=False,
+                    apply_automatic=True,
+                    apply_confirmations=False,
+                    apply_promotions=False,
+                    base_dir=Path(tempdir),
+                )
+
+        self.assertTrue(confirm.call_args.kwargs["apply"])
+        self.assertTrue(promote.call_args.kwargs["apply"])
 
     def test_requires_exactly_one_scope(self) -> None:
         with self.assertRaisesRegex(ValueError, "exactly one"):
@@ -83,6 +150,7 @@ class IdentityRunTests(unittest.TestCase):
                 all_extractions=False,
                 plan_only=True,
                 skip_discovery=False,
+                apply_automatic=False,
                 apply_confirmations=False,
                 apply_promotions=False,
                 base_dir=None,

@@ -383,18 +383,20 @@ scope convention as top-level `pte run`:
 
 ```bash
 caffeinate pte identity run --all \
+  --apply-automatic \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
 For one recording, pass its YouTube ID positionally. `--plan-only` runs the
 coverage and eligibility stages without acoustic execution or mutation. An
-executing corpus run performs backfill, all-eligible shadow association,
+executing run first synchronizes already-reviewed speaker evidence. A corpus
+run then performs backfill, all-eligible shadow association,
 provisional-confirmation planning, shadow discovery, promotion planning, and a
-final coordination audit. It does not silently cross registry safety gates:
-validated confirmations and provisional promotions require
-`--apply-confirmations` and `--apply-promotions`; reviewed pair judgments,
-naming, conflicts, and model/policy approval remain separate. Use
-`--skip-discovery` for an association-only corpus pass.
+final coordination audit. `--apply-automatic` applies validated confirmations
+and provisional promotions; `--apply-confirmations` and `--apply-promotions`
+remain available for granular control. New pair judgments, naming, conflicts,
+and model/policy approval remain separate. Use `--skip-discovery` for an
+association-only corpus pass.
 
 A profile is first created when a confirmed same-speaker pair forms a reviewed
 component. Later confirmed same-speaker frontier comparisons add observations;

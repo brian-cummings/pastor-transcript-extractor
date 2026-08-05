@@ -200,10 +200,6 @@ from pastor_transcript_extractor.speaker_review_invalidation import (
 from pastor_transcript_extractor.speaker_profile_status import (
     build_profile_pipeline_status,
 )
-from pastor_transcript_extractor.speaker_profile_automation import (
-    apply_profile_automatic_actions,
-    plan_profile_automatic_actions,
-)
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     get_profile_attribution_candidate,
@@ -2249,7 +2245,7 @@ def profile_status_command(
         "apply_discovery_confirmation",
     }
     automatic_command = (
-        "pte identity profile-advance --apply --base-dir BASE_DIR"
+        "pte identity run --all --apply-automatic --base-dir BASE_DIR"
         if any(need.code in automatic_codes for need in all_needs)
         else None
     )
@@ -2270,109 +2266,6 @@ def profile_status_command(
         for command in commands:
             console.print(f"- {command}")
     console.print("This report is read-only and does not create or mature profiles.")
-
-
-@identity_app.command(
-    "profile-advance",
-    help="Plan or apply profile actions that require no new human judgment.",
-)
-def profile_advance_command(
-    evaluation_root: Path = typer.Option(
-        Path("evaluation/speaker-pairs"),
-        help="Speaker-pair drafts, reviews, and fixtures root.",
-    ),
-    association_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs"),
-        help="Existing verified shadow-association artifacts.",
-    ),
-    discovery_root: Path = typer.Option(
-        Path("evaluation/speaker-profile-discovery/shadow-runs"),
-        help="Existing verified shadow-discovery artifacts.",
-    ),
-    apply: bool = typer.Option(
-        False,
-        "--apply",
-        help="Apply all currently eligible non-review registry actions.",
-    ),
-    base_dir: Path | None = typer.Option(
-        None,
-        help="Override app data directory.",
-    ),
-) -> None:
-    paths = build_paths(base_dir)
-    if not paths.database.exists():
-        raise typer.BadParameter(
-            f"Application database does not exist: {paths.database}"
-        )
-    association_paths = sorted(
-        association_root.expanduser().resolve().glob("*/*.json")
-    )
-    discovery_paths = sorted(
-        discovery_root.expanduser().resolve().glob("*/*.json"),
-        key=lambda path: (path.stat().st_mtime_ns, str(path)),
-        reverse=True,
-    )
-    discovery_report_path = None
-    invalid_discovery_artifacts = 0
-    for candidate_path in discovery_paths:
-        try:
-            load_verified_shadow_profile_discovery(candidate_path)
-        except (OSError, ValueError, json.JSONDecodeError):
-            invalid_discovery_artifacts += 1
-            continue
-        discovery_report_path = candidate_path
-        break
-    try:
-        evidence = load_reviewed_speaker_evidence(
-            evaluation_root.expanduser().resolve()
-        )
-        plan = plan_profile_automatic_actions(
-            Database(paths.database, readonly=True),
-            evidence,
-            association_report_paths=association_paths,
-            discovery_report_path=discovery_report_path,
-        )
-    except (OSError, ValueError, json.JSONDecodeError) as error:
-        raise typer.BadParameter(str(error)) from error
-    promotion_count = (
-        len(plan.promotion_plan.candidates)
-        if plan.promotion_plan is not None
-        else 0
-    )
-    console.print(
-        "Automatic profile actions: "
-        f"pending_sync={plan.pending_sync_count} "
-        f"confirmations={len(plan.confirmation_plan.candidates)} "
-        f"promotions={promotion_count} "
-        f"invalid_discovery_artifacts={invalid_discovery_artifacts}"
-    )
-    if not apply:
-        console.print(
-            "Plan only; pass --apply to synchronize reviewed evidence and apply "
-            "currently eligible confirmations and promotions."
-        )
-        return
-    database = Database(paths.database)
-    database.initialize()
-    try:
-        result = apply_profile_automatic_actions(
-            database,
-            evidence,
-            association_report_paths=association_paths,
-            discovery_report_path=discovery_report_path,
-        )
-    except (OSError, ValueError, json.JSONDecodeError) as error:
-        raise typer.BadParameter(str(error)) from error
-    _print_reviewed_evidence_summary(evidence, result.sync_result)
-    console.print(
-        "Automatic profile advance complete: "
-        f"confirmations={len(result.confirmation_event_ids)} "
-        f"promotions={len(result.promoted_profile_ids)}"
-    )
-    console.print(
-        "Human pair review, attribution, conflict adjudication, and policy "
-        "approval were not performed."
-    )
 
 
 @identity_app.command(
@@ -3354,18 +3247,23 @@ def run_identity_workflow_service(
     all_extractions: bool,
     plan_only: bool,
     skip_discovery: bool,
+    apply_automatic: bool,
     apply_confirmations: bool,
     apply_promotions: bool,
     base_dir: Path | None,
 ) -> None:
     if (youtube_video_id is None) == (not all_extractions):
         raise ValueError("Pass exactly one YouTube video ID or --all.")
-    if plan_only and (apply_confirmations or apply_promotions):
+    effective_apply_confirmations = apply_automatic or apply_confirmations
+    effective_apply_promotions = apply_automatic or apply_promotions
+    if plan_only and (
+        apply_automatic or apply_confirmations or apply_promotions
+    ):
         raise ValueError(
             "--plan-only cannot be combined with registry mutation flags"
         )
-    if not all_extractions and apply_promotions:
-        raise ValueError("--apply-promotions requires --all")
+    if not all_extractions and effective_apply_promotions:
+        raise ValueError("automatic profile promotion requires --all")
     paths = build_paths(base_dir, remember=not plan_only)
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
@@ -3382,6 +3280,26 @@ def run_identity_workflow_service(
         f"scope={'all' if all_extractions else youtube_video_id} "
         f"mode={'plan' if plan_only else 'execute'}"
     )
+    try:
+        reviewed_evidence = load_reviewed_speaker_evidence(
+            Path("evaluation/speaker-pairs").resolve()
+        )
+        if plan_only:
+            sync_result = None
+        else:
+            writable_database = Database(paths.database)
+            writable_database.initialize()
+            sync_result = sync_reviewed_speaker_evidence(
+                writable_database,
+                reviewed_evidence,
+            )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError(f"reviewed-evidence sync failed: {error}") from error
+    _print_reviewed_evidence_summary(reviewed_evidence, sync_result)
+    if plan_only:
+        console.print(
+            "Reviewed-evidence sync: plan-only; registry was not mutated."
+        )
     if plan_only:
         console.print("Backfill: plan-only; no identity artifacts were written.")
     else:
@@ -3412,7 +3330,7 @@ def run_identity_workflow_service(
 
     confirm_discovered_profiles_command(
         input_root=Path("evaluation/speaker-associations/shadow-runs"),
-        apply=apply_confirmations and not plan_only,
+        apply=effective_apply_confirmations and not plan_only,
         base_dir=base_dir,
     )
 
@@ -3472,7 +3390,7 @@ def run_identity_workflow_service(
     if all_extractions and latest_discovery is not None:
         promote_discovered_profiles_command(
             discovery_report=latest_discovery,
-            apply=apply_promotions and not plan_only,
+            apply=effective_apply_promotions and not plan_only,
             base_dir=base_dir,
         )
     elif all_extractions:
@@ -3502,14 +3420,17 @@ def run_identity_workflow_service(
         base_dir=base_dir,
     )
     console.print(
-        "Identity run complete. Human review, naming, and unrequested "
-        "registry mutations remain explicit."
+        "Identity run complete. Human pair review, attribution, conflict "
+        "adjudication, and policy approval remain explicit."
     )
 
 
 @identity_app.command(
     "run",
-    help="Run backfill, shadow association, discovery, and final coordination.",
+    help=(
+        "Sync reviewed evidence, then run backfill, shadow association, "
+        "discovery, and final coordination."
+    ),
 )
 def identity_run_command(
     youtube_video_id: str | None = typer.Argument(
@@ -3530,6 +3451,14 @@ def identity_run_command(
         False,
         "--skip-discovery",
         help="Skip corpus profile discovery during an --all run.",
+    ),
+    apply_automatic: bool = typer.Option(
+        False,
+        "--apply-automatic",
+        help=(
+            "Apply validated confirmations and promotions; reviewed evidence "
+            "is synchronized by every executing identity run. Requires --all."
+        ),
     ),
     apply_confirmations: bool = typer.Option(
         False,
@@ -3552,6 +3481,7 @@ def identity_run_command(
             all_extractions=all_extractions,
             plan_only=plan_only,
             skip_discovery=skip_discovery,
+            apply_automatic=apply_automatic,
             apply_confirmations=apply_confirmations,
             apply_promotions=apply_promotions,
             base_dir=base_dir,

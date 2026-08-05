@@ -635,7 +635,6 @@ reviewed different-speaker constraints block consolidation.
 - `pte pastor add <slug> <display-name>`
 - `pte pastor list`
 - `pte identity profile-status --base-dir <app-data>`
-- `pte identity profile-advance [--apply] --base-dir <app-data>`
 - `pte identity association-audit --base-dir <app-data>`
 - `pte identity coordinate --all --base-dir <app-data>`
 - `pte identity coordinate --youtube-video-id <id> --execute-shadow --base-dir <app-data>`
@@ -664,13 +663,6 @@ observation for the same recording from silently replacing the nominated
 evidence. Audit current and legacy selection provenance without mutation with
 `pte identity audit-speaker-review-selection`.
 
-`profile-advance` consolidates the machine-actionable work reported by
-`profile-status`. It is plan-only by default. With `--apply`, it synchronizes
-already-reviewed speaker evidence and applies currently eligible, verified
-discovery-profile confirmations and promotions. It does not perform pair
-review, attribution, conflict adjudication, acoustic model execution, or policy
-approval.
-
 `profile-growth` now has a precision-first nomination tier when a verified
 discovery artifact contains an unreviewed `strong_strong` pair in the pinned
 same-speaker band. It ranks otherwise-valid growth pairs by acoustic margin and
@@ -696,16 +688,19 @@ top-level `pte run`:
 ```bash
 pte identity run YOUTUBE_VIDEO_ID --base-dir /path/to/app-data
 pte identity run --all --base-dir /path/to/app-data
+pte identity run --all --apply-automatic --base-dir /path/to/app-data
 pte identity run --all --plan-only --base-dir /path/to/app-data
 ```
 
-Execution chains neutral-artifact backfill, shadow association, validated
-confirmation planning, corpus discovery for `--all`, provisional-promotion
-planning, and a final coordination audit. Discovery and association remain
-shadow computations. `--apply-confirmations` and `--apply-promotions` are
-separate explicit registry-mutation boundaries; human pair review, profile
-attribution, conflicts, and policy approval are never inferred by the runner.
-Use `--skip-discovery` when only association reconciliation is wanted.
+Execution first synchronizes already-reviewed speaker evidence, then chains
+neutral-artifact backfill, shadow association, validated confirmation planning,
+corpus discovery for `--all`, provisional-promotion planning, and a final
+coordination audit. Discovery and association remain shadow computations.
+`--apply-automatic` applies validated confirmations and promotions; the older
+`--apply-confirmations` and `--apply-promotions` switches remain available for
+granular control. Human pair review, profile attribution, conflicts, and policy
+approval are never inferred by the runner. Use `--skip-discovery` when only
+association reconciliation is wanted.
 
 ## Planning Docs
 
