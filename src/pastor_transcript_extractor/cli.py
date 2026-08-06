@@ -112,6 +112,7 @@ from pastor_transcript_extractor.identity_coordination import (
     load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
+    load_shadow_association_confirmation_pairs,
     write_identity_coordination_report,
 )
 from pastor_transcript_extractor.models import (
@@ -4455,6 +4456,13 @@ def review_next_speaker_pair(
         Path("evaluation/speaker-profile-discovery/shadow-runs"),
         help="Discovery artifacts used by automation-readiness nomination.",
     ),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help=(
+            "Shadow-association artifacts used for blinded profile-match "
+            "confirmation nominations."
+        ),
+    ),
     observation_consistency_report: Path = typer.Option(
         Path(
             "evaluation/speaker-pairs/runs/"
@@ -4547,6 +4555,32 @@ def review_next_speaker_pair(
             )
             else ()
         )
+        association_confirmation_pairs = ()
+        if selection_objective in {
+            SelectionGoal.PROFILE_GROWTH,
+            SelectionGoal.AUTOMATION_READINESS,
+        }:
+            current_association_nominations = []
+            for nomination in load_shadow_association_confirmation_pairs(
+                association_root.expanduser().resolve().glob("*/*.json")
+            ):
+                try:
+                    canonical_profile_id = (
+                        database.resolve_speaker_profile_id(
+                            nomination.profile_id
+                        )
+                    )
+                except ValueError:
+                    continue
+                current_association_nominations.append(
+                    replace(
+                        nomination,
+                        profile_id=canonical_profile_id,
+                    )
+                )
+            association_confirmation_pairs = tuple(
+                current_association_nominations
+            )
         consistency_index = load_consistency_score_index(
             observation_consistency_report.expanduser().resolve()
         )
@@ -4635,6 +4669,7 @@ def review_next_speaker_pair(
             selection_goal=selection_objective,
             discovery_resolution_pairs=discovery_resolution_pairs,
             profile_growth_acoustic_pairs=profile_growth_acoustic_pairs,
+            association_confirmation_pairs=association_confirmation_pairs,
             automatic_profile_ready_ids=automatic_profile_ready_ids,
         )
         if (
@@ -7750,6 +7785,7 @@ def run_workflow_service(
     classifier: str = "auto",
     llm_model: str | None = None,
     skip_review: bool = False,
+    run_identity: bool = False,
     base_dir: Path | None = None,
     source_ids: Sequence[int] | None = None,
 ) -> None:
@@ -7823,6 +7859,8 @@ def run_workflow_service(
                     event_callback=lambda message: console.print(message, markup=False),
                 )
                 _print_review_batch(reviews)
+        if run_identity:
+            _run_post_content_identity(base_dir)
         return
 
     if selected_source_ids:
@@ -7914,6 +7952,8 @@ def run_workflow_service(
                     ),
                 )
                 _print_review_batch(reviews)
+        if run_identity:
+            _run_post_content_identity(base_dir)
         return
 
     if all_sources:
@@ -7951,6 +7991,8 @@ def run_workflow_service(
                 event_callback=lambda message: console.print(message, markup=False),
             )
             _print_review_batch(reviews)
+        if run_identity:
+            _run_post_content_identity(base_dir)
         return
 
     if url is None:
@@ -8006,6 +8048,25 @@ def run_workflow_service(
             event_callback=lambda message: console.print(message, markup=False),
         )
         _print_review_batch(reviews)
+    if run_identity:
+        _run_post_content_identity(base_dir)
+
+
+def _run_post_content_identity(base_dir: Path | None) -> None:
+    console.print(
+        "Run identity stage: refreshing reviewed evidence, profile "
+        "associations, anonymous discovery, and coordination."
+    )
+    run_identity_workflow_service(
+        youtube_video_id=None,
+        all_extractions=True,
+        plan_only=False,
+        skip_discovery=False,
+        apply_automatic=False,
+        apply_confirmations=False,
+        apply_promotions=False,
+        base_dir=base_dir,
+    )
 
 
 def _ensure_and_archive_run_media(
@@ -8136,6 +8197,14 @@ def run(
         "--skip-review",
         help="Skip writing review exports after extraction and media maintenance.",
     ),
+    run_identity: bool = typer.Option(
+        False,
+        "--identity",
+        help=(
+            "After content processing, run the corpus identity workflow so "
+            "new shadow associations and review nominations are available."
+        ),
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     console.print(
@@ -8159,6 +8228,7 @@ def run(
             classifier=classifier,
             llm_model=llm_model,
             skip_review=skip_review,
+            run_identity=run_identity,
             base_dir=base_dir,
         )
     except ValueError as error:

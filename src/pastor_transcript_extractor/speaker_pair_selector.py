@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v18"
+SELECTOR_VERSION = "speaker_pair_selector_v19"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -121,6 +121,25 @@ class AcousticPairRanking:
     @property
     def pair_key(self) -> frozenset[str]:
         return frozenset((self.fingerprint_a, self.fingerprint_b))
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationConfirmationPair:
+    """One exact blinded-review edge from a multi-exemplar profile proposal."""
+
+    candidate_fingerprint: str
+    exemplar_fingerprint: str
+    profile_id: int
+    same_comparison_count: int
+    same_boundary_margin: float
+    report_result_sha256: str
+    report_path: str
+
+    @property
+    def pair_key(self) -> frozenset[str]:
+        return frozenset(
+            (self.candidate_fingerprint, self.exemplar_fingerprint)
+        )
 
 
 def selection_history_from_artifacts(
@@ -320,6 +339,9 @@ def select_next_speaker_pair(
     selection_goal: SelectionGoal | str = SelectionGoal.EVALUATION,
     discovery_resolution_pairs: Sequence[DiscoveryResolutionPair] = (),
     profile_growth_acoustic_pairs: Sequence[AcousticPairRanking] = (),
+    association_confirmation_pairs: Sequence[
+        AssociationConfirmationPair
+    ] = (),
     automatic_profile_ready_ids: frozenset[int] = frozenset(),
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
@@ -346,6 +368,21 @@ def select_next_speaker_pair(
         raise ValueError(
             "profile-growth acoustic rankings require finite, provenance-bound "
             "same-speaker context"
+        )
+    if any(
+        nomination.candidate_fingerprint
+        == nomination.exemplar_fingerprint
+        or nomination.profile_id < 1
+        or nomination.same_comparison_count < 2
+        or nomination.same_boundary_margin < 0.0
+        or not math.isfinite(nomination.same_boundary_margin)
+        or not nomination.report_result_sha256
+        or not nomination.report_path
+        for nomination in association_confirmation_pairs
+    ):
+        raise ValueError(
+            "association confirmations require finite, provenance-bound "
+            "multi-exemplar same-speaker context"
         )
     candidates = [
         item
@@ -388,19 +425,6 @@ def select_next_speaker_pair(
     if not pairs:
         raise ValueError("no unreviewed or undrafted eligible speaker pairs remain")
 
-    if goal == SelectionGoal.AUTOMATION_READINESS:
-        pairs = [
-            pair
-            for pair in pairs
-            if not (
-                (
-                    pair[0].reviewed_profile_ids
-                    | pair[1].reviewed_profile_ids
-                )
-                & automatic_profile_ready_ids
-            )
-        ]
-
     observation_use = history.observation_use or {}
     source_use = history.source_use or {}
     source_family_use = history.source_family_use or {}
@@ -417,12 +441,31 @@ def select_next_speaker_pair(
         profile_growth_acoustic_pairs
     ):
         raise ValueError("profile-growth acoustic ranking pairs must be unique")
+    association_confirmation_by_pair = {
+        item.pair_key: item for item in association_confirmation_pairs
+    }
+    if len(association_confirmation_by_pair) != len(
+        association_confirmation_pairs
+    ):
+        raise ValueError("association confirmation pairs must be unique")
     outcome_counts = _reviewed_outcome_counts(
         history,
         evaluation_partition=evaluation_partition,
     )
     objective_selection = (
-        _select_profile_growth_pair(
+        _select_association_confirmation_pair(
+            pairs,
+            association_confirmation_by_pair=(
+                association_confirmation_by_pair
+            ),
+            observation_use=observation_use,
+            source_use=source_use,
+            source_family_use=source_family_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        )
+        or _select_profile_growth_pair(
             pairs,
             candidates=candidates,
             history=history,
@@ -439,7 +482,18 @@ def select_next_speaker_pair(
         else None
     )
     if goal == SelectionGoal.AUTOMATION_READINESS:
-        objective_selection = _select_discovery_resolution_pair(
+        objective_selection = _select_association_confirmation_pair(
+            pairs,
+            association_confirmation_by_pair=(
+                association_confirmation_by_pair
+            ),
+            observation_use=observation_use,
+            source_use=source_use,
+            source_family_use=source_family_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        ) or _select_discovery_resolution_pair(
             pairs,
             discovery_resolution_by_pair=discovery_resolution_by_pair,
             source_family_use=source_family_use,
@@ -458,6 +512,7 @@ def select_next_speaker_pair(
             disfavored=disfavored,
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
         ) or _select_profile_growth_pair(
             pairs,
             candidates=candidates,
@@ -635,9 +690,42 @@ def select_next_speaker_pair(
         "reason_codes": reason_codes,
     }
     if goal == SelectionGoal.AUTOMATION_READINESS:
-        manifest["automatic_profile_ready_ids_excluded"] = sorted(
+        manifest[
+            "automatic_profile_ready_ids_excluded_from_reinforcement"
+        ] = sorted(
             automatic_profile_ready_ids
         )
+    selected_association = association_confirmation_by_pair.get(
+        frozenset(
+            (
+                observation_a.input_fingerprint,
+                observation_b.input_fingerprint,
+            )
+        )
+    )
+    if (
+        selection_objective == "shadow_association_confirmation"
+        and selected_association is not None
+    ):
+        manifest["shadow_association_confirmation"] = {
+            "candidate_fingerprint": (
+                selected_association.candidate_fingerprint
+            ),
+            "exemplar_fingerprint": (
+                selected_association.exemplar_fingerprint
+            ),
+            "profile_id": selected_association.profile_id,
+            "same_comparison_count": (
+                selected_association.same_comparison_count
+            ),
+            "report_result_sha256": (
+                selected_association.report_result_sha256
+            ),
+            "report_path": selected_association.report_path,
+            "role": "review_nomination_only",
+            "identity_evidence": False,
+            "durable_evidence_source": "approved_blinded_pair_review_only",
+        }
     if anchor_component is not None:
         manifest["anchor_component_fingerprints"] = sorted(anchor_component)
     if growth_components is not None:
@@ -841,6 +929,104 @@ def _discovery_resolution_priority(
         "staged_near_same_ambiguous_frontier": 1,
         "component_overlap": 2,
     }.get(resolution.resolution_kind, 3)
+
+
+def _select_association_confirmation_pair(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    *,
+    association_confirmation_by_pair: Mapping[
+        frozenset[str], AssociationConfirmationPair
+    ],
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+    str,
+    tuple[frozenset[str], frozenset[str]],
+] | None:
+    eligible = []
+    for pair in pairs:
+        observation_a, observation_b, _stratum, _relation = pair
+        nomination = association_confirmation_by_pair.get(
+            frozenset(
+                (
+                    observation_a.input_fingerprint,
+                    observation_b.input_fingerprint,
+                )
+            )
+        )
+        if nomination is None:
+            continue
+        candidate = (
+            observation_a
+            if observation_a.input_fingerprint
+            == nomination.candidate_fingerprint
+            else observation_b
+        )
+        exemplar = (
+            observation_a
+            if observation_a.input_fingerprint
+            == nomination.exemplar_fingerprint
+            else observation_b
+        )
+        if (
+            candidate.input_fingerprint
+            != nomination.candidate_fingerprint
+            or exemplar.input_fingerprint
+            != nomination.exemplar_fingerprint
+            or candidate.reviewed_profile_ids
+            or nomination.profile_id not in exemplar.reviewed_profile_ids
+            or disfavored.get(candidate.input_fingerprint, 0)
+            or disfavored.get(exemplar.input_fingerprint, 0)
+        ):
+            continue
+        eligible.append((pair, nomination))
+    if not eligible:
+        return None
+    pair, _nomination = min(
+        eligible,
+        key=lambda item: (
+            -item[1].same_comparison_count,
+            -item[1].same_boundary_margin,
+            _rank_pair(
+                item[0][0],
+                item[0][1],
+                source_family_use,
+                observation_use,
+                source_use,
+                disfavored,
+                disfavored_sources,
+                condition_counts,
+            ),
+            item[1].report_result_sha256,
+        ),
+    )
+    observation_a, observation_b, stratum, relation = pair
+    return (
+        observation_a,
+        observation_b,
+        stratum,
+        relation,
+        "shadow_association_confirmation",
+        (
+            frozenset((observation_a.input_fingerprint,)),
+            frozenset((observation_b.input_fingerprint,)),
+        ),
+    )
 
 
 def _select_profile_growth_pair(
@@ -1186,6 +1372,7 @@ def _select_profile_reinforcement_pair(
     disfavored: Mapping[str, int],
     disfavored_sources: Mapping[str, int],
     condition_counts: Mapping[str, int],
+    automatic_profile_ready_ids: frozenset[int],
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -1205,6 +1392,7 @@ def _select_profile_reinforcement_pair(
         profile_id
         for profile_id, fingerprints in members_by_profile.items()
         if len(fingerprints) >= 3
+        and profile_id not in automatic_profile_ready_ids
     }
     identity_outcomes = (
         history.reviewed_identity_outcomes

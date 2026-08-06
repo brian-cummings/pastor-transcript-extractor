@@ -650,6 +650,7 @@ reviewed different-speaker constraints block consolidation.
 - `pte evaluate --base-dir <app-data>`
 - `pte diagnose-interaction --model <ollama-model>`
 - `pte run <url> --pastor <pastor-slug>`
+- `pte run <url> --pastor <pastor-slug> --identity`
 - `pte run --all`
 - `pte run --source-id <id> --source-id <id>`
 - `pte run <url> --pastor <pastor-slug> --skip-review`
@@ -670,7 +671,9 @@ reviewed different-speaker constraints block consolidation.
 - `pte identity shadow-association-status --base-dir <app-data>`
 
 `automation-readiness` reuses the normal blinded pair-review packet. It first
-selects an immediate near-same edge that can complete a blocked component, then
+selects an exact candidate-to-profile edge from a current multi-exemplar shadow
+association proposal when available, then an immediate near-same edge that can
+complete a blocked component, then
 a staged bottleneck edge from a strong two-ambiguity bundle, then a decisive
 unresolved overlap edge. It finally falls back to reviewed-profile reinforcement
 and positive-evidence profile growth. Profile-growth pairs require either an
@@ -701,6 +704,13 @@ result is recorded in the selection manifest as `review_ranking_only`; it is not
 identity evidence, cannot attach observations, and cannot replace the blinded
 human judgment. Reviewed different-speaker constraints and component safety
 checks remain authoritative.
+
+`pte identity run` writes the shadow-association artifacts consumed by these
+confirmation nominations. Content-oriented `pte run` can refresh the complete
+identity workflow after extraction with `--identity`; this is explicit because
+it launches a corpus acoustic pass. Association scores and expected outcomes
+remain absent from the listening packet and never become durable identity
+evidence without the approved blinded review.
 
 When grounded attribution leaves a reviewed voice profile unnamed, run
 `pte identity review-profile-attribution --reviewer REVIEWER_ID`. The command

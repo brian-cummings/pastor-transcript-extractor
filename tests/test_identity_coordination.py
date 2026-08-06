@@ -11,15 +11,64 @@ from pastor_transcript_extractor.identity_coordination import (
     load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
+    load_shadow_association_confirmation_pairs,
     write_identity_coordination_report,
 )
 from pastor_transcript_extractor.speaker_profile_discovery import (
     SHADOW_PROFILE_DISCOVERY_VERSION,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
 )
+from pastor_transcript_extractor.speaker_shadow_association import (
+    SHADOW_ASSOCIATION_VERSION,
+)
 
 
 class IdentityCoordinationTests(unittest.TestCase):
+    def _association_payload(self) -> dict[str, object]:
+        def comparison(fingerprint: str, margin: float) -> dict[str, object]:
+            return {
+                "exemplar_fingerprint": fingerprint,
+                "outcome": "same_speaker",
+                "reason": "approved_policy_same_band",
+                "registry_mutation_allowed": False,
+                "metrics": {
+                    "cross": {
+                        "p10": 0.60 + margin,
+                        "median": 0.70 + margin,
+                    }
+                },
+                "policy": {
+                    "same_min_cross_p10": 0.60,
+                    "same_min_cross_median": 0.70,
+                },
+            }
+
+        payload: dict[str, object] = {
+            "artifact_kind": "speaker_profile_shadow_association",
+            "association_version": SHADOW_ASSOCIATION_VERSION,
+            "shadow_mode": True,
+            "registry_mutation_allowed": False,
+            "automatic_assignment_allowed": False,
+            "span_selection": {
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            },
+            "candidate": {"input_fingerprint": "candidate"},
+            "outcome": "proposed_match",
+            "proposed_profile_id": 7,
+            "profiles": [
+                {
+                    "profile_id": 7,
+                    "meets_multi_exemplar_match": True,
+                    "comparisons": [
+                        comparison("exemplar-a", 0.08),
+                        comparison("exemplar-b", 0.04),
+                    ],
+                }
+            ],
+        }
+        payload["result_sha256"] = _sha256(payload)
+        return payload
+
     def _case(
         self,
         youtube_video_id: str,
@@ -413,6 +462,50 @@ class IdentityCoordinationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(0.08, ranking.same_boundary_margin)
         self.assertEqual(0.94, ranking.centroid_similarity)
+
+    def test_association_loader_exposes_exact_multi_exemplar_same_edges(
+        self,
+    ) -> None:
+        payload = self._association_payload()
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "association.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            nominations = load_shadow_association_confirmation_pairs((path,))
+
+        self.assertEqual(2, len(nominations))
+        self.assertEqual(
+            {"exemplar-a", "exemplar-b"},
+            {item.exemplar_fingerprint for item in nominations},
+        )
+        self.assertTrue(
+            all(item.candidate_fingerprint == "candidate" for item in nominations)
+        )
+        self.assertTrue(all(item.same_comparison_count == 2 for item in nominations))
+        self.assertAlmostEqual(0.08, nominations[0].same_boundary_margin)
+
+    def test_association_loader_rejects_tampered_artifact(self) -> None:
+        payload = self._association_payload()
+        payload["outcome"] = "no_match"
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "association.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                load_shadow_association_confirmation_pairs((path,))
+
+    def test_association_loader_ignores_stale_version(self) -> None:
+        payload = self._association_payload()
+        payload.pop("result_sha256")
+        payload["association_version"] = "speaker_shadow_association_v2"
+        payload["result_sha256"] = _sha256(payload)
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "association.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            nominations = load_shadow_association_confirmation_pairs((path,))
+
+        self.assertEqual((), nominations)
 
     def test_discovery_resolution_loader_exposes_near_same_frontier(self) -> None:
         payload = {

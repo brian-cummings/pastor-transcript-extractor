@@ -5,6 +5,7 @@ import unittest
 
 from pastor_transcript_extractor.speaker_pair_selector import (
     AcousticPairRanking,
+    AssociationConfirmationPair,
     DiscoveryResolutionPair,
     PairCandidateObservation,
     PairSelectionHistory,
@@ -41,6 +42,24 @@ def candidate(
 
 
 class SpeakerPairSelectorTests(unittest.TestCase):
+    def _association_nomination(
+        self,
+        candidate_fingerprint: str,
+        exemplar_fingerprint: str,
+        *,
+        profile_id: int = 7,
+        margin: float = 0.08,
+    ) -> AssociationConfirmationPair:
+        return AssociationConfirmationPair(
+            candidate_fingerprint=candidate_fingerprint,
+            exemplar_fingerprint=exemplar_fingerprint,
+            profile_id=profile_id,
+            same_comparison_count=2,
+            same_boundary_margin=margin,
+            report_result_sha256="a" * 64,
+            report_path="association.json",
+        )
+
     def test_default_selection_goal_preserves_evaluation_selector(self) -> None:
         selected = select_next_speaker_pair(
             [
@@ -388,6 +407,100 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest["selection_objective"],
         )
 
+    def test_automation_readiness_prioritizes_association_confirmation(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("candidate"),
+                candidate("exemplar", profile_ids=frozenset((7,))),
+                candidate("profile-a", profile_ids=frozenset((8,))),
+                candidate("profile-b", profile_ids=frozenset((8,))),
+                candidate("profile-c", profile_ids=frozenset((8,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            association_confirmation_pairs=(
+                self._association_nomination("candidate", "exemplar"),
+            ),
+        )
+
+        self.assertEqual(
+            {"candidate", "exemplar"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "shadow_association_confirmation",
+            selected.manifest["selection_objective"],
+        )
+        provenance = selected.manifest["shadow_association_confirmation"]
+        self.assertEqual("review_nomination_only", provenance["role"])
+        self.assertFalse(provenance["identity_evidence"])
+
+    def test_association_confirmation_can_grow_automatic_ready_profile(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("candidate"),
+                candidate("ready", profile_ids=frozenset((7,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            association_confirmation_pairs=(
+                self._association_nomination("candidate", "ready"),
+            ),
+            automatic_profile_ready_ids=frozenset((7,)),
+        )
+
+        self.assertEqual(
+            "shadow_association_confirmation",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_stale_association_candidate_is_excluded_after_profile_assignment(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair remains",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate(
+                        "candidate", profile_ids=frozenset((9,))
+                    ),
+                    candidate("exemplar", profile_ids=frozenset((7,))),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                association_confirmation_pairs=(
+                    self._association_nomination("candidate", "exemplar"),
+                ),
+            )
+
+    def test_association_exemplar_must_still_belong_to_proposed_profile(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair remains",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate("candidate"),
+                    candidate("exemplar", profile_ids=frozenset((8,))),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                association_confirmation_pairs=(
+                    self._association_nomination("candidate", "exemplar"),
+                ),
+            )
+
     def test_automation_readiness_excludes_ready_profiles(self) -> None:
         selected = select_next_speaker_pair(
             [
@@ -416,7 +529,9 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         )
         self.assertEqual(
             [7],
-            selected.manifest["automatic_profile_ready_ids_excluded"],
+            selected.manifest[
+                "automatic_profile_ready_ids_excluded_from_reinforcement"
+            ],
         )
 
     def test_automation_readiness_prioritizes_discovery_overlap_resolution(

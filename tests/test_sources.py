@@ -1948,6 +1948,24 @@ class CliTests(unittest.TestCase):
         self.assertNotEqual(0, result.exit_code)
         self.assertIn("Use either --all or --source-id", result.output)
 
+    def test_run_identity_flag_enables_integrated_identity_stage(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.cli.run_workflow_service"
+        ) as workflow:
+            result = CliRunner().invoke(
+                app,
+                [
+                    "run",
+                    "https://www.youtube.com/watch?v=identity123",
+                    "--pastor",
+                    "sample-church",
+                    "--identity",
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        self.assertTrue(workflow.call_args.kwargs["run_identity"])
+
     def test_run_failed_only_targets_failed_ids_and_preserves_existing_artifacts(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:

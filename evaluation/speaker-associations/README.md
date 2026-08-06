@@ -48,6 +48,17 @@ are skipped. If no useful reinforcement pair remains, it falls back to the
 existing profile-growth priorities. The listening packet and human
 same/different decision are unchanged.
 
+Current `proposed_match` artifacts also feed the blinded pair-review queue.
+The selector chooses one exact same-band candidate/exemplar edge from the
+multi-exemplar proposal, validates that the candidate remains unassigned and
+the exemplar remains in the proposed profile, and applies normal history and
+partition exclusions. The artifact is nomination provenance only: its acoustic
+outcome is not shown in the listening packet and cannot create membership.
+
+To refresh extraction and identity evidence in one content workflow, pass
+`--identity` to `pte run`. Without that explicit flag, `pte run` does not launch
+the corpus-wide acoustic stages.
+
 ## Association decision
 
 The matcher selects up to three eligible exemplars per shadow-ready profile,

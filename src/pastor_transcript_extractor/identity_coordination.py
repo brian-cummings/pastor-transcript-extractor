@@ -14,7 +14,11 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
     AcousticPairRanking,
+    AssociationConfirmationPair,
     DiscoveryResolutionPair,
+)
+from pastor_transcript_extractor.speaker_shadow_association import (
+    SHADOW_ASSOCIATION_VERSION,
 )
 
 
@@ -521,6 +525,145 @@ def load_discovery_acoustic_ranking_pairs(
     )
 
 
+def load_shadow_association_confirmation_pairs(
+    report_paths: Iterable[Path],
+) -> tuple[AssociationConfirmationPair, ...]:
+    """Load exact same edges from safe multi-exemplar profile proposals."""
+    nominations: dict[frozenset[str], AssociationConfirmationPair] = {}
+    for report_path in sorted(
+        (path.expanduser().resolve() for path in report_paths),
+        key=str,
+    ):
+        payload = _load_verified_association_report(report_path)
+        if (
+            payload.get("artifact_kind")
+            != "speaker_profile_shadow_association"
+            or payload.get("association_version")
+            != SHADOW_ASSOCIATION_VERSION
+        ):
+            continue
+        span_selection = payload.get("span_selection")
+        if (
+            payload.get("shadow_mode") is not True
+            or payload.get("registry_mutation_allowed") is not False
+            or payload.get("automatic_assignment_allowed") is not False
+            or not isinstance(span_selection, Mapping)
+            or span_selection.get("version")
+            != TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION
+        ):
+            raise ValueError(
+                "shadow association artifact uses an unsupported contract"
+            )
+        if payload.get("outcome") != "proposed_match":
+            continue
+        candidate = payload.get("candidate")
+        profile_id = payload.get("proposed_profile_id")
+        if not isinstance(candidate, Mapping) or not isinstance(profile_id, int):
+            continue
+        candidate_fingerprint = candidate.get("input_fingerprint")
+        if not isinstance(candidate_fingerprint, str) or not candidate_fingerprint:
+            continue
+        profile_results = payload.get("profiles")
+        if not isinstance(profile_results, list):
+            continue
+        matched = next(
+            (
+                result
+                for result in profile_results
+                if isinstance(result, Mapping)
+                and result.get("profile_id") == profile_id
+                and result.get("meets_multi_exemplar_match") is True
+            ),
+            None,
+        )
+        if not isinstance(matched, Mapping):
+            continue
+        comparisons = matched.get("comparisons")
+        if not isinstance(comparisons, list):
+            continue
+        same_comparisons = [
+            comparison
+            for comparison in comparisons
+            if isinstance(comparison, Mapping)
+            and comparison.get("outcome") == "same_speaker"
+            and comparison.get("reason") == "approved_policy_same_band"
+            and comparison.get("reviewed_constraint") is not True
+        ]
+        if len(same_comparisons) < 2:
+            continue
+        for comparison in same_comparisons:
+            exemplar_fingerprint = comparison.get("exemplar_fingerprint")
+            metrics = comparison.get("metrics")
+            cross = (
+                metrics.get("cross")
+                if isinstance(metrics, Mapping)
+                else None
+            )
+            policy = comparison.get("policy")
+            if (
+                not isinstance(exemplar_fingerprint, str)
+                or not exemplar_fingerprint
+                or not isinstance(cross, Mapping)
+                or not isinstance(policy, Mapping)
+            ):
+                continue
+            cross_p10 = _finite_float(cross.get("p10"))
+            cross_median = _finite_float(cross.get("median"))
+            minimum_p10 = _finite_float(policy.get("same_min_cross_p10"))
+            minimum_median = _finite_float(
+                policy.get("same_min_cross_median")
+            )
+            if None in {
+                cross_p10,
+                cross_median,
+                minimum_p10,
+                minimum_median,
+            }:
+                continue
+            assert cross_p10 is not None
+            assert cross_median is not None
+            assert minimum_p10 is not None
+            assert minimum_median is not None
+            margin = min(
+                cross_p10 - minimum_p10,
+                cross_median - minimum_median,
+            )
+            if margin < 0.0:
+                continue
+            nomination = AssociationConfirmationPair(
+                candidate_fingerprint=candidate_fingerprint,
+                exemplar_fingerprint=exemplar_fingerprint,
+                profile_id=profile_id,
+                same_comparison_count=len(same_comparisons),
+                same_boundary_margin=margin,
+                report_result_sha256=str(payload["result_sha256"]),
+                report_path=str(report_path),
+            )
+            existing = nominations.get(nomination.pair_key)
+            if existing is None or (
+                nomination.same_comparison_count,
+                nomination.same_boundary_margin,
+                nomination.report_result_sha256,
+            ) > (
+                existing.same_comparison_count,
+                existing.same_boundary_margin,
+                existing.report_result_sha256,
+            ):
+                nominations[nomination.pair_key] = nomination
+    return tuple(
+        sorted(
+            nominations.values(),
+            key=lambda item: (
+                -item.same_comparison_count,
+                -item.same_boundary_margin,
+                item.candidate_fingerprint,
+                item.exemplar_fingerprint,
+                item.report_result_sha256,
+            ),
+        )
+    )
+
+
 def _finite_float(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -562,6 +705,21 @@ def _load_verified_discovery_report(
         != TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION
     ):
         raise ValueError("profile discovery artifact uses an unsupported contract")
+    return payload
+
+
+def _load_verified_association_report(report_path: Path) -> dict[str, Any]:
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("shadow association artifact must be an object")
+    expected_sha256 = payload.get("result_sha256")
+    unhashed = dict(payload)
+    unhashed.pop("result_sha256", None)
+    if (
+        not isinstance(expected_sha256, str)
+        or _sha256_json(unhashed) != expected_sha256
+    ):
+        raise ValueError("shadow association artifact checksum mismatch")
     return payload
 
 
