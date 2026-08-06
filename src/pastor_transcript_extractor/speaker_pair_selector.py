@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v17"
+SELECTOR_VERSION = "speaker_pair_selector_v18"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -433,6 +433,7 @@ def select_next_speaker_pair(
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
             acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
         )
         if goal == SelectionGoal.PROFILE_GROWTH
         else None
@@ -468,6 +469,7 @@ def select_next_speaker_pair(
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
             acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
         )
     if (
         goal in {
@@ -477,8 +479,9 @@ def select_next_speaker_pair(
         and objective_selection is None
     ):
         raise ValueError(
-            f"no unreviewed {goal.value} pair remains after reviewed "
-            "same/different and qualification exclusions"
+            f"no actionable {goal.value} pair remains: discovery and "
+            "same-speaker nomination signals are exhausted or excluded; "
+            "generic unsupported pairs were withheld"
         )
     curated_selection = (
         _select_curated_relation_pair(
@@ -861,6 +864,7 @@ def _select_profile_growth_pair(
     acoustic_ranking_by_pair: Mapping[
         frozenset[str], AcousticPairRanking
     ],
+    automatic_profile_ready_ids: frozenset[int],
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -888,6 +892,16 @@ def _select_profile_growth_pair(
         for fingerprint in component
         for attribution in candidate_by_fingerprint[fingerprint].explicit_attributions
     )
+    component_attributions = {
+        component: frozenset(
+            attribution
+            for fingerprint in component
+            for attribution in candidate_by_fingerprint[
+                fingerprint
+            ].explicit_attributions
+        )
+        for component in set(components.values())
+    }
     identity_outcomes = (
         history.reviewed_identity_outcomes
         if history.reviewed_identity_outcomes is not None
@@ -930,14 +944,56 @@ def _select_profile_growth_pair(
             for fingerprint_b in component_b
         ):
             continue
+        pair_key = frozenset(
+            (
+                observation_a.input_fingerprint,
+                observation_b.input_fingerprint,
+            )
+        )
+        has_acoustic_same_signal = pair_key in acoustic_ranking_by_pair
+        has_component_attribution_overlap = bool(
+            component_attributions[component_a]
+            & component_attributions[component_b]
+        )
+        # Profile growth is a positive-evidence workflow. The absence of a
+        # known difference is not evidence that two voices may match.
+        if not (
+            has_acoustic_same_signal
+            or has_component_attribution_overlap
+        ):
+            continue
+        # Conflicting claims need direct acoustic support before spending a
+        # blinded review on reconciliation. Attribution remains a nomination
+        # hint and never becomes identity truth.
+        if (
+            stratum == SelectionStratum.CONTRADICTING_ATTRIBUTION
+            and not has_acoustic_same_signal
+        ):
+            continue
         anchored_a = component_a in anchored_components
         anchored_b = component_b in anchored_components
+        touches_automatic_ready_profile = any(
+            candidate_by_fingerprint[fingerprint].reviewed_profile_ids
+            & automatic_profile_ready_ids
+            for fingerprint in component_a | component_b
+        )
+        if (
+            touches_automatic_ready_profile
+            and not has_acoustic_same_signal
+            and not (
+                anchored_a
+                and anchored_b
+                and has_component_attribution_overlap
+            )
+        ):
+            continue
         if anchored_a != anchored_b:
             objective = "profile_growth_frontier"
         elif anchored_a:
             objective = (
                 "attribution_reconciliation_bridge"
-                if stratum == SelectionStratum.SHARED_ATTRIBUTION
+                if has_component_attribution_overlap
+                and stratum != SelectionStratum.CONTRADICTING_ATTRIBUTION
                 else "profile_growth_component_bridge"
             )
         else:

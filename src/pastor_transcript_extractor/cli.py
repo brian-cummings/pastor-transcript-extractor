@@ -4491,7 +4491,10 @@ def review_next_speaker_pair(
             fixtures=fixtures,
         )
         automatic_profile_ready_ids = frozenset()
-        if selection_objective == SelectionGoal.AUTOMATION_READINESS:
+        if selection_objective in {
+            SelectionGoal.AUTOMATION_READINESS,
+            SelectionGoal.PROFILE_GROWTH,
+        }:
             evidence = load_reviewed_speaker_evidence(root)
             automatic_profile_ready_ids = frozenset(
                 profile.profile_id
@@ -4535,7 +4538,11 @@ def review_next_speaker_pair(
                 effective_discovery_report
             )
             if (
-                selection_objective == SelectionGoal.PROFILE_GROWTH
+                selection_objective
+                in {
+                    SelectionGoal.PROFILE_GROWTH,
+                    SelectionGoal.AUTOMATION_READINESS,
+                }
                 and effective_discovery_report is not None
             )
             else ()

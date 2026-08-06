@@ -593,9 +593,13 @@ class SpeakerPairSelectorTests(unittest.TestCase):
     def test_automation_readiness_falls_back_to_profile_growth(self) -> None:
         selected = select_next_speaker_pair(
             [
-                candidate("profile-a", profile_ids=frozenset((7,))),
-                candidate("profile-b", profile_ids=frozenset((7,))),
-                candidate("frontier"),
+                candidate(
+                    "profile-a", name="alex", profile_ids=frozenset((7,))
+                ),
+                candidate(
+                    "profile-b", name="alex", profile_ids=frozenset((7,))
+                ),
+                candidate("frontier", name="alex"),
             ],
             PairSelectionHistory(),
             selection_goal="automation-readiness",
@@ -610,6 +614,139 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         )
         self.assertEqual(
             "profile_growth_frontier",
+            selected.manifest["selection_objective"],
+        )
+
+    def test_automation_readiness_uses_cached_acoustic_same_fallback(self) -> None:
+        selected = select_next_speaker_pair(
+            [candidate("acoustic-a"), candidate("acoustic-b")],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            profile_growth_acoustic_pairs=(
+                AcousticPairRanking(
+                    fingerprint_a="acoustic-a",
+                    fingerprint_b="acoustic-b",
+                    same_boundary_margin=0.04,
+                    centroid_similarity=0.95,
+                    report_result_sha256="a" * 64,
+                    report_path="discovery.json",
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            {"acoustic-a", "acoustic-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertIn(
+            "cached_acoustic_same_ranking",
+            selected.manifest["reason_codes"],
+        )
+
+    def test_profile_growth_withholds_generic_cross_source_pair(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair remains",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate("a", source_family="church-a"),
+                    candidate("b", source_family="church-b"),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+            )
+
+    def test_profile_growth_withholds_conflicting_attributions_without_acoustics(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair remains",
+        ):
+            select_next_speaker_pair(
+                [candidate("a", name="alex"), candidate("b", name="blair")],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+            )
+
+    def test_profile_growth_uses_attribution_from_reviewed_component(self) -> None:
+        reviewed_same = frozenset(("anchor-a", "anchor-b"))
+        already_tried_direct = frozenset(("anchor-a", "frontier"))
+        selected = select_next_speaker_pair(
+            [
+                candidate("anchor-a", name="alex"),
+                candidate("anchor-b"),
+                candidate("frontier", name="alex"),
+            ],
+            PairSelectionHistory(
+                excluded_pairs=frozenset(
+                    (reviewed_same, already_tried_direct)
+                ),
+                reviewed_identity_outcomes={
+                    reviewed_same: "same_speaker",
+                    already_tried_direct: "cannot_determine",
+                },
+            ),
+            selection_goal="profile-growth",
+        )
+
+        self.assertEqual(
+            {"anchor-b", "frontier"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            SelectionStratum.PARTIAL_ATTRIBUTION,
+            selected.manifest["selection_stratum"],
+        )
+
+    def test_profile_growth_does_not_expand_automatic_ready_profile_by_name(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair remains",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate(
+                        "ready-a", name="alex", profile_ids=frozenset((7,))
+                    ),
+                    candidate(
+                        "ready-b", name="alex", profile_ids=frozenset((7,))
+                    ),
+                    candidate("frontier", name="alex"),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                automatic_profile_ready_ids=frozenset((7,)),
+            )
+
+    def test_profile_growth_allows_ready_profile_reconciliation_by_name(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "ready", name="alex", profile_ids=frozenset((7,))
+                ),
+                candidate(
+                    "duplicate", name="alex", profile_ids=frozenset((8,))
+                ),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+            automatic_profile_ready_ids=frozenset((7,)),
+        )
+
+        self.assertEqual(
+            "attribution_reconciliation_bridge",
             selected.manifest["selection_objective"],
         )
 

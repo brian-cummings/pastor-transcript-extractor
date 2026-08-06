@@ -673,7 +673,12 @@ reviewed different-speaker constraints block consolidation.
 selects an immediate near-same edge that can complete a blocked component, then
 a staged bottleneck edge from a strong two-ambiguity bundle, then a decisive
 unresolved overlap edge. It finally falls back to reviewed-profile reinforcement
-and profile growth. The selection manifest records the discovery artifact,
+and positive-evidence profile growth. Profile-growth pairs require either an
+explicit attribution shared across their reviewed components or an exact,
+provenance-bound cached same-speaker acoustic ranking. Merely lacking a known
+different-speaker constraint—and merely sharing a source—is not enough; when
+those signals are exhausted the command stops instead of nominating a generic
+cross-source pair. The selection manifest records the discovery artifact,
 stage, companion edge, and downstream observations unlocked; undersized
 two-recording seeds without a qualified frontier wait instead of consuming human
 review. The next discovery run consumes the approved pair judgment directly as
@@ -690,7 +695,8 @@ evidence. Audit current and legacy selection provenance without mutation with
 `profile-growth` now has a precision-first nomination tier when a verified
 discovery artifact contains an unreviewed `strong_strong` pair in the pinned
 same-speaker band. It ranks otherwise-valid growth pairs by acoustic margin and
-centroid similarity before falling back to structural exploration. The cached
+centroid similarity; structural exploration is limited to components with a
+shared explicit attribution. The cached
 result is recorded in the selection manifest as `review_ranking_only`; it is not
 identity evidence, cannot attach observations, and cannot replace the blinded
 human judgment. Reviewed different-speaker constraints and component safety
