@@ -117,16 +117,51 @@ that later received a reviewed profile. Precision is calculated only from
 confirmed and contradicted proposals; pending cases are not silently treated as
 correct. The replay is read-only.
 
-## Promotion boundary
+## Machine-assignment boundary
 
-Shadow results must be evaluated against held-out human-reviewed associations
-before registry mutation is implemented or enabled. Promotion requires both:
+Shadow results can now flow into a versioned machine-evidence ledger, but the
+checked-in `machine-assignment-shadow-v1` policy cannot activate assignments.
+Ledger rows are immutable proposal evidence. A separate append-only lifecycle
+records activation, revocation, or human confirmation, and active provisional
+assignments never become reviewed profile membership or profile exemplars.
+
+Every machine candidate must have a current accepted sermon observation, a
+current automatic-profile-ready target, a unique multi-exemplar same-speaker
+proposal, no different result or technical failure, no reviewed difference,
+and no conflicting current attribution. Held-out fixture observations are
+reserved from machine assignment. Reconciliation revokes stale observations,
+including observations invalidated by a newer extraction or sermon
+disposition.
+Only association artifacts produced or deterministically reused by the current
+identity invocation are considered; historical reports are never swept into the
+ledger merely because they remain on disk.
+
+Inspect the ledger without mutation:
+
+```bash
+pte identity machine-assignment-status \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Promotion to a canary policy still requires both:
 
 1. an automatic-profile-ready target; and
-2. the independently promoted acoustic model and decision policy, including
+2. an independently promoted acoustic model and decision policy, including
    the required same/different counts, zero observed errors, variation
    coverage, frozen held-out evaluation, and no technical failures.
 
-The next promotion increment must add a versioned machine-evidence ledger,
-append-only reversible membership events, contradiction checks, and rollback.
-A shadow proposal is never treated as a reviewed profile exemplar.
+A canary policy artifact must pin those exact model and policy fingerprints,
+set a hard maximum active-assignment count, and explicitly allow provisional
+activation. Activation also requires `pte identity run --all
+--apply-machine-canary --machine-assignment-policy POLICY.json`; neither normal
+`pte identity run` nor top-level `pte run --identity` activates it. The existing
+blinded review queue prioritizes active canaries. One reviewed contradiction
+trips the exact policy fingerprint and revokes every remaining active assignment
+under it. Any policy can also be rolled back explicitly:
+
+```bash
+pte identity rollback-machine-assignments \
+  --policy-fingerprint SHA256 \
+  --apply \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```

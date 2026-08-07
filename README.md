@@ -669,6 +669,8 @@ reviewed different-speaker constraints block consolidation.
 - `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`
 - `pte identity shadow-associate-speakers --all-eligible --plan-only`
 - `pte identity shadow-association-status --base-dir <app-data>`
+- `pte identity machine-assignment-status --base-dir <app-data>`
+- `pte identity rollback-machine-assignments --policy-fingerprint <sha256>`
 
 `automation-readiness` reuses the normal blinded pair-review packet. It first
 selects an exact candidate-to-profile edge from a current multi-exemplar shadow
@@ -712,6 +714,17 @@ it launches a corpus acoustic pass. Association scores and expected outcomes
 remain absent from the listening packet and never become durable identity
 evidence without the approved blinded review.
 
+The same run now projects qualifying current proposals into a separate,
+append-only machine-evidence ledger. It requires a current accepted-sermon
+observation, an automatic-profile-ready target, a unique multi-exemplar match,
+no conflicting attribution or reviewed difference, and excludes held-out
+fixture observations. The checked-in policy is shadow-only: it records
+replayable evidence but creates neither reviewed membership nor an active
+provisional assignment. `machine-assignment-status` reports evidence, active,
+confirmed, revoked, and circuit-breaker state by exact policy fingerprint.
+Historical association files are not bulk-imported: only artifacts produced or
+reused by the current identity invocation can enter the ledger.
+
 When grounded attribution leaves a reviewed voice profile unnamed, run
 `pte identity review-profile-attribution --reviewer REVIEWER_ID`. The command
 selects the largest unnamed canonical profile (or accepts `--profile-id`), opens
@@ -741,6 +754,26 @@ coordination audit. Discovery and association remain shadow computations.
 granular control. Human pair review, profile attribution, conflicts, and policy
 approval are never inferred by the runner. Use `--skip-discovery` when only
 association reconciliation is wanted.
+
+Provisional machine assignment is a separate, explicitly gated canary. A
+canary policy must pin the allowed association-policy hash and model
+fingerprint, cap the total active assignments, and permit activation. It can
+then be supplied only to an all-corpus identity run:
+
+```bash
+pte identity run --all \
+  --machine-assignment-policy /path/to/approved-canary-policy.json \
+  --apply-machine-canary \
+  --base-dir /path/to/app-data
+```
+
+Active provisional assignments remain outside reviewed profile membership and
+cannot become acoustic exemplars. They are moved to the front of the existing
+blinded `automation-readiness` review queue. A confirming human review appends
+a confirmation; a contradiction revokes the assignment, trips that exact
+policy fingerprint, and revokes its other active assignments. Stale or rejected
+sermon observations are revoked conservatively. Rollback is plan-only unless
+`--apply` is passed.
 
 ## Planning Docs
 

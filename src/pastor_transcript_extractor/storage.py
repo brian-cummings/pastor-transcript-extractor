@@ -373,6 +373,41 @@ CREATE TABLE IF NOT EXISTS speaker_profile_candidate_confirmations (
     UNIQUE(profile_id, observation_id)
 );
 
+CREATE TABLE IF NOT EXISTS speaker_machine_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    observation_id INTEGER NOT NULL,
+    profile_id INTEGER NOT NULL,
+    candidate_input_fingerprint TEXT NOT NULL,
+    association_result_sha256 TEXT NOT NULL,
+    association_artifact_path TEXT NOT NULL,
+    model_fingerprint TEXT NOT NULL,
+    policy_fingerprint TEXT NOT NULL,
+    profile_snapshot_fingerprint TEXT NOT NULL,
+    exemplar_fingerprints_json TEXT NOT NULL,
+    same_exemplar_count INTEGER NOT NULL,
+    different_exemplar_count INTEGER NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('proposed_match')),
+    evidence_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(observation_id) REFERENCES speaker_observations(id),
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_machine_assignment_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    machine_evidence_id INTEGER NOT NULL,
+    observation_id INTEGER NOT NULL,
+    profile_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('activate', 'revoke', 'confirm')),
+    actor TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(machine_evidence_id) REFERENCES speaker_machine_evidence(id),
+    FOREIGN KEY(observation_id) REFERENCES speaker_observations(id),
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
+);
+
 CREATE TABLE IF NOT EXISTS speaker_observation_review_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     observation_id INTEGER NOT NULL,
@@ -462,6 +497,12 @@ ON media_archive_attempts(archive_entry_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_profile_observation_events_pair
 ON profile_observation_events(profile_id, observation_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_machine_evidence_observation
+ON speaker_machine_evidence(observation_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_machine_assignment_events_evidence
+ON speaker_machine_assignment_events(machine_evidence_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_speaker_observation_review_events_observation
 ON speaker_observation_review_events(observation_id, id);
@@ -3133,6 +3174,146 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def add_speaker_machine_evidence(
+        self,
+        *,
+        observation_id: int,
+        profile_id: int,
+        candidate_input_fingerprint: str,
+        association_result_sha256: str,
+        association_artifact_path: str,
+        model_fingerprint: str,
+        policy_fingerprint: str,
+        profile_snapshot_fingerprint: str,
+        exemplar_fingerprints_json: str,
+        same_exemplar_count: int,
+        different_exemplar_count: int,
+        decision: str,
+        evidence_fingerprint: str,
+    ) -> int:
+        created_at = utc_now().isoformat()
+        values = (
+            observation_id,
+            profile_id,
+            candidate_input_fingerprint,
+            association_result_sha256,
+            association_artifact_path,
+            model_fingerprint,
+            policy_fingerprint,
+            profile_snapshot_fingerprint,
+            exemplar_fingerprints_json,
+            same_exemplar_count,
+            different_exemplar_count,
+            decision,
+            evidence_fingerprint,
+            created_at,
+        )
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO speaker_machine_evidence (
+                        observation_id, profile_id,
+                        candidate_input_fingerprint,
+                        association_result_sha256,
+                        association_artifact_path, model_fingerprint,
+                        policy_fingerprint, profile_snapshot_fingerprint,
+                        exemplar_fingerprints_json, same_exemplar_count,
+                        different_exemplar_count, decision,
+                        evidence_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    values,
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT id, observation_id, profile_id,
+                           candidate_input_fingerprint,
+                           association_result_sha256,
+                           association_artifact_path, model_fingerprint,
+                           policy_fingerprint, profile_snapshot_fingerprint,
+                           exemplar_fingerprints_json, same_exemplar_count,
+                           different_exemplar_count, decision
+                    FROM speaker_machine_evidence
+                    WHERE evidence_fingerprint = ?
+                    """,
+                    (evidence_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                persisted = tuple(row[key] for key in row.keys() if key != "id")
+                if persisted != values[:12]:
+                    raise ValueError(
+                        "Machine evidence fingerprint collision"
+                    )
+                return int(row["id"])
+        return int(cursor.lastrowid)
+
+    def add_speaker_machine_assignment_event(
+        self,
+        *,
+        machine_evidence_id: int,
+        observation_id: int,
+        profile_id: int,
+        action: str,
+        actor: str,
+        reason: str,
+        event_fingerprint: str,
+    ) -> int:
+        return self._add_registry_event(
+            table="speaker_machine_assignment_events",
+            columns=(
+                "machine_evidence_id",
+                "observation_id",
+                "profile_id",
+                "action",
+                "actor",
+                "reason",
+            ),
+            values=(
+                machine_evidence_id,
+                observation_id,
+                profile_id,
+                action,
+                actor,
+                reason,
+            ),
+            event_fingerprint=event_fingerprint,
+        )
+
+    def list_speaker_machine_evidence(self) -> list[dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, observation_id, profile_id,
+                       candidate_input_fingerprint,
+                       association_result_sha256,
+                       association_artifact_path, model_fingerprint,
+                       policy_fingerprint, profile_snapshot_fingerprint,
+                       exemplar_fingerprints_json, same_exemplar_count,
+                       different_exemplar_count, decision,
+                       evidence_fingerprint, created_at
+                FROM speaker_machine_evidence
+                ORDER BY id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_speaker_machine_assignment_events(
+        self,
+    ) -> list[dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, machine_evidence_id, observation_id, profile_id,
+                       action, actor, reason, event_fingerprint, created_at
+                FROM speaker_machine_assignment_events
+                ORDER BY id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def add_speaker_observation_review_event(
         self,
         *,
@@ -3244,6 +3425,7 @@ class Database:
             "speaker_observation_difference_events",
             "profile_name_claim_events",
             "speaker_profile_redirect_events",
+            "speaker_machine_assignment_events",
         }
         if table not in allowed_tables:
             raise ValueError(f"Unsupported registry event table: {table}")

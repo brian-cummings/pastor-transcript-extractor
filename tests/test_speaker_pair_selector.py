@@ -49,6 +49,7 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         *,
         profile_id: int = 7,
         margin: float = 0.08,
+        provisional_assignment_active: bool = False,
     ) -> AssociationConfirmationPair:
         return AssociationConfirmationPair(
             candidate_fingerprint=candidate_fingerprint,
@@ -58,6 +59,7 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             same_boundary_margin=margin,
             report_result_sha256="a" * 64,
             report_path="association.json",
+            provisional_assignment_active=provisional_assignment_active,
         )
 
     def test_default_selection_goal_preserves_evaluation_selector(self) -> None:
@@ -460,6 +462,50 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             "shadow_association_confirmation",
             selected.manifest["selection_objective"],
         )
+
+    def test_active_machine_assignment_is_reviewed_before_shadow_nomination(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("shadow-candidate"),
+                candidate("shadow-exemplar", profile_ids=frozenset((7,))),
+                candidate("active-candidate"),
+                candidate("active-exemplar", profile_ids=frozenset((8,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            association_confirmation_pairs=(
+                self._association_nomination(
+                    "shadow-candidate",
+                    "shadow-exemplar",
+                    profile_id=7,
+                    margin=0.20,
+                ),
+                self._association_nomination(
+                    "active-candidate",
+                    "active-exemplar",
+                    profile_id=8,
+                    margin=0.01,
+                    provisional_assignment_active=True,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            {"active-candidate", "active-exemplar"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "machine_assignment_validation",
+            selected.manifest["selection_objective"],
+        )
+        provenance = selected.manifest["shadow_association_confirmation"]
+        self.assertTrue(provenance["provisional_assignment_active"])
+        self.assertFalse(provenance["identity_evidence"])
 
     def test_stale_association_candidate_is_excluded_after_profile_assignment(
         self,

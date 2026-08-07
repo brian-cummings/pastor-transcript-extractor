@@ -1,0 +1,11 @@
+{
+  "allowed_association_policy_sha256": [],
+  "allowed_model_fingerprints": [],
+  "allow_provisional_activation": false,
+  "maximum_active_assignments": 0,
+  "minimum_same_exemplars": 2,
+  "mode": "shadow",
+  "policy_version": "machine-assignment-shadow-v1",
+  "require_automatic_profile_ready": true,
+  "require_unique_profile": true
+}

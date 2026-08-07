@@ -211,6 +211,15 @@ from pastor_transcript_extractor.speaker_profile_status import (
     build_profile_pipeline_status,
     status_need_execution_label,
 )
+from pastor_transcript_extractor.speaker_machine_assignment import (
+    active_machine_assignment_evidence,
+    apply_machine_assignment_plan,
+    load_machine_assignment_policy,
+    machine_assignment_status,
+    plan_machine_assignments,
+    reconcile_machine_assignments,
+    rollback_machine_assignments,
+)
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     get_profile_attribution_candidate,
@@ -3233,6 +3242,42 @@ def confirm_discovered_profiles_command(
         )
 
 
+def _held_out_speaker_fixture_fingerprints(
+    fixture_dir: Path,
+) -> frozenset[str]:
+    fingerprints: set[str] = set()
+    for path in sorted(fixture_dir.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        manifest = payload.get("selection_manifest")
+        partitions = (
+            manifest.get("evaluation_partitions")
+            if isinstance(manifest, dict)
+            else None
+        )
+        is_held_out = payload.get("evaluation_partition") == "held_out" or (
+            isinstance(partitions, dict)
+            and "held_out" in partitions.values()
+        )
+        observations = payload.get("observations")
+        if not is_held_out or not isinstance(observations, dict):
+            continue
+        for side in ("a", "b"):
+            observation = observations.get(side)
+            fingerprint = (
+                observation.get("input_fingerprint")
+                if isinstance(observation, dict)
+                else None
+            )
+            if isinstance(fingerprint, str) and fingerprint:
+                fingerprints.add(fingerprint)
+    return frozenset(fingerprints)
+
+
 def run_identity_workflow_service(
     *,
     youtube_video_id: str | None,
@@ -3242,6 +3287,8 @@ def run_identity_workflow_service(
     apply_automatic: bool,
     apply_confirmations: bool,
     apply_promotions: bool,
+    apply_machine_canary: bool = False,
+    machine_assignment_policy_path: Path | None = None,
     base_dir: Path | None,
 ) -> None:
     if (youtube_video_id is None) == (not all_extractions):
@@ -3249,13 +3296,18 @@ def run_identity_workflow_service(
     effective_apply_confirmations = apply_automatic or apply_confirmations
     effective_apply_promotions = apply_automatic or apply_promotions
     if plan_only and (
-        apply_automatic or apply_confirmations or apply_promotions
+        apply_automatic
+        or apply_confirmations
+        or apply_promotions
+        or apply_machine_canary
     ):
         raise ValueError(
             "--plan-only cannot be combined with registry mutation flags"
         )
     if not all_extractions and effective_apply_promotions:
         raise ValueError("automatic profile promotion requires --all")
+    if not all_extractions and apply_machine_canary:
+        raise ValueError("machine canary activation requires --all")
     paths = build_paths(base_dir, remember=not plan_only)
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
@@ -3297,7 +3349,27 @@ def run_identity_workflow_service(
     else:
         identity_backfill(video_id=database_video_id, base_dir=base_dir)
 
-    shadow_associate_speakers_command(
+    machine_cache = MediaVerificationCache(
+        Path("evaluation/speaker-pairs/cache/media-verification").resolve()
+    )
+    if plan_only:
+        console.print(
+            "Machine assignment reconciliation: plan-only; no events were written."
+        )
+    else:
+        reconciliation = reconcile_machine_assignments(
+            Database(paths.database),
+            verification_cache=machine_cache,
+        )
+        console.print(
+            "Machine assignment reconciliation: "
+            f"confirmed={reconciliation.confirmed} "
+            f"revoked={reconciliation.revoked} "
+            f"circuit_revoked={reconciliation.circuit_breaker_revoked} "
+            f"unchanged={reconciliation.unchanged}."
+        )
+
+    current_association_reports = shadow_associate_speakers_command(
         youtube_video_id=youtube_video_id,
         all_eligible=all_extractions,
         limit=None,
@@ -3319,6 +3391,77 @@ def run_identity_workflow_service(
         output_root=Path("evaluation/speaker-associations/shadow-runs"),
         base_dir=base_dir,
     )
+
+    machine_policy = load_machine_assignment_policy(
+        machine_assignment_policy_path
+        or Path(
+            "evaluation/speaker-associations/policies/"
+            "machine-assignment-shadow-v1.json"
+        )
+    )
+    machine_database = Database(paths.database, readonly=True)
+    machine_readiness = assess_profile_association_readiness(
+        machine_database,
+        reviewed_evidence,
+    )
+    scoped_observation_ids = None
+    if database_video_id is not None:
+        scoped_observation = (
+            machine_database.get_latest_speaker_observation_for_video(
+                database_video_id
+            )
+        )
+        scoped_observation_ids = frozenset(
+            (scoped_observation.id,)
+            if scoped_observation is not None
+            else ()
+        )
+    machine_plan = plan_machine_assignments(
+        machine_database,
+        current_association_reports,
+        readiness=machine_readiness,
+        policy=machine_policy,
+        verification_cache=machine_cache,
+        excluded_observation_fingerprints=(
+            _held_out_speaker_fixture_fingerprints(
+                Path("evaluation/speaker-pairs/fixtures").resolve()
+            )
+        ),
+        included_observation_ids=scoped_observation_ids,
+    )
+    console.print(
+        "Machine assignment plan: "
+        f"mode={machine_policy.mode} "
+        f"eligible={len(machine_plan.candidates)} "
+        f"skipped={sum(machine_plan.skipped_counts.values())} "
+        f"tripped_policies={len(machine_plan.tripped_policy_fingerprints)}."
+    )
+    if machine_plan.skipped_counts:
+        console.print(
+            "Machine assignment skips: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in machine_plan.skipped_counts.items()
+            )
+        )
+    if plan_only:
+        console.print(
+            "Machine assignment evidence: plan-only; no ledger rows or "
+            "provisional assignments were written."
+        )
+    else:
+        machine_apply = apply_machine_assignment_plan(
+            Database(paths.database),
+            machine_plan,
+            activate_canary=apply_machine_canary,
+        )
+        console.print(
+            "Machine assignment evidence: "
+            f"recorded={machine_apply.evidence_recorded} "
+            f"reused={machine_apply.evidence_reused} "
+            f"activated={machine_apply.assignments_activated} "
+            f"blocked={machine_apply.activation_blocked}."
+        )
 
     confirm_discovered_profiles_command(
         input_root=Path("evaluation/speaker-associations/shadow-runs"),
@@ -3462,6 +3605,22 @@ def identity_run_command(
         "--apply-promotions",
         help="Promote verified discovery components into provisional profiles.",
     ),
+    apply_machine_canary: bool = typer.Option(
+        False,
+        "--apply-machine-canary",
+        help=(
+            "Activate eligible reversible machine assignments only when the "
+            "versioned machine policy permits canary activation. Requires --all."
+        ),
+    ),
+    machine_assignment_policy: Path | None = typer.Option(
+        None,
+        "--machine-assignment-policy",
+        help=(
+            "Use a versioned machine-assignment policy artifact. The default "
+            "checked-in policy is shadow-only."
+        ),
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
@@ -3476,10 +3635,100 @@ def identity_run_command(
             apply_automatic=apply_automatic,
             apply_confirmations=apply_confirmations,
             apply_promotions=apply_promotions,
+            apply_machine_canary=apply_machine_canary,
+            machine_assignment_policy_path=machine_assignment_policy,
             base_dir=base_dir,
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@identity_app.command(
+    "machine-assignment-status",
+    help="Report reversible machine evidence and provisional assignment state.",
+)
+def machine_assignment_status_command(
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    status = machine_assignment_status(
+        Database(paths.database, readonly=True)
+    )
+    counts = status["counts"]
+    console.print(
+        "Machine assignments: "
+        f"evidence={status['evidence_count']} "
+        f"events={status['event_count']} "
+        f"evidence_only={counts['evidence_only']} "
+        f"active={counts['active']} "
+        f"confirmed={counts['confirmed']} "
+        f"revoked={counts['revoked']} "
+        f"tripped_policies="
+        f"{len(status['tripped_policy_fingerprints'])}."
+    )
+    console.print(
+        "Machine assignments remain separate from reviewed profile membership."
+    )
+    for policy_fingerprint, policy_counts in status["policies"].items():
+        console.print(
+            f"  policy={policy_fingerprint} "
+            f"evidence_only={policy_counts['evidence_only']} "
+            f"active={policy_counts['active']} "
+            f"confirmed={policy_counts['confirmed']} "
+            f"revoked={policy_counts['revoked']}"
+        )
+
+
+@identity_app.command(
+    "rollback-machine-assignments",
+    help="Plan or append revocations for one machine policy fingerprint.",
+)
+def rollback_machine_assignments_command(
+    policy_fingerprint: str = typer.Option(
+        ...,
+        "--policy-fingerprint",
+        help="Exact machine evidence policy fingerprint to revoke.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Append rollback events; otherwise print the plan only.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    readonly = Database(paths.database, readonly=True)
+    eligible = sum(
+        row["policy_fingerprint"] == policy_fingerprint
+        for row in active_machine_assignment_evidence(readonly)
+    )
+    console.print(
+        f"Machine rollback plan: policy={policy_fingerprint} active={eligible}."
+    )
+    if not apply:
+        console.print("Plan only; pass --apply to append revocation events.")
+        return
+    database = Database(paths.database)
+    database.initialize()
+    revoked = rollback_machine_assignments(
+        database,
+        policy_fingerprint=policy_fingerprint,
+    )
+    console.print(f"Machine rollback complete: revoked={revoked}.")
 
 
 @identity_app.command(
@@ -3811,7 +4060,7 @@ def shadow_associate_speakers_command(
         None,
         help="Override app data directory.",
     ),
-) -> None:
+) -> tuple[Path, ...]:
     if (youtube_video_id is None) == (not all_eligible):
         raise typer.BadParameter(
             "Pass exactly one of --youtube-video-id or --all-eligible."
@@ -4017,7 +4266,7 @@ def shadow_associate_speakers_command(
         console.print(
             "Plan only; no acoustic comparisons or association artifacts were created."
         )
-        return
+        return ()
     if not usable_profiles:
         raise typer.BadParameter(
             "No shadow-ready profile has enough eligible acoustic exemplars."
@@ -4068,6 +4317,7 @@ def shadow_associate_speakers_command(
         )
 
     outcome_counts: dict[str, int] = {}
+    written_reports: list[Path] = []
     for index, (video, eligibility, _span_specs) in enumerate(
         candidates,
         start=1,
@@ -4101,6 +4351,7 @@ def shadow_associate_speakers_command(
             },
         )
         destination = write_shadow_association(output_root, report)
+        written_reports.append(destination)
         outcome = str(report["outcome"])
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
         console.print(
@@ -4119,6 +4370,7 @@ def shadow_associate_speakers_command(
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."
     )
+    return tuple(written_reports)
 
 
 @identity_app.command(
@@ -4560,6 +4812,15 @@ def review_next_speaker_pair(
             SelectionGoal.PROFILE_GROWTH,
             SelectionGoal.AUTOMATION_READINESS,
         }:
+            active_machine_keys = {
+                (
+                    str(row["candidate_input_fingerprint"]),
+                    database.resolve_speaker_profile_id(
+                        int(row["profile_id"])
+                    ),
+                )
+                for row in active_machine_assignment_evidence(database)
+            }
             current_association_nominations = []
             for nomination in load_shadow_association_confirmation_pairs(
                 association_root.expanduser().resolve().glob("*/*.json")
@@ -4576,6 +4837,13 @@ def review_next_speaker_pair(
                     replace(
                         nomination,
                         profile_id=canonical_profile_id,
+                        provisional_assignment_active=(
+                            (
+                                nomination.candidate_fingerprint,
+                                canonical_profile_id,
+                            )
+                            in active_machine_keys
+                        ),
                     )
                 )
             association_confirmation_pairs = tuple(

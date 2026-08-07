@@ -134,6 +134,7 @@ class AssociationConfirmationPair:
     same_boundary_margin: float
     report_result_sha256: str
     report_path: str
+    provisional_assignment_active: bool = False
 
     @property
     def pair_key(self) -> frozenset[str]:
@@ -704,7 +705,11 @@ def select_next_speaker_pair(
         )
     )
     if (
-        selection_objective == "shadow_association_confirmation"
+        selection_objective
+        in {
+            "shadow_association_confirmation",
+            "machine_assignment_validation",
+        }
         and selected_association is not None
     ):
         manifest["shadow_association_confirmation"] = {
@@ -724,6 +729,9 @@ def select_next_speaker_pair(
             "report_path": selected_association.report_path,
             "role": "review_nomination_only",
             "identity_evidence": False,
+            "provisional_assignment_active": (
+                selected_association.provisional_assignment_active
+            ),
             "durable_evidence_source": "approved_blinded_pair_review_only",
         }
     if anchor_component is not None:
@@ -997,9 +1005,10 @@ def _select_association_confirmation_pair(
         eligible.append((pair, nomination))
     if not eligible:
         return None
-    pair, _nomination = min(
+    pair, selected_nomination = min(
         eligible,
         key=lambda item: (
+            0 if item[1].provisional_assignment_active else 1,
             -item[1].same_comparison_count,
             -item[1].same_boundary_margin,
             _rank_pair(
@@ -1021,7 +1030,11 @@ def _select_association_confirmation_pair(
         observation_b,
         stratum,
         relation,
-        "shadow_association_confirmation",
+        (
+            "machine_assignment_validation"
+            if selected_nomination.provisional_assignment_active
+            else "shadow_association_confirmation"
+        ),
         (
             frozenset((observation_a.input_fingerprint,)),
             frozenset((observation_b.input_fingerprint,)),

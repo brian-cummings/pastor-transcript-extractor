@@ -40,7 +40,7 @@ Implemented:
 - identity increment 3 separates neutral speaker observations, claims, profiles, and target-policy projection
 - valid targetless sermon extractions now create identity-neutral principal-speaker observations and grounded claims; configured pastor profiles and target-specific assessments remain optional projections
 - strict association coverage audits account for every latest extraction, require current-policy attempts for eligible unassigned observations, preserve explicit blockers, and exit nonzero on missing, stale, or retry-required cases
-- profile membership and naming require explicit review events; clustering and acoustic-driven registry matching remain unimplemented
+- profile membership and naming require explicit review events; acoustic proposals now enter a separate shadow machine-evidence ledger but never become reviewed membership or acoustic exemplars
 - acoustic increment 4 adds a read-only, local pairwise speaker diagnostic with exact cached audio spans and pinned model provenance
 - acoustic outcomes remain non-gating; no default threshold exists and uncalibrated comparisons abstain
 - reviewed pair fixtures pin observation fingerprints and exact WAV hashes; evaluation separates recognition errors, abstention, and analysis failure
@@ -56,6 +56,8 @@ Implemented:
 - media acquisition outcomes distinguish verified, unavailable, and failed; they remain non-gating for sermon content
 - universal acquisition is an explicit shadow command and has not been inserted into the stable `run` workflow
 - no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
+- machine-assignment lifecycle events are append-only and reversible; the checked-in policy records shadow evidence only, while any future canary must pin model/policy fingerprints, cap active assignments, and survive blinded human review
+- machine ledger tables are created by normal database initialization; there is no historical backfill, because only association artifacts refreshed by the current identity run are eligible
 - 284 tests pass
 
 ## Transcript-Independent Media

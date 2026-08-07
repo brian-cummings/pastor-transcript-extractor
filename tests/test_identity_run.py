@@ -6,10 +6,46 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from pastor_transcript_extractor.cli import run_identity_workflow_service
+from pastor_transcript_extractor.cli import (
+    _held_out_speaker_fixture_fingerprints,
+    run_identity_workflow_service,
+)
 
 
 class IdentityRunTests(unittest.TestCase):
+    def test_held_out_fixture_observations_are_reserved_from_machine_use(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            fixture_dir = Path(tempdir)
+            (fixture_dir / "held-out.json").write_text(
+                """{
+                  "evaluation_partition": "held_out",
+                  "observations": {
+                    "a": {"input_fingerprint": "fingerprint-a"},
+                    "b": {"input_fingerprint": "fingerprint-b"}
+                  }
+                }""",
+                encoding="utf-8",
+            )
+            (fixture_dir / "development.json").write_text(
+                """{
+                  "evaluation_partition": "development",
+                  "observations": {
+                    "a": {"input_fingerprint": "fingerprint-c"},
+                    "b": {"input_fingerprint": "fingerprint-d"}
+                  }
+                }""",
+                encoding="utf-8",
+            )
+
+            reserved = _held_out_speaker_fixture_fingerprints(fixture_dir)
+
+        self.assertEqual(
+            frozenset(("fingerprint-a", "fingerprint-b")),
+            reserved,
+        )
+
     def test_all_run_chains_backfill_association_confirmation_and_discovery(
         self,
     ) -> None:
@@ -39,6 +75,23 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
                 ) as associate,
                 patch(
+                    "pastor_transcript_extractor.cli.plan_machine_assignments",
+                    return_value=SimpleNamespace(
+                        candidates=(),
+                        skipped_counts={},
+                        tripped_policy_fingerprints=frozenset(),
+                    ),
+                ) as plan_machine,
+                patch(
+                    "pastor_transcript_extractor.cli.apply_machine_assignment_plan",
+                    return_value=SimpleNamespace(
+                        evidence_recorded=0,
+                        evidence_reused=0,
+                        assignments_activated=0,
+                        activation_blocked=0,
+                    ),
+                ),
+                patch(
                     "pastor_transcript_extractor.cli.confirm_discovered_profiles_command"
                 ) as confirm,
                 patch(
@@ -52,6 +105,8 @@ class IdentityRunTests(unittest.TestCase):
                 ) as coordinate,
                 patch.object(Path, "glob", return_value=[]),
             ):
+                current_report = Path(tempdir) / "current-association.json"
+                associate.return_value = (current_report,)
                 run_identity_workflow_service(
                     youtube_video_id=None,
                     all_extractions=True,
@@ -71,6 +126,10 @@ class IdentityRunTests(unittest.TestCase):
         sync_evidence.assert_called_once()
         self.assertFalse(associate.call_args.kwargs["plan_only"])
         self.assertTrue(associate.call_args.kwargs["all_eligible"])
+        self.assertEqual(
+            (current_report,),
+            plan_machine.call_args.args[1],
+        )
         self.assertFalse(confirm.call_args.kwargs["apply"])
         self.assertFalse(discover.call_args.kwargs["plan_only"])
         promote.assert_not_called()
