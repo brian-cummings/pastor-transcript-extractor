@@ -301,6 +301,11 @@ pte identity review-next-speaker-pair \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
+If packet preparation cannot find the required five speech-qualified clips,
+the command writes an append-only automatic rejection artifact. Later
+automatic selections exclude the failed observation, not merely that exact
+pair, because changing its partner cannot repair insufficient speech activity.
+
 After freezing a development policy candidate, collect validation fixtures
 without changing its development fingerprint:
 

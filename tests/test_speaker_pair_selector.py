@@ -89,6 +89,50 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             ),
         )
 
+    def test_activity_rejection_excludes_failed_observation_from_all_pairs(
+        self,
+    ) -> None:
+        rejection = {
+            "event_kind": "speaker_pair_automatic_selection_rejection",
+            "review_status": "rejected_automatically",
+            "reason": "insufficient_speech_activity",
+            "failed_observation_fingerprint": "silent",
+            "pair_id": "pair-rejected",
+            "observations": {
+                "source_a": {
+                    "input_fingerprint": "silent",
+                    "youtube_video_id": "video-silent",
+                },
+                "source_b": {
+                    "input_fingerprint": "prior-partner",
+                    "youtube_video_id": "video-prior-partner",
+                },
+            },
+        }
+        history = selection_history_from_artifacts(
+            drafts=[rejection],
+            reviews=[],
+            fixtures=[],
+        )
+
+        selected = select_next_speaker_pair(
+            [
+                candidate("silent"),
+                candidate("prior-partner"),
+                candidate("fresh-a"),
+                candidate("fresh-b"),
+            ],
+            history,
+        )
+
+        self.assertNotIn(
+            "silent",
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+
     def test_profile_growth_prefers_profile_frontier_without_reconfirming_members(
         self,
     ) -> None:

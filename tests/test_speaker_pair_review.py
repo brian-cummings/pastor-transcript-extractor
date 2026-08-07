@@ -467,6 +467,10 @@ class SpeakerPairReviewTests(unittest.TestCase):
             frozenset(("observation-a", "observation-b")),
             history.excluded_pairs,
         )
+        self.assertEqual(
+            frozenset(("observation-a",)),
+            history.automatically_unreviewable_observations,
+        )
 
     def test_partial_four_clip_packet_is_rejected_by_default(self):
         candidate_spans = []

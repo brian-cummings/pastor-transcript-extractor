@@ -76,6 +76,7 @@ class PairSelectionHistory:
     reviewed_identity_outcomes: Mapping[frozenset[str], str] | None = None
     profile_growth_selections: tuple[frozenset[str], ...] = ()
     qualified_single_observations: frozenset[str] = frozenset()
+    automatically_unreviewable_observations: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,8 +171,21 @@ def selection_history_from_artifacts(
     sources_by_pair: dict[str, list[str]] = {}
     profile_growth_selections_by_pair: dict[str, frozenset[str]] = {}
     qualified_single_observations: set[str] = set()
+    automatically_unreviewable_observations: set[str] = set()
 
     for index, draft in enumerate(drafts):
+        if (
+            draft.get("event_kind")
+            == "speaker_pair_automatic_selection_rejection"
+            and draft.get("reason") == "insufficient_speech_activity"
+        ):
+            failed_fingerprint = draft.get(
+                "failed_observation_fingerprint"
+            )
+            if isinstance(failed_fingerprint, str) and failed_fingerprint:
+                automatically_unreviewable_observations.add(
+                    failed_fingerprint
+                )
         fingerprints = _draft_fingerprints(draft)
         if len(fingerprints) == 2:
             excluded_pairs.add(frozenset(fingerprints))
@@ -329,6 +343,9 @@ def selection_history_from_artifacts(
         qualified_single_observations=frozenset(
             qualified_single_observations
         ),
+        automatically_unreviewable_observations=frozenset(
+            automatically_unreviewable_observations
+        ),
     )
 
 
@@ -388,8 +405,14 @@ def select_next_speaker_pair(
     candidates = [
         item
         for item in ordered
-        if evaluation_partition is None
-        or item.evaluation_partition == evaluation_partition
+        if (
+            item.input_fingerprint
+            not in history.automatically_unreviewable_observations
+            and (
+                evaluation_partition is None
+                or item.evaluation_partition == evaluation_partition
+            )
+        )
     ]
     if len(candidates) < 2:
         scope = evaluation_partition or "all partitions"
