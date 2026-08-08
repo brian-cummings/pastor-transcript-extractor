@@ -174,6 +174,7 @@ from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
 )
 from pastor_transcript_extractor.speaker_pair_review import (
+    CLIP_ACTIVITY_POLICY_VERSION,
     InsufficientSpeechActivityError,
     ObservationQualification,
     PairJudgment,
@@ -4749,6 +4750,9 @@ def review_next_speaker_pair(
             drafts=drafts,
             reviews=reviews,
             fixtures=fixtures,
+            current_clip_activity_policy_version=(
+                CLIP_ACTIVITY_POLICY_VERSION
+            ),
         )
         automatic_profile_ready_ids = frozenset()
         if selection_objective in {

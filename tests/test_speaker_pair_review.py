@@ -16,7 +16,10 @@ from pastor_transcript_extractor.cli import (
     review_speaker_pair,
 )
 from pastor_transcript_extractor.models import SpeakerObservation
-from pastor_transcript_extractor.speaker_pair_diagnostics import CachedSpan
+from pastor_transcript_extractor.speaker_pair_diagnostics import (
+    CachedSpan,
+    RecordingActivityProfile,
+)
 from pastor_transcript_extractor.speaker_pair_diagnostics import select_diagnostic_spans
 from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
@@ -39,9 +42,11 @@ class FakeSpanCache:
         root: Path,
         *,
         silent_starts: set[float] | None = None,
+        quiet_recording: bool = False,
     ):
         self.root = root
         self.silent_starts = silent_starts or set()
+        self.quiet_recording = quiet_recording
 
     def prepare(self, *, observation, source_audio_path, span):
         key = f"{observation.input_fingerprint}-{span.start_seconds:.3f}"
@@ -65,6 +70,43 @@ class FakeSpanCache:
                 0.1 if span.start_seconds in self.silent_starts else 0.9
             ),
         )
+
+    def recording_activity_profile(
+        self,
+        source_audio_path,
+        *,
+        policy_version,
+        frame_duration_ms,
+        reference_percentile,
+        threshold_offset_db,
+        minimum_threshold_dbfs,
+        maximum_threshold_dbfs,
+    ):
+        return RecordingActivityProfile(
+            policy_version=policy_version,
+            source_audio_sha256="fake-audio-sha256",
+            frame_duration_ms=frame_duration_ms,
+            reference_percentile=reference_percentile,
+            reference_dbfs=(-40.0 if self.quiet_recording else -20.0),
+            silence_threshold_dbfs=(
+                -55.0
+                if self.quiet_recording
+                else maximum_threshold_dbfs
+            ),
+            frame_count=100,
+            cache_hit=True,
+        )
+
+    def measure_span_activity(
+        self,
+        span,
+        *,
+        silence_threshold_dbfs,
+        frame_duration_ms,
+    ):
+        if self.quiet_recording and silence_threshold_dbfs <= -55.0:
+            return 0.9
+        return span.non_silent_fraction
 
 
 def observation(fingerprint: str, identifier: int) -> SpeakerObservation:
@@ -513,6 +555,36 @@ class SpeakerPairReviewTests(unittest.TestCase):
         )
         self.assertEqual(4, failed["clip_selection"]["qualified_clip_count"])
         self.assertEqual(5, failed["clip_selection"]["minimum_clip_count"])
+
+    def test_quiet_recording_uses_relative_activity_threshold(self):
+        all_candidate_starts = {
+            span.start_seconds
+            for count in (5, 15)
+            for span in select_diagnostic_spans(self.observation_a, count=count)
+        }
+        span_cache = FakeSpanCache(
+            self.root / "quiet-cache",
+            silent_starts=all_candidate_starts,
+            quiet_recording=True,
+        )
+
+        prepared = prepare_review_observation(
+            observation=self.observation_a,
+            audio_path=Path("quiet-audio.wav"),
+            span_cache=span_cache,
+        )
+
+        self.assertEqual(5, len(prepared.spans))
+        self.assertEqual(
+            "speaker_pair_clip_activity_v3",
+            prepared.clip_selection["policy_version"],
+        )
+        self.assertEqual(
+            -55.0,
+            prepared.clip_selection["recording_activity_profile"][
+                "silence_threshold_dbfs"
+            ],
+        )
 
     def test_qualified_explicit_review_creates_exact_frozen_fixture(self):
         manifest = {

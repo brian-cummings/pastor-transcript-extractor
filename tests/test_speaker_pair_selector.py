@@ -133,6 +133,47 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             },
         )
 
+    def test_activity_policy_upgrade_reopens_previously_rejected_observation(
+        self,
+    ) -> None:
+        rejection = {
+            "event_kind": "speaker_pair_automatic_selection_rejection",
+            "reason": "insufficient_speech_activity",
+            "failed_observation_fingerprint": "quiet",
+            "pair_id": "pair-v2-rejected",
+            "observations": {
+                "source_a": {
+                    "input_fingerprint": "quiet",
+                    "youtube_video_id": "video-quiet",
+                    "clip_selection": {
+                        "policy_version": "speaker_pair_clip_activity_v2"
+                    },
+                },
+                "source_b": {
+                    "input_fingerprint": "partner",
+                    "youtube_video_id": "video-partner",
+                },
+            },
+        }
+
+        history = selection_history_from_artifacts(
+            drafts=[rejection],
+            reviews=[],
+            fixtures=[],
+            current_clip_activity_policy_version=(
+                "speaker_pair_clip_activity_v3"
+            ),
+        )
+
+        self.assertEqual(
+            frozenset(),
+            history.automatically_unreviewable_observations,
+        )
+        self.assertNotIn(
+            frozenset(("quiet", "partner")),
+            history.excluded_pairs,
+        )
+
     def test_profile_growth_prefers_profile_frontier_without_reconfirming_members(
         self,
     ) -> None:

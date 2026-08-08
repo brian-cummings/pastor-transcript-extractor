@@ -305,6 +305,12 @@ If packet preparation cannot find the required five speech-qualified clips,
 the command writes an append-only automatic rejection artifact. Later
 automatic selections exclude the failed observation, not merely that exact
 pair, because changing its partner cannot repair insufficient speech activity.
+Activity policy v3 computes and caches a bounded recording-relative silence
+threshold from the existing normalized WAV; it does not rewrite or loudness-
+normalize media. The cache is keyed by normalized-audio SHA-256 and policy
+parameters. Rejections are policy-version-specific, so the v3 selector retries
+observations rejected by the older fixed-threshold v2 policy while preserving
+those artifacts as historical provenance.
 
 After freezing a development policy candidate, collect validation fixtures
 without changing its development fingerprint:

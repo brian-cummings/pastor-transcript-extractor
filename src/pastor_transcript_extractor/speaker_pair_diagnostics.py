@@ -64,6 +64,18 @@ class CachedSpan:
 
 
 @dataclass(frozen=True, slots=True)
+class RecordingActivityProfile:
+    policy_version: str
+    source_audio_sha256: str
+    frame_duration_ms: float
+    reference_percentile: float
+    reference_dbfs: float
+    silence_threshold_dbfs: float
+    frame_count: int
+    cache_hit: bool
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionPolicy:
     """An experimental, externally calibrated abstention policy.
 
@@ -265,6 +277,98 @@ class AudioSpanCache:
             content_sha256 = _sha256_file(path)
             self._source_hashes[key] = content_sha256
         return content_sha256
+
+    def recording_activity_profile(
+        self,
+        source_audio_path: Path,
+        *,
+        policy_version: str,
+        frame_duration_ms: float,
+        reference_percentile: float,
+        threshold_offset_db: float,
+        minimum_threshold_dbfs: float,
+        maximum_threshold_dbfs: float,
+    ) -> RecordingActivityProfile:
+        if not 0.0 < reference_percentile < 1.0:
+            raise ValueError(
+                "activity reference percentile must be between zero and one"
+            )
+        if minimum_threshold_dbfs > maximum_threshold_dbfs:
+            raise ValueError("activity threshold bounds are reversed")
+        source_sha256 = self._source_audio_sha256(source_audio_path)
+        profile_input = {
+            "policy_version": policy_version,
+            "source_audio_sha256": source_sha256,
+            "frame_duration_ms": frame_duration_ms,
+            "reference_percentile": reference_percentile,
+            "threshold_offset_db": threshold_offset_db,
+            "minimum_threshold_dbfs": minimum_threshold_dbfs,
+            "maximum_threshold_dbfs": maximum_threshold_dbfs,
+        }
+        cache_key = _sha256_json(profile_input)
+        profile_path = self.root / "activity-profiles" / f"{cache_key}.json"
+        if profile_path.exists():
+            payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            if payload.get("input") != profile_input:
+                raise RuntimeError(
+                    f"recording activity profile collision: {profile_path}"
+                )
+            return RecordingActivityProfile(
+                **payload["profile"],
+                cache_hit=True,
+            )
+        frame_levels = _wav_frame_levels_dbfs(
+            source_audio_path,
+            frame_duration_ms=frame_duration_ms,
+        )
+        reference_dbfs = _percentile(
+            sorted(frame_levels),
+            reference_percentile,
+        )
+        silence_threshold_dbfs = max(
+            minimum_threshold_dbfs,
+            min(
+                maximum_threshold_dbfs,
+                reference_dbfs - threshold_offset_db,
+            ),
+        )
+        profile = RecordingActivityProfile(
+            policy_version=policy_version,
+            source_audio_sha256=source_sha256,
+            frame_duration_ms=frame_duration_ms,
+            reference_percentile=reference_percentile,
+            reference_dbfs=reference_dbfs,
+            silence_threshold_dbfs=silence_threshold_dbfs,
+            frame_count=len(frame_levels),
+            cache_hit=False,
+        )
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(
+            profile_path,
+            {
+                "schema_version": 1,
+                "input": profile_input,
+                "profile": {
+                    key: value
+                    for key, value in asdict(profile).items()
+                    if key != "cache_hit"
+                },
+            },
+        )
+        return profile
+
+    def measure_span_activity(
+        self,
+        span: CachedSpan,
+        *,
+        silence_threshold_dbfs: float,
+        frame_duration_ms: float,
+    ) -> float:
+        return measure_non_silent_fraction(
+            Path(span.wav_path),
+            frame_duration_ms=frame_duration_ms,
+            silence_threshold_dbfs=silence_threshold_dbfs,
+        )
 
 
 class EmbeddingCache:
@@ -806,6 +910,41 @@ def measure_non_silent_fraction(
         frame_duration_ms=frame_duration_ms,
         silence_threshold_dbfs=silence_threshold_dbfs,
     )
+
+
+def _wav_frame_levels_dbfs(
+    path: Path,
+    *,
+    frame_duration_ms: float,
+) -> list[float]:
+    if frame_duration_ms <= 0:
+        raise ValueError("frame duration must be positive")
+    levels: list[float] = []
+    with wave.open(str(path), "rb") as source:
+        if source.getnchannels() != 1 or source.getsampwidth() != 2:
+            raise ValueError(
+                "recording activity profiling requires mono 16-bit PCM"
+            )
+        rate = source.getframerate()
+        if rate <= 0:
+            raise ValueError("recording activity sample rate must be positive")
+        frame_size = max(
+            1,
+            round(rate * frame_duration_ms / 1000.0),
+        )
+        while raw := source.readframes(frame_size):
+            samples = array("h")
+            samples.frombytes(raw)
+            mean_square = sum(
+                float(value) * float(value) for value in samples
+            ) / len(samples)
+            rms = math.sqrt(mean_square)
+            levels.append(
+                20.0 * math.log10(max(rms / 32768.0, 1e-12))
+            )
+    if not levels:
+        raise ValueError("recording activity source is empty")
+    return levels
 
 
 def _wav_quality(path: Path) -> tuple[float, float, float, float]:

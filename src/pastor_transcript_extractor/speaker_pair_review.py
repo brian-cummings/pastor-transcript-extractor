@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from enum import StrEnum
 import hashlib
@@ -14,6 +14,7 @@ from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
     CachedSpan,
+    RecordingActivityProfile,
     SpanSpec,
     select_diagnostic_spans,
     validate_reviewed_pair_fixture,
@@ -25,9 +26,14 @@ from pastor_transcript_extractor.speaker_review_invalidation import (
 
 
 REVIEW_WORKFLOW_VERSION = "speaker_pair_review_v3"
-CLIP_ACTIVITY_POLICY_VERSION = "speaker_pair_clip_activity_v2"
+CLIP_ACTIVITY_POLICY_VERSION = "speaker_pair_clip_activity_v3"
 DEFAULT_MIN_NON_SILENT_FRACTION = 0.40
 DEFAULT_MIN_CLIP_RMS_DBFS = -52.0
+ACTIVITY_FRAME_DURATION_MS = 30.0
+ACTIVITY_REFERENCE_PERCENTILE = 0.90
+ACTIVITY_THRESHOLD_OFFSET_DB = 15.0
+ACTIVITY_MINIMUM_THRESHOLD_DBFS = -60.0
+ACTIVITY_MAXIMUM_THRESHOLD_DBFS = -50.0
 STANDARD_VARIATION_TAGS = (
     "different_date",
     "different_microphone",
@@ -249,6 +255,15 @@ def prepare_review_observation(
         duration_seconds=span_duration_seconds,
     )
     candidate_specs = _unique_span_specs((*primary_specs, *fallback_specs))
+    activity_profile = span_cache.recording_activity_profile(
+        audio_path,
+        policy_version=CLIP_ACTIVITY_POLICY_VERSION,
+        frame_duration_ms=ACTIVITY_FRAME_DURATION_MS,
+        reference_percentile=ACTIVITY_REFERENCE_PERCENTILE,
+        threshold_offset_db=ACTIVITY_THRESHOLD_OFFSET_DB,
+        minimum_threshold_dbfs=ACTIVITY_MINIMUM_THRESHOLD_DBFS,
+        maximum_threshold_dbfs=ACTIVITY_MAXIMUM_THRESHOLD_DBFS,
+    )
     spans, clip_selection = _prepare_review_spans(
         observation=observation,
         audio_path=audio_path,
@@ -257,6 +272,7 @@ def prepare_review_observation(
         requested_count=span_count,
         minimum_count=min_qualified_spans,
         min_non_silent_fraction=min_non_silent_fraction,
+        activity_profile=activity_profile,
     )
     return PreparedReviewObservation(tuple(spans), clip_selection)
 
@@ -760,6 +776,7 @@ def _prepare_review_spans(
     requested_count: int,
     minimum_count: int,
     min_non_silent_fraction: float,
+    activity_profile: RecordingActivityProfile,
 ) -> tuple[list[CachedSpan], dict[str, Any]]:
     if requested_count < 2 or minimum_count < 2 or minimum_count > requested_count:
         raise ValueError("review clip counts require 2 <= minimum <= requested")
@@ -772,6 +789,17 @@ def _prepare_review_spans(
             observation=observation,
             source_audio_path=audio_path,
             span=spec,
+        )
+        non_silent_fraction = span_cache.measure_span_activity(
+            span,
+            silence_threshold_dbfs=(
+                activity_profile.silence_threshold_dbfs
+            ),
+            frame_duration_ms=activity_profile.frame_duration_ms,
+        )
+        span = replace(
+            span,
+            non_silent_fraction=non_silent_fraction,
         )
         activity_available = span.non_silent_fraction is not None
         accepted = (
@@ -819,6 +847,11 @@ def _prepare_review_spans(
         "thresholds": {
             "min_rms_dbfs": DEFAULT_MIN_CLIP_RMS_DBFS,
             "min_non_silent_fraction": min_non_silent_fraction,
+        },
+        "recording_activity_profile": {
+            key: value
+            for key, value in asdict(activity_profile).items()
+            if key != "cache_hit"
         },
         "attempts": attempts,
     }

@@ -231,6 +231,47 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         self.assertGreater(fraction, 0.15)
         self.assertLess(fraction, 0.18)
 
+    def test_recording_activity_profile_adapts_and_caches_quiet_audio(self):
+        path = self.root / "quiet-recording.wav"
+        frame = 480
+        with wave.open(str(path), "wb") as destination:
+            destination.setnchannels(1)
+            destination.setsampwidth(2)
+            destination.setframerate(16000)
+            destination.writeframes(b"\0\0" * frame * 80)
+            destination.writeframes(
+                (300).to_bytes(2, "little", signed=True) * frame * 20
+            )
+        cache = AudioSpanCache(self.root / "activity-cache")
+
+        first = cache.recording_activity_profile(
+            path,
+            policy_version="activity-v3",
+            frame_duration_ms=30.0,
+            reference_percentile=0.90,
+            threshold_offset_db=15.0,
+            minimum_threshold_dbfs=-60.0,
+            maximum_threshold_dbfs=-50.0,
+        )
+        replay = cache.recording_activity_profile(
+            path,
+            policy_version="activity-v3",
+            frame_duration_ms=30.0,
+            reference_percentile=0.90,
+            threshold_offset_db=15.0,
+            minimum_threshold_dbfs=-60.0,
+            maximum_threshold_dbfs=-50.0,
+        )
+
+        self.assertLess(first.silence_threshold_dbfs, -50.0)
+        self.assertGreaterEqual(first.silence_threshold_dbfs, -60.0)
+        self.assertFalse(first.cache_hit)
+        self.assertTrue(replay.cache_hit)
+        self.assertEqual(
+            first.silence_threshold_dbfs,
+            replay.silence_threshold_dbfs,
+        )
+
     def test_approved_policy_has_wide_same_different_and_abstention_regions(self):
         same = self._analyze(
             FakeBackend({"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)}),

@@ -149,6 +149,7 @@ def selection_history_from_artifacts(
     drafts: Sequence[dict[str, Any]],
     reviews: Sequence[dict[str, Any]],
     fixtures: Sequence[dict[str, Any]],
+    current_clip_activity_policy_version: str | None = None,
 ) -> PairSelectionHistory:
     """Derive selector state from append-only review artifacts, without new lifecycle state."""
     drafts_by_pair = {
@@ -174,11 +175,19 @@ def selection_history_from_artifacts(
     automatically_unreviewable_observations: set[str] = set()
 
     for index, draft in enumerate(drafts):
-        if (
+        is_activity_rejection = (
             draft.get("event_kind")
             == "speaker_pair_automatic_selection_rejection"
             and draft.get("reason") == "insufficient_speech_activity"
-        ):
+        )
+        if is_activity_rejection:
+            applies_to_current_policy = (
+                current_clip_activity_policy_version is None
+                or _activity_rejection_policy_version(draft)
+                == current_clip_activity_policy_version
+            )
+            if not applies_to_current_policy:
+                continue
             failed_fingerprint = draft.get(
                 "failed_observation_fingerprint"
             )
@@ -347,6 +356,31 @@ def selection_history_from_artifacts(
             automatically_unreviewable_observations
         ),
     )
+
+
+def _activity_rejection_policy_version(
+    rejection: Mapping[str, Any],
+) -> str | None:
+    failed_fingerprint = rejection.get("failed_observation_fingerprint")
+    observations = rejection.get("observations")
+    if not isinstance(failed_fingerprint, str) or not isinstance(
+        observations, Mapping
+    ):
+        return None
+    for observation in observations.values():
+        if (
+            not isinstance(observation, Mapping)
+            or observation.get("input_fingerprint") != failed_fingerprint
+        ):
+            continue
+        clip_selection = observation.get("clip_selection")
+        policy_version = (
+            clip_selection.get("policy_version")
+            if isinstance(clip_selection, Mapping)
+            else None
+        )
+        return policy_version if isinstance(policy_version, str) else None
+    return None
 
 
 def select_next_speaker_pair(
