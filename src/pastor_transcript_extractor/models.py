@@ -235,6 +235,44 @@ class ReviewResult:
 
 
 @dataclass(slots=True)
+class SermonAnalysisRun:
+    id: int
+    video_id: int
+    extraction_result_id: int
+    analyzer_key: str
+    analyzer_version: str
+    source_kind: str
+    source_path: str
+    source_content_sha256: str
+    input_fingerprint: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class SermonAnalysisMeasurement:
+    id: int
+    analysis_run_id: int
+    metric_key: str
+    value_json: str
+    unit: Optional[str]
+
+
+@dataclass(slots=True)
+class SermonAnalysisEvidence:
+    id: int
+    analysis_run_id: int
+    evidence_kind: str
+    evidence_key: str
+    segment_index: Optional[int]
+    start_seconds: Optional[float]
+    end_seconds: Optional[float]
+    char_start: Optional[int]
+    char_end: Optional[int]
+    excerpt: str
+    payload_json: str
+
+
+@dataclass(slots=True)
 class ExcludedVideo:
     id: int
     pastor_id: Optional[int]

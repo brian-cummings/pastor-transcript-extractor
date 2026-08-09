@@ -268,6 +268,11 @@ from pastor_transcript_extractor.sermon_fixture_selector import (
     sermon_candidate_from_proposal,
     sermon_duration_bucket,
 )
+from pastor_transcript_extractor.sermon_analysis import (
+    ANALYZER_KEY as SERMON_ANALYZER_KEY,
+    ANALYZER_VERSION as SERMON_ANALYZER_VERSION,
+    analyze_sermon,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.source_ownership import (
     apply_source_ownership_schema,
@@ -291,6 +296,7 @@ source_app = typer.Typer(help="Manage queued sources.")
 video_app = typer.Typer(help="Manage discovered videos.")
 identity_app = typer.Typer(help="Manage speaker identity shadow artifacts.")
 media_app = typer.Typer(help="Manage transcript-independent local media artifacts.")
+analysis_app = typer.Typer(help="Analyze already-identified sermon content.")
 source_ownership_app = typer.Typer(help="Migrate and audit source ownership data.")
 app.add_typer(pastor_app, name="pastor")
 app.add_typer(organization_app, name="organization")
@@ -298,6 +304,7 @@ app.add_typer(source_app, name="source")
 app.add_typer(video_app, name="video")
 app.add_typer(identity_app, name="identity")
 app.add_typer(media_app, name="media")
+app.add_typer(analysis_app, name="analysis")
 app.add_typer(source_ownership_app, name="source-ownership")
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
@@ -1008,6 +1015,213 @@ def get_database(base_dir: Path | None = None) -> Database:
     database = Database(paths.database)
     database.initialize()
     return database
+
+
+def _analysis_videos(
+    database: Database,
+    *,
+    video_id: int | None,
+    youtube_video_id: str | None,
+    profile_id: int | None,
+    pastor_slug: str | None,
+) -> tuple[list, int | None]:
+    if sum(
+        value is not None
+        for value in (video_id, youtube_video_id, profile_id, pastor_slug)
+    ) != 1:
+        raise typer.BadParameter(
+            "Choose exactly one scope: --video-id, --youtube-video-id, "
+            "--profile-id, or --pastor."
+        )
+    if video_id is not None:
+        video = database.get_video_by_id(video_id)
+        if video is None:
+            raise typer.BadParameter(f"Unknown database video id: {video_id}")
+        return [video], None
+    if youtube_video_id is not None:
+        video = database.get_video_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
+        return [video], None
+
+    if pastor_slug is not None:
+        pastor = database.get_pastor_by_slug(pastor_slug)
+        if pastor is None:
+            raise _unknown_pastor_error(pastor_slug)
+        profile_id = database.get_pastor_speaker_profile_id(pastor.id)
+        if profile_id is None:
+            raise typer.BadParameter(
+                f"Pastor {pastor_slug} is not bound to a speaker profile. "
+                "Use --profile-id after identity review establishes one."
+            )
+
+    assert profile_id is not None
+    if database.get_speaker_profile(profile_id) is None:
+        raise typer.BadParameter(f"Unknown speaker profile: {profile_id}")
+    resolved_profile_id = database.resolve_speaker_profile_id(profile_id)
+    observation_ids = database.list_effective_observation_ids_for_profile(
+        resolved_profile_id
+    )
+    video_ids = {
+        observation.video_id
+        for observation_id in observation_ids
+        if (observation := database.get_speaker_observation(observation_id)) is not None
+    }
+    videos = [video for video in database.list_videos() if video.id in video_ids]
+    if not videos:
+        raise typer.BadParameter(
+            f"Speaker profile {resolved_profile_id} has no effectively attached sermon observations."
+        )
+    return videos, resolved_profile_id
+
+
+@analysis_app.command(
+    "run", help="Analyze one identified sermon or a speaker profile's attached sermons."
+)
+def analysis_run(
+    video_id: int | None = typer.Option(None, "--video-id", help="Database video id."),
+    youtube_video_id: str | None = typer.Option(
+        None, "--youtube-video-id", help="YouTube video id."
+    ),
+    profile_id: int | None = typer.Option(
+        None,
+        "--profile-id",
+        help="Canonical speaker profile id; selects effectively attached sermons.",
+    ),
+    pastor: str | None = typer.Option(
+        None,
+        "--pastor",
+        help="Compatibility alias resolved through the pastor's speaker-profile binding.",
+    ),
+    analyzer_version: str = typer.Option(
+        SERMON_ANALYZER_VERSION,
+        "--analyzer-version",
+        help="Version recorded in provenance; change this when analyzer behavior changes.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    videos, resolved_profile_id = _analysis_videos(
+        database,
+        video_id=video_id,
+        youtube_video_id=youtube_video_id,
+        profile_id=profile_id,
+        pastor_slug=pastor,
+    )
+    if resolved_profile_id is not None:
+        console.print(f"Speaker profile #{resolved_profile_id}: {len(videos)} sermon(s).")
+    created = reused = skipped = 0
+    for video in videos:
+        try:
+            outcome = analyze_sermon(
+                database, video, analyzer_version=analyzer_version
+            )
+        except ValueError as error:
+            if len(videos) == 1:
+                raise typer.BadParameter(str(error)) from error
+            skipped += 1
+            console.print(f"Skipped {video.youtube_video_id}: {error}", markup=False)
+            continue
+        if outcome.created:
+            created += 1
+            state = "created"
+        else:
+            reused += 1
+            state = "reused"
+        console.print(
+            f"{video.youtube_video_id}: analysis #{outcome.run.id} {state} "
+            f"({outcome.run.analyzer_key}@{outcome.run.analyzer_version})"
+        )
+    console.print(
+        f"Analysis complete: created={created}, reused={reused}, skipped={skipped}."
+    )
+
+
+@analysis_app.command("show", help="Inspect persisted sermon measurements and Scripture evidence.")
+def analysis_show(
+    video_id: int | None = typer.Option(None, "--video-id", help="Database video id."),
+    youtube_video_id: str | None = typer.Option(
+        None, "--youtube-video-id", help="YouTube video id."
+    ),
+    profile_id: int | None = typer.Option(
+        None,
+        "--profile-id",
+        help="Canonical speaker profile id; selects effectively attached sermons.",
+    ),
+    pastor: str | None = typer.Option(
+        None,
+        "--pastor",
+        help="Compatibility alias resolved through the pastor's speaker-profile binding.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    videos, resolved_profile_id = _analysis_videos(
+        database,
+        video_id=video_id,
+        youtube_video_id=youtube_video_id,
+        profile_id=profile_id,
+        pastor_slug=pastor,
+    )
+    title = (
+        f"Sermon Analysis — Speaker Profile #{resolved_profile_id}"
+        if resolved_profile_id is not None
+        else "Sermon Analysis"
+    )
+    summary = Table(title=title)
+    summary.add_column("Video")
+    summary.add_column("Version")
+    summary.add_column("Words", justify="right")
+    summary.add_column("Duration", justify="right")
+    summary.add_column("References", justify="right")
+    summary.add_column("Books", justify="right")
+    found: list[tuple[object, object]] = []
+    for video in videos:
+        run = database.get_latest_sermon_analysis_run(video.id, SERMON_ANALYZER_KEY)
+        if run is None:
+            continue
+        values = {
+            item.metric_key: json.loads(item.value_json)
+            for item in database.list_sermon_analysis_measurements(run.id)
+        }
+        duration = values.get("sermon_duration_seconds")
+        duration_text = (
+            format_timestamp(float(duration)) if isinstance(duration, (int, float)) else "—"
+        )
+        summary.add_row(
+            video.youtube_video_id,
+            run.analyzer_version,
+            str(values.get("word_count", "—")),
+            duration_text,
+            str(values.get("scripture_reference_mentions", "—")),
+            str(values.get("distinct_scripture_books", "—")),
+        )
+        found.append((video, run))
+    if not found:
+        console.print("No sermon analysis results found. Run 'pte analysis run' first.")
+        return
+    console.print(summary)
+
+    if len(found) == 1:
+        video, run = found[0]
+        references = Table(title=f"Scripture Evidence — {video.youtube_video_id}")
+        references.add_column("Reference")
+        references.add_column("Time")
+        references.add_column("Segment", justify="right")
+        references.add_column("Transcript match")
+        for item in database.list_sermon_analysis_evidence(run.id):
+            payload = json.loads(item.payload_json)
+            references.add_row(
+                str(payload.get("canonical_reference", "—")),
+                format_timestamp(item.start_seconds) if item.start_seconds is not None else "—",
+                str(item.segment_index) if item.segment_index is not None else "—",
+                item.excerpt,
+            )
+        console.print(references)
+        console.print(
+            f"Provenance: run=#{run.id}; extraction=#{run.extraction_result_id}; "
+            f"source_sha256={run.source_content_sha256}; input={run.input_fingerprint}"
+        )
 
 
 @identity_app.command(

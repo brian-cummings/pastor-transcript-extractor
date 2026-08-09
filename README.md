@@ -808,6 +808,7 @@ sermon observations are revoked conservatively. Rollback is plan-only unless
 - `evaluation/speaker-profile-discovery/README.md` for non-mutating anonymous profile discovery
 - `docs/MEDIA_FOUNDATION.md` for transcript-independent audio acquisition and migration
 - `docs/SOURCE_OWNERSHIP.md` for publisher ownership, target contexts, and migration validation
+- `docs/SERMON_ANALYSIS.md` for deterministic sermon measurements and Scripture evidence
 
 Archive comparison-independent source audio to a recorded NAS destination:
 
