@@ -15,6 +15,10 @@ from pastor_transcript_extractor.config import (
     build_video_artifact_paths,
     ensure_directories,
 )
+from pastor_transcript_extractor.audio_staging import (
+    load_and_verify_audio_stage_manifest,
+    write_audio_stage_manifest,
+)
 from pastor_transcript_extractor.filesystem_capacity import FilesystemCapacity
 from pastor_transcript_extractor.media import (
     VideoUnavailableError,
@@ -35,6 +39,7 @@ from pastor_transcript_extractor.media_artifacts import (
     register_media_file,
     repair_normalized_audio_provenance,
     resolve_normalized_audio_path,
+    stage_source_audio_for_video,
     verify_media_artifact,
 )
 from pastor_transcript_extractor.models import SourceType, TranscriptSourceKind, VideoStatus
@@ -81,6 +86,70 @@ class MediaArtifactTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
+
+    def test_source_audio_stage_is_idempotent_and_manifest_detects_mutation(self) -> None:
+        video, _ = self._video("stagecache1")
+
+        def fake_download(_url, _bin, output_base, _runtimes):
+            output_path = output_base.with_suffix(".wav")
+            write_wav(output_path, value=432)
+            return output_path
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.download_source_audio",
+            side_effect=fake_download,
+        ) as download:
+            first = stage_source_audio_for_video(
+                self.database, self.paths, self.tools, video_id=video.id,
+                tool_versions={"yt-dlp": "test"},
+            )
+            second = stage_source_audio_for_video(
+                self.database, self.paths, self.tools, video_id=video.id,
+                tool_versions={"yt-dlp": "test"},
+            )
+
+        download.assert_called_once()
+        self.assertTrue(first.downloaded)
+        self.assertFalse(second.downloaded)
+        manifest = write_audio_stage_manifest(self.paths.logs, [second])
+        self.assertEqual({video.id}, load_and_verify_audio_stage_manifest(self.database, manifest))
+
+        Path(second.artifact.artifact_path).write_bytes(b"mutated")
+        with self.assertRaisesRegex(ValueError, "no longer verifies"):
+            load_and_verify_audio_stage_manifest(self.database, manifest)
+
+    def test_offline_audio_ensure_uses_staged_source_without_downloading(self) -> None:
+        video, _ = self._video("stageoffline1")
+
+        def fake_download(_url, _bin, output_base, _runtimes):
+            output_path = output_base.with_suffix(".wav")
+            write_wav(output_path, value=321)
+            return output_path
+
+        def fake_normalize(_input, output, _ffmpeg):
+            write_wav(output, value=654)
+            return output
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.download_source_audio",
+            side_effect=fake_download,
+        ) as download, patch(
+            "pastor_transcript_extractor.media_artifacts.normalize_audio",
+            side_effect=fake_normalize,
+        ):
+            stage_source_audio_for_video(
+                self.database, self.paths, self.tools, video_id=video.id,
+                tool_versions={"yt-dlp": "test"},
+            )
+            result = ensure_audio_for_video(
+                self.database, self.paths, self.tools, video_id=video.id,
+                tool_versions={"yt-dlp": "test", "ffmpeg": "test"},
+                allow_download=False,
+            )
+
+        download.assert_called_once()
+        self.assertEqual("verified", result.outcome)
+        self.assertFalse(result.downloaded)
 
     def _video(
         self,

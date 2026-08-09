@@ -28,6 +28,7 @@ from pastor_transcript_extractor.cli import (
     _recover_stale_transcribing_videos,
     app,
     discover_sources_service,
+    run_workflow_service,
 )
 from pastor_transcript_extractor.media import (
     NoCaptionsAvailableError,
@@ -1966,6 +1967,45 @@ class CliTests(unittest.TestCase):
         self.assertEqual(0, result.exit_code, msg=result.output)
         self.assertTrue(workflow.call_args.kwargs["run_identity"])
 
+    def test_run_audio_stage_options_are_forwarded(self) -> None:
+        with patch("pastor_transcript_extractor.cli.run_workflow_service") as workflow:
+            result = CliRunner().invoke(
+                app,
+                [
+                    "run", "--all", "--stage-audio-only", "--download-jobs", "7",
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        self.assertTrue(workflow.call_args.kwargs["stage_audio_only"])
+        self.assertEqual(7, workflow.call_args.kwargs["download_jobs"])
+
+    def test_resume_stage_disables_network_for_transcription_and_media(self) -> None:
+        database = SimpleNamespace()
+        paths = SimpleNamespace()
+        with patch(
+            "pastor_transcript_extractor.cli.get_database", return_value=database
+        ), patch(
+            "pastor_transcript_extractor.cli.build_paths", return_value=paths
+        ), patch(
+            "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
+            return_value={11, 12},
+        ), patch(
+            "pastor_transcript_extractor.cli.transcribe_videos_service"
+        ) as transcribe, patch(
+            "pastor_transcript_extractor.cli.extract_batch",
+            return_value=ExtractionBatchResult(2, 0, 0),
+        ), patch(
+            "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+        ) as media:
+            run_workflow_service(
+                resume_stage=Path("stage.json"), skip_review=True
+            )
+
+        self.assertFalse(transcribe.call_args.kwargs["allow_network"])
+        self.assertEqual({11, 12}, transcribe.call_args.kwargs["video_ids"])
+        self.assertFalse(media.call_args.kwargs["allow_download"])
+
     def test_run_failed_only_targets_failed_ids_and_preserves_existing_artifacts(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -3578,6 +3618,52 @@ class TranscriptionTests(unittest.TestCase):
             mocked_normalize.assert_called_once()
             self.assertEqual(["normalizing"], stages)
             self.assertEqual(b"normalized-new", prepared.normalized_audio_path.read_bytes())
+
+    def test_staged_source_hash_invalidates_normalized_transcription_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = build_paths(Path(tmp))
+            ensure_directories(paths)
+            database = Database(paths.database)
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=cachehash1",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="cachehash1",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=cachehash1",
+                status=VideoStatus.DISCOVERED,
+            )
+            source_path = paths.root / "staged-source.wav"
+            source_path.write_bytes(b"source")
+            tools = ToolConfig(
+                whisper_cpp_bin=Path("whisper"), whisper_model_path=Path("model"),
+                ffmpeg_bin="ffmpeg", yt_dlp_bin="yt-dlp", yt_dlp_js_runtimes=None,
+            )
+            staged = SimpleNamespace(artifact_path=str(source_path), content_sha256="hash-a")
+
+            def fake_normalize(_input, output, _ffmpeg):
+                output.write_bytes(b"normalized")
+                return output
+
+            with patch(
+                "pastor_transcript_extractor.transcription.get_verified_source_media_artifact",
+                return_value=staged,
+            ), patch(
+                "pastor_transcript_extractor.transcription.normalize_audio",
+                side_effect=fake_normalize,
+            ) as normalize:
+                prepare_transcription_input(database, paths, tools, video.id, allow_network=False)
+                prepare_transcription_input(database, paths, tools, video.id, allow_network=False)
+                staged.content_sha256 = "hash-b"
+                prepare_transcription_input(database, paths, tools, video.id, allow_network=False)
+
+            self.assertEqual(2, normalize.call_count)
 
 
 class ExtractionTests(unittest.TestCase):

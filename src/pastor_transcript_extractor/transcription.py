@@ -14,6 +14,10 @@ from pastor_transcript_extractor.artifact_namespace import (
 )
 from pastor_transcript_extractor.config import AppPaths, ToolConfig
 from pastor_transcript_extractor.media import download_audio, download_captions, normalize_audio
+from pastor_transcript_extractor.media_artifacts import (
+    get_verified_source_media_artifact,
+    stage_source_audio_for_video,
+)
 from pastor_transcript_extractor.models import TranscriptArtifact, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.storage import Database
 
@@ -303,6 +307,7 @@ def prepare_transcription_input(
     tools: ToolConfig,
     video_id: int,
     stage_callback: StageCallback | None = None,
+    allow_network: bool = True,
 ) -> PreparedTranscriptInput:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -317,23 +322,73 @@ def prepare_transcription_input(
     for directory in (video_paths.root, video_paths.audio, video_paths.raw, video_paths.extracted, video_paths.review):
         directory.mkdir(parents=True, exist_ok=True)
 
-    downloaded_audio = transcript_paths.audio_download
-    if not downloaded_audio.exists():
+    source_artifact = get_verified_source_media_artifact(database, video.id)
+    if source_artifact is None and not allow_network:
+        raise RuntimeError(
+            "offline transcription requires a verified staged source artifact"
+        )
+    legacy_download = transcript_paths.audio_download
+    downloaded_audio = legacy_download
+    if source_artifact is None and not legacy_download.exists() and allow_network:
         if stage_callback is not None:
             stage_callback("downloading")
-        downloaded_audio = download_audio(
-            video.url,
-            tools.yt_dlp_bin,
-            transcript_paths.audio_download,
-            tools.yt_dlp_js_runtimes,
+        staged = stage_source_audio_for_video(
+            database, app_paths, tools, video_id=video.id
         )
+        source_artifact = staged.artifact
+        # Preserve compatibility with pre-media-service workspaces and unusual
+        # downloader formats while new successful downloads use immutable sources.
+        if source_artifact is None:
+            downloaded_audio = download_audio(
+                video.url,
+                tools.yt_dlp_bin,
+                transcript_paths.audio_download,
+                tools.yt_dlp_js_runtimes,
+            )
+    if source_artifact is not None:
+        downloaded_audio = Path(source_artifact.artifact_path)
+        source_identity = source_artifact.content_sha256
+    else:
+        if not downloaded_audio.exists():
+            if not allow_network:
+                raise RuntimeError(
+                    "offline transcription requires a verified staged source artifact"
+                )
+            if stage_callback is not None:
+                stage_callback("downloading")
+            downloaded_audio = download_audio(
+                video.url,
+                tools.yt_dlp_bin,
+                transcript_paths.audio_download,
+                tools.yt_dlp_js_runtimes,
+            )
+        source_identity = f"legacy:{downloaded_audio.stat().st_size}:{downloaded_audio.stat().st_mtime_ns}"
 
     normalized_audio = transcript_paths.audio_normalized
-    normalized_is_current = normalized_audio.exists() and normalized_audio.stat().st_mtime >= downloaded_audio.stat().st_mtime
+    provenance_path = normalized_audio.with_suffix(normalized_audio.suffix + ".source.json")
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        provenance = None
+    normalized_is_current = normalized_audio.exists() and (
+        (
+            isinstance(provenance, dict)
+            and provenance.get("source_identity") == source_identity
+        )
+        or (
+            source_artifact is None
+            and provenance is None
+            and normalized_audio.stat().st_mtime >= downloaded_audio.stat().st_mtime
+        )
+    )
     if not normalized_is_current:
         if stage_callback is not None:
             stage_callback("normalizing")
         normalized_audio = normalize_audio(downloaded_audio, transcript_paths.audio_normalized, tools.ffmpeg_bin)
+        provenance_path.write_text(
+            json.dumps({"source_identity": source_identity}, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     return PreparedTranscriptInput(
         video_id=video.id,
         youtube_video_id=video.youtube_video_id,

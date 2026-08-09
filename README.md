@@ -128,6 +128,8 @@ pte source-processing-report \
   listed existing sources. Repeat `--source-id` for each source.
 - `pte run --failed-only` retries failed videos across all sources while
   preserving successful transcript and extraction artifacts.
+- `pte run --all --stage-audio-only` downloads immutable source audio and writes
+  a checksum-pinned manifest for a later offline `--resume-stage` run.
 - `pte run <url> --pastor <slug> --skip-review` skips review export after
   extraction, audio assurance, and configured source archival.
 - `pte review <pastor-slug>`
@@ -431,6 +433,28 @@ Run a selected group of configured sources:
 pte run --source-id 12 --source-id 19 \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
+
+Stage source audio while on a fast connection, then process exactly that batch
+offline. Staging stops before normalization, Whisper, extraction, review, and
+archival. The resume command verifies every staged artifact and disables network
+download fallback:
+
+```bash
+pte run --all \
+  --stage-audio-only \
+  --download-jobs 6 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+# Use the exact manifest path printed by the staging command.
+pte run \
+  --resume-stage /Users/briancummings/Documents/PastorSearchData/logs/audio-stages/STAGE_FINGERPRINT.json \
+  --jobs 2 \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The same staging option works with a URL plus `--pastor`, or with one or more
+`--source-id` values. Re-running staging reuses verified source artifacts and
+only downloads missing or invalid ones.
 
 To complete extraction and media maintenance without creating or refreshing
 review exports:

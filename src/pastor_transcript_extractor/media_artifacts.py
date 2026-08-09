@@ -48,6 +48,17 @@ class EnsureAudioResult:
 
 
 @dataclass(frozen=True, slots=True)
+class StageSourceAudioResult:
+    video_id: int
+    youtube_video_id: str
+    outcome: str
+    reason_code: str
+    artifact: MediaArtifact | None
+    attempt: MediaAcquisitionAttempt | None
+    downloaded: bool
+
+
+@dataclass(frozen=True, slots=True)
 class MediaBackfillResult:
     videos_examined: int
     artifacts_registered: int
@@ -401,6 +412,7 @@ def ensure_audio_for_video(
     *,
     video_id: int,
     tool_versions: dict[str, str] | None = None,
+    allow_download: bool = True,
 ) -> EnsureAudioResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -462,30 +474,51 @@ def ensure_audio_for_video(
     media_root = video_paths.audio / "media"
     media_root.mkdir(parents=True, exist_ok=True)
     try:
-        with tempfile.TemporaryDirectory(prefix=".media-work-", dir=video_paths.audio) as work:
-            work_root = Path(work)
-            downloaded = download_source_audio(
-                video.url,
-                tools.yt_dlp_bin,
-                work_root / "source",
-                tools.yt_dlp_js_runtimes,
-            )
-            source_path = _materialize_content_addressed(
-                downloaded, media_root, prefix="source"
-            )
-            source_artifact = register_media_file(
+        source_artifact = get_verified_source_media_artifact(database, video.id)
+        downloaded_source = False
+        if source_artifact is None:
+            if not allow_download:
+                raise RuntimeError(
+                    "offline media processing requires a verified staged source artifact"
+                )
+            staged = stage_source_audio_for_video(
                 database,
                 app_paths,
-                video=video,
-                pastor_slug=pastor.slug if pastor is not None else "",
-                artifact_path=source_path,
-                artifact_kind="source_audio",
-                provenance_kind="original_download",
-                acquisition_tool="yt-dlp",
-                acquisition_tool_version=versions["yt-dlp"],
+                tools,
+                video_id=video.id,
+                tool_versions=versions,
+                record_attempt=False,
             )
+            if staged.artifact is None:
+                reason_code = (
+                    "video_unavailable"
+                    if staged.outcome == "unavailable"
+                    else "media_acquisition_failed"
+                )
+                attempt = _record_attempt(
+                    database,
+                    video=video,
+                    outcome=staged.outcome,
+                    reason_code=reason_code,
+                    detail=None,
+                    artifact=None,
+                )
+                return EnsureAudioResult(
+                    video.id,
+                    video.youtube_video_id,
+                    True,
+                    staged.outcome,
+                    reason_code,
+                    None,
+                    attempt,
+                    staged.downloaded,
+                )
+            source_artifact = staged.artifact
+            downloaded_source = staged.downloaded
+        with tempfile.TemporaryDirectory(prefix=".media-work-", dir=video_paths.audio) as work:
+            work_root = Path(work)
             normalized_work = normalize_audio(
-                downloaded,
+                Path(source_artifact.artifact_path),
                 work_root / "normalized.wav",
                 tools.ffmpeg_bin,
             )
@@ -522,48 +555,127 @@ def ensure_audio_for_video(
             "downloaded_and_normalized",
             normalized_artifact,
             attempt,
-            True,
+            downloaded_source,
         )
     except VideoUnavailableError as error:
         attempt = _record_attempt(
-            database,
-            video=video,
-            outcome="unavailable",
-            reason_code="video_unavailable",
-            detail=str(error),
-            artifact=None,
+            database, video=video, outcome="unavailable", reason_code="video_unavailable",
+            detail=str(error), artifact=None,
         )
         return EnsureAudioResult(
-            video.id,
-            video.youtube_video_id,
-            True,
-            "unavailable",
-            "video_unavailable",
-            None,
-            attempt,
-            False,
+            video.id, video.youtube_video_id, True, "unavailable", "video_unavailable",
+            None, attempt, False,
         )
     except (YtDlpError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         attempt = _record_attempt(
-            database,
-            video=video,
-            outcome="failed",
-            reason_code="media_acquisition_failed",
-            detail=f"{type(error).__name__}: {error}",
-            artifact=None,
+            database, video=video, outcome="failed", reason_code="media_acquisition_failed",
+            detail=f"{type(error).__name__}: {error}", artifact=None,
         )
         return EnsureAudioResult(
-            video.id,
-            video.youtube_video_id,
-            True,
-            "failed",
-            "media_acquisition_failed",
-            None,
-            attempt,
-            False,
+            video.id, video.youtube_video_id, True, "failed", "media_acquisition_failed",
+            None, attempt, False,
         )
 
 
+def get_verified_source_media_artifact(
+    database: Database,
+    video_id: int,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
+) -> MediaArtifact | None:
+    """Return the newest verified immutable downloader source for a video."""
+    for artifact in reversed(database.list_media_artifacts_for_video(video_id)):
+        if (
+            artifact.artifact_kind == "source_audio"
+            and artifact.provenance_kind == "original_download"
+            and verify_media_artifact(artifact, verification_cache=verification_cache)
+        ):
+            return artifact
+    return None
+
+
+def stage_source_audio_for_video(
+    database: Database,
+    app_paths: AppPaths,
+    tools: ToolConfig,
+    *,
+    video_id: int,
+    tool_versions: dict[str, str] | None = None,
+    record_attempt: bool = True,
+) -> StageSourceAudioResult:
+    """Download and register source audio without normalizing or changing video state."""
+    video = database.get_video_by_id(video_id)
+    if video is None:
+        raise ValueError(f"Unknown video id: {video_id}")
+    existing = get_verified_source_media_artifact(database, video.id)
+    if existing is not None:
+        return StageSourceAudioResult(
+            video.id, video.youtube_video_id, "verified", "verified_existing_source",
+            existing, None, False,
+        )
+    pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id else None
+    versions = tool_versions or {
+        "yt-dlp": _tool_version(tools.yt_dlp_bin, "--version"),
+    }
+    video_paths = resolve_video_artifact_paths(database, app_paths, video)
+    media_root = video_paths.audio / "media"
+    media_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(prefix=".source-stage-", dir=video_paths.audio) as work:
+            downloaded = download_source_audio(
+                video.url,
+                tools.yt_dlp_bin,
+                Path(work) / "source",
+                tools.yt_dlp_js_runtimes,
+            )
+            source_path = _materialize_content_addressed(downloaded, media_root, prefix="source")
+            artifact = register_media_file(
+                database,
+                app_paths,
+                video=video,
+                pastor_slug=pastor.slug if pastor is not None else "",
+                artifact_path=source_path,
+                artifact_kind="source_audio",
+                provenance_kind="original_download",
+                acquisition_tool="yt-dlp",
+                acquisition_tool_version=versions["yt-dlp"],
+            )
+        attempt = (
+            _record_attempt(
+                database, video=video, outcome="verified", reason_code="source_audio_staged",
+                detail=None, artifact=artifact, target_kind="source_audio",
+            )
+            if record_attempt else None
+        )
+        return StageSourceAudioResult(
+            video.id, video.youtube_video_id, "verified", "source_audio_staged",
+            artifact, attempt, True,
+        )
+    except VideoUnavailableError as error:
+        attempt = (
+            _record_attempt(
+                database, video=video, outcome="unavailable", reason_code="video_unavailable",
+                detail=str(error), artifact=None, target_kind="source_audio",
+            )
+            if record_attempt else None
+        )
+        return StageSourceAudioResult(
+            video.id, video.youtube_video_id, "unavailable", "video_unavailable",
+            None, attempt, False,
+        )
+    except (YtDlpError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+        attempt = (
+            _record_attempt(
+                database, video=video, outcome="failed", reason_code="source_audio_stage_failed",
+                detail=f"{type(error).__name__}: {error}", artifact=None,
+                target_kind="source_audio",
+            )
+            if record_attempt else None
+        )
+        return StageSourceAudioResult(
+            video.id, video.youtube_video_id, "failed", "source_audio_stage_failed",
+            None, attempt, False,
+        )
 def audit_media_coverage(database: Database) -> MediaCoverageReport:
     verified: list[str] = []
     unavailable: list[str] = []
@@ -912,12 +1024,13 @@ def _record_attempt(
     reason_code: str,
     detail: str | None,
     artifact: MediaArtifact | None,
+    target_kind: str = "normalized_audio",
 ) -> MediaAcquisitionAttempt:
     fingerprint = _sha256_json(
         {
             "service_version": MEDIA_SERVICE_VERSION,
             "video_id": video.id,
-            "target_kind": "normalized_audio",
+            "target_kind": target_kind,
             "outcome": outcome,
             "reason_code": reason_code,
             "detail": detail,
@@ -926,7 +1039,7 @@ def _record_attempt(
     )
     return database.add_media_acquisition_attempt(
         video_id=video.id,
-        target_kind="normalized_audio",
+        target_kind=target_kind,
         outcome=outcome,
         reason_code=reason_code,
         detail=detail,

@@ -8,6 +8,7 @@ from importlib import metadata as importlib_metadata
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -23,6 +24,10 @@ from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextC
 from rich.table import Table
 
 from pastor_transcript_extractor.application import ReviewBatchResult, extract_batch, prepare_review_exports
+from pastor_transcript_extractor.audio_staging import (
+    load_and_verify_audio_stage_manifest,
+    write_audio_stage_manifest,
+)
 from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.church_database_import import (
     IMPORT_PROVIDER,
@@ -141,6 +146,7 @@ from pastor_transcript_extractor.media_artifacts import (
     backfill_existing_media_artifacts,
     ensure_audio_for_video,
     get_verified_normalized_media_artifact,
+    stage_source_audio_for_video,
     repair_normalized_audio_provenance,
     resolve_normalized_audio_path,
     video_has_isolated_sermon,
@@ -5574,6 +5580,7 @@ def _prepare_transcription_task(
     tools,
     video_id: int,
     stage_callback=None,
+    allow_network: bool = True,
 ) -> PreparedTranscriptInput:
     return prepare_transcription_input(
         database,
@@ -5581,6 +5588,7 @@ def _prepare_transcription_task(
         tools,
         video_id,
         stage_callback=stage_callback,
+        allow_network=allow_network,
     )
 
 
@@ -7180,6 +7188,7 @@ def transcribe_videos_service(
     base_dir: Path | None = None,
     prep_jobs: int = DEFAULT_PREP_WORKERS,
     video_ids: set[int] | None = None,
+    allow_network: bool = True,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -7249,6 +7258,7 @@ def transcribe_videos_service(
                 tools,
                 video.id,
                 _build_live_transcription_stage_callback(progress, task_ids[video.id], progress_lock),
+                allow_network,
             )
             prep_future_to_video[prep_future] = video
             return True
@@ -7339,6 +7349,7 @@ def transcribe_videos_service(
                 tools,
                 video.id,
                 _build_transcription_stage_callback(video.id),
+                allow_network,
             )
             prep_future_to_video[prep_future] = video
             return True
@@ -8060,8 +8071,151 @@ def run_workflow_service(
     run_identity: bool = False,
     base_dir: Path | None = None,
     source_ids: Sequence[int] | None = None,
+    stage_audio_only: bool = False,
+    resume_stage: Path | None = None,
+    download_jobs: int = DEFAULT_PREP_WORKERS,
 ) -> None:
     selected_source_ids = tuple(dict.fromkeys(source_ids or ()))
+    if stage_audio_only and resume_stage is not None:
+        raise ValueError("Use either --stage-audio-only or --resume-stage, not both.")
+    if resume_stage is not None:
+        if url is not None or pastor is not None or all_sources or selected_source_ids or failed_only:
+            raise ValueError("--resume-stage supplies the exact video scope; do not pass another scope.")
+        if replace_existing:
+            raise ValueError("--replace-existing is not valid with --resume-stage.")
+        database = get_database(base_dir)
+        paths = build_paths(base_dir, remember=True)
+        video_ids = load_and_verify_audio_stage_manifest(database, resume_stage)
+        console.print(
+            f"Resuming {len(video_ids)} video(s) from verified audio stage {resume_stage}."
+        )
+        if not captions_only:
+            transcribe_videos_service(
+                missing_only=False,
+                captions_missing_only=transcribe_missing,
+                jobs=jobs,
+                base_dir=base_dir,
+                video_ids=video_ids,
+                allow_network=False,
+            )
+        extraction = extract_batch(
+            database,
+            paths,
+            video_ids=video_ids,
+            classifier=classifier,
+            llm_model=llm_model,
+            workers=jobs,
+            event_callback=lambda message: console.print(message, markup=False),
+            progress_callback=lambda stage, current, total: console.print(
+                f"  {stage} block {current}/{total}"
+            ),
+        )
+        console.print(
+            f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; "
+            f"failed {extraction.failed}."
+        )
+        _ensure_and_archive_run_media(
+            database, paths, video_ids=video_ids, allow_download=False
+        )
+        if not skip_review:
+            pastor_slugs = {
+                record.slug
+                for video_id in video_ids
+                for video in [database.get_video_by_id(video_id)]
+                if video is not None and video.pastor_id is not None
+                for record in [database.get_pastor_by_id(video.pastor_id)]
+                if record is not None
+            }
+            for pastor_slug in sorted(pastor_slugs):
+                _print_review_batch(
+                    prepare_review_exports(
+                        database,
+                        paths,
+                        pastor_slug=pastor_slug,
+                        classifier=classifier,
+                        llm_model=llm_model,
+                        event_callback=lambda message: console.print(message, markup=False),
+                    )
+                )
+        if run_identity:
+            _run_post_content_identity(base_dir)
+        return
+
+    if stage_audio_only:
+        if failed_only:
+            raise ValueError("--stage-audio-only requires a source scope, not --failed-only.")
+        if captions_only:
+            raise ValueError("--captions-only is not meaningful with --stage-audio-only.")
+        if run_identity:
+            raise ValueError("--identity runs during --resume-stage, not audio staging.")
+        database = get_database(base_dir)
+        if selected_source_ids:
+            if url is not None or pastor is not None or all_sources:
+                raise ValueError("Use only one source scope with --stage-audio-only.")
+            unknown = [value for value in selected_source_ids if database.get_source_by_id(value) is None]
+            if unknown:
+                raise ValueError("Unknown source id(s): " + ", ".join(map(str, unknown)))
+            for source_id in selected_source_ids:
+                discover_sources_service(limit, all_videos, source_id, base_dir)
+            selected_video_ids = {
+                video.id for source_id in selected_source_ids
+                for video in database.list_videos_by_source_id(source_id)
+            }
+        elif all_sources:
+            if url is not None or pastor is not None:
+                raise ValueError("Do not pass a URL or pastor when using --all.")
+            discover_sources_service(limit, all_videos, None, base_dir)
+            selected_video_ids = {video.id for video in database.list_videos()}
+        else:
+            if url is None or pastor is None:
+                raise ValueError("Audio staging requires URL plus --pastor, --source-id, or --all.")
+            if replace_existing:
+                existing_source = database.get_source_by_url(url)
+                if existing_source is not None:
+                    delete_source_service(existing_source.id, True, base_dir)
+                    database = get_database(base_dir)
+            add_source_service(url, pastor, None, base_dir)
+            source = database.get_source_by_url(url)
+            if source is None:
+                raise RuntimeError("Added source could not be reloaded.")
+            discover_sources_service(limit, all_videos, source.id, base_dir)
+            selected_video_ids = {video.id for video in database.list_videos_by_source_id(source.id)}
+        if not selected_video_ids:
+            console.print("No videos selected for audio staging.")
+            return
+        paths = build_paths(base_dir, remember=True)
+        tools = build_tool_config()
+        workers = min(download_jobs, len(selected_video_ids))
+        console.print(f"Staging source audio for {len(selected_video_ids)} video(s) with {workers} worker(s).")
+        results = []
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    stage_source_audio_for_video,
+                    database,
+                    paths,
+                    tools,
+                    video_id=video_id,
+                ): video_id
+                for video_id in selected_video_ids
+            }
+            for index, future in enumerate(as_completed(futures), start=1):
+                result = future.result()
+                results.append(result)
+                console.print(
+                    f"Audio stage [{index}/{len(futures)}] {result.youtube_video_id}: "
+                    f"{result.outcome} ({result.reason_code})"
+                )
+        manifest = write_audio_stage_manifest(paths.logs, results)
+        verified = sum(result.outcome == "verified" for result in results)
+        console.print(f"Audio stage complete: verified={verified}, failed={len(results) - verified}.")
+        console.print(f"Manifest: {manifest}")
+        console.print(
+            "Offline resume: pte run "
+            f"--resume-stage {shlex.quote(str(manifest))} --jobs {jobs} "
+            f"--base-dir {shlex.quote(str(paths.root))}"
+        )
+        return
     if failed_only:
         if url is not None:
             raise ValueError("Do not pass a URL when using --failed-only.")
@@ -8346,6 +8500,7 @@ def _ensure_and_archive_run_media(
     paths: AppPaths,
     *,
     video_ids: set[int] | None = None,
+    allow_download: bool = True,
 ) -> None:
     videos = [
         video
@@ -8368,6 +8523,7 @@ def _ensure_and_archive_run_media(
             paths,
             tools,
             video_id=video.id,
+            allow_download=allow_download,
         )
         counts[result.outcome] += 1
         downloaded += int(result.downloaded)
@@ -8477,13 +8633,42 @@ def run(
             "new shadow associations and review nominations are available."
         ),
     ),
+    stage_audio_only: bool = typer.Option(
+        False,
+        "--stage-audio-only",
+        help="Discover the selected scope, download immutable source audio, write a resume manifest, and stop.",
+    ),
+    resume_stage: Path | None = typer.Option(
+        None,
+        "--resume-stage",
+        exists=True,
+        dir_okay=False,
+        help="Process exactly the videos in a verified audio-stage manifest without network downloads.",
+    ),
+    download_jobs: int = typer.Option(
+        DEFAULT_PREP_WORKERS,
+        "--download-jobs",
+        min=1,
+        help="Concurrent source-audio downloads during --stage-audio-only.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    console.print(
-        "Run adds the source, discovers videos, fetches captions, optionally transcribes, "
-        "extracts, ensures isolated-sermon audio, archives eligible sources when configured, "
-        "and writes disposition-aware pastor review artifacts."
-    )
+    if stage_audio_only:
+        console.print(
+            "Run will discover the selected scope, stage immutable source audio, write a "
+            "checksum-pinned resume manifest, and stop."
+        )
+    elif resume_stage is not None:
+        console.print(
+            "Run will verify the staged source manifest and finish transcription, extraction, "
+            "media assurance, archival, and review without network downloads."
+        )
+    else:
+        console.print(
+            "Run adds the source, discovers videos, fetches captions, optionally transcribes, "
+            "extracts, ensures isolated-sermon audio, archives eligible sources when configured, "
+            "and writes disposition-aware pastor review artifacts."
+        )
     try:
         run_workflow_service(
             url=url,
@@ -8502,6 +8687,9 @@ def run(
             skip_review=skip_review,
             run_identity=run_identity,
             base_dir=base_dir,
+            stage_audio_only=stage_audio_only,
+            resume_stage=resume_stage,
+            download_jobs=download_jobs,
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
