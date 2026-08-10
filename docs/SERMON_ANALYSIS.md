@@ -13,10 +13,12 @@ measurements:
 - distinct canonical passages and Bible books; and
 - the sorted set of referenced books.
 
-Scripture extraction deliberately favors precision. Version 1 recognizes
+Scripture extraction deliberately favors precision. Version 2 recognizes
 explicit numeric references such as `John 3:16`, `Romans 8:1-4`, and common
 book abbreviations. It does not infer allusions, themes, quoted-but-unnamed
-passages, or spoken-number forms. Every recognized reference is persisted as a
+passages, or spoken-number forms. Each match is explicitly classified as a
+high-confidence `explicit` reference; contextual-reference detection remains a
+separate future class. Every recognized reference is persisted as a
 separate evidence row containing the exact transcript match, canonical
 reference, source segment index, character offsets, and timestamps when the
 source segment supplies them.
@@ -82,11 +84,41 @@ the CLI projects existing sermon analyses through current profile membership.
 Moving an observation between profiles therefore neither duplicates nor
 invalidates the deterministic analysis of its sermon.
 
+## Materialized profile Scripture summaries
+
+After current sermon analysis exists for the profile's attached observations,
+materialize and inspect its aggregate Scripture usage:
+
+```bash
+pte analysis summarize-profile --profile-id PROFILE_ID --base-dir /path/to/app-data
+pte analysis show-profile --profile-id PROFILE_ID --base-dir /path/to/app-data
+```
+
+The profile summary records coverage (attached, analyzed, and missing sermons),
+total words, analyzed-sermon date range, explicit references per thousand words,
+Old/New Testament distribution, top books, chapters repeated across sermons,
+and reference placement by sermon quarter. Placement uses the source segment's
+start timestamp and reports that precision in its diagnostics.
+
+Zero-reference sermons are surfaced as a detection diagnostic. They are not
+silently interpreted as evidence of low Scripture usage. The persisted
+detection scope states that only explicit numeric references are currently
+recognized and that contextual detection is not implemented.
+
+`speaker_profile_analysis_runs` is an immutable materialized derivation. Its
+fingerprint includes the canonical resolved profile, effective observation
+membership, exact input sermon-analysis run IDs, schema version, and profile
+analyzer version. `speaker_profile_analysis_inputs` preserves those exact run
+links; derived aggregate values are stored separately in
+`speaker_profile_analysis_measurements`. Unchanged inputs reuse the existing
+run. Membership changes, newer sermon analyses, or a profile-analyzer version
+change create a new run.
+
 ## Natural next increment
 
-The next small capability should add deterministic Scripture-usage structure:
-reference density per thousand words, Old/New Testament distribution, and
-reference sequence/repetition across sermon time. It can reuse the existing
-run/measurement/evidence pattern without adding subjective interpretation;
-quoted-passage matching can follow later once it has an explicit Bible-text
-source and translation provenance.
+The next deterministic slice should characterize scriptural shape: breadth
+versus concentration, sustained-passage use versus isolated references,
+prophetic/Gospel/Pauline emphasis, and recurring canonical patterns. Contextual
+reference recognition can be added independently once its syntax and confidence
+policy are validated against reviewed transcripts. Quoted-passage matching
+should wait for an explicit Bible-text source and translation provenance.

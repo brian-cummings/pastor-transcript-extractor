@@ -101,6 +101,12 @@ from pastor_transcript_extractor.recording_verifier import (
     run_diagnostics as run_recording_verifier_diagnostics,
     validate_partition_access,
 )
+from pastor_transcript_extractor.profile_analysis import (
+    PROFILE_ANALYZER_KEY,
+    PROFILE_ANALYZER_VERSION,
+    build_profile_scripture_analysis,
+    resolve_profile_sermon_scope,
+)
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedSpeakerEvidence,
     ReviewedEvidenceSyncResult,
@@ -1056,23 +1062,11 @@ def _analysis_videos(
             )
 
     assert profile_id is not None
-    if database.get_speaker_profile(profile_id) is None:
-        raise typer.BadParameter(f"Unknown speaker profile: {profile_id}")
-    resolved_profile_id = database.resolve_speaker_profile_id(profile_id)
-    observation_ids = database.list_effective_observation_ids_for_profile(
-        resolved_profile_id
-    )
-    video_ids = {
-        observation.video_id
-        for observation_id in observation_ids
-        if (observation := database.get_speaker_observation(observation_id)) is not None
-    }
-    videos = [video for video in database.list_videos() if video.id in video_ids]
-    if not videos:
-        raise typer.BadParameter(
-            f"Speaker profile {resolved_profile_id} has no effectively attached sermon observations."
-        )
-    return videos, resolved_profile_id
+    try:
+        scope = resolve_profile_sermon_scope(database, profile_id)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    return list(scope.videos), scope.profile_id
 
 
 @analysis_app.command(
@@ -1222,6 +1216,169 @@ def analysis_show(
             f"Provenance: run=#{run.id}; extraction=#{run.extraction_result_id}; "
             f"source_sha256={run.source_content_sha256}; input={run.input_fingerprint}"
         )
+
+
+def _profile_analysis_values(database: Database, run_id: int) -> dict[str, object]:
+    return {
+        item.metric_key: json.loads(item.value_json)
+        for item in database.list_speaker_profile_analysis_measurements(run_id)
+    }
+
+
+def _print_profile_scripture_summary(database: Database, run) -> None:
+    values = _profile_analysis_values(database, run.id)
+    coverage = Table(title=f"Scripture Usage — Speaker Profile #{run.profile_id}")
+    coverage.add_column("Coverage")
+    coverage.add_column("Value", justify="right")
+    attached = values.get("sermons_attached", 0)
+    analyzed = values.get("sermons_analyzed", 0)
+    date_start = values.get("date_range_start")
+    date_end = values.get("date_range_end")
+    date_range = f"{date_start or '—'} to {date_end or '—'}"
+    coverage.add_row("Sermons analyzed", f"{analyzed} / {attached}")
+    coverage.add_row("Total sermon words", f"{values.get('total_sermon_words', 0):,}")
+    coverage.add_row("Date range", date_range)
+    coverage.add_row(
+        "Explicit references", str(values.get("explicit_reference_mentions", 0))
+    )
+    diagnostics = values.get("reference_detection_diagnostics", {})
+    if isinstance(diagnostics, dict):
+        coverage.add_row(
+            "Zero-reference sermons",
+            str(diagnostics.get("sermons_with_zero_explicit_references", 0)),
+        )
+        coverage.add_row(
+            "Detection scope", str(diagnostics.get("detection_scope", "—"))
+        )
+        coverage.add_row(
+            "Accepted-match confidence",
+            str(diagnostics.get("accepted_match_confidence", "—")),
+        )
+        coverage.add_row(
+            "Contextual references",
+            str(diagnostics.get("contextual_reference_detection", "—")),
+        )
+        coverage.add_row(
+            "References with placement",
+            f"{diagnostics.get('references_with_placement', 0)} / "
+            f"{values.get('explicit_reference_mentions', 0)}",
+        )
+    console.print(coverage)
+
+    usage = Table(title="Usage")
+    usage.add_column("Measurement")
+    usage.add_column("Value", justify="right")
+    usage.add_row(
+        "References / 1k words",
+        str(values.get("explicit_references_per_1000_words", 0.0)),
+    )
+    usage.add_row(
+        "Old Testament",
+        f"{values.get('old_testament_mentions', 0)} "
+        f"({values.get('old_testament_percent', 0.0)}%)",
+    )
+    usage.add_row(
+        "New Testament",
+        f"{values.get('new_testament_mentions', 0)} "
+        f"({values.get('new_testament_percent', 0.0)}%)",
+    )
+    console.print(usage)
+
+    books = Table(title="Top Books")
+    books.add_column("Book")
+    books.add_column("Mentions", justify="right")
+    top_books = values.get("top_scripture_books", [])
+    if isinstance(top_books, list):
+        for item in top_books[:10]:
+            if isinstance(item, dict):
+                books.add_row(str(item.get("book", "—")), str(item.get("mentions", 0)))
+    console.print(books)
+
+    repeated = Table(title="Repeated Chapters")
+    repeated.add_column("Passage")
+    repeated.add_column("Sermons", justify="right")
+    repeated.add_column("Mentions", justify="right")
+    repeated_chapters = values.get("repeated_scripture_chapters", [])
+    if isinstance(repeated_chapters, list):
+        for item in repeated_chapters:
+            if isinstance(item, dict):
+                repeated.add_row(
+                    str(item.get("passage", "—")),
+                    str(item.get("sermon_count", 0)),
+                    str(item.get("mentions", 0)),
+                )
+    console.print(repeated)
+
+    placement = Table(title="Placement")
+    placement.add_column("Quarter")
+    placement.add_column("Mentions", justify="right")
+    placement.add_column("Percent", justify="right")
+    placement_values = values.get("reference_placement_by_quarter", {})
+    if isinstance(placement_values, dict):
+        for quarter in ("Q1", "Q2", "Q3", "Q4"):
+            item = placement_values.get(quarter, {})
+            if isinstance(item, dict):
+                placement.add_row(
+                    quarter,
+                    str(item.get("mentions", 0)),
+                    f"{item.get('percent', 0.0)}%",
+                )
+    console.print(placement)
+    console.print(
+        f"Provenance: profile_analysis=#{run.id}; version={run.analyzer_version}; "
+        f"membership={run.membership_fingerprint}; input={run.input_fingerprint}"
+    )
+
+
+@analysis_app.command(
+    "summarize-profile",
+    help="Materialize a deterministic Scripture-usage summary for a speaker profile.",
+)
+def analysis_summarize_profile(
+    profile_id: int = typer.Option(..., "--profile-id", help="Speaker profile id."),
+    analyzer_version: str = typer.Option(
+        PROFILE_ANALYZER_VERSION,
+        "--analyzer-version",
+        help="Profile analyzer version recorded in provenance.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        outcome = build_profile_scripture_analysis(
+            database, profile_id, analyzer_version=analyzer_version
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Profile analysis #{outcome.run.id} "
+        f"{'created' if outcome.created else 'reused'}."
+    )
+    _print_profile_scripture_summary(database, outcome.run)
+
+
+@analysis_app.command(
+    "show-profile",
+    help="Inspect the latest materialized Scripture summary for a speaker profile.",
+)
+def analysis_show_profile(
+    profile_id: int = typer.Option(..., "--profile-id", help="Speaker profile id."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        scope = resolve_profile_sermon_scope(database, profile_id)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    run = database.get_latest_speaker_profile_analysis_run(
+        scope.profile_id, PROFILE_ANALYZER_KEY
+    )
+    if run is None:
+        raise typer.BadParameter(
+            f"Speaker profile {scope.profile_id} has no materialized profile analysis. "
+            "Run 'pte analysis summarize-profile' first."
+        )
+    _print_profile_scripture_summary(database, run)
 
 
 @identity_app.command(

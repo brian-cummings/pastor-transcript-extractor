@@ -12,7 +12,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 ANALYZER_KEY = "sermon-basics"
-ANALYZER_VERSION = "1"
+ANALYZER_VERSION = "2"
 ANALYSIS_SCHEMA_VERSION = 1
 
 
@@ -98,6 +98,7 @@ _BOOK_ALIASES: dict[str, tuple[str, ...]] = {
     "Jude": ("Jude",),
     "Revelation": ("Revelation", "Rev"),
 }
+OLD_TESTAMENT_BOOKS = frozenset(tuple(_BOOK_ALIASES)[:39])
 
 _CHAPTER_COUNTS = dict(
     zip(
@@ -144,7 +145,9 @@ def _number(value: object) -> float | None:
     return None
 
 
-def _load_sermon_source(extraction_path: Path) -> tuple[list[_SermonSegment], float | None]:
+def _load_sermon_source(
+    extraction_path: Path,
+) -> tuple[list[_SermonSegment], float, float]:
     try:
         payload = json.loads(extraction_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -194,13 +197,14 @@ def _load_sermon_source(extraction_path: Path) -> tuple[list[_SermonSegment], fl
         )
     if not segments:
         raise ValueError("Identified sermon window contains no transcript segments")
-    return segments, end - start
+    return segments, start, end - start
 
 
 def _canonical_source(
-    segments: list[_SermonSegment], duration_seconds: float | None
+    segments: list[_SermonSegment], sermon_start_seconds: float, duration_seconds: float
 ) -> bytes:
     payload = {
+        "sermon_start_seconds": sermon_start_seconds,
         "duration_seconds": duration_seconds,
         "segments": [
             {
@@ -263,8 +267,10 @@ def analyze_sermon(
     if extraction is None or extraction.proposed_json_path is None:
         raise ValueError(f"Video {video.youtube_video_id} has no identified sermon content")
     source_path = Path(extraction.proposed_json_path)
-    segments, duration_seconds = _load_sermon_source(source_path)
-    source_content_sha256 = _sha256(_canonical_source(segments, duration_seconds))
+    segments, sermon_start_seconds, duration_seconds = _load_sermon_source(source_path)
+    source_content_sha256 = _sha256(
+        _canonical_source(segments, sermon_start_seconds, duration_seconds)
+    )
     input_fingerprint = _sha256(
         json.dumps(
             {
@@ -285,11 +291,13 @@ def analyze_sermon(
     sermon_text = "\n".join(segment.text for segment in segments)
     measurement_values: list[tuple[str, object, str | None]] = [
         ("word_count", len(_WORD_PATTERN.findall(sermon_text)), "words"),
+        ("sermon_start_seconds", sermon_start_seconds, "seconds"),
         ("sermon_duration_seconds", duration_seconds, "seconds"),
         ("scripture_reference_mentions", len(references), "mentions"),
         ("distinct_scripture_passages", len(passages), "passages"),
         ("distinct_scripture_books", len(books), "books"),
         ("scripture_books", books, None),
+        ("scripture_detection_scope", "explicit_numeric_reference", None),
     ]
     measurements = [
         (key, json.dumps(value, sort_keys=True), unit)
@@ -304,6 +312,9 @@ def analyze_sermon(
             "book": item["book"],
             "canonical_reference": item["canonical_reference"],
             "chapter": item["chapter"],
+            "detection_class": "explicit",
+            "detection_confidence": "high",
+            "detection_method": "book_chapter_verse_pattern",
             "verse_end": item["verse_end"],
             "verse_start": item["verse_start"],
         }

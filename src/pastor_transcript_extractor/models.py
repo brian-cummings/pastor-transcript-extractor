@@ -273,6 +273,26 @@ class SermonAnalysisEvidence:
 
 
 @dataclass(slots=True)
+class SpeakerProfileAnalysisRun:
+    id: int
+    profile_id: int
+    analyzer_key: str
+    analyzer_version: str
+    membership_fingerprint: str
+    input_fingerprint: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class SpeakerProfileAnalysisMeasurement:
+    id: int
+    profile_analysis_run_id: int
+    metric_key: str
+    value_json: str
+    unit: Optional[str]
+
+
+@dataclass(slots=True)
 class ExcludedVideo:
     id: int
     pastor_id: Optional[int]

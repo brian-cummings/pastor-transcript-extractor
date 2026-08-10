@@ -28,6 +28,8 @@ from pastor_transcript_extractor.models import (
     SermonAnalysisEvidence,
     SermonAnalysisMeasurement,
     SermonAnalysisRun,
+    SpeakerProfileAnalysisMeasurement,
+    SpeakerProfileAnalysisRun,
     Source,
     SourceType,
     TranscriptSegment,
@@ -260,6 +262,43 @@ CREATE TABLE IF NOT EXISTS sermon_analysis_evidence (
 
 CREATE INDEX IF NOT EXISTS idx_sermon_analysis_runs_video
 ON sermon_analysis_runs(video_id, analyzer_key, id);
+
+CREATE TABLE IF NOT EXISTS speaker_profile_analysis_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    analyzer_key TEXT NOT NULL,
+    analyzer_version TEXT NOT NULL,
+    membership_fingerprint TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_profile_analysis_inputs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_analysis_run_id INTEGER NOT NULL,
+    sermon_analysis_run_id INTEGER NOT NULL,
+    video_id INTEGER NOT NULL,
+    FOREIGN KEY(profile_analysis_run_id)
+        REFERENCES speaker_profile_analysis_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(sermon_analysis_run_id) REFERENCES sermon_analysis_runs(id),
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    UNIQUE(profile_analysis_run_id, sermon_analysis_run_id)
+);
+
+CREATE TABLE IF NOT EXISTS speaker_profile_analysis_measurements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_analysis_run_id INTEGER NOT NULL,
+    metric_key TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    unit TEXT NULL,
+    FOREIGN KEY(profile_analysis_run_id)
+        REFERENCES speaker_profile_analysis_runs(id) ON DELETE CASCADE,
+    UNIQUE(profile_analysis_run_id, metric_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_speaker_profile_analysis_runs_profile
+ON speaker_profile_analysis_runs(profile_id, analyzer_key, id);
 
 CREATE TABLE IF NOT EXISTS excluded_videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -832,6 +871,19 @@ class Database:
             source_kind=str(row["source_kind"]),
             source_path=str(row["source_path"]),
             source_content_sha256=str(row["source_content_sha256"]),
+            input_fingerprint=str(row["input_fingerprint"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def _speaker_profile_analysis_run_from_row(
+        self, row: sqlite3.Row
+    ) -> SpeakerProfileAnalysisRun:
+        return SpeakerProfileAnalysisRun(
+            id=int(row["id"]),
+            profile_id=int(row["profile_id"]),
+            analyzer_key=str(row["analyzer_key"]),
+            analyzer_version=str(row["analyzer_version"]),
+            membership_fingerprint=str(row["membership_fingerprint"]),
             input_fingerprint=str(row["input_fingerprint"]),
             created_at=parse_datetime(str(row["created_at"])) or utc_now(),
         )
@@ -2062,6 +2114,32 @@ class Database:
     def _delete_sermon_analysis_records_for_video(
         self, connection: sqlite3.Connection, video_id: int
     ) -> None:
+        profile_run_rows = connection.execute(
+            """
+            SELECT DISTINCT input.profile_analysis_run_id
+            FROM speaker_profile_analysis_inputs input
+            JOIN sermon_analysis_runs sermon
+              ON sermon.id = input.sermon_analysis_run_id
+            WHERE sermon.video_id = ?
+            """,
+            (video_id,),
+        ).fetchall()
+        profile_run_ids = [int(row[0]) for row in profile_run_rows]
+        for profile_run_id in profile_run_ids:
+            connection.execute(
+                "DELETE FROM speaker_profile_analysis_measurements "
+                "WHERE profile_analysis_run_id = ?",
+                (profile_run_id,),
+            )
+            connection.execute(
+                "DELETE FROM speaker_profile_analysis_inputs "
+                "WHERE profile_analysis_run_id = ?",
+                (profile_run_id,),
+            )
+            connection.execute(
+                "DELETE FROM speaker_profile_analysis_runs WHERE id = ?",
+                (profile_run_id,),
+            )
         connection.execute(
             """
             DELETE FROM sermon_analysis_measurements
@@ -2579,16 +2657,24 @@ class Database:
         return [self._sermon_analysis_run_from_row(row) for row in rows]
 
     def get_latest_sermon_analysis_run(
-        self, video_id: int, analyzer_key: str
+        self,
+        video_id: int,
+        analyzer_key: str,
+        analyzer_version: str | None = None,
     ) -> SermonAnalysisRun | None:
+        version_clause = " AND analyzer_version = ?" if analyzer_version is not None else ""
+        parameters: tuple[object, ...] = (video_id, analyzer_key)
+        if analyzer_version is not None:
+            parameters += (analyzer_version,)
         with self.connect() as connection:
             row = connection.execute(
-                """
+                f"""
                 SELECT * FROM sermon_analysis_runs
                 WHERE video_id = ? AND analyzer_key = ?
+                {version_clause}
                 ORDER BY id DESC LIMIT 1
                 """,
-                (video_id, analyzer_key),
+                parameters,
             ).fetchone()
         return self._sermon_analysis_run_from_row(row) if row is not None else None
 
@@ -2657,6 +2743,144 @@ class Database:
             )
             for row in rows
         ]
+
+    def get_speaker_profile_analysis_run_by_fingerprint(
+        self, input_fingerprint: str
+    ) -> SpeakerProfileAnalysisRun | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM speaker_profile_analysis_runs WHERE input_fingerprint = ?",
+                (input_fingerprint,),
+            ).fetchone()
+        return (
+            self._speaker_profile_analysis_run_from_row(row)
+            if row is not None
+            else None
+        )
+
+    def add_speaker_profile_analysis_run(
+        self,
+        *,
+        profile_id: int,
+        analyzer_key: str,
+        analyzer_version: str,
+        membership_fingerprint: str,
+        input_fingerprint: str,
+        inputs: list[tuple[int, int]],
+        measurements: list[tuple[str, str, str | None]],
+    ) -> tuple[SpeakerProfileAnalysisRun, bool]:
+        existing = self.get_speaker_profile_analysis_run_by_fingerprint(
+            input_fingerprint
+        )
+        if existing is not None:
+            return existing, False
+
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO speaker_profile_analysis_runs (
+                        profile_id, analyzer_key, analyzer_version,
+                        membership_fingerprint, input_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        profile_id,
+                        analyzer_key,
+                        analyzer_version,
+                        membership_fingerprint,
+                        input_fingerprint,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    "SELECT * FROM speaker_profile_analysis_runs "
+                    "WHERE input_fingerprint = ?",
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._speaker_profile_analysis_run_from_row(row), False
+
+            run_id = int(cursor.lastrowid)
+            connection.executemany(
+                """
+                INSERT INTO speaker_profile_analysis_inputs (
+                    profile_analysis_run_id, sermon_analysis_run_id, video_id
+                ) VALUES (?, ?, ?)
+                """,
+                [(run_id, sermon_run_id, video_id) for sermon_run_id, video_id in inputs],
+            )
+            connection.executemany(
+                """
+                INSERT INTO speaker_profile_analysis_measurements (
+                    profile_analysis_run_id, metric_key, value_json, unit
+                ) VALUES (?, ?, ?, ?)
+                """,
+                [(run_id, key, value, unit) for key, value, unit in measurements],
+            )
+            row = connection.execute(
+                "SELECT * FROM speaker_profile_analysis_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            assert row is not None
+            return self._speaker_profile_analysis_run_from_row(row), True
+
+    def get_latest_speaker_profile_analysis_run(
+        self, profile_id: int, analyzer_key: str
+    ) -> SpeakerProfileAnalysisRun | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM speaker_profile_analysis_runs
+                WHERE profile_id = ? AND analyzer_key = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (profile_id, analyzer_key),
+            ).fetchone()
+        return (
+            self._speaker_profile_analysis_run_from_row(row)
+            if row is not None
+            else None
+        )
+
+    def list_speaker_profile_analysis_measurements(
+        self, profile_analysis_run_id: int
+    ) -> list[SpeakerProfileAnalysisMeasurement]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM speaker_profile_analysis_measurements
+                WHERE profile_analysis_run_id = ? ORDER BY metric_key
+                """,
+                (profile_analysis_run_id,),
+            ).fetchall()
+        return [
+            SpeakerProfileAnalysisMeasurement(
+                id=int(row["id"]),
+                profile_analysis_run_id=int(row["profile_analysis_run_id"]),
+                metric_key=str(row["metric_key"]),
+                value_json=str(row["value_json"]),
+                unit=row["unit"],
+            )
+            for row in rows
+        ]
+
+    def list_speaker_profile_analysis_input_run_ids(
+        self, profile_analysis_run_id: int
+    ) -> list[int]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT sermon_analysis_run_id
+                FROM speaker_profile_analysis_inputs
+                WHERE profile_analysis_run_id = ?
+                ORDER BY sermon_analysis_run_id
+                """,
+                (profile_analysis_run_id,),
+            ).fetchall()
+        return [int(row["sermon_analysis_run_id"]) for row in rows]
 
     def add_metadata_artifact(
         self,
