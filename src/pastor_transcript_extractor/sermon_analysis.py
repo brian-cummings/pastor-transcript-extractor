@@ -12,7 +12,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 ANALYZER_KEY = "sermon-basics"
-ANALYZER_VERSION = "2"
+ANALYZER_VERSION = "3"
 ANALYSIS_SCHEMA_VERSION = 1
 
 
@@ -118,8 +118,8 @@ _ALIAS_TO_BOOK = {
     for book, aliases in _BOOK_ALIASES.items()
     for alias in aliases
 }
-_ALIAS_PATTERN = "|".join(
-    re.escape(alias).replace(r"\ ", r"\s+") + r"\.?(?=\s)"
+_ALIAS_CORE_PATTERN = "|".join(
+    re.escape(alias).replace(r"\ ", r"\s+") + r"\.?(?![A-Za-z])"
     for alias in sorted(
         (alias for aliases in _BOOK_ALIASES.values() for alias in aliases),
         key=len,
@@ -127,9 +127,56 @@ _ALIAS_PATTERN = "|".join(
     )
 )
 _SCRIPTURE_PATTERN = re.compile(
-    rf"(?<![A-Za-z0-9])(?P<book>{_ALIAS_PATTERN})\s+"
+    rf"(?<![A-Za-z0-9])(?P<book>{_ALIAS_CORE_PATTERN})\s+"
     r"(?P<chapter>\d{1,3})\s*:\s*(?P<verse_start>\d{1,3})"
     r"(?:\s*[-–—]\s*(?P<verse_end>\d{1,3}))?(?!\d)",
+    re.IGNORECASE,
+)
+_CARDINAL_VALUES = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+    "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80,
+    "ninety": 90,
+}
+_ORDINAL_VALUES = {
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+    "eleventh": 11, "twelfth": 12, "thirteenth": 13, "fourteenth": 14,
+    "fifteenth": 15, "sixteenth": 16, "seventeenth": 17,
+    "eighteenth": 18, "nineteenth": 19, "twentieth": 20,
+    "thirtieth": 30, "fortieth": 40, "fiftieth": 50, "sixtieth": 60,
+    "seventieth": 70, "eightieth": 80, "ninetieth": 90,
+}
+_NUMBER_WORDS = tuple(_CARDINAL_VALUES) + tuple(_ORDINAL_VALUES) + ("hundred", "and")
+_NUMBER_TOKEN_PATTERN = "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
+_NUMBER_PATTERN = rf"(?:\d{{1,3}}(?:st|nd|rd|th)?|(?:{_NUMBER_TOKEN_PATTERN})(?:[-\s]+(?:{_NUMBER_TOKEN_PATTERN})){{0,4}})"
+_BOOK_CHAPTER_PATTERN = re.compile(
+    rf"(?<![A-Za-z0-9])(?P<book>{_ALIAS_CORE_PATTERN})\s+"
+    rf"(?:chapter\s+)?(?P<chapter>{_NUMBER_PATTERN})"
+    rf"(?:\s*,?\s*(?:verse|verses)\s+(?P<verse_start>{_NUMBER_PATTERN})"
+    rf"(?:\s*(?:[-–—]|through|to)\s*(?P<verse_end>{_NUMBER_PATTERN}))?)?",
+    re.IGNORECASE,
+)
+_CHAPTER_OF_BOOK_PATTERN = re.compile(
+    rf"(?<![A-Za-z0-9])(?:the\s+)?(?P<chapter>{_NUMBER_PATTERN})\s+chapter\s+of\s+"
+    rf"(?:the\s+book\s+of\s+)?(?P<book>{_ALIAS_CORE_PATTERN})",
+    re.IGNORECASE,
+)
+_CUED_BOOK_PATTERN = re.compile(
+    rf"(?<![A-Za-z0-9])(?:"
+    rf"the\s+book\s+of|"
+    rf"(?:turn|open)(?:\s+with\s+me)?(?:\s+in\s+your\s+bibles?)?\s+to|"
+    rf"(?:read|reading)(?:\s+from)?(?:\s+the\s+book\s+of)?|"
+    rf"(?:our|this|the|today['’]s)\s+passage(?:\s+(?:is|comes))?\s+(?:from|in)"
+    rf")\s+(?P<book>{_ALIAS_CORE_PATTERN})",
+    re.IGNORECASE,
+)
+_CONTINUATION_VERSE_PATTERN = re.compile(
+    rf"(?<![A-Za-z0-9])(?:verse|verses)\s+(?P<verse_start>{_NUMBER_PATTERN})"
+    rf"(?:\s*(?:[-–—]|through|to)\s*(?P<verse_end>{_NUMBER_PATTERN}))?",
     re.IGNORECASE,
 )
 _WORD_PATTERN = re.compile(r"\b[\w]+(?:['’][\w]+)?\b", re.UNICODE)
@@ -221,38 +268,237 @@ def _canonical_source(
     )
 
 
+def _parse_spoken_number(value: str) -> int | None:
+    normalized = value.strip().casefold()
+    digit_match = re.fullmatch(r"(\d{1,3})(?:st|nd|rd|th)?", normalized)
+    if digit_match is not None:
+        return int(digit_match.group(1))
+    tokens = [token for token in re.split(r"[-\s]+", normalized) if token != "and"]
+    if not tokens:
+        return None
+
+    def under_hundred(parts: list[str]) -> int | None:
+        if len(parts) == 1:
+            return _CARDINAL_VALUES.get(parts[0], _ORDINAL_VALUES.get(parts[0]))
+        if len(parts) != 2:
+            return None
+        tens = _CARDINAL_VALUES.get(parts[0])
+        unit = _CARDINAL_VALUES.get(parts[1], _ORDINAL_VALUES.get(parts[1]))
+        if tens not in {20, 30, 40, 50, 60, 70, 80, 90}:
+            return None
+        if unit is None or not 1 <= unit <= 9:
+            return None
+        return tens + unit
+
+    if "hundred" not in tokens:
+        return under_hundred(tokens)
+    if tokens.count("hundred") != 1:
+        return None
+    hundred_index = tokens.index("hundred")
+    if hundred_index != 1 or _CARDINAL_VALUES.get(tokens[0]) not in range(1, 10):
+        return None
+    remainder = under_hundred(tokens[2:]) if tokens[2:] else 0
+    if remainder is None:
+        return None
+    return _CARDINAL_VALUES[tokens[0]] * 100 + remainder
+
+
+def _canonical_book(match: re.Match[str]) -> str | None:
+    alias = re.sub(r"[.\s]+", " ", match.group("book")).strip().casefold()
+    return _ALIAS_TO_BOOK.get(alias)
+
+
+def _overlaps(span: tuple[int, int], evidence: list[dict[str, Any]]) -> bool:
+    return any(
+        span[0] < int(item["char_end"]) and int(item["char_start"]) < span[1]
+        for item in evidence
+    )
+
+
+def _build_reference(
+    *,
+    segment: _SermonSegment,
+    match: re.Match[str],
+    book: str,
+    chapter: int | None,
+    verse_start: int | None,
+    verse_end: int | None,
+    detection_class: str,
+    detection_method: str,
+    detection_confidence: str,
+    context_source: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if chapter is not None and not (1 <= chapter <= _CHAPTER_COUNTS[book]):
+        return None
+    if verse_start is not None:
+        resolved_end = verse_end if verse_end is not None else verse_start
+        if chapter is None or not (1 <= verse_start <= resolved_end <= 176):
+            return None
+        verse_end = resolved_end
+    canonical = book
+    if chapter is not None:
+        canonical += f" {chapter}"
+    if verse_start is not None:
+        canonical += f":{verse_start}"
+        if verse_end != verse_start:
+            canonical += f"-{verse_end}"
+    return {
+        "book": book,
+        "chapter": chapter,
+        "verse_start": verse_start,
+        "verse_end": verse_end,
+        "canonical_reference": canonical,
+        "detection_class": detection_class,
+        "detection_method": detection_method,
+        "detection_confidence": detection_confidence,
+        "context_source_segment_index": (
+            context_source["segment"].index if context_source is not None else None
+        ),
+        "context_source_canonical_reference": (
+            context_source["canonical_reference"] if context_source is not None else None
+        ),
+        "segment": segment,
+        "char_start": match.start(),
+        "char_end": match.end(),
+        "excerpt": match.group(0),
+    }
+
+
 def _reference_evidence(segments: list[_SermonSegment]) -> list[dict[str, Any]]:
-    evidence: list[dict[str, Any]] = []
+    all_evidence: list[dict[str, Any]] = []
+    carried_anchor: dict[str, Any] | None = None
     for segment in segments:
+        evidence: list[dict[str, Any]] = []
         for match in _SCRIPTURE_PATTERN.finditer(segment.text):
-            alias = re.sub(r"[.\s]+", " ", match.group("book")).strip().casefold()
-            book = _ALIAS_TO_BOOK.get(alias)
+            book = _canonical_book(match)
             if book is None:
                 continue
-            chapter = int(match.group("chapter"))
-            verse_start = int(match.group("verse_start"))
-            verse_end = int(match.group("verse_end") or verse_start)
-            if not (1 <= chapter <= _CHAPTER_COUNTS[book]):
-                continue
-            if not (1 <= verse_start <= verse_end <= 176):
-                continue
-            canonical = f"{book} {chapter}:{verse_start}"
-            if verse_end != verse_start:
-                canonical += f"-{verse_end}"
-            evidence.append(
-                {
-                    "book": book,
-                    "chapter": chapter,
-                    "verse_start": verse_start,
-                    "verse_end": verse_end,
-                    "canonical_reference": canonical,
-                    "segment": segment,
-                    "char_start": match.start(),
-                    "char_end": match.end(),
-                    "excerpt": match.group(0),
-                }
+            item = _build_reference(
+                segment=segment,
+                match=match,
+                book=book,
+                chapter=int(match.group("chapter")),
+                verse_start=int(match.group("verse_start")),
+                verse_end=int(match.group("verse_end") or match.group("verse_start")),
+                detection_class="explicit",
+                detection_method="book_chapter_verse_pattern",
+                detection_confidence="high",
             )
-    return evidence
+            if item is not None:
+                evidence.append(item)
+
+        for pattern, method in (
+            (_BOOK_CHAPTER_PATTERN, "book_chapter_spoken"),
+            (_CHAPTER_OF_BOOK_PATTERN, "chapter_of_book_spoken"),
+        ):
+            for match in pattern.finditer(segment.text):
+                if _overlaps(match.span(), evidence):
+                    continue
+                book = _canonical_book(match)
+                chapter = _parse_spoken_number(match.group("chapter"))
+                verse_start_text = match.groupdict().get("verse_start")
+                verse_end_text = match.groupdict().get("verse_end")
+                if book is None or chapter is None:
+                    continue
+                item = _build_reference(
+                    segment=segment,
+                    match=match,
+                    book=book,
+                    chapter=chapter,
+                    verse_start=(
+                        _parse_spoken_number(verse_start_text)
+                        if verse_start_text is not None
+                        else None
+                    ),
+                    verse_end=(
+                        _parse_spoken_number(verse_end_text)
+                        if verse_end_text is not None
+                        else None
+                    ),
+                    detection_class="contextual",
+                    detection_method=method,
+                    detection_confidence="high",
+                )
+                if item is not None:
+                    evidence.append(item)
+
+        for match in _CUED_BOOK_PATTERN.finditer(segment.text):
+            if _overlaps(match.span(), evidence):
+                continue
+            book = _canonical_book(match)
+            if book is None:
+                continue
+            item = _build_reference(
+                segment=segment,
+                match=match,
+                book=book,
+                chapter=None,
+                verse_start=None,
+                verse_end=None,
+                detection_class="contextual",
+                detection_method="cued_book_reference",
+                detection_confidence="high",
+            )
+            if item is not None:
+                evidence.append(item)
+
+        evidence.sort(key=lambda item: (int(item["char_start"]), int(item["char_end"])))
+        for match in _CONTINUATION_VERSE_PATTERN.finditer(segment.text):
+            if _overlaps(match.span(), evidence):
+                continue
+            local_anchors = [
+                item
+                for item in evidence
+                if item["chapter"] is not None and int(item["char_end"]) <= match.start()
+            ]
+            anchor = local_anchors[-1] if local_anchors else carried_anchor
+            if anchor is None or anchor["chapter"] is None:
+                continue
+            verse_start = _parse_spoken_number(match.group("verse_start"))
+            verse_end_text = match.group("verse_end")
+            if verse_start is None:
+                continue
+            item = _build_reference(
+                segment=segment,
+                match=match,
+                book=str(anchor["book"]),
+                chapter=int(anchor["chapter"]),
+                verse_start=verse_start,
+                verse_end=(
+                    _parse_spoken_number(verse_end_text)
+                    if verse_end_text is not None
+                    else None
+                ),
+                detection_class="contextual",
+                detection_method="continuation_verse",
+                detection_confidence="medium",
+                context_source=anchor,
+            )
+            if item is not None:
+                evidence.append(item)
+
+        evidence.sort(key=lambda item: (int(item["char_start"]), int(item["char_end"])))
+        anchors = [item for item in evidence if item["chapter"] is not None]
+        carried_anchor = anchors[-1] if anchors else None
+        all_evidence.extend(evidence)
+    return all_evidence
+
+
+def detect_scripture_references_in_texts(texts: list[str]) -> list[dict[str, object]]:
+    """Public deterministic detector used by the reviewed evaluation workflow."""
+    segments = [
+        _SermonSegment(index=index, start_seconds=None, end_seconds=None, text=text)
+        for index, text in enumerate(texts)
+    ]
+    return [
+        {
+            key: value
+            for key, value in item.items()
+            if key != "segment"
+        }
+        | {"segment_index": item["segment"].index}
+        for item in _reference_evidence(segments)
+    ]
 
 
 def analyze_sermon(
@@ -286,6 +532,12 @@ def analyze_sermon(
     )
 
     references = _reference_evidence(segments)
+    explicit_references = [
+        item for item in references if item["detection_class"] == "explicit"
+    ]
+    contextual_references = [
+        item for item in references if item["detection_class"] == "contextual"
+    ]
     books = sorted({str(item["book"]) for item in references})
     passages = sorted({str(item["canonical_reference"]) for item in references})
     sermon_text = "\n".join(segment.text for segment in segments)
@@ -294,10 +546,24 @@ def analyze_sermon(
         ("sermon_start_seconds", sermon_start_seconds, "seconds"),
         ("sermon_duration_seconds", duration_seconds, "seconds"),
         ("scripture_reference_mentions", len(references), "mentions"),
+        (
+            "explicit_scripture_reference_mentions",
+            len(explicit_references),
+            "mentions",
+        ),
+        (
+            "contextual_scripture_reference_mentions",
+            len(contextual_references),
+            "mentions",
+        ),
         ("distinct_scripture_passages", len(passages), "passages"),
         ("distinct_scripture_books", len(books), "books"),
         ("scripture_books", books, None),
-        ("scripture_detection_scope", "explicit_numeric_reference", None),
+        (
+            "scripture_detection_scope",
+            "explicit_numeric_and_reviewed_contextual_v1",
+            None,
+        ),
     ]
     measurements = [
         (key, json.dumps(value, sort_keys=True), unit)
@@ -312,9 +578,13 @@ def analyze_sermon(
             "book": item["book"],
             "canonical_reference": item["canonical_reference"],
             "chapter": item["chapter"],
-            "detection_class": "explicit",
-            "detection_confidence": "high",
-            "detection_method": "book_chapter_verse_pattern",
+            "context_source_canonical_reference": item[
+                "context_source_canonical_reference"
+            ],
+            "context_source_segment_index": item["context_source_segment_index"],
+            "detection_class": item["detection_class"],
+            "detection_confidence": item["detection_confidence"],
+            "detection_method": item["detection_method"],
             "verse_end": item["verse_end"],
             "verse_start": item["verse_start"],
         }

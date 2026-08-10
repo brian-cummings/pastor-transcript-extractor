@@ -9,19 +9,39 @@ measurements:
 
 - transcript word count;
 - identified sermon-window duration;
-- explicit Scripture reference mention count;
+- total, explicit, and contextual Scripture reference mention counts;
 - distinct canonical passages and Bible books; and
 - the sorted set of referenced books.
 
-Scripture extraction deliberately favors precision. Version 2 recognizes
-explicit numeric references such as `John 3:16`, `Romans 8:1-4`, and common
-book abbreviations. It does not infer allusions, themes, quoted-but-unnamed
-passages, or spoken-number forms. Each match is explicitly classified as a
-high-confidence `explicit` reference; contextual-reference detection remains a
-separate future class. Every recognized reference is persisted as a
+Scripture extraction deliberately favors precision. Version 3 preserves
+high-confidence `explicit` numeric references such as `John 3:16` and
+`Romans 8:1-4`, while adding a separate `contextual` class. Every recognized
+reference is persisted as a
 separate evidence row containing the exact transcript match, canonical
 reference, source segment index, character offsets, and timestamps when the
 source segment supplies them.
+
+Supported contextual forms are:
+
+- book plus chapter in digits or number words (`Romans 8`, `John chapter three`);
+- ordinal chapter before the book (`the third chapter of John`);
+- spoken verse or verse range attached to that form (`Daniel chapter seven,
+  verses thirteen through fourteen`);
+- strongly cued book-only references (`the book of Romans`, `open your Bible to
+  Isaiah`, `read from Psalms`, `our passage is in Ephesians`); and
+- numeric or spoken `verse`/`verses` continuations resolved from a book-chapter
+  anchor earlier in the same segment or the immediately preceding segment.
+
+Grammar-bound book, chapter, and verse forms are recorded with high confidence.
+Immediate continuation resolution is medium confidence and records the source
+anchor's canonical reference and segment. Contextual matching never replaces or
+duplicates an overlapping explicit match.
+
+Important unsupported cases include colloquial number pairs such as “John three
+sixteen,” ordinal inference such as “the next verse,” uncued bare book names,
+allusions, and quotations without a named reference. Invalid chapter numbers,
+unanchored verse language, and ambiguous ordinary uses of names such as John,
+Mark, Acts, or Romans are rejected.
 
 ## Running and inspecting analysis
 
@@ -95,15 +115,15 @@ pte analysis show-profile --profile-id PROFILE_ID --base-dir /path/to/app-data
 ```
 
 The profile summary records coverage (attached, analyzed, and missing sermons),
-total words, analyzed-sermon date range, explicit references per thousand words,
+total words, analyzed-sermon date range, accepted references per thousand words,
 Old/New Testament distribution, top books, chapters repeated across sermons,
 and reference placement by sermon quarter. Placement uses the source segment's
 start timestamp and reports that precision in its diagnostics.
 
 Zero-reference sermons are surfaced as a detection diagnostic. They are not
 silently interpreted as evidence of low Scripture usage. The persisted
-detection scope states that only explicit numeric references are currently
-recognized and that contextual detection is not implemented.
+detection scope and method/confidence counts keep explicit and contextual
+coverage visible separately.
 
 `speaker_profile_analysis_runs` is an immutable materialized derivation. Its
 fingerprint includes the canonical resolved profile, effective observation
@@ -116,12 +136,14 @@ change create a new run.
 
 ## Structural Scripture profile (Iteration 3)
 
-Version 2 of `profile-scripture-usage` adds deterministic structural features
-without changing the evidence path. It consumes the same immutable sermon
-analysis runs and their explicit-reference evidence, and persists these
+Version 2 of `profile-scripture-usage` introduced deterministic structural
+features without changing the evidence path. Version 3 regenerates those same
+features from accepted explicit and contextual evidence; it does not create a
+parallel metric family. It consumes immutable sermon analysis runs and persists
+these
 additional profile measurements:
 
-- **Breadth:** distinct books and distinct book-chapters per ten explicit
+- **Breadth:** distinct books and distinct book-chapters per ten accepted
   reference mentions.
 - **Concentration:** book-level Herfindahl-Hirschman concentration and its
   inverse, the effective book count.
@@ -132,13 +154,13 @@ additional profile measurements:
   book-chapter cited at least twice within the same sermon. This is a citation
   clustering measurement, not a claim that the preacher performed sustained
   exposition.
-- **Multi-verse use:** the share of explicit references whose stated range
+- **Multi-verse use:** the share of accepted references whose stated range
   spans more than one verse.
 - **Cross-sermon anchors:** the largest fraction of analyzed sermons citing the
   same book-chapter, requiring that chapter to occur in at least two sermons.
 - **Across-sermon consistency:** mean pairwise cosine similarity of book-count
   distributions among reference-bearing sermons, and `1 / (1 + CV)` for
-  per-sermon explicit-reference density.
+  per-sermon accepted-reference density.
 
 `sermon_scripture_structure` records the supporting values for each contributing
 sermon: its exact sermon-analysis run, word and reference counts, density,
@@ -159,19 +181,48 @@ Undefined measurements are stored as `null`, never silently coerced to a
 preaching characteristic. Examples include concentration with no detected
 references and pairwise consistency with fewer than two reference-bearing
 sermons. `structural_coverage_diagnostics` reports analyzed and zero-reference
-sermons, explicit mention count, usable book-distribution pairs, and word-count
-coverage. Because detection remains explicit-numeric-only, breadth,
-concentration, emphasis, and consistency describe detected citations—not all
-Scripture use. Sparse detection must be reviewed before interpreting those
-features.
+sermons, total/explicit/contextual mention counts, usable book-distribution
+pairs, and word-count coverage. Breadth, concentration, emphasis, and
+consistency still describe detected references—not all Scripture use. Sparse
+detection must be reviewed before interpreting those features.
+
+## Reviewed detector evaluation (Iteration 4)
+
+The frozen fixture at
+`evaluation/scripture-references/contextual-v1.json` contains 25 reviewed cases:
+explicit citations, contextual chapter/verse forms, cued book-only references,
+immediate continuations, ambiguous biblical language, and negative controls.
+Run it with:
+
+```bash
+pte analysis evaluate-scripture-detector \
+  evaluation/scripture-references/contextual-v1.json
+```
+
+Current fixture results are 16 true positives, 0 false positives, and 2 false
+negatives: **1.000 precision** and **0.889 recall** overall. Explicit detection
+remains **1.000 precision / 1.000 recall**. Contextual detection is **1.000
+precision / 0.875 recall**. All ten negative-control cases pass. The two visible
+misses are the intentionally unsupported “John three sixteen” form and “the
+next verse” ordinal inference. This is a small behavior-locking corpus, not a
+claim of population-level accuracy; it should grow through reviewed production
+misses before broader recall claims are made.
+
+The sermon analyzer version is now `3`; its fingerprint therefore creates new
+runs over unchanged transcripts while retaining version-2 explicit-only runs.
+The profile analyzer version is also `3` and selects exact version-3 sermon
+inputs. Profile reference totals, zero-reference coverage, canonical emphasis,
+and the existing structural vector are regenerated from the union of accepted
+explicit and contextual evidence. Separate explicit/contextual counts and
+method/confidence distributions show exactly how much coverage expansion came
+from the new detector. No production profile-coverage delta is claimed until
+the profile corpus is rerun and inspected.
 
 ## Natural next increment
 
-The next natural iteration should improve deterministic detection coverage
-before adding semantic judgments: recognize syntax such as “the third chapter
-of John” and “verse sixteen,” retain `explicit` versus `contextual` detection
-classes, and validate precision/recall against a small reviewed transcript set.
-Quoted-passage matching can follow once it has an explicit Bible-text source
-and translation provenance. Structural features should then expose separate
-explicit-only and expanded-coverage variants rather than silently changing
-their meaning.
+The next natural iteration is deterministic quoted-passage alignment against a
+versioned Bible-text source with translation provenance. It should nominate
+unnamed quotations conservatively, retain text similarity and source spans as
+evidence, and expand the reviewed corpus before contributing to structural
+features. Semantic pastor-style, theology, politics, embeddings, and clustering
+remain out of scope until detector coverage is better characterized.

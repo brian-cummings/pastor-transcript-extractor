@@ -280,6 +280,9 @@ from pastor_transcript_extractor.sermon_analysis import (
     ANALYZER_VERSION as SERMON_ANALYZER_VERSION,
     analyze_sermon,
 )
+from pastor_transcript_extractor.scripture_reference_evaluation import (
+    evaluate_scripture_detector,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.source_ownership import (
     apply_source_ownership_schema,
@@ -1201,6 +1204,8 @@ def analysis_show(
         video, run = found[0]
         references = Table(title=f"Scripture Evidence — {video.youtube_video_id}")
         references.add_column("Reference")
+        references.add_column("Class")
+        references.add_column("Confidence")
         references.add_column("Time")
         references.add_column("Segment", justify="right")
         references.add_column("Transcript match")
@@ -1208,6 +1213,8 @@ def analysis_show(
             payload = json.loads(item.payload_json)
             references.add_row(
                 str(payload.get("canonical_reference", "—")),
+                str(payload.get("detection_class", "—")),
+                str(payload.get("detection_confidence", "—")),
                 format_timestamp(item.start_seconds) if item.start_seconds is not None else "—",
                 str(item.segment_index) if item.segment_index is not None else "—",
                 item.excerpt,
@@ -1239,30 +1246,30 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
     coverage.add_row("Sermons analyzed", f"{analyzed} / {attached}")
     coverage.add_row("Total sermon words", f"{values.get('total_sermon_words', 0):,}")
     coverage.add_row("Date range", date_range)
+    coverage.add_row("Detected references", str(values.get("reference_mentions", 0)))
     coverage.add_row(
         "Explicit references", str(values.get("explicit_reference_mentions", 0))
+    )
+    coverage.add_row(
+        "Contextual references", str(values.get("contextual_reference_mentions", 0))
     )
     diagnostics = values.get("reference_detection_diagnostics", {})
     if isinstance(diagnostics, dict):
         coverage.add_row(
             "Zero-reference sermons",
-            str(diagnostics.get("sermons_with_zero_explicit_references", 0)),
+            str(diagnostics.get("sermons_with_zero_detected_references", 0)),
         )
         coverage.add_row(
             "Detection scope", str(diagnostics.get("detection_scope", "—"))
         )
         coverage.add_row(
-            "Accepted-match confidence",
-            str(diagnostics.get("accepted_match_confidence", "—")),
-        )
-        coverage.add_row(
-            "Contextual references",
-            str(diagnostics.get("contextual_reference_detection", "—")),
+            "Confidence counts",
+            json.dumps(diagnostics.get("detection_confidence_counts", {}), sort_keys=True),
         )
         coverage.add_row(
             "References with placement",
             f"{diagnostics.get('references_with_placement', 0)} / "
-            f"{values.get('explicit_reference_mentions', 0)}",
+            f"{values.get('reference_mentions', 0)}",
         )
     console.print(coverage)
 
@@ -1271,7 +1278,7 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
     usage.add_column("Value", justify="right")
     usage.add_row(
         "References / 1k words",
-        str(values.get("explicit_references_per_1000_words", 0.0)),
+        str(values.get("references_per_1000_words", 0.0)),
     )
     usage.add_row(
         "Old Testament",
@@ -1370,7 +1377,7 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
         console.print(
             "Structural coverage: "
             f"reference-bearing sermons="
-            f"{structural_coverage.get('sermons_with_explicit_references', 0)}/"
+            f"{structural_coverage.get('sermons_with_detected_references', 0)}/"
             f"{structural_coverage.get('sermons_analyzed', 0)}; "
             f"book-distribution pairs="
             f"{structural_coverage.get('reference_bearing_sermon_pairs_compared', 0)}; "
@@ -1431,6 +1438,50 @@ def analysis_show_profile(
             "Run 'pte analysis summarize-profile' first."
         )
     _print_profile_scripture_summary(database, run)
+
+
+@analysis_app.command(
+    "evaluate-scripture-detector",
+    help="Evaluate explicit and contextual detection against the reviewed fixture.",
+)
+def analysis_evaluate_scripture_detector(
+    fixture: Path = typer.Argument(
+        Path("evaluation/scripture-references/contextual-v1.json"),
+        help="Reviewed Scripture-reference evaluation fixture.",
+    ),
+) -> None:
+    try:
+        result = evaluate_scripture_detector(fixture)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    table = Table(title=f"Scripture Detector Evaluation — {result.corpus_version}")
+    table.add_column("Class")
+    table.add_column("TP", justify="right")
+    table.add_column("FP", justify="right")
+    table.add_column("FN", justify="right")
+    table.add_column("Precision", justify="right")
+    table.add_column("Recall", justify="right")
+    for label, metrics in (("overall", result.overall), *result.by_class.items()):
+        table.add_row(
+            label,
+            str(metrics.true_positive),
+            str(metrics.false_positive),
+            str(metrics.false_negative),
+            f"{metrics.precision:.3f}",
+            f"{metrics.recall:.3f}",
+        )
+    console.print(table)
+    console.print(
+        f"Cases passed: {result.passed_case_count}/{result.case_count}; "
+        f"negative controls passed: {result.overall.true_negative_cases}; "
+        f"methods={json.dumps(result.method_detection_counts, sort_keys=True)}"
+    )
+    for failure in result.failures:
+        console.print(
+            f"Miss: {failure['case_id']}; expected={failure['expected']}; "
+            f"detected={failure['detected']}",
+            markup=False,
+        )
 
 
 @identity_app.command(

@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "corpus_version": "contextual-v1",
+  "reviewed_by": "codex-assisted Iteration 4 fixture review",
+  "cases": [
+    {
+      "id": "explicit-john",
+      "segments": ["John 3:16 tells us that God loved the world."],
+      "expected": [{"canonical_reference": "John 3:16", "detection_class": "explicit"}]
+    },
+    {
+      "id": "explicit-range",
+      "segments": ["Read Romans 8:1-4 carefully."],
+      "expected": [{"canonical_reference": "Romans 8:1-4", "detection_class": "explicit"}]
+    },
+    {
+      "id": "numeric-chapter",
+      "segments": ["Our message begins in Romans 8."],
+      "expected": [{"canonical_reference": "Romans 8", "detection_class": "contextual"}]
+    },
+    {
+      "id": "book-chapter-words",
+      "segments": ["Turn with me to John chapter three."],
+      "expected": [{"canonical_reference": "John 3", "detection_class": "contextual"}]
+    },
+    {
+      "id": "chapter-of-book",
+      "segments": ["We are studying the third chapter of John."],
+      "expected": [{"canonical_reference": "John 3", "detection_class": "contextual"}]
+    },
+    {
+      "id": "spoken-verse",
+      "segments": ["John chapter three verse sixteen gives the reason."],
+      "expected": [{"canonical_reference": "John 3:16", "detection_class": "contextual"}]
+    },
+    {
+      "id": "spoken-verse-range",
+      "segments": ["In Daniel chapter seven verses thirteen through fourteen we see the Son of Man."],
+      "expected": [{"canonical_reference": "Daniel 7:13-14", "detection_class": "contextual"}]
+    },
+    {
+      "id": "book-only-cue",
+      "segments": ["The book of Romans develops this argument."],
+      "expected": [{"canonical_reference": "Romans", "detection_class": "contextual"}]
+    },
+    {
+      "id": "turn-to-book",
+      "segments": ["Open with me in your Bible to Isaiah."],
+      "expected": [{"canonical_reference": "Isaiah", "detection_class": "contextual"}]
+    },
+    {
+      "id": "read-from-book",
+      "segments": ["We will read from Psalms this morning."],
+      "expected": [{"canonical_reference": "Psalms", "detection_class": "contextual"}]
+    },
+    {
+      "id": "passage-in-book",
+      "segments": ["Our passage is in Ephesians this morning."],
+      "expected": [{"canonical_reference": "Ephesians", "detection_class": "contextual"}]
+    },
+    {
+      "id": "continuation-next-segment",
+      "segments": ["John chapter three sets the scene.", "Verse seventeen continues the thought."],
+      "expected": [
+        {"canonical_reference": "John 3", "detection_class": "contextual"},
+        {"canonical_reference": "John 3:17", "detection_class": "contextual"}
+      ]
+    },
+    {
+      "id": "continuation-same-segment",
+      "segments": ["Romans chapter eight is our text. Verses one through three announce freedom."],
+      "expected": [
+        {"canonical_reference": "Romans 8", "detection_class": "contextual"},
+        {"canonical_reference": "Romans 8:1-3", "detection_class": "contextual"}
+      ]
+    },
+    {
+      "id": "unsupported-colloquial-number-pair",
+      "segments": ["You all know John three sixteen."],
+      "expected": [{"canonical_reference": "John 3:16", "detection_class": "contextual"}]
+    },
+    {
+      "id": "unsupported-next-verse",
+      "segments": ["John chapter three gives the setting.", "The next verse explains why."],
+      "expected": [
+        {"canonical_reference": "John 3", "detection_class": "contextual"},
+        {"canonical_reference": "John 3:17", "detection_class": "contextual"}
+      ]
+    },
+    {"id": "negative-person-john", "segments": ["John preached here last summer."], "expected": []},
+    {"id": "negative-romans-history", "segments": ["Romans built roads across the empire."], "expected": []},
+    {"id": "negative-acts-phrase", "segments": ["Acts of kindness can restore trust."], "expected": []},
+    {"id": "negative-revelation-common", "segments": ["That revelation surprised everyone in the room."], "expected": []},
+    {"id": "negative-mark-score", "segments": ["Mark received a score of eight out of ten."], "expected": []},
+    {"id": "negative-report-chapter", "segments": ["The third chapter of our report covers finances."], "expected": []},
+    {"id": "negative-song", "segments": ["Return to the verse after the chorus."], "expected": []},
+    {"id": "negative-bare-book", "segments": ["Romans were mentioned during the history lesson."], "expected": []},
+    {"id": "negative-metaphor", "segments": ["We crossed the wilderness of uncertainty."], "expected": []},
+    {"id": "negative-invalid-chapter", "segments": ["Someone wrote John chapter ninety-nine on the board."], "expected": []}
+  ]
+}

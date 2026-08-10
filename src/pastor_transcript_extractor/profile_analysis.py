@@ -17,7 +17,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 PROFILE_ANALYZER_KEY = "profile-scripture-usage"
-PROFILE_ANALYZER_VERSION = "2"
+PROFILE_ANALYZER_VERSION = "3"
 PROFILE_ANALYSIS_SCHEMA_VERSION = 1
 
 CANONICAL_DIVISIONS: dict[str, tuple[str, ...]] = {
@@ -53,8 +53,8 @@ BOOK_TO_DIVISION = {
 
 PROFILE_FEATURE_ORDER = (
     "analysis_coverage_fraction",
-    "zero_explicit_reference_sermon_fraction",
-    "explicit_references_per_1000_words",
+    "zero_detected_reference_sermon_fraction",
+    "references_per_1000_words",
     "book_breadth_per_10_references",
     "chapter_breadth_per_10_references",
     "book_concentration_hhi",
@@ -180,7 +180,11 @@ def build_profile_scripture_analysis(
     sermon_inputs = []
     analyzed_videos: list[Video] = []
     total_words = 0
+    reference_mentions = 0
     explicit_mentions = 0
+    contextual_mentions = 0
+    detection_method_counts: Counter[str] = Counter()
+    detection_confidence_counts: Counter[str] = Counter()
     book_counts: Counter[str] = Counter()
     chapter_mentions: Counter[str] = Counter()
     chapter_videos: dict[str, set[int]] = defaultdict(set)
@@ -191,6 +195,8 @@ def build_profile_scripture_analysis(
     sermon_chapter_counts: dict[int, Counter[str]] = {}
     sermon_word_counts: dict[int, int] = {}
     sermon_run_ids: dict[int, int] = {}
+    sermon_explicit_counts: Counter[int] = Counter()
+    sermon_contextual_counts: Counter[int] = Counter()
     located_references = 0
     zero_reference_sermons = 0
     multi_verse_references = 0
@@ -222,23 +228,37 @@ def build_profile_scripture_analysis(
         sermon_duration = values.get("sermon_duration_seconds")
         for evidence in database.list_sermon_analysis_evidence(run.id):
             payload = json.loads(evidence.payload_json)
-            if payload.get("detection_class") != "explicit":
+            detection_class = payload.get("detection_class")
+            if detection_class not in {"explicit", "contextual"}:
                 continue
             book = payload.get("book")
             chapter = payload.get("chapter")
-            if not isinstance(book, str) or not isinstance(chapter, int):
+            if not isinstance(book, str):
                 continue
-            explicit_mentions += 1
+            reference_mentions += 1
+            if detection_class == "explicit":
+                explicit_mentions += 1
+                sermon_explicit_counts[video.id] += 1
+            else:
+                contextual_mentions += 1
+                sermon_contextual_counts[video.id] += 1
+            detection_method = payload.get("detection_method")
+            detection_confidence = payload.get("detection_confidence")
+            if isinstance(detection_method, str):
+                detection_method_counts[detection_method] += 1
+            if isinstance(detection_confidence, str):
+                detection_confidence_counts[detection_confidence] += 1
             book_counts[book] += 1
             sermon_book_counts[video.id][book] += 1
             testament_counts["old" if book in OLD_TESTAMENT_BOOKS else "new"] += 1
             division = BOOK_TO_DIVISION.get(book)
             if division is not None:
                 division_counts[division] += 1
-            chapter_key = f"{book} {chapter}"
-            chapter_mentions[chapter_key] += 1
-            chapter_videos[chapter_key].add(video.id)
-            sermon_chapter_counts[video.id][chapter_key] += 1
+            if isinstance(chapter, int):
+                chapter_key = f"{book} {chapter}"
+                chapter_mentions[chapter_key] += 1
+                chapter_videos[chapter_key].add(video.id)
+                sermon_chapter_counts[video.id][chapter_key] += 1
             verse_start = payload.get("verse_start")
             verse_end = payload.get("verse_end")
             if (
@@ -277,7 +297,7 @@ def build_profile_scripture_analysis(
         {
             "book": book,
             "mentions": count,
-            "share": round(count / explicit_mentions, 6) if explicit_mentions else None,
+            "share": round(count / reference_mentions, 6) if reference_mentions else None,
         }
         for book, count in sorted(
             book_counts.items(), key=lambda item: (-item[1], item[0])
@@ -323,19 +343,29 @@ def build_profile_scripture_analysis(
         for quarter in ("Q1", "Q2", "Q3", "Q4")
     }
     detection_diagnostics = {
-        "detection_scope": "explicit_numeric_reference",
-        "accepted_match_confidence": "high",
-        "contextual_reference_detection": "not_implemented",
-        "sermons_with_zero_explicit_references": zero_reference_sermons,
-        "sermons_with_explicit_references": sermons_analyzed - zero_reference_sermons,
+        "detection_scope": "explicit_numeric_and_reviewed_contextual_v1",
+        "explicit_reference_mentions": explicit_mentions,
+        "contextual_reference_mentions": contextual_mentions,
+        "detection_method_counts": dict(sorted(detection_method_counts.items())),
+        "detection_confidence_counts": dict(
+            sorted(detection_confidence_counts.items())
+        ),
+        "sermons_with_zero_explicit_references": sum(
+            sermon_explicit_counts[video.id] == 0 for video in analyzed_videos
+        ),
+        "sermons_with_contextual_references": sum(
+            sermon_contextual_counts[video.id] > 0 for video in analyzed_videos
+        ),
+        "sermons_with_zero_detected_references": zero_reference_sermons,
+        "sermons_with_detected_references": sermons_analyzed - zero_reference_sermons,
         "references_with_placement": located_references,
-        "references_without_placement": explicit_mentions - located_references,
+        "references_without_placement": reference_mentions - located_references,
         "placement_precision": "source_segment_start",
     }
 
     raw_book_concentration_hhi = (
-        sum((count / explicit_mentions) ** 2 for count in book_counts.values())
-        if explicit_mentions
+        sum((count / reference_mentions) ** 2 for count in book_counts.values())
+        if reference_mentions
         else None
     )
     book_concentration_hhi = (
@@ -350,13 +380,13 @@ def build_profile_scripture_analysis(
         else None
     )
     book_breadth = (
-        round(10 * len(book_counts) / explicit_mentions, 6)
-        if explicit_mentions
+        round(10 * len(book_counts) / reference_mentions, 6)
+        if reference_mentions
         else None
     )
     chapter_breadth = (
-        round(10 * len(chapter_mentions) / explicit_mentions, 6)
-        if explicit_mentions
+        round(10 * len(chapter_mentions) / reference_mentions, 6)
+        if reference_mentions
         else None
     )
     sustained_mentions = sum(
@@ -365,8 +395,8 @@ def build_profile_scripture_analysis(
         for count in counts.values()
         if count >= 2
     )
-    sustained_ratio = _rounded_ratio(sustained_mentions, explicit_mentions)
-    multi_verse_ratio = _rounded_ratio(multi_verse_references, explicit_mentions)
+    sustained_ratio = _rounded_ratio(sustained_mentions, reference_mentions)
+    multi_verse_ratio = _rounded_ratio(multi_verse_references, reference_mentions)
     repeated_anchor_coverages = [
         len(video_ids) / sermons_analyzed
         for video_ids in chapter_videos.values()
@@ -375,7 +405,7 @@ def build_profile_scripture_analysis(
     cross_sermon_anchor_coverage = (
         round(max(repeated_anchor_coverages), 6)
         if repeated_anchor_coverages
-        else 0.0 if explicit_mentions and sermons_analyzed >= 2 else None
+        else 0.0 if reference_mentions and sermons_analyzed >= 2 else None
     )
 
     reference_bearing_book_counts = [
@@ -408,7 +438,7 @@ def build_profile_scripture_analysis(
     division_emphasis = {
         division: {
             "mentions": division_counts[division],
-            "share": _rounded_ratio(division_counts[division], explicit_mentions),
+            "share": _rounded_ratio(division_counts[division], reference_mentions),
         }
         for division in CANONICAL_DIVISIONS
     }
@@ -425,7 +455,9 @@ def build_profile_scripture_analysis(
                 "youtube_video_id": video.youtube_video_id,
                 "sermon_analysis_run_id": sermon_run_ids[video.id],
                 "word_count": words,
-                "explicit_reference_mentions": reference_count,
+                "reference_mentions": reference_count,
+                "explicit_reference_mentions": sermon_explicit_counts[video.id],
+                "contextual_reference_mentions": sermon_contextual_counts[video.id],
                 "reference_density_per_1000_words": (
                     round(1000 * reference_count / words, 6)
                     if words is not None and words > 0
@@ -445,11 +477,11 @@ def build_profile_scripture_analysis(
         "analysis_coverage_fraction": _rounded_ratio(
             sermons_analyzed, sermons_attached
         ),
-        "zero_explicit_reference_sermon_fraction": _rounded_ratio(
+        "zero_detected_reference_sermon_fraction": _rounded_ratio(
             zero_reference_sermons, sermons_analyzed
         ),
-        "explicit_references_per_1000_words": (
-            round(explicit_mentions * 1000 / total_words, 6)
+        "references_per_1000_words": (
+            round(reference_mentions * 1000 / total_words, 6)
             if total_words
             else None
         ),
@@ -457,7 +489,7 @@ def build_profile_scripture_analysis(
         "chapter_breadth_per_10_references": chapter_breadth,
         "book_concentration_hhi": book_concentration_hhi,
         "effective_book_count": effective_book_count,
-        "old_testament_share": _rounded_ratio(old_count, explicit_mentions),
+        "old_testament_share": _rounded_ratio(old_count, reference_mentions),
         **{
             f"{division}_share": division_emphasis[division]["share"]
             for division in CANONICAL_DIVISIONS
@@ -478,36 +510,44 @@ def build_profile_scripture_analysis(
     structural_coverage = {
         "sermons_attached": sermons_attached,
         "sermons_analyzed": sermons_analyzed,
-        "sermons_with_explicit_references": sermons_analyzed
+        "sermons_with_detected_references": sermons_analyzed
         - zero_reference_sermons,
-        "sermons_with_zero_explicit_references": zero_reference_sermons,
+        "sermons_with_zero_detected_references": zero_reference_sermons,
+        "sermons_with_explicit_references": sum(
+            sermon_explicit_counts[video.id] > 0 for video in analyzed_videos
+        ),
+        "sermons_with_contextual_references": sum(
+            sermon_contextual_counts[video.id] > 0 for video in analyzed_videos
+        ),
+        "reference_mentions": reference_mentions,
         "explicit_reference_mentions": explicit_mentions,
+        "contextual_reference_mentions": contextual_mentions,
         "reference_bearing_sermon_pairs_compared": len(cosine_values),
         "sermons_with_word_counts": len(sermon_densities),
-        "contextual_reference_detection": "not_implemented",
+        "detection_scope": "explicit_numeric_and_reviewed_contextual_v1",
         "insufficient_values_are_null": True,
     }
     feature_explanations = {
         "analysis_coverage_fraction": "analyzed sermons / effectively attached sermons",
-        "zero_explicit_reference_sermon_fraction": (
-            "analyzed sermons with zero explicit matches / analyzed sermons"
+        "zero_detected_reference_sermon_fraction": (
+            "analyzed sermons with zero accepted explicit or contextual matches / analyzed sermons"
         ),
-        "explicit_references_per_1000_words": (
-            "1000 * explicit mentions / words across analyzed sermons"
+        "references_per_1000_words": (
+            "1000 * accepted explicit and contextual mentions / words across analyzed sermons"
         ),
-        "book_breadth_per_10_references": "10 * distinct books / explicit mentions",
-        "chapter_breadth_per_10_references": "10 * distinct book-chapters / explicit mentions",
+        "book_breadth_per_10_references": "10 * distinct books / accepted reference mentions",
+        "chapter_breadth_per_10_references": "10 * distinct book-chapters / accepted reference mentions",
         "book_concentration_hhi": "sum of squared book mention shares",
         "effective_book_count": "1 / book concentration HHI",
-        "old_testament_share": "Old Testament mentions / explicit mentions",
+        "old_testament_share": "Old Testament mentions / accepted reference mentions",
         **{
-            f"{division}_share": f"{division} mentions / explicit mentions"
+            f"{division}_share": f"{division} mentions / accepted reference mentions"
             for division in CANONICAL_DIVISIONS
         },
         "sustained_chapter_reference_ratio": (
             "share of mentions whose book-chapter has at least two mentions in that sermon"
         ),
-        "multi_verse_reference_ratio": "share of explicit references spanning multiple verses",
+        "multi_verse_reference_ratio": "share of accepted references spanning multiple verses",
         "cross_sermon_anchor_coverage": (
             "largest share of analyzed sermons citing the same book-chapter; "
             "requires at least two sermons"
@@ -528,7 +568,14 @@ def build_profile_scripture_analysis(
         ("total_sermon_words", total_words, "words"),
         ("date_range_start", dated[0] if dated else None, None),
         ("date_range_end", dated[-1] if dated else None, None),
+        ("reference_mentions", reference_mentions, "mentions"),
         ("explicit_reference_mentions", explicit_mentions, "mentions"),
+        ("contextual_reference_mentions", contextual_mentions, "mentions"),
+        (
+            "references_per_1000_words",
+            round(reference_mentions * 1000 / total_words, 4) if total_words else 0.0,
+            "mentions_per_1000_words",
+        ),
         (
             "explicit_references_per_1000_words",
             round(explicit_mentions * 1000 / total_words, 4) if total_words else 0.0,
@@ -538,12 +585,12 @@ def build_profile_scripture_analysis(
         ("new_testament_mentions", new_count, "mentions"),
         (
             "old_testament_percent",
-            round(100 * old_count / explicit_mentions, 2) if explicit_mentions else 0.0,
+            round(100 * old_count / reference_mentions, 2) if reference_mentions else 0.0,
             "percent",
         ),
         (
             "new_testament_percent",
-            round(100 * new_count / explicit_mentions, 2) if explicit_mentions else 0.0,
+            round(100 * new_count / reference_mentions, 2) if reference_mentions else 0.0,
             "percent",
         ),
         ("top_scripture_books", top_books, None),

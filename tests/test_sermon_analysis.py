@@ -184,6 +184,7 @@ class SermonAnalysisTests(unittest.TestCase):
         )
         self.assertEqual(0, show_result.exit_code, msg=show_result.output)
         self.assertIn("John 3:16", show_result.output)
+        self.assertIn("explicit", show_result.output)
         self.assertIn("Provenance", show_result.output)
 
     def test_cli_profile_scope_uses_effective_observation_membership(self) -> None:
@@ -502,7 +503,65 @@ class SermonAnalysisTests(unittest.TestCase):
         self.assertIsNone(structural["mean_pairwise_book_distribution_cosine"])
         self.assertIsNone(structural["reference_density_consistency"])
         self.assertEqual(
-            1.0, structural["zero_explicit_reference_sermon_fraction"]
+            1.0, structural["zero_detected_reference_sermon_fraction"]
+        )
+
+    def test_contextual_sermon_evidence_flows_into_existing_profile_features(self) -> None:
+        profile = self.database.ensure_speaker_profile(
+            stable_key="person:contextual",
+            display_label="Contextual Profile",
+            lifecycle_state="active",
+            created_reason="test",
+        )
+        self.payload["segments"][1]["text"] = (
+            "Turn with me to John chapter three. Verse sixteen gives the reason."
+        )
+        self._write_payload()
+        sermon = analyze_sermon(self.database, self.video)
+        sermon_values = self._measurement_values(sermon.run.id)
+        self.assertEqual(2, sermon_values["scripture_reference_mentions"])
+        self.assertEqual(0, sermon_values["explicit_scripture_reference_mentions"])
+        self.assertEqual(2, sermon_values["contextual_scripture_reference_mentions"])
+        evidence = self.database.list_sermon_analysis_evidence(sermon.run.id)
+        self.assertEqual({"contextual"}, {
+            json.loads(item.payload_json)["detection_class"] for item in evidence
+        })
+
+        observation = self.database.add_speaker_observation(
+            video_id=self.video.id,
+            extraction_result_id=self.extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="single",
+            start_seconds=60.0,
+            end_seconds=120.0,
+            artifact_path=str(self.proposed_path),
+            content_sha256="contextual",
+            extractor_version="test-v1",
+            input_fingerprint="contextual-observation",
+        )
+        self.database.add_profile_observation_event(
+            profile_id=profile.id,
+            observation_id=observation.id,
+            action="attach",
+            reviewer="test",
+            reason="verified",
+            event_fingerprint="contextual-attach",
+        )
+        summary = build_profile_scripture_analysis(self.database, profile.id)
+        profile_values = {
+            item.metric_key: json.loads(item.value_json)
+            for item in self.database.list_speaker_profile_analysis_measurements(
+                summary.run.id
+            )
+        }
+        self.assertEqual(2, profile_values["reference_mentions"])
+        self.assertEqual(0, profile_values["explicit_reference_mentions"])
+        self.assertEqual(2, profile_values["contextual_reference_mentions"])
+        self.assertEqual(
+            1.0,
+            profile_values["structural_scripture_features"][
+                "sustained_chapter_reference_ratio"
+            ],
         )
 
 
