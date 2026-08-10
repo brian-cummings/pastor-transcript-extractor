@@ -1324,6 +1324,57 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
                     f"{item.get('percent', 0.0)}%",
                 )
     console.print(placement)
+
+    structural = Table(title="Structural Scripture Features")
+    structural.add_column("Feature")
+    structural.add_column("Value", justify="right")
+    structural_values = values.get("structural_scripture_features", {})
+    if isinstance(structural_values, dict):
+        for feature in (
+            "book_breadth_per_10_references",
+            "chapter_breadth_per_10_references",
+            "book_concentration_hhi",
+            "effective_book_count",
+            "sustained_chapter_reference_ratio",
+            "multi_verse_reference_ratio",
+            "cross_sermon_anchor_coverage",
+            "mean_pairwise_book_distribution_cosine",
+            "reference_density_consistency",
+        ):
+            value = structural_values.get(feature)
+            structural.add_row(
+                feature,
+                "insufficient coverage" if value is None else str(value),
+            )
+    console.print(structural)
+
+    emphasis = Table(title="Canonical Emphasis")
+    emphasis.add_column("Division")
+    emphasis.add_column("Mentions", justify="right")
+    emphasis.add_column("Share", justify="right")
+    division_values = values.get("canonical_division_emphasis", {})
+    if isinstance(division_values, dict):
+        for division, item in division_values.items():
+            if isinstance(item, dict):
+                share = item.get("share")
+                emphasis.add_row(
+                    str(division),
+                    str(item.get("mentions", 0)),
+                    "insufficient coverage" if share is None else str(share),
+                )
+    console.print(emphasis)
+
+    structural_coverage = values.get("structural_coverage_diagnostics", {})
+    if isinstance(structural_coverage, dict):
+        console.print(
+            "Structural coverage: "
+            f"reference-bearing sermons="
+            f"{structural_coverage.get('sermons_with_explicit_references', 0)}/"
+            f"{structural_coverage.get('sermons_analyzed', 0)}; "
+            f"book-distribution pairs="
+            f"{structural_coverage.get('reference_bearing_sermon_pairs_compared', 0)}; "
+            "null means insufficient evidence."
+        )
     console.print(
         f"Provenance: profile_analysis=#{run.id}; version={run.analyzer_version}; "
         f"membership={run.membership_fingerprint}; input={run.input_fingerprint}"

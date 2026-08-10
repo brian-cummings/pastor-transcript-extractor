@@ -260,6 +260,8 @@ class SermonAnalysisTests(unittest.TestCase):
         self.assertEqual(0, summary_result.exit_code, msg=summary_result.output)
         self.assertIn("References / 1k words", summary_result.output)
         self.assertIn("Detection scope", summary_result.output)
+        self.assertIn("Structural Scripture Features", summary_result.output)
+        self.assertIn("Canonical Emphasis", summary_result.output)
 
     def test_profile_summary_is_versioned_idempotent_and_reports_detection_coverage(self) -> None:
         profile = self.database.ensure_speaker_profile(
@@ -348,6 +350,9 @@ class SermonAnalysisTests(unittest.TestCase):
 
         first = build_profile_scripture_analysis(self.database, profile.id)
         reused = build_profile_scripture_analysis(self.database, profile.id)
+        versioned = build_profile_scripture_analysis(
+            self.database, profile.id, analyzer_version="future-3"
+        )
         values = {
             item.metric_key: json.loads(item.value_json)
             for item in self.database.list_speaker_profile_analysis_measurements(
@@ -358,6 +363,8 @@ class SermonAnalysisTests(unittest.TestCase):
         self.assertTrue(first.created)
         self.assertFalse(reused.created)
         self.assertEqual(first.run.id, reused.run.id)
+        self.assertTrue(versioned.created)
+        self.assertNotEqual(first.run.id, versioned.run.id)
         self.assertEqual(2, values["sermons_attached"])
         self.assertEqual(2, values["sermons_analyzed"])
         self.assertEqual(4, values["explicit_reference_mentions"])
@@ -367,6 +374,26 @@ class SermonAnalysisTests(unittest.TestCase):
             4,
             values["reference_placement_by_quarter"]["Q1"]["mentions"],
         )
+        structural = values["structural_scripture_features"]
+        self.assertEqual(7.5, structural["book_breadth_per_10_references"])
+        self.assertEqual(7.5, structural["chapter_breadth_per_10_references"])
+        self.assertEqual(0.375, structural["book_concentration_hhi"])
+        self.assertEqual(2.666667, structural["effective_book_count"])
+        self.assertEqual(0.25, structural["old_testament_share"])
+        self.assertEqual(0.25, structural["major_prophets_share"])
+        self.assertEqual(0.5, structural["gospels_share"])
+        self.assertEqual(0.25, structural["pauline_epistles_share"])
+        self.assertEqual(0.5, structural["sustained_chapter_reference_ratio"])
+        self.assertEqual(0.25, structural["multi_verse_reference_ratio"])
+        self.assertEqual(0.0, structural["cross_sermon_anchor_coverage"])
+        self.assertIsNone(structural["mean_pairwise_book_distribution_cosine"])
+        vector = values["deterministic_profile_feature_vector"]
+        self.assertEqual(set(vector["feature_names"]), set(vector["by_name"]))
+        self.assertEqual(
+            vector["values"],
+            [vector["by_name"][name] for name in vector["feature_names"]],
+        )
+        self.assertEqual(2, len(values["sermon_scripture_structure"]))
         self.assertEqual(
             1,
             values["reference_detection_diagnostics"][
@@ -381,6 +408,29 @@ class SermonAnalysisTests(unittest.TestCase):
                 )
             ),
         )
+        second_payload = json.loads(second_path.read_text(encoding="utf-8"))
+        second_payload["segments"][0]["text"] += " John 3:18."
+        second_path.write_text(json.dumps(second_payload), encoding="utf-8")
+        analyze_sermon(self.database, second_video)
+        changed_sermon = build_profile_scripture_analysis(self.database, profile.id)
+        self.assertTrue(changed_sermon.created)
+        self.assertNotEqual(first.run.id, changed_sermon.run.id)
+        changed_values = {
+            item.metric_key: json.loads(item.value_json)
+            for item in self.database.list_speaker_profile_analysis_measurements(
+                changed_sermon.run.id
+            )
+        }
+        self.assertEqual(
+            1.0,
+            changed_values["structural_scripture_features"][
+                "cross_sermon_anchor_coverage"
+            ],
+        )
+        self.assertEqual(
+            "John 3", changed_values["repeated_scripture_chapters"][0]["passage"]
+        )
+
         additional_observation = self.database.add_speaker_observation(
             video_id=self.video.id,
             extraction_result_id=self.extraction.id,
@@ -405,7 +455,55 @@ class SermonAnalysisTests(unittest.TestCase):
             self.database, profile.id
         )
         self.assertTrue(changed_membership.created)
-        self.assertNotEqual(first.run.id, changed_membership.run.id)
+        self.assertNotEqual(changed_sermon.run.id, changed_membership.run.id)
+
+    def test_structural_features_are_null_when_reference_coverage_is_empty(self) -> None:
+        profile = self.database.ensure_speaker_profile(
+            stable_key="person:sparse",
+            display_label="Sparse Profile",
+            lifecycle_state="active",
+            created_reason="test",
+        )
+        self.payload["segments"][1]["text"] = "A sermon without an explicit citation."
+        self._write_payload()
+        analyze_sermon(self.database, self.video)
+        observation = self.database.add_speaker_observation(
+            video_id=self.video.id,
+            extraction_result_id=self.extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="single",
+            start_seconds=60.0,
+            end_seconds=120.0,
+            artifact_path=str(self.proposed_path),
+            content_sha256="sparse",
+            extractor_version="test-v1",
+            input_fingerprint="sparse-observation",
+        )
+        self.database.add_profile_observation_event(
+            profile_id=profile.id,
+            observation_id=observation.id,
+            action="attach",
+            reviewer="test",
+            reason="verified",
+            event_fingerprint="sparse-attach",
+        )
+
+        outcome = build_profile_scripture_analysis(self.database, profile.id)
+        values = {
+            item.metric_key: json.loads(item.value_json)
+            for item in self.database.list_speaker_profile_analysis_measurements(
+                outcome.run.id
+            )
+        }
+        structural = values["structural_scripture_features"]
+        self.assertIsNone(structural["book_breadth_per_10_references"])
+        self.assertIsNone(structural["book_concentration_hhi"])
+        self.assertIsNone(structural["sustained_chapter_reference_ratio"])
+        self.assertIsNone(structural["mean_pairwise_book_distribution_cosine"])
+        self.assertIsNone(structural["reference_density_consistency"])
+        self.assertEqual(
+            1.0, structural["zero_explicit_reference_sermon_fraction"]
+        )
 
 
 if __name__ == "__main__":

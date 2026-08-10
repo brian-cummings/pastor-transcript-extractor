@@ -114,11 +114,64 @@ links; derived aggregate values are stored separately in
 run. Membership changes, newer sermon analyses, or a profile-analyzer version
 change create a new run.
 
+## Structural Scripture profile (Iteration 3)
+
+Version 2 of `profile-scripture-usage` adds deterministic structural features
+without changing the evidence path. It consumes the same immutable sermon
+analysis runs and their explicit-reference evidence, and persists these
+additional profile measurements:
+
+- **Breadth:** distinct books and distinct book-chapters per ten explicit
+  reference mentions.
+- **Concentration:** book-level Herfindahl-Hirschman concentration and its
+  inverse, the effective book count.
+- **Canonical emphasis:** continuous mention shares for Pentateuch, historical
+  books, wisdom/poetry, major prophets, minor prophets, Gospels, Acts, Pauline
+  epistles, general epistles, and Revelation, plus the existing OT/NT shares.
+- **Sustained versus dispersed use:** the share of mentions belonging to a
+  book-chapter cited at least twice within the same sermon. This is a citation
+  clustering measurement, not a claim that the preacher performed sustained
+  exposition.
+- **Multi-verse use:** the share of explicit references whose stated range
+  spans more than one verse.
+- **Cross-sermon anchors:** the largest fraction of analyzed sermons citing the
+  same book-chapter, requiring that chapter to occur in at least two sermons.
+- **Across-sermon consistency:** mean pairwise cosine similarity of book-count
+  distributions among reference-bearing sermons, and `1 / (1 + CV)` for
+  per-sermon explicit-reference density.
+
+`sermon_scripture_structure` records the supporting values for each contributing
+sermon: its exact sermon-analysis run, word and reference counts, density,
+distinct books/chapters, top-chapter share, and book/chapter count maps.
+Repeated anchors include their contributing video and sermon-analysis run IDs.
+`structural_feature_explanations` persists the formulas beside the measurements.
+
+### Deterministic feature vector
+
+`deterministic_profile_feature_vector` stores a versioned, fixed-order list of
+continuous values and the same values keyed by name. It includes coverage,
+reference density, breadth, concentration, canonical division shares,
+sustained/multi-verse ratios, anchor coverage, and consistency. This is a stable
+representation for later comparison or clustering, but this iteration performs
+neither.
+
+Undefined measurements are stored as `null`, never silently coerced to a
+preaching characteristic. Examples include concentration with no detected
+references and pairwise consistency with fewer than two reference-bearing
+sermons. `structural_coverage_diagnostics` reports analyzed and zero-reference
+sermons, explicit mention count, usable book-distribution pairs, and word-count
+coverage. Because detection remains explicit-numeric-only, breadth,
+concentration, emphasis, and consistency describe detected citations—not all
+Scripture use. Sparse detection must be reviewed before interpreting those
+features.
+
 ## Natural next increment
 
-The next deterministic slice should characterize scriptural shape: breadth
-versus concentration, sustained-passage use versus isolated references,
-prophetic/Gospel/Pauline emphasis, and recurring canonical patterns. Contextual
-reference recognition can be added independently once its syntax and confidence
-policy are validated against reviewed transcripts. Quoted-passage matching
-should wait for an explicit Bible-text source and translation provenance.
+The next natural iteration should improve deterministic detection coverage
+before adding semantic judgments: recognize syntax such as “the third chapter
+of John” and “verse sixteen,” retain `explicit` versus `contextual` detection
+classes, and validate precision/recall against a small reviewed transcript set.
+Quoted-passage matching can follow once it has an explicit Bible-text source
+and translation provenance. Structural features should then expose separate
+explicit-only and expanded-coverage variants rather than silently changing
+their meaning.
