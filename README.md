@@ -728,12 +728,19 @@ discovery artifact contains an unreviewed `strong_strong` pair in the pinned
 same-speaker band. It ranks otherwise-valid growth pairs by acoustic margin and
 centroid similarity. Only after positive-evidence candidates are exhausted, a
 second tier ranks provenance-bound `ambiguous_similarity` results for blinded
-human review. Their acoustic outcome remains `insufficient_evidence`; they do
+human review only while they remain within 0.15 of the pinned same-speaker
+boundary. Their acoustic outcome remains `insufficient_evidence`; they do
 not receive an expected answer or become profile membership. Every cached result
 is recorded in the selection manifest as `review_ranking_only`; it is not
 identity evidence, cannot attach observations, and cannot replace the blinded
 human judgment. Reviewed different-speaker constraints and component safety
 checks remain authoritative.
+
+Exploratory rankings are also bound to the reviewed constraints captured by the
+discovery artifact. After a new same/different judgment involving its
+observations, rerun `pte identity run --all` before further exploratory review.
+This lets discovery use a new same-speaker seed for closure retrieval instead of
+walking down stale, increasingly distant comparisons.
 
 `pte identity run` writes the shadow-association artifacts consumed by these
 confirmation nominations. Content-oriented `pte run` can refresh the complete

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
+    count_missing_discovery_reviewed_constraints,
     load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
@@ -341,6 +342,13 @@ class IdentityCoordinationTests(unittest.TestCase):
                     "reason": "ambiguous_similarity",
                     "consistency_tier": "strong_strong",
                     "registry_mutation_allowed": False,
+                    "metrics": {
+                        "cross": {"p10": 0.59, "median": 0.78}
+                    },
+                    "policy": {
+                        "same_min_cross_p10": 0.60,
+                        "same_min_cross_median": 0.70,
+                    },
                 }
             ],
             "components": [
@@ -487,6 +495,19 @@ class IdentityCoordinationTests(unittest.TestCase):
                 {
                     **valid,
                     "observation_fingerprints": [
+                        "distant-a",
+                        "distant-b",
+                    ],
+                    "outcome": "insufficient_evidence",
+                    "reason": "ambiguous_similarity",
+                    "centroid_similarity": 0.55,
+                    "metrics": {
+                        "cross": {"p10": 0.38, "median": 0.48}
+                    },
+                },
+                {
+                    **valid,
+                    "observation_fingerprints": [
                         "reviewed-a",
                         "reviewed-b",
                     ],
@@ -514,6 +535,48 @@ class IdentityCoordinationTests(unittest.TestCase):
         self.assertEqual("insufficient_evidence", exploratory.outcome)
         self.assertEqual("ambiguous_similarity", exploratory.reason)
         self.assertAlmostEqual(-0.01, exploratory.same_boundary_margin)
+
+    def test_discovery_constraint_freshness_detects_new_review(self) -> None:
+        payload = {
+            "artifact_kind": "speaker_profile_shadow_discovery",
+            "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
+            "span_selection": {
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            },
+            "observation_signatures": [
+                {
+                    "observation_id": 1,
+                    "observation_fingerprint": "a",
+                },
+                {
+                    "observation_id": 2,
+                    "observation_fingerprint": "b",
+                },
+                {
+                    "observation_id": 3,
+                    "observation_fingerprint": "c",
+                },
+            ],
+            "reviewed_constraints": {
+                "same_speaker_observation_pairs": [[1, 2]],
+                "different_speaker_observation_pairs": [],
+            },
+        }
+        payload["result_sha256"] = _sha256(payload)
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "discovery.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            missing = count_missing_discovery_reviewed_constraints(
+                path,
+                {
+                    frozenset(("a", "b")): "same_speaker",
+                    frozenset(("b", "c")): "different_speaker",
+                    frozenset(("outside", "c")): "same_speaker",
+                },
+            )
+
+        self.assertEqual(1, missing)
 
     def test_association_loader_exposes_exact_multi_exemplar_same_edges(
         self,

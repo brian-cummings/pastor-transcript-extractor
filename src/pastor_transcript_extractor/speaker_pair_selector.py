@@ -9,8 +9,9 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v20"
+SELECTOR_VERSION = "speaker_pair_selector_v21"
 SAME_SPEAKER_BALANCE_GAP = 2
+EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
 
 class SelectionGoal(StrEnum):
@@ -420,7 +421,11 @@ def select_next_speaker_pair(
         )
         or (
             ranking.outcome == "insufficient_evidence"
-            and ranking.reason != "ambiguous_similarity"
+            and (
+                ranking.reason != "ambiguous_similarity"
+                or ranking.same_boundary_margin
+                < -EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE
+            )
         )
         or not math.isfinite(ranking.same_boundary_margin)
         or not math.isfinite(ranking.centroid_similarity)

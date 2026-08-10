@@ -120,6 +120,7 @@ from pastor_transcript_extractor.identity import (
 )
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
+    count_missing_discovery_reviewed_constraints,
     load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
@@ -5282,6 +5283,23 @@ def review_next_speaker_pair(
             )
             else ()
         )
+        missing_discovery_reviewed_constraints = 0
+        if (
+            selection_objective == SelectionGoal.PROFILE_GROWTH
+            and effective_discovery_report is not None
+        ):
+            missing_discovery_reviewed_constraints = (
+                count_missing_discovery_reviewed_constraints(
+                    effective_discovery_report,
+                    history.reviewed_identity_outcomes or {},
+                )
+            )
+            if missing_discovery_reviewed_constraints:
+                profile_growth_acoustic_pairs = tuple(
+                    ranking
+                    for ranking in profile_growth_acoustic_pairs
+                    if ranking.outcome == "same_speaker"
+                )
         association_confirmation_pairs = ()
         if selection_objective in {
             SelectionGoal.PROFILE_GROWTH,
@@ -5403,18 +5421,32 @@ def review_next_speaker_pair(
                 ),
             )
             candidates.append(candidate)
-        selection = select_next_speaker_pair(
-            candidates,
-            history,
-            evaluation_partition=(
-                None if evaluation_scope == "all" else evaluation_scope
-            ),
-            selection_goal=selection_objective,
-            discovery_resolution_pairs=discovery_resolution_pairs,
-            profile_growth_acoustic_pairs=profile_growth_acoustic_pairs,
-            association_confirmation_pairs=association_confirmation_pairs,
-            automatic_profile_ready_ids=automatic_profile_ready_ids,
-        )
+        try:
+            selection = select_next_speaker_pair(
+                candidates,
+                history,
+                evaluation_partition=(
+                    None if evaluation_scope == "all" else evaluation_scope
+                ),
+                selection_goal=selection_objective,
+                discovery_resolution_pairs=discovery_resolution_pairs,
+                profile_growth_acoustic_pairs=profile_growth_acoustic_pairs,
+                association_confirmation_pairs=association_confirmation_pairs,
+                automatic_profile_ready_ids=automatic_profile_ready_ids,
+            )
+        except ValueError as error:
+            if (
+                selection_objective == SelectionGoal.PROFILE_GROWTH
+                and missing_discovery_reviewed_constraints
+                and "no actionable profile-growth pair" in str(error)
+            ):
+                raise ValueError(
+                    "profile-growth discovery context is stale after "
+                    f"{missing_discovery_reviewed_constraints} reviewed "
+                    "same/different constraint(s); run `pte identity run --all "
+                    f"--base-dir {paths.root}`, then retry"
+                ) from error
+            raise
         if (
             consistency_index.report_sha256
             and selection.manifest.get("observation_consistency_scores")

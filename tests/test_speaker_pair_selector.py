@@ -513,6 +513,28 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             "profile_growth_seed", selected.manifest["selection_objective"]
         )
 
+    def test_profile_growth_rejects_distant_ambiguous_acoustic_pair(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(ValueError, "nomination context"):
+            select_next_speaker_pair(
+                [candidate("explore-a"), candidate("explore-b")],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                profile_growth_acoustic_pairs=(
+                    AcousticPairRanking(
+                        fingerprint_a="explore-a",
+                        fingerprint_b="explore-b",
+                        same_boundary_margin=-0.151,
+                        centroid_similarity=0.8,
+                        report_result_sha256="a" * 64,
+                        report_path="discovery.json",
+                        outcome="insufficient_evidence",
+                        reason="ambiguous_similarity",
+                    ),
+                ),
+            )
+
     def test_automation_readiness_withholds_exploratory_acoustic_pair(
         self,
     ) -> None:

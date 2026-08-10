@@ -343,9 +343,13 @@ different constraint anywhere across the two components are excluded. The
 exact audio clips and qualification prompts remain unchanged; the
 profile-oriented packet also exposes timestamped source-video links.
 
-When those positive-evidence nominations are exhausted, selector v20 may use a
+When those positive-evidence nominations are exhausted, selector v21 may use a
 verified discovery artifact's unreviewed `strong_strong` /
 `ambiguous_similarity` comparisons as a deterministic exploratory fallback.
+The pair must remain within 0.15 of the pinned same-speaker boundary. A new
+reviewed same/different edge among the artifact's observations makes its
+exploratory context stale; rerun the consolidated identity workflow so closure
+retrieval can use the new constraint before reviewing another exploratory pair.
 The model outcome remains `insufficient_evidence`; this is nomination context
 only, no expected answer enters the blinded packet, and only the approved human
 review becomes durable identity evidence. Automation-readiness intentionally

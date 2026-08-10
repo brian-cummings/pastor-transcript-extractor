@@ -16,6 +16,7 @@ from pastor_transcript_extractor.speaker_pair_selector import (
     AcousticPairRanking,
     AssociationConfirmationPair,
     DiscoveryResolutionPair,
+    EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     SHADOW_ASSOCIATION_VERSION,
@@ -204,6 +205,10 @@ def load_discovery_observation_states(
         and result.get("consistency_tier") == "strong_strong"
         and result.get("registry_mutation_allowed") is False
         and result.get("reviewed_constraint") is not True
+        and (
+            margin := _pair_same_boundary_margin(result)
+        ) is not None
+        and margin >= -EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE
         for observation_id in result.get("observation_ids", ())
         if isinstance(observation_id, int)
     }
@@ -478,46 +483,26 @@ def load_discovery_acoustic_ranking_pairs(
         ):
             continue
         fingerprints = result.get("observation_fingerprints")
-        metrics = result.get("metrics")
-        cross = metrics.get("cross") if isinstance(metrics, Mapping) else None
-        policy = result.get("policy")
         if (
             not isinstance(fingerprints, list)
             or len(fingerprints) != 2
             or not all(
                 isinstance(value, str) and value for value in fingerprints
             )
-            or not isinstance(cross, Mapping)
-            or not isinstance(policy, Mapping)
         ):
             continue
-        cross_p10 = _finite_float(cross.get("p10"))
-        cross_median = _finite_float(cross.get("median"))
-        minimum_p10 = _finite_float(policy.get("same_min_cross_p10"))
-        minimum_median = _finite_float(
-            policy.get("same_min_cross_median")
-        )
+        margin = _pair_same_boundary_margin(result)
         centroid_similarity = _finite_float(
             result.get("centroid_similarity")
         )
-        if None in {
-            cross_p10,
-            cross_median,
-            minimum_p10,
-            minimum_median,
-            centroid_similarity,
-        }:
+        if margin is None or centroid_similarity is None:
             continue
-        assert cross_p10 is not None
-        assert cross_median is not None
-        assert minimum_p10 is not None
-        assert minimum_median is not None
-        assert centroid_similarity is not None
-        margin = min(
-            cross_p10 - minimum_p10,
-            cross_median - minimum_median,
-        )
         if outcome == "same_speaker" and margin < 0.0:
+            continue
+        if (
+            outcome == "insufficient_evidence"
+            and margin < -EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE
+        ):
             continue
         ranking = AcousticPairRanking(
             fingerprint_a=fingerprints[0],
@@ -549,6 +534,81 @@ def load_discovery_acoustic_ranking_pairs(
                 item.fingerprint_b,
             ),
         )
+    )
+
+
+def _pair_same_boundary_margin(result: Mapping[str, Any]) -> float | None:
+    metrics = result.get("metrics")
+    cross = metrics.get("cross") if isinstance(metrics, Mapping) else None
+    policy = result.get("policy")
+    if not isinstance(cross, Mapping) or not isinstance(policy, Mapping):
+        return None
+    cross_p10 = _finite_float(cross.get("p10"))
+    cross_median = _finite_float(cross.get("median"))
+    minimum_p10 = _finite_float(policy.get("same_min_cross_p10"))
+    minimum_median = _finite_float(policy.get("same_min_cross_median"))
+    if None in {
+        cross_p10,
+        cross_median,
+        minimum_p10,
+        minimum_median,
+    }:
+        return None
+    assert cross_p10 is not None
+    assert cross_median is not None
+    assert minimum_p10 is not None
+    assert minimum_median is not None
+    return min(
+        cross_p10 - minimum_p10,
+        cross_median - minimum_median,
+    )
+
+
+def count_missing_discovery_reviewed_constraints(
+    report_path: Path,
+    reviewed_outcomes: Mapping[frozenset[str], str],
+) -> int:
+    """Count current reviewed edges absent from a discovery artifact."""
+    payload = _load_verified_discovery_report(report_path)
+    fingerprints_by_observation_id = {
+        int(signature["observation_id"]): str(
+            signature["observation_fingerprint"]
+        )
+        for signature in payload.get("observation_signatures", ())
+        if isinstance(signature, Mapping)
+        and isinstance(signature.get("observation_id"), int)
+        and isinstance(signature.get("observation_fingerprint"), str)
+    }
+    report_fingerprints = frozenset(fingerprints_by_observation_id.values())
+    constraints = payload.get("reviewed_constraints")
+    covered: dict[frozenset[str], str] = {}
+    if isinstance(constraints, Mapping):
+        for key, outcome in (
+            ("same_speaker_observation_pairs", "same_speaker"),
+            ("different_speaker_observation_pairs", "different_speaker"),
+        ):
+            for raw_pair in constraints.get(key, ()):
+                if (
+                    not isinstance(raw_pair, list)
+                    or len(raw_pair) != 2
+                    or not all(isinstance(value, int) for value in raw_pair)
+                ):
+                    continue
+                fingerprints = [
+                    fingerprints_by_observation_id.get(value)
+                    for value in raw_pair
+                ]
+                if all(fingerprints):
+                    covered[frozenset(str(value) for value in fingerprints)] = (
+                        outcome
+                    )
+    return sum(
+        1
+        for pair, outcome in reviewed_outcomes.items()
+        if outcome in {"same_speaker", "different_speaker"}
+        and len(pair) == 2
+        and pair.issubset(report_fingerprints)
+        and covered.get(pair) != outcome
     )
 
 
