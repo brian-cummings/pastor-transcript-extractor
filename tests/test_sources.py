@@ -2006,6 +2006,59 @@ class CliTests(unittest.TestCase):
         self.assertEqual({11, 12}, transcribe.call_args.kwargs["video_ids"])
         self.assertFalse(media.call_args.kwargs["allow_download"])
 
+    def test_negative_window_review_reuses_existing_continuous_fixture(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = build_paths(root)
+            ensure_directories(paths)
+            paths.database.touch()
+            ground_truth = root / "evaluation"
+            fixture_dir = ground_truth / "fixtures"
+            fixture_dir.mkdir(parents=True)
+            (fixture_dir / "negative123.json").write_text(
+                json.dumps(
+                    {
+                        "expected_outcome": "sermon",
+                        "expected_spans": [
+                            {"start_seconds": 100.0, "end_seconds": 1000.0}
+                        ],
+                        "allowed_interruptions": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            record = SimpleNamespace(
+                youtube_video_id="negative123",
+                observation_fingerprint="fingerprint-old",
+                qualifications=("multiple_speakers",),
+                reason_codes=("multiple_speakers", "broad_window"),
+                reviewed_start_seconds=0.0,
+                reviewed_end_seconds=3600.0,
+            )
+            with patch(
+                "pastor_transcript_extractor.cli.audit_speaker_negative_windows",
+                return_value=SimpleNamespace(actionable=(record,)),
+            ), patch(
+                "pastor_transcript_extractor.cli.review_ground_truth"
+            ) as review:
+                result = runner.invoke(
+                    app,
+                    [
+                        "identity",
+                        "review-next-speaker-negative-window",
+                        "--ground-truth-root",
+                        str(ground_truth),
+                        "--no-open-video",
+                        "--base-dir",
+                        str(root),
+                    ],
+                )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        review.assert_not_called()
+        self.assertIn("pte apply-fixture-correction negative123", result.output)
+
     def test_run_failed_only_targets_failed_ids_and_preserves_existing_artifacts(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:

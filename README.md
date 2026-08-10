@@ -260,6 +260,26 @@ observations remain immutable and become stale automatically. The command fails
 closed for negative fixtures, multiple retained spans, or allowed interruptions,
 because those cases cannot be represented faithfully by one observation window.
 
+Speaker reviews marked `multiple_speakers` or `invalid_audio` remain attached
+to their exact immutable observation window; they do not reject every future
+window from the same recording. Audit current negative windows without changing
+data, then review the highest-priority current window:
+
+```bash
+pte identity audit-speaker-negative-windows \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+pte identity review-next-speaker-negative-window \
+  --reviewer "Brian Cummings" \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The queue prioritizes broad and recording-edge windows, excludes observations
+already superseded by a corrected extraction, and prints the exact
+`apply-fixture-correction` command after a continuous sermon fixture is approved.
+Repeat review and correction until the audit reports no actionable windows, then
+run `pte identity run --base-dir ...` to refresh identity candidates.
+
 `review-next-ground-truth` deterministically rotates through boundary-risk,
 no-candidate, and standard-candidate proposal strata. It excludes videos that
 already have a draft or fixture, keeps whole source families in their frozen

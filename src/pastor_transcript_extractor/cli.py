@@ -234,6 +234,9 @@ from pastor_transcript_extractor.speaker_machine_assignment import (
     reconcile_machine_assignments,
     rollback_machine_assignments,
 )
+from pastor_transcript_extractor.speaker_negative_window_audit import (
+    audit_speaker_negative_windows,
+)
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     get_profile_attribution_candidate,
@@ -2195,6 +2198,169 @@ def _normalize_review_terminal_input() -> None:
 
 
 @identity_app.command(
+    "audit-speaker-negative-windows",
+    help="Read-only audit of exact observations reviewed as multiple-speaker or invalid audio.",
+)
+def audit_speaker_negative_windows_command(
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"), help="Speaker-pair artifact root."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print the complete machine-readable audit."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    try:
+        audit = audit_speaker_negative_windows(
+            database, evaluation_root.expanduser().resolve()
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    if json_output:
+        console.print_json(json.dumps(audit.to_dict(), sort_keys=True))
+        return
+    table = Table(title="Speaker-negative sermon windows")
+    table.add_column("Video")
+    table.add_column("Qualification")
+    table.add_column("Reviewed window")
+    table.add_column("Current window")
+    table.add_column("State")
+    table.add_column("Signals")
+    for record in audit.records:
+        table.add_row(
+            record.youtube_video_id,
+            ",".join(record.qualifications),
+            _format_window(record.reviewed_start_seconds, record.reviewed_end_seconds),
+            _format_optional_window(record.current_start_seconds, record.current_end_seconds),
+            (
+                "apply"
+                if "approved_fixture_pending_apply" in record.reason_codes
+                else "review"
+                if record.actionable
+                else "stale"
+                if "stale_observation" in record.reason_codes
+                else "resolved"
+            ),
+            ",".join(
+                reason
+                for reason in record.reason_codes
+                if reason not in record.qualifications
+            ) or "negative_qualification",
+        )
+    console.print(table)
+    payload = audit.to_dict()["counts"]
+    assert isinstance(payload, dict)
+    console.print(
+        "Speaker-negative window audit: "
+        f"observations={payload['negative_observations']} "
+        f"actionable={payload['actionable']} stale={payload['stale']} "
+        f"broad_actionable={payload['broad_actionable']}."
+    )
+
+
+@identity_app.command(
+    "review-next-speaker-negative-window",
+    help="Review the next current sermon window implicated by a negative speaker qualification.",
+)
+def review_next_speaker_negative_window(
+    reviewer: str | None = typer.Option(
+        None, help="Human reviewer name or stable reviewer identifier."
+    ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"), help="Speaker-pair artifact root."
+    ),
+    ground_truth_root: Path = typer.Option(
+        Path("evaluation"), help="Root containing sermon drafts/ and fixtures/."
+    ),
+    open_video: bool = typer.Option(
+        True, "--open-video/--no-open-video", help="Open the selected YouTube window."
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=True)
+    try:
+        audit = audit_speaker_negative_windows(
+            database, evaluation_root.expanduser().resolve()
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    if not audit.actionable:
+        console.print("No current speaker-negative sermon windows require review.")
+        return
+    record = audit.actionable[0]
+    console.print(
+        f"Selected {record.youtube_video_id}: "
+        f"window={_format_window(record.reviewed_start_seconds, record.reviewed_end_seconds)}; "
+        f"qualification={','.join(record.qualifications)}; "
+        f"signals={','.join(record.reason_codes)}."
+    )
+    fixture_dir = ground_truth_root.expanduser().resolve() / "fixtures"
+    fixture_path = fixture_dir / f"{record.youtube_video_id}.json"
+    if not _fixture_supplies_continuous_sermon_window(fixture_path):
+        manifest = {
+            "selection_origin": "speaker_negative_window_audit",
+            "observation_fingerprint": record.observation_fingerprint,
+            "qualifications": list(record.qualifications),
+            "reason_codes": list(record.reason_codes),
+            "reviewed_window": {
+                "start_seconds": record.reviewed_start_seconds,
+                "end_seconds": record.reviewed_end_seconds,
+            },
+        }
+        review_ground_truth(
+            youtube_video_id=record.youtube_video_id,
+            reviewer=reviewer,
+            evaluation_dir=ground_truth_root,
+            open_video=open_video,
+            base_dir=base_dir,
+            selection_manifest_json=json.dumps(manifest, sort_keys=True),
+        )
+    if _fixture_supplies_continuous_sermon_window(fixture_path):
+        console.print(
+            "Apply the approved correction:\n"
+            f"pte apply-fixture-correction {record.youtube_video_id} "
+            f"--fixture-dir {shlex.quote(str(fixture_dir))} "
+            f"--base-dir {shlex.quote(str(paths.root))}"
+        )
+    elif fixture_path.exists():
+        console.print(
+            "The approved fixture is not one continuous sermon window; "
+            "automatic correction is intentionally unavailable."
+        )
+
+
+def _fixture_supplies_continuous_sermon_window(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(payload, dict)
+        and payload.get("expected_outcome") == "sermon"
+        and isinstance(payload.get("expected_spans"), list)
+        and len(payload["expected_spans"]) == 1
+        and payload.get("allowed_interruptions") == []
+    )
+
+
+def _format_window(start: float, end: float) -> str:
+    return f"{format_timestamp(start)}–{format_timestamp(end)} ({(end - start) / 60.0:.1f}m)"
+
+
+def _format_optional_window(start: float | None, end: float | None) -> str:
+    if start is None or end is None or end <= start:
+        return "unavailable"
+    return _format_window(start, end)
+
+
+@identity_app.command(
     "review-observation",
     help="Present one observation's clips with exact YouTube URLs and timestamps.",
 )
@@ -2707,6 +2873,9 @@ def profile_status_command(
                 eligible_automatic_observation_ids
             ),
         )
+        negative_window_audit = audit_speaker_negative_windows(
+            database, evaluation_root.expanduser().resolve()
+        )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -2725,6 +2894,13 @@ def profile_status_command(
         f"pair_relations={status.pair_relation_count} "
         f"same_components={status.same_component_count} "
         f"conflicts={status.evidence_conflict_count}"
+    )
+    console.print(
+        "Speaker-negative windows: "
+        f"reviewed={len(negative_window_audit.records)} "
+        f"actionable={len(negative_window_audit.actionable)} "
+        f"stale={sum(not record.currently_selected for record in negative_window_audit.records)} "
+        f"broad_actionable={sum('broad_window' in record.reason_codes for record in negative_window_audit.actionable)}"
     )
     console.print(
         f"Pending sync: qualifications={status.pending_qualification_count} "
@@ -2839,6 +3015,11 @@ def profile_status_command(
                 f"[{status_need_execution_label(need)}]: {need.message}"
             )
     console.print("[bold]What to do next[/bold]")
+    if negative_window_audit.actionable:
+        console.print(
+            f"- Review {len(negative_window_audit.actionable)} current sermon window(s) "
+            "implicated by multiple-speaker or invalid-audio observations."
+        )
     for action in status.actions:
         console.print(f"- {action.message}")
     all_needs = (
@@ -2850,6 +3031,13 @@ def profile_status_command(
         console.print("[bold]Applicable commands[/bold]")
         for command in commands:
             console.print(f"- {command}")
+    if negative_window_audit.actionable:
+        if not commands:
+            console.print("[bold]Applicable commands[/bold]")
+        console.print(
+            "- pte identity review-next-speaker-negative-window "
+            "--reviewer REVIEWER_ID --base-dir BASE_DIR"
+        )
     console.print("This report is read-only and does not create or mature profiles.")
 
 

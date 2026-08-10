@@ -320,9 +320,8 @@ def selection_history_from_artifacts(
                     continue
                 if isinstance(fingerprint, str):
                     disfavored[fingerprint] = disfavored.get(fingerprint, 0) + 1
-                video_id = source.get("youtube_video_id")
-                if isinstance(video_id, str) and video_id:
-                    disfavored_sources[video_id] = disfavored_sources.get(video_id, 0) + 1
+                # Qualification describes this immutable observation window,
+                # not every future observation derived from the recording.
         _record_automatic_pair(review, automatic_pair_ids)
         _record_profile_growth_selection_once(
             review,

@@ -1455,7 +1455,7 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual({"a": 1, "b": 1}, history.observation_use)
         self.assertEqual({"video-a": 1, "video-b": 1}, history.source_use)
         self.assertEqual({"a": 1}, history.disfavored_observations)
-        self.assertEqual({"video-a": 1}, history.disfavored_sources)
+        self.assertEqual({}, history.disfavored_sources)
         self.assertEqual(1, history.automatic_selection_count)
         self.assertEqual(
             "same_speaker",
