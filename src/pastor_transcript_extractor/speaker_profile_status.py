@@ -84,6 +84,7 @@ class ProfilePipelineStatus:
     attached_name_claim_count: int
     configured_identity_count: int
     ungrouped_single_count: int
+    stale_or_ineligible_ungrouped_single_count: int
     named_ungrouped_single_count: int
     attributed_frontier_observation_count: int
     unmatched_named_ungrouped_single_count: int
@@ -156,6 +157,7 @@ def build_profile_pipeline_status(
     *,
     discovery_report: Mapping[str, Any] | None = None,
     discovery_report_path: Path | None = None,
+    eligible_automatic_observation_ids: frozenset[int] | None = None,
 ) -> ProfilePipelineStatus:
     observations = database.list_speaker_observations()
     observations_by_id = {observation.id: observation for observation in observations}
@@ -468,7 +470,7 @@ def build_profile_pipeline_status(
         for member_ids in members_by_profile.values()
         for observation_id in member_ids
     }
-    ungrouped_single_ids = {
+    all_ungrouped_single_ids = {
         observation.id
         for observation in observations
         if (
@@ -476,6 +478,11 @@ def build_profile_pipeline_status(
             and observation.id not in attached_observation_ids
         )
     }
+    ungrouped_single_ids = (
+        all_ungrouped_single_ids
+        if eligible_automatic_observation_ids is None
+        else all_ungrouped_single_ids & eligible_automatic_observation_ids
+    )
     named_ungrouped_ids = {
         observation_id
         for observation_id in ungrouped_single_ids
@@ -886,6 +893,9 @@ def build_profile_pipeline_status(
             len(names) for names in configured_identities_by_profile.values()
         ),
         ungrouped_single_count=len(ungrouped_single_ids),
+        stale_or_ineligible_ungrouped_single_count=len(
+            all_ungrouped_single_ids - ungrouped_single_ids
+        ),
         named_ungrouped_single_count=len(named_ungrouped_ids),
         attributed_frontier_observation_count=len(
             attributed_frontier_observation_ids

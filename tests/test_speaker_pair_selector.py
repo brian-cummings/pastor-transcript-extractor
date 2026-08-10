@@ -442,6 +442,101 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             "cached_acoustic_same_ranking", selected.manifest["reason_codes"]
         )
 
+    def test_profile_growth_uses_ambiguous_acoustic_pair_only_as_fallback(
+        self,
+    ) -> None:
+        ranking = AcousticPairRanking(
+            fingerprint_a="explore-a",
+            fingerprint_b="explore-b",
+            same_boundary_margin=-0.01,
+            centroid_similarity=0.95,
+            report_result_sha256="a" * 64,
+            report_path="discovery.json",
+            outcome="insufficient_evidence",
+            reason="ambiguous_similarity",
+        )
+        selected = select_next_speaker_pair(
+            [candidate("explore-a"), candidate("explore-b")],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+            profile_growth_acoustic_pairs=(ranking,),
+        )
+
+        self.assertEqual(
+            "profile_growth_exploratory_seed",
+            selected.manifest["selection_objective"],
+        )
+        self.assertIn(
+            "cached_acoustic_uncertain_nomination",
+            selected.manifest["reason_codes"],
+        )
+        provenance = selected.manifest["profile_growth_acoustic_ranking"]
+        self.assertEqual("insufficient_evidence", provenance["outcome"])
+        self.assertEqual("review_ranking_only", provenance["role"])
+        self.assertFalse(provenance["identity_evidence"])
+        self.assertNotIn("expected_outcome", selected.manifest)
+
+    def test_profile_growth_prefers_attribution_signal_over_exploration(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("named-a", name="alex"),
+                candidate("named-b", name="alex"),
+                candidate("explore-a"),
+                candidate("explore-b"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+            profile_growth_acoustic_pairs=(
+                AcousticPairRanking(
+                    fingerprint_a="explore-a",
+                    fingerprint_b="explore-b",
+                    same_boundary_margin=-0.01,
+                    centroid_similarity=0.95,
+                    report_result_sha256="a" * 64,
+                    report_path="discovery.json",
+                    outcome="insufficient_evidence",
+                    reason="ambiguous_similarity",
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            {"named-a", "named-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "profile_growth_seed", selected.manifest["selection_objective"]
+        )
+
+    def test_automation_readiness_withholds_exploratory_acoustic_pair(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError, "no actionable automation-readiness pair"
+        ):
+            select_next_speaker_pair(
+                [candidate("explore-a"), candidate("explore-b")],
+                PairSelectionHistory(),
+                selection_goal="automation-readiness",
+                profile_growth_acoustic_pairs=(
+                    AcousticPairRanking(
+                        fingerprint_a="explore-a",
+                        fingerprint_b="explore-b",
+                        same_boundary_margin=-0.01,
+                        centroid_similarity=0.95,
+                        report_result_sha256="a" * 64,
+                        report_path="discovery.json",
+                        outcome="insufficient_evidence",
+                        reason="ambiguous_similarity",
+                    ),
+                ),
+            )
+
     def test_profile_growth_rejects_unbound_acoustic_ranking_context(
         self,
     ) -> None:

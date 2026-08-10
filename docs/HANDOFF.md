@@ -343,6 +343,16 @@ different constraint anywhere across the two components are excluded. The
 exact audio clips and qualification prompts remain unchanged; the
 profile-oriented packet also exposes timestamped source-video links.
 
+When those positive-evidence nominations are exhausted, selector v20 may use a
+verified discovery artifact's unreviewed `strong_strong` /
+`ambiguous_similarity` comparisons as a deterministic exploratory fallback.
+The model outcome remains `insufficient_evidence`; this is nomination context
+only, no expected answer enters the blinded packet, and only the approved human
+review becomes durable identity evidence. Automation-readiness intentionally
+withholds this fallback. Identity coordination reports affected observations as
+`identity_human_review_nominatable` instead of claiming that the acoustic model
+resolved them or that they must simply await new corpus evidence.
+
 Observation suitability is now a separate shadow-calibration concern. Existing
 `qualified_single_speaker`, `multiple_speakers`, and `invalid_audio` decisions
 can be deduplicated and inspected without acoustic execution:

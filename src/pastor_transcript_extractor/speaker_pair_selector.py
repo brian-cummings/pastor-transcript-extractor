@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v19"
+SELECTOR_VERSION = "speaker_pair_selector_v20"
 SAME_SPEAKER_BALANCE_GAP = 2
 
 
@@ -118,6 +118,7 @@ class AcousticPairRanking:
     report_result_sha256: str
     report_path: str
     outcome: str = "same_speaker"
+    reason: str = "approved_policy_same_band"
 
     @property
     def pair_key(self) -> frozenset[str]:
@@ -408,9 +409,19 @@ def select_next_speaker_pair(
     if len({item.input_fingerprint for item in ordered}) != len(ordered):
         raise ValueError("candidate observation fingerprints must be unique")
     if any(
-        ranking.outcome != "same_speaker"
+        ranking.outcome not in {"same_speaker", "insufficient_evidence"}
         or ranking.fingerprint_a == ranking.fingerprint_b
-        or ranking.same_boundary_margin < 0.0
+        or (
+            ranking.outcome == "same_speaker"
+            and (
+                ranking.reason != "approved_policy_same_band"
+                or ranking.same_boundary_margin < 0.0
+            )
+        )
+        or (
+            ranking.outcome == "insufficient_evidence"
+            and ranking.reason != "ambiguous_similarity"
+        )
         or not math.isfinite(ranking.same_boundary_margin)
         or not math.isfinite(ranking.centroid_similarity)
         or not ranking.report_result_sha256
@@ -419,7 +430,7 @@ def select_next_speaker_pair(
     ):
         raise ValueError(
             "profile-growth acoustic rankings require finite, provenance-bound "
-            "same-speaker context"
+            "same-speaker or ambiguous-similarity nomination context"
         )
     if any(
         nomination.candidate_fingerprint
@@ -535,6 +546,7 @@ def select_next_speaker_pair(
             condition_counts=condition_counts,
             acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
             automatic_profile_ready_ids=automatic_profile_ready_ids,
+            allow_exploratory=True,
         )
         if goal == SelectionGoal.PROFILE_GROWTH
         else None
@@ -583,6 +595,7 @@ def select_next_speaker_pair(
             condition_counts=condition_counts,
             acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
             automatic_profile_ready_ids=automatic_profile_ready_ids,
+            allow_exploratory=False,
         )
     if (
         goal in {
@@ -879,6 +892,7 @@ def select_next_speaker_pair(
     ):
         manifest["profile_growth_acoustic_ranking"] = {
             "outcome": selected_acoustic_ranking.outcome,
+            "reason": selected_acoustic_ranking.reason,
             "same_boundary_margin": (
                 selected_acoustic_ranking.same_boundary_margin
             ),
@@ -893,7 +907,14 @@ def select_next_speaker_pair(
             "identity_evidence": False,
             "durable_evidence_source": "approved_blinded_pair_review_only",
         }
-        reason_codes.insert(1, "cached_acoustic_same_ranking")
+        reason_codes.insert(
+            1,
+            (
+                "cached_acoustic_same_ranking"
+                if selected_acoustic_ranking.outcome == "same_speaker"
+                else "cached_acoustic_uncertain_nomination"
+            ),
+        )
     return PairSelection(observation_a, observation_b, manifest)
 
 
@@ -1121,6 +1142,7 @@ def _select_profile_growth_pair(
         frozenset[str], AcousticPairRanking
     ],
     automatic_profile_ready_ids: frozenset[int],
+    allow_exploratory: bool,
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -1184,6 +1206,16 @@ def _select_profile_growth_pair(
             tuple[frozenset[str], frozenset[str]],
         ]
     ] = []
+    exploratory_pairs: list[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+            str,
+            tuple[frozenset[str], frozenset[str]],
+        ]
+    ] = []
     for observation_a, observation_b, stratum, relation in pairs:
         if (
             disfavored.get(observation_a.input_fingerprint, 0)
@@ -1206,7 +1238,16 @@ def _select_profile_growth_pair(
                 observation_b.input_fingerprint,
             )
         )
-        has_acoustic_same_signal = pair_key in acoustic_ranking_by_pair
+        acoustic_ranking = acoustic_ranking_by_pair.get(pair_key)
+        has_acoustic_same_signal = (
+            acoustic_ranking is not None
+            and acoustic_ranking.outcome == "same_speaker"
+        )
+        has_acoustic_exploration_signal = (
+            allow_exploratory
+            and acoustic_ranking is not None
+            and acoustic_ranking.outcome == "insufficient_evidence"
+        )
         has_component_attribution_overlap = bool(
             component_attributions[component_a]
             & component_attributions[component_b]
@@ -1216,6 +1257,7 @@ def _select_profile_growth_pair(
         if not (
             has_acoustic_same_signal
             or has_component_attribution_overlap
+            or has_acoustic_exploration_signal
         ):
             continue
         # Conflicting claims need direct acoustic support before spending a
@@ -1262,17 +1304,30 @@ def _select_profile_growth_pair(
                 & anchored_attributions
                 else "profile_growth_seed"
             )
-        growth_pairs.append(
-            (
-                observation_a,
-                observation_b,
-                stratum,
-                relation,
-                objective,
-                (component_a, component_b),
-            )
+        selected_pair = (
+            observation_a,
+            observation_b,
+            stratum,
+            relation,
+            objective,
+            (component_a, component_b),
         )
-    if not growth_pairs:
+        if has_acoustic_exploration_signal and not (
+            has_acoustic_same_signal or has_component_attribution_overlap
+        ):
+            exploratory_pairs.append(
+                (
+                    *selected_pair[:4],
+                    "profile_growth_exploratory_frontier"
+                    if anchored_a or anchored_b
+                    else "profile_growth_exploratory_seed",
+                    selected_pair[5],
+                )
+            )
+        else:
+            growth_pairs.append(selected_pair)
+    selectable_pairs = growth_pairs or exploratory_pairs
+    if not selectable_pairs:
         return None
     stratum_rank = {
         SelectionStratum.SHARED_ATTRIBUTION: 0,
@@ -1281,7 +1336,7 @@ def _select_profile_growth_pair(
         SelectionStratum.CONTRADICTING_ATTRIBUTION: 3,
     }
     return min(
-        growth_pairs,
+        selectable_pairs,
         key=lambda item: (
             *_profile_growth_acoustic_rank(
                 item[0], item[1], acoustic_ranking_by_pair

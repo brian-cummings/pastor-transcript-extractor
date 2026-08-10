@@ -266,6 +266,32 @@ class IdentityCoordinationTests(unittest.TestCase):
         self.assertEqual(1, report["counts"]["waiting_for_evidence"])
         self.assertEqual(0, report["counts"]["action_required"])
 
+    def test_exploratory_candidate_is_reported_as_human_review_action(self) -> None:
+        report = build_identity_coordination_report(
+            self._audit(
+                [
+                    self._case(
+                        "10",
+                        "evaluated",
+                        "versioned_association_attempt",
+                        observation_id=10,
+                    )
+                ]
+            ),
+            discovery_observation_states={
+                10: "exploratory_review_candidate"
+            },
+        )
+
+        case = report["cases"][0]
+        self.assertEqual(
+            "identity_human_review_nominatable", case["workflow_state"]
+        )
+        self.assertEqual(
+            "review_exploratory_profile_growth_pair", case["next_action"]
+        )
+        self.assertTrue(case["immediate_action_required"])
+
     def test_undersized_discovery_seed_waits_for_third_recording(self) -> None:
         report = build_identity_coordination_report(
             self._audit(
@@ -308,6 +334,15 @@ class IdentityCoordinationTests(unittest.TestCase):
                 {"observation_id": 13},
             ],
             "signature_failures": [{"observation_id": 14}],
+            "pair_results": [
+                {
+                    "observation_ids": [11, 12],
+                    "outcome": "insufficient_evidence",
+                    "reason": "ambiguous_similarity",
+                    "consistency_tier": "strong_strong",
+                    "registry_mutation_allowed": False,
+                }
+            ],
             "components": [
                 {
                     "outcome": "blocked",
@@ -328,7 +363,7 @@ class IdentityCoordinationTests(unittest.TestCase):
 
         self.assertEqual(
             {
-                11: "evaluated_unclustered",
+                11: "exploratory_review_candidate",
                 12: "blocked_component",
                 13: "provisional_component",
                 14: "signature_failed",
@@ -404,7 +439,7 @@ class IdentityCoordinationTests(unittest.TestCase):
             resolution.component_ids,
         )
 
-    def test_discovery_acoustic_loader_keeps_only_strong_automatic_same_pairs(
+    def test_discovery_acoustic_loader_keeps_safe_review_nominations(
         self,
     ) -> None:
         valid = {
@@ -431,6 +466,19 @@ class IdentityCoordinationTests(unittest.TestCase):
                 {
                     **valid,
                     "observation_fingerprints": [
+                        "ambiguous-a",
+                        "ambiguous-b",
+                    ],
+                    "outcome": "insufficient_evidence",
+                    "reason": "ambiguous_similarity",
+                    "centroid_similarity": 0.95,
+                    "metrics": {
+                        "cross": {"p10": 0.59, "median": 0.78}
+                    },
+                },
+                {
+                    **valid,
+                    "observation_fingerprints": [
                         "deferred-a",
                         "deferred-b",
                     ],
@@ -454,7 +502,7 @@ class IdentityCoordinationTests(unittest.TestCase):
 
             rankings = load_discovery_acoustic_ranking_pairs(path)
 
-        self.assertEqual(1, len(rankings))
+        self.assertEqual(2, len(rankings))
         ranking = rankings[0]
         self.assertEqual(
             {"same-a", "same-b"},
@@ -462,6 +510,10 @@ class IdentityCoordinationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(0.08, ranking.same_boundary_margin)
         self.assertEqual(0.94, ranking.centroid_similarity)
+        exploratory = rankings[1]
+        self.assertEqual("insufficient_evidence", exploratory.outcome)
+        self.assertEqual("ambiguous_similarity", exploratory.reason)
+        self.assertAlmostEqual(-0.01, exploratory.same_boundary_margin)
 
     def test_association_loader_exposes_exact_multi_exemplar_same_edges(
         self,

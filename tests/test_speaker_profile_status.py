@@ -403,6 +403,48 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertTrue(any("match existing profiles" in item for item in messages))
         self.assertTrue(any("do not match an existing" in item for item in messages))
 
+    def test_named_backlog_excludes_stale_automatic_observation(self) -> None:
+        member = self._observation("member")
+        stale_frontier = self._observation("stale")
+        current_seed = self._observation("current")
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same pair",
+            review_event_key="profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=member.id,
+            reviewer="reviewer",
+            reason="same pair",
+            review_event_key="attach-member",
+        )
+        self._claim(member, "Alice Example")
+        self._claim(stale_frontier, "Alice Example")
+        self._claim(current_seed, "Bob Example")
+        for observation in (stale_frontier, current_seed):
+            record_observation_disposition(
+                self.database,
+                observation_id=observation.id,
+                action="qualified_single_speaker",
+                reviewer="reviewer",
+                reason="pair review",
+                review_event_key=f"single-{observation.id}",
+            )
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+            eligible_automatic_observation_ids=frozenset((current_seed.id,)),
+        )
+
+        self.assertEqual(1, status.ungrouped_single_count)
+        self.assertEqual(1, status.stale_or_ineligible_ungrouped_single_count)
+        self.assertEqual(0, status.attributed_frontier_observation_count)
+        self.assertEqual(1, status.unmatched_named_ungrouped_single_count)
+
     def test_anonymous_bridge_profile_reports_both_reinforcement_and_name(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c")]
         profile = create_anonymous_profile(

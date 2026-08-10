@@ -702,12 +702,14 @@ association proposal when available, then an immediate near-same edge that can
 complete a blocked component, then
 a staged bottleneck edge from a strong two-ambiguity bundle, then a decisive
 unresolved overlap edge. It finally falls back to reviewed-profile reinforcement
-and positive-evidence profile growth. Profile-growth pairs require either an
-explicit attribution shared across their reviewed components or an exact,
-provenance-bound cached same-speaker acoustic ranking. Merely lacking a known
-different-speaker constraint—and merely sharing a source—is not enough; when
-those signals are exhausted the command stops instead of nominating a generic
-cross-source pair. The selection manifest records the discovery artifact,
+and positive-evidence profile growth. Profile growth first requires either an
+explicit attribution shared across reviewed components or an exact,
+provenance-bound cached same-speaker acoustic ranking. When those signals are
+exhausted, its human-review-only exploratory tier may nominate an unreviewed
+`strong_strong` pair that the model classified as `insufficient_evidence` due
+to ambiguous similarity. Merely lacking a known different-speaker constraint—and
+merely sharing a source—is still not enough. Automation-readiness does not use
+the exploratory tier. The selection manifest records the discovery artifact,
 stage, companion edge, and downstream observations unlocked; undersized
 two-recording seeds without a qualified frontier wait instead of consuming human
 review. The next discovery run consumes the approved pair judgment directly as
@@ -721,12 +723,14 @@ observation for the same recording from silently replacing the nominated
 evidence. Audit current and legacy selection provenance without mutation with
 `pte identity audit-speaker-review-selection`.
 
-`profile-growth` now has a precision-first nomination tier when a verified
+`profile-growth` has a precision-first nomination tier when a verified
 discovery artifact contains an unreviewed `strong_strong` pair in the pinned
 same-speaker band. It ranks otherwise-valid growth pairs by acoustic margin and
-centroid similarity; structural exploration is limited to components with a
-shared explicit attribution. The cached
-result is recorded in the selection manifest as `review_ranking_only`; it is not
+centroid similarity. Only after positive-evidence candidates are exhausted, a
+second tier ranks provenance-bound `ambiguous_similarity` results for blinded
+human review. Their acoustic outcome remains `insufficient_evidence`; they do
+not receive an expected answer or become profile membership. Every cached result
+is recorded in the selection manifest as `review_ranking_only`; it is not
 identity evidence, cannot attach observations, and cannot replace the blinded
 human judgment. Reviewed different-speaker constraints and component safety
 checks remain authoritative.

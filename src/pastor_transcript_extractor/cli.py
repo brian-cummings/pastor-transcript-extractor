@@ -2497,11 +2497,30 @@ def profile_status_command(
                 continue
             discovery_report_path = candidate_path
             break
+        database = Database(paths.database, readonly=True)
+        verification_cache = MediaVerificationCache(
+            evaluation_root.expanduser().resolve() / "cache"
+        )
+        eligible_automatic_observation_ids = frozenset(
+            eligibility.observation.id
+            for video in database.list_videos()
+            if (
+                eligibility := assess_automatic_speaker_observation(
+                    database,
+                    video.id,
+                    verification_cache=verification_cache,
+                )
+            ).eligible
+            and eligibility.observation is not None
+        )
         status = build_profile_pipeline_status(
-            Database(paths.database, readonly=True),
+            database,
             evidence,
             discovery_report=discovery_report,
             discovery_report_path=discovery_report_path,
+            eligible_automatic_observation_ids=(
+                eligible_automatic_observation_ids
+            ),
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -2544,6 +2563,8 @@ def profile_status_command(
     console.print(
         f"Reviewed single-speaker backlog: "
         f"ungrouped={status.ungrouped_single_count} "
+        f"stale_or_ineligible="
+        f"{status.stale_or_ineligible_ungrouped_single_count} "
         f"named={status.named_ungrouped_single_count} "
         f"matched_frontiers={status.attributed_frontier_observation_count} "
         f"unmatched_named={status.unmatched_named_ungrouped_single_count} "
@@ -3432,6 +3453,28 @@ def shadow_discover_profiles_command(
             for outcome, count in report["pair_outcome_counts"].items()
         )
     )
+    exploratory_rankings = tuple(
+        ranking
+        for ranking in load_discovery_acoustic_ranking_pairs(destination)
+        if ranking.outcome == "insufficient_evidence"
+    )
+    if exploratory_rankings:
+        exploratory_observation_count = len(
+            {
+                fingerprint
+                for ranking in exploratory_rankings
+                for fingerprint in (
+                    ranking.fingerprint_a,
+                    ranking.fingerprint_b,
+                )
+            }
+        )
+        console.print(
+            "Exploratory human-review nominations: "
+            f"pairs={len(exploratory_rankings)} "
+            f"observations={exploratory_observation_count}; "
+            "acoustic outcomes remain insufficient_evidence."
+        )
     if signature_failures:
         failure_counts: dict[str, int] = {}
         for failure in signature_failures:

@@ -195,6 +195,24 @@ def load_discovery_observation_states(
                 member.get("observation_id"), int
             ):
                 states[int(member["observation_id"])] = component_state
+    exploratory_observation_ids = {
+        int(observation_id)
+        for result in payload.get("pair_results", ())
+        if isinstance(result, Mapping)
+        and result.get("outcome") == "insufficient_evidence"
+        and result.get("reason") == "ambiguous_similarity"
+        and result.get("consistency_tier") == "strong_strong"
+        and result.get("registry_mutation_allowed") is False
+        and result.get("reviewed_constraint") is not True
+        for observation_id in result.get("observation_ids", ())
+        if isinstance(observation_id, int)
+    }
+    for observation_id in exploratory_observation_ids:
+        if states.get(observation_id) in {
+            "evaluated_unclustered",
+            "undersized_component",
+        }:
+            states[observation_id] = "exploratory_review_candidate"
     return states
 
 
@@ -440,14 +458,20 @@ def load_discovery_resolution_pairs(
 def load_discovery_acoustic_ranking_pairs(
     report_path: Path,
 ) -> tuple[AcousticPairRanking, ...]:
-    """Load strong cached same results as non-durable review ranking context."""
+    """Load strong same and ambiguous results as non-durable review context."""
     payload = _load_verified_discovery_report(report_path)
     rankings: dict[frozenset[str], AcousticPairRanking] = {}
     for result in payload.get("pair_results", ()):
+        if not isinstance(result, Mapping):
+            continue
+        outcome = result.get("outcome")
+        reason = result.get("reason")
         if (
-            not isinstance(result, Mapping)
-            or result.get("outcome") != "same_speaker"
-            or result.get("reason") != "approved_policy_same_band"
+            (outcome, reason)
+            not in {
+                ("same_speaker", "approved_policy_same_band"),
+                ("insufficient_evidence", "ambiguous_similarity"),
+            }
             or result.get("consistency_tier") != "strong_strong"
             or result.get("registry_mutation_allowed") is not False
             or result.get("reviewed_constraint") is True
@@ -493,7 +517,7 @@ def load_discovery_acoustic_ranking_pairs(
             cross_p10 - minimum_p10,
             cross_median - minimum_median,
         )
-        if margin < 0.0:
+        if outcome == "same_speaker" and margin < 0.0:
             continue
         ranking = AcousticPairRanking(
             fingerprint_a=fingerprints[0],
@@ -502,6 +526,8 @@ def load_discovery_acoustic_ranking_pairs(
             centroid_similarity=centroid_similarity,
             report_result_sha256=str(payload["result_sha256"]),
             report_path=str(report_path.expanduser().resolve()),
+            outcome=str(outcome),
+            reason=str(reason),
         )
         existing = rankings.get(ranking.pair_key)
         if existing is None or (
@@ -516,6 +542,7 @@ def load_discovery_acoustic_ranking_pairs(
         sorted(
             rankings.values(),
             key=lambda item: (
+                0 if item.outcome == "same_speaker" else 1,
                 -item.same_boundary_margin,
                 -item.centroid_similarity,
                 item.fingerprint_a,
@@ -824,6 +851,13 @@ def _coordination_case(
     ):
         workflow_state = "identity_unresolved_waiting_for_evidence"
         next_action = "await_new_evidence"
+        terminal = False
+    elif (
+        coverage_state == "evaluated"
+        and discovery_state == "exploratory_review_candidate"
+    ):
+        workflow_state = "identity_human_review_nominatable"
+        next_action = "review_exploratory_profile_growth_pair"
         terminal = False
     elif (
         coverage_state == "evaluated"
