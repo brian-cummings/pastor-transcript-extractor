@@ -1,0 +1,15 @@
+{
+  "artifact_content_sha256": "bd7dd2b526634b97625dd3b52de2e2cd471584db4bbd177d679372fbf84cf5dd",
+  "artifact_filename": "engwebp-2020-stable.vpl.txt.gz",
+  "artifact_gzip_sha256": "b935aad100e57362f3d1901f65ea39730f061f60d476f16557bef94afa7440fb",
+  "artifact_version": "ebible-engwebp-2026-08-08",
+  "books": 66,
+  "license": "Public Domain",
+  "source_archive_sha256": "3073fead92f186bf0035cdd15752aa852211cdd2484a9cf7b21cd1cf71fcec14",
+  "source_archive_url": "https://ebible.org/Scriptures/engwebp_vpl.zip",
+  "source_file": "engwebp_vpl.txt",
+  "translation_id": "engwebp",
+  "translation_name": "World English Bible",
+  "translation_version": "2020 stable text edition",
+  "upstream_file_date": "2026-08-08"
+}

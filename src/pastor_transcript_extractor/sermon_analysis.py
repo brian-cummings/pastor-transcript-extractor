@@ -8,11 +8,18 @@ import re
 from typing import Any
 
 from pastor_transcript_extractor.models import SermonAnalysisRun, Video
+from pastor_transcript_extractor.scripture_alignment import (
+    ALIGNMENT_POLICY_VERSION,
+    AlignmentSegment,
+    ReferenceAnchor,
+    bible_source_provenance,
+    detect_scripture_alignments,
+)
 from pastor_transcript_extractor.storage import Database
 
 
 ANALYZER_KEY = "sermon-basics"
-ANALYZER_VERSION = "3"
+ANALYZER_VERSION = "4"
 ANALYSIS_SCHEMA_VERSION = 1
 
 
@@ -517,6 +524,7 @@ def analyze_sermon(
     source_content_sha256 = _sha256(
         _canonical_source(segments, sermon_start_seconds, duration_seconds)
     )
+    bible_provenance = bible_source_provenance()
     input_fingerprint = _sha256(
         json.dumps(
             {
@@ -524,6 +532,9 @@ def analyze_sermon(
                 "analyzer_version": analyzer_version,
                 "schema_version": ANALYSIS_SCHEMA_VERSION,
                 "source_content_sha256": source_content_sha256,
+                "bible_artifact_content_sha256": bible_provenance[
+                    "artifact_content_sha256"
+                ],
                 "video_id": video.id,
             },
             sort_keys=True,
@@ -538,6 +549,44 @@ def analyze_sermon(
     contextual_references = [
         item for item in references if item["detection_class"] == "contextual"
     ]
+    alignments = detect_scripture_alignments(
+        [
+            AlignmentSegment(
+                index=segment.index,
+                text=segment.text,
+                start_seconds=segment.start_seconds,
+                end_seconds=segment.end_seconds,
+            )
+            for segment in segments
+        ],
+        [
+            ReferenceAnchor(
+                segment_index=item["segment"].index,
+                book=str(item["book"]),
+                chapter=(int(item["chapter"]) if item["chapter"] is not None else None),
+                verse_start=(
+                    int(item["verse_start"])
+                    if item["verse_start"] is not None
+                    else None
+                ),
+                verse_end=(
+                    int(item["verse_end"]) if item["verse_end"] is not None else None
+                ),
+                canonical_reference=str(item["canonical_reference"]),
+                detection_class=str(item["detection_class"]),
+            )
+            for item in references
+        ],
+    )
+    anchored_alignments = [
+        item for item in alignments if item["alignment_class"] == "anchored"
+    ]
+    independent_alignments = [
+        item for item in alignments if item["alignment_class"] == "independent"
+    ]
+    aligned_span_words = sum(
+        int(item["transcript_span_word_count"]) for item in alignments
+    )
     books = sorted({str(item["book"]) for item in references})
     passages = sorted({str(item["canonical_reference"]) for item in references})
     sermon_text = "\n".join(segment.text for segment in segments)
@@ -559,6 +608,20 @@ def analyze_sermon(
         ("distinct_scripture_passages", len(passages), "passages"),
         ("distinct_scripture_books", len(books), "books"),
         ("scripture_books", books, None),
+        ("scripture_text_alignment_count", len(alignments), "alignments"),
+        (
+            "anchored_scripture_text_alignment_count",
+            len(anchored_alignments),
+            "alignments",
+        ),
+        (
+            "independent_scripture_text_alignment_count",
+            len(independent_alignments),
+            "alignments",
+        ),
+        ("scripture_aligned_transcript_span_words", aligned_span_words, "words"),
+        ("scripture_alignment_policy_version", ALIGNMENT_POLICY_VERSION, None),
+        ("scripture_alignment_bible_source", bible_provenance, None),
         (
             "scripture_detection_scope",
             "explicit_numeric_and_reviewed_contextual_v1",
@@ -609,6 +672,50 @@ def analyze_sermon(
                 segment.end_seconds,
                 int(item["char_start"]),
                 int(item["char_end"]),
+                str(item["excerpt"]),
+                json.dumps(payload, sort_keys=True),
+            )
+        )
+
+    for item in alignments:
+        payload = {
+            key: value
+            for key, value in item.items()
+            if key
+            not in {
+                "char_end",
+                "char_start",
+                "end_seconds",
+                "excerpt",
+                "passage_indexes",
+                "start_seconds",
+            }
+        }
+        payload["bible_source"] = bible_provenance
+        evidence_key = _sha256(
+            json.dumps(
+                {
+                    **payload,
+                    "char_end": item["char_end"],
+                    "char_start": item["char_start"],
+                    "source_segment_start_index": item[
+                        "source_segment_start_index"
+                    ],
+                    "source_segment_end_index": item["source_segment_end_index"],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        evidence_rows.append(
+            (
+                "scripture_text_alignment",
+                evidence_key,
+                int(item["source_segment_start_index"]),
+                item["start_seconds"],
+                item["end_seconds"],
+                item["char_start"],
+                item["char_end"],
                 str(item["excerpt"]),
                 json.dumps(payload, sort_keys=True),
             )

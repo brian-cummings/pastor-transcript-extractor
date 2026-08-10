@@ -17,7 +17,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 PROFILE_ANALYZER_KEY = "profile-scripture-usage"
-PROFILE_ANALYZER_VERSION = "3"
+PROFILE_ANALYZER_VERSION = "4"
 PROFILE_ANALYSIS_SCHEMA_VERSION = 1
 
 CANONICAL_DIVISIONS: dict[str, tuple[str, ...]] = {
@@ -75,6 +75,11 @@ PROFILE_FEATURE_ORDER = (
     "cross_sermon_anchor_coverage",
     "mean_pairwise_book_distribution_cosine",
     "reference_density_consistency",
+    "scripture_text_engagement_fraction",
+    "sermons_with_text_alignment_fraction",
+    "anchored_text_alignment_fraction",
+    "mean_scripture_text_alignment_score",
+    "aligned_passage_concentration_hhi",
 )
 
 
@@ -200,6 +205,14 @@ def build_profile_scripture_analysis(
     located_references = 0
     zero_reference_sermons = 0
     multi_verse_references = 0
+    alignment_count = 0
+    anchored_alignment_count = 0
+    independent_alignment_count = 0
+    aligned_span_words = 0
+    alignment_scores: list[float] = []
+    aligned_chapter_counts: Counter[str] = Counter()
+    sermon_alignment_counts: Counter[int] = Counter()
+    sermon_aligned_span_words: Counter[int] = Counter()
 
     for video in scope.videos:
         run = database.get_latest_sermon_analysis_run(
@@ -228,6 +241,26 @@ def build_profile_scripture_analysis(
         sermon_duration = values.get("sermon_duration_seconds")
         for evidence in database.list_sermon_analysis_evidence(run.id):
             payload = json.loads(evidence.payload_json)
+            if evidence.evidence_kind == "scripture_text_alignment":
+                alignment_count += 1
+                sermon_alignment_counts[video.id] += 1
+                alignment_class = payload.get("alignment_class")
+                if alignment_class == "anchored":
+                    anchored_alignment_count += 1
+                elif alignment_class == "independent":
+                    independent_alignment_count += 1
+                score = payload.get("alignment_score")
+                if isinstance(score, (int, float)) and not isinstance(score, bool):
+                    alignment_scores.append(float(score))
+                span_words = payload.get("transcript_span_word_count")
+                if isinstance(span_words, int) and not isinstance(span_words, bool):
+                    aligned_span_words += span_words
+                    sermon_aligned_span_words[video.id] += span_words
+                aligned_book = payload.get("book")
+                aligned_chapter = payload.get("chapter")
+                if isinstance(aligned_book, str) and isinstance(aligned_chapter, int):
+                    aligned_chapter_counts[f"{aligned_book} {aligned_chapter}"] += 1
+                continue
             detection_class = payload.get("detection_class")
             if detection_class not in {"explicit", "contextual"}:
                 continue
@@ -434,6 +467,16 @@ def build_profile_scripture_analysis(
             ) / len(sermon_densities)
             coefficient_of_variation = math.sqrt(variance) / density_mean
             density_consistency = round(1 / (1 + coefficient_of_variation), 6)
+    raw_aligned_passage_hhi = (
+        sum((count / alignment_count) ** 2 for count in aligned_chapter_counts.values())
+        if alignment_count
+        else None
+    )
+    aligned_passage_concentration_hhi = (
+        round(raw_aligned_passage_hhi, 6)
+        if raw_aligned_passage_hhi is not None
+        else None
+    )
 
     division_emphasis = {
         division: {
@@ -458,6 +501,13 @@ def build_profile_scripture_analysis(
                 "reference_mentions": reference_count,
                 "explicit_reference_mentions": sermon_explicit_counts[video.id],
                 "contextual_reference_mentions": sermon_contextual_counts[video.id],
+                "scripture_text_alignments": sermon_alignment_counts[video.id],
+                "scripture_aligned_transcript_span_words": sermon_aligned_span_words[
+                    video.id
+                ],
+                "scripture_text_engagement_fraction": _rounded_ratio(
+                    sermon_aligned_span_words[video.id], words or 0
+                ),
                 "reference_density_per_1000_words": (
                     round(1000 * reference_count / words, 6)
                     if words is not None and words > 0
@@ -499,10 +549,26 @@ def build_profile_scripture_analysis(
         "cross_sermon_anchor_coverage": cross_sermon_anchor_coverage,
         "mean_pairwise_book_distribution_cosine": mean_pairwise_cosine,
         "reference_density_consistency": density_consistency,
+        "scripture_text_engagement_fraction": _rounded_ratio(
+            aligned_span_words, total_words
+        ),
+        "sermons_with_text_alignment_fraction": _rounded_ratio(
+            sum(sermon_alignment_counts[video.id] > 0 for video in analyzed_videos),
+            sermons_analyzed,
+        ),
+        "anchored_text_alignment_fraction": _rounded_ratio(
+            anchored_alignment_count, alignment_count
+        ),
+        "mean_scripture_text_alignment_score": (
+            round(sum(alignment_scores) / len(alignment_scores), 6)
+            if alignment_scores
+            else None
+        ),
+        "aligned_passage_concentration_hhi": aligned_passage_concentration_hhi,
     }
     assert tuple(feature_values) == PROFILE_FEATURE_ORDER
     feature_vector = {
-        "schema_version": 1,
+        "schema_version": 2,
         "feature_names": list(PROFILE_FEATURE_ORDER),
         "values": [feature_values[name] for name in PROFILE_FEATURE_ORDER],
         "by_name": feature_values,
@@ -522,9 +588,23 @@ def build_profile_scripture_analysis(
         "reference_mentions": reference_mentions,
         "explicit_reference_mentions": explicit_mentions,
         "contextual_reference_mentions": contextual_mentions,
+        "scripture_text_alignments": alignment_count,
+        "anchored_scripture_text_alignments": anchored_alignment_count,
+        "independent_scripture_text_alignments": independent_alignment_count,
+        "sermons_with_scripture_text_alignments": sum(
+            sermon_alignment_counts[video.id] > 0 for video in analyzed_videos
+        ),
+        "sermons_with_no_reference_but_text_alignment": sum(
+            sermon_book_counts[video.id].total() == 0
+            and sermon_alignment_counts[video.id] > 0
+            for video in analyzed_videos
+        ),
         "reference_bearing_sermon_pairs_compared": len(cosine_values),
         "sermons_with_word_counts": len(sermon_densities),
-        "detection_scope": "explicit_numeric_and_reviewed_contextual_v1",
+        "detection_scope": (
+            "explicit_numeric_and_reviewed_contextual_v1_plus_"
+            "conservative_scripture_text_alignment_v1"
+        ),
         "insufficient_values_are_null": True,
     }
     feature_explanations = {
@@ -558,6 +638,21 @@ def build_profile_scripture_analysis(
         "reference_density_consistency": (
             "1 / (1 + population coefficient of variation) of sermon reference densities"
         ),
+        "scripture_text_engagement_fraction": (
+            "non-overlapping accepted alignment span words / words across analyzed sermons"
+        ),
+        "sermons_with_text_alignment_fraction": (
+            "analyzed sermons with at least one accepted Scripture-text alignment / analyzed sermons"
+        ),
+        "anchored_text_alignment_fraction": (
+            "accepted alignments anchored by an explicit/contextual reference / accepted alignments"
+        ),
+        "mean_scripture_text_alignment_score": (
+            "mean conservative token-alignment score across accepted alignments"
+        ),
+        "aligned_passage_concentration_hhi": (
+            "sum of squared aligned book-chapter shares across accepted alignments"
+        ),
     }
     assert set(feature_explanations) == set(PROFILE_FEATURE_ORDER)
 
@@ -571,6 +666,18 @@ def build_profile_scripture_analysis(
         ("reference_mentions", reference_mentions, "mentions"),
         ("explicit_reference_mentions", explicit_mentions, "mentions"),
         ("contextual_reference_mentions", contextual_mentions, "mentions"),
+        ("scripture_text_alignments", alignment_count, "alignments"),
+        (
+            "anchored_scripture_text_alignments",
+            anchored_alignment_count,
+            "alignments",
+        ),
+        (
+            "independent_scripture_text_alignments",
+            independent_alignment_count,
+            "alignments",
+        ),
+        ("scripture_aligned_transcript_span_words", aligned_span_words, "words"),
         (
             "references_per_1000_words",
             round(reference_mentions * 1000 / total_words, 4) if total_words else 0.0,

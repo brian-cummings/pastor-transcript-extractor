@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "corpus_version": "scripture-alignment-reviewed-v1",
+  "reviewed_by": "Codex-assisted conservative policy review",
+  "cases": [
+    {
+      "id": "independent-exact-john",
+      "segments": ["For God so loved the world that he gave his only born Son, that whoever believes in him should not perish but have eternal life."],
+      "expected": [{"canonical_reference": "John 3:16", "alignment_class": "independent"}]
+    },
+    {
+      "id": "independent-skipped-john",
+      "segments": ["God so loved the world that he gave his only born Son. Whoever believes in him should not perish but have eternal life."],
+      "expected": [{"canonical_reference": "John 3:16", "alignment_class": "independent"}]
+    },
+    {
+      "id": "independent-partial-matthew",
+      "segments": ["Come to me, all you who labor and are heavily burdened, and I will give you rest."],
+      "expected": [{"canonical_reference": "Matthew 11:28", "alignment_class": "independent"}]
+    },
+    {
+      "id": "independent-close-isaiah",
+      "segments": ["Those who wait for the Lord will renew their strength. They will mount up with wings like eagles. They will run and not be weary."],
+      "expected": [{"canonical_reference": "Isaiah 40:31", "alignment_class": "independent"}]
+    },
+    {
+      "id": "anchored-explicit-reading",
+      "segments": ["Romans 8:1. There is therefore now no condemnation to those who are in Christ Jesus, who do not walk according to the flesh but according to the Spirit."],
+      "expected": [{"canonical_reference": "Romans 8:1", "alignment_class": "anchored"}]
+    },
+    {
+      "id": "anchored-loose-paraphrase",
+      "segments": ["John 3:16 says this. God loved this whole world so much that he gave his one unique Son, so believers need not be lost but receive everlasting life."],
+      "expected": [{"canonical_reference": "John 3:16", "alignment_class": "anchored"}]
+    },
+    {
+      "id": "anchored-contextual-reading",
+      "segments": ["John chapter three verse sixteen says, for God so loved the world that he gave his only born Son, that whoever believes in him should not perish but have eternal life."],
+      "expected": [{"canonical_reference": "John 3:16", "alignment_class": "anchored"}]
+    },
+    {
+      "id": "negative-short-common-phrase",
+      "segments": ["Love one another as I have loved you."],
+      "expected": []
+    },
+    {
+      "id": "negative-generic-biblical-language",
+      "segments": ["God is with you today, so do not be afraid as you walk through this difficult season."],
+      "expected": []
+    },
+    {
+      "id": "negative-religious-speech",
+      "segments": ["Faith gives our congregation courage, and prayer helps the church remain hopeful during hard weeks."],
+      "expected": []
+    },
+    {
+      "id": "negative-non-biblical-speech",
+      "segments": ["The committee meets on Tuesday evening to review the budget and plan the neighborhood dinner."],
+      "expected": []
+    },
+    {
+      "id": "negative-explicit-reference-without-text",
+      "segments": ["John 3:16 is our text today, and we will discuss its importance after the announcements."],
+      "expected": []
+    }
+  ]
+}

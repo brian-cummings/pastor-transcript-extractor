@@ -564,6 +564,83 @@ class SermonAnalysisTests(unittest.TestCase):
             ],
         )
 
+    def test_text_alignment_persists_separate_evidence_and_invalidates_profile(self) -> None:
+        profile = self.database.ensure_speaker_profile(
+            stable_key="person:alignment",
+            display_label="Alignment Profile",
+            lifecycle_state="active",
+            created_reason="test",
+        )
+        self.payload["segments"][1]["text"] = (
+            "For God so loved the world that he gave his only born Son, that whoever "
+            "believes in him should not perish but have eternal life."
+        )
+        self._write_payload()
+        first_sermon = analyze_sermon(self.database, self.video)
+        reused_sermon = analyze_sermon(self.database, self.video)
+        values = self._measurement_values(first_sermon.run.id)
+        evidence = self.database.list_sermon_analysis_evidence(first_sermon.run.id)
+
+        self.assertFalse(reused_sermon.created)
+        self.assertEqual(first_sermon.run.id, reused_sermon.run.id)
+        self.assertEqual(0, values["scripture_reference_mentions"])
+        self.assertEqual(1, values["scripture_text_alignment_count"])
+        self.assertEqual(
+            {"scripture_text_alignment"},
+            {item.evidence_kind for item in evidence},
+        )
+        payload = json.loads(evidence[0].payload_json)
+        self.assertEqual("John 3:16", payload["canonical_reference"])
+        self.assertEqual("independent", payload["alignment_class"])
+        self.assertEqual(
+            "World English Bible", payload["bible_source"]["translation_name"]
+        )
+
+        observation = self.database.add_speaker_observation(
+            video_id=self.video.id,
+            extraction_result_id=self.extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="single",
+            start_seconds=60.0,
+            end_seconds=120.0,
+            artifact_path=str(self.proposed_path),
+            content_sha256="alignment",
+            extractor_version="test-v1",
+            input_fingerprint="alignment-observation",
+        )
+        self.database.add_profile_observation_event(
+            profile_id=profile.id,
+            observation_id=observation.id,
+            action="attach",
+            reviewer="test",
+            reason="verified",
+            event_fingerprint="alignment-attach",
+        )
+        first_profile = build_profile_scripture_analysis(self.database, profile.id)
+        reused_profile = build_profile_scripture_analysis(self.database, profile.id)
+        profile_values = {
+            item.metric_key: json.loads(item.value_json)
+            for item in self.database.list_speaker_profile_analysis_measurements(
+                first_profile.run.id
+            )
+        }
+        features = profile_values["structural_scripture_features"]
+        self.assertFalse(reused_profile.created)
+        self.assertEqual(1, profile_values["scripture_text_alignments"])
+        self.assertGreater(features["scripture_text_engagement_fraction"], 0)
+        self.assertEqual(1.0, features["sermons_with_text_alignment_fraction"])
+        self.assertEqual(0.0, features["anchored_text_alignment_fraction"])
+
+        self.payload["segments"][1]["text"] += (
+            " Come to me, all you who labor and are heavily burdened, and I will give you rest."
+        )
+        self._write_payload()
+        changed_sermon = analyze_sermon(self.database, self.video)
+        changed_profile = build_profile_scripture_analysis(self.database, profile.id)
+        self.assertTrue(changed_sermon.created)
+        self.assertTrue(changed_profile.created)
+        self.assertNotEqual(first_profile.run.id, changed_profile.run.id)
+
 
 if __name__ == "__main__":
     unittest.main()

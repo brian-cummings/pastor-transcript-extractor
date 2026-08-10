@@ -283,6 +283,9 @@ from pastor_transcript_extractor.sermon_analysis import (
 from pastor_transcript_extractor.scripture_reference_evaluation import (
     evaluate_scripture_detector,
 )
+from pastor_transcript_extractor.scripture_alignment_evaluation import (
+    evaluate_scripture_alignment,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.source_ownership import (
     apply_source_ownership_schema,
@@ -1172,6 +1175,7 @@ def analysis_show(
     summary.add_column("Words", justify="right")
     summary.add_column("Duration", justify="right")
     summary.add_column("References", justify="right")
+    summary.add_column("Text alignments", justify="right")
     summary.add_column("Books", justify="right")
     found: list[tuple[object, object]] = []
     for video in videos:
@@ -1192,6 +1196,7 @@ def analysis_show(
             str(values.get("word_count", "—")),
             duration_text,
             str(values.get("scripture_reference_mentions", "—")),
+            str(values.get("scripture_text_alignment_count", "—")),
             str(values.get("distinct_scripture_books", "—")),
         )
         found.append((video, run))
@@ -1209,17 +1214,33 @@ def analysis_show(
         references.add_column("Time")
         references.add_column("Segment", justify="right")
         references.add_column("Transcript match")
+        alignment_sources: set[str] = set()
         for item in database.list_sermon_analysis_evidence(run.id):
             payload = json.loads(item.payload_json)
+            bible_source = payload.get("bible_source")
+            if isinstance(bible_source, dict):
+                alignment_sources.add(
+                    f"{bible_source.get('translation_name', 'unknown')} "
+                    f"({bible_source.get('translation_version', 'unknown')}; "
+                    f"{bible_source.get('artifact_version', 'unknown')})"
+                )
             references.add_row(
                 str(payload.get("canonical_reference", "—")),
-                str(payload.get("detection_class", "—")),
-                str(payload.get("detection_confidence", "—")),
+                str(
+                    payload.get("detection_class")
+                    or payload.get("alignment_class", "—")
+                ),
+                str(
+                    payload.get("detection_confidence")
+                    or payload.get("alignment_score", "—")
+                ),
                 format_timestamp(item.start_seconds) if item.start_seconds is not None else "—",
                 str(item.segment_index) if item.segment_index is not None else "—",
                 item.excerpt,
             )
         console.print(references)
+        for source in sorted(alignment_sources):
+            console.print(f"Bible alignment source: {source}")
         console.print(
             f"Provenance: run=#{run.id}; extraction=#{run.extraction_result_id}; "
             f"source_sha256={run.source_content_sha256}; input={run.input_fingerprint}"
@@ -1252,6 +1273,13 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
     )
     coverage.add_row(
         "Contextual references", str(values.get("contextual_reference_mentions", 0))
+    )
+    coverage.add_row(
+        "Scripture text alignments", str(values.get("scripture_text_alignments", 0))
+    )
+    coverage.add_row(
+        "Aligned transcript span words",
+        str(values.get("scripture_aligned_transcript_span_words", 0)),
     )
     diagnostics = values.get("reference_detection_diagnostics", {})
     if isinstance(diagnostics, dict):
@@ -1348,6 +1376,11 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
             "cross_sermon_anchor_coverage",
             "mean_pairwise_book_distribution_cosine",
             "reference_density_consistency",
+            "scripture_text_engagement_fraction",
+            "sermons_with_text_alignment_fraction",
+            "anchored_text_alignment_fraction",
+            "mean_scripture_text_alignment_score",
+            "aligned_passage_concentration_hhi",
         ):
             value = structural_values.get(feature)
             structural.add_row(
@@ -1381,6 +1414,9 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
             f"{structural_coverage.get('sermons_analyzed', 0)}; "
             f"book-distribution pairs="
             f"{structural_coverage.get('reference_bearing_sermon_pairs_compared', 0)}; "
+            f"text-aligned sermons="
+            f"{structural_coverage.get('sermons_with_scripture_text_alignments', 0)}/"
+            f"{structural_coverage.get('sermons_analyzed', 0)}; "
             "null means insufficient evidence."
         )
     console.print(
@@ -1475,6 +1511,52 @@ def analysis_evaluate_scripture_detector(
         f"Cases passed: {result.passed_case_count}/{result.case_count}; "
         f"negative controls passed: {result.overall.true_negative_cases}; "
         f"methods={json.dumps(result.method_detection_counts, sort_keys=True)}"
+    )
+    for failure in result.failures:
+        console.print(
+            f"Miss: {failure['case_id']}; expected={failure['expected']}; "
+            f"detected={failure['detected']}",
+            markup=False,
+        )
+
+
+@analysis_app.command(
+    "evaluate-scripture-alignment",
+    help="Evaluate conservative Bible-text alignment against the reviewed fixture.",
+)
+def analysis_evaluate_scripture_alignment(
+    fixture: Path = typer.Argument(
+        Path("evaluation/scripture-alignments/reviewed-v1.json"),
+        help="Reviewed Scripture-text alignment evaluation fixture.",
+    ),
+) -> None:
+    try:
+        result = evaluate_scripture_alignment(fixture)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    table = Table(title=f"Scripture Alignment Evaluation — {result.corpus_version}")
+    table.add_column("Class")
+    table.add_column("TP", justify="right")
+    table.add_column("FP", justify="right")
+    table.add_column("FN", justify="right")
+    table.add_column("Precision", justify="right")
+    table.add_column("Recall", justify="right")
+    for label, metrics in (("overall", result.overall), *result.by_class.items()):
+        table.add_row(
+            label,
+            str(metrics.true_positive),
+            str(metrics.false_positive),
+            str(metrics.false_negative),
+            f"{metrics.precision:.3f}",
+            f"{metrics.recall:.3f}",
+        )
+    console.print(table)
+    console.print(
+        f"Cases passed: {result.passed_case_count}/{result.case_count}; "
+        f"negative controls passed: {result.overall.true_negative_cases}; "
+        f"Bible source={result.bible_source['translation_name']} "
+        f"({result.bible_source['translation_version']}, "
+        f"{result.bible_source['artifact_version']})."
     )
     for failure in result.failures:
         console.print(

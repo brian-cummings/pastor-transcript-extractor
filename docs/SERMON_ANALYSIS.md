@@ -1,4 +1,4 @@
-# Sermon Analysis: First Increment
+# Sermon Analysis
 
 The analysis stage consumes the latest persisted extraction result and its
 already-identified sermon window. It does not detect sermons, change their
@@ -11,9 +11,12 @@ measurements:
 - identified sermon-window duration;
 - total, explicit, and contextual Scripture reference mention counts;
 - distinct canonical passages and Bible books; and
-- the sorted set of referenced books.
+- the sorted set of referenced books;
+- conservative Scripture-text alignments and their anchored/independent split;
+  and
+- the non-overlapping transcript-span words supported by accepted alignments.
 
-Scripture extraction deliberately favors precision. Version 3 preserves
+Scripture extraction deliberately favors precision. Version 4 preserves
 high-confidence `explicit` numeric references such as `John 3:16` and
 `Romans 8:1-4`, while adding a separate `contextual` class. Every recognized
 reference is persisted as a
@@ -82,7 +85,8 @@ separately in `sermon_analysis_evidence` so measurements are not confused with
 their support.
 
 The input fingerprint combines the video, analyzer key/version, analysis schema
-version, and canonical hash of the selected sermon content. A unique SQLite
+version, canonical hash of the selected sermon content, and exact Bible corpus
+content hash. A unique SQLite
 constraint makes the same analyzer version over unchanged content reuse the
 existing complete run. Computation happens before persistence, and each run,
 its measurements, and its evidence are inserted in one transaction, so an
@@ -208,9 +212,9 @@ next verse” ordinal inference. This is a small behavior-locking corpus, not a
 claim of population-level accuracy; it should grow through reviewed production
 misses before broader recall claims are made.
 
-The sermon analyzer version is now `3`; its fingerprint therefore creates new
+The contextual-reference sermon analyzer version was `3`; its fingerprint created new
 runs over unchanged transcripts while retaining version-2 explicit-only runs.
-The profile analyzer version is also `3` and selects exact version-3 sermon
+The contextual-reference profile analyzer version was also `3` and selected exact version-3 sermon
 inputs. Profile reference totals, zero-reference coverage, canonical emphasis,
 and the existing structural vector are regenerated from the union of accepted
 explicit and contextual evidence. Separate explicit/contextual counts and
@@ -218,11 +222,99 @@ method/confidence distributions show exactly how much coverage expansion came
 from the new detector. No production profile-coverage delta is claimed until
 the profile corpus is rerun and inspected.
 
+## Scripture-text alignment (Iteration 5)
+
+Version 4 adds passage alignment as a conservative extension of the same sermon
+analysis run. It uses the public-domain, 66-book **World English Bible, 2020
+stable text edition** from eBible.org. The bundled verse-per-line artifact is
+pinned as `ebible-engwebp-2026-08-08`; its uncompressed SHA-256, deterministic
+gzip SHA-256, upstream archive SHA-256, upstream file date, translation id,
+license, and [official source archive](https://ebible.org/Scriptures/engwebp_vpl.zip)
+are recorded in `engwebp-2020-stable.provenance.json`. Runtime loading verifies
+the content checksum before analysis.
+
+### How alignment works
+
+The detector searches short, overlapping groups of transcript segments. Rare
+Bible tokens nominate verse candidates without requiring a spoken reference.
+For candidates near an existing explicit or contextual reference, the search is
+restricted and marked `anchored`; other candidates are `independent`. Candidate
+verses are expanded to one-, two-, or three-verse contiguous passages within a
+chapter and compared in token order. The score combines Bible-text coverage and
+coverage of the matched transcript span. Ordered matching permits omitted
+words, partial quotations, repeated words, and short continuations while
+remaining reproducible and explainable.
+
+An independent match currently requires at least nine ordered matching tokens,
+58% Bible-passage coverage, 48% matched-span coverage, a four-token exact run,
+and at least two relatively rare shared Bible tokens. An anchored match requires
+at least six ordered tokens, 38% passage coverage, and either a three-token run
+or two rare shared tokens. Bible passages shorter than seven or longer than 105
+tokens are not accepted. Overlapping transcript nominations collapse to the
+strongest match, which prevents duplicated engagement measurements.
+
+Each accepted `scripture_text_alignment` evidence row is separate from
+`scripture_reference` evidence. Its payload records the matched canonical
+passage and Bible text, transcript segment range and excerpt, available
+character/timestamp bounds, score and component coverage, matching/rare token
+diagnostics, alignment policy version, translation provenance, and the
+explicit/contextual anchor when present. An alignment is evidence of close
+textual engagement; it does not become or overwrite an explicit/contextual
+citation.
+
+Known limitations are deliberate. Very short or common biblical phrases are
+rejected. Loose paraphrases without enough shared ordered vocabulary, passages
+rendered very differently from WEB, non-contiguous readings longer than three
+verses, cross-chapter continuations, and allusions may be missed. This version
+does not infer which translation the preacher actually used, and its transcript
+span is the narrowest span between ordered matched blocks rather than a
+word-level semantic alignment.
+
+### Reviewed evaluation
+
+The frozen reviewed fixture includes exact and partial quotations, skipped
+words, close paraphrase, anchored explicit/contextual cases, short/common
+phrases, ambiguous religious language, non-biblical speech, and reference-only
+speech:
+
+```bash
+pte analysis evaluate-scripture-alignment \
+  evaluation/scripture-alignments/reviewed-v1.json
+```
+
+The current reviewed result is 7 true positives, 0 false positives, and 0 false
+negatives: **1.000 precision / 1.000 recall**, with all five negative controls
+passing. Anchored cases are 3/3 and independent cases are 4/4. This is a small
+behavior-locking policy corpus, not a population-level accuracy estimate; new
+production misses and near-misses should be reviewed before expanding it.
+
+### Structural profile effects
+
+Profile analyzer version 4 consumes exact sermon analyzer version-4 run ids, so
+new alignments or changed profile membership naturally create a new immutable
+profile derivation. Existing reference counts, explicit/contextual distinctions,
+and canonical reference features remain unchanged. Alignment evidence adds five
+continuous values to the deterministic feature vector:
+
+- `scripture_text_engagement_fraction`: accepted non-overlapping transcript-span
+  words divided by analyzed sermon words;
+- `sermons_with_text_alignment_fraction`;
+- `anchored_text_alignment_fraction`;
+- `mean_scripture_text_alignment_score`; and
+- `aligned_passage_concentration_hhi`, calculated from aligned book-chapter
+  shares.
+
+Per-sermon structure records alignment counts, aligned span words, and engagement
+fraction, while coverage diagnostics separately report text-aligned sermons and
+sermons that have alignment evidence but no detected reference. This prevents
+zero-reference coverage from being mistaken for zero Scripture engagement and
+keeps every aggregate traceable through exact sermon-analysis input runs.
+
 ## Natural next increment
 
-The next natural iteration is deterministic quoted-passage alignment against a
-versioned Bible-text source with translation provenance. It should nominate
-unnamed quotations conservatively, retain text similarity and source spans as
-evidence, and expand the reviewed corpus before contributing to structural
-features. Semantic pastor-style, theology, politics, embeddings, and clustering
-remain out of scope until detector coverage is better characterized.
+The next useful deterministic increment is a reviewed **passage-engagement
+sequence**: merge adjacent reference and alignment evidence into explainable
+sermon episodes, measure episode duration/continuity and movement through verse
+order, and distinguish sustained working-through from isolated quotations.
+That would improve the current span-based engagement estimate without requiring
+LLM judgments, embeddings, clustering, theology, politics, or style labels.
