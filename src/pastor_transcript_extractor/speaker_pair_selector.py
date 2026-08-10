@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v21"
+SELECTOR_VERSION = "speaker_pair_selector_v22"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -63,7 +63,6 @@ class PairCandidateObservation:
 @dataclass(frozen=True, slots=True)
 class PairSelectionHistory:
     excluded_pairs: frozenset[frozenset[str]] = frozenset()
-    excluded_source_pairs: frozenset[frozenset[str]] = frozenset()
     observation_use: Mapping[str, int] | None = None
     source_use: Mapping[str, int] | None = None
     disfavored_observations: Mapping[str, int] | None = None
@@ -158,7 +157,6 @@ def selection_history_from_artifacts(
         str(draft.get("pair_id")): draft for draft in drafts if draft.get("pair_id")
     }
     excluded_pairs: set[frozenset[str]] = set()
-    excluded_source_pairs: set[frozenset[str]] = set()
     observation_use: dict[str, int] = {}
     source_use: dict[str, int] = {}
     disfavored: dict[str, int] = {}
@@ -202,7 +200,6 @@ def selection_history_from_artifacts(
             excluded_pairs.add(frozenset(fingerprints))
         sources = _draft_sources(draft)
         if len(sources) == 2:
-            excluded_source_pairs.add(frozenset(sources))
             sources_by_pair[str(draft.get("pair_id") or f"draft-{index}")] = sources
         _record_automatic_pair(draft, automatic_pair_ids)
         _record_profile_growth_selection_once(
@@ -240,7 +237,6 @@ def selection_history_from_artifacts(
                 )
         sources = _fixture_sources(fixture)
         if len(sources) == 2:
-            excluded_source_pairs.add(frozenset(sources))
             sources_by_pair.setdefault(
                 str(fixture.get("pair_id") or f"fixture-{index}"), sources
             )
@@ -334,7 +330,6 @@ def selection_history_from_artifacts(
 
     return PairSelectionHistory(
         excluded_pairs=frozenset(excluded_pairs),
-        excluded_source_pairs=frozenset(excluded_source_pairs),
         observation_use=observation_use,
         source_use=source_use,
         disfavored_observations=disfavored,
@@ -480,10 +475,8 @@ def select_next_speaker_pair(
     for index, observation_a in enumerate(candidates):
         for observation_b in candidates[index + 1 :]:
             pair_key = frozenset((observation_a.input_fingerprint, observation_b.input_fingerprint))
-            source_pair_key = frozenset((observation_a.video_id, observation_b.video_id))
             if (
                 pair_key in history.excluded_pairs
-                or source_pair_key in history.excluded_source_pairs
                 or _crosses_evaluation_partitions(observation_a, observation_b)
             ):
                 continue

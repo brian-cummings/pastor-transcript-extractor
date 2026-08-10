@@ -302,6 +302,11 @@ Automatic review handoff carries both selected immutable observation
 fingerprints into packet preparation and records them in the selection
 manifest. Packet creation verifies that each fingerprint still belongs to its
 selected video and refuses substitution by a different latest observation.
+Reviewed and drafted exclusions are also fingerprint-pair scoped. A corrected
+sermon window may therefore produce replacement observations for two previously
+paired videos without inheriting the obsolete pair's exclusion; ordinary video
+reuse ranking still deprioritizes repeated recordings.
+
 Inspect historical and current automatic drafts with:
 
 ```bash

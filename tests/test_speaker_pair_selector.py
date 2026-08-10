@@ -1449,9 +1449,6 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         )
 
         self.assertIn(frozenset(("a", "b")), history.excluded_pairs)
-        self.assertIn(
-            frozenset(("video-a", "video-b")), history.excluded_source_pairs
-        )
         self.assertEqual({"a": 1, "b": 1}, history.observation_use)
         self.assertEqual({"video-a": 1, "video-b": 1}, history.source_use)
         self.assertEqual({"a": 1}, history.disfavored_observations)
@@ -1580,11 +1577,10 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             {selected.observation_a.video_id, selected.observation_b.video_id},
         )
 
-    def test_reclassification_does_not_bypass_source_pair_exclusion(self) -> None:
+    def test_reclassification_allows_replacement_observation_pair(self) -> None:
         candidates = [
             candidate("new-fingerprint-a", name="alex", day=1),
             candidate("new-fingerprint-b", name="alex", day=2),
-            candidate("other", name="alex", day=3),
         ]
         candidates[0] = PairCandidateObservation(
             input_fingerprint="new-fingerprint-a",
@@ -1601,16 +1597,34 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             quality_signature=candidates[1].quality_signature,
         )
 
-        selected = select_next_speaker_pair(
-            candidates,
-            PairSelectionHistory(
-                excluded_source_pairs=frozenset((frozenset(("stable-a", "stable-b")),))
-            ),
+        history = selection_history_from_artifacts(
+            drafts=[
+                {
+                    "pair_id": "obsolete-pair",
+                    "observations": {
+                        "source_a": {
+                            "input_fingerprint": "old-fingerprint-a",
+                            "youtube_video_id": "stable-a",
+                        },
+                        "source_b": {
+                            "input_fingerprint": "old-fingerprint-b",
+                            "youtube_video_id": "stable-b",
+                        },
+                    },
+                }
+            ],
+            reviews=[],
+            fixtures=[],
         )
+        selected = select_next_speaker_pair(candidates, history)
 
-        self.assertNotEqual(
+        self.assertEqual(
             {"stable-a", "stable-b"},
             {selected.observation_a.video_id, selected.observation_b.video_id},
+        )
+        self.assertIn(
+            frozenset(("old-fingerprint-a", "old-fingerprint-b")),
+            history.excluded_pairs,
         )
 
     def test_two_unseen_observations_beat_anchor_reuse(self) -> None:

@@ -740,8 +740,12 @@ Automatic nomination also binds packet preparation to the selector's exact
 immutable observation fingerprints. The review command fails closed if either
 fingerprint no longer belongs to the selected video, preventing a newer
 observation for the same recording from silently replacing the nominated
-evidence. Audit current and legacy selection provenance without mutation with
-`pte identity audit-speaker-review-selection`.
+evidence. Reviewed and drafted exclusions likewise apply to the exact immutable
+fingerprint pair, not permanently to the two videos: if sermon reclassification
+creates replacement observations, their new pair may be reviewed while the old
+pair remains excluded. Video reuse is still counted and deprioritized by the
+normal ranking policy. Audit current and legacy selection provenance without
+mutation with `pte identity audit-speaker-review-selection`.
 
 `profile-growth` has a precision-first nomination tier when a verified
 discovery artifact contains an unreviewed `strong_strong` pair in the pinned
