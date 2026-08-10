@@ -16,7 +16,7 @@ from pastor_transcript_extractor.style_analysis import (
 
 
 STYLE_PROFILE_ANALYZER_KEY = "profile-style-evidence"
-STYLE_PROFILE_ANALYZER_VERSION = "1"
+STYLE_PROFILE_ANALYZER_VERSION = "2"
 STYLE_PROFILE_SCHEMA_VERSION = 1
 
 

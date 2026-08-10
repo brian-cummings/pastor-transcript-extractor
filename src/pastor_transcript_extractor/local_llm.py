@@ -31,7 +31,13 @@ class LocalLlmHealth:
 class LocalLlmClient(Protocol):
     model: str
 
-    def generate_json(self, prompt: str, schema: dict[str, Any]) -> LocalLlmResponse: ...
+    def generate_json(
+        self,
+        prompt: str,
+        schema: dict[str, Any],
+        *,
+        max_tokens: int = 256,
+    ) -> LocalLlmResponse: ...
 
 
 class OllamaClient:
@@ -96,14 +102,26 @@ class OllamaClient:
             return LocalLlmHealth(True, True, False, "structured output check returned an unexpected value")
         return LocalLlmHealth(True, True, True, "ready")
 
-    def generate_json(self, prompt: str, schema: dict[str, Any]) -> LocalLlmResponse:
+    def generate_json(
+        self,
+        prompt: str,
+        schema: dict[str, Any],
+        *,
+        max_tokens: int = 256,
+    ) -> LocalLlmResponse:
+        if max_tokens <= 0:
+            raise ValueError("Structured output token budget must be positive")
         payload = json.dumps(
             {
                 "model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
                 "format": schema,
-                "options": {"temperature": 0, "num_predict": 256, "num_ctx": self.config.context_size},
+                "options": {
+                    "temperature": 0,
+                    "num_predict": max_tokens,
+                    "num_ctx": self.config.context_size,
+                },
             }
         ).encode("utf-8")
         request = Request(

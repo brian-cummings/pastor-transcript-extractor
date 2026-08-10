@@ -109,6 +109,7 @@ def semantic_proposal_schema(
         "properties": {
             "proposals": {
                 "type": "array",
+                "maxItems": len(dimension_values),
                 "items": {
                     "type": "object",
                     "properties": {

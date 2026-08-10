@@ -13,6 +13,7 @@ from pastor_transcript_extractor.semantic_evidence import (
 )
 from pastor_transcript_extractor.style_analysis import (
     STYLE_DIMENSIONS,
+    STYLE_OUTPUT_TOKEN_BUDGET,
     STYLE_PROMPT_VERSION,
     style_prompt,
     validate_style_proposals,
@@ -94,6 +95,7 @@ def evaluate_style_model(
         response = client.generate_json(
             style_prompt(block, None, None, prompt_version=prompt_version),
             semantic_proposal_schema(STYLE_DIMENSIONS, block),
+            max_tokens=STYLE_OUTPUT_TOKEN_BUDGET,
         )
         validation = validate_style_proposals(response.content, block)
         rejected += sum(validation.rejection_counts.values())

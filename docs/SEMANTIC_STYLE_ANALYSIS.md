@@ -112,7 +112,9 @@ The reviewed baseline uses:
 - model digest:
   `a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a`;
 - temperature: `0`;
-- prompt: `sermon-style-evidence-v2`;
+- output budget: `384` tokens, with at most one proposal per dimension and four
+  proposals per block;
+- prompt: `sermon-style-evidence-v3`;
 - block builder: `nonoverlapping-75s-3600chars-v1`;
 - grounding validator: `grounded-segment-spans-v1`; and
 - style acceptance policy: `observable-dimension-gates-v1`.
@@ -123,21 +125,21 @@ provenance and fingerprinting.
 
 ## Reviewed evaluation
 
-`evaluation/sermon-style/reviewed-v1.json` contains twelve reviewed cases with
+`evaluation/sermon-style/reviewed-v2.json` contains twelve reviewed cases with
 clear positives, overlaps, ambiguous cases, quotation-only and assertion-only
 cases, passing examples, generic encouragement, and announcements. Run:
 
 ```bash
-pte analysis evaluate-style evaluation/sermon-style/reviewed-v1.json
+pte analysis evaluate-style evaluation/sermon-style/reviewed-v2.json
 ```
 
-The pinned Gemma 3 4B baseline is stored in
-`evaluation/sermon-style/gemma3-4b-v2-baseline.json`. It produced 9 true
-positives, 0 false positives, and 1 false negative: **1.000 precision and 0.900
-recall** overall, with all five negative controls passing. Exegesis, narrative,
-and doctrine each measured 1.000 precision/recall on this small set. Practical
-application measured 1.000 precision and 0.667 recall; the model abstained on
-one clear imperative passage.
+The current pinned Gemma 3 4B baseline is stored in
+`evaluation/sermon-style/gemma3-4b-v3-baseline.json`. It produced 11 true
+positives, 0 false positives, and 0 false negatives: **1.000 precision and 1.000
+recall** on this small corpus, with all five negative controls passing. Version
+2 explicitly records that a close textual explanation may also advance a
+doctrinal implication. The prior prompt-v2/corpus-v1 result remains stored as a
+historical baseline rather than being overwritten.
 
 This is a small behavior-locking corpus, not a population estimate. The lexical
 acceptance gates favor precision and will miss unfamiliar phrasing. Transcript
@@ -179,8 +181,8 @@ versions, the exact deterministic Scripture run and its fingerprint, model name
 and digest, model configuration, prompt version and template hash, block
 version, and validation versions. An unchanged fingerprint is checked before
 any model request and reuses the prior complete run. Source, Scripture run,
-model, prompt, chunking, validation, or analyzer changes create a new immutable
-run.
+model, output budget, prompt, chunking, validation, or analyzer changes create a
+new immutable run.
 
 The profile fingerprint includes resolved profile identity, effective
 observation membership, exact style run IDs, schema version, and profile

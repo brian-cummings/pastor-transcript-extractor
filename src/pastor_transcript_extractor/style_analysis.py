@@ -30,11 +30,12 @@ from pastor_transcript_extractor.storage import Database
 
 
 STYLE_ANALYZER_KEY = "sermon-style-evidence"
-STYLE_ANALYZER_VERSION = "1"
-STYLE_PROMPT_VERSION = "sermon-style-evidence-v2"
+STYLE_ANALYZER_VERSION = "2"
+STYLE_PROMPT_VERSION = "sermon-style-evidence-v3"
 STYLE_BLOCK_VERSION = "nonoverlapping-75s-3600chars-v1"
 STYLE_ACCEPTANCE_VERSION = "observable-dimension-gates-v1"
 STYLE_ANALYSIS_SCHEMA_VERSION = 1
+STYLE_OUTPUT_TOKEN_BUDGET = 384
 
 STYLE_DIMENSIONS: dict[str, str] = {
     "exegetical_exposition": (
@@ -101,7 +102,7 @@ Prompt version: {prompt_version}
 
 EXEGETICAL requires actual explanation of a biblical text's language, context, structure, or meaning; a quotation, named verse, or doctrinal claim alone is not exegesis. NARRATIVE requires a recounted event with actors and actions; a hypothetical, passing example, announcement, or generic encouragement is not narrative. DOCTRINAL requires reasoning about Christian belief, not merely mentioning Scripture or asserting a belief. PRACTICAL APPLICATION requires a specific lived response, not a slogan or vague encouragement.
 
-Return the smallest contiguous CURRENT segment span that provides clear evidence. Multiple dimensions may use the same span. Propose nothing for ambiguous material. Do not classify the whole sermon. Do not return quotations, timestamps, explanations, confidence scores, or categories outside the supplied schema. PREVIOUS and FOLLOWING are context only and may never be cited.
+Return at most one strongest, smallest contiguous CURRENT segment span per dimension, with no more than four proposals total. Multiple dimensions may use the same span. Propose nothing for ambiguous material. Do not classify the whole sermon. Do not return quotations, timestamps, explanations, confidence scores, or categories outside the supplied schema. PREVIOUS and FOLLOWING are context only and may never be cited.
 
 PREVIOUS CONTEXT:
 {previous_text}
@@ -172,7 +173,7 @@ def _passes_style_acceptance_gate(
             re.search(
                 r"\b(?:this week|before .{0,30} ends|call|ask forgiveness|choose|"
                 r"put it on|make one|visit|learn .{0,30} name|listen|repair|"
-                r"write|schedule|confess|apologize|forgive|stop|start)\b",
+                r"write|schedule|confess|apologize|forgive)\b",
                 text,
             )
         )
@@ -282,6 +283,7 @@ def analyze_sermon_style(
         "model_digest": model_digest,
         "context_size": context_size,
         "temperature": 0,
+        "output_token_budget": STYLE_OUTPUT_TOKEN_BUDGET,
     }
     prompt_provenance = {
         "prompt_version": prompt_version,
@@ -342,7 +344,9 @@ def analyze_sermon_style(
             prompt_version=prompt_version,
         )
         response = client.generate_json(
-            prompt, semantic_proposal_schema(STYLE_DIMENSIONS, block)
+            prompt,
+            semantic_proposal_schema(STYLE_DIMENSIONS, block),
+            max_tokens=STYLE_OUTPUT_TOKEN_BUDGET,
         )
         if response.model != client.model:
             raise ValueError(

@@ -14,6 +14,7 @@ from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.semantic_evidence import (
     SemanticBlock,
     SemanticSegment,
+    semantic_proposal_schema,
     validate_semantic_proposals,
 )
 from pastor_transcript_extractor.sermon_analysis import analyze_sermon
@@ -35,9 +36,17 @@ class FakeStyleClient:
     def __init__(self, proposals: list[dict[str, object]]) -> None:
         self.proposals = proposals
         self.calls = 0
+        self.max_token_budgets: list[int] = []
 
-    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+    def generate_json(
+        self,
+        prompt: str,
+        schema: dict[str, object],
+        *,
+        max_tokens: int = 256,
+    ) -> LocalLlmResponse:
         self.calls += 1
+        self.max_token_budgets.append(max_tokens)
         content = {"proposals": self.proposals}
         return LocalLlmResponse(content, json.dumps(content), self.model)
 
@@ -45,7 +54,13 @@ class FakeStyleClient:
 class FixtureEvaluationClient:
     model = "fixture-evaluation:1"
 
-    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+    def generate_json(
+        self,
+        prompt: str,
+        schema: dict[str, object],
+        *,
+        max_tokens: int = 256,
+    ) -> LocalLlmResponse:
         dimensions = []
         if "connects the command" in prompt:
             dimensions.append("exegetical_exposition")
@@ -64,6 +79,17 @@ class FixtureEvaluationClient:
 
 
 class SemanticEvidenceValidationTests(unittest.TestCase):
+    def test_proposal_schema_caps_output_to_one_span_per_dimension(self) -> None:
+        schema = semantic_proposal_schema(
+            ("exegetical_exposition", "practical_application"),
+            SemanticBlock(
+                0,
+                (SemanticSegment(0, "Grounded transcript text.", 0.0, 5.0),),
+            ),
+        )
+
+        self.assertEqual(2, schema["properties"]["proposals"]["maxItems"])
+
     def test_rejects_model_invented_ids_reversed_and_short_spans(self) -> None:
         block = SemanticBlock(
             0,
@@ -272,6 +298,7 @@ class StyleAnalysisPersistenceTests(unittest.TestCase):
         self.assertFalse(reused.created)
         self.assertEqual(first.run.id, reused.run.id)
         self.assertEqual(1, client.calls)
+        self.assertEqual([384], client.max_token_budgets)
         values = self._values(first.run.id)
         self.assertEqual(4, values["model_proposal_count"])
         self.assertEqual(3, values["semantic_evidence_count"])

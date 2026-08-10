@@ -86,6 +86,25 @@ class OllamaClientTests(unittest.TestCase):
 
         self.assertEqual({"status": "ok"}, result.content)
 
+    def test_generate_json_accepts_analyzer_specific_output_budget(self) -> None:
+        response = FakeHttpResponse(
+            {"model": "fixture:4b", "message": {"content": '{"status":"ok"}'}}
+        )
+        captured: list[object] = []
+
+        def open_request(request: object, timeout: float) -> FakeHttpResponse:
+            captured.append(request)
+            return response
+
+        with patch("pastor_transcript_extractor.local_llm.urlopen", side_effect=open_request):
+            OllamaClient(config()).generate_json(
+                "check", {"type": "object"}, max_tokens=512
+            )
+
+        request = captured[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(512, payload["options"]["num_predict"])
+
 
 if __name__ == "__main__":
     unittest.main()

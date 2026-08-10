@@ -1,0 +1,30 @@
+{
+  "corpus_version": "sermon-style-reviewed-v2",
+  "evaluated_on": "2026-08-10",
+  "model": "gemma3:4b",
+  "model_digest": "a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a",
+  "prompt_version": "sermon-style-evidence-v3",
+  "analyzer_version": "2",
+  "output_token_budget": 384,
+  "maximum_proposals_per_block": 4,
+  "acceptance_version": "observable-dimension-gates-v1",
+  "case_count": 12,
+  "passed_case_count": 12,
+  "negative_control_count": 5,
+  "negative_controls_passed": 5,
+  "rejected_model_proposals": 36,
+  "overall": {
+    "true_positive": 11,
+    "false_positive": 0,
+    "false_negative": 0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "by_dimension": {
+    "exegetical_exposition": {"true_positive": 2, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0},
+    "narrative_illustration": {"true_positive": 2, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0},
+    "doctrinal_argument": {"true_positive": 4, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0},
+    "practical_application": {"true_positive": 3, "false_positive": 0, "false_negative": 0, "precision": 1.0, "recall": 1.0}
+  },
+  "failures": []
+}

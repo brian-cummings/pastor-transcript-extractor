@@ -1841,7 +1841,7 @@ def analysis_style_show_profile(
 )
 def analysis_evaluate_style(
     fixture: Path = typer.Argument(
-        Path("evaluation/sermon-style/reviewed-v1.json"), help="Reviewed style fixture."
+        Path("evaluation/sermon-style/reviewed-v2.json"), help="Reviewed style fixture."
     ),
     model: str | None = typer.Option(None, "--model", help="Override configured Ollama model."),
 ) -> None:
