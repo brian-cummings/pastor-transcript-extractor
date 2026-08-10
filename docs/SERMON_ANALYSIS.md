@@ -318,3 +318,6 @@ sermon episodes, measure episode duration/continuity and movement through verse
 order, and distinguish sustained working-through from isolated quotations.
 That would improve the current span-based engagement estimate without requiring
 LLM judgments, embeddings, clustering, theology, politics, or style labels.
+
+The subsequent semantic style iteration is documented separately in
+[`SEMANTIC_STYLE_ANALYSIS.md`](SEMANTIC_STYLE_ANALYSIS.md).

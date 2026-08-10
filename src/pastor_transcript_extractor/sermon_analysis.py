@@ -30,7 +30,7 @@ class AnalysisOutcome:
 
 
 @dataclass(frozen=True, slots=True)
-class _SermonSegment:
+class SermonSegment:
     index: int
     start_seconds: float | None
     end_seconds: float | None
@@ -201,7 +201,7 @@ def _number(value: object) -> float | None:
 
 def _load_sermon_source(
     extraction_path: Path,
-) -> tuple[list[_SermonSegment], float, float]:
+) -> tuple[list[SermonSegment], float, float]:
     try:
         payload = json.loads(extraction_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -234,7 +234,7 @@ def _load_sermon_source(
                 if segment_end > start and segment_start < end:
                     selected_indexes.append(index)
 
-    segments: list[_SermonSegment] = []
+    segments: list[SermonSegment] = []
     for index in selected_indexes:
         if index < 0 or index >= len(raw_segments):
             raise ValueError(f"Invalid included sermon segment index: {index}")
@@ -242,7 +242,7 @@ def _load_sermon_source(
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
             raise ValueError(f"Sermon segment {index} has no text")
         segments.append(
-            _SermonSegment(
+            SermonSegment(
                 index=index,
                 start_seconds=_number(item.get("start_seconds")),
                 end_seconds=_number(item.get("end_seconds")),
@@ -255,7 +255,7 @@ def _load_sermon_source(
 
 
 def _canonical_source(
-    segments: list[_SermonSegment], sermon_start_seconds: float, duration_seconds: float
+    segments: list[SermonSegment], sermon_start_seconds: float, duration_seconds: float
 ) -> bytes:
     payload = {
         "sermon_start_seconds": sermon_start_seconds,
@@ -273,6 +273,19 @@ def _canonical_source(
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
         "utf-8"
     )
+
+
+def load_identified_sermon_source(
+    extraction_path: Path,
+) -> tuple[list[SermonSegment], float, float]:
+    """Load only the sermon window already selected by extraction."""
+    return _load_sermon_source(extraction_path)
+
+
+def canonical_sermon_source(
+    segments: list[SermonSegment], sermon_start_seconds: float, duration_seconds: float
+) -> bytes:
+    return _canonical_source(segments, sermon_start_seconds, duration_seconds)
 
 
 def _parse_spoken_number(value: str) -> int | None:
@@ -324,7 +337,7 @@ def _overlaps(span: tuple[int, int], evidence: list[dict[str, Any]]) -> bool:
 
 def _build_reference(
     *,
-    segment: _SermonSegment,
+    segment: SermonSegment,
     match: re.Match[str],
     book: str,
     chapter: int | None,
@@ -371,7 +384,7 @@ def _build_reference(
     }
 
 
-def _reference_evidence(segments: list[_SermonSegment]) -> list[dict[str, Any]]:
+def _reference_evidence(segments: list[SermonSegment]) -> list[dict[str, Any]]:
     all_evidence: list[dict[str, Any]] = []
     carried_anchor: dict[str, Any] | None = None
     for segment in segments:
@@ -494,7 +507,7 @@ def _reference_evidence(segments: list[_SermonSegment]) -> list[dict[str, Any]]:
 def detect_scripture_references_in_texts(texts: list[str]) -> list[dict[str, object]]:
     """Public deterministic detector used by the reviewed evaluation workflow."""
     segments = [
-        _SermonSegment(index=index, start_seconds=None, end_seconds=None, text=text)
+        SermonSegment(index=index, start_seconds=None, end_seconds=None, text=text)
         for index, text in enumerate(texts)
     ]
     return [
@@ -636,7 +649,7 @@ def analyze_sermon(
     evidence_rows = []
     for item in references:
         segment = item["segment"]
-        assert isinstance(segment, _SermonSegment)
+        assert isinstance(segment, SermonSegment)
         payload = {
             "book": item["book"],
             "canonical_reference": item["canonical_reference"],

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "corpus_version": "sermon-style-reviewed-v1",
+  "reviewed_by": "Codex-assisted operational-definition review",
+  "cases": [
+    {
+      "id": "clear-exegesis",
+      "segments": ["Notice that Paul says therefore at the start of this sentence. That word connects the command to the mercy described in the previous chapter, so the obedience here is a response to grace rather than a way to earn it."],
+      "expected_dimensions": ["exegetical_exposition"]
+    },
+    {
+      "id": "clear-narrative",
+      "segments": ["When I was sixteen, my father and I became stranded beside the highway in a winter storm. A stranger stopped, drove us home, and refused payment. That night taught me what undeserved kindness looks like."],
+      "expected_dimensions": ["narrative_illustration"]
+    },
+    {
+      "id": "clear-doctrine",
+      "segments": ["If salvation were earned by our obedience, grace would become wages and Christ's work would be unnecessary. But Scripture says salvation is a gift, so good works must be the fruit of salvation rather than its cause."],
+      "expected_dimensions": ["doctrinal_argument"]
+    },
+    {
+      "id": "clear-application",
+      "segments": ["Before this week ends, call the person you have avoided, acknowledge the harm without defending yourself, ask forgiveness, and make one concrete offer to repair what you damaged."],
+      "expected_dimensions": ["practical_application"]
+    },
+    {
+      "id": "overlap-exegesis-doctrine",
+      "segments": ["John's phrase the Word became flesh means the eternal Son truly entered human life; it does not mean he merely appeared human. Because the subject is the eternal Word and the verb describes becoming flesh, the verse supports both Christ's full deity and full humanity."],
+      "expected_dimensions": ["exegetical_exposition", "doctrinal_argument"]
+    },
+    {
+      "id": "overlap-doctrine-application",
+      "segments": ["Because every person bears God's image, dignity does not depend on usefulness, wealth, or health. Therefore, when you visit the nursing home, learn each resident's name and listen without treating anyone as a task to complete."],
+      "expected_dimensions": ["doctrinal_argument", "practical_application"]
+    },
+    {
+      "id": "narrative-to-application",
+      "segments": ["Last month I watched a neighbor carry groceries every evening for a family facing cancer treatment. Her quiet faithfulness showed love in ordinary form. Choose one burden you can carry for someone this week and put it on your calendar today."],
+      "expected_dimensions": ["narrative_illustration", "practical_application"]
+    },
+    {
+      "id": "negative-quotation-only",
+      "segments": ["For God so loved the world that he gave his only Son, that whoever believes in him should not perish but have eternal life. John chapter three verse sixteen."],
+      "expected_dimensions": []
+    },
+    {
+      "id": "negative-bare-assertions",
+      "segments": ["God is good. The Bible is true. Jesus saves. We believe these things with all our hearts, and the church has always proclaimed them."],
+      "expected_dimensions": []
+    },
+    {
+      "id": "negative-passing-example",
+      "segments": ["You might forget your keys or miss the bus on an ordinary morning, but small frustrations happen to everyone and are not our subject today."],
+      "expected_dimensions": []
+    },
+    {
+      "id": "negative-generic-encouragement",
+      "segments": ["Keep trusting, keep believing, and keep moving forward. Better days are coming, and you should feel hopeful about what lies ahead."],
+      "expected_dimensions": []
+    },
+    {
+      "id": "negative-announcement",
+      "segments": ["The community meal begins at six on Wednesday. Volunteers should arrive early, and the sign-up sheet is available in the lobby after the service."],
+      "expected_dimensions": []
+    }
+  ]
+}
