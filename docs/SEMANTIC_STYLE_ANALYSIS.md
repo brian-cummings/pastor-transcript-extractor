@@ -30,10 +30,11 @@ Dimensions are independent and may overlap on the same transcript span.
 |---|---|---|
 | Source transcript | Identified sermon segments with source indexes and timestamps | Extraction result |
 | Deterministic observation | `sermon-basics@4` Scripture references and text alignments | Deterministic analyzer |
-| Model proposal | Dimension plus start/end source segment IDs | Pinned model and prompt |
-| Accepted semantic evidence | `semantic_style_evidence` with source-derived excerpt/timestamps and validation provenance | Deterministic validator |
-| Derived sermon measurement | Counts, union duration, sermon coverage, sustained runs, and corroborated counts | Accepted evidence only |
-| Profile aggregation | Frequency, duration coverage, sermon prevalence, consistency, and exact sermon-run support | Immutable style runs and effective profile membership |
+| Model proposal | Dimension, full candidate-run boundaries, and smaller support boundaries | Pinned model and prompt |
+| Accepted supporting evidence | `semantic_style_evidence` with a compact source-grounded excerpt that proves the category | Deterministic validator |
+| Candidate representative run | `semantic_style_run` with source-grounded boundaries and links to its supporting evidence | Accepted model proposal plus conservative continuation merging |
+| Derived sermon measurement | Separate accepted-evidence and candidate-run counts, durations, and coverage | Immutable evidence and run records |
+| Profile aggregation | Separate lower-bound evidence density and unreviewed candidate-run measurements | Immutable style analyses and effective profile membership |
 
 Raw model quotations, timestamps, explanations, arbitrary labels, and invented
 segment IDs are never persisted as analysis evidence. A SHA-256 of each raw
@@ -47,13 +48,20 @@ segments, targeting at most 75 seconds or 3,600 characters. Previous and
 following segments provide context but have no citable IDs. The JSON schema
 restricts dimensions and restricts start/end IDs to the current block.
 
-The grounding validator then independently requires:
+For every proposed category, the model must return a compact supporting span and
+the full contiguous style run inside the current block. The grounding validator
+then independently validates both spans and requires:
 
 - a recognized dimension and exact current-block segment IDs;
 - source-order start/end boundaries;
 - a unique contiguous span;
 - source timestamps with positive duration no longer than 120 seconds; and
 - at least ten source transcript words.
+
+The support span must be contained by the proposed run. The observable lexical
+acceptance gate is applied only to the compact support span; it cannot validate
+invented or expanded run text. Duplicate proposals for the same dimension in a
+block are rejected.
 
 A second, versioned style acceptance policy requires observable structure
 appropriate to the proposed dimension: textual/interpretive language for
@@ -66,6 +74,23 @@ Accepted timestamps, excerpts, hashes, and word counts come from the source
 segments. Invalid proposals contribute only to rejection diagnostics. The
 complete run and all accepted evidence are inserted atomically, so an
 interruption cannot expose a partial analysis run.
+
+## Supporting evidence versus style runs
+
+Supporting evidence answers: **what compact transcript excerpt makes this
+classification defensible?** It remains a conservative lower bound and is
+stored as `semantic_style_evidence`.
+
+A candidate style run answers: **over what complete contiguous interval does
+this semantic mode remain active?** It is stored separately as
+`semantic_style_run` and links to one or more supporting-evidence keys. Runs in
+adjacent inference blocks merge only when the earlier run reaches its block's
+last segment, the later run begins at its block's first segment, the blocks are
+consecutive, and the timestamp gap is no more than 15 seconds. This permits
+explicit continuation without merging across an unclassified transition.
+
+Candidate boundaries remain `unreviewed` until the full-sermon workflow below
+has established their quality. They are not silently promoted to reviewed fact.
 
 ## Scripture corroboration
 
@@ -84,20 +109,22 @@ does not modify deterministic reference or alignment counts.
 For each sermon and dimension, `style_dimension_measurements` records:
 
 - accepted evidence count;
-- union duration and fraction of sermon duration;
-- sustained runs and sustained duration, where evidence separated by no more
-  than 15 seconds forms a run and a run of at least 60 seconds is sustained; and
+- `accepted_evidence_duration_seconds` and
+  `accepted_evidence_coverage_fraction`, explicitly lower-bound measurements;
+- candidate representative run count, duration, coverage, and boundary status;
+  and
 - Scripture-corroborated evidence count.
 
 Run diagnostics also record timestamped transcript coverage, block count,
 proposal and rejection counts, model-response hashes, and full model, prompt,
 block-builder, grounding-validator, and acceptance-policy provenance.
 
-The immutable `profile-style-evidence` derivation aggregates exact style run
+The immutable `profile-style-evidence` derivation aggregates exact style analysis
 IDs for effective profile membership. For each dimension it records evidence
-per sermon and per thousand words, total duration and duration coverage,
-sermons-with-evidence fraction, mean sermon coverage, coverage consistency
-(`1 / (1 + population CV)`), sustained-run count, and corroborated count.
+per sermon and per thousand words, accepted evidence duration and coverage,
+sermons-with-evidence fraction, lower-bound coverage consistency
+(`1 / (1 + population CV)`), candidate-run duration and coverage, candidate-run
+boundary status, and corroborated count.
 Per-sermon supporting measurements and run IDs remain in
 `sermon_style_support`. Missing sermon analyses remain explicit coverage gaps.
 Mixed model or prompt configurations are rejected at aggregation time so an
@@ -105,21 +132,22 @@ interrupted model migration cannot silently produce an incomparable profile.
 
 ## Model and prompt provenance
 
-The reviewed baseline uses:
+The category-only reviewed baseline for analyzer version 2 used:
 
 - backend: local Ollama chat with JSON-schema output;
 - model: `gemma3:4b`;
 - model digest:
   `a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a`;
 - temperature: `0`;
-- output budget: `384` tokens, with at most one proposal per dimension and four
-  proposals per block;
+- output budget: `384` tokens;
 - prompt: `sermon-style-evidence-v3`;
 - block builder: `nonoverlapping-75s-3600chars-v1`;
 - grounding validator: `grounded-segment-spans-v1`; and
 - style acceptance policy: `observable-dimension-gates-v1`.
 
-The model name, exact digest, context size, temperature, prompt version and
+Analyzer version 3 uses prompt `sermon-style-runs-v1`, output budget `512`, the
+two-span proposal schema, and continuation policy
+`boundary-touching-continuation-v1`. The model name, exact digest, context size, temperature, prompt version and
 template hash, block version, and validation versions participate in run
 provenance and fingerprinting.
 
@@ -141,13 +169,71 @@ recall** on this small corpus, with all five negative controls passing. Version
 doctrinal implication. The prior prompt-v2/corpus-v1 result remains stored as a
 historical baseline rather than being overwritten.
 
-This is a small behavior-locking corpus, not a population estimate. The lexical
+This is a small category behavior-locking corpus, not a population or boundary
+estimate. The lexical
 acceptance gates favor precision and will miss unfamiliar phrasing. Transcript
 errors, segment boundaries, code-switching, subtle stories without explicit
 event language, implicit doctrinal reasoning, and abstract application remain
 important limitations. Non-overlapping inference blocks can miss evidence that
 straddles a boundary, and duration is source-segment precision rather than
 word-level timing.
+
+## Full-sermon adjudication and boundary evaluation
+
+Create one review packet per selected sermon. Version 3 runs expose their
+candidate representative runs directly; for version 2 runs, each accepted
+exemplar is deliberately presented as a `legacy_accepted_evidence_span`
+candidate so its suspected undersizing can be reviewed without rerunning the
+model first:
+
+```bash
+pte analysis style-review-create \
+  --youtube-video-id VIDEO_ID \
+  --output evaluation/sermon-style/full-sermon/VIDEO_ID.draft.json \
+  --base-dir /path/to/data
+```
+
+The command writes an editable JSON draft and a Markdown inspection view. The
+view contains the complete timestamped sermon with inline annotations for
+accepted support, candidate runs, explicit/contextual references, and Bible-text
+alignments. The JSON retains exact analysis run IDs and input fingerprints.
+
+For every candidate run, replace `unreviewed` with one of:
+
+- `correct_representative_boundaries`;
+- `correct_but_undersized`, with corrected segment boundaries;
+- `correct_but_oversized`, with corrected segment boundaries; or
+- `incorrect_category`.
+
+Add every entirely missed run to `missed_style_runs`. Sustained Scripture
+engagement is deliberately visible for finding possible missed exegetical runs,
+but reading or aligning with Scripture is not itself adjudicated as exegesis.
+If a candidate has the wrong category but the same interval supports another
+dimension, mark the candidate incorrect and add the correct run as missed; this
+keeps false-positive and false-negative accounting explicit.
+Finalize and evaluate with:
+
+```bash
+pte analysis style-review-finalize VIDEO_ID.draft.json \
+  --reviewer REVIEWER --output VIDEO_ID.reviewed.json
+
+pte analysis evaluate-style-boundaries \
+  VIDEO_A.reviewed.json VIDEO_B.reviewed.json VIDEO_C.reviewed.json
+```
+
+Boundary evaluation reports run precision/recall, reviewed-duration recovery,
+accepted-duration precision, and duration intersection-over-union, overall and
+per dimension. These distinguish missed categories from correct categories with
+incomplete boundaries.
+
+The initial Profile 59 inspection found 35 high-confidence doctrinal excerpts
+but only 6 exegetical excerpts despite extensive deterministic Scripture
+engagement. That is evidence of lower-bound/exemplar behavior and motivated the
+two-span contract; it is not a completed boundary gold standard. No finalized
+full-sermon packets have yet been reviewed, so candidate-run duration and
+coverage remain explicitly **unreviewed and unsuitable for substantive
+profile-level interpretation**. The CLI marks them with an asterisk and labels
+the older values as accepted evidence duration/coverage.
 
 ## Running and inspecting
 
@@ -191,8 +277,9 @@ unchanged inputs reuse the existing result.
 
 ## Natural next increment
 
-The next increment should add human adjudication and sampling for accepted and
-rejected semantic evidence. Reviewed production decisions can expand the
-evaluation corpus, expose per-model drift, and calibrate conservative acceptance
-policies before the reusable semantic layer is applied to theology or sensitive
-political and Christian-nationalism indicators.
+The next increment should finalize two or three full-sermon packets, examine the
+per-dimension boundary errors, and pin a reviewed boundary baseline. Only if
+reviewed-duration recovery and accepted-duration precision are adequate should
+candidate-run coverage be promoted to representative profile coverage. The same
+review should determine whether remaining misses require better semantic
+detection or only boundary refinement.

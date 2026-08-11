@@ -301,6 +301,11 @@ from pastor_transcript_extractor.style_profile_analysis import (
     STYLE_PROFILE_ANALYZER_VERSION,
     build_profile_style_analysis,
 )
+from pastor_transcript_extractor.style_review import (
+    create_style_review_packet,
+    evaluate_style_boundaries,
+    finalize_style_review,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.source_ownership import (
     apply_source_ownership_schema,
@@ -1583,7 +1588,7 @@ def analysis_evaluate_scripture_alignment(
 
 @analysis_app.command(
     "style-run",
-    help="Generate and validate semantic style evidence for one sermon or profile.",
+    help="Generate validated style support and candidate runs for a sermon or profile.",
 )
 def analysis_style_run(
     video_id: int | None = typer.Option(None, "--video-id", help="Database video id."),
@@ -1680,7 +1685,8 @@ def analysis_style_show(
     )
     summary.add_column("Video")
     summary.add_column("Version")
-    summary.add_column("Evidence", justify="right")
+    summary.add_column("Accepted evidence", justify="right")
+    summary.add_column("Candidate runs", justify="right")
     summary.add_column("Analyzed", justify="right")
     found = []
     for video in videos:
@@ -1695,6 +1701,7 @@ def analysis_style_show(
             video.youtube_video_id,
             run.analyzer_version,
             str(values.get("semantic_evidence_count", 0)),
+            str(values.get("candidate_style_run_count", 0)),
             f"{100 * float(values.get('semantic_analysis_coverage_fraction', 0)):.1f}%",
         )
         found.append((video, run, values))
@@ -1733,6 +1740,27 @@ def analysis_style_show(
                 evidence.excerpt,
             )
         console.print(evidence_table)
+        runs_table = Table(title=f"Candidate Representative Style Runs — {video.youtube_video_id}")
+        runs_table.add_column("Dimension")
+        runs_table.add_column("Time")
+        runs_table.add_column("Boundary status")
+        runs_table.add_column("Transcript run")
+        for evidence in database.list_sermon_analysis_evidence(run.id):
+            if evidence.evidence_kind != "semantic_style_run":
+                continue
+            payload = json.loads(evidence.payload_json)
+            runs_table.add_row(
+                str(payload.get("dimension", "—")),
+                (
+                    f"{format_timestamp(evidence.start_seconds)}–"
+                    f"{format_timestamp(evidence.end_seconds)}"
+                    if evidence.start_seconds is not None and evidence.end_seconds is not None
+                    else "—"
+                ),
+                str(payload.get("boundary_status", "unreviewed")),
+                evidence.excerpt,
+            )
+        console.print(runs_table)
         console.print(
             f"Provenance: run=#{run.id}; model="
             f"{json.dumps(values.get('model_provenance', {}), sort_keys=True)}; "
@@ -1760,27 +1788,41 @@ def _print_style_profile(database: Database, run) -> None:
     console.print(coverage)
     styles = Table(title="Evidence-backed Style Dimensions")
     styles.add_column("Dimension")
-    styles.add_column("Spans", justify="right")
+    styles.add_column("Evidence", justify="right")
     styles.add_column("Sermons", justify="right")
-    styles.add_column("Duration", justify="right")
-    styles.add_column("Coverage", justify="right")
-    styles.add_column("Consistency", justify="right")
+    styles.add_column("Accepted evidence duration", justify="right")
+    styles.add_column("Accepted evidence coverage", justify="right")
+    styles.add_column("Candidate runs", justify="right")
+    styles.add_column("Candidate run coverage", justify="right")
     dimensions = values.get("style_dimension_profiles", {})
     if isinstance(dimensions, dict):
         for dimension, metrics in dimensions.items():
             if not isinstance(metrics, dict):
                 continue
-            duration_coverage = metrics.get("duration_coverage_fraction")
-            consistency = metrics.get("sermon_coverage_consistency")
+            evidence_duration = metrics.get(
+                "accepted_evidence_duration_seconds",
+                metrics.get("duration_seconds", 0),
+            )
+            evidence_coverage = metrics.get(
+                "accepted_evidence_coverage_fraction",
+                metrics.get("duration_coverage_fraction"),
+            )
+            run_coverage = metrics.get("candidate_style_run_coverage_fraction")
+            run_count = metrics.get("candidate_style_run_count")
             styles.add_row(
                 str(dimension),
                 str(metrics.get("evidence_count", 0)),
                 f"{metrics.get('sermons_with_evidence', 0)}/{values.get('sermons_analyzed', 0)}",
-                f"{float(metrics.get('duration_seconds', 0)):.1f}s",
-                "—" if duration_coverage is None else f"{100 * float(duration_coverage):.1f}%",
-                "—" if consistency is None else str(consistency),
+                f"{float(evidence_duration):.1f}s",
+                "—" if evidence_coverage is None else f"{100 * float(evidence_coverage):.1f}%",
+                "—" if run_count is None else str(run_count),
+                "—" if run_coverage is None else f"{100 * float(run_coverage):.1f}%*",
             )
     console.print(styles)
+    console.print(
+        "* Candidate run coverage uses unreviewed model boundaries; do not interpret it "
+        "as representative profile coverage until boundary evaluation is complete."
+    )
     console.print(
         f"Provenance: profile_analysis=#{run.id}; version={run.analyzer_version}; "
         f"membership={run.membership_fingerprint}; input={run.input_fingerprint}"
@@ -1834,6 +1876,87 @@ def analysis_style_show_profile(
             "No materialized style profile. Run 'pte analysis style-summarize-profile' first."
         )
     _print_style_profile(database, run)
+
+
+@analysis_app.command(
+    "style-review-create",
+    help="Create a full-sermon style-run adjudication packet.",
+)
+def analysis_style_review_create(
+    youtube_video_id: str = typer.Option(
+        ..., "--youtube-video-id", help="YouTube video id."
+    ),
+    output: Path = typer.Option(..., "--output", help="Review draft JSON path."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    video = database.get_video_by_youtube_id(youtube_video_id)
+    if video is None:
+        raise typer.BadParameter(f"Unknown YouTube video: {youtube_video_id}")
+    try:
+        payload = create_style_review_packet(database, video, output)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Created full-sermon style review draft with "
+        f"{len(payload['segments'])} transcript segments and "
+        f"{len(payload['candidate_style_runs'])} candidate runs: {output} "
+        f"(inspection view: {output.with_suffix('.md')})"
+    )
+
+
+@analysis_app.command(
+    "style-review-finalize",
+    help="Validate an edited style review draft and mark it reviewed.",
+)
+def analysis_style_review_finalize(
+    draft: Path = typer.Argument(..., help="Edited review draft JSON."),
+    output: Path = typer.Option(..., "--output", help="Final reviewed JSON path."),
+    reviewer: str = typer.Option(..., "--reviewer", help="Reviewer identity."),
+) -> None:
+    try:
+        payload = finalize_style_review(draft, output, reviewer=reviewer)
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Finalized style review with {len(payload['candidate_style_runs'])} "
+        f"candidate adjudications and {len(payload['missed_style_runs'])} missed runs: "
+        f"{output}"
+    )
+
+
+@analysis_app.command(
+    "evaluate-style-boundaries",
+    help="Evaluate run detection and boundaries from full-sermon reviewed packets.",
+)
+def analysis_evaluate_style_boundaries(
+    reviews: list[Path] = typer.Argument(..., help="Reviewed style packet JSON files."),
+) -> None:
+    try:
+        result = evaluate_style_boundaries(reviews)
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    table = Table(title=f"Style Run Boundary Evaluation — {result.sermon_count} sermon(s)")
+    table.add_column("Dimension")
+    table.add_column("Run P", justify="right")
+    table.add_column("Run R", justify="right")
+    table.add_column("Reviewed duration recovered", justify="right")
+    table.add_column("Accepted duration correct", justify="right")
+    table.add_column("Duration IoU", justify="right")
+    for label, metrics in (("overall", result.overall), *result.by_dimension.items()):
+        table.add_row(
+            label,
+            f"{metrics.run_precision:.3f}",
+            f"{metrics.run_recall:.3f}",
+            f"{metrics.reviewed_duration_recall:.3f}",
+            f"{metrics.accepted_duration_precision:.3f}",
+            f"{metrics.duration_intersection_over_union:.3f}",
+        )
+    console.print(table)
+    console.print(
+        f"Judgments: {json.dumps(result.judgment_counts, sort_keys=True)}",
+        markup=False,
+    )
 
 
 @analysis_app.command(

@@ -16,8 +16,8 @@ from pastor_transcript_extractor.style_analysis import (
 
 
 STYLE_PROFILE_ANALYZER_KEY = "profile-style-evidence"
-STYLE_PROFILE_ANALYZER_VERSION = "2"
-STYLE_PROFILE_SCHEMA_VERSION = 1
+STYLE_PROFILE_ANALYZER_VERSION = "3"
+STYLE_PROFILE_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,18 +152,28 @@ def build_profile_style_analysis(
             for entry in entries
             if isinstance(entry, dict)
         ]
-        durations = [
-            float(entry.get("duration_seconds", 0.0))
+        evidence_durations = [
+            float(entry.get("accepted_evidence_duration_seconds", 0.0))
             for entry in entries
             if isinstance(entry, dict)
         ]
-        coverages = [
-            float(entry.get("sermon_duration_coverage_fraction", 0.0))
+        evidence_coverages = [
+            float(entry.get("accepted_evidence_coverage_fraction", 0.0))
             for entry in entries
             if isinstance(entry, dict)
         ]
-        sustained_counts = [
-            int(entry.get("sustained_run_count", 0))
+        run_counts = [
+            int(entry.get("candidate_style_run_count", 0))
+            for entry in entries
+            if isinstance(entry, dict)
+        ]
+        run_durations = [
+            float(entry.get("candidate_style_run_duration_seconds", 0.0))
+            for entry in entries
+            if isinstance(entry, dict)
+        ]
+        run_coverages = [
+            float(entry.get("candidate_style_run_coverage_fraction", 0.0))
             for entry in entries
             if isinstance(entry, dict)
         ]
@@ -173,7 +183,8 @@ def build_profile_style_analysis(
             if isinstance(entry, dict)
         ]
         evidence_count = sum(evidence_counts)
-        duration_seconds = sum(durations)
+        evidence_duration_seconds = sum(evidence_durations)
+        run_duration_seconds = sum(run_durations)
         dimension_profiles[dimension] = {
             "operational_definition": STYLE_DIMENSIONS[dimension],
             "evidence_count": evidence_count,
@@ -185,21 +196,46 @@ def build_profile_style_analysis(
                 if total_words
                 else None
             ),
-            "duration_seconds": round(duration_seconds, 3),
-            "duration_coverage_fraction": _ratio(
-                duration_seconds, total_duration
+            "accepted_evidence_duration_seconds": round(
+                evidence_duration_seconds, 3
+            ),
+            "accepted_evidence_coverage_fraction": _ratio(
+                evidence_duration_seconds, total_duration
             ),
             "sermons_with_evidence": sum(count > 0 for count in evidence_counts),
             "sermons_with_evidence_fraction": _ratio(
                 sum(count > 0 for count in evidence_counts), sermons_analyzed
             ),
-            "mean_sermon_coverage_fraction": (
-                round(sum(coverages) / len(coverages), 6)
-                if coverages
+            "mean_accepted_evidence_coverage_fraction": (
+                round(sum(evidence_coverages) / len(evidence_coverages), 6)
+                if evidence_coverages
                 else None
             ),
-            "sermon_coverage_consistency": _consistency(coverages),
-            "sustained_run_count": sum(sustained_counts),
+            "accepted_evidence_coverage_consistency": _consistency(
+                evidence_coverages
+            ),
+            "candidate_style_run_count": sum(run_counts),
+            "sermons_with_candidate_style_run": sum(
+                count > 0 for count in run_counts
+            ),
+            "sermons_with_candidate_style_run_fraction": _ratio(
+                sum(count > 0 for count in run_counts), sermons_analyzed
+            ),
+            "candidate_style_run_duration_seconds": round(
+                run_duration_seconds, 3
+            ),
+            "candidate_style_run_coverage_fraction": _ratio(
+                run_duration_seconds, total_duration
+            ),
+            "mean_candidate_style_run_coverage_fraction": (
+                round(sum(run_coverages) / len(run_coverages), 6)
+                if run_coverages
+                else None
+            ),
+            "candidate_style_run_coverage_consistency": _consistency(
+                run_coverages
+            ),
+            "candidate_style_run_boundary_status": "unreviewed",
             "scripture_corroborated_evidence_count": sum(corroborated_counts),
         }
 

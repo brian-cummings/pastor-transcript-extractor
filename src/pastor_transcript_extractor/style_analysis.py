@@ -15,9 +15,7 @@ from pastor_transcript_extractor.semantic_evidence import (
     AcceptedSemanticProposal,
     SemanticBlock,
     SemanticSegment,
-    SemanticValidationResult,
     build_semantic_blocks,
-    semantic_proposal_schema,
     validate_semantic_proposals,
 )
 from pastor_transcript_extractor.sermon_analysis import (
@@ -30,12 +28,13 @@ from pastor_transcript_extractor.storage import Database
 
 
 STYLE_ANALYZER_KEY = "sermon-style-evidence"
-STYLE_ANALYZER_VERSION = "2"
-STYLE_PROMPT_VERSION = "sermon-style-evidence-v3"
+STYLE_ANALYZER_VERSION = "3"
+STYLE_PROMPT_VERSION = "sermon-style-runs-v1"
 STYLE_BLOCK_VERSION = "nonoverlapping-75s-3600chars-v1"
-STYLE_ACCEPTANCE_VERSION = "observable-dimension-gates-v1"
-STYLE_ANALYSIS_SCHEMA_VERSION = 1
-STYLE_OUTPUT_TOKEN_BUDGET = 384
+STYLE_ACCEPTANCE_VERSION = "observable-dimension-gates-v2"
+STYLE_RUN_MERGE_VERSION = "boundary-touching-continuation-v1"
+STYLE_ANALYSIS_SCHEMA_VERSION = 2
+STYLE_OUTPUT_TOKEN_BUDGET = 512
 
 STYLE_DIMENSIONS: dict[str, str] = {
     "exegetical_exposition": (
@@ -61,6 +60,35 @@ STYLE_DIMENSIONS: dict[str, str] = {
 class StyleAnalysisOutcome:
     run: SermonAnalysisRun
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptedStyleProposal:
+    dimension: str
+    supporting_evidence: AcceptedSemanticProposal
+    style_run: AcceptedSemanticProposal
+
+
+@dataclass(frozen=True, slots=True)
+class StyleProposalValidationResult:
+    accepted: tuple[AcceptedStyleProposal, ...]
+    proposed_count: int
+    rejection_counts: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _AcceptedBlockStyleProposal:
+    proposal: AcceptedStyleProposal
+    block: SemanticBlock
+    response_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class _DerivedStyleRun:
+    dimension: str
+    start_segment: SemanticSegment
+    end_segment: SemanticSegment
+    supporting_proposals: tuple[_AcceptedBlockStyleProposal, ...]
 
 
 def _sha256(value: object) -> str:
@@ -102,7 +130,7 @@ Prompt version: {prompt_version}
 
 EXEGETICAL requires actual explanation of a biblical text's language, context, structure, or meaning; a quotation, named verse, or doctrinal claim alone is not exegesis. NARRATIVE requires a recounted event with actors and actions; a hypothetical, passing example, announcement, or generic encouragement is not narrative. DOCTRINAL requires reasoning about Christian belief, not merely mentioning Scripture or asserting a belief. PRACTICAL APPLICATION requires a specific lived response, not a slogan or vague encouragement.
 
-Return at most one strongest, smallest contiguous CURRENT segment span per dimension, with no more than four proposals total. Multiple dimensions may use the same span. Propose nothing for ambiguous material. Do not classify the whole sermon. Do not return quotations, timestamps, explanations, confidence scores, or categories outside the supplied schema. PREVIOUS and FOLLOWING are context only and may never be cited.
+Return at most one proposal per dimension and no more than four proposals total. For each proposal, STYLE RUN boundaries must cover the full contiguous portion of CURRENT in which that semantic mode remains active. SUPPORT boundaries must identify the smallest strong excerpt inside that run that proves the category. Do not shorten STYLE RUN to the proof excerpt. Multiple dimensions may overlap. Propose nothing for ambiguous material. Do not return quotations, timestamps, explanations, confidence scores, or categories outside the supplied schema. PREVIOUS and FOLLOWING are context only and may never be cited.
 
 PREVIOUS CONTEXT:
 {previous_text}
@@ -180,23 +208,107 @@ def _passes_style_acceptance_gate(
     return False
 
 
+def style_proposal_schema(block: SemanticBlock) -> dict[str, Any]:
+    segment_ids = [segment.evidence_id for segment in block.segments]
+    properties = {
+        "dimension": {"type": "string", "enum": list(STYLE_DIMENSIONS)},
+        "run_start_segment_id": {"type": "string", "enum": segment_ids},
+        "run_end_segment_id": {"type": "string", "enum": segment_ids},
+        "support_start_segment_id": {"type": "string", "enum": segment_ids},
+        "support_end_segment_id": {"type": "string", "enum": segment_ids},
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "proposals": {
+                "type": "array",
+                "maxItems": len(STYLE_DIMENSIONS),
+                "items": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": list(properties),
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["proposals"],
+        "additionalProperties": False,
+    }
+
+
 def validate_style_proposals(
     content: dict[str, Any], block: SemanticBlock
-) -> SemanticValidationResult:
-    grounded = validate_semantic_proposals(content, block, STYLE_DIMENSIONS)
-    accepted = tuple(
-        proposal
-        for proposal in grounded.accepted
-        if _passes_style_acceptance_gate(proposal.dimension, proposal)
-    )
-    rejected_by_gate = len(grounded.accepted) - len(accepted)
-    rejection_counts = Counter(grounded.rejection_counts)
-    if rejected_by_gate:
-        rejection_counts["failed_dimension_acceptance_gate"] += rejected_by_gate
-    return SemanticValidationResult(
-        accepted=accepted,
-        proposed_count=grounded.proposed_count,
-        rejection_counts=dict(sorted(rejection_counts.items())),
+) -> StyleProposalValidationResult:
+    raw = content.get("proposals")
+    if not isinstance(raw, list):
+        return StyleProposalValidationResult((), 0, {"invalid_proposals_container": 1})
+    accepted: list[AcceptedStyleProposal] = []
+    rejected: Counter[str] = Counter()
+    seen_dimensions: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            rejected["invalid_proposal_shape"] += 1
+            continue
+        dimension = item.get("dimension")
+        if not isinstance(dimension, str) or dimension not in STYLE_DIMENSIONS:
+            rejected["unknown_dimension"] += 1
+            continue
+        if dimension in seen_dimensions:
+            rejected["duplicate_dimension_in_block"] += 1
+            continue
+        seen_dimensions.add(dimension)
+        support = validate_semantic_proposals(
+            {
+                "proposals": [
+                    {
+                        "dimension": dimension,
+                        "start_segment_id": item.get("support_start_segment_id"),
+                        "end_segment_id": item.get("support_end_segment_id"),
+                    }
+                ]
+            },
+            block,
+            STYLE_DIMENSIONS,
+        )
+        run = validate_semantic_proposals(
+            {
+                "proposals": [
+                    {
+                        "dimension": dimension,
+                        "start_segment_id": item.get("run_start_segment_id"),
+                        "end_segment_id": item.get("run_end_segment_id"),
+                    }
+                ]
+            },
+            block,
+            STYLE_DIMENSIONS,
+        )
+        if not support.accepted:
+            rejected.update(
+                {f"support_{key}": value for key, value in support.rejection_counts.items()}
+            )
+            continue
+        if not run.accepted:
+            rejected.update(
+                {f"run_{key}": value for key, value in run.rejection_counts.items()}
+            )
+            continue
+        supporting_evidence = support.accepted[0]
+        style_run = run.accepted[0]
+        if (
+            style_run.start_segment.index > supporting_evidence.start_segment.index
+            or style_run.end_segment.index < supporting_evidence.end_segment.index
+        ):
+            rejected["support_outside_run"] += 1
+            continue
+        if not _passes_style_acceptance_gate(dimension, supporting_evidence):
+            rejected["failed_dimension_acceptance_gate"] += 1
+            continue
+        accepted.append(
+            AcceptedStyleProposal(dimension, supporting_evidence, style_run)
+        )
+    return StyleProposalValidationResult(
+        tuple(accepted), len(raw), dict(sorted(rejected.items()))
     )
 
 
@@ -210,6 +322,55 @@ def _merged_intervals(
         else:
             merged[-1][1] = max(merged[-1][1], end)
     return [(start, end) for start, end in merged]
+
+
+def _derive_style_runs(
+    proposals: list[_AcceptedBlockStyleProposal],
+) -> list[_DerivedStyleRun]:
+    """Merge only explicit boundary-to-boundary continuation across adjacent blocks."""
+    result: list[_DerivedStyleRun] = []
+    for item in sorted(
+        proposals,
+        key=lambda value: (
+            value.proposal.dimension,
+            value.proposal.style_run.start_segment.index,
+        ),
+    ):
+        candidate = _DerivedStyleRun(
+            item.proposal.dimension,
+            item.proposal.style_run.start_segment,
+            item.proposal.style_run.end_segment,
+            (item,),
+        )
+        if not result or result[-1].dimension != candidate.dimension:
+            result.append(candidate)
+            continue
+        previous = result[-1]
+        previous_item = previous.supporting_proposals[-1]
+        previous_touches_boundary = (
+            previous.end_segment.index
+            == previous_item.block.segments[-1].index
+        )
+        current_touches_boundary = (
+            candidate.start_segment.index == item.block.segments[0].index
+        )
+        adjacent_blocks = item.block.block_id == previous_item.block.block_id + 1
+        gap = candidate.start_segment.start_seconds - previous.end_segment.end_seconds
+        if (
+            adjacent_blocks
+            and previous_touches_boundary
+            and current_touches_boundary
+            and gap <= 15.0
+        ):
+            result[-1] = _DerivedStyleRun(
+                previous.dimension,
+                previous.start_segment,
+                candidate.end_segment,
+                (*previous.supporting_proposals, item),
+            )
+        else:
+            result.append(candidate)
+    return result
 
 
 def _scripture_corroboration(
@@ -301,6 +462,7 @@ def analyze_sermon_style(
         "block_version": STYLE_BLOCK_VERSION,
         "validation_version": SEMANTIC_VALIDATION_VERSION,
         "style_acceptance_version": STYLE_ACCEPTANCE_VERSION,
+        "style_run_merge_version": STYLE_RUN_MERGE_VERSION,
     }
     input_fingerprint = _sha256(
         {
@@ -332,7 +494,7 @@ def analyze_sermon_style(
     if not blocks:
         raise ValueError("Identified sermon content has no timestamped semantic blocks")
 
-    accepted: list[tuple[AcceptedSemanticProposal, int, str]] = []
+    accepted: list[_AcceptedBlockStyleProposal] = []
     proposed_count = 0
     rejection_counts: Counter[str] = Counter()
     response_hashes: list[str] = []
@@ -345,7 +507,7 @@ def analyze_sermon_style(
         )
         response = client.generate_json(
             prompt,
-            semantic_proposal_schema(STYLE_DIMENSIONS, block),
+            style_proposal_schema(block),
             max_tokens=STYLE_OUTPUT_TOKEN_BUDGET,
         )
         if response.model != client.model:
@@ -359,27 +521,33 @@ def analyze_sermon_style(
         proposed_count += validation.proposed_count
         rejection_counts.update(validation.rejection_counts)
         accepted.extend(
-            (proposal, block.block_id, response_sha)
+            _AcceptedBlockStyleProposal(proposal, block, response_sha)
             for proposal in validation.accepted
         )
 
-    by_dimension: dict[str, list[AcceptedSemanticProposal]] = defaultdict(list)
-    evidence_rows = []
-    for proposal, block_id, response_sha in accepted:
-        by_dimension[proposal.dimension].append(proposal)
+    by_dimension: dict[str, list[_AcceptedBlockStyleProposal]] = defaultdict(list)
+    evidence_rows: list[tuple[object, ...]] = []
+    support_keys: dict[int, str] = {}
+    for item in accepted:
+        proposal = item.proposal
+        support = proposal.supporting_evidence
+        by_dimension[proposal.dimension].append(item)
         corroboration = _scripture_corroboration(
-            database, scripture_run.id, proposal
+            database, scripture_run.id, support
         )
         payload = {
             "dimension": proposal.dimension,
             "operational_definition": STYLE_DIMENSIONS[proposal.dimension],
+            "semantic_role": "supporting_evidence",
             "evidence_source": "model_proposed_deterministically_validated",
-            "source_segment_start_index": proposal.start_segment.index,
-            "source_segment_end_index": proposal.end_segment.index,
-            "source_word_count": proposal.word_count,
-            "source_excerpt_sha256": _sha256(proposal.excerpt),
-            "semantic_block_id": block_id,
-            "model_response_sha256": response_sha,
+            "source_segment_start_index": support.start_segment.index,
+            "source_segment_end_index": support.end_segment.index,
+            "source_word_count": support.word_count,
+            "source_excerpt_sha256": _sha256(support.excerpt),
+            "proposed_run_segment_start_index": proposal.style_run.start_segment.index,
+            "proposed_run_segment_end_index": proposal.style_run.end_segment.index,
+            "semantic_block_id": item.block.block_id,
+            "model_response_sha256": item.response_sha256,
             "model_provenance": model_provenance,
             "prompt_provenance": prompt_provenance,
             "validation_version": SEMANTIC_VALIDATION_VERSION,
@@ -389,16 +557,59 @@ def analyze_sermon_style(
             "scripture_analysis_run_id": scripture_run.id,
         }
         evidence_key = _sha256(payload)
+        support_keys[id(item)] = evidence_key
         evidence_rows.append(
             (
                 "semantic_style_evidence",
                 evidence_key,
-                proposal.start_segment.index,
-                proposal.start_seconds,
-                proposal.end_seconds,
+                support.start_segment.index,
+                support.start_seconds,
+                support.end_seconds,
                 None,
                 None,
-                proposal.excerpt,
+                support.excerpt,
+                json.dumps(payload, sort_keys=True),
+            )
+        )
+
+    style_runs = _derive_style_runs(accepted)
+    for run in style_runs:
+        supporting_keys = [support_keys[id(item)] for item in run.supporting_proposals]
+        run_segments = tuple(
+            segment
+            for item in run.supporting_proposals
+            for segment in item.proposal.style_run.segments
+        )
+        unique_segments = {
+            segment.index: segment for segment in run_segments
+        }
+        excerpt = " ".join(
+            unique_segments[index].text for index in sorted(unique_segments)
+        )
+        payload = {
+            "dimension": run.dimension,
+            "operational_definition": STYLE_DIMENSIONS[run.dimension],
+            "semantic_role": "candidate_representative_run",
+            "boundary_status": "unreviewed",
+            "source_segment_start_index": run.start_segment.index,
+            "source_segment_end_index": run.end_segment.index,
+            "source_excerpt_sha256": _sha256(excerpt),
+            "supporting_evidence_keys": supporting_keys,
+            "continuation_piece_count": len(run.supporting_proposals),
+            "merge_version": STYLE_RUN_MERGE_VERSION,
+            "model_provenance": model_provenance,
+            "prompt_provenance": prompt_provenance,
+        }
+        evidence_rows.append(
+            (
+                "semantic_style_run",
+                _sha256(payload),
+                run.start_segment.index,
+                run.start_segment.start_seconds,
+                run.end_segment.end_seconds,
+                None,
+                None,
+                excerpt,
                 json.dumps(payload, sort_keys=True),
             )
         )
@@ -406,26 +617,48 @@ def analyze_sermon_style(
     dimension_measurements: dict[str, dict[str, object]] = {}
     for dimension in STYLE_DIMENSIONS:
         proposals = by_dimension[dimension]
-        intervals = [(item.start_seconds, item.end_seconds) for item in proposals]
-        merged = _merged_intervals(intervals)
-        sustained = [
-            interval
-            for interval in _merged_intervals(intervals, maximum_gap=15.0)
-            if interval[1] - interval[0] >= 60.0
+        support_intervals = [
+            (
+                item.proposal.supporting_evidence.start_seconds,
+                item.proposal.supporting_evidence.end_seconds,
+            )
+            for item in proposals
         ]
-        duration = sum(end - start for start, end in merged)
+        dimension_runs = [run for run in style_runs if run.dimension == dimension]
+        run_intervals = [
+            (run.start_segment.start_seconds, run.end_segment.end_seconds)
+            for run in dimension_runs
+        ]
+        accepted_evidence_duration = sum(
+            end - start for start, end in _merged_intervals(support_intervals)
+        )
+        candidate_run_duration = sum(
+            end - start for start, end in _merged_intervals(run_intervals)
+        )
         dimension_measurements[dimension] = {
             "evidence_count": len(proposals),
-            "duration_seconds": round(duration, 3),
-            "sermon_duration_coverage_fraction": round(
-                duration / sermon_duration, 6
+            "accepted_evidence_duration_seconds": round(
+                accepted_evidence_duration, 3
             ),
-            "sustained_run_count": len(sustained),
-            "sustained_duration_seconds": round(
-                sum(end - start for start, end in sustained), 3
+            "accepted_evidence_coverage_fraction": round(
+                accepted_evidence_duration / sermon_duration, 6
             ),
+            "candidate_style_run_count": len(dimension_runs),
+            "candidate_style_run_duration_seconds": round(
+                candidate_run_duration, 3
+            ),
+            "candidate_style_run_coverage_fraction": round(
+                candidate_run_duration / sermon_duration, 6
+            ),
+            "candidate_style_run_boundary_status": "unreviewed",
             "scripture_corroborated_evidence_count": sum(
-                bool(_scripture_corroboration(database, scripture_run.id, item))
+                bool(
+                    _scripture_corroboration(
+                        database,
+                        scripture_run.id,
+                        item.proposal.supporting_evidence,
+                    )
+                )
                 for item in proposals
             ),
         }
@@ -434,6 +667,8 @@ def analyze_sermon_style(
         ("semantic_dimensions", list(STYLE_DIMENSIONS), None),
         ("style_dimension_measurements", dimension_measurements, None),
         ("semantic_evidence_count", len(accepted), "evidence_spans"),
+        ("candidate_style_run_count", len(style_runs), "style_runs"),
+        ("style_run_boundary_status", "unreviewed", None),
         ("model_proposal_count", proposed_count, "proposals"),
         ("rejected_proposal_count", sum(rejection_counts.values()), "proposals"),
         ("proposal_rejection_counts", dict(sorted(rejection_counts.items())), None),
