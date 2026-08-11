@@ -289,6 +289,51 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
             {readiness.profile_id for readiness, _ in unrelated},
         )
 
+    def test_unconfirmed_discovery_profile_is_not_a_global_target(self) -> None:
+        observation = self._observation("unconfirmed")
+        readiness = ProfileAssociationReadiness(
+            profile_id=93,
+            member_observation_ids=(observation.id,),
+            member_fingerprints=(observation.input_fingerprint,),
+            recording_count=3,
+            source_count=1,
+            normalized_names=(),
+            shadow_ready=True,
+            automatic_profile_ready=False,
+            shadow_blockers=(),
+            automatic_blockers=("discovery_candidate_unconfirmed",),
+            review_ready=True,
+        )
+        profiles = (
+            (
+                readiness,
+                (
+                    ShadowExemplar(
+                        93,
+                        observation,
+                        Path("unconfirmed.wav"),
+                        "audio-unconfirmed",
+                    ),
+                ),
+            ),
+        )
+
+        unrelated = select_routed_association_profiles(
+            profiles,
+            candidate_source_id=8,
+            candidate_normalized_names=(),
+            source_id_by_video_id={observation.video_id: 7},
+        )
+        local = select_routed_association_profiles(
+            profiles,
+            candidate_source_id=7,
+            candidate_normalized_names=(),
+            source_id_by_video_id={observation.video_id: 7},
+        )
+
+        self.assertEqual((), unrelated)
+        self.assertEqual((profiles[0],), local)
+
     def test_multi_exemplar_unique_match_is_shadow_proposal_only(self) -> None:
         candidate = self._observation("candidate")
         matching = [self._observation(key) for key in ("a", "b", "c")]

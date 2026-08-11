@@ -19,9 +19,9 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v3"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v4"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
-    "speaker_shadow_association_input_v2"
+    "speaker_shadow_association_input_v3"
 )
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
@@ -70,14 +70,18 @@ def select_routed_association_profiles(
 ) -> tuple[
     tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
 ]:
-    """Keep mature profiles global and route immature review targets safely."""
+    """Keep confirmed mature profiles global and route review targets safely."""
     names = {
         name.strip() for name in candidate_normalized_names if name.strip()
     }
     return tuple(
         (readiness, exemplars)
         for readiness, exemplars in profiles
-        if readiness.shadow_ready
+        if (
+            readiness.shadow_ready
+            and "discovery_candidate_unconfirmed"
+            not in readiness.automatic_blockers
+        )
         or bool(names & set(readiness.normalized_names))
         or any(
             source_id_by_video_id.get(exemplar.observation.video_id)

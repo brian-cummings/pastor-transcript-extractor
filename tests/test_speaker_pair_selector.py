@@ -26,6 +26,8 @@ def candidate(
     profile_ids: frozenset[int] = frozenset(),
     different_from: frozenset[str] = frozenset(),
     consistency_score: float | None = None,
+    bootstrap_profile_id: int | None = None,
+    configured_title_match: bool = False,
 ) -> PairCandidateObservation:
     return PairCandidateObservation(
         input_fingerprint=fingerprint,
@@ -38,10 +40,128 @@ def candidate(
         reviewed_profile_ids=profile_ids,
         explicitly_different_from=different_from,
         observation_consistency_score=consistency_score,
+        configured_profile_bootstrap_id=bootstrap_profile_id,
+        configured_target_title_match=configured_title_match,
     )
 
 
 class SpeakerPairSelectorTests(unittest.TestCase):
+    def test_profile_growth_prioritizes_empty_configured_profile_bootstrap(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "bootstrap-a",
+                    name="mihail baciu",
+                    bootstrap_profile_id=27,
+                    configured_title_match=True,
+                    source_family="source-a",
+                ),
+                candidate(
+                    "bootstrap-b",
+                    name="mihail baciu",
+                    bootstrap_profile_id=27,
+                    configured_title_match=True,
+                    source_family="source-a",
+                ),
+                candidate("ordinary-a", name="alex"),
+                candidate("ordinary-b", name="alex"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+        )
+
+        self.assertEqual(
+            {"bootstrap-a", "bootstrap-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "configured_profile_bootstrap",
+            selected.manifest["selection_objective"],
+        )
+        self.assertEqual(
+            {
+                "profile_id": 27,
+                "role": "human_review_nomination_only",
+                "identity_evidence": False,
+                "title_match_count": 2,
+            },
+            selected.manifest["configured_profile_bootstrap"],
+        )
+
+    def test_configured_bootstrap_requires_two_title_matches_or_acoustic_support(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate(
+                        "title-match",
+                        name="mihail baciu",
+                        bootstrap_profile_id=27,
+                        configured_title_match=True,
+                        source_family="source-a",
+                    ),
+                    candidate(
+                        "generic-service",
+                        bootstrap_profile_id=27,
+                        source_family="source-a",
+                    ),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+            )
+
+    def test_configured_bootstrap_accepts_one_title_match_with_acoustic_support(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "title-match",
+                    name="mihail baciu",
+                    bootstrap_profile_id=27,
+                    configured_title_match=True,
+                    source_family="source-a",
+                ),
+                candidate(
+                    "generic-service",
+                    bootstrap_profile_id=27,
+                    source_family="source-a",
+                ),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+            profile_growth_acoustic_pairs=(
+                AcousticPairRanking(
+                    fingerprint_a="title-match",
+                    fingerprint_b="generic-service",
+                    same_boundary_margin=0.08,
+                    centroid_similarity=0.94,
+                    report_result_sha256="a" * 64,
+                    report_path="discovery.json",
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            "configured_profile_bootstrap",
+            selected.manifest["selection_objective"],
+        )
+        self.assertEqual(
+            1,
+            selected.manifest["configured_profile_bootstrap"][
+                "title_match_count"
+            ],
+        )
+
     def _association_nomination(
         self,
         candidate_fingerprint: str,

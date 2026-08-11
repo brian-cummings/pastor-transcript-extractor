@@ -658,6 +658,10 @@ it creates stable provisional profiles and attaches their complete-link seed
 observations. Those profiles participate in subsequent shadow association but
 remain automatic-blocked until `pte identity confirm-discovered-profiles`
 accepts a current multi-exemplar proposal from an independent recording.
+While confirmation is pending, a provisional discovery profile remains
+source-local or attribution-routed instead of becoming a global comparison
+target. Confirmation work therefore avoids comparing every unrelated sermon
+against every newly promoted profile.
 Confirmation is also plan-only unless `--apply` is passed; acoustic
 model/policy approval remains a separate gate.
 
@@ -670,6 +674,13 @@ Conservative leading title credits such as `Andy Crosby - Genuine Conversion`
 are derived at selection time as attribution hints. They do not rewrite speaker
 observations and may route review, but never establish profile membership or an
 expected pair answer.
+
+Configured pastor profiles with no reviewed observations are bootstrapped only
+through `profile-growth` human review. Two source-local title matches, or one
+title match plus cached same-speaker acoustic support, may nominate a blinded
+pair. A full configured name or an honorific plus its source-local surname
+(`Pastor Baciu`) is a nomination hint only. It is not persisted as attribution,
+does not attach either observation, and cannot determine the review answer.
 
 When explicit attribution places a provisional discovery profile beside an
 established profile for the same configured pastor, normal `profile-growth`

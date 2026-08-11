@@ -159,6 +159,41 @@ def title_byline_selection_hint(title: str) -> str | None:
     return normalized if normalized not in _NON_PERSON_TITLE_BYLINES else None
 
 
+def configured_target_title_selection_hint(
+    title: str,
+    configured_name: str,
+) -> str | None:
+    """Return a source-local configured-name hint, never identity truth."""
+    normalized = _normalized_person(configured_name)
+    parts = normalized.split()
+    if len(parts) < 2:
+        return None
+    full_name = r"\b" + r"\s+".join(
+        re.escape(part) for part in parts
+    ) + r"\b"
+    honorific = r"(?:pastor|elder|dr\.?|pr\.?)"
+    if any(
+        re.search(pattern, title, flags=re.IGNORECASE)
+        for pattern in (
+            rf"\b{honorific}\s+{full_name}",
+            rf"\b(?:by|speaker\s*:|with|w/)\s+(?:{honorific}\s+)?{full_name}",
+            rf"^\s*(?:{honorific}\s+)?{full_name}\s*(?:[-|:–—])",
+        )
+    ):
+        return normalized
+    surname = parts[-1]
+    if len(surname) < 4:
+        return None
+    titled_surname_pattern = (
+        rf"\b{honorific}\s+"
+        + re.escape(surname)
+        + r"\b"
+    )
+    if re.search(titled_surname_pattern, title, flags=re.IGNORECASE):
+        return normalized
+    return None
+
+
 def _metadata_is_explicit(field_path: str, text: str, name_start: int, name_end: int) -> bool:
     prefix = text[:name_start].lower()
     if field_path.endswith("title"):

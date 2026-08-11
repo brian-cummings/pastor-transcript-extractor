@@ -444,6 +444,12 @@ readiness is deliberately split:
   graph to be connected with no bridge edge, so membership has redundant human
   support instead of depending on one transitive link.
 
+A promoted discovery profile blocked on independent confirmation is not a
+global association target merely because it has three seed recordings. Until
+confirmed, it is routed only by a shared source or compatible attribution.
+This preserves the confirmation opportunity while avoiding corpus-wide
+irrelevant comparisons.
+
 These are profile gates only. The independent model/policy promotion gate must
 also pass before automatic registry mutation can be considered.
 `profile-status` reports the production readiness counts and each profile's
@@ -511,6 +517,16 @@ Grounded attribution recognizes conservative leading title credits such as
 persisted into immutable speaker evidence: it cannot attach an observation,
 assign a profile, or supply an expected same-speaker answer without reviewed
 evidence.
+
+An empty configured pastor profile has no acoustic exemplars and therefore
+cannot bootstrap through association. `profile-growth` handles that case as a
+human-review-only objective. It may nominate two source-local observations when
+both titles match the configured pastor, or when one title matches and cached
+acoustics support the pair. A full name or an honorific plus the configured
+source-local surname can supply this selection hint. The hint is derived at
+selection time, is not stored as an attribution claim, and never supplies
+identity truth; reviewed pair and attribution workflows still establish any
+membership.
 
 Versioned artifacts are written below the ignored
 `evaluation/speaker-associations/shadow-runs/` directory. They retain the

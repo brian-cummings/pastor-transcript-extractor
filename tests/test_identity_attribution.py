@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from pastor_transcript_extractor.identity_attribution import (
+    configured_target_title_selection_hint,
     extract_grounded_attributions,
     title_byline_selection_hint,
 )
@@ -37,6 +38,40 @@ def analyze(metadata_payload: dict, proposed_payload: dict, target: str = "Dr. S
 
 
 class GroundedAttributionTests(unittest.TestCase):
+    def test_configured_target_title_hint_accepts_unique_titled_surname(self) -> None:
+        self.assertEqual(
+            "mihail baciu",
+            configured_target_title_selection_hint(
+                "07/11/2026 Worship Service w/ Pastor Baciu",
+                "Mihail Baciu",
+            ),
+        )
+
+    def test_configured_target_title_hint_rejects_unmarked_surname(self) -> None:
+        self.assertIsNone(
+            configured_target_title_selection_hint(
+                "Baciu Family Concert",
+                "Mihail Baciu",
+            )
+        )
+
+    def test_configured_target_title_hint_accepts_full_name(self) -> None:
+        self.assertEqual(
+            "ron clouzet",
+            configured_target_title_selection_hint(
+                "Sermon by Ron Clouzet",
+                "Ron Clouzet",
+            ),
+        )
+
+    def test_configured_target_title_hint_rejects_incidental_full_name(self) -> None:
+        self.assertIsNone(
+            configured_target_title_selection_hint(
+                "Community update honoring Ron Clouzet and local volunteers",
+                "Ron Clouzet",
+            )
+        )
+
     def test_guest_named_in_title_is_exact_and_contradicting(self) -> None:
         title = '"Living with Integrity" By Elder Robert McLean- May 30, 2026'
         result = analyze(metadata(title), proposed())

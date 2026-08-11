@@ -119,6 +119,7 @@ from pastor_transcript_extractor.identity import (
     record_neutral_speaker_evidence,
 )
 from pastor_transcript_extractor.identity_attribution import (
+    configured_target_title_selection_hint,
     title_byline_selection_hint,
 )
 from pastor_transcript_extractor.identity_coordination import (
@@ -6196,6 +6197,9 @@ def review_next_speaker_pair(
 
         candidates: list[PairCandidateObservation] = []
         unregistered_source_urls: set[str] = set()
+        configured_bootstrap_by_source_id: dict[
+            int, tuple[int, str] | None
+        ] = {}
         for video in database.list_videos():
             source = database.get_source_by_id(video.source_id)
             if source is None:
@@ -6222,13 +6226,54 @@ def review_next_speaker_pair(
             assert media is not None
             claims = database.list_speaker_name_claims_for_video(video.id)
             title_hint = title_byline_selection_hint(video.title)
+            if source.id not in configured_bootstrap_by_source_id:
+                bootstrap: tuple[int, str] | None = None
+                if source.pastor_id is not None:
+                    configured_profile_id = (
+                        database.get_pastor_speaker_profile_id(
+                            source.pastor_id
+                        )
+                    )
+                    pastor = database.get_pastor_by_id(source.pastor_id)
+                    if (
+                        configured_profile_id is not None
+                        and pastor is not None
+                    ):
+                        canonical_profile_id = (
+                            database.resolve_speaker_profile_id(
+                                configured_profile_id
+                            )
+                        )
+                        if not database.list_effective_observation_ids_for_profile(
+                            canonical_profile_id
+                        ):
+                            bootstrap = (
+                                canonical_profile_id,
+                                pastor.display_name,
+                            )
+                configured_bootstrap_by_source_id[source.id] = bootstrap
+            configured_bootstrap = configured_bootstrap_by_source_id[
+                source.id
+            ]
+            configured_title_hint = (
+                configured_target_title_selection_hint(
+                    video.title,
+                    configured_bootstrap[1],
+                )
+                if configured_bootstrap is not None
+                else None
+            )
             names = frozenset(
                 claim.normalized_name
                 for claim in claims
                 if claim.observation_id == observation.id
                 and claim.explicit_speaker_attribution
                 and claim.normalized_name.strip()
-            ) | (frozenset((title_hint,)) if title_hint else frozenset())
+            ) | (frozenset((title_hint,)) if title_hint else frozenset()) | (
+                frozenset((configured_title_hint,))
+                if configured_title_hint
+                else frozenset()
+            )
             candidate = PairCandidateObservation(
                 input_fingerprint=observation.input_fingerprint,
                 video_id=video.youtube_video_id,
@@ -6253,6 +6298,14 @@ def review_next_speaker_pair(
                 ),
                 observation_consistency_score=consistency_index.scores.get(
                     observation.input_fingerprint
+                ),
+                configured_profile_bootstrap_id=(
+                    configured_bootstrap[0]
+                    if configured_bootstrap is not None
+                    else None
+                ),
+                configured_target_title_match=bool(
+                    configured_title_hint
                 ),
             )
             candidates.append(candidate)

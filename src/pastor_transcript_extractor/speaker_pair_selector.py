@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v23"
+SELECTOR_VERSION = "speaker_pair_selector_v24"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -58,6 +58,8 @@ class PairCandidateObservation:
     reviewed_profile_ids: frozenset[int] = frozenset()
     explicitly_different_from: frozenset[str] = frozenset()
     observation_consistency_score: float | None = None
+    configured_profile_bootstrap_id: int | None = None
+    configured_target_title_match: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -725,6 +727,12 @@ def select_next_speaker_pair(
             "evaluation_partition": item.evaluation_partition,
             "reviewed_profile_ids": sorted(item.reviewed_profile_ids),
             "explicitly_different_from": sorted(item.explicitly_different_from),
+            "configured_profile_bootstrap_id": (
+                item.configured_profile_bootstrap_id
+            ),
+            "configured_target_title_match": (
+                item.configured_target_title_match
+            ),
         }
         for item in candidates
     ]
@@ -807,6 +815,18 @@ def select_next_speaker_pair(
         manifest["profile_growth_components"] = [
             sorted(component) for component in growth_components
         ]
+    if selection_objective == "configured_profile_bootstrap":
+        manifest["configured_profile_bootstrap"] = {
+            "profile_id": observation_a.configured_profile_bootstrap_id,
+            "role": "human_review_nomination_only",
+            "identity_evidence": False,
+            "title_match_count": sum(
+                (
+                    observation_a.configured_target_title_match,
+                    observation_b.configured_target_title_match,
+                )
+            ),
+        }
     selected_resolution = discovery_resolution_by_pair.get(
         frozenset(
             (
@@ -1193,6 +1213,16 @@ def _select_profile_growth_pair(
             for other in candidate.explicitly_different_from
         )
 
+    bootstrap_pairs: list[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+            str,
+            tuple[frozenset[str], frozenset[str]],
+        ]
+    ] = []
     growth_pairs: list[
         tuple[
             PairCandidateObservation,
@@ -1249,12 +1279,33 @@ def _select_profile_growth_pair(
             component_attributions[component_a]
             & component_attributions[component_b]
         )
+        shared_bootstrap_profile_id = (
+            observation_a.configured_profile_bootstrap_id
+            if observation_a.configured_profile_bootstrap_id
+            == observation_b.configured_profile_bootstrap_id
+            else None
+        )
+        has_configured_bootstrap_signal = bool(
+            shared_bootstrap_profile_id is not None
+            and (
+                observation_a.configured_target_title_match
+                or observation_b.configured_target_title_match
+            )
+            and (
+                has_acoustic_same_signal
+                or (
+                    observation_a.configured_target_title_match
+                    and observation_b.configured_target_title_match
+                )
+            )
+        )
         # Profile growth is a positive-evidence workflow. The absence of a
         # known difference is not evidence that two voices may match.
         if not (
             has_acoustic_same_signal
             or has_component_attribution_overlap
             or has_acoustic_exploration_signal
+            or has_configured_bootstrap_signal
         ):
             continue
         # Conflicting claims need direct acoustic support before spending a
@@ -1282,7 +1333,9 @@ def _select_profile_growth_pair(
             )
         ):
             continue
-        if anchored_a != anchored_b:
+        if has_configured_bootstrap_signal:
+            objective = "configured_profile_bootstrap"
+        elif anchored_a != anchored_b:
             objective = "profile_growth_frontier"
         elif anchored_a:
             objective = (
@@ -1309,7 +1362,9 @@ def _select_profile_growth_pair(
             objective,
             (component_a, component_b),
         )
-        if has_acoustic_exploration_signal and not (
+        if has_configured_bootstrap_signal:
+            bootstrap_pairs.append(selected_pair)
+        elif has_acoustic_exploration_signal and not (
             has_acoustic_same_signal or has_component_attribution_overlap
         ):
             exploratory_pairs.append(
@@ -1323,7 +1378,7 @@ def _select_profile_growth_pair(
             )
         else:
             growth_pairs.append(selected_pair)
-    selectable_pairs = growth_pairs or exploratory_pairs
+    selectable_pairs = bootstrap_pairs or growth_pairs or exploratory_pairs
     if not selectable_pairs:
         return None
     stratum_rank = {
