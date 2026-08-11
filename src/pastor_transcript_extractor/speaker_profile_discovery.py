@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import itertools
 import json
@@ -27,7 +27,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v7"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v8"
 SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v2",
@@ -35,12 +35,20 @@ SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
         "speaker_profile_shadow_discovery_v4",
         "speaker_profile_shadow_discovery_v5",
         "speaker_profile_shadow_discovery_v6",
+        "speaker_profile_shadow_discovery_v7",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
 TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION = (
-    "transcript_grounded_sermon_spans_v1"
+    "transcript_grounded_sermon_spans_v2"
 )
+TRANSCRIPT_SPAN_CANDIDATE_MULTIPLIER = 3
+TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION = 0.40
+TRANSCRIPT_SPAN_ACTIVITY_REFERENCE_PERCENTILE = 0.90
+TRANSCRIPT_SPAN_ACTIVITY_OFFSET_DB = 15.0
+TRANSCRIPT_SPAN_MINIMUM_THRESHOLD_DBFS = -65.0
+TRANSCRIPT_SPAN_MAXIMUM_THRESHOLD_DBFS = -50.0
+TRANSCRIPT_SPAN_RMS_MARGIN_DB = 3.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +59,7 @@ class DiscoveryCandidate:
     normalized_names: tuple[str, ...] = ()
     consistency_score: float | None = None
     span_specs: tuple[SpanSpec, ...] = ()
+    activity_qualify_spans: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +69,14 @@ class DiscoverySignature:
     span_evidence: tuple[Mapping[str, Any], ...]
     consistency_metrics: Mapping[str, Any]
     signature_sha256: str
+    span_specs: tuple[SpanSpec, ...] = ()
+    span_selection: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityQualifiedSpans:
+    spans: tuple[CachedSpan, ...]
+    selection: Mapping[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,15 +127,29 @@ def build_discovery_signature(
     )
     if not specs:
         raise ValueError("observation_too_short")
-    prepared = tuple(
-        span_cache.prepare(
+    selection: Mapping[str, Any] | None = None
+    if candidate.activity_qualify_spans:
+        qualified = prepare_activity_qualified_spans(
             observation=candidate.observation,
-            source_audio_path=candidate.audio_path,
-            span=span,
+            audio_path=candidate.audio_path,
+            span_cache=span_cache,
+            candidate_specs=specs,
+            requested_count=span_count,
         )
-        for span in specs
-    )
-    valid = tuple(span for span in prepared if span.rms_dbfs >= min_rms_dbfs)
+        valid = qualified.spans
+        selection = qualified.selection
+    else:
+        prepared = tuple(
+            span_cache.prepare(
+                observation=candidate.observation,
+                source_audio_path=candidate.audio_path,
+                span=span,
+            )
+            for span in specs
+        )
+        valid = tuple(
+            span for span in prepared if span.rms_dbfs >= min_rms_dbfs
+        )
     if len(valid) < policy.min_valid_spans:
         raise ValueError("too_few_valid_spans")
     embeddings = tuple(
@@ -140,6 +171,10 @@ def build_discovery_signature(
         span_evidence=evidence,
         consistency_metrics=consistency,
         signature_sha256=_sha256_json(signature_payload),
+        span_specs=tuple(
+            SpanSpec(span.start_seconds, span.end_seconds) for span in valid
+        ),
+        span_selection=selection,
     )
 
 
@@ -241,6 +276,126 @@ def select_transcript_grounded_spans(
         SpanSpec(start, round(start + duration_seconds, 3))
         for start in sorted(selected)
     )
+
+
+def select_transcript_grounded_span_candidates(
+    payload: Mapping[str, Any],
+    observation: SpeakerObservation,
+    *,
+    requested_count: int = 5,
+    candidate_multiplier: int = TRANSCRIPT_SPAN_CANDIDATE_MULTIPLIER,
+    duration_seconds: float = 12.0,
+    minimum_words: int = 8,
+    minimum_unique_words: int = 4,
+) -> tuple[SpanSpec, ...]:
+    """Oversample distributed transcript spans, falling back to five safely."""
+    if requested_count < 2 or candidate_multiplier < 1:
+        raise ValueError("transcript span candidate counts are invalid")
+    for count in range(
+        requested_count * candidate_multiplier,
+        requested_count - 1,
+        -1,
+    ):
+        spans = select_transcript_grounded_spans(
+            payload,
+            observation,
+            count=count,
+            duration_seconds=duration_seconds,
+            minimum_words=minimum_words,
+            minimum_unique_words=minimum_unique_words,
+        )
+        if spans:
+            return spans
+    return ()
+
+
+def prepare_activity_qualified_spans(
+    *,
+    observation: SpeakerObservation,
+    audio_path: Path,
+    span_cache: AudioSpanCache,
+    candidate_specs: Sequence[SpanSpec],
+    requested_count: int = 5,
+    minimum_non_silent_fraction: float = (
+        TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION
+    ),
+) -> ActivityQualifiedSpans:
+    """Select distributed speech clips relative to this recording's level."""
+    if requested_count < 2:
+        raise ValueError("at least two activity-qualified spans are required")
+    prepared = tuple(
+        span_cache.prepare(
+            observation=observation,
+            source_audio_path=audio_path,
+            span=spec,
+        )
+        for spec in candidate_specs
+    )
+    if len(prepared) < requested_count:
+        raise ValueError("too_few_span_candidates")
+    reference_rms = _percentile_value(
+        sorted(span.rms_dbfs for span in prepared),
+        TRANSCRIPT_SPAN_ACTIVITY_REFERENCE_PERCENTILE,
+    )
+    silence_threshold = max(
+        TRANSCRIPT_SPAN_MINIMUM_THRESHOLD_DBFS,
+        min(
+            TRANSCRIPT_SPAN_MAXIMUM_THRESHOLD_DBFS,
+            reference_rms - TRANSCRIPT_SPAN_ACTIVITY_OFFSET_DB,
+        ),
+    )
+    measured = tuple(
+        replace(
+            span,
+            non_silent_fraction=span_cache.measure_span_activity(
+                span,
+                silence_threshold_dbfs=silence_threshold,
+                frame_duration_ms=30.0,
+            ),
+        )
+        for span in prepared
+    )
+    rms_floor = silence_threshold - TRANSCRIPT_SPAN_RMS_MARGIN_DB
+    qualified = tuple(
+        span
+        for span in measured
+        if span.rms_dbfs >= rms_floor
+        and span.non_silent_fraction is not None
+        and span.non_silent_fraction >= minimum_non_silent_fraction
+    )
+    if len(qualified) < requested_count:
+        raise ValueError("too_few_activity_qualified_spans")
+    selected = tuple(
+        qualified[
+            round(index * (len(qualified) - 1) / (requested_count - 1))
+        ]
+        for index in range(requested_count)
+    )
+    return ActivityQualifiedSpans(
+        spans=selected,
+        selection={
+            "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            "candidate_span_count": len(prepared),
+            "qualified_span_count": len(qualified),
+            "selected_span_count": len(selected),
+            "activity_reference_rms_dbfs": reference_rms,
+            "silence_threshold_dbfs": silence_threshold,
+            "minimum_clip_rms_dbfs": rms_floor,
+            "minimum_non_silent_fraction": minimum_non_silent_fraction,
+        },
+    )
+
+
+def _percentile_value(values: Sequence[float], percentile: float) -> float:
+    if not values:
+        raise ValueError("activity percentile requires values")
+    position = (len(values) - 1) * percentile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return float(values[lower])
+    weight = position - lower
+    return float(values[lower] * (1.0 - weight) + values[upper] * weight)
 
 
 def nominate_discovery_pairs(
@@ -936,9 +1091,14 @@ def evaluate_shadow_profile_discovery(
             "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
             "required_label": "sermon",
             "span_count": 5,
+            "candidate_multiplier": TRANSCRIPT_SPAN_CANDIDATE_MULTIPLIER,
             "duration_seconds": 12.0,
             "minimum_words": 8,
             "minimum_unique_words": 4,
+            "activity_qualified": True,
+            "minimum_non_silent_fraction": (
+                TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION
+            ),
         },
         "review_frontier_policy": {
             "staged_candidates_per_component": (
@@ -1845,6 +2005,11 @@ def _signature_payload(
         "signature_sha256": signature.signature_sha256,
         "centroid_sha256": _sha256_json(signature.centroid),
         "spans": list(signature.span_evidence),
+        "span_selection": (
+            dict(signature.span_selection)
+            if signature.span_selection is not None
+            else None
+        ),
         "consistency_metrics": dict(signature.consistency_metrics),
     }
     if consistency_policy is not None:

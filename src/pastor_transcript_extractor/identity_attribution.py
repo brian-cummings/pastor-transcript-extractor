@@ -31,6 +31,22 @@ _TITLE_BYLINE_RE = re.compile(
     rf"\bby\s+(?:(?:{_HONORIFIC_PATTERN})\s+)?"
     r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
 )
+_TITLE_LEADING_NAME_RE = re.compile(
+    rf"^\s*(?:(?P<honorific>{_HONORIFIC_PATTERN})\s+)?"
+    r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)"
+    r"\s+(?:[-|–—:])\s+\S"
+)
+_NON_PERSON_TITLE_BYLINES = frozenset(
+    {
+        "divine service",
+        "sabbath school",
+        "worship service",
+        "church service",
+        "graduation service",
+        "memorial service",
+        "prayer meeting",
+    }
+)
 _HONORIFICS = {"pastor", "elder", "sis", "sister", "dr", "pr"}
 _MONTH_SUFFIX_RE = re.compile(
     r"-(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|"
@@ -132,6 +148,15 @@ def _candidate_mentions(
             if not any(existing_start == start and existing_end == end for _, existing_start, existing_end in candidates):
                 candidates.append((name, start, end))
     return sorted(candidates, key=lambda item: (item[1], item[2]))
+
+
+def title_byline_selection_hint(title: str) -> str | None:
+    """Return a conservative normalized leading-name hint, never identity truth."""
+    match = _TITLE_LEADING_NAME_RE.search(title)
+    if match is None or match.group("honorific") is not None:
+        return None
+    normalized = _normalized_person(match.group("name"))
+    return normalized if normalized not in _NON_PERSON_TITLE_BYLINES else None
 
 
 def _metadata_is_explicit(field_path: str, text: str, name_start: int, name_end: int) -> bool:
@@ -239,7 +264,12 @@ def extract_grounded_attributions(
                 "person_kind": person_kind,
                 "person_name": name,
                 "normalized_person_name": normalized,
-                "explicit_speaker_attribution": _metadata_is_explicit(field_path, text, start, end),
+                "explicit_speaker_attribution": _metadata_is_explicit(
+                    field_path,
+                    text,
+                    start,
+                    end,
+                ),
                 "correlation_group_id": "speaker-credit-" + _canonical_hash(normalized)[:12],
                 "provenance": {
                     "metadata_artifact_id": metadata_artifact_id,

@@ -47,6 +47,7 @@ class ProfileAssociationReadiness:
     automatic_profile_ready: bool
     shadow_blockers: tuple[str, ...]
     automatic_blockers: tuple[str, ...]
+    review_ready: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,34 @@ class ShadowExemplar:
     audio_path: Path
     audio_sha256: str
     span_specs: tuple[SpanSpec, ...] = ()
+
+
+def select_routed_association_profiles(
+    profiles: Sequence[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+    ],
+    *,
+    candidate_source_id: int,
+    candidate_normalized_names: Sequence[str],
+    source_id_by_video_id: Mapping[int, int],
+) -> tuple[
+    tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
+]:
+    """Keep mature profiles global and route immature review targets safely."""
+    names = {
+        name.strip() for name in candidate_normalized_names if name.strip()
+    }
+    return tuple(
+        (readiness, exemplars)
+        for readiness, exemplars in profiles
+        if readiness.shadow_ready
+        or bool(names & set(readiness.normalized_names))
+        or any(
+            source_id_by_video_id.get(exemplar.observation.video_id)
+            == candidate_source_id
+            for exemplar in exemplars
+        )
+    )
 
 
 PairComparer = Callable[
@@ -245,6 +274,18 @@ def assess_profile_association_readiness(
             )
         shadow_blockers = list(dict.fromkeys(shadow_blockers))
         automatic_blockers = list(dict.fromkeys(automatic_blockers))
+        review_ready = (
+            len(member_ids) >= 2
+            and len(video_ids) >= 2
+            and not any(
+                blocker
+                not in {
+                    "fewer_than_three_profile_members",
+                    "fewer_than_three_distinct_recordings",
+                }
+                for blocker in shadow_blockers
+            )
+        )
         readiness.append(
             ProfileAssociationReadiness(
                 profile_id=profile_id,
@@ -257,6 +298,7 @@ def assess_profile_association_readiness(
                 automatic_profile_ready=not automatic_blockers,
                 shadow_blockers=tuple(shadow_blockers),
                 automatic_blockers=tuple(automatic_blockers),
+                review_ready=review_ready,
             )
         )
     profile_ids_by_name: dict[str, list[int]] = defaultdict(list)
@@ -274,6 +316,7 @@ def assess_profile_association_readiness(
     readiness = [
         replace(
             item,
+            review_ready=False,
             shadow_ready=False,
             automatic_profile_ready=False,
             shadow_blockers=tuple(
@@ -418,6 +461,7 @@ def evaluate_shadow_association(
             {
                 "profile_id": readiness.profile_id,
                 "profile_readiness": {
+                    "review_ready": readiness.review_ready,
                     "shadow_ready": readiness.shadow_ready,
                     "automatic_profile_ready": readiness.automatic_profile_ready,
                     "automatic_blockers": list(readiness.automatic_blockers),
@@ -583,6 +627,7 @@ def readiness_payload(
         "profiles": [asdict(item) for item in readiness],
         "counts": {
             "profiles": len(readiness),
+            "review_ready": sum(item.review_ready for item in readiness),
             "shadow_ready": sum(item.shadow_ready for item in readiness),
             "automatic_profile_ready": sum(
                 item.automatic_profile_ready for item in readiness

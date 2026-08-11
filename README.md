@@ -568,6 +568,11 @@ contract. Accepted observations without enough meaningful sermon-labeled text
 are recorded as an explicit blocker. Use `--allow-gaps` only when collecting a
 baseline report.
 
+Current transcript-grounded sampling oversamples up to fifteen distributed
+sermon-speech candidates, measures speech activity relative to the recording,
+and embeds five qualified clips. This prevents quiet recordings and
+low-activity sermon edges from being mislabeled as unusable acoustic evidence.
+
 Coordinate the shadow identity state for one new extraction:
 
 ```bash
@@ -655,6 +660,16 @@ remain automatic-blocked until `pte identity confirm-discovered-profiles`
 accepts a current multi-exemplar proposal from an independent recording.
 Confirmation is also plan-only unless `--apply` is passed; acoustic
 model/policy approval remains a separate gate.
+
+Reviewed two-recording profiles may participate as `review_ready` comparison
+targets before they are shadow-ready when source-local or attribution routing
+supports the comparison. A resulting proposal can nominate the ordinary
+blinded human pair workflow, but cannot create a machine assignment; automatic
+assignment still requires the stronger automatic-profile-ready gate.
+Conservative leading title credits such as `Andy Crosby - Genuine Conversion`
+are derived at selection time as attribution hints. They do not rewrite speaker
+observations and may route review, but never establish profile membership or an
+expected pair answer.
 
 When explicit attribution places a provisional discovery profile beside an
 established profile for the same configured pastor, normal `profile-growth`

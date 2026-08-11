@@ -15,6 +15,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import DecisionPolicy
 from pastor_transcript_extractor.speaker_profile_discovery import (
     DiscoveryCandidate,
     DiscoverySignature,
+    TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
     evaluate_shadow_profile_discovery,
     nominate_discovery_pairs,
     write_shadow_profile_discovery,
@@ -174,7 +175,7 @@ class SpeakerProfilePromotionTests(unittest.TestCase):
                 "normalized_names": [],
             },
             "span_selection": {
-                "version": "transcript_grounded_sermon_spans_v1",
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
             },
             "outcome": "proposed_match",
             "proposed_profile_id": profile_id,

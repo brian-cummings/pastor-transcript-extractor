@@ -433,6 +433,10 @@ never establish speaker identity.
 The first non-mutating corpus association layer is now implemented. Profile
 readiness is deliberately split:
 
+- **review-ready** requires at least two reviewed members from distinct
+  recordings and no non-size safety blocker; it permits acoustic comparison
+  only for source-local or attribution-routed candidates and only to nominate
+  explicit human confirmation;
 - **shadow-ready** requires at least three reviewed members from three distinct
   recordings, complete member observations, no internal reviewed
   different-speaker constraint, and no conflicting explicit attribution;
@@ -442,7 +446,8 @@ readiness is deliberately split:
 
 These are profile gates only. The independent model/policy promotion gate must
 also pass before automatic registry mutation can be considered.
-`profile-status` reports both readiness counts and each profile's state.
+`profile-status` reports the production readiness counts and each profile's
+state. Shadow-association planning also reports review-ready coverage.
 
 Build missing redundant profile evidence through the same exact-span workflow:
 
@@ -488,14 +493,24 @@ pte identity shadow-associate-speakers \
 
 Execute the shadow matcher with `--all-eligible`, or use
 `--youtube-video-id VIDEO_ID` for one sermon. It compares an eligible,
-unassigned observation against up to three eligible exemplars per shadow-ready
-profile. Candidates and exemplars use the same five transcript-grounded
-sermon-speech spans as profile discovery; legacy artifacts from the earlier
-non-speech-grounded sampler do not satisfy the strict association audit. A
+unassigned observation against up to three eligible exemplars per review-ready
+profile. A two-member target remains machine-ineligible even if it produces a
+proposal; source-local or attribution routing only decides whether to compare,
+and the proposal exists solely to nominate the blinded human pair workflow.
+Candidates and exemplars oversample up to fifteen distributed transcript-grounded
+sermon-speech candidates, apply a recording-relative activity gate, and retain
+five qualified clips. Legacy artifacts from earlier span-selection versions do
+not satisfy the strict association audit. A
 proposal requires at least two same-speaker decisions, no
 different-speaker result, no technical failure, exactly one matching profile,
 and no conflicting explicit attribution. Reviewed different-speaker
 constraints override acoustic output.
+
+Grounded attribution recognizes conservative leading title credits such as
+`Andy Crosby - Genuine Conversion` as selection-time hints. The hint is not
+persisted into immutable speaker evidence: it cannot attach an observation,
+assign a profile, or supply an expected same-speaker answer without reviewed
+evidence.
 
 Versioned artifacts are written below the ignored
 `evaluation/speaker-associations/shadow-runs/` directory. They retain the

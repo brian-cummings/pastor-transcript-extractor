@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from pastor_transcript_extractor.identity_attribution import extract_grounded_attributions
+from pastor_transcript_extractor.identity_attribution import (
+    extract_grounded_attributions,
+    title_byline_selection_hint,
+)
 
 
 def metadata(title: str, *, raw: dict | None = None) -> dict:
@@ -138,6 +141,19 @@ class GroundedAttributionTests(unittest.TestCase):
 
         self.assertEqual(("no_attribution_evidence",), result.outcomes)
         self.assertEqual((), result.observations)
+
+    def test_leading_person_name_in_title_is_a_selection_hint(self) -> None:
+        self.assertEqual(
+            "andy crosby",
+            title_byline_selection_hint("Andy Crosby - Genuine Conversion"),
+        )
+
+    def test_leading_program_label_is_not_a_person_credit(self) -> None:
+        self.assertIsNone(
+            title_byline_selection_hint(
+                "Worship Service - Genuine Conversion"
+            )
+        )
 
     def test_topic_style_and_theology_never_create_identity_evidence(self) -> None:
         result = analyze(

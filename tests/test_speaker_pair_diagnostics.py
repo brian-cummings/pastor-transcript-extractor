@@ -126,6 +126,28 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         self.assertEqual(250.0, first[0].start_seconds)
         self.assertEqual(950.0, first[-1].end_seconds)
 
+    def test_activity_qualified_specs_bypass_absolute_rms_floor(self):
+        class QuietSpanCache(FakeSpanCache):
+            def prepare(self, **kwargs):
+                return replace(super().prepare(**kwargs), rms_dbfs=-60.0)
+
+        result = analyze_observation_pair(
+            observation_a=self.a,
+            observation_b=self.b,
+            audio_path_a=Path("a.wav"),
+            audio_path_b=Path("b.wav"),
+            span_cache=QuietSpanCache(self.root),
+            embedding_cache=EmbeddingCache(self.root / "quiet-cache"),
+            backend=FakeBackend(
+                {"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)}
+            ),
+            policy=approved_policy(),
+            span_count=3,
+            span_specs_are_activity_qualified=True,
+        )
+
+        self.assertNotEqual("too_few_valid_spans", result["reason"])
+
     def test_without_approved_policy_valid_analysis_abstains_and_replays_exactly(self):
         backend = FakeBackend({"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)})
         first = self._analyze(backend)

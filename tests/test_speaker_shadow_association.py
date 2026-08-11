@@ -28,6 +28,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     assess_profile_association_readiness,
     evaluate_shadow_association,
     load_shadow_policy,
+    select_routed_association_profiles,
     summarize_shadow_associations,
     write_shadow_association,
 )
@@ -151,6 +152,142 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         )
         self.assertTrue(triangle.shadow_ready)
         self.assertTrue(triangle.automatic_profile_ready)
+
+    def test_two_member_profile_is_review_ready_but_not_shadow_ready(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b")]
+        self._profile(observations)
+
+        readiness = assess_profile_association_readiness(
+            self.database,
+            self._evidence((("a", "b"),)),
+        )[0]
+
+        self.assertTrue(readiness.review_ready)
+        self.assertFalse(readiness.shadow_ready)
+        self.assertFalse(readiness.automatic_profile_ready)
+        self.assertIn(
+            "fewer_than_three_profile_members",
+            readiness.shadow_blockers,
+        )
+
+    def test_review_ready_profile_can_propose_human_confirmation(self) -> None:
+        candidate = self._observation("candidate")
+        exemplars = [self._observation(key) for key in ("a", "b")]
+        profile = self._profile(exemplars)
+        readiness = ProfileAssociationReadiness(
+            profile_id=profile.id,
+            member_observation_ids=tuple(item.id for item in exemplars),
+            member_fingerprints=tuple(
+                item.input_fingerprint for item in exemplars
+            ),
+            recording_count=2,
+            source_count=1,
+            normalized_names=(),
+            shadow_ready=False,
+            automatic_profile_ready=False,
+            shadow_blockers=("fewer_than_three_profile_members",),
+            automatic_blockers=("fewer_than_three_profile_members",),
+            review_ready=True,
+        )
+
+        report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=(),
+            profiles=(
+                (
+                    readiness,
+                    tuple(
+                        ShadowExemplar(
+                            profile.id,
+                            exemplar,
+                            Path(f"{exemplar.id}.wav"),
+                            f"audio-{exemplar.id}",
+                        )
+                        for exemplar in exemplars
+                    ),
+                ),
+            ),
+            compare=lambda *_args: {"outcome": "same_speaker"},
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+        )
+
+        self.assertEqual("proposed_match", report["outcome"])
+        self.assertFalse(
+            report["profiles"][0]["profile_readiness"][
+                "automatic_profile_ready"
+            ]
+        )
+
+    def test_immature_review_targets_require_source_or_name_routing(self) -> None:
+        observations = [
+            self._observation(key) for key in ("mature", "local", "distant")
+        ]
+
+        def profile_input(index, *, shadow_ready=False, names=()):
+            readiness = ProfileAssociationReadiness(
+                profile_id=index + 1,
+                member_observation_ids=(observations[index].id,),
+                member_fingerprints=(
+                    observations[index].input_fingerprint,
+                ),
+                recording_count=2,
+                source_count=1,
+                normalized_names=names,
+                shadow_ready=shadow_ready,
+                automatic_profile_ready=shadow_ready,
+                shadow_blockers=(),
+                automatic_blockers=(),
+                review_ready=True,
+            )
+            return (
+                readiness,
+                (
+                    ShadowExemplar(
+                        readiness.profile_id,
+                        observations[index],
+                        Path(f"{index}.wav"),
+                        f"audio-{index}",
+                    ),
+                ),
+            )
+
+        profiles = (
+            profile_input(0, shadow_ready=True),
+            profile_input(1),
+            profile_input(2, names=("alice example",)),
+        )
+        selected = select_routed_association_profiles(
+            profiles,
+            candidate_source_id=7,
+            candidate_normalized_names=("alice example",),
+            source_id_by_video_id={
+                observations[0].video_id: 1,
+                observations[1].video_id: 7,
+                observations[2].video_id: 9,
+            },
+        )
+
+        self.assertEqual(
+            {1, 2, 3},
+            {readiness.profile_id for readiness, _ in selected},
+        )
+
+        unrelated = select_routed_association_profiles(
+            profiles,
+            candidate_source_id=8,
+            candidate_normalized_names=(),
+            source_id_by_video_id={
+                observation.video_id: index + 1
+                for index, observation in enumerate(observations)
+            },
+        )
+        self.assertEqual(
+            {1},
+            {readiness.profile_id for readiness, _ in unrelated},
+        )
 
     def test_multi_exemplar_unique_match_is_shadow_proposal_only(self) -> None:
         candidate = self._observation("candidate")

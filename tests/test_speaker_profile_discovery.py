@@ -6,7 +6,11 @@ from pathlib import Path
 
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
-from pastor_transcript_extractor.speaker_pair_diagnostics import DecisionPolicy
+from pastor_transcript_extractor.speaker_pair_diagnostics import (
+    CachedSpan,
+    DecisionPolicy,
+    SpanSpec,
+)
 from pastor_transcript_extractor.speaker_observation_consistency import (
     DiscoveryConsistencyPolicySpec,
 )
@@ -16,11 +20,41 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     evaluate_shadow_profile_discovery,
     load_verified_shadow_profile_discovery,
     nominate_discovery_pairs,
+    prepare_activity_qualified_spans,
+    select_transcript_grounded_span_candidates,
     select_transcript_grounded_spans,
     write_shadow_profile_discovery,
 )
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 from pastor_transcript_extractor.storage import Database
+
+
+class FakeActivitySpanCache:
+    def __init__(self, rms_by_start, activity_by_start):
+        self.rms_by_start = rms_by_start
+        self.activity_by_start = activity_by_start
+
+    def prepare(self, *, observation, source_audio_path, span):
+        return CachedSpan(
+            observation_fingerprint=observation.input_fingerprint,
+            start_seconds=span.start_seconds,
+            end_seconds=span.end_seconds,
+            wav_path=f"{span.start_seconds}.wav",
+            wav_sha256=f"sha-{span.start_seconds}",
+            duration_seconds=span.end_seconds - span.start_seconds,
+            rms_dbfs=self.rms_by_start[span.start_seconds],
+            clipped_fraction=0.0,
+            cache_hit=False,
+        )
+
+    def measure_span_activity(
+        self,
+        span,
+        *,
+        silence_threshold_dbfs,
+        frame_duration_ms,
+    ):
+        return self.activity_by_start[span.start_seconds]
 
 
 class SpeakerProfileDiscoveryTests(unittest.TestCase):
@@ -768,6 +802,54 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         self.assertEqual(
             (),
             select_transcript_grounded_spans(payload, observation),
+        )
+
+    def test_transcript_grounding_oversamples_when_speech_is_available(self) -> None:
+        observation = self._signature("oversample", (1.0, 0.0)).candidate.observation
+        payload = {
+            "segments": [
+                {
+                    "start_seconds": float(start),
+                    "end_seconds": float(start + 15),
+                    "label": "sermon",
+                    "text": "Sustained sermon speech with enough varied words for evidence.",
+                }
+                for start in range(120, 870, 50)
+            ]
+        }
+
+        spans = select_transcript_grounded_span_candidates(payload, observation)
+
+        self.assertEqual(15, len(spans))
+
+    def test_quiet_recording_uses_relative_activity_and_avoids_edges(self) -> None:
+        observation = self._signature("quiet", (1.0, 0.0)).candidate.observation
+        specs = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in range(120, 1620, 100)
+        )
+        rms = {
+            spec.start_seconds: -56.0 + (index % 4)
+            for index, spec in enumerate(specs)
+        }
+        activity = {spec.start_seconds: 0.65 for spec in specs}
+        activity[specs[0].start_seconds] = 0.10
+        activity[specs[-1].start_seconds] = 0.15
+
+        prepared = prepare_activity_qualified_spans(
+            observation=observation,
+            audio_path=Path("quiet.wav"),
+            span_cache=FakeActivitySpanCache(rms, activity),
+            candidate_specs=specs,
+        )
+
+        self.assertEqual(5, len(prepared.spans))
+        selected_starts = {span.start_seconds for span in prepared.spans}
+        self.assertNotIn(specs[0].start_seconds, selected_starts)
+        self.assertNotIn(specs[-1].start_seconds, selected_starts)
+        self.assertLessEqual(
+            prepared.selection["silence_threshold_dbfs"],
+            -60.0,
         )
 
     def test_incomplete_component_is_blocked(self) -> None:

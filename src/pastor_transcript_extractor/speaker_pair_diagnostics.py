@@ -419,6 +419,7 @@ def analyze_observation_pair(
     min_rms_dbfs: float = -52.0,
     span_specs_a: Sequence[SpanSpec] | None = None,
     span_specs_b: Sequence[SpanSpec] | None = None,
+    span_specs_are_activity_qualified: bool = False,
 ) -> dict[str, Any]:
     base = {
         "schema_version": 1,
@@ -453,8 +454,16 @@ def analyze_observation_pair(
             )
             for spec in specs_b
         ]
-        valid_a = [span for span in prepared_a if span.rms_dbfs >= min_rms_dbfs]
-        valid_b = [span for span in prepared_b if span.rms_dbfs >= min_rms_dbfs]
+        valid_a = (
+            prepared_a
+            if span_specs_are_activity_qualified
+            else [span for span in prepared_a if span.rms_dbfs >= min_rms_dbfs]
+        )
+        valid_b = (
+            prepared_b
+            if span_specs_are_activity_qualified
+            else [span for span in prepared_b if span.rms_dbfs >= min_rms_dbfs]
+        )
         minimum = policy.min_valid_spans if policy else 2
         if len(valid_a) < minimum or len(valid_b) < minimum:
             return {

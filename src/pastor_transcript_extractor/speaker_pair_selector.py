@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v22"
+SELECTOR_VERSION = "speaker_pair_selector_v23"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 

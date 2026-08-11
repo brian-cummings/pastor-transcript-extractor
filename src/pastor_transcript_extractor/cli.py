@@ -118,6 +118,9 @@ from pastor_transcript_extractor.identity import (
     persist_metadata_snapshot,
     record_neutral_speaker_evidence,
 )
+from pastor_transcript_extractor.identity_attribution import (
+    title_byline_selection_hint,
+)
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
     count_missing_discovery_reviewed_constraints,
@@ -250,7 +253,8 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     evaluate_shadow_profile_discovery,
     load_verified_shadow_profile_discovery,
     nominate_discovery_pairs,
-    select_transcript_grounded_spans,
+    prepare_activity_qualified_spans,
+    select_transcript_grounded_span_candidates,
     write_shadow_profile_discovery,
 )
 from pastor_transcript_extractor.speaker_profile_promotion import (
@@ -265,6 +269,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     evaluate_shadow_association,
     load_shadow_policy,
     select_profile_exemplars,
+    select_routed_association_profiles,
     summarize_shadow_associations,
     write_shadow_association,
 )
@@ -3962,7 +3967,7 @@ def shadow_discover_profiles_command(
                 + 1
             )
             continue
-        span_specs = select_transcript_grounded_spans(
+        span_specs = select_transcript_grounded_span_candidates(
             proposed_payload,
             observation,
         )
@@ -4003,6 +4008,7 @@ def shadow_discover_profiles_command(
                 ),
                 consistency_score=consistency_score,
                 span_specs=span_specs,
+                activity_qualify_spans=True,
             )
         )
     candidates.sort(
@@ -4171,8 +4177,9 @@ def shadow_discover_profiles_command(
             embedding_cache=embedding_cache,
             backend=backend,
             policy=policy_spec.policy,
-            span_specs_a=signature_a.candidate.span_specs,
-            span_specs_b=signature_b.candidate.span_specs,
+            span_specs_a=signature_a.span_specs,
+            span_specs_b=signature_b.span_specs,
+            span_specs_are_activity_qualified=True,
         )
 
     report = evaluate_shadow_profile_discovery(
@@ -4265,6 +4272,24 @@ def shadow_discover_profiles_command(
             for outcome, count in report["pair_outcome_counts"].items()
         )
     )
+    insufficient_reason_counts: dict[str, int] = {}
+    for result in report["pair_results"]:
+        if result.get("outcome") != "insufficient_evidence":
+            continue
+        reason = str(result.get("reason", "unknown"))
+        insufficient_reason_counts[reason] = (
+            insufficient_reason_counts.get(reason, 0) + 1
+        )
+    if insufficient_reason_counts:
+        console.print(
+            "Insufficient-evidence reasons: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(
+                    insufficient_reason_counts.items()
+                )
+            )
+        )
     exploratory_rankings = tuple(
         ranking
         for ranking in load_discovery_acoustic_ranking_pairs(destination)
@@ -5312,6 +5337,7 @@ def shadow_associate_speakers_command(
     verification_cache = MediaVerificationCache(
         cache_root / "media-verification"
     )
+    span_cache = AudioSpanCache(cache_root)
     try:
         evidence = load_reviewed_speaker_evidence(
             evaluation_root.expanduser().resolve()
@@ -5328,6 +5354,7 @@ def shadow_associate_speakers_command(
     def transcript_grounded_spans(
         video_id: int,
         observation: SpeakerObservation,
+        audio_path: Path,
     ) -> tuple[SpanSpec, ...]:
         extraction = database.get_latest_extraction_result_for_video(video_id)
         if extraction is None or not extraction.proposed_json_path:
@@ -5340,13 +5367,31 @@ def shadow_associate_speakers_command(
             return ()
         if not isinstance(payload, dict):
             return ()
-        return select_transcript_grounded_spans(payload, observation)
+        candidates = select_transcript_grounded_span_candidates(
+            payload,
+            observation,
+        )
+        if not candidates or plan_only:
+            return candidates
+        qualified = prepare_activity_qualified_spans(
+            observation=observation,
+            audio_path=audio_path,
+            span_cache=span_cache,
+            candidate_specs=candidates,
+        )
+        return tuple(
+            SpanSpec(span.start_seconds, span.end_seconds)
+            for span in qualified.spans
+        )
 
     videos_by_id = {video.id: video for video in database.list_videos()}
+    source_id_by_video_id = {
+        video_id: video.source_id for video_id, video in videos_by_id.items()
+    }
     eligible_exemplars: list[ShadowExemplar] = []
     span_specs_by_observation_id: dict[int, tuple[SpanSpec, ...]] = {}
     for profile in readiness:
-        if not profile.shadow_ready:
+        if not profile.review_ready:
             continue
         for observation_id in profile.member_observation_ids:
             observation = database.get_speaker_observation(observation_id)
@@ -5364,10 +5409,14 @@ def shadow_associate_speakers_command(
                 or eligibility.observation.id != observation.id
             ):
                 continue
-            span_specs = transcript_grounded_spans(
-                observation.video_id,
-                observation,
-            )
+            try:
+                span_specs = transcript_grounded_spans(
+                    observation.video_id,
+                    observation,
+                    Path(eligibility.media_artifact.artifact_path),
+                )
+            except (OSError, RuntimeError, ValueError):
+                continue
             if not span_specs:
                 continue
             span_specs_by_observation_id[observation.id] = span_specs
@@ -5383,7 +5432,7 @@ def shadow_associate_speakers_command(
 
     usable_profiles = []
     for profile in readiness:
-        if not profile.shadow_ready:
+        if not profile.review_ready:
             continue
         exemplars = select_profile_exemplars(
             profile,
@@ -5441,10 +5490,18 @@ def shadow_associate_speakers_command(
                 + 1
             )
             continue
-        span_specs = transcript_grounded_spans(
-            video.id,
-            eligibility.observation,
-        )
+        try:
+            span_specs = transcript_grounded_spans(
+                video.id,
+                eligibility.observation,
+                Path(eligibility.media_artifact.artifact_path),
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            reason = str(error) or "activity_qualified_spans_unavailable"
+            ineligible_reasons[reason] = (
+                ineligible_reasons.get(reason, 0) + 1
+            )
+            continue
         if not span_specs:
             ineligible_reasons["speech_grounded_spans_unavailable"] = (
                 ineligible_reasons.get(
@@ -5459,12 +5516,14 @@ def shadow_associate_speakers_command(
             break
 
     shadow_ready_count = sum(profile.shadow_ready for profile in readiness)
+    review_ready_count = sum(profile.review_ready for profile in readiness)
     automatic_profile_ready_count = sum(
         profile.automatic_profile_ready for profile in readiness
     )
     console.print(
         "Profile readiness: "
         f"canonical={len(readiness)} "
+        f"review_ready={review_ready_count} "
         f"shadow_ready={shadow_ready_count} "
         f"automatic_profile_ready={automatic_profile_ready_count} "
         f"acoustically_usable={len(usable_profiles)}"
@@ -5479,6 +5538,7 @@ def shadow_associate_speakers_command(
             f"Profile {profile.profile_id}: members="
             f"{len(profile.member_observation_ids)} "
             f"recordings={profile.recording_count} "
+            f"review_ready={profile.review_ready} "
             f"shadow_ready={profile.shadow_ready} "
             f"automatic_profile_ready={profile.automatic_profile_ready} "
             f"automatic_blockers={blockers}"
@@ -5502,7 +5562,7 @@ def shadow_associate_speakers_command(
         return ()
     if not usable_profiles:
         raise typer.BadParameter(
-            "No shadow-ready profile has enough eligible acoustic exemplars."
+            "No review-ready profile has enough eligible acoustic exemplars."
         )
     if not candidates:
         raise typer.BadParameter(
@@ -5516,7 +5576,6 @@ def shadow_associate_speakers_command(
         )
     except (OSError, RuntimeError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
-    span_cache = AudioSpanCache(cache_root)
     embedding_cache = EmbeddingCache(cache_root)
     candidate_names_by_observation: dict[int, set[str]] = {}
     for claim in database.list_speaker_name_claims():
@@ -5547,6 +5606,7 @@ def shadow_associate_speakers_command(
             policy=policy_spec.policy,
             span_specs_a=span_specs_by_observation_id[candidate.id],
             span_specs_b=span_specs_by_observation_id[exemplar.id],
+            span_specs_are_activity_qualified=True,
         )
 
     outcome_counts: dict[str, int] = {}
@@ -5559,14 +5619,25 @@ def shadow_associate_speakers_command(
         media_artifact = eligibility.media_artifact
         if observation is None or media_artifact is None:
             continue
+        explicit_candidate_names = set(
+            candidate_names_by_observation.get(observation.id, ())
+        )
+        title_hint = title_byline_selection_hint(video.title)
+        routing_names = explicit_candidate_names | (
+            {title_hint} if title_hint else set()
+        )
+        candidate_profiles = select_routed_association_profiles(
+            usable_profiles,
+            candidate_source_id=video.source_id,
+            candidate_normalized_names=sorted(routing_names),
+            source_id_by_video_id=source_id_by_video_id,
+        )
         report = evaluate_shadow_association(
             candidate=observation,
             candidate_audio_path=Path(media_artifact.artifact_path),
             candidate_audio_sha256=media_artifact.content_sha256,
-            candidate_normalized_names=sorted(
-                candidate_names_by_observation.get(observation.id, ())
-            ),
-            profiles=usable_profiles,
+            candidate_normalized_names=sorted(explicit_candidate_names),
+            profiles=candidate_profiles,
             compare=compare,
             policy_spec=policy_spec,
             model_fingerprint=backend.spec.fingerprint,
@@ -5581,6 +5652,8 @@ def shadow_associate_speakers_command(
                 "duration_seconds": 12.0,
                 "minimum_words": 8,
                 "minimum_unique_words": 4,
+                "candidate_multiplier": 3,
+                "activity_qualified": True,
             },
         )
         destination = write_shadow_association(output_root, report)
@@ -5591,6 +5664,7 @@ def shadow_associate_speakers_command(
             f"Association {index}/{len(candidates)}: "
             f"{video.youtube_video_id} "
             f"{outcome} profile={report['proposed_profile_id']} "
+            f"reason={report['reason']} "
             f"artifact={destination}"
         )
     console.print(
@@ -6147,13 +6221,14 @@ def review_next_speaker_pair(
             assert observation is not None
             assert media is not None
             claims = database.list_speaker_name_claims_for_video(video.id)
+            title_hint = title_byline_selection_hint(video.title)
             names = frozenset(
                 claim.normalized_name
                 for claim in claims
                 if claim.observation_id == observation.id
                 and claim.explicit_speaker_attribution
                 and claim.normalized_name.strip()
-            )
+            ) | (frozenset((title_hint,)) if title_hint else frozenset())
             candidate = PairCandidateObservation(
                 input_fingerprint=observation.input_fingerprint,
                 video_id=video.youtube_video_id,
