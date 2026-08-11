@@ -36,6 +36,39 @@ from pastor_transcript_extractor.storage import Database
 
 
 class SpeakerShadowAssociationTests(unittest.TestCase):
+    def test_candidate_edge_flag_is_promoted_to_report_diagnostics(self) -> None:
+        candidate = self._observation("edge-flag")
+        flag = {
+            "flag": "speaker_inconsistent_edge",
+            "edge": "end",
+            "start_seconds": 980.0,
+            "end_seconds": 992.0,
+            "automatic_boundary_change_allowed": False,
+        }
+
+        report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=(),
+            profiles=(),
+            compare=lambda *_args: {},
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+            span_selection={
+                "candidate_selection": {
+                    "sermon_window_quality_flags": [flag]
+                }
+            },
+        )
+
+        self.assertEqual([flag], report["sermon_window_quality_flags"])
+        self.assertFalse(
+            report["sermon_window_quality_flags"][0][
+                "automatic_boundary_change_allowed"
+            ]
+        )
+
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)

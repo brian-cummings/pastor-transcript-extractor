@@ -570,8 +570,18 @@ baseline report.
 
 Current transcript-grounded sampling oversamples up to fifteen distributed
 sermon-speech candidates, measures speech activity relative to the recording,
-and embeds five qualified clips. This prevents quiet recordings and
-low-activity sermon edges from being mislabeled as unusable acoustic evidence.
+and embeds five qualified clips. Distribution remains primary. Only when those
+five are internally inconsistent may a fallback replace up to two outliers
+from the remaining qualified candidates, minimizing lost temporal coverage and
+using no target-profile evidence. If no coherent repair exists, normal policy
+abstention remains in force. This prevents quiet recordings and low-activity
+sermon edges from being mislabeled as unusable acoustic evidence without
+silently selecting clips to fit a profile.
+When a coherent repair replaces a clip within the first or last 10% of the
+sermon window, the association artifact and CLI record a
+`speaker_inconsistent_edge` sermon-window quality flag with the exact span.
+The flag is diagnostic and can nominate boundary review; it never changes the
+window, disposition, or profile membership automatically.
 
 Coordinate the shadow identity state for one new extraction:
 

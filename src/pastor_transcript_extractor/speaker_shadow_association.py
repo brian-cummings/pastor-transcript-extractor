@@ -19,9 +19,9 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v4"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v5"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
-    "speaker_shadow_association_input_v3"
+    "speaker_shadow_association_input_v4"
 )
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
@@ -522,6 +522,21 @@ def evaluate_shadow_association(
         outcome = "insufficient_evidence"
         reason = "no_profile_meets_multi_exemplar_match"
 
+    sermon_window_quality_flags: list[dict[str, Any]] = []
+    if isinstance(span_selection, Mapping):
+        candidate_selection = span_selection.get("candidate_selection")
+        if isinstance(candidate_selection, Mapping):
+            raw_flags = candidate_selection.get(
+                "sermon_window_quality_flags"
+            )
+            if isinstance(raw_flags, Sequence) and not isinstance(
+                raw_flags, (str, bytes)
+            ):
+                sermon_window_quality_flags = [
+                    dict(flag) for flag in raw_flags
+                    if isinstance(flag, Mapping)
+                ]
+
     report = {
         "schema_version": 1,
         "association_version": SHADOW_ASSOCIATION_VERSION,
@@ -546,6 +561,7 @@ def evaluate_shadow_association(
         },
         "minimum_same_exemplars": minimum_same_exemplars,
         "span_selection": dict(span_selection) if span_selection else None,
+        "sermon_window_quality_flags": sermon_window_quality_flags,
         "outcome": outcome,
         "reason": reason,
         "proposed_profile_id": proposed_profile_id,

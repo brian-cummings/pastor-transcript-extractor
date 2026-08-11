@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 import re
+import statistics
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from pastor_transcript_extractor.models import SpeakerObservation
@@ -27,7 +28,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v8"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v9"
 SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v2",
@@ -36,11 +37,12 @@ SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
         "speaker_profile_shadow_discovery_v5",
         "speaker_profile_shadow_discovery_v6",
         "speaker_profile_shadow_discovery_v7",
+        "speaker_profile_shadow_discovery_v8",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
 TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION = (
-    "transcript_grounded_sermon_spans_v2"
+    "transcript_grounded_sermon_spans_v3"
 )
 TRANSCRIPT_SPAN_CANDIDATE_MULTIPLIER = 3
 TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION = 0.40
@@ -49,6 +51,8 @@ TRANSCRIPT_SPAN_ACTIVITY_OFFSET_DB = 15.0
 TRANSCRIPT_SPAN_MINIMUM_THRESHOLD_DBFS = -65.0
 TRANSCRIPT_SPAN_MAXIMUM_THRESHOLD_DBFS = -50.0
 TRANSCRIPT_SPAN_RMS_MARGIN_DB = 3.0
+TRANSCRIPT_SPAN_MAX_CONSISTENCY_REPLACEMENTS = 2
+TRANSCRIPT_SPAN_EDGE_WINDOW_FRACTION = 0.10
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +81,7 @@ class DiscoverySignature:
 class ActivityQualifiedSpans:
     spans: tuple[CachedSpan, ...]
     selection: Mapping[str, Any]
+    qualified_spans: tuple[CachedSpan, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +140,12 @@ def build_discovery_signature(
             span_cache=span_cache,
             candidate_specs=specs,
             requested_count=span_count,
+        )
+        qualified = refine_activity_qualified_spans(
+            qualified,
+            embedding_cache=embedding_cache,
+            backend=backend,
+            policy=policy,
         )
         valid = qualified.spans
         selection = qualified.selection
@@ -373,6 +384,7 @@ def prepare_activity_qualified_spans(
     )
     return ActivityQualifiedSpans(
         spans=selected,
+        qualified_spans=qualified,
         selection={
             "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
             "candidate_span_count": len(prepared),
@@ -382,7 +394,204 @@ def prepare_activity_qualified_spans(
             "silence_threshold_dbfs": silence_threshold,
             "minimum_clip_rms_dbfs": rms_floor,
             "minimum_non_silent_fraction": minimum_non_silent_fraction,
+            "observation_start_seconds": observation.start_seconds,
+            "observation_end_seconds": observation.end_seconds,
         },
+    )
+
+
+def refine_activity_qualified_spans(
+    prepared: ActivityQualifiedSpans,
+    *,
+    embedding_cache: EmbeddingCache,
+    backend: EmbeddingBackend,
+    policy: DecisionPolicy,
+) -> ActivityQualifiedSpans:
+    """Keep distributed clips unless within-observation consistency fails."""
+    selected = prepared.spans
+    qualified = prepared.qualified_spans or selected
+    requested_count = len(selected)
+    if requested_count < 3:
+        raise ValueError("consistency refinement requires at least three spans")
+    embedding_by_sha: dict[str, Sequence[float]] = {}
+
+    def embeddings_for(spans: Sequence[CachedSpan]) -> tuple[Sequence[float], ...]:
+        embeddings = []
+        for span in spans:
+            embedding = embedding_by_sha.get(span.wav_sha256)
+            if embedding is None:
+                embedding = embedding_cache.get_or_compute(span, backend)[0]
+                embedding_by_sha[span.wav_sha256] = embedding
+            embeddings.append(embedding)
+        return tuple(embeddings)
+
+    def metrics_for(spans: Sequence[CachedSpan]) -> Mapping[str, Any]:
+        return observation_consistency_metrics(embeddings_for(spans))
+
+    def coherent(metrics: Mapping[str, Any]) -> bool:
+        pairwise = metrics["pairwise_similarity"]
+        return bool(
+            float(pairwise["median"]) >= policy.min_within_median
+            and float(pairwise["p10"]) >= policy.same_min_cross_p10
+        )
+
+    def subset_pairwise_summary(
+        spans: Sequence[CachedSpan],
+    ) -> tuple[float, float]:
+        embeddings = embeddings_for(spans)
+        similarities = sorted(
+            _cosine(left, right)
+            for index, left in enumerate(embeddings)
+            for right in embeddings[index + 1 :]
+        )
+        return (
+            _percentile_value(similarities, 0.10),
+            float(statistics.median(similarities)),
+        )
+
+    initial_metrics = metrics_for(selected)
+    selection = dict(prepared.selection)
+    selection.update(
+        {
+            "distributed_consistency": initial_metrics,
+            "consistency_minimum_pairwise_median": (
+                policy.min_within_median
+            ),
+            "consistency_minimum_pairwise_p10": (
+                policy.same_min_cross_p10
+            ),
+            "consistency_fallback_attempted": False,
+            "consistency_fallback_used": False,
+            "consistency_fallback_maximum_replacements": (
+                TRANSCRIPT_SPAN_MAX_CONSISTENCY_REPLACEMENTS
+            ),
+        }
+    )
+    if coherent(initial_metrics) or len(qualified) == requested_count:
+        return ActivityQualifiedSpans(
+            spans=selected,
+            qualified_spans=qualified,
+            selection=selection,
+        )
+
+    selection["consistency_fallback_attempted"] = True
+    positions = {
+        span.wav_sha256: index for index, span in enumerate(qualified)
+    }
+    final_position = max(1, len(qualified) - 1)
+    ideal_positions = tuple(
+        index * final_position / (requested_count - 1)
+        for index in range(requested_count)
+    )
+    coherent_subsets: list[
+        tuple[
+            tuple[float, int, float, float, tuple[float, ...]],
+            tuple[CachedSpan, ...],
+            tuple[float, float],
+        ]
+    ] = []
+    selected_hashes = {span.wav_sha256 for span in selected}
+    for subset in itertools.combinations(qualified, requested_count):
+        if subset == selected:
+            continue
+        replacement_count = sum(
+            span.wav_sha256 not in selected_hashes for span in subset
+        )
+        if replacement_count > TRANSCRIPT_SPAN_MAX_CONSISTENCY_REPLACEMENTS:
+            continue
+        pairwise_p10, pairwise_median = subset_pairwise_summary(subset)
+        if (
+            pairwise_median < policy.min_within_median
+            or pairwise_p10 < policy.same_min_cross_p10
+        ):
+            continue
+        subset_positions = tuple(
+            positions[span.wav_sha256] for span in subset
+        )
+        distribution_penalty = sum(
+            abs(position - ideal) / final_position
+            for position, ideal in zip(subset_positions, ideal_positions)
+        )
+        rank = (
+            distribution_penalty,
+            replacement_count,
+            -pairwise_p10,
+            -pairwise_median,
+            tuple(span.start_seconds for span in subset),
+        )
+        coherent_subsets.append(
+            (rank, subset, (pairwise_p10, pairwise_median))
+        )
+    if not coherent_subsets:
+        selection["consistency_fallback_found_coherent_subset"] = False
+        return ActivityQualifiedSpans(
+            spans=selected,
+            qualified_spans=qualified,
+            selection=selection,
+        )
+
+    _, refined, _refined_summary = min(
+        coherent_subsets,
+        key=lambda item: item[0],
+    )
+    refined_metrics = metrics_for(refined)
+    original_hashes = {span.wav_sha256 for span in selected}
+    refined_hashes = {span.wav_sha256 for span in refined}
+    observation_start = float(
+        selection.get("observation_start_seconds", 0.0)
+    )
+    observation_end = float(
+        selection.get("observation_end_seconds", observation_start)
+    )
+    observation_duration = observation_end - observation_start
+    window_quality_flags = []
+    if observation_duration > 0:
+        for span in selected:
+            if span.wav_sha256 in refined_hashes:
+                continue
+            midpoint_fraction = (
+                ((span.start_seconds + span.end_seconds) / 2.0)
+                - observation_start
+            ) / observation_duration
+            edge = None
+            if midpoint_fraction <= TRANSCRIPT_SPAN_EDGE_WINDOW_FRACTION:
+                edge = "start"
+            elif midpoint_fraction >= (
+                1.0 - TRANSCRIPT_SPAN_EDGE_WINDOW_FRACTION
+            ):
+                edge = "end"
+            if edge is None:
+                continue
+            window_quality_flags.append(
+                {
+                    "flag": "speaker_inconsistent_edge",
+                    "edge": edge,
+                    "start_seconds": span.start_seconds,
+                    "end_seconds": span.end_seconds,
+                    "window_fraction": midpoint_fraction,
+                    "identity_fallback_replaced": True,
+                    "automatic_boundary_change_allowed": False,
+                    "reason_codes": [
+                        "distributed_clip_inconsistent",
+                        "coherent_replacement_found",
+                    ],
+                }
+            )
+    selection.update(
+        {
+            "consistency_fallback_found_coherent_subset": True,
+            "consistency_fallback_used": True,
+            "consistency_fallback_replacement_count": sum(
+                span.wav_sha256 not in original_hashes for span in refined
+            ),
+            "refined_consistency": refined_metrics,
+            "sermon_window_quality_flags": window_quality_flags,
+        }
+    )
+    return ActivityQualifiedSpans(
+        spans=refined,
+        qualified_spans=qualified,
+        selection=selection,
     )
 
 

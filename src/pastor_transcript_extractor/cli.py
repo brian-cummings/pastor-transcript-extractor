@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from threading import Lock
-from typing import Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 import webbrowser
 
 import typer
@@ -255,6 +255,7 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     load_verified_shadow_profile_discovery,
     nominate_discovery_pairs,
     prepare_activity_qualified_spans,
+    refine_activity_qualified_spans,
     select_transcript_grounded_span_candidates,
     write_shadow_profile_discovery,
 )
@@ -5352,6 +5353,20 @@ def shadow_associate_speakers_command(
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
 
+    backend = None
+    embedding_cache = None
+    if not plan_only:
+        try:
+            backend = SherpaOnnxEmbeddingBackend(
+                model_path.expanduser().resolve(),
+                expected_sha256=model_sha256,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            raise typer.BadParameter(str(error)) from error
+        embedding_cache = EmbeddingCache(cache_root)
+
+    span_selection_by_observation_id: dict[int, Mapping[str, Any]] = {}
+
     def transcript_grounded_spans(
         video_id: int,
         observation: SpeakerObservation,
@@ -5374,11 +5389,22 @@ def shadow_associate_speakers_command(
         )
         if not candidates or plan_only:
             return candidates
+        assert backend is not None
+        assert embedding_cache is not None
         qualified = prepare_activity_qualified_spans(
             observation=observation,
             audio_path=audio_path,
             span_cache=span_cache,
             candidate_specs=candidates,
+        )
+        qualified = refine_activity_qualified_spans(
+            qualified,
+            embedding_cache=embedding_cache,
+            backend=backend,
+            policy=policy_spec.policy,
+        )
+        span_selection_by_observation_id[observation.id] = (
+            qualified.selection
         )
         return tuple(
             SpanSpec(span.start_seconds, span.end_seconds)
@@ -5570,14 +5596,8 @@ def shadow_associate_speakers_command(
             "No eligible unassigned candidate observation was selected."
         )
 
-    try:
-        backend = SherpaOnnxEmbeddingBackend(
-            model_path.expanduser().resolve(),
-            expected_sha256=model_sha256,
-        )
-    except (OSError, RuntimeError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
-    embedding_cache = EmbeddingCache(cache_root)
+    assert backend is not None
+    assert embedding_cache is not None
     candidate_names_by_observation: dict[int, set[str]] = {}
     for claim in database.list_speaker_name_claims():
         if (
@@ -5611,6 +5631,7 @@ def shadow_associate_speakers_command(
         )
 
     outcome_counts: dict[str, int] = {}
+    sermon_window_quality_flag_count = 0
     written_reports: list[Path] = []
     for index, (video, eligibility, _span_specs) in enumerate(
         candidates,
@@ -5655,18 +5676,44 @@ def shadow_associate_speakers_command(
                 "minimum_unique_words": 4,
                 "candidate_multiplier": 3,
                 "activity_qualified": True,
+                "distributed_first": True,
+                "within_observation_consistency_fallback": True,
+                "candidate_selection": (
+                    span_selection_by_observation_id.get(observation.id)
+                ),
+                "exemplar_selections": {
+                    str(exemplar.observation.id): (
+                        span_selection_by_observation_id.get(
+                            exemplar.observation.id
+                        )
+                    )
+                    for _profile, exemplars in candidate_profiles
+                    for exemplar in exemplars
+                },
             },
         )
         destination = write_shadow_association(output_root, report)
         written_reports.append(destination)
         outcome = str(report["outcome"])
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+        window_flags = report["sermon_window_quality_flags"]
+        sermon_window_quality_flag_count += len(window_flags)
+        window_flag_text = (
+            " window_flags="
+            + ",".join(
+                f"{flag['flag']}:{flag['edge']}"
+                for flag in window_flags
+            )
+            if window_flags
+            else ""
+        )
         console.print(
             f"Association {index}/{len(candidates)}: "
             f"{video.youtube_video_id} "
             f"{outcome} profile={report['proposed_profile_id']} "
             f"reason={report['reason']} "
             f"artifact={destination}"
+            f"{window_flag_text}"
         )
     console.print(
         "Shadow association complete: "
@@ -5677,6 +5724,11 @@ def shadow_associate_speakers_command(
     )
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."
+    )
+    console.print(
+        "Sermon-window quality flags: "
+        f"speaker_inconsistent_edge={sermon_window_quality_flag_count}; "
+        "automatic boundary changes=0."
     )
     return tuple(written_reports)
 

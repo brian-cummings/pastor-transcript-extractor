@@ -21,6 +21,7 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     load_verified_shadow_profile_discovery,
     nominate_discovery_pairs,
     prepare_activity_qualified_spans,
+    refine_activity_qualified_spans,
     select_transcript_grounded_span_candidates,
     select_transcript_grounded_spans,
     write_shadow_profile_discovery,
@@ -55,6 +56,16 @@ class FakeActivitySpanCache:
         frame_duration_ms,
     ):
         return self.activity_by_start[span.start_seconds]
+
+
+class FakeEmbeddingCache:
+    def __init__(self, embedding_by_start):
+        self.embedding_by_start = embedding_by_start
+        self.requested_starts = []
+
+    def get_or_compute(self, span, backend):
+        self.requested_starts.append(span.start_seconds)
+        return self.embedding_by_start[span.start_seconds], False
 
 
 class SpeakerProfileDiscoveryTests(unittest.TestCase):
@@ -850,6 +861,137 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         self.assertLessEqual(
             prepared.selection["silence_threshold_dbfs"],
             -60.0,
+        )
+
+    def test_consistency_fallback_replaces_one_distributed_outlier(self) -> None:
+        observation = self._signature("fallback", (1.0, 0.0)).candidate.observation
+        specs = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in (110, 250, 400, 550, 700, 800, 980)
+        )
+        prepared = prepare_activity_qualified_spans(
+            observation=observation,
+            audio_path=Path("fallback.wav"),
+            span_cache=FakeActivitySpanCache(
+                {spec.start_seconds: -40.0 for spec in specs},
+                {spec.start_seconds: 0.8 for spec in specs},
+            ),
+            candidate_specs=specs,
+        )
+        embeddings = {
+            spec.start_seconds: (
+                (0.0, 1.0)
+                if spec == specs[-1]
+                else (1.0, 0.0)
+            )
+            for spec in specs
+        }
+
+        refined = refine_activity_qualified_spans(
+            prepared,
+            embedding_cache=FakeEmbeddingCache(embeddings),
+            backend=object(),
+            policy=self._policy().policy,
+        )
+
+        self.assertNotIn(specs[-1].start_seconds, {
+            span.start_seconds for span in refined.spans
+        })
+        self.assertTrue(
+            refined.selection["consistency_fallback_used"]
+        )
+        self.assertEqual(
+            1,
+            refined.selection["consistency_fallback_replacement_count"],
+        )
+        self.assertEqual(
+            [
+                {
+                    "flag": "speaker_inconsistent_edge",
+                    "edge": "end",
+                    "start_seconds": 980.0,
+                    "end_seconds": 992.0,
+                    "window_fraction": 0.9844444444444445,
+                    "identity_fallback_replaced": True,
+                    "automatic_boundary_change_allowed": False,
+                    "reason_codes": [
+                        "distributed_clip_inconsistent",
+                        "coherent_replacement_found",
+                    ],
+                }
+            ],
+            refined.selection["sermon_window_quality_flags"],
+        )
+
+    def test_consistent_distributed_selection_does_not_expand_embeddings(self) -> None:
+        observation = self._signature("consistent", (1.0, 0.0)).candidate.observation
+        specs = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in range(120, 820, 100)
+        )
+        prepared = prepare_activity_qualified_spans(
+            observation=observation,
+            audio_path=Path("consistent.wav"),
+            span_cache=FakeActivitySpanCache(
+                {spec.start_seconds: -40.0 for spec in specs},
+                {spec.start_seconds: 0.8 for spec in specs},
+            ),
+            candidate_specs=specs,
+        )
+        cache = FakeEmbeddingCache(
+            {spec.start_seconds: (1.0, 0.0) for spec in specs}
+        )
+
+        refined = refine_activity_qualified_spans(
+            prepared,
+            embedding_cache=cache,
+            backend=object(),
+            policy=self._policy().policy,
+        )
+
+        self.assertEqual(prepared.spans, refined.spans)
+        self.assertFalse(
+            refined.selection["consistency_fallback_attempted"]
+        )
+        self.assertEqual(5, len(cache.requested_starts))
+
+    def test_consistency_fallback_keeps_primary_when_no_coherent_five_exist(self) -> None:
+        observation = self._signature("mixed", (1.0, 0.0)).candidate.observation
+        specs = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in range(120, 820, 100)
+        )
+        prepared = prepare_activity_qualified_spans(
+            observation=observation,
+            audio_path=Path("mixed.wav"),
+            span_cache=FakeActivitySpanCache(
+                {spec.start_seconds: -40.0 for spec in specs},
+                {spec.start_seconds: 0.8 for spec in specs},
+            ),
+            candidate_specs=specs,
+        )
+        embeddings = {
+            spec.start_seconds: (
+                (1.0, 0.0) if index % 2 == 0 else (0.0, 1.0)
+            )
+            for index, spec in enumerate(specs)
+        }
+
+        refined = refine_activity_qualified_spans(
+            prepared,
+            embedding_cache=FakeEmbeddingCache(embeddings),
+            backend=object(),
+            policy=self._policy().policy,
+        )
+
+        self.assertEqual(prepared.spans, refined.spans)
+        self.assertTrue(
+            refined.selection["consistency_fallback_attempted"]
+        )
+        self.assertFalse(
+            refined.selection[
+                "consistency_fallback_found_coherent_subset"
+            ]
         )
 
     def test_incomplete_component_is_blocked(self) -> None:

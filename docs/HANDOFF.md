@@ -505,8 +505,18 @@ proposal; source-local or attribution routing only decides whether to compare,
 and the proposal exists solely to nominate the blinded human pair workflow.
 Candidates and exemplars oversample up to fifteen distributed transcript-grounded
 sermon-speech candidates, apply a recording-relative activity gate, and retain
-five qualified clips. Legacy artifacts from earlier span-selection versions do
-not satisfy the strict association audit. A
+five qualified clips. Distribution is primary: a coherent initial five is
+never changed. If it is inconsistent, a bounded fallback may replace at most
+two outliers using only within-observation embeddings while minimizing lost
+temporal coverage. It cannot use similarity to a target profile, and failure to
+find a coherent repair leaves the original selection to abstain normally.
+When the replaced outlier falls within the first or last 10% of the accepted
+sermon window, the candidate association report promotes an exact-span
+`speaker_inconsistent_edge` quality flag and the CLI surfaces it. The flag
+explicitly prohibits automatic boundary changes. It is evidence for later
+sermon-window review, not semantic proof that the accepted boundary is wrong.
+Legacy artifacts from earlier span-selection versions do not satisfy the
+strict association audit. A
 proposal requires at least two same-speaker decisions, no
 different-speaker result, no technical failure, exactly one matching profile,
 and no conflicting explicit attribution. Reviewed different-speaker
