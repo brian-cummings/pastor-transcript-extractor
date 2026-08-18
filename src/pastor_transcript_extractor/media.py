@@ -33,7 +33,16 @@ def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) 
     output_lines = [line.strip() for line in raw_output.splitlines() if line.strip()]
     full_output = "\n".join(output_lines)
     lowered_output = full_output.lower()
-    detail = output_lines[-1] if output_lines else f"yt-dlp exited with status {result.returncode}"
+    error_lines = [
+        line for line in output_lines if line.lower().startswith("error:")
+    ]
+    detail = (
+        error_lines[-1]
+        if error_lines
+        else output_lines[-1]
+        if output_lines
+        else f"yt-dlp exited with status {result.returncode}"
+    )
     lowered = detail.lower()
     if expect_captions and "there are no subtitles for the requested languages" in lowered_output:
         raise NoCaptionsAvailableError(f"No captions available for {url}")
@@ -52,6 +61,22 @@ def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) 
     if "this video is not available" in lowered or "video unavailable" in lowered:
         raise VideoUnavailableError(f"Video unavailable for {url}")
     raise YtDlpError(detail)
+
+
+def _run_audio_download(command: list[str], *, url: str) -> None:
+    """Retry YouTube GVS 403s with the token-free embedded player client."""
+    try:
+        _run_yt_dlp(command, url=url)
+    except YtDlpError as error:
+        if "http error 403" not in str(error).lower():
+            raise
+        retry_command = [
+            *command[:-1],
+            "--extractor-args",
+            "youtube:player_client=web_embedded",
+            command[-1],
+        ]
+        _run_yt_dlp(retry_command, url=url)
 
 
 def download_captions(url: str, yt_dlp_bin: str, output_path: Path, yt_dlp_js_runtimes: str | None = None) -> Path:
@@ -149,7 +174,7 @@ def download_source_audio(
             url,
         ]
     )
-    _run_yt_dlp(command, url=url)
+    _run_audio_download(command, url=url)
     candidates = sorted(
         (
             path
