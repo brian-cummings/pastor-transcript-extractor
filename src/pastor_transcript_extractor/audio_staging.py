@@ -65,12 +65,18 @@ def load_and_verify_audio_stage_manifest(
     if not isinstance(videos, list) or payload.get("stage_fingerprint") != _fingerprint(stable):
         raise ValueError(f"Audio stage manifest fingerprint mismatch: {path}")
     video_ids: set[int] = set()
-    failures: list[str] = []
+    invalid_verified: list[str] = []
+    manifest_video_ids: set[int] = set()
     for row in videos:
         if not isinstance(row, dict) or not isinstance(row.get("video_id"), int):
             raise ValueError(f"Malformed audio stage manifest row: {path}")
         video_id = row["video_id"]
         youtube_id = str(row.get("youtube_video_id") or video_id)
+        if video_id in manifest_video_ids:
+            raise ValueError(f"Duplicate video id in audio stage manifest: {video_id}")
+        manifest_video_ids.add(video_id)
+        if row.get("outcome") != "verified":
+            continue
         matching = [
             artifact
             for artifact in database.list_media_artifacts_for_video(video_id)
@@ -81,15 +87,14 @@ def load_and_verify_audio_stage_manifest(
             and artifact.content_sha256 == row.get("content_sha256")
             and artifact.byte_size == row.get("byte_size")
         ]
-        if row.get("outcome") != "verified" or len(matching) != 1 or not verify_media_artifact(matching[0]):
-            failures.append(youtube_id)
+        if len(matching) != 1 or not verify_media_artifact(matching[0]):
+            invalid_verified.append(youtube_id)
             continue
-        if video_id in video_ids:
-            raise ValueError(f"Duplicate video id in audio stage manifest: {video_id}")
         video_ids.add(video_id)
-    if failures:
+    if invalid_verified:
         raise ValueError(
-            "Audio stage is incomplete or no longer verifies for: " + ", ".join(failures)
+            "Audio stage no longer verifies for claimed verified entries: "
+            + ", ".join(invalid_verified)
         )
     if not video_ids:
         raise ValueError("Audio stage manifest contains no verified videos.")

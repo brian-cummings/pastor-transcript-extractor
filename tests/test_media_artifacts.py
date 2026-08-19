@@ -32,6 +32,7 @@ from pastor_transcript_extractor.media_archive import (
 )
 from pastor_transcript_extractor.media_artifacts import (
     MediaVerificationCache,
+    StageSourceAudioResult,
     audit_media_coverage,
     audit_normalized_audio_provenance,
     backfill_existing_media_artifacts,
@@ -117,6 +118,42 @@ class MediaArtifactTests(unittest.TestCase):
         Path(second.artifact.artifact_path).write_bytes(b"mutated")
         with self.assertRaisesRegex(ValueError, "no longer verifies"):
             load_and_verify_audio_stage_manifest(self.database, manifest)
+
+    def test_audio_stage_manifest_resumes_verified_subset(self) -> None:
+        verified_video, _ = self._video("stagepartial1")
+        failed_video, _ = self._video("stagepartial2")
+
+        def fake_download(_url, _bin, output_base, _runtimes):
+            output_path = output_base.with_suffix(".wav")
+            write_wav(output_path, value=432)
+            return output_path
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.download_source_audio",
+            side_effect=fake_download,
+        ):
+            verified = stage_source_audio_for_video(
+                self.database,
+                self.paths,
+                self.tools,
+                video_id=verified_video.id,
+                tool_versions={"yt-dlp": "test"},
+            )
+        failed = StageSourceAudioResult(
+            failed_video.id,
+            failed_video.youtube_video_id,
+            "failed",
+            "source_audio_stage_failed",
+            None,
+            None,
+            False,
+        )
+        manifest = write_audio_stage_manifest(self.paths.logs, [verified, failed])
+
+        self.assertEqual(
+            {verified_video.id},
+            load_and_verify_audio_stage_manifest(self.database, manifest),
+        )
 
     def test_offline_audio_ensure_uses_staged_source_without_downloading(self) -> None:
         video, _ = self._video("stageoffline1")
