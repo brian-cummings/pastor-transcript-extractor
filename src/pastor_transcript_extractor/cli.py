@@ -9645,6 +9645,18 @@ def run_workflow_service(
                 )
         manifest = write_audio_stage_manifest(paths.logs, results)
         verified = sum(result.outcome == "verified" for result in results)
+        verified_video_ids = {
+            result.video_id for result in results if result.outcome == "verified"
+        }
+        if verified_video_ids:
+            console.print(
+                f"Fetching available captions for {len(verified_video_ids)} "
+                "verified staged video(s)."
+            )
+            fetch_captions_service(
+                base_dir=base_dir,
+                video_ids=verified_video_ids,
+            )
         console.print(f"Audio stage complete: verified={verified}, failed={len(results) - verified}.")
         console.print(f"Manifest: {manifest}")
         console.print(
@@ -10073,7 +10085,11 @@ def run(
     stage_audio_only: bool = typer.Option(
         False,
         "--stage-audio-only",
-        help="Discover the selected scope, download immutable source audio, write a resume manifest, and stop.",
+        "--stage-offline-inputs",
+        help=(
+            "Discover the selected scope, download immutable source audio and "
+            "available captions, write a resume manifest, and stop."
+        ),
     ),
     resume_stage: Path | None = typer.Option(
         None,
@@ -10092,8 +10108,8 @@ def run(
 ) -> None:
     if stage_audio_only:
         console.print(
-            "Run will discover the selected scope, stage immutable source audio, write a "
-            "checksum-pinned resume manifest, and stop."
+            "Run will discover the selected scope, stage immutable source audio and "
+            "available captions, write a checksum-pinned resume manifest, and stop."
         )
     elif resume_stage is not None:
         console.print(

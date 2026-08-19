@@ -128,8 +128,9 @@ pte source-processing-report \
   listed existing sources. Repeat `--source-id` for each source.
 - `pte run --failed-only` retries failed videos across all sources while
   preserving successful transcript and extraction artifacts.
-- `pte run --all --stage-audio-only` downloads immutable source audio and writes
-  a checksum-pinned manifest for a later offline `--resume-stage` run.
+- `pte run --all --stage-offline-inputs` downloads immutable source audio and
+  available captions, then writes a checksum-pinned manifest for a later offline
+  `--resume-stage` run. `--stage-audio-only` remains an alias.
 - `pte run <url> --pastor <slug> --skip-review` skips review export after
   extraction, audio assurance, and configured source archival.
 - `pte review <pastor-slug>`
@@ -454,14 +455,15 @@ pte run --source-id 12 --source-id 19 \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Stage source audio while on a fast connection, then process exactly that batch
-offline. Staging stops before normalization, Whisper, extraction, review, and
-archival. The resume command verifies every staged artifact and disables network
-download fallback:
+Stage network-dependent inputs while on a fast connection, then process exactly
+that batch offline. Staging downloads immutable source audio, reuses the existing
+caption acquisition to persist any available YouTube captions, and stops before
+normalization, Whisper, extraction, review, and archival. The resume command
+verifies every staged audio artifact and disables network download fallback:
 
 ```bash
 pte run --all \
-  --stage-audio-only \
+  --stage-offline-inputs \
   --download-jobs 6 \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 
@@ -472,9 +474,10 @@ pte run \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-The same staging option works with a URL plus `--pastor`, or with one or more
-`--source-id` values. Re-running staging reuses verified source artifacts and
-only downloads missing or invalid ones.
+The legacy `--stage-audio-only` spelling remains an alias. The same staging
+option works with a URL plus `--pastor`, or with one or more `--source-id`
+values. Re-running staging reuses verified source and caption artifacts and only
+downloads missing inputs.
 
 To complete extraction and media maintenance without creating or refreshing
 review exports:

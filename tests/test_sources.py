@@ -36,6 +36,7 @@ from pastor_transcript_extractor.media import (
     VideoUnavailableError,
     YtDlpConfigurationError,
 )
+from pastor_transcript_extractor.media_artifacts import StageSourceAudioResult
 from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import SourceType, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.extraction import extract_video
@@ -1979,6 +1980,54 @@ class CliTests(unittest.TestCase):
         self.assertEqual(0, result.exit_code, msg=result.output)
         self.assertTrue(workflow.call_args.kwargs["stage_audio_only"])
         self.assertEqual(7, workflow.call_args.kwargs["download_jobs"])
+
+    def test_audio_stage_fetches_captions_for_verified_subset(self) -> None:
+        database = SimpleNamespace(
+            list_videos=lambda: [
+                SimpleNamespace(id=11),
+                SimpleNamespace(id=12),
+            ]
+        )
+        paths = SimpleNamespace(logs=Path("logs"), root=Path("data"))
+
+        def staged_result(_database, _paths, _tools, *, video_id):
+            return StageSourceAudioResult(
+                video_id,
+                f"video-{video_id}",
+                "verified" if video_id == 11 else "failed",
+                "source_audio_staged" if video_id == 11 else "source_audio_stage_failed",
+                SimpleNamespace() if video_id == 11 else None,
+                None,
+                video_id == 11,
+            )
+
+        with patch(
+            "pastor_transcript_extractor.cli.get_database",
+            return_value=database,
+        ), patch(
+            "pastor_transcript_extractor.cli.build_paths",
+            return_value=paths,
+        ), patch(
+            "pastor_transcript_extractor.cli.build_tool_config",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "pastor_transcript_extractor.cli.discover_sources_service"
+        ), patch(
+            "pastor_transcript_extractor.cli.stage_source_audio_for_video",
+            side_effect=staged_result,
+        ), patch(
+            "pastor_transcript_extractor.cli.write_audio_stage_manifest",
+            return_value=Path("stage.json"),
+        ), patch(
+            "pastor_transcript_extractor.cli.fetch_captions_service"
+        ) as fetch:
+            run_workflow_service(
+                all_sources=True,
+                stage_audio_only=True,
+                download_jobs=2,
+            )
+
+        fetch.assert_called_once_with(base_dir=None, video_ids={11})
 
     def test_resume_stage_disables_network_for_transcription_and_media(self) -> None:
         database = SimpleNamespace()
