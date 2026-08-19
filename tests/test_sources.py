@@ -35,6 +35,7 @@ from pastor_transcript_extractor.media import (
     VideoNotYetAvailableError,
     VideoUnavailableError,
     YtDlpConfigurationError,
+    YtDlpRateLimitError,
 )
 from pastor_transcript_extractor.media_artifacts import StageSourceAudioResult
 from pastor_transcript_extractor.local_llm import LocalLlmResponse
@@ -2027,9 +2028,13 @@ class CliTests(unittest.TestCase):
                 download_jobs=2,
             )
 
-        fetch.assert_called_once_with(base_dir=None, video_ids={11})
+        fetch.assert_called_once_with(
+            base_dir=None,
+            video_ids={11},
+            request_interval_seconds=5.0,
+        )
 
-    def test_resume_stage_disables_network_for_transcription_and_media(self) -> None:
+    def test_resume_stage_can_acquire_captions_then_disables_other_network(self) -> None:
         database = SimpleNamespace()
         paths = SimpleNamespace()
         with patch(
@@ -2042,18 +2047,34 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.cli.transcribe_videos_service"
         ) as transcribe, patch(
+            "pastor_transcript_extractor.cli.fetch_captions_service"
+        ) as fetch_captions, patch(
             "pastor_transcript_extractor.cli.extract_batch",
             return_value=ExtractionBatchResult(2, 0, 0),
         ), patch(
             "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
         ) as media:
             run_workflow_service(
-                resume_stage=Path("stage.json"), skip_review=True
+                resume_stage=Path("stage.json"),
+                acquire_captions=True,
+                skip_review=True,
             )
 
+        fetch_captions.assert_called_once_with(
+            base_dir=None,
+            video_ids={11, 12},
+            request_interval_seconds=5.0,
+        )
         self.assertFalse(transcribe.call_args.kwargs["allow_network"])
         self.assertEqual({11, 12}, transcribe.call_args.kwargs["video_ids"])
         self.assertFalse(media.call_args.kwargs["allow_download"])
+
+    def test_acquire_captions_requires_resume_stage(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "--acquire-captions is only valid with --resume-stage",
+        ):
+            run_workflow_service(acquire_captions=True)
 
     def test_negative_window_review_reuses_existing_continuous_fixture(self) -> None:
         runner = CliRunner()
@@ -2436,6 +2457,76 @@ class CliTests(unittest.TestCase):
             self.assertNotIn("Video unavailable for video", result.output)
             self.assertEqual(VideoStatus.FAILED, updated_video.status)
             self.assertIn("cannot solve YouTube", updated_video.failure_reason)
+
+    def test_fetch_stops_batch_on_rate_limit_without_failing_video(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=YtDlpRateLimitError("HTTP Error 429"),
+            ) as fetch_captions, patch(
+                "pastor_transcript_extractor.cli.time.sleep"
+            ):
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(video.id)
+            self.assertNotEqual(0, result.exit_code)
+            self.assertIn("rate limited caption acquisition", result.output)
+            self.assertEqual(4, fetch_captions.call_count)
+            self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
+            self.assertIsNone(updated_video.failure_reason)
+
+    def test_fetch_retries_infrequent_rate_limit(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=[
+                    YtDlpRateLimitError("HTTP Error 429"),
+                    SimpleNamespace(raw_text_path=Path("captions.txt")),
+                ],
+            ) as fetch_captions, patch(
+                "pastor_transcript_extractor.cli.time.sleep"
+            ):
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertIn("retrying in 15s", result.output)
+            self.assertEqual(2, fetch_captions.call_count)
 
     def test_fetch_defers_future_livestream(self) -> None:
         runner = CliRunner()

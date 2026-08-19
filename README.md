@@ -470,9 +470,17 @@ pte run --all \
 # Use the exact manifest path printed by the staging command.
 pte run \
   --resume-stage /Users/briancummings/Documents/PastorSearchData/logs/audio-stages/STAGE_FINGERPRINT.json \
+  --acquire-captions \
   --jobs 2 \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
+
+Use `--acquire-captions` when the resume machine is online. It runs the existing
+caption acquisition over the exact verified manifest scope before local ASR, so
+Whisper only handles remaining caption misses. Large caption batches wait five
+seconds between requests and retry infrequent YouTube 429 responses with bounded
+backoff. Repeated rate limiting stops cleanly; rerunning later skips captions
+already persisted. Omit the option for a fully offline run.
 
 The legacy `--stage-audio-only` spelling remains an alias. The same staging
 option works with a URL plus `--pastor`, or with one or more `--source-id`

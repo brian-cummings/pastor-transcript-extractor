@@ -24,6 +24,10 @@ class YtDlpConfigurationError(YtDlpError):
     pass
 
 
+class YtDlpRateLimitError(YtDlpError):
+    pass
+
+
 def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) -> None:
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode == 0:
@@ -57,6 +61,10 @@ def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) 
         raise YtDlpConfigurationError(
             "yt-dlp cannot solve YouTube JavaScript challenges; install the "
             "yt-dlp default extras and configure a supported JS runtime"
+        )
+    if "http error 429" in lowered_output or "too many requests" in lowered_output:
+        raise YtDlpRateLimitError(
+            f"YouTube rate limited yt-dlp for {url}: {detail}"
         )
     if "this video is not available" in lowered or "video unavailable" in lowered:
         raise VideoUnavailableError(f"Video unavailable for {url}")

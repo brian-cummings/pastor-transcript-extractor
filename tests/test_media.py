@@ -13,6 +13,7 @@ from pastor_transcript_extractor.media import (
     VideoUnavailableError,
     YtDlpError,
     YtDlpConfigurationError,
+    YtDlpRateLimitError,
     _run_yt_dlp,
     download_source_audio,
 )
@@ -57,6 +58,12 @@ class YtDlpErrorClassificationTests(unittest.TestCase):
     def test_real_unavailable_error_remains_terminal(self) -> None:
         with self.assertRaises(VideoUnavailableError):
             self._run_with_stderr("ERROR: This video is not available")
+
+    def test_rate_limit_is_classified_separately(self) -> None:
+        with self.assertRaises(YtDlpRateLimitError):
+            self._run_with_stderr(
+                "ERROR: Unable to download API page: HTTP Error 429: Too Many Requests"
+            )
 
     def test_error_line_wins_over_trailing_stdout_info(self) -> None:
         completed = subprocess.CompletedProcess(

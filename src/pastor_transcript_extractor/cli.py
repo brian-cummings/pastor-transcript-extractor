@@ -141,6 +141,7 @@ from pastor_transcript_extractor.media import (
     VideoNotYetAvailableError,
     VideoUnavailableError,
     YtDlpConfigurationError,
+    YtDlpRateLimitError,
 )
 from pastor_transcript_extractor.media_archive import (
     ArchivePreflightEvent,
@@ -350,6 +351,8 @@ console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
 DEFAULT_PREP_WORKERS = 2
+CAPTION_BATCH_REQUEST_INTERVAL_SECONDS = 5.0
+CAPTION_RATE_LIMIT_BACKOFF_SECONDS = (15.0, 30.0, 60.0)
 MIN_SYNC_FREE_DISK_FRACTION = 0.20
 SYNC_ARCHIVE_WAIT_INITIAL_SECONDS = 1.0
 SYNC_ARCHIVE_WAIT_MAX_SECONDS = 30.0
@@ -8868,6 +8871,7 @@ def fetch_captions_service(
     source_id: int | None = None,
     base_dir: Path | None = None,
     video_ids: set[int] | None = None,
+    request_interval_seconds: float = 0.0,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -8886,6 +8890,30 @@ def fetch_captions_service(
     unavailable = 0
     deferred = 0
     failed = 0
+    last_request_started: float | None = None
+
+    def fetch_with_rate_limit_retry(video):
+        nonlocal last_request_started
+        for attempt in range(len(CAPTION_RATE_LIMIT_BACKOFF_SECONDS) + 1):
+            if last_request_started is not None and request_interval_seconds > 0:
+                elapsed = time.monotonic() - last_request_started
+                remaining = request_interval_seconds - elapsed
+                if remaining > 0:
+                    time.sleep(remaining)
+            last_request_started = time.monotonic()
+            try:
+                return fetch_captions_video(database, paths, tools, video.id)
+            except YtDlpRateLimitError:
+                if attempt >= len(CAPTION_RATE_LIMIT_BACKOFF_SECONDS):
+                    raise
+                backoff = CAPTION_RATE_LIMIT_BACKOFF_SECONDS[attempt]
+                console.print(
+                    f"Caption request rate limited for video #{video.id}; "
+                    f"retrying in {backoff:g}s."
+                )
+                time.sleep(backoff)
+        raise AssertionError("unreachable caption retry state")
+
     for video in videos:
         transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
         if any(artifact.source_kind == TranscriptSourceKind.CAPTIONS for artifact in transcript_artifacts):
@@ -8894,7 +8922,7 @@ def fetch_captions_service(
 
         try:
             console.print(f"Fetching captions for video #{video.id}: {video.title}")
-            result = fetch_captions_video(database, paths, tools, video.id)
+            result = fetch_with_rate_limit_retry(video)
         except NoCaptionsAvailableError:
             if _is_terminal_unavailable(video.status, video.failure_reason) or _is_retryable_fetch_failure(
                 video.status, video.failure_reason
@@ -8913,6 +8941,12 @@ def fetch_captions_service(
             console.print(f"[red]yt-dlp configuration error[/red] for video #{video.id}: {error}")
             failed += 1
             continue
+        except YtDlpRateLimitError as error:
+            raise ValueError(
+                "YouTube repeatedly rate limited caption acquisition after retries. "
+                "Wait for the limit to clear and rerun the same command; captions "
+                "already persisted will be skipped."
+            ) from error
         except VideoUnavailableError as error:
             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
             console.print(f"Video unavailable for video #{video.id}; skipping it.")
@@ -8937,7 +8971,10 @@ def fetch(
     source_id: int | None = typer.Option(None, help="Only fetch captions for videos from a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    fetch_captions_service(source_id, base_dir)
+    try:
+        fetch_captions_service(source_id, base_dir)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
 
 @app.command(help="Chunk transcript artifacts into reviewable segments and proposed Markdown.")
@@ -9510,11 +9547,14 @@ def run_workflow_service(
     source_ids: Sequence[int] | None = None,
     stage_audio_only: bool = False,
     resume_stage: Path | None = None,
+    acquire_captions: bool = False,
     download_jobs: int = DEFAULT_PREP_WORKERS,
 ) -> None:
     selected_source_ids = tuple(dict.fromkeys(source_ids or ()))
     if stage_audio_only and resume_stage is not None:
         raise ValueError("Use either --stage-audio-only or --resume-stage, not both.")
+    if acquire_captions and resume_stage is None:
+        raise ValueError("--acquire-captions is only valid with --resume-stage.")
     if resume_stage is not None:
         if url is not None or pastor is not None or all_sources or selected_source_ids or failed_only:
             raise ValueError("--resume-stage supplies the exact video scope; do not pass another scope.")
@@ -9526,6 +9566,15 @@ def run_workflow_service(
         console.print(
             f"Resuming {len(video_ids)} video(s) from verified audio stage {resume_stage}."
         )
+        if acquire_captions:
+            console.print(
+                f"Acquiring available captions for {len(video_ids)} resumed video(s)."
+            )
+            fetch_captions_service(
+                base_dir=base_dir,
+                video_ids=video_ids,
+                request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
+            )
         if not captions_only:
             transcribe_videos_service(
                 missing_only=False,
@@ -9656,6 +9705,7 @@ def run_workflow_service(
             fetch_captions_service(
                 base_dir=base_dir,
                 video_ids=verified_video_ids,
+                request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
             )
         console.print(f"Audio stage complete: verified={verified}, failed={len(results) - verified}.")
         console.print(f"Manifest: {manifest}")
@@ -10098,6 +10148,14 @@ def run(
         dir_okay=False,
         help="Process exactly the videos in a verified audio-stage manifest without network downloads.",
     ),
+    acquire_captions: bool = typer.Option(
+        False,
+        "--acquire-captions",
+        help=(
+            "With --resume-stage, fetch available captions for the verified "
+            "manifest scope before offline-only local transcription."
+        ),
+    ),
     download_jobs: int = typer.Option(
         DEFAULT_PREP_WORKERS,
         "--download-jobs",
@@ -10112,10 +10170,17 @@ def run(
             "available captions, write a checksum-pinned resume manifest, and stop."
         )
     elif resume_stage is not None:
-        console.print(
-            "Run will verify the staged source manifest and finish transcription, extraction, "
-            "media assurance, archival, and review without network downloads."
-        )
+        if acquire_captions:
+            console.print(
+                "Run will verify the staged source manifest, acquire available captions, "
+                "then finish local transcription, extraction, media assurance, archival, "
+                "and review without further network downloads."
+            )
+        else:
+            console.print(
+                "Run will verify the staged source manifest and finish transcription, extraction, "
+                "media assurance, archival, and review without network downloads."
+            )
     else:
         console.print(
             "Run adds the source, discovers videos, fetches captions, optionally transcribes, "
@@ -10142,6 +10207,7 @@ def run(
             base_dir=base_dir,
             stage_audio_only=stage_audio_only,
             resume_stage=resume_stage,
+            acquire_captions=acquire_captions,
             download_jobs=download_jobs,
         )
     except ValueError as error:
