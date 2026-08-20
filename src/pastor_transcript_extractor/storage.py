@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS sources (
     source_type TEXT NOT NULL,
     added_at TEXT NOT NULL,
     notes TEXT NULL,
+    processing_enabled INTEGER NOT NULL DEFAULT 1 CHECK(processing_enabled IN (0, 1)),
     FOREIGN KEY(pastor_id) REFERENCES pastors(id)
 );
 
@@ -706,6 +707,7 @@ class Database:
             connection.executescript(SCHEMA)
             self._ensure_pastor_columns(connection)
             apply_source_ownership_schema(connection)
+            self._ensure_source_processing_column(connection)
             backfill_source_ownership(connection)
 
     def _ensure_pastor_columns(self, connection: sqlite3.Connection) -> None:
@@ -726,6 +728,17 @@ class Database:
         if "pastor_id" not in video_columns:
             connection.execute("ALTER TABLE videos ADD COLUMN pastor_id INTEGER NULL")
 
+    def _ensure_source_processing_column(self, connection: sqlite3.Connection) -> None:
+        source_columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(sources)").fetchall()
+        }
+        if "processing_enabled" not in source_columns:
+            connection.execute(
+                "ALTER TABLE sources ADD COLUMN processing_enabled INTEGER NOT NULL DEFAULT 1 "
+                "CHECK(processing_enabled IN (0, 1))"
+            )
+
     def _source_from_row(self, row: sqlite3.Row) -> Source:
         return Source(
             id=int(row["id"]),
@@ -739,6 +752,11 @@ class Database:
             notes=row["notes"],
             source_identity_key=(
                 row["source_identity_key"] if "source_identity_key" in row.keys() else None
+            ),
+            processing_enabled=(
+                bool(row["processing_enabled"])
+                if "processing_enabled" in row.keys()
+                else True
             ),
         )
 
@@ -1207,7 +1225,7 @@ class Database:
                 row = connection.execute(
                     """
                     SELECT id, pastor_id, organization_id, url, source_identity_key,
-                           source_type, added_at, notes
+                           source_type, added_at, notes, processing_enabled
                     FROM sources WHERE url = ?
                     """,
                     (url,),
@@ -1222,7 +1240,8 @@ class Database:
                     row = connection.execute(
                         """
                         SELECT id, pastor_id, organization_id, url,
-                               source_identity_key, source_type, added_at, notes
+                               source_identity_key, source_type, added_at, notes,
+                               processing_enabled
                         FROM sources WHERE id = ?
                         """,
                         (int(row["id"]),),
@@ -1255,22 +1274,38 @@ class Database:
             added_at=parse_datetime(added_at) or utc_now(),
             notes=notes,
             source_identity_key=None,
+            processing_enabled=True,
         )
 
     def list_sources(self) -> list[Source]:
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT id, pastor_id, organization_id, url, source_identity_key, "
-                "source_type, added_at, notes "
+                "source_type, added_at, notes, processing_enabled "
                 "FROM sources ORDER BY id"
             ).fetchall()
         return [self._source_from_row(row) for row in rows]
+
+    def list_processing_enabled_sources(self) -> list[Source]:
+        return [source for source in self.list_sources() if source.processing_enabled]
+
+    def set_source_processing_enabled(self, source_id: int, enabled: bool) -> Source:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE sources SET processing_enabled = ? WHERE id = ?",
+                (int(enabled), source_id),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Unknown source id: {source_id}")
+        source = self.get_source_by_id(source_id)
+        assert source is not None
+        return source
 
     def get_source_by_id(self, source_id: int) -> Source | None:
         with self.connect() as connection:
             row = connection.execute(
                 "SELECT id, pastor_id, organization_id, url, source_identity_key, "
-                "source_type, added_at, notes "
+                "source_type, added_at, notes, processing_enabled "
                 "FROM sources WHERE id = ?",
                 (source_id,),
             ).fetchone()
@@ -1282,7 +1317,7 @@ class Database:
         with self.connect() as connection:
             row = connection.execute(
                 "SELECT id, pastor_id, organization_id, url, source_identity_key, "
-                "source_type, added_at, notes "
+                "source_type, added_at, notes, processing_enabled "
                 "FROM sources WHERE url = ?",
                 (url,),
             ).fetchone()

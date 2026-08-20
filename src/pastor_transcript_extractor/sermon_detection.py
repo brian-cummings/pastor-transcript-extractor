@@ -5,9 +5,14 @@ from dataclasses import dataclass
 
 from pastor_transcript_extractor.models import TranscriptSegmentLabel, TranscriptSourceKind
 from pastor_transcript_extractor.segmentation import SegmentDraft
+from pastor_transcript_extractor.sermon_policy import (
+    DEFAULT_MINIMUM_SERMON_DURATION_SECONDS,
+    format_minimum_sermon_duration,
+    minimum_sermon_duration_seconds,
+)
 
 
-MIN_WINDOW_DURATION_SECONDS = 12 * 60
+MIN_WINDOW_DURATION_SECONDS = DEFAULT_MINIMUM_SERMON_DURATION_SECONDS
 MAX_WINDOW_GAP_SECONDS = 90
 MAX_BRIDGED_INTERRUPTION_SECONDS = 4 * 60
 MAX_BRIDGED_INTERRUPTION_SEGMENTS = 2
@@ -258,14 +263,17 @@ def _is_trailing_boundary_segment(segment: _TimedSegment) -> bool:
     return False
 
 
-def _trim_run_boundaries(run: list[_TimedSegment]) -> tuple[list[_TimedSegment], list[str]]:
+def _trim_run_boundaries(
+    run: list[_TimedSegment],
+    minimum_duration_seconds: float,
+) -> tuple[list[_TimedSegment], list[str]]:
     trimmed = list(run)
     reasons: list[str] = []
 
     while len(trimmed) > 1:
         candidate = trimmed[0]
         next_window_duration = trimmed[-1].end_seconds - trimmed[1].start_seconds
-        if next_window_duration < MIN_WINDOW_DURATION_SECONDS or not _is_leading_boundary_segment(candidate):
+        if next_window_duration < minimum_duration_seconds or not _is_leading_boundary_segment(candidate):
             break
         trimmed.pop(0)
         if "trimmed leading intro, music, or admin segments from the detected window" not in reasons:
@@ -274,7 +282,7 @@ def _trim_run_boundaries(run: list[_TimedSegment]) -> tuple[list[_TimedSegment],
     while len(trimmed) > 1:
         candidate = trimmed[-1]
         next_window_duration = trimmed[-2].end_seconds - trimmed[0].start_seconds
-        if next_window_duration < MIN_WINDOW_DURATION_SECONDS or not _is_trailing_boundary_segment(candidate):
+        if next_window_duration < minimum_duration_seconds or not _is_trailing_boundary_segment(candidate):
             break
         trimmed.pop()
         if "trimmed trailing prayer, music, or closing segments from the detected window" not in reasons:
@@ -333,7 +341,14 @@ def detect_sermon_window(
     drafts: list[SegmentDraft],
     *,
     transcript_source: TranscriptSourceKind | None = None,
+    minimum_duration_seconds: float | None = None,
 ) -> SermonWindowResult:
+    resolved_minimum = (
+        minimum_sermon_duration_seconds()
+        if minimum_duration_seconds is None
+        else minimum_duration_seconds
+    )
+    minimum_label = format_minimum_sermon_duration(resolved_minimum)
     timed = _timed_segments(drafts)
     if not timed:
         return SermonWindowResult(
@@ -395,13 +410,13 @@ def detect_sermon_window(
     def run_duration(run: list[_TimedSegment]) -> float:
         return run[-1].end_seconds - run[0].start_seconds
 
-    valid_runs = [run for run in merged_runs if run_duration(run) >= MIN_WINDOW_DURATION_SECONDS]
+    valid_runs = [run for run in merged_runs if run_duration(run) >= resolved_minimum]
     if not valid_runs:
         return SermonWindowResult(
             start_seconds=None,
             end_seconds=None,
             confidence=0.15,
-            reasons=["no sermon window detected: no sermon-like segment run reached the 12 minute minimum"],
+            reasons=[f"no sermon window detected: no sermon-like segment run reached the {minimum_label} minimum"],
             method="rule_based_v1",
             included_segment_indexes=[],
             excluded_segment_indexes=[segment.index for segment in timed],
@@ -421,7 +436,7 @@ def detect_sermon_window(
         return total
 
     best_run = max(valid_runs, key=lambda run: (run_strength(run), run_duration(run), -run[0].start_seconds))
-    trimmed_run, trim_reasons = _trim_run_boundaries(best_run)
+    trimmed_run, trim_reasons = _trim_run_boundaries(best_run, resolved_minimum)
     opening = _opening_segments(timed)
     first_strong_start_seconds = _first_strong_sermon_start_seconds(opening)
     if (
@@ -430,7 +445,7 @@ def detect_sermon_window(
         and trimmed_run[0].start_seconds < first_strong_start_seconds
     ):
         gated_run = [segment for segment in trimmed_run if segment.start_seconds >= first_strong_start_seconds]
-        if gated_run and (gated_run[-1].end_seconds - gated_run[0].start_seconds) >= MIN_WINDOW_DURATION_SECONDS:
+        if gated_run and (gated_run[-1].end_seconds - gated_run[0].start_seconds) >= resolved_minimum:
             trimmed_run = gated_run
             trim_reasons.append("trimmed weak caption opening until a stronger sermon start appeared")
     included = [
@@ -440,7 +455,7 @@ def detect_sermon_window(
     ]
     excluded = [segment.index for segment in timed if segment.index not in included]
 
-    reasons = ["contiguous sermon-like block exceeded the 12 minute minimum"]
+    reasons = [f"contiguous sermon-like block exceeded the {minimum_label} minimum"]
     reasons.extend(trim_reasons)
     if any(any(pattern in _normalize(segment.text) for pattern in _POSITIVE_PATTERNS) for segment in trimmed_run):
         reasons.append("expository language detected inside the selected window")

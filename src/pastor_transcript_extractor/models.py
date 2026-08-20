@@ -69,6 +69,7 @@ class Source:
     added_at: datetime
     notes: Optional[str] = None
     source_identity_key: Optional[str] = None
+    processing_enabled: bool = True
 
 
 @dataclass(slots=True)

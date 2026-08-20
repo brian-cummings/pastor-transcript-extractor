@@ -26,6 +26,7 @@ from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_disco
 from pastor_transcript_extractor.cli import (
     _ensure_and_archive_run_media,
     _recover_stale_transcribing_videos,
+    _should_transcribe_video,
     app,
     discover_sources_service,
     run_workflow_service,
@@ -45,6 +46,11 @@ from pastor_transcript_extractor.exporting import export_pastor_review_markdown
 from pastor_transcript_extractor.sources import detect_source_type
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.sermon_detection import detect_guest_speaker_flags, detect_sermon_window
+from pastor_transcript_extractor.sermon_policy import (
+    duration_meets_sermon_minimum,
+    minimum_sermon_duration_seconds,
+    publication_is_not_future,
+)
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
@@ -283,6 +289,51 @@ class DiscoveryTests(unittest.TestCase):
 
 
 class SermonDetectionTests(unittest.TestCase):
+    def test_sermon_minimum_keeps_unknown_durations_eligible(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"PTE_MIN_SERMON_DURATION_SECONDS": "900"},
+            clear=False,
+        ):
+            minimum = minimum_sermon_duration_seconds()
+            self.assertTrue(duration_meets_sermon_minimum(None))
+            self.assertFalse(duration_meets_sermon_minimum(899))
+            self.assertTrue(duration_meets_sermon_minimum(900))
+        self.assertEqual(900.0, minimum)
+
+    def test_future_publications_are_ineligible(self) -> None:
+        self.assertFalse(publication_is_not_future("2099-01-01T00:00:00Z"))
+        self.assertTrue(publication_is_not_future("2020-01-01T00:00:00Z"))
+        self.assertTrue(publication_is_not_future(None))
+
+    def test_configured_minimum_controls_sermon_window_detection(self) -> None:
+        drafts = [
+            SegmentDraft(
+                0.0,
+                600.0,
+                "Turn in your Bibles. Today I want to explain the word of God.",
+                None,
+                TranscriptSegmentLabel.SERMON,
+                0.8,
+            )
+        ]
+
+        with patch.dict(
+            os.environ,
+            {"PTE_MIN_SERMON_DURATION_SECONDS": "540"},
+            clear=False,
+        ):
+            accepted = detect_sermon_window(drafts)
+        with patch.dict(
+            os.environ,
+            {"PTE_MIN_SERMON_DURATION_SECONDS": "660"},
+            clear=False,
+        ):
+            rejected = detect_sermon_window(drafts)
+
+        self.assertEqual(0.0, accepted.start_seconds)
+        self.assertIsNone(rejected.start_seconds)
+
     def test_detect_sermon_window_picks_main_sermon_block(self) -> None:
         drafts = [
             SegmentDraft(0.0, 120.0, "Welcome everyone and join us next week for potluck.", None, TranscriptSegmentLabel.ANNOUNCEMENTS, 0.75),
@@ -792,6 +843,70 @@ class SegmentationTests(unittest.TestCase):
             self.assertEqual(1, len(videos))
             self.assertEqual("abc123def45", videos[0].youtube_video_id)
 
+    def test_discover_limit_bypasses_known_short_videos_before_counting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="futureevent",
+                    title="Scheduled event",
+                    url="https://www.youtube.com/watch?v=futureevent",
+                    channel_name="Sample Church",
+                    published_at="2099-01-01T00:00:00Z",
+                    duration_seconds=None,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="shortvideo1",
+                    title="Short",
+                    url="https://www.youtube.com/watch?v=shortvideo1",
+                    channel_name="Sample Church",
+                    published_at="2026-08-03T00:00:00Z",
+                    duration_seconds=300,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="unknownvid1",
+                    title="Unknown duration",
+                    url="https://www.youtube.com/watch?v=unknownvid1",
+                    channel_name="Sample Church",
+                    published_at="2026-08-02T00:00:00Z",
+                    duration_seconds=None,
+                ),
+                DiscoveredVideo(
+                    youtube_video_id="longvideo01",
+                    title="Long",
+                    url="https://www.youtube.com/watch?v=longvideo01",
+                    channel_name="Sample Church",
+                    published_at="2026-08-01T00:00:00Z",
+                    duration_seconds=1800,
+                ),
+            ]
+
+            with patch(
+                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                return_value=discovered,
+            ):
+                result = discover_sources_service(
+                    limit=2,
+                    source_id=source.id,
+                    base_dir=base_dir,
+                )
+
+            videos = database.list_videos_by_source_id(source.id)
+            self.assertEqual(
+                {"unknownvid1", "longvideo01"},
+                {video.youtube_video_id for video in videos},
+            )
+            self.assertIsNone(database.get_video_by_youtube_id("futureevent"))
+            self.assertEqual(2, len(result.selected_video_ids_by_source[source.id]))
+
     def test_discover_limit_keeps_most_recent_results_not_raw_source_order(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -934,7 +1049,7 @@ class SegmentationTests(unittest.TestCase):
                     url=f"https://www.youtube.com/watch?v={f'id{i:09d}'[:11]}",
                     channel_name="Sample Church",
                     published_at=None,
-                    duration_seconds=100 + i,
+                    duration_seconds=1000 + i,
                 )
                 for i in range(30)
             ]
@@ -1037,7 +1152,7 @@ class SegmentationTests(unittest.TestCase):
                     url=f"https://www.youtube.com/watch?v={f'id{i:09d}'[:11]}",
                     channel_name="Sample Church",
                     published_at=None,
-                    duration_seconds=100 + i,
+                    duration_seconds=1000 + i,
                 )
                 for i in range(30)
             ]
@@ -1207,6 +1322,72 @@ class CliTests(unittest.TestCase):
             self.assertIn("Final Disposition: rejected_no_sermon", review_text)
             self.assertEqual("rejected_no_sermon", review_json["videos"][0]["final_disposition"]["status"])
 
+    def test_caption_fetch_and_transcription_bypass_known_short_video(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            short_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="shortvideo1",
+                title="Short",
+                url="https://www.youtube.com/watch?v=shortvideo1",
+                duration_seconds=300,
+            )
+            long_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="longvideo01",
+                title="Long",
+                url="https://www.youtube.com/watch?v=longvideo01",
+                duration_seconds=1800,
+            )
+            future_video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="futureevent",
+                title="Scheduled event",
+                url="https://www.youtube.com/watch?v=futureevent",
+                published_at="2099-01-01T00:00:00Z",
+                duration_seconds=None,
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=self._fake_caption_fetch,
+            ) as fetch:
+                result = runner.invoke(
+                    app,
+                    ["fetch", "--source-id", str(source.id), "--base-dir", str(base_dir)],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual([long_video.id], [call.args[3] for call in fetch.call_args_list])
+            self.assertFalse(
+                _should_transcribe_video(
+                    database,
+                    short_video.id,
+                    missing_only=False,
+                    captions_missing_only=False,
+                )
+            )
+            self.assertFalse(
+                _should_transcribe_video(
+                    database,
+                    future_video.id,
+                    missing_only=False,
+                    captions_missing_only=False,
+                )
+            )
+
     def test_run_skip_review_stops_after_extraction(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -1249,6 +1430,7 @@ class CliTests(unittest.TestCase):
                 database.add_pastor("first-church", "First Church"),
                 database.add_pastor("second-church", "Second Church"),
             ]
+            discovered_by_url = {}
             for index, pastor in enumerate(pastors, start=1):
                 source = database.add_source(
                     f"https://www.youtube.com/watch?v=alltest{index}",
@@ -1264,8 +1446,21 @@ class CliTests(unittest.TestCase):
                     status=VideoStatus.DISCOVERED,
                 )
                 self._fake_caption_fetch(database, paths, None, video.id)
+                discovered_by_url[source.url] = [
+                    DiscoveredVideo(
+                        youtube_video_id=video.youtube_video_id,
+                        title=video.title,
+                        url=video.url,
+                        channel_name=None,
+                        published_at=None,
+                        duration_seconds=None,
+                    )
+                ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=[]):
+            with patch(
+                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                side_effect=lambda url, *_: discovered_by_url[url],
+            ):
                 result = runner.invoke(app, [
                     "run", "--all", "--captions-only", "--classifier", "rules", "--base-dir", str(base_dir),
                 ])
@@ -1789,18 +1984,50 @@ class CliTests(unittest.TestCase):
             self.assertTrue(calls[0][2]["all_videos"])
             self.assertIsNotNone(calls[0][2]["source_id"])
 
-    def test_run_all_processes_all_sources(self) -> None:
+    def test_run_all_processes_only_enabled_sources(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
             base_dir = Path(tmp)
             database = Database(base_dir / "app.db")
             database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            enabled = database.add_source(
+                "https://www.youtube.com/@enabled",
+                SourceType.CHANNEL,
+                pastor.id,
+            )
+            disabled = database.add_source(
+                "https://www.youtube.com/@disabled",
+                SourceType.CHANNEL,
+                pastor.id,
+            )
+            database.set_source_processing_enabled(disabled.id, False)
+            enabled_video = database.add_video(
+                enabled.id,
+                pastor.id,
+                "enabled-video",
+                "Enabled video",
+                "https://www.youtube.com/watch?v=enabled-video",
+            )
+            database.add_video(
+                disabled.id,
+                pastor.id,
+                "disabled-video",
+                "Disabled video",
+                "https://www.youtube.com/watch?v=disabled-video",
+            )
 
             calls: list[tuple[str, tuple, dict]] = []
 
             def fake_stage(name: str):
                 def runner(*args, **kwargs):
                     calls.append((name, args, kwargs))
+                    if name == "discover":
+                        return SimpleNamespace(
+                            selected_video_ids_by_source={
+                                enabled.id: (enabled_video.id,)
+                            }
+                        )
                     if name == "extract":
                         return ExtractionBatchResult(0, 0, 0)
                 return runner
@@ -1820,6 +2047,7 @@ class CliTests(unittest.TestCase):
                     [
                         "run",
                         "--all",
+                        "--skip-review",
                         "--base-dir",
                         str(base_dir),
                     ],
@@ -1831,7 +2059,9 @@ class CliTests(unittest.TestCase):
                 [call[0] for call in calls],
             )
             self.assertIsNone(calls[0][2]["source_id"])
-            self.assertNotIn("video_ids", calls[-1][2])
+            for _, _, kwargs in calls[1:]:
+                self.assertEqual({enabled_video.id}, kwargs["video_ids"])
+            self.assertIn("skipping 1 disabled source", result.output)
 
     def test_run_multiple_source_ids_scopes_every_downstream_stage(self) -> None:
         runner = CliRunner()
@@ -1850,6 +2080,7 @@ class CliTests(unittest.TestCase):
                 SourceType.CHANNEL,
                 pastor_id=pastor.id,
             )
+            database.set_source_processing_enabled(selected_two.id, False)
             excluded = database.add_source(
                 "https://www.youtube.com/@excluded",
                 SourceType.CHANNEL,
@@ -1878,8 +2109,20 @@ class CliTests(unittest.TestCase):
             )
             selected_video_ids = {selected_video_one.id, selected_video_two.id}
 
+            def discover_result(*args, **kwargs):
+                source_id = kwargs["source_id"]
+                selected_id = (
+                    selected_video_one.id
+                    if source_id == selected_one.id
+                    else selected_video_two.id
+                )
+                return SimpleNamespace(
+                    selected_video_ids_by_source={source_id: (selected_id,)}
+                )
+
             with patch(
-                "pastor_transcript_extractor.cli.discover_sources_service"
+                "pastor_transcript_extractor.cli.discover_sources_service",
+                side_effect=discover_result,
             ) as discover, patch(
                 "pastor_transcript_extractor.cli.fetch_captions_service"
             ) as fetch, patch(
@@ -1984,9 +2227,10 @@ class CliTests(unittest.TestCase):
 
     def test_audio_stage_fetches_captions_for_verified_subset(self) -> None:
         database = SimpleNamespace(
+            list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
             list_videos=lambda: [
-                SimpleNamespace(id=11),
-                SimpleNamespace(id=12),
+                SimpleNamespace(id=11, source_id=1),
+                SimpleNamespace(id=12, source_id=1),
             ]
         )
         paths = SimpleNamespace(logs=Path("logs"), root=Path("data"))
@@ -2012,7 +2256,10 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
-            "pastor_transcript_extractor.cli.discover_sources_service"
+            "pastor_transcript_extractor.cli.discover_sources_service",
+            return_value=SimpleNamespace(
+                selected_video_ids_by_source={1: (11, 12)}
+            ),
         ), patch(
             "pastor_transcript_extractor.cli.stage_source_audio_for_video",
             side_effect=staged_result,

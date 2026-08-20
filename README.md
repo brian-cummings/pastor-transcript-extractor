@@ -125,8 +125,16 @@ pte source-processing-report \
 - `pte run <url> --pastor <slug>` runs discovery, caption fetch, optional local
   transcription, adaptive extraction, isolated-sermon audio assurance, configured
   source archival, and pastor review export.
-- `pte run --all` performs the same workflow for every configured source and
-  writes one review per pastor.
+- `pte run --all` performs the same workflow for every processing-enabled
+  source and writes one review per pastor. Sources disabled with
+  `pte source disable` are excluded. `--all` selects sources; it does not mean
+  every cataloged video or unlimited discovery. By default, each enabled source
+  contributes its newest 26 eligible discovered videos to that run.
+- `pte run --all --all-videos` removes the per-source discovery limit for every
+  processing-enabled source.
+- `pte source disable <source-id>` excludes a source from all-source processing;
+  `pte source enable <source-id>` restores it. An explicit
+  `pte run --source-id <source-id>` remains an intentional override.
 - `pte run --source-id 12 --source-id 19` performs the workflow for exactly the
   listed existing sources. Repeat `--source-id` for each source.
 - `pte run --failed-only` retries failed videos across all sources while
@@ -195,6 +203,18 @@ download admission can continue while the disk reservation remains safe.
 The `--latest` window is preserved through captions, local ASR, extraction,
 registration, and archival; older videos already attached to a reused source are
 not pulled into downstream work merely because `--all-audio` is enabled.
+Videos with a known duration below the universal sermon minimum, along with
+scheduled future events, are bypassed before the per-source discovery limit is
+applied, so they do not consume download slots. The same policy prevents caption
+acquisition, local ASR, extraction, and reclassification of already-discovered
+ineligible videos. Unknown durations remain eligible unless the publication
+timestamp is in the future. The default is 12 minutes; configure it once for
+every workflow:
+
+```bash
+export PTE_MIN_SERMON_DURATION_SECONDS=720
+```
+
 Imported channel-identity or publisher-association conflicts are never silently
 overwritten.
 

@@ -45,6 +45,12 @@ from pastor_transcript_extractor.config import (
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.extraction import reclassify_video
+from pastor_transcript_extractor.sermon_policy import (
+    duration_meets_sermon_minimum,
+    minimum_sermon_duration_seconds,
+    publication_is_not_future,
+    video_is_sermon_eligible,
+)
 from pastor_transcript_extractor.exporting import export_organization_review_markdown
 from pastor_transcript_extractor.evaluation import (
     allocate_evaluation_run_directory,
@@ -391,6 +397,20 @@ DEFAULT_SPEAKER_MODEL_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6
 @dataclass(frozen=True, slots=True)
 class DiscoveryServiceResult:
     selected_video_ids_by_source: dict[int, tuple[int, ...]]
+
+
+def _selected_discovery_video_ids(
+    discovery: DiscoveryServiceResult | object | None,
+    source_ids: Sequence[int],
+) -> set[int]:
+    selected_by_source = getattr(discovery, "selected_video_ids_by_source", {})
+    if not isinstance(selected_by_source, Mapping):
+        return set()
+    return {
+        video_id
+        for source_id in source_ids
+        for video_id in selected_by_source.get(source_id, ())
+    }
 
 
 @app.command(help="Validate manually reviewed sermon evaluation fixtures.")
@@ -7201,6 +7221,8 @@ def _should_transcribe_video(
     video = database.get_video_by_id(video_id)
     if video is None:
         return False
+    if not video_is_sermon_eligible(video.duration_seconds, video.published_at):
+        return False
     if _is_terminal_unavailable(video.status, video.failure_reason) or _is_retryable_fetch_failure(
         video.status, video.failure_reason
     ):
@@ -8125,6 +8147,46 @@ def source_clear_organization(
     console.print(f"Cleared the publishing organization for source #{source_id}.")
 
 
+def _set_source_processing_enabled(
+    source_id: int,
+    enabled: bool,
+    base_dir: Path | None,
+) -> None:
+    database = get_database(base_dir)
+    try:
+        source = database.set_source_processing_enabled(source_id, enabled)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    state = "enabled" if enabled else "disabled"
+    scope = "included in" if enabled else "excluded from"
+    console.print(
+        f"Source #{source.id} is {state} and will be {scope} all-source processing: "
+        f"{source.url}"
+    )
+
+
+@source_app.command(
+    "disable",
+    help="Exclude a source from all-source processing such as `pte run --all`.",
+)
+def source_disable(
+    source_id: int = typer.Argument(..., help="Source id to disable."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    _set_source_processing_enabled(source_id, False, base_dir)
+
+
+@source_app.command(
+    "enable",
+    help="Include a source in all-source processing such as `pte run --all`.",
+)
+def source_enable(
+    source_id: int = typer.Argument(..., help="Source id to enable."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    _set_source_processing_enabled(source_id, True, base_dir)
+
+
 @app.command(help="Show database counts and queued sources.")
 def status(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -8150,6 +8212,14 @@ def status(
         str(counts["affiliation_claim_review_events"]),
     )
     summary.add_row("Sources", str(counts["sources"]))
+    summary.add_row(
+        "Processing-enabled Sources",
+        str(sum(source.processing_enabled for source in sources)),
+    )
+    summary.add_row(
+        "Processing-disabled Sources",
+        str(sum(not source.processing_enabled for source in sources)),
+    )
     summary.add_row("Imported Source References", str(counts["source_import_refs"]))
     summary.add_row("Pastors", str(counts["pastors"]))
     summary.add_row("Videos", str(counts["videos"]))
@@ -8178,6 +8248,7 @@ def status(
     table.add_column("Organization")
     table.add_column("Target Pastor")
     table.add_column("Type")
+    table.add_column("Processing")
     table.add_column("URL")
     for source in sources:
         organization_name = "-"
@@ -8202,6 +8273,7 @@ def status(
             organization_name,
             pastor_name,
             source.source_type.value,
+            "enabled" if source.processing_enabled else "disabled",
             source.url,
         )
     console.print(table)
@@ -8273,6 +8345,7 @@ def source_list(
     table.add_column("Organization")
     table.add_column("Target Pastor")
     table.add_column("Type")
+    table.add_column("Processing")
     table.add_column("URL")
     for source in sources:
         organization_name = "-"
@@ -8294,6 +8367,7 @@ def source_list(
             organization_name,
             pastor_name,
             source.source_type.value,
+            "enabled" if source.processing_enabled else "disabled",
             source.url,
         )
     console.print(table)
@@ -8659,6 +8733,7 @@ def doctor(
     paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
     llm = build_llm_config()
+    sermon_minimum = minimum_sermon_duration_seconds()
 
     try:
         ensure_directories(paths)
@@ -8672,6 +8747,7 @@ def doctor(
         ("pastors dir", str(paths.pastors), _path_status(paths.pastors)),
         ("whisper.cpp", str(tools.whisper_cpp_bin), _path_status(tools.whisper_cpp_bin)),
         ("whisper model", str(tools.whisper_model_path), _path_status(tools.whisper_model_path)),
+        ("sermon minimum", f"{sermon_minimum:g} seconds", "configured"),
     ]
 
     ffmpeg_resolved, ffmpeg_status = _tool_status(tools.ffmpeg_bin)
@@ -8716,6 +8792,8 @@ def discover_sources_service(
     sources = database.list_sources()
     if source_id is not None:
         sources = [source for source in sources if source.id == source_id]
+    else:
+        sources = [source for source in sources if source.processing_enabled]
     if not sources:
         console.print("No sources queued.")
         return DiscoveryServiceResult({})
@@ -8723,8 +8801,11 @@ def discover_sources_service(
     discovered_count = 0
     skipped_count = 0
     excluded_count = 0
+    below_minimum_count = 0
+    future_count = 0
     found_count = 0
     effective_limit = None if all_videos else limit
+    minimum_duration = minimum_sermon_duration_seconds()
     existing_ids = {
         video.youtube_video_id for video in database.list_videos()
     }
@@ -8773,6 +8854,30 @@ def discover_sources_service(
             continue
 
         discovered_videos = sort_discovered_videos_by_recency(discovered_videos)
+        source_found_count = len(discovered_videos)
+        short_videos = [
+            video
+            for video in discovered_videos
+            if not duration_meets_sermon_minimum(
+                video.duration_seconds,
+                minimum_seconds=minimum_duration,
+            )
+            and publication_is_not_future(video.published_at)
+        ]
+        future_videos = [
+            video
+            for video in discovered_videos
+            if not publication_is_not_future(video.published_at)
+        ]
+        discovered_videos = [
+            video
+            for video in discovered_videos
+            if video_is_sermon_eligible(
+                video.duration_seconds,
+                video.published_at,
+                minimum_seconds=minimum_duration,
+            )
+        ]
         selected_discovered = (
             discovered_videos
             if effective_limit is None
@@ -8783,8 +8888,9 @@ def discover_sources_service(
             for video in selected_discovered
             if video.youtube_video_id not in excluded_ids
         }
-        found_count += len(discovered_videos)
-        source_found_count = len(discovered_videos)
+        found_count += source_found_count
+        below_minimum_count += len(short_videos)
+        future_count += len(future_videos)
         existing_source_videos = database.list_videos_by_source_id(source.id)
         discovered_videos = _discover_candidate_window(
             discovered_videos=discovered_videos,
@@ -8830,6 +8936,10 @@ def discover_sources_service(
             f"[{index}/{total_sources}] Finished source #{source.id}: found {source_found_count}, "
             f"queued {source_discovered_count}, skipped {source_skipped_count}"
         )
+        if short_videos:
+            source_summary += f", below minimum {len(short_videos)}"
+        if future_videos:
+            source_summary += f", future {len(future_videos)}"
         if source_excluded_count:
             source_summary += f", excluded {source_excluded_count}"
         console.print(f"{source_summary}.", markup=False)
@@ -8848,6 +8958,13 @@ def discover_sources_service(
         summary = f"Found {found_count} video(s); queued {discovered_count} new video(s); skipped {skipped_count} duplicate(s)."
     if excluded_count:
         summary = f"{summary[:-1]}; excluded {excluded_count} video(s)."
+    if below_minimum_count:
+        summary = (
+            f"{summary[:-1]}; bypassed {below_minimum_count} video(s) below the "
+            f"configured {minimum_duration:g}-second sermon minimum."
+        )
+    if future_count:
+        summary = f"{summary[:-1]}; bypassed {future_count} future event(s)."
     console.print(summary)
     return DiscoveryServiceResult(selected_video_ids_by_source)
 
@@ -8888,11 +9005,42 @@ def transcribe_videos_service(
     if not videos:
         console.print("No videos queued.")
         return
+
+    minimum_duration = minimum_sermon_duration_seconds()
+    future_events = sum(
+        1 for video in videos if not publication_is_not_future(video.published_at)
+    )
+    below_minimum = sum(
+        1
+        for video in videos
+        if not video_is_sermon_eligible(
+            video.duration_seconds,
+            video.published_at,
+            minimum_seconds=minimum_duration,
+        )
+        and publication_is_not_future(video.published_at)
+    )
+    if below_minimum:
+        console.print(
+            f"Bypassing {below_minimum} video(s) below the configured "
+            f"{minimum_duration:g}-second sermon minimum."
+        )
+    if future_events:
+        console.print(f"Bypassing {future_events} future event(s).")
+    videos = [
+        video
+        for video in videos
+        if video_is_sermon_eligible(
+            video.duration_seconds,
+            video.published_at,
+            minimum_seconds=minimum_duration,
+        )
+    ]
     _recover_stale_transcribing_videos(database, videos)
     videos = [database.get_video_by_id(video.id) or video for video in videos]
 
     processed = 0
-    skipped = 0
+    skipped = below_minimum + future_events
     failed = 0
     claimed_videos = []
     for video in videos:
@@ -9132,8 +9280,30 @@ def fetch_captions_service(
         console.print("No videos queued.")
         return
 
+    minimum_duration = minimum_sermon_duration_seconds()
+    future_events = sum(
+        1 for video in videos if not publication_is_not_future(video.published_at)
+    )
+    below_minimum = sum(
+        1
+        for video in videos
+        if not video_is_sermon_eligible(
+            video.duration_seconds,
+            video.published_at,
+            minimum_seconds=minimum_duration,
+        )
+        and publication_is_not_future(video.published_at)
+    )
+    if below_minimum:
+        console.print(
+            f"Bypassing {below_minimum} video(s) below the configured "
+            f"{minimum_duration:g}-second sermon minimum."
+        )
+    if future_events:
+        console.print(f"Bypassing {future_events} future event(s).")
+
     processed = 0
-    skipped = 0
+    skipped = below_minimum + future_events
     unavailable = 0
     deferred = 0
     failed = 0
@@ -9162,6 +9332,12 @@ def fetch_captions_service(
         raise AssertionError("unreachable caption retry state")
 
     for video in videos:
+        if not video_is_sermon_eligible(
+            video.duration_seconds,
+            video.published_at,
+            minimum_seconds=minimum_duration,
+        ):
+            continue
         transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
         if any(artifact.source_kind == TranscriptSourceKind.CAPTIONS for artifact in transcript_artifacts):
             skipped += 1
@@ -9601,7 +9777,20 @@ def reclassify(
     skipped = 0
     failed = 0
     eligible_videos = []
+    minimum_duration = minimum_sermon_duration_seconds()
     for video in videos:
+        if not video_is_sermon_eligible(
+            video.duration_seconds,
+            video.published_at,
+            minimum_seconds=minimum_duration,
+        ):
+            skipped += 1
+            if all_videos:
+                console.print(
+                    f"Skipping video #{video.id}: video is below the configured "
+                    "sermon minimum or is a future event."
+                )
+            continue
         extraction = database.get_latest_extraction_result_for_video(video.id)
         if extraction is None:
             skipped += 1
@@ -9888,17 +10077,27 @@ def run_workflow_service(
             unknown = [value for value in selected_source_ids if database.get_source_by_id(value) is None]
             if unknown:
                 raise ValueError("Unknown source id(s): " + ", ".join(map(str, unknown)))
+            selected_video_ids: set[int] = set()
             for source_id in selected_source_ids:
-                discover_sources_service(limit, all_videos, source_id, base_dir)
-            selected_video_ids = {
-                video.id for source_id in selected_source_ids
-                for video in database.list_videos_by_source_id(source_id)
-            }
+                discovery = discover_sources_service(
+                    limit, all_videos, source_id, base_dir
+                )
+                selected_video_ids.update(
+                    _selected_discovery_video_ids(discovery, (source_id,))
+                )
         elif all_sources:
             if url is not None or pastor is not None:
                 raise ValueError("Do not pass a URL or pastor when using --all.")
-            discover_sources_service(limit, all_videos, None, base_dir)
-            selected_video_ids = {video.id for video in database.list_videos()}
+            enabled_source_ids = {
+                source.id for source in database.list_processing_enabled_sources()
+            }
+            if not enabled_source_ids:
+                console.print("No processing-enabled sources configured.")
+                return
+            discovery = discover_sources_service(limit, all_videos, None, base_dir)
+            selected_video_ids = _selected_discovery_video_ids(
+                discovery, tuple(enabled_source_ids)
+            )
         else:
             if url is None or pastor is None:
                 raise ValueError("Audio staging requires URL plus --pastor, --source-id, or --all.")
@@ -9911,8 +10110,10 @@ def run_workflow_service(
             source = database.get_source_by_url(url)
             if source is None:
                 raise RuntimeError("Added source could not be reloaded.")
-            discover_sources_service(limit, all_videos, source.id, base_dir)
-            selected_video_ids = {video.id for video in database.list_videos_by_source_id(source.id)}
+            discovery = discover_sources_service(limit, all_videos, source.id, base_dir)
+            selected_video_ids = _selected_discovery_video_ids(
+                discovery, (source.id,)
+            )
         if not selected_video_ids:
             console.print("No videos selected for audio staging.")
             return
@@ -10058,18 +10259,17 @@ def run_workflow_service(
             f"Running {len(selected_source_ids)} selected source(s): "
             f"{', '.join(str(source_id) for source_id in selected_source_ids)}."
         )
+        selected_video_ids: set[int] = set()
         for source_id in selected_source_ids:
-            discover_sources_service(
+            discovery = discover_sources_service(
                 limit=limit,
                 all_videos=all_videos,
                 source_id=source_id,
                 base_dir=base_dir,
             )
-        selected_video_ids = {
-            video.id
-            for source_id in selected_source_ids
-            for video in database.list_videos_by_source_id(source_id)
-        }
+            selected_video_ids.update(
+                _selected_discovery_video_ids(discovery, (source_id,))
+            )
         fetch_captions_service(
             base_dir=base_dir,
             video_ids=selected_video_ids,
@@ -10135,34 +10335,77 @@ def run_workflow_service(
             raise ValueError("Do not pass --pastor when using --all.")
         if replace_existing:
             raise ValueError("--replace-existing is only valid for single-source runs.")
-        discover_sources_service(limit=limit, all_videos=all_videos, source_id=None, base_dir=base_dir)
-        fetch_captions_service(source_id=None, base_dir=base_dir)
-        if not captions_only and transcribe_missing:
-            transcribe_videos_service(missing_only=False, captions_missing_only=True, jobs=jobs, source_id=None, base_dir=base_dir)
-        elif not captions_only:
-            transcribe_videos_service(missing_only=False, captions_missing_only=False, jobs=jobs, source_id=None, base_dir=base_dir)
         database = get_database(base_dir)
+        enabled_sources = database.list_processing_enabled_sources()
+        if not enabled_sources:
+            console.print("No processing-enabled sources configured.")
+            return
+        enabled_source_ids = {source.id for source in enabled_sources}
+        disabled_count = len(database.list_sources()) - len(enabled_sources)
+        console.print(
+            f"Running all {len(enabled_sources)} processing-enabled source(s); "
+            f"skipping {disabled_count} disabled source(s)."
+        )
+        discovery = discover_sources_service(
+            limit=limit,
+            all_videos=all_videos,
+            source_id=None,
+            base_dir=base_dir,
+        )
+        selected_video_ids = _selected_discovery_video_ids(
+            discovery, tuple(enabled_source_ids)
+        )
+        fetch_captions_service(base_dir=base_dir, video_ids=selected_video_ids)
+        if not captions_only and transcribe_missing:
+            transcribe_videos_service(
+                missing_only=False,
+                captions_missing_only=True,
+                jobs=jobs,
+                base_dir=base_dir,
+                video_ids=selected_video_ids,
+            )
+        elif not captions_only:
+            transcribe_videos_service(
+                missing_only=False,
+                captions_missing_only=False,
+                jobs=jobs,
+                base_dir=base_dir,
+                video_ids=selected_video_ids,
+            )
         paths = build_paths(base_dir, remember=True)
         extraction = extract_batch(
             database,
             paths,
+            video_ids=selected_video_ids,
             classifier=classifier,
             llm_model=llm_model,
             event_callback=lambda message: console.print(message, markup=False),
             progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
         )
         console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
-        _ensure_and_archive_run_media(database, paths)
+        _ensure_and_archive_run_media(database, paths, video_ids=selected_video_ids)
         if not skip_review:
-            reviews = prepare_review_exports(
-                database,
-                paths,
-                all_pastors=True,
-                classifier=classifier,
-                llm_model=llm_model,
-                event_callback=lambda message: console.print(message, markup=False),
-            )
-            _print_review_batch(reviews)
+            pastor_slugs = {
+                pastor_record.slug
+                for video_id in selected_video_ids
+                for video in [database.get_video_by_id(video_id)]
+                if video is not None and video.pastor_id is not None
+                for pastor_record in [database.get_pastor_by_id(video.pastor_id)]
+                if pastor_record is not None
+            }
+            for pastor_slug in sorted(pastor_slugs):
+                reviews = prepare_review_exports(
+                    database,
+                    paths,
+                    pastor_slug=pastor_slug,
+                    video_ids=selected_video_ids,
+                    classifier=classifier,
+                    llm_model=llm_model,
+                    event_callback=lambda message: console.print(
+                        message, markup=False
+                    ),
+                )
+                _print_review_batch(reviews)
         if run_identity:
             _run_post_content_identity(base_dir)
         return
@@ -10183,32 +10426,41 @@ def run_workflow_service(
     add_source_service(url=url, pastor=pastor, notes=None, base_dir=base_dir)
     source = database.get_source_by_url(url)
     source_id = source.id if source is not None else None
-    discover_sources_service(limit=limit, all_videos=all_videos, source_id=source_id, base_dir=base_dir)
-    fetch_captions_service(source_id=source_id, base_dir=base_dir)
+    discovery = discover_sources_service(
+        limit=limit,
+        all_videos=all_videos,
+        source_id=source_id,
+        base_dir=base_dir,
+    )
+    selected_video_ids = _selected_discovery_video_ids(
+        discovery,
+        (source_id,) if source_id is not None else (),
+    )
+    fetch_captions_service(
+        source_id=source_id,
+        base_dir=base_dir,
+        video_ids=selected_video_ids,
+    )
     if not captions_only and transcribe_missing:
-        transcribe_videos_service(missing_only=False, captions_missing_only=True, jobs=jobs, source_id=source_id, base_dir=base_dir)
+        transcribe_videos_service(missing_only=False, captions_missing_only=True, jobs=jobs, source_id=source_id, base_dir=base_dir, video_ids=selected_video_ids)
     elif not captions_only:
-        transcribe_videos_service(missing_only=False, captions_missing_only=False, jobs=jobs, source_id=source_id, base_dir=base_dir)
+        transcribe_videos_service(missing_only=False, captions_missing_only=False, jobs=jobs, source_id=source_id, base_dir=base_dir, video_ids=selected_video_ids)
     paths = build_paths(base_dir, remember=True)
     extraction = extract_batch(
         database,
         paths,
         source_id=source_id,
+        video_ids=selected_video_ids,
         classifier=classifier,
         llm_model=llm_model,
         event_callback=lambda message: console.print(message, markup=False),
         progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
     )
     console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
-    source_video_ids = (
-        {video.id for video in database.list_videos_by_source_id(source_id)}
-        if source_id is not None
-        else set()
-    )
     _ensure_and_archive_run_media(
         database,
         paths,
-        video_ids=source_video_ids,
+        video_ids=selected_video_ids,
     )
     if not skip_review:
         reviews = prepare_review_exports(
@@ -10347,7 +10599,14 @@ def _print_review_batch(batch: ReviewBatchResult) -> None:
 def run(
     url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
     pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
-    all_sources: bool = typer.Option(False, "--all", help="Run across all configured sources."),
+    all_sources: bool = typer.Option(
+        False,
+        "--all",
+        help=(
+            "Run the full workflow for every processing-enabled source. This does not "
+            "remove the per-source discovery limit; use --all-videos for that."
+        ),
+    ),
     source_ids: list[int] | None = typer.Option(
         None,
         "--source-id",

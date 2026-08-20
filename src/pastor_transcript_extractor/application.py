@@ -10,6 +10,11 @@ from pastor_transcript_extractor.exporting import PastorReviewMarkdownResult, ex
 from pastor_transcript_extractor.extraction import extract_video
 from pastor_transcript_extractor.local_llm import LocalLlmClient, OllamaClient
 from pastor_transcript_extractor.models import VideoStatus
+from pastor_transcript_extractor.sermon_policy import (
+    publication_is_not_future,
+    minimum_sermon_duration_seconds,
+    video_is_sermon_eligible,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -107,7 +112,21 @@ def extract_batch(
 
     skipped = 0
     eligible_videos = []
+    minimum_duration = minimum_sermon_duration_seconds()
+    below_minimum = 0
+    future_events = 0
     for video in videos:
+        if not video_is_sermon_eligible(
+            video.duration_seconds,
+            video.published_at,
+            minimum_seconds=minimum_duration,
+        ):
+            skipped += 1
+            if publication_is_not_future(video.published_at):
+                below_minimum += 1
+            else:
+                future_events += 1
+            continue
         latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
         if latest_artifact is None:
             skipped += 1
@@ -125,6 +144,15 @@ def extract_batch(
             continue
 
         eligible_videos.append(video)
+
+    if below_minimum:
+        _emit(
+            event_callback,
+            f"Bypassing {below_minimum} video(s) below the configured "
+            f"{minimum_duration:g}-second sermon minimum.",
+        )
+    if future_events:
+        _emit(event_callback, f"Bypassing {future_events} future event(s).")
 
     raw_verifier_client = None
     verifier_digest = None
@@ -212,6 +240,7 @@ def prepare_review_exports(
     *,
     pastor_slug: str | None = None,
     all_pastors: bool = False,
+    video_ids: set[int] | None = None,
     classifier: str = "auto",
     llm_model: str | None = None,
     event_callback: EventCallback | None = None,
@@ -238,6 +267,7 @@ def prepare_review_exports(
             paths,
             missing_only=True,
             pastor_id=pastor.id,
+            video_ids=video_ids,
             classifier=classifier,
             llm_model=llm_model,
             event_callback=event_callback,

@@ -19,6 +19,8 @@ class ExtractionParallelismTests(unittest.TestCase):
             pastor_id=None,
             title="Publisher Video",
             status=VideoStatus.TRANSCRIBED_LOCAL,
+            duration_seconds=None,
+            published_at=None,
         )
         database = SimpleNamespace(
             list_videos=lambda: [video],
@@ -42,8 +44,22 @@ class ExtractionParallelismTests(unittest.TestCase):
 
     def test_extract_batch_runs_independent_videos_with_requested_workers(self) -> None:
         videos = [
-            SimpleNamespace(id=1, pastor_id=1, title="First", status=VideoStatus.DISCOVERED),
-            SimpleNamespace(id=2, pastor_id=1, title="Second", status=VideoStatus.DISCOVERED),
+            SimpleNamespace(
+                id=1,
+                pastor_id=1,
+                title="First",
+                status=VideoStatus.DISCOVERED,
+                duration_seconds=None,
+                published_at=None,
+            ),
+            SimpleNamespace(
+                id=2,
+                pastor_id=1,
+                title="Second",
+                status=VideoStatus.DISCOVERED,
+                duration_seconds=None,
+                published_at=None,
+            ),
         ]
         database = SimpleNamespace(
             list_videos=lambda: videos,
