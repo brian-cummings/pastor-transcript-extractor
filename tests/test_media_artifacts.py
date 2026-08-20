@@ -31,6 +31,7 @@ from pastor_transcript_extractor.media_archive import (
     archive_status,
     media_archive_lock_held,
     normalized_archive_eligibility,
+    persist_cached_canonical_clip_preparations,
     write_canonical_clip_preparation_manifest,
 )
 from pastor_transcript_extractor.media_artifacts import (
@@ -926,8 +927,32 @@ class MediaArtifactTests(unittest.TestCase):
 
         clip = audio_root / "speaker-clips" / "canonical.wav"
         write_wav(clip)
-        write_canonical_clip_preparation_manifest(
-            self.paths, normalized, observation, clip_paths=(clip,)
+        cache_root = self.paths.root / "speaker-cache"
+        cache_manifest = cache_root / "spans" / "prepared.json"
+        cache_manifest.parent.mkdir(parents=True)
+        cache_manifest.write_text(
+            json.dumps(
+                {
+                    "input": {
+                        "observation_fingerprint": observation.input_fingerprint,
+                        "source_audio_sha256": normalized.content_sha256,
+                    },
+                    "span": {
+                        "wav_path": str(clip.resolve()),
+                        "wav_sha256": hashlib.sha256(clip.read_bytes()).hexdigest(),
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            1,
+            persist_cached_canonical_clip_preparations(
+                self.database,
+                self.paths,
+                cache_root=cache_root,
+                video_ids={video.id},
+            ),
         )
         changed_observation = self.database.add_speaker_observation(
             video_id=video.id, extraction_result_id=extraction.id,

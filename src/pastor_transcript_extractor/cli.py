@@ -166,6 +166,7 @@ from pastor_transcript_extractor.media_archive import (
     archive_source_media,
     archive_status,
     media_archive_lock_held,
+    persist_cached_canonical_clip_preparations,
     write_canonical_clip_preparation_manifest,
 )
 from pastor_transcript_extractor.media_artifacts import (
@@ -5111,9 +5112,69 @@ def run_identity_workflow_service(
         output_root=None,
         base_dir=base_dir,
     )
+    if plan_only:
+        console.print(
+            "Normalized archive: plan-only; canonical manifests and media were not changed."
+        )
+    elif isinstance(paths, AppPaths):
+        _archive_normalized_after_identity(
+            Database(paths.database),
+            paths,
+            video_ids=(
+                {database_video_id} if database_video_id is not None else None
+            ),
+            all_eligible=all_extractions,
+        )
     console.print(
         "Identity run complete. Human pair review, attribution, conflict "
         "adjudication, and policy approval remain explicit."
+    )
+
+
+def _archive_normalized_after_identity(
+    database: Database,
+    paths: AppPaths,
+    *,
+    video_ids: set[int] | None,
+    all_eligible: bool,
+) -> None:
+    destination = database.get_active_media_archive_destination()
+    if destination is None:
+        console.print(
+            "Normalized archive skipped: no archive destination is configured."
+        )
+        return
+    prepared = persist_cached_canonical_clip_preparations(
+        database,
+        paths,
+        cache_root=Path("evaluation/speaker-pairs/cache"),
+        video_ids=video_ids,
+    )
+
+    def report_preflight(event: ArchivePreflightEvent) -> None:
+        console.print(
+            f"Identity archive preflight {event.check}: {event.status} — {event.detail}",
+            markup=False,
+        )
+
+    archive = archive_normalized_media(
+        database,
+        paths,
+        video_ids=video_ids,
+        all_eligible=all_eligible,
+        wait_for_lock=True,
+        progress_callback=None,
+        preflight_callback=report_preflight,
+    )
+    counts = archive.counts
+    blocked = sum(not item.eligible for item in archive.eligibility)
+    deferred = counts["destination_unavailable"]
+    console.print(
+        "Identity normalized archive: "
+        f"canonical_preparations={prepared}; eligible={archive.eligible}; "
+        f"archived={counts['archived']}; "
+        f"already_archived={counts['already_archived']}; deferred={deferred}; "
+        f"failed={counts['failed']}; blocked={blocked}."
     )
 
 
@@ -5121,7 +5182,7 @@ def run_identity_workflow_service(
     "run",
     help=(
         "Sync reviewed evidence, then run backfill, shadow association, "
-        "discovery, and final coordination."
+        "discovery, final coordination, and eligible normalized archival."
     ),
 )
 def identity_run_command(

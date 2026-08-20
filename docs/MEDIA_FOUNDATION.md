@@ -177,6 +177,16 @@ pte media repair-normalized-provenance \
 The retry is idempotent. Provenance repair preflights all required media before
 review revocation, observation detachment, membership changes, or cache writes.
 
+Executing `pte identity run VIDEO_ID` or `pte identity run --all` performs this
+normalized archival finalization automatically after shadow association,
+discovery, and final coordination have finished their audio-dependent work. It
+promotes only checksum-valid cached spans bound to the current observation and
+normalized SHA-256 into canonical preparation manifests, then archives the
+eligible normalized artifacts in the identity scope. The finalizer waits behind
+another source or normalized archive process. An offline destination is reported
+as deferred and leaves local media untouched. `--plan-only` never writes a clip
+manifest, archive entry, archive attempt, file, or symlink.
+
 ## Replay guarantees
 
 - Existing verified content is reused without redownload.

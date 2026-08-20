@@ -163,12 +163,19 @@ def archive_normalized_media(
     limit: int | None = None,
     video_ids: set[int] | None = None,
     all_eligible: bool = False,
+    wait_for_lock: bool = False,
+    lock_retry_seconds: float = 1.0,
     progress_callback: ArchiveProgressCallback | None = None,
     preflight_callback: ArchivePreflightCallback | None = None,
 ) -> ArchiveRunResult:
     if video_ids is None and not all_eligible:
         raise ValueError("Pass --youtube-video-id or --all-eligible")
-    with _archive_lock(app_paths.root, preflight_callback=preflight_callback):
+    with _archive_lock(
+        app_paths.root,
+        wait_for_lock=wait_for_lock,
+        retry_seconds=lock_retry_seconds,
+        preflight_callback=preflight_callback,
+    ):
         _notify_preflight(preflight_callback, "archive lock", "passed", "exclusive lock acquired")
         return _archive_source_media_locked(
             database,
@@ -181,6 +188,76 @@ def archive_normalized_media(
             preflight_callback=preflight_callback,
             artifact_kind="normalized_audio",
         )
+
+
+def persist_cached_canonical_clip_preparations(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    cache_root: Path,
+    video_ids: set[int] | None = None,
+) -> int:
+    """Promote exact source-bound cached spans into normalized archive proofs."""
+    span_root = cache_root.expanduser().resolve() / "spans"
+    if not span_root.is_dir():
+        return 0
+    cached_by_observation: dict[tuple[str, str], list[Path]] = {}
+    for manifest_path in sorted(span_root.glob("*.json")):
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            item = payload["input"]
+            span = payload["span"]
+            fingerprint = item["observation_fingerprint"]
+            source_sha256 = item["source_audio_sha256"]
+            wav_path = Path(span["wav_path"])
+            wav_sha256 = span["wav_sha256"]
+        except (OSError, UnicodeError, KeyError, TypeError, json.JSONDecodeError):
+            continue
+        if (
+            not isinstance(fingerprint, str)
+            or not isinstance(source_sha256, str)
+            or not isinstance(wav_sha256, str)
+            or not wav_path.is_file()
+            or _sha256_file(wav_path) != wav_sha256
+        ):
+            continue
+        cached_by_observation.setdefault(
+            (fingerprint, source_sha256), []
+        ).append(wav_path)
+
+    written = 0
+    for video in database.list_videos():
+        if video_ids is not None and video.id not in video_ids:
+            continue
+        observation = database.get_latest_speaker_observation_for_video(video.id)
+        if observation is None:
+            continue
+        artifact, availability = get_authoritative_normalized_media_artifact(
+            database, video.id, require_isolated_sermon=False
+        )
+        if artifact is None or availability is None:
+            continue
+        clip_paths = tuple(
+            sorted(
+                set(
+                    cached_by_observation.get(
+                        (observation.input_fingerprint, artifact.content_sha256),
+                        (),
+                    )
+                ),
+                key=str,
+            )
+        )
+        if not clip_paths:
+            continue
+        write_canonical_clip_preparation_manifest(
+            app_paths,
+            artifact,
+            observation,
+            clip_paths=clip_paths,
+        )
+        written += 1
+    return written
 
 
 def media_archive_lock_held(app_root: Path) -> bool:

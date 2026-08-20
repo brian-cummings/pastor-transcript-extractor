@@ -7,9 +7,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from pastor_transcript_extractor.cli import (
+    _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
     run_identity_workflow_service,
 )
+from pastor_transcript_extractor.config import AppPaths
 
 
 class IdentityRunTests(unittest.TestCase):
@@ -52,7 +54,15 @@ class IdentityRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             database_path = Path(tempdir) / "app.db"
             database_path.touch()
-            paths = SimpleNamespace(database=database_path)
+            root = Path(tempdir)
+            paths = AppPaths(
+                root=root,
+                database=database_path,
+                artifacts=root / "artifacts",
+                logs=root / "logs",
+                exports=root / "exports",
+                pastors=root / "pastors",
+            )
             with (
                 patch(
                     "pastor_transcript_extractor.cli.build_paths",
@@ -103,6 +113,9 @@ class IdentityRunTests(unittest.TestCase):
                 patch(
                     "pastor_transcript_extractor.cli.coordinate_identity_command"
                 ) as coordinate,
+                patch(
+                    "pastor_transcript_extractor.cli._archive_normalized_after_identity"
+                ) as archive_normalized,
                 patch.object(Path, "glob", return_value=[]),
             ):
                 current_report = Path(tempdir) / "current-association.json"
@@ -134,6 +147,65 @@ class IdentityRunTests(unittest.TestCase):
         self.assertFalse(discover.call_args.kwargs["plan_only"])
         promote.assert_not_called()
         self.assertTrue(coordinate.call_args.kwargs["all_extractions"])
+        archive_normalized.assert_called_once_with(
+            unittest.mock.ANY,
+            paths,
+            video_ids=None,
+            all_eligible=True,
+        )
+
+    def test_identity_archive_waits_for_lock_and_reports_unavailable_as_deferred(
+        self,
+    ) -> None:
+        database = SimpleNamespace(
+            get_active_media_archive_destination=lambda: SimpleNamespace(id=1)
+        )
+        paths = AppPaths(
+            root=Path("/tmp/identity-archive-test"),
+            database=Path("/tmp/identity-archive-test/app.db"),
+            artifacts=Path("/tmp/identity-archive-test/artifacts"),
+            logs=Path("/tmp/identity-archive-test/logs"),
+            exports=Path("/tmp/identity-archive-test/exports"),
+            pastors=Path("/tmp/identity-archive-test/pastors"),
+        )
+        archive_result = SimpleNamespace(
+            counts={
+                "archived": 0,
+                "already_archived": 0,
+                "destination_unavailable": 2,
+                "failed": 0,
+                "would_archive": 0,
+            },
+            eligible=2,
+            eligibility=(SimpleNamespace(eligible=True), SimpleNamespace(eligible=True)),
+        )
+        with (
+            patch(
+                "pastor_transcript_extractor.cli.persist_cached_canonical_clip_preparations",
+                return_value=2,
+            ) as prepare,
+            patch(
+                "pastor_transcript_extractor.cli.archive_normalized_media",
+                return_value=archive_result,
+            ) as archive,
+            patch("pastor_transcript_extractor.cli.console.print") as output,
+        ):
+            _archive_normalized_after_identity(
+                database,
+                paths,
+                video_ids={7, 8},
+                all_eligible=False,
+            )
+
+        prepare.assert_called_once_with(
+            database,
+            paths,
+            cache_root=Path("evaluation/speaker-pairs/cache"),
+            video_ids={7, 8},
+        )
+        self.assertTrue(archive.call_args.kwargs["wait_for_lock"])
+        self.assertEqual({7, 8}, archive.call_args.kwargs["video_ids"])
+        self.assertIn("deferred=2", output.call_args_list[-1].args[0])
 
     def test_plan_only_rejects_registry_mutation_flags(self) -> None:
         with self.assertRaisesRegex(ValueError, "plan-only"):
