@@ -21,6 +21,10 @@ from pastor_transcript_extractor.models import (
     Organization,
     Pastor,
     PastorOrganizationAffiliation,
+    ReferencePanel,
+    ReferencePanelMembershipEvent,
+    ReferencePanelSnapshot,
+    ReferencePanelSnapshotMember,
     SpeakerNameClaim,
     SpeakerObservation,
     SpeakerProfile,
@@ -299,6 +303,70 @@ CREATE TABLE IF NOT EXISTS speaker_profile_analysis_measurements (
 
 CREATE INDEX IF NOT EXISTS idx_speaker_profile_analysis_runs_profile
 ON speaker_profile_analysis_runs(profile_id, analyzer_key, id);
+
+CREATE TABLE IF NOT EXISTS reference_panels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    panel_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    provenance TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reference_panel_membership_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    panel_id INTEGER NOT NULL,
+    profile_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('attach', 'detach')),
+    reviewer TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    event_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(panel_id) REFERENCES reference_panels(id),
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reference_panel_membership_effective
+ON reference_panel_membership_events(panel_id, profile_id, id);
+
+CREATE TABLE IF NOT EXISTS reference_panel_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    panel_id INTEGER NOT NULL,
+    profile_analyzer_key TEXT NOT NULL,
+    profile_analyzer_version TEXT NOT NULL,
+    feature_schema_version TEXT NOT NULL,
+    comparison_feature_names_json TEXT NOT NULL,
+    coverage_feature_names_json TEXT NOT NULL,
+    feature_family_assignments_json TEXT NOT NULL,
+    panel_feature_statistics_json TEXT NOT NULL,
+    eligibility_policy_version TEXT NOT NULL,
+    eligibility_policy_json TEXT NOT NULL,
+    snapshot_analyzer_version TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(panel_id) REFERENCES reference_panels(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reference_panel_snapshots_panel
+ON reference_panel_snapshots(panel_id, id);
+
+CREATE TABLE IF NOT EXISTS reference_panel_snapshot_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id INTEGER NOT NULL,
+    requested_profile_ids_json TEXT NOT NULL,
+    membership_event_ids_json TEXT NOT NULL,
+    resolved_profile_id INTEGER NOT NULL,
+    resolved_display_label TEXT NOT NULL,
+    profile_analysis_run_id INTEGER NULL,
+    eligibility_status TEXT NOT NULL CHECK(eligibility_status IN ('eligible', 'ineligible')),
+    exclusion_reasons_json TEXT NOT NULL,
+    comparison_values_json TEXT NOT NULL,
+    coverage_diagnostics_json TEXT NOT NULL,
+    FOREIGN KEY(snapshot_id) REFERENCES reference_panel_snapshots(id) ON DELETE CASCADE,
+    FOREIGN KEY(resolved_profile_id) REFERENCES speaker_profiles(id),
+    FOREIGN KEY(profile_analysis_run_id) REFERENCES speaker_profile_analysis_runs(id),
+    UNIQUE(snapshot_id, resolved_profile_id)
+);
 
 CREATE TABLE IF NOT EXISTS excluded_videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2881,6 +2949,349 @@ class Database:
                 (profile_analysis_run_id,),
             ).fetchall()
         return [int(row["sermon_analysis_run_id"]) for row in rows]
+
+    def get_compatible_speaker_profile_analysis_run(
+        self, profile_id: int, analyzer_key: str, analyzer_version: str
+    ) -> SpeakerProfileAnalysisRun | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM speaker_profile_analysis_runs
+                WHERE profile_id = ? AND analyzer_key = ? AND analyzer_version = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (profile_id, analyzer_key, analyzer_version),
+            ).fetchone()
+        return (
+            self._speaker_profile_analysis_run_from_row(row)
+            if row is not None
+            else None
+        )
+
+    def _reference_panel_from_row(self, row: sqlite3.Row) -> ReferencePanel:
+        return ReferencePanel(
+            id=int(row["id"]),
+            key=str(row["panel_key"]),
+            display_name=str(row["display_name"]),
+            description=str(row["description"]),
+            provenance=str(row["provenance"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def ensure_reference_panel(
+        self,
+        *,
+        key: str,
+        display_name: str,
+        description: str,
+        provenance: str,
+    ) -> tuple[ReferencePanel, bool]:
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO reference_panels (
+                        panel_key, display_name, description, provenance, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (key, display_name, description, provenance, created_at),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    "SELECT * FROM reference_panels WHERE panel_key = ?", (key,)
+                ).fetchone()
+                if row is None:
+                    raise
+                panel = self._reference_panel_from_row(row)
+                if (
+                    panel.display_name != display_name
+                    or panel.description != description
+                    or panel.provenance != provenance
+                ):
+                    raise ValueError(
+                        f"Reference panel key {key!r} already exists with different metadata"
+                    )
+                return panel, False
+            row = connection.execute(
+                "SELECT * FROM reference_panels WHERE id = ?", (int(cursor.lastrowid),)
+            ).fetchone()
+            assert row is not None
+            return self._reference_panel_from_row(row), True
+
+    def get_reference_panel(self, key: str) -> ReferencePanel | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM reference_panels WHERE panel_key = ?", (key,)
+            ).fetchone()
+        return self._reference_panel_from_row(row) if row is not None else None
+
+    def list_reference_panels(self) -> list[ReferencePanel]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM reference_panels ORDER BY panel_key"
+            ).fetchall()
+        return [self._reference_panel_from_row(row) for row in rows]
+
+    def add_reference_panel_membership_event(
+        self,
+        *,
+        panel_id: int,
+        profile_id: int,
+        action: str,
+        reviewer: str,
+        rationale: str,
+        event_fingerprint: str,
+    ) -> tuple[ReferencePanelMembershipEvent, bool]:
+        if action not in {"attach", "detach"}:
+            raise ValueError(f"Unsupported reference-panel membership action: {action}")
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO reference_panel_membership_events (
+                        panel_id, profile_id, action, reviewer, rationale,
+                        event_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        panel_id,
+                        profile_id,
+                        action,
+                        reviewer,
+                        rationale,
+                        event_fingerprint,
+                        created_at,
+                    ),
+                )
+                created = True
+                row = connection.execute(
+                    "SELECT * FROM reference_panel_membership_events WHERE id = ?",
+                    (int(cursor.lastrowid),),
+                ).fetchone()
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    """
+                    SELECT * FROM reference_panel_membership_events
+                    WHERE event_fingerprint = ?
+                    """,
+                    (event_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                expected = (panel_id, profile_id, action, reviewer, rationale)
+                actual = tuple(
+                    row[name]
+                    for name in ("panel_id", "profile_id", "action", "reviewer", "rationale")
+                )
+                if actual != expected:
+                    raise ValueError("Reference-panel event fingerprint collision")
+                created = False
+            assert row is not None
+        return ReferencePanelMembershipEvent(
+            id=int(row["id"]),
+            panel_id=int(row["panel_id"]),
+            profile_id=int(row["profile_id"]),
+            action=str(row["action"]),
+            reviewer=str(row["reviewer"]),
+            rationale=str(row["rationale"]),
+            event_fingerprint=str(row["event_fingerprint"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        ), created
+
+    def list_effective_reference_panel_profile_ids(self, panel_id: int) -> list[int]:
+        return [
+            event.profile_id
+            for event in self.list_effective_reference_panel_membership_events(panel_id)
+        ]
+
+    def list_effective_reference_panel_membership_events(
+        self, panel_id: int
+    ) -> list[ReferencePanelMembershipEvent]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event.*
+                FROM reference_panel_membership_events AS event
+                WHERE event.panel_id = ?
+                  AND event.id = (
+                    SELECT MAX(latest.id)
+                    FROM reference_panel_membership_events AS latest
+                    WHERE latest.panel_id = event.panel_id
+                      AND latest.profile_id = event.profile_id
+                  )
+                  AND event.action = 'attach'
+                ORDER BY event.profile_id
+                """,
+                (panel_id,),
+            ).fetchall()
+        return [
+            ReferencePanelMembershipEvent(
+                id=int(row["id"]),
+                panel_id=int(row["panel_id"]),
+                profile_id=int(row["profile_id"]),
+                action=str(row["action"]),
+                reviewer=str(row["reviewer"]),
+                rationale=str(row["rationale"]),
+                event_fingerprint=str(row["event_fingerprint"]),
+                created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+            )
+            for row in rows
+        ]
+
+    def _reference_panel_snapshot_from_row(
+        self, row: sqlite3.Row
+    ) -> ReferencePanelSnapshot:
+        return ReferencePanelSnapshot(
+            id=int(row["id"]),
+            panel_id=int(row["panel_id"]),
+            profile_analyzer_key=str(row["profile_analyzer_key"]),
+            profile_analyzer_version=str(row["profile_analyzer_version"]),
+            feature_schema_version=str(row["feature_schema_version"]),
+            comparison_feature_names_json=str(row["comparison_feature_names_json"]),
+            coverage_feature_names_json=str(row["coverage_feature_names_json"]),
+            feature_family_assignments_json=str(row["feature_family_assignments_json"]),
+            panel_feature_statistics_json=str(row["panel_feature_statistics_json"]),
+            eligibility_policy_version=str(row["eligibility_policy_version"]),
+            eligibility_policy_json=str(row["eligibility_policy_json"]),
+            snapshot_analyzer_version=str(row["snapshot_analyzer_version"]),
+            input_fingerprint=str(row["input_fingerprint"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def get_reference_panel_snapshot_by_fingerprint(
+        self, input_fingerprint: str
+    ) -> ReferencePanelSnapshot | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM reference_panel_snapshots WHERE input_fingerprint = ?",
+                (input_fingerprint,),
+            ).fetchone()
+        return self._reference_panel_snapshot_from_row(row) if row is not None else None
+
+    def get_latest_reference_panel_snapshot(
+        self, panel_id: int
+    ) -> ReferencePanelSnapshot | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM reference_panel_snapshots
+                WHERE panel_id = ? ORDER BY id DESC LIMIT 1
+                """,
+                (panel_id,),
+            ).fetchone()
+        return self._reference_panel_snapshot_from_row(row) if row is not None else None
+
+    def add_reference_panel_snapshot(
+        self,
+        *,
+        panel_id: int,
+        profile_analyzer_key: str,
+        profile_analyzer_version: str,
+        feature_schema_version: str,
+        comparison_feature_names_json: str,
+        coverage_feature_names_json: str,
+        feature_family_assignments_json: str,
+        panel_feature_statistics_json: str,
+        eligibility_policy_version: str,
+        eligibility_policy_json: str,
+        snapshot_analyzer_version: str,
+        input_fingerprint: str,
+        members: list[tuple[str, str, int, str, int | None, str, str, str, str]],
+    ) -> tuple[ReferencePanelSnapshot, bool]:
+        existing = self.get_reference_panel_snapshot_by_fingerprint(input_fingerprint)
+        if existing is not None:
+            return existing, False
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO reference_panel_snapshots (
+                        panel_id, profile_analyzer_key, profile_analyzer_version,
+                        feature_schema_version, comparison_feature_names_json,
+                        coverage_feature_names_json, feature_family_assignments_json,
+                        panel_feature_statistics_json, eligibility_policy_version,
+                        eligibility_policy_json, snapshot_analyzer_version,
+                        input_fingerprint, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        panel_id,
+                        profile_analyzer_key,
+                        profile_analyzer_version,
+                        feature_schema_version,
+                        comparison_feature_names_json,
+                        coverage_feature_names_json,
+                        feature_family_assignments_json,
+                        panel_feature_statistics_json,
+                        eligibility_policy_version,
+                        eligibility_policy_json,
+                        snapshot_analyzer_version,
+                        input_fingerprint,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    "SELECT * FROM reference_panel_snapshots WHERE input_fingerprint = ?",
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._reference_panel_snapshot_from_row(row), False
+            snapshot_id = int(cursor.lastrowid)
+            connection.executemany(
+                """
+                INSERT INTO reference_panel_snapshot_members (
+                    snapshot_id, requested_profile_ids_json, membership_event_ids_json,
+                    resolved_profile_id,
+                    resolved_display_label,
+                    profile_analysis_run_id, eligibility_status,
+                    exclusion_reasons_json, comparison_values_json,
+                    coverage_diagnostics_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [(snapshot_id, *member) for member in members],
+            )
+            row = connection.execute(
+                "SELECT * FROM reference_panel_snapshots WHERE id = ?", (snapshot_id,)
+            ).fetchone()
+            assert row is not None
+            return self._reference_panel_snapshot_from_row(row), True
+
+    def list_reference_panel_snapshot_members(
+        self, snapshot_id: int
+    ) -> list[ReferencePanelSnapshotMember]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM reference_panel_snapshot_members
+                WHERE snapshot_id = ? ORDER BY resolved_profile_id
+                """,
+                (snapshot_id,),
+            ).fetchall()
+        return [
+            ReferencePanelSnapshotMember(
+                id=int(row["id"]),
+                snapshot_id=int(row["snapshot_id"]),
+                requested_profile_ids_json=str(row["requested_profile_ids_json"]),
+                membership_event_ids_json=str(row["membership_event_ids_json"]),
+                resolved_profile_id=int(row["resolved_profile_id"]),
+                resolved_display_label=str(row["resolved_display_label"]),
+                profile_analysis_run_id=(
+                    int(row["profile_analysis_run_id"])
+                    if row["profile_analysis_run_id"] is not None
+                    else None
+                ),
+                eligibility_status=str(row["eligibility_status"]),
+                exclusion_reasons_json=str(row["exclusion_reasons_json"]),
+                comparison_values_json=str(row["comparison_values_json"]),
+                coverage_diagnostics_json=str(row["coverage_diagnostics_json"]),
+            )
+            for row in rows
+        ]
 
     def add_metadata_artifact(
         self,

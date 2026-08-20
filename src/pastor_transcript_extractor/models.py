@@ -293,6 +293,61 @@ class SpeakerProfileAnalysisMeasurement:
 
 
 @dataclass(slots=True)
+class ReferencePanel:
+    id: int
+    key: str
+    display_name: str
+    description: str
+    provenance: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class ReferencePanelMembershipEvent:
+    id: int
+    panel_id: int
+    profile_id: int
+    action: str
+    reviewer: str
+    rationale: str
+    event_fingerprint: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class ReferencePanelSnapshot:
+    id: int
+    panel_id: int
+    profile_analyzer_key: str
+    profile_analyzer_version: str
+    feature_schema_version: str
+    comparison_feature_names_json: str
+    coverage_feature_names_json: str
+    feature_family_assignments_json: str
+    panel_feature_statistics_json: str
+    eligibility_policy_version: str
+    eligibility_policy_json: str
+    snapshot_analyzer_version: str
+    input_fingerprint: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class ReferencePanelSnapshotMember:
+    id: int
+    snapshot_id: int
+    requested_profile_ids_json: str
+    membership_event_ids_json: str
+    resolved_profile_id: int
+    resolved_display_label: str
+    profile_analysis_run_id: Optional[int]
+    eligibility_status: str
+    exclusion_reasons_json: str
+    comparison_values_json: str
+    coverage_diagnostics_json: str
+
+
+@dataclass(slots=True)
 class ExcludedVideo:
     id: int
     pastor_id: Optional[int]

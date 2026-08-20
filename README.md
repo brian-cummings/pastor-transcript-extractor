@@ -1,5 +1,8 @@
 # Pastor Transcript Extractor
 
+Reference panels and immutable Scripture-usage benchmark snapshots are documented in
+[`docs/reference-benchmarking.md`](docs/reference-benchmarking.md).
+
 Local-first Python CLI for extracting pastor-only sermon transcripts from YouTube videos, playlists, and channels.
 
 ## Current Status
