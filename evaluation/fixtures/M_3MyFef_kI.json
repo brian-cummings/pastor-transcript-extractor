@@ -1,0 +1,28 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "no_sermon",
+  "expected_spans": [],
+  "failure_mode": "non_sermon_event",
+  "ground_truth_version": 1,
+  "notes": "No worship-service sermon found.",
+  "review_method": "full_video_and_timestamped_transcript",
+  "reviewed_at": "2026-08-11T00:28:06.171270+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "observation_fingerprint": "714c16e1914b7fb84cb161a857165e7f3df93b2baf24719468284acd01911758",
+    "qualifications": [
+      "invalid_audio"
+    ],
+    "reason_codes": [
+      "invalid_audio",
+      "broad_window",
+      "ends_near_recording_end"
+    ],
+    "reviewed_window": {
+      "end_seconds": 4950.0,
+      "start_seconds": 2310.0
+    },
+    "selection_origin": "speaker_negative_window_audit"
+  },
+  "video_id": "M_3MyFef_kI"
+}

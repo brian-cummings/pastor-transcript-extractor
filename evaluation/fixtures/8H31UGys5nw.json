@@ -1,0 +1,31 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 5224.0,
+      "start_seconds": 3439.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-08-11T00:59:14.024428+00:00",
+  "reviewed_by": "Brian Cummings",
+  "selection_manifest": {
+    "observation_fingerprint": "a87e0869ebe1565474d4fbcdeb7329c4c61b66d535f001dadbb94dc50eff8f30",
+    "qualifications": [
+      "invalid_audio"
+    ],
+    "reason_codes": [
+      "invalid_audio"
+    ],
+    "reviewed_window": {
+      "end_seconds": 3060.0,
+      "start_seconds": 2220.0
+    },
+    "selection_origin": "speaker_negative_window_audit"
+  },
+  "video_id": "8H31UGys5nw"
+}
