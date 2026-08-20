@@ -2171,6 +2171,16 @@ class Database:
             ).fetchall()
         return [self._media_archive_entry_from_row(row) for row in rows]
 
+    def get_media_archive_entry_for_artifact(
+        self, media_artifact_id: int
+    ) -> MediaArchiveEntry | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM media_archive_entries WHERE media_artifact_id = ?",
+                (media_artifact_id,),
+            ).fetchone()
+        return self._media_archive_entry_from_row(row) if row is not None else None
+
     def add_media_archive_attempt(
         self, *, archive_entry_id: int, outcome: str, detail: str | None
     ) -> MediaArchiveAttempt:

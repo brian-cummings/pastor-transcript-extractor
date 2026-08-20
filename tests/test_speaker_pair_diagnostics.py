@@ -28,6 +28,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     validate_reviewed_pair_fixture,
     write_pair_result,
 )
+from pastor_transcript_extractor.media_artifacts import ArchivedMediaUnavailableError
 from pastor_transcript_extractor.storage import Database
 
 
@@ -236,6 +237,47 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
             for path in manifests
         }
         self.assertEqual(2, len(source_hashes))
+
+    def test_audio_span_cache_replays_source_bound_clip_while_archive_is_offline(self):
+        archive = self.root / "archive"
+        archive.mkdir()
+        archived_source = archive / "source.wav"
+        archived_source.write_bytes(b"source-present")
+        source = self.root / "source.wav"
+        source.symlink_to(archived_source)
+        source_hash = hashlib.sha256(archived_source.read_bytes()).hexdigest()
+        observation = replace(self.a, content_sha256=source_hash)
+        cache = AudioSpanCache(self.root / "offline-cache")
+        span = select_diagnostic_spans(observation, count=3)[0]
+
+        def fake_ffmpeg(arguments, **_kwargs):
+            with wave.open(arguments[-1], "wb") as destination:
+                destination.setnchannels(1)
+                destination.setsampwidth(2)
+                destination.setframerate(16000)
+                destination.writeframes(
+                    (1000).to_bytes(2, "little", signed=True) * (16000 * 12)
+                )
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_diagnostics.subprocess.run",
+            side_effect=fake_ffmpeg,
+        ):
+            first = cache.prepare(
+                observation=observation, source_audio_path=source, span=span
+            )
+        archive.rename(self.root / "archive-offline")
+        replay = AudioSpanCache(self.root / "offline-cache").prepare(
+            observation=observation, source_audio_path=source, span=span
+        )
+        self.assertFalse(first.cache_hit)
+        self.assertTrue(replay.cache_hit)
+        with self.assertRaises(ArchivedMediaUnavailableError):
+            AudioSpanCache(self.root / "offline-cache").prepare(
+                observation=replace(observation, content_sha256="different"),
+                source_audio_path=source,
+                span=span,
+            )
 
     def test_frame_activity_detects_a_clip_that_is_mostly_silent(self):
         path = self.root / "mostly-silent.wav"

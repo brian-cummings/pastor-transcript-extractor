@@ -13,6 +13,7 @@ import wave
 from typing import Any, Mapping, Protocol, Sequence
 
 from pastor_transcript_extractor.models import SpeakerObservation
+from pastor_transcript_extractor.media_artifacts import ArchivedMediaUnavailableError
 
 
 SPAN_EXTRACTOR_VERSION = "speaker_span_v2"
@@ -189,6 +190,11 @@ class AudioSpanCache:
         source_audio_path: Path,
         span: SpanSpec,
     ) -> CachedSpan:
+        cached = self._find_cached_span(
+            observation=observation, source_audio_path=source_audio_path, span=span
+        )
+        if cached is not None:
+            return cached
         source_audio_sha256 = self._source_audio_sha256(source_audio_path)
         key_payload = {
             "extractor_version": SPAN_EXTRACTOR_VERSION,
@@ -264,10 +270,63 @@ class AudioSpanCache:
         _write_json(manifest_path, manifest)
         return cached
 
+    def _find_cached_span(
+        self,
+        *,
+        observation: SpeakerObservation,
+        source_audio_path: Path,
+        span: SpanSpec,
+    ) -> CachedSpan | None:
+        """Use source-bound cached inputs without touching an offline archive."""
+        directory = self.root / "spans"
+        if not directory.is_dir():
+            return None
+        for manifest_path in directory.glob("*.json"):
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                item = manifest["input"]
+                span_payload = dict(manifest["span"])
+                wav_path = Path(span_payload["wav_path"])
+            except (OSError, KeyError, TypeError, json.JSONDecodeError):
+                continue
+            if (
+                item.get("extractor_version") != SPAN_EXTRACTOR_VERSION
+                or item.get("observation_fingerprint") != observation.input_fingerprint
+                or item.get("source_audio_sha256")
+                != self._observation_source_audio_sha256(observation)
+                or item.get("source_audio_path") != str(source_audio_path)
+                or item.get("start_seconds") != span.start_seconds
+                or item.get("end_seconds") != span.end_seconds
+                or not wav_path.is_file()
+                or _sha256_file(wav_path) != span_payload.get("wav_sha256")
+            ):
+                continue
+            if span_payload.get("non_silent_fraction") is None:
+                span_payload["non_silent_fraction"] = measure_non_silent_fraction(wav_path)
+            return CachedSpan(**{**span_payload, "cache_hit": True})
+        return None
+
+    @staticmethod
+    def _observation_source_audio_sha256(observation: SpeakerObservation) -> str:
+        try:
+            payload = json.loads(
+                Path(observation.artifact_path).read_text(encoding="utf-8")
+            )
+            provenance = payload.get("normalized_audio_provenance")
+            if isinstance(provenance, dict) and isinstance(
+                provenance.get("content_sha256"), str
+            ):
+                return provenance["content_sha256"]
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            pass
+        return observation.content_sha256
+
     def _source_audio_sha256(self, path: Path) -> str:
         try:
             file_stat = path.stat()
         except OSError as error:
+            if path.is_symlink():
+                raise ArchivedMediaUnavailableError(None, path.resolve(strict=False)) from error
             raise AcousticEvidenceUnavailableError(
                 f"local audio is unavailable: {path}"
             ) from error

@@ -146,6 +146,7 @@ from pastor_transcript_extractor.identity_coordination import (
     write_identity_coordination_report,
 )
 from pastor_transcript_extractor.models import (
+    MediaArtifact,
     SpeakerObservation,
     TranscriptSourceKind,
     VideoStatus,
@@ -161,17 +162,21 @@ from pastor_transcript_extractor.media_archive import (
     ArchivePreflightEvent,
     ArchiveProgressEvent,
     ArchiveRunResult,
+    archive_normalized_media,
     archive_source_media,
     archive_status,
     media_archive_lock_held,
+    write_canonical_clip_preparation_manifest,
 )
 from pastor_transcript_extractor.media_artifacts import (
+    ArchivedMediaUnavailableError,
     MediaVerificationCache,
     audit_media_coverage,
     audit_normalized_audio_provenance,
     backfill_existing_media_artifacts,
     ensure_audio_for_video,
     get_verified_normalized_media_artifact,
+    get_authoritative_normalized_media_artifact,
     stage_source_audio_for_video,
     repair_normalized_audio_provenance,
     resolve_normalized_audio_path,
@@ -3159,7 +3164,21 @@ def review_observation(
         return
     span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
     for video, observation in review_inputs:
-        artifact = get_verified_normalized_media_artifact(database, video.id)
+        try:
+            artifact = get_verified_normalized_media_artifact(database, video.id)
+        except ArchivedMediaUnavailableError as error:
+            retry = (
+                "pte identity review-observation "
+                f"--youtube-video-id {video.youtube_video_id} "
+                f"--base-dir {shlex.quote(str(paths.root))}"
+            )
+            if all_affected:
+                console.print(
+                    f"{video.youtube_video_id}: deferred "
+                    f"(archived_media_unavailable); retry: {retry}"
+                )
+                continue
+            raise typer.BadParameter(f"{error}. Retry: {retry}") from error
         if observation is None or artifact is None:
             console.print(
                 f"{video.youtube_video_id}: skipped (observation or verified audio unavailable)"
@@ -3172,6 +3191,14 @@ def review_observation(
                 audio_path=Path(artifact.artifact_path),
                 span_cache=span_cache,
                 evaluation_root=evaluation_root.expanduser().resolve(),
+            )
+            write_canonical_clip_preparation_manifest(
+                paths,
+                artifact,
+                observation,
+                clip_paths=tuple(
+                    Path(item["wav_path"]) for item in packet.payload["clips"]
+                ),
             )
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
             raise typer.BadParameter(
@@ -6201,7 +6228,7 @@ def prepare_speaker_review_audio(
         registry = load_source_family_registry(
             source_family_registry.expanduser().resolve()
         )
-        inputs: list[tuple[str, SpeakerObservation, Path]] = []
+        inputs: list[tuple[str, SpeakerObservation, MediaArtifact, Path]] = []
         unregistered_source_urls: set[str] = set()
         for video in database.list_videos():
             source = database.get_source_by_id(video.source_id)
@@ -6228,7 +6255,7 @@ def prepare_speaker_review_audio(
             assert observation is not None
             assert media is not None
             inputs.append(
-                (video.youtube_video_id, observation, Path(media.artifact_path))
+                (video.youtube_video_id, observation, media, Path(media.artifact_path))
             )
         inputs.sort(key=lambda item: item[1].input_fingerprint)
         if limit is not None:
@@ -6244,7 +6271,7 @@ def prepare_speaker_review_audio(
     prepared_count = 0
     insufficient_count = 0
     failed_count = 0
-    for index, (youtube_video_id, observation, audio_path) in enumerate(
+    for index, (youtube_video_id, observation, media, audio_path) in enumerate(
         inputs,
         start=1,
     ):
@@ -6253,6 +6280,12 @@ def prepare_speaker_review_audio(
                 observation=observation,
                 audio_path=audio_path,
                 span_cache=span_cache,
+            )
+            write_canonical_clip_preparation_manifest(
+                paths,
+                media,
+                observation,
+                clip_paths=tuple(Path(span.wav_path) for span in prepared.spans),
             )
         except InsufficientSpeechActivityError as error:
             insufficient_count += 1
@@ -6939,30 +6972,27 @@ def media_repair_normalized_provenance(
             if record.historical_reconstructed_override
             and (video_ids is None or record.video_id in video_ids)
         ]
-        cleanup = invalidate_reviews_for_videos(
-            database,
-            evaluation_root=evaluation_root,
-            youtube_video_ids={
-                record.youtube_video_id for record in cleanup_records
-            },
-            suspect_audio_sha256_by_video={
-                record.youtube_video_id: {
-                    record.reconstructed_artifact.content_sha256
-                }
-                for record in cleanup_records
-            },
-            reviewer=reviewer,
-            reason=(
-                "Invalidated because review clips were generated from a "
-                "reconstructed normalized-audio artifact that incorrectly "
-                "overrode verified media-service audio."
-            ),
-        )
         repaired = repair_normalized_audio_provenance(
             database,
             build_paths(base_dir),
             build_tool_config(),
             video_ids=video_ids,
+        )
+        # Repair performs an all-video availability preflight. Only after it
+        # succeeds may identity/review state be invalidated.
+        cleanup = invalidate_reviews_for_videos(
+            database,
+            evaluation_root=evaluation_root,
+            youtube_video_ids={record.youtube_video_id for record in cleanup_records},
+            suspect_audio_sha256_by_video={
+                record.youtube_video_id: {record.reconstructed_artifact.content_sha256}
+                for record in cleanup_records
+            },
+            reviewer=reviewer,
+            reason=(
+                "Invalidated because review clips were generated from a reconstructed "
+                "normalized-audio artifact that incorrectly overrode verified media-service audio."
+            ),
         )
         regenerated: list[tuple[str, str | None, str]] = []
         if regenerate_fingerprints:
@@ -6974,8 +7004,10 @@ def media_repair_normalized_provenance(
                 extraction = database.get_latest_extraction_result_for_video(
                     regeneration_video_id
                 )
-                normalized_audio = get_verified_normalized_media_artifact(
-                    database, regeneration_video_id
+                normalized_audio, _availability = (
+                    get_authoritative_normalized_media_artifact(
+                        database, regeneration_video_id
+                    )
                 )
                 if video is None or extraction is None or normalized_audio is None:
                     raise ValueError(
@@ -7010,6 +7042,22 @@ def media_repair_normalized_provenance(
                         observation.input_fingerprint,
                     )
                 )
+    except ArchivedMediaUnavailableError as error:
+        target = (
+            f" --youtube-video-id {youtube_video_id}"
+            if youtube_video_id
+            else " --all-affected"
+        )
+        retry = (
+            "pte media repair-normalized-provenance"
+            f"{target} --regenerate-fingerprints --reviewer {shlex.quote(reviewer)}"
+            + (
+                f" --base-dir {shlex.quote(str(base_dir))}"
+                if base_dir is not None
+                else ""
+            )
+        )
+        raise typer.BadParameter(f"{error}. Retry: {retry}") from error
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print(
@@ -7120,22 +7168,101 @@ def media_archive_sources(
 
 
 @media_app.command(
+    "archive-normalized",
+    help="Archive eligible normalized audio after canonical speaker inputs are prepared.",
+)
+def media_archive_normalized(
+    archive_root: Path | None = typer.Option(None, "--archive-root"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    limit: int | None = typer.Option(None, min=1),
+    youtube_video_id: str | None = typer.Option(None, "--youtube-video-id"),
+    all_eligible: bool = typer.Option(False, "--all-eligible"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    if (youtube_video_id is None) == (not all_eligible):
+        raise typer.BadParameter(
+            "Pass exactly one of --youtube-video-id or --all-eligible."
+        )
+    database = get_database(base_dir)
+    video_ids = None
+    if youtube_video_id is not None:
+        video = database.get_video_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
+        video_ids = {video.id}
+    try:
+        result = archive_normalized_media(
+            database,
+            build_paths(base_dir),
+            archive_root=archive_root,
+            dry_run=dry_run,
+            limit=limit,
+            video_ids=video_ids,
+            all_eligible=all_eligible,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    for item in result.eligibility:
+        state = "eligible" if item.eligible else "blocked"
+        console.print(
+            f"{item.youtube_video_id}: {state}; {item.reason}; "
+            f"clip_preparation={item.clip_preparation_status}"
+        )
+    counts = result.counts
+    console.print(
+        f"Normalized archive root={result.destination.archive_root}; eligible={result.eligible}; "
+        f"archived={counts['archived']}; already_archived={counts['already_archived']}; "
+        f"unavailable={counts['destination_unavailable']}; failed={counts['failed']}; "
+        f"would_archive={counts['would_archive']}."
+    )
+
+
+@media_app.command(
     "archive-status",
-    help="Report the configured archive destination and persisted source-audio archive state.",
+    help="Report source and normalized archive state and normalized eligibility.",
 )
 def media_archive_status(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
-    report = archive_status(database)
+    report = archive_status(database, build_paths(base_dir))
     if report.destination is None:
         console.print("No media archive destination is configured.")
         return
     counts = report.counts
+    source_counts = {
+        status: sum(entry.status == status for entry in report.source_entries)
+        for status in ("pending", "archived", "failed")
+    }
+    normalized_counts = {
+        status: sum(entry.status == status for entry in report.normalized_entries)
+        for status in ("pending", "archived", "failed")
+    }
+    eligible = sum(item.eligible for item in report.normalized_eligibility)
+    stale = sum(
+        item.clip_preparation_status == "stale"
+        for item in report.normalized_eligibility
+    )
+    blocked = sum(
+        item.clip_preparation_status == "missing"
+        for item in report.normalized_eligibility
+    )
     console.print(
         f"Archive root={report.destination.archive_root}; "
         f"accessible={report.destination_accessible}; entries={len(report.entries)}; "
         f"archived={counts['archived']}; pending={counts['pending']}; failed={counts['failed']}."
+    )
+    console.print(
+        f"Source audio: entries={len(report.source_entries)}; archived={source_counts['archived']}; "
+        f"pending={source_counts['pending']}; failed={source_counts['failed']}."
+    )
+    console.print(
+        f"Normalized audio: entries={len(report.normalized_entries)}; "
+        f"archived={normalized_counts['archived']}; pending={normalized_counts['pending']}; "
+        f"failed={normalized_counts['failed']}; unavailable="
+        f"{normalized_counts['archived'] if not report.destination_accessible else 0}; "
+        f"eligible={eligible}; stale_clip_preparation={stale}; "
+        f"blocked_clip_fingerprint_generation={blocked}."
     )
 
 
@@ -9551,6 +9678,13 @@ def apply_fixture_correction(
     previous_observation = database.get_latest_speaker_observation_for_video(
         video.id
     )
+    try:
+        normalized_audio, _normalized_availability = (
+            get_authoritative_normalized_media_artifact(database, video.id)
+        )
+    except AttributeError:
+        # Compatibility for injected lightweight database adapters.
+        normalized_audio = None
     persist_fixture_window_override(correction, override_path)
     console.print(
         f"Applied fixture {correction.fixture_path} as window override "
@@ -9632,6 +9766,7 @@ def apply_fixture_correction(
             video=video,
             pastor=pastor,
             extraction_result=current_extraction,
+            normalized_audio_artifact=normalized_audio,
         )
         observation = speaker_record.neutral_evidence.observation
         if observation is None:

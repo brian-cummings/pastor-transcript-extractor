@@ -26,11 +26,15 @@ from pastor_transcript_extractor.media import (
     download_source_audio,
 )
 from pastor_transcript_extractor.media_archive import (
+    archive_normalized_media,
     archive_source_media,
     archive_status,
     media_archive_lock_held,
+    normalized_archive_eligibility,
+    write_canonical_clip_preparation_manifest,
 )
 from pastor_transcript_extractor.media_artifacts import (
+    ArchivedMediaUnavailableError,
     MediaVerificationCache,
     StageSourceAudioResult,
     audit_media_coverage,
@@ -42,6 +46,8 @@ from pastor_transcript_extractor.media_artifacts import (
     resolve_normalized_audio_path,
     stage_source_audio_for_video,
     verify_media_artifact,
+    get_verified_normalized_media_artifact,
+    media_artifact_availability,
 )
 from pastor_transcript_extractor.models import SourceType, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.storage import Database
@@ -879,6 +885,98 @@ class MediaArtifactTests(unittest.TestCase):
         self.assertEqual(
             ["archived", "already_archived"],
             [attempt.outcome for attempt in self.database.list_media_archive_attempts()],
+        )
+
+    def test_normalized_archive_requires_current_clip_manifest_and_preserves_authority_offline(self) -> None:
+        video, _ = self._video("normarchive1")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "media" / "source.wav"
+        normalized_path = audio_root / "media" / "normalized.wav"
+        write_wav(source_path)
+        write_wav(normalized_path)
+        source = register_media_file(
+            self.database, self.paths, video=video, pastor_slug=self.pastor.slug,
+            artifact_path=source_path, artifact_kind="source_audio",
+            provenance_kind="original_download", acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        normalized = register_media_file(
+            self.database, self.paths, video=video, pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path, artifact_kind="normalized_audio",
+            provenance_kind="derived", acquisition_tool="test",
+            acquisition_tool_version="1", parent=source,
+        )
+        self.database.add_transcript_artifact(
+            video_id=video.id, source_kind=TranscriptSourceKind.LOCAL_ASR,
+            audio_path=str(normalized_path),
+        )
+        extraction = self.database.get_latest_extraction_result_for_video(video.id)
+        observation = self.database.add_speaker_observation(
+            video_id=video.id, extraction_result_id=extraction.id,
+            role="sermon_speaker", multiplicity_state="single",
+            start_seconds=0.1, end_seconds=0.8,
+            artifact_path=str(normalized_path), content_sha256=normalized.content_sha256,
+            extractor_version="test", input_fingerprint="observation-current",
+        )
+        blocked = normalized_archive_eligibility(self.database, self.paths)
+        self.assertFalse(blocked[0].eligible)
+        self.assertEqual("missing", blocked[0].clip_preparation_status)
+
+        clip = audio_root / "speaker-clips" / "canonical.wav"
+        write_wav(clip)
+        write_canonical_clip_preparation_manifest(
+            self.paths, normalized, observation, clip_paths=(clip,)
+        )
+        changed_observation = self.database.add_speaker_observation(
+            video_id=video.id, extraction_result_id=extraction.id,
+            role="sermon_speaker", multiplicity_state="single",
+            start_seconds=0.2, end_seconds=0.8,
+            artifact_path=str(normalized_path), content_sha256=normalized.content_sha256,
+            extractor_version="test", input_fingerprint="observation-changed-window",
+        )
+        stale = normalized_archive_eligibility(self.database, self.paths)
+        self.assertFalse(stale[0].eligible)
+        self.assertEqual("stale", stale[0].clip_preparation_status)
+        write_canonical_clip_preparation_manifest(
+            self.paths, normalized, changed_observation, clip_paths=(clip,)
+        )
+        archive_root = self.paths.root / "nas-normalized"
+        archive_root.mkdir()
+        source_result = archive_source_media(
+            self.database, self.paths, archive_root=archive_root,
+            video_ids={video.id},
+        )
+        self.assertEqual(1, source_result.counts["archived"])
+        result = archive_normalized_media(
+            self.database, self.paths, archive_root=archive_root,
+            video_ids={video.id},
+        )
+        self.assertEqual(1, result.counts["archived"])
+        self.assertTrue(normalized_path.is_symlink())
+        entry = self.database.get_media_archive_entry_for_artifact(normalized.id)
+        self.assertEqual(normalized.id, entry.media_artifact_id)
+        self.assertEqual(
+            {source.id, normalized.id},
+            {item.media_artifact_id for item in archive_status(self.database).entries},
+        )
+
+        archived_path = Path(entry.archive_path)
+        offline_path = archive_root.with_name("nas-normalized-offline")
+        archive_root.rename(offline_path)
+        with self.assertRaises(ArchivedMediaUnavailableError):
+            get_verified_normalized_media_artifact(self.database, video.id)
+        self.assertTrue(normalized_path.is_symlink())
+        offline_path.rename(archive_root)
+        self.assertEqual(
+            normalized.id,
+            get_verified_normalized_media_artifact(self.database, video.id).id,
+        )
+        archived_path.write_bytes(b"corrupt archive bytes")
+        self.assertEqual(
+            "corrupt",
+            media_artifact_availability(self.database, normalized).status,
         )
 
     def test_source_archive_persists_unavailable_attempt_and_retries_later(self) -> None:

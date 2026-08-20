@@ -108,6 +108,101 @@ class NormalizedAudioRepairResult:
     source_artifact: MediaArtifact
 
 
+class ArchivedMediaUnavailableError(RuntimeError):
+    """The authoritative artifact is archived, but its storage is offline."""
+
+    reason_code = "archived_media_unavailable"
+
+    def __init__(self, artifact: MediaArtifact | None, archive_path: Path):
+        self.artifact = artifact
+        self.archive_path = archive_path
+        super().__init__(
+            f"archived_media_unavailable: media artifact "
+            f"{artifact.id if artifact is not None else 'unknown'} is authoritative "
+            f"but archived media is unavailable at {archive_path}"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MediaAvailability:
+    status: str
+    artifact: MediaArtifact
+    path: Path
+    detail: str | None = None
+
+    @property
+    def verified(self) -> bool:
+        return self.status in {"verified_local", "verified_archived"}
+
+
+def media_artifact_availability(
+    database: Database,
+    artifact: MediaArtifact,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
+) -> MediaAvailability:
+    """Classify bytes without discarding persisted authority when a mount is offline."""
+    path = Path(artifact.artifact_path)
+    entry = database.get_media_archive_entry_for_artifact(artifact.id)
+    archived = entry is not None and entry.status == "archived"
+    archive_path = Path(entry.archive_path) if entry is not None else path
+    try:
+        exists = path.exists()
+    except OSError as error:
+        if archived:
+            return MediaAvailability("archived_media_unavailable", artifact, archive_path, str(error))
+        return MediaAvailability("missing", artifact, path, str(error))
+    if not exists:
+        if archived:
+            # A persisted archived entry plus the original archive symlink remains
+            # authoritative even when its target cannot currently be reached.
+            if path.is_symlink() and path.resolve(strict=False) == archive_path.resolve(strict=False):
+                destination = database.get_active_media_archive_destination()
+                if (
+                    destination is not None
+                    and Path(destination.archive_root).is_dir()
+                ):
+                    return MediaAvailability(
+                        "missing", artifact, archive_path,
+                        "archive destination is accessible but the immutable file is missing",
+                    )
+                return MediaAvailability("archived_media_unavailable", artifact, archive_path)
+            return MediaAvailability("provenance_mismatch", artifact, path)
+        return MediaAvailability("missing", artifact, path)
+    try:
+        valid = verify_media_artifact(artifact, verification_cache=verification_cache)
+    except OSError as error:
+        if archived:
+            return MediaAvailability("archived_media_unavailable", artifact, archive_path, str(error))
+        return MediaAvailability("missing", artifact, path, str(error))
+    if not valid:
+        return MediaAvailability("corrupt", artifact, archive_path if archived else path)
+    if archived:
+        if not path.is_symlink() or path.resolve(strict=False) != archive_path.resolve(strict=False):
+            return MediaAvailability("provenance_mismatch", artifact, path)
+        return MediaAvailability("verified_archived", artifact, path)
+    return MediaAvailability("verified_local", artifact, path)
+
+
+def require_media_artifact_bytes(
+    database: Database,
+    artifact: MediaArtifact,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
+) -> Path:
+    availability = media_artifact_availability(
+        database, artifact, verification_cache=verification_cache
+    )
+    if availability.status == "archived_media_unavailable":
+        raise ArchivedMediaUnavailableError(artifact, availability.path)
+    if not availability.verified:
+        raise ValueError(
+            f"{availability.status}: media artifact {artifact.id} is unavailable at "
+            f"{availability.path}"
+        )
+    return Path(artifact.artifact_path)
+
+
 class MediaVerificationCache:
     """Reuse a full artifact hash while the underlying file is unchanged."""
 
@@ -751,6 +846,23 @@ def get_verified_normalized_media_artifact(
     *,
     verification_cache: MediaVerificationCache | None = None,
 ) -> MediaArtifact | None:
+    artifact, availability = get_authoritative_normalized_media_artifact(
+        database, video_id, verification_cache=verification_cache
+    )
+    if availability is not None and availability.status == "archived_media_unavailable":
+        assert artifact is not None
+        raise ArchivedMediaUnavailableError(artifact, availability.path)
+    return artifact
+
+
+def get_authoritative_normalized_media_artifact(
+    database: Database,
+    video_id: int,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
+    require_isolated_sermon: bool = True,
+) -> tuple[MediaArtifact | None, MediaAvailability | None]:
+    """Select by provenance while preserving an offline archived derivative's authority."""
     artifacts = database.list_media_artifacts_for_video(video_id)
     # A verified media-service derivative is authoritative regardless of when
     # a historical reconstructed path was registered. Reconstructed audio is
@@ -762,12 +874,24 @@ def get_verified_normalized_media_artifact(
                 or artifact.provenance_kind != provenance_kind
             ):
                 continue
-            if verify_media_artifact(
-                artifact,
-                verification_cache=verification_cache,
-            ) and media_artifact_covers_isolated_sermon(database, artifact):
-                return artifact
-    return None
+            availability = media_artifact_availability(
+                database, artifact, verification_cache=verification_cache
+            )
+            covers_required_audio = media_artifact_covers_isolated_sermon(
+                database, artifact
+            ) or (
+                not require_isolated_sermon
+                and media_artifact_covers_complete_recording(database, artifact)
+            )
+            if availability.status == "archived_media_unavailable":
+                if covers_required_audio:
+                    return artifact, availability
+                continue
+            if availability.verified and covers_required_audio:
+                return artifact, availability
+            # A corrupt/mismatched derived artifact may permit the historical
+            # reconstructed fallback; only an offline archived artifact must defer.
+    return None, None
 
 
 def audit_normalized_audio_provenance(
@@ -788,7 +912,9 @@ def audit_normalized_audio_provenance(
         )
         if derived is None or reconstructed is None:
             continue
-        selected = get_verified_normalized_media_artifact(database, video.id)
+        selected, _selected_availability = get_authoritative_normalized_media_artifact(
+            database, video.id
+        )
         reconstructed_created_at = reconstructed.created_at
         if reconstructed_created_at.tzinfo is None:
             reconstructed_created_at = reconstructed_created_at.replace(
@@ -813,7 +939,8 @@ def audit_normalized_audio_provenance(
                     and artifact.created_at < reconstructed.created_at
                     and artifact.content_sha256
                     != reconstructed.content_sha256
-                    and verify_media_artifact(artifact)
+                    and media_artifact_availability(database, artifact).status
+                    in {"verified_local", "verified_archived", "archived_media_unavailable"}
                     and media_artifact_covers_isolated_sermon(database, artifact)
                     for artifact in artifacts
                 ),
@@ -839,6 +966,13 @@ def repair_normalized_audio_provenance(
         for record in audit_normalized_audio_provenance(database).affected
         if video_ids is None or record.video_id in video_ids
     ]
+    # Resolve every required byte source before the first artifact mutation.
+    for record in affected:
+        source = _verified_source_for_derived(database, record.derived_artifact)
+        if source is None:
+            raise ValueError(
+                f"{record.youtube_video_id}: derived normalized audio has no verified source artifact"
+            )
     ffmpeg_version = tool_version or _tool_version(tools.ffmpeg_bin, "-version")
     results: list[NormalizedAudioRepairResult] = []
     for record in affected:
@@ -908,7 +1042,8 @@ def _latest_verified_normalized_artifact(
         if (
             artifact.artifact_kind == "normalized_audio"
             and artifact.provenance_kind == provenance_kind
-            and verify_media_artifact(artifact)
+            and media_artifact_availability(database, artifact).status
+            in {"verified_local", "verified_archived", "archived_media_unavailable"}
             and media_artifact_covers_isolated_sermon(database, artifact)
         ):
             return artifact
@@ -928,9 +1063,12 @@ def _verified_source_for_derived(
         parent is not None
         and parent.artifact_kind == "source_audio"
         and parent.provenance_kind == "original_download"
-        and verify_media_artifact(parent)
     ):
-        return parent
+        availability = media_artifact_availability(database, parent)
+        if availability.status == "archived_media_unavailable":
+            raise ArchivedMediaUnavailableError(parent, availability.path)
+        if availability.verified:
+            return parent
     return None
 
 

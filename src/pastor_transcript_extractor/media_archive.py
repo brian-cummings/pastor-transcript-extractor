@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 import fcntl
+import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -16,6 +18,7 @@ from pastor_transcript_extractor.filesystem_capacity import (
     filesystem_capacity,
 )
 from pastor_transcript_extractor.media_artifacts import (
+    get_authoritative_normalized_media_artifact,
     get_archive_safe_normalized_media_artifact,
     verify_media_artifact,
 )
@@ -60,12 +63,25 @@ class ArchivePreflightEvent:
 
 ArchivePreflightCallback = Callable[[ArchivePreflightEvent], None]
 
+CANONICAL_CLIP_PREPARATION_POLICY_VERSION = "canonical_speaker_clips_v1"
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedArchiveEligibility:
+    video_id: int
+    youtube_video_id: str
+    artifact: MediaArtifact | None
+    eligible: bool
+    reason: str
+    clip_preparation_status: str
+
 
 @dataclass(frozen=True, slots=True)
 class ArchiveRunResult:
     destination: MediaArchiveDestination
     eligible: int
     items: tuple[ArchiveItemResult, ...]
+    eligibility: tuple[NormalizedArchiveEligibility, ...] = ()
 
     @property
     def counts(self) -> dict[str, int]:
@@ -86,6 +102,9 @@ class ArchiveStatusReport:
     destination: MediaArchiveDestination | None
     destination_accessible: bool
     entries: tuple[MediaArchiveEntry, ...]
+    source_entries: tuple[MediaArchiveEntry, ...] = ()
+    normalized_entries: tuple[MediaArchiveEntry, ...] = ()
+    normalized_eligibility: tuple[NormalizedArchiveEligibility, ...] = ()
 
     @property
     def counts(self) -> dict[str, int]:
@@ -131,6 +150,36 @@ def archive_source_media(
             video_ids=video_ids,
             progress_callback=progress_callback,
             preflight_callback=preflight_callback,
+            artifact_kind="source_audio",
+        )
+
+
+def archive_normalized_media(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    archive_root: Path | None = None,
+    dry_run: bool = False,
+    limit: int | None = None,
+    video_ids: set[int] | None = None,
+    all_eligible: bool = False,
+    progress_callback: ArchiveProgressCallback | None = None,
+    preflight_callback: ArchivePreflightCallback | None = None,
+) -> ArchiveRunResult:
+    if video_ids is None and not all_eligible:
+        raise ValueError("Pass --youtube-video-id or --all-eligible")
+    with _archive_lock(app_paths.root, preflight_callback=preflight_callback):
+        _notify_preflight(preflight_callback, "archive lock", "passed", "exclusive lock acquired")
+        return _archive_source_media_locked(
+            database,
+            app_paths,
+            archive_root=archive_root,
+            dry_run=dry_run,
+            limit=limit,
+            video_ids=video_ids,
+            progress_callback=progress_callback,
+            preflight_callback=preflight_callback,
+            artifact_kind="normalized_audio",
         )
 
 
@@ -157,6 +206,7 @@ def _archive_source_media_locked(
     video_ids: set[int] | None,
     progress_callback: ArchiveProgressCallback | None,
     preflight_callback: ArchivePreflightCallback | None,
+    artifact_kind: str,
 ) -> ArchiveRunResult:
     destination = (
         configure_archive_destination(database, archive_root)
@@ -194,11 +244,17 @@ def _archive_source_media_locked(
         for entry in existing_entries
         if entry.status == "archived"
     }
-    candidates = _eligible_source_artifacts(
-        database,
-        video_ids=video_ids,
-        excluded_artifact_ids=archived_artifact_ids,
-    )
+    eligibility: tuple[NormalizedArchiveEligibility, ...] = ()
+    if artifact_kind == "source_audio":
+        candidates = _eligible_source_artifacts(
+            database, video_ids=video_ids, excluded_artifact_ids=archived_artifact_ids
+        )
+    else:
+        eligibility = tuple(normalized_archive_eligibility(database, app_paths, video_ids=video_ids))
+        candidates = [
+            item.artifact for item in eligibility
+            if item.eligible and item.artifact is not None and item.artifact.id not in archived_artifact_ids
+        ]
     if limit is not None:
         candidates = candidates[:limit]
     entries = [
@@ -218,8 +274,8 @@ def _archive_source_media_locked(
         preflight_callback,
         "eligibility",
         "passed",
-        f"{len(candidates)} source artifacts / {_format_bytes(eligible_bytes)}; "
-        f"persisted archived skipped={len(archived_artifact_ids)}, normalized selected=0",
+        f"{len(candidates)} {artifact_kind} artifacts / {_format_bytes(eligible_bytes)}; "
+        f"persisted archived skipped={len(archived_artifact_ids)}",
     )
     partial_count = 0
     staging_count = 0
@@ -294,7 +350,7 @@ def _archive_source_media_locked(
                 detail=detail,
             )
             items.append(_item(artifact, entry, "destination_unavailable", detail))
-        return ArchiveRunResult(destination, len(candidates), tuple(items))
+        return ArchiveRunResult(destination, len(candidates), tuple(items), eligibility)
 
     items: list[ArchiveItemResult] = []
     for index, (artifact, entry) in enumerate(zip(candidates, entries), start=1):
@@ -339,16 +395,160 @@ def _archive_source_media_locked(
             detail=detail,
         )
         items.append(_item(artifact, entry, outcome, detail))
-    return ArchiveRunResult(destination, len(candidates), tuple(items))
+    return ArchiveRunResult(destination, len(candidates), tuple(items), eligibility)
 
 
-def archive_status(database: Database) -> ArchiveStatusReport:
+def write_canonical_clip_preparation_manifest(
+    app_paths: AppPaths,
+    artifact: MediaArtifact,
+    observation,
+    *,
+    clip_paths: tuple[Path, ...],
+    policy_version: str = CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+) -> Path:
+    """Persist immutable proof that reusable acoustic inputs were prepared."""
+    clips = []
+    for path in clip_paths:
+        resolved = path.expanduser().resolve()
+        if not resolved.is_file():
+            raise FileNotFoundError(resolved)
+        clips.append({
+            "path": str(resolved),
+            "byte_size": resolved.stat().st_size,
+            "sha256": _sha256_file(resolved),
+        })
+    identity = {
+        "normalized_audio_sha256": artifact.content_sha256,
+        "observation_fingerprint": observation.input_fingerprint,
+        "observation_window": {
+            "start_seconds": observation.start_seconds,
+            "end_seconds": observation.end_seconds,
+        },
+        "policy_version": policy_version,
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    manifest_dir = Path(artifact.manifest_path).parent / "canonical-clips"
+    manifest_path = manifest_dir / f"{fingerprint}.json"
+    payload = {"schema_version": 1, "input": identity, "clips": clips}
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    if manifest_path.exists():
+        if json.loads(manifest_path.read_text(encoding="utf-8")) != payload:
+            raise RuntimeError(f"canonical clip manifest collision: {manifest_path}")
+    else:
+        temporary = manifest_path.with_suffix(".json.partial")
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(temporary, manifest_path)
+    return manifest_path
+
+
+def normalized_archive_eligibility(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    video_ids: set[int] | None = None,
+    policy_version: str = CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+) -> list[NormalizedArchiveEligibility]:
+    results: list[NormalizedArchiveEligibility] = []
+    for video in database.list_videos():
+        if video_ids is not None and video.id not in video_ids:
+            continue
+        artifact, availability = get_authoritative_normalized_media_artifact(
+            database, video.id, require_isolated_sermon=False
+        )
+        if artifact is None:
+            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, None, False, "authoritative normalized audio is missing or invalid", "not_applicable"))
+            continue
+        if availability is None or availability.status not in {"verified_local", "verified_archived"}:
+            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, False, availability.status if availability else "missing", "not_applicable"))
+            continue
+        if database.get_latest_transcript_artifact_for_video(video.id) is None:
+            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, False, "transcription incomplete", "not_applicable"))
+            continue
+        if database.get_latest_extraction_result_for_video(video.id) is None:
+            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, False, "sermon classification incomplete", "not_applicable"))
+            continue
+        if not all((artifact.content_sha256, artifact.byte_size, artifact.format_name, artifact.duration_seconds, artifact.manifest_path)) or not Path(artifact.manifest_path).is_file():
+            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, False, "normalized metadata or provenance manifest incomplete", "not_applicable"))
+            continue
+        observation = database.get_latest_speaker_observation_for_video(video.id)
+        if observation is None:
+            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, True, "classification finalized without clip-eligible observation", "not_applicable"))
+            continue
+        if _observation_normalized_sha256(observation) != artifact.content_sha256:
+            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, False, "current observation is not bound to normalized audio", "stale"))
+            continue
+        status = _canonical_clip_preparation_status(artifact, observation, policy_version)
+        eligible = status == "current"
+        reason = "canonical clip preparation complete" if eligible else ("canonical clip preparation is stale" if status == "stale" else "blocked by incomplete clip/fingerprint generation")
+        results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, eligible, reason, status))
+    return results
+
+
+def _observation_normalized_sha256(observation) -> str | None:
+    try:
+        payload = json.loads(Path(observation.artifact_path).read_text(encoding="utf-8"))
+        provenance = payload.get("normalized_audio_provenance")
+        if isinstance(provenance, dict) and isinstance(
+            provenance.get("content_sha256"), str
+        ):
+            return provenance["content_sha256"]
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        pass
+    # Compatibility for observations created by older imports and focused tests.
+    return observation.content_sha256
+
+
+def _canonical_clip_preparation_status(artifact, observation, policy_version: str) -> str:
+    directory = Path(artifact.manifest_path).parent / "canonical-clips"
+    saw_manifest = False
+    for path in sorted(directory.glob("*.json")) if directory.is_dir() else ():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        saw_manifest = True
+        expected = {
+            "normalized_audio_sha256": artifact.content_sha256,
+            "observation_fingerprint": observation.input_fingerprint,
+            "observation_window": {"start_seconds": observation.start_seconds, "end_seconds": observation.end_seconds},
+            "policy_version": policy_version,
+        }
+        if payload.get("input") != expected:
+            continue
+        clips = payload.get("clips")
+        if isinstance(clips, list) and clips and all(
+            isinstance(item, dict) and Path(str(item.get("path", ""))).is_file()
+            and _sha256_file(Path(str(item["path"]))) == item.get("sha256")
+            for item in clips
+        ):
+            return "current"
+    return "stale" if saw_manifest else "missing"
+
+
+def archive_status(
+    database: Database, app_paths: AppPaths | None = None
+) -> ArchiveStatusReport:
     destination = database.get_active_media_archive_destination()
     accessible = destination is not None and Path(destination.archive_root).is_dir()
+    entries = tuple(database.list_media_archive_entries())
+    kind_by_id = {
+        artifact.id: artifact.artifact_kind
+        for video in database.list_videos()
+        for artifact in database.list_media_artifacts_for_video(video.id)
+    }
     return ArchiveStatusReport(
         destination=destination,
         destination_accessible=accessible,
-        entries=tuple(database.list_media_archive_entries()),
+        entries=entries,
+        source_entries=tuple(e for e in entries if kind_by_id.get(e.media_artifact_id) == "source_audio"),
+        normalized_entries=tuple(e for e in entries if kind_by_id.get(e.media_artifact_id) == "normalized_audio"),
+        normalized_eligibility=(
+            tuple(normalized_archive_eligibility(database, app_paths))
+            if app_paths is not None
+            else ()
+        ),
     )
 
 

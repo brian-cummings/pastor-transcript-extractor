@@ -85,7 +85,7 @@ The ensure service first migrates and verifies existing audio. It downloads
 only when no valid normalized artifact is available, and it never invokes
 Whisper or creates a transcript artifact.
 
-## Source audio archive
+## Source and normalized audio archive
 
 Original compressed downloads and historical `downloaded.wav` files are not
 inputs to acoustic comparison after a verified normalized artifact exists. PTE
@@ -124,6 +124,58 @@ archive lock and reports the configured destination, mount accessibility, a
 create/fsync/delete write probe, persisted entry counts, free capacity versus
 required bytes, and leftover PTE partial or local staging files. A failed mount,
 write, or capacity check leaves sources untouched and records retryable outcomes.
+
+`archive-sources` remains source-only and backward compatible. Normalized audio
+has a later lifecycle: transcription and sermon classification finish, the
+current speaker observation is bound to the authoritative normalized SHA-256,
+and canonical speaker clips/fingerprint inputs are generated first. Their
+immutable preparation manifest pins that SHA-256, the observation fingerprint,
+the exact observation window, and the clip policy version. A changed hash,
+window, fingerprint, or policy makes preparation stale. Human review completion
+is deliberately not an eligibility condition. A finalized recording with no
+clip-eligible observation does not need a clip manifest.
+
+Audit eligibility and explain every block without moving bytes:
+
+```bash
+pte media archive-normalized --all-eligible --dry-run \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Archive every eligible normalized artifact, or one video:
+
+```bash
+pte media archive-normalized --all-eligible \
+  --archive-root /Volumes/home/SermonExtractorAudio \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+pte media archive-normalized --youtube-video-id VIDEO_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+`pte media archive-status --base-dir ...` reports source and normalized entries
+separately. Archived normalized media remains authoritative through its original
+symlink. If the mount is offline, selection returns
+`archived_media_unavailable`: PTE does not choose reconstructed audio, normalize
+again, redownload, mark the archive corrupt, or mutate identity/review state.
+Cached canonical clips remain usable because their manifests are source-hash,
+observation, window, and policy bound.
+
+Observation-fingerprint rebinding is metadata-only: it may use the persisted
+identity of a previously verified archived artifact without opening its bytes.
+Creating clips, embeddings, or other acoustic features is audio-dependent and
+must defer until the symlink resolves. After reconnecting the archive, retry:
+
+```bash
+pte media repair-normalized-provenance \
+  --youtube-video-id VIDEO_ID \
+  --regenerate-fingerprints \
+  --reviewer "Reviewer" \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The retry is idempotent. Provenance repair preflights all required media before
+review revocation, observation detachment, membership changes, or cache writes.
 
 ## Replay guarantees
 

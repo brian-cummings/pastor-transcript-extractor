@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pastor_transcript_extractor.disposition import ACCEPTED_SERMON
 from pastor_transcript_extractor.media_artifacts import (
+    ArchivedMediaUnavailableError,
     MediaVerificationCache,
     get_verified_normalized_media_artifact,
 )
@@ -99,6 +100,11 @@ def assess_automatic_speaker_observation(
             database,
             video_id,
             verification_cache=verification_cache,
+        )
+    except ArchivedMediaUnavailableError:
+        return AutomaticSpeakerObservationEligibility(
+            "archived_media_unavailable",
+            observation=observation,
         )
     except OSError:
         media = None

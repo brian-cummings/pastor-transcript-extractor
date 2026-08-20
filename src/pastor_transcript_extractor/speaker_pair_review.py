@@ -11,6 +11,7 @@ import random
 from typing import Any, Sequence
 
 from pastor_transcript_extractor.models import SpeakerObservation
+from pastor_transcript_extractor.media_artifacts import ArchivedMediaUnavailableError
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
     CachedSpan,
@@ -288,6 +289,8 @@ def create_observation_review_packet(
     """Create a provenance-bound, unblinded packet for one observation."""
     normalized_audio_sha256 = _source_audio_identity(audio_path)
     if normalized_audio_sha256.startswith("unavailable:"):
+        if audio_path.is_symlink():
+            raise ArchivedMediaUnavailableError(None, audio_path.resolve(strict=False))
         raise ValueError(f"normalized audio is unavailable: {audio_path}")
     prepared = prepare_review_observation(
         observation=observation,
@@ -390,6 +393,15 @@ def create_review_draft(
         source_key: _source_audio_identity(Path(values[2]))
         for source_key, values in source_observations.items()
     }
+    unavailable_paths = [
+        Path(values[2]).resolve(strict=False)
+        for source_key, values in source_observations.items()
+        if expected_audio_sha256[source_key].startswith("unavailable:")
+        and Path(values[2]).is_symlink()
+    ]
+    if unavailable_paths:
+        # Preflight both sources before creating clips, caches, drafts, or manifests.
+        raise ArchivedMediaUnavailableError(None, unavailable_paths[0])
     canonical_fingerprints = [value[0] for value in ordered_inputs]
     pair_id = f"pair-{_sha256_json(canonical_fingerprints)[:16]}"
     prior_path = evaluation_root / "drafts" / f"{pair_id}.json"
