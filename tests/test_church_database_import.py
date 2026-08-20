@@ -320,7 +320,7 @@ class ChurchDatabaseImportTests(unittest.TestCase):
 
             self.assertEqual({"updated": 1, "unchanged": 1}, result.counts)
             self.assertIsNone(database.get_pastor_by_slug("churchdb-2"))
-            organization = database.get_organization_by_slug("churchdb-org-2")
+            organization = database.get_organization_by_slug("new")
             self.assertIsNotNone(organization)
             self.assertEqual("New Church", organization.display_name)
             with database.connect() as connection:

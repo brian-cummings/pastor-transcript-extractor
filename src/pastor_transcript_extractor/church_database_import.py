@@ -653,7 +653,7 @@ def _insert_source_organization_event(
 
 
 def _available_slug(connection: sqlite3.Connection, record: ChurchSourceRecord) -> str:
-    base = f"churchdb-org-{record.external_record_id}"
+    base = _organization_slug_base(record.church_name)
     row = connection.execute(
         "SELECT display_name FROM organizations WHERE slug = ?", (base,)
     ).fetchone()
@@ -668,6 +668,19 @@ def _available_slug(connection: sqlite3.Connection, record: ChurchSourceRecord) 
             f"could not allocate stable organization slug for {record.church_name}"
         )
     return candidate
+
+
+def _organization_slug_base(display_name: str) -> str:
+    value = display_name.lower()
+    value = re.sub(r"\bseventh[- ]day adventist\b", " ", value)
+    value = re.sub(r"\bsda\b", " ", value)
+    value = re.sub(r"\b(?:church|company)\b", " ", value)
+    value = re.sub(r"\bof\b", " ", value)
+    value = re.sub(r"[^a-z0-9]+", "-", value).strip("-")
+    if value:
+        return value
+    digest = hashlib.sha256(display_name.encode("utf-8")).hexdigest()[:8]
+    return f"organization-{digest}"
 
 
 def youtube_channel_key_from_id(channel_id: str) -> str:
