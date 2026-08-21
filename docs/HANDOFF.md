@@ -533,6 +533,15 @@ fingerprint is a replay hit: comparison is skipped and the CLI reports
 `reused=True` plus a final `reused_associations` count. Changes to observation or
 media provenance, spans, routing, profile readiness or exemplars, reviewed
 constraints, model, or policy produce a new fingerprint and force evaluation.
+
+When profile changes invalidate that aggregate fingerprint, the matcher still
+reuses unchanged candidate-to-exemplar diagnostics from the pair-diagnostic
+cache. On first use, the cache is seeded only from checksum-verified safe shadow
+association artifacts. Subsequent profile promotion therefore computes new
+edges to affected exemplars while replaying existing edges. The final routing
+line includes `pair_cache_hits` and `pair_cache_misses`; a changed aggregate
+report with mostly hits is an incremental refresh rather than a corpus acoustic
+rerun.
 Candidates and exemplars oversample up to fifteen distributed transcript-grounded
 sermon-speech candidates, apply a recording-relative activity gate, and retain
 five qualified clips. Distribution is primary: a coherent initial five is

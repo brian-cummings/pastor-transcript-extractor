@@ -874,6 +874,14 @@ constraints, model, and policy are unchanged, the existing verified artifact is
 replayed and the acoustic comparisons are skipped. Re-running the consolidated
 identity workflow is therefore idempotent at the association stage.
 
+Aggregate association reports also seed a verified content-addressed cache of
+individual candidate-to-exemplar diagnostics. Profile promotion or confirmation
+may legitimately change routing and invalidate an aggregate report, but
+unchanged acoustic edges are replayed independently; only comparisons against
+new or changed exemplars execute. The first run after this cache is introduced
+primes it from checksum-verified historical association artifacts. The routing
+summary reports pair-cache hits and misses so incremental work is visible.
+
 The same run now projects qualifying current proposals into a separate,
 append-only machine-evidence ledger. It requires a current accepted-sermon
 observation, an automatic-profile-ready target, a unique multi-exemplar match,

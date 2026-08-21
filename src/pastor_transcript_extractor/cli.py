@@ -190,6 +190,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
     DecisionPolicy,
     EmbeddingCache,
+    PairDiagnosticCache,
     SherpaOnnxEmbeddingBackend,
     SpanSpec,
     analyze_observation_pair,
@@ -5728,6 +5729,7 @@ def shadow_associate_speakers_command(
 
     backend = None
     embedding_cache = None
+    pair_diagnostic_cache = None
     if not plan_only:
         try:
             backend = SherpaOnnxEmbeddingBackend(
@@ -5737,6 +5739,25 @@ def shadow_associate_speakers_command(
         except (OSError, RuntimeError, ValueError) as error:
             raise typer.BadParameter(str(error)) from error
         embedding_cache = EmbeddingCache(cache_root)
+        pair_diagnostic_cache = PairDiagnosticCache(cache_root)
+        pair_cache_root = cache_root / "pair-diagnostics"
+        if not pair_cache_root.is_dir() or not next(
+            pair_cache_root.glob("*.json"), None
+        ):
+            association_reports = tuple(
+                output_root.expanduser().resolve().glob("*/*.json")
+            )
+            console.print(
+                "Association preprocessing: priming pair diagnostics from "
+                f"{len(association_reports)} existing association artifact(s)."
+            )
+            pair_diagnostic_cache.prime_from_shadow_associations(
+                association_reports
+            )
+            console.print(
+                "Association preprocessing: pair diagnostic cache primed "
+                f"from {pair_diagnostic_cache.primed} comparison result(s)."
+            )
 
     span_selection_by_observation_id: dict[int, Mapping[str, Any]] = {}
 
@@ -5998,6 +6019,7 @@ def shadow_associate_speakers_command(
 
     assert backend is not None
     assert embedding_cache is not None
+    assert pair_diagnostic_cache is not None
     exemplar_centroids: dict[int, tuple[float, ...]] = {}
     console.print(
         "Association preprocessing: building retrieval centroids for "
@@ -6050,6 +6072,7 @@ def shadow_associate_speakers_command(
             span_specs_a=span_specs_by_observation_id[candidate.id],
             span_specs_b=span_specs_by_observation_id[exemplar.id],
             span_specs_are_activity_qualified=True,
+            pair_diagnostic_cache=pair_diagnostic_cache,
         )
 
     outcome_counts: dict[str, int] = {}
@@ -6245,7 +6268,9 @@ def shadow_associate_speakers_command(
         )
         + f" detailed_profiles={detailed_profile_comparisons} "
         f"exhaustive_profiles={exhaustive_profile_comparisons} "
-        f"reused_associations={reused_associations}"
+        f"reused_associations={reused_associations} "
+        f"pair_cache_hits={pair_diagnostic_cache.hits} "
+        f"pair_cache_misses={pair_diagnostic_cache.misses}"
     )
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."

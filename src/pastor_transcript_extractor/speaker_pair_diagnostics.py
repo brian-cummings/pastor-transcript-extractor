@@ -19,6 +19,7 @@ from pastor_transcript_extractor.media_artifacts import ArchivedMediaUnavailable
 SPAN_EXTRACTOR_VERSION = "speaker_span_v2"
 ANALYZER_VERSION = "speaker_pair_diagnostic_v1"
 SPEECH_ACTIVITY_MEASURER_VERSION = "frame_rms_activity_v1"
+PAIR_DIAGNOSTIC_CACHE_VERSION = "speaker_pair_diagnostic_cache_v1"
 
 
 class PairOutcome(StrEnum):
@@ -559,6 +560,188 @@ class EmbeddingCache:
         return embedding, False
 
 
+class PairDiagnosticCache:
+    """Content-addressed cache for complete candidate/exemplar diagnostics."""
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.hits = 0
+        self.misses = 0
+        self.primed = 0
+
+    def get(
+        self,
+        *,
+        base: Mapping[str, Any],
+        observation_a: str,
+        observation_b: str,
+        spans_a: Sequence[CachedSpan],
+        spans_b: Sequence[CachedSpan],
+    ) -> dict[str, Any] | None:
+        key = self._key(
+            base=base,
+            observation_a=observation_a,
+            observation_b=observation_b,
+            spans_a=[_span_evidence(span) for span in spans_a],
+            spans_b=[_span_evidence(span) for span in spans_b],
+        )
+        path = self._path(key)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            self.misses += 1
+            return None
+        if not isinstance(payload, dict):
+            raise RuntimeError(
+                f"pair diagnostic cache verification failed: {path}"
+            )
+        result = payload.get("result")
+        if (
+            payload.get("schema_version") != 1
+            or payload.get("cache_version") != PAIR_DIAGNOSTIC_CACHE_VERSION
+            or payload.get("cache_key") != key
+            or not isinstance(result, dict)
+            or payload.get("result_sha256") != _sha256_json(result)
+        ):
+            raise RuntimeError(f"pair diagnostic cache verification failed: {path}")
+        self.hits += 1
+        return dict(result)
+
+    def put(self, result: Mapping[str, Any]) -> Path | None:
+        cache_input = self._input_from_result(result)
+        if cache_input is None:
+            return None
+        key = _sha256_json(cache_input)
+        path = self._path(key)
+        payload = {
+            "schema_version": 1,
+            "cache_version": PAIR_DIAGNOSTIC_CACHE_VERSION,
+            "cache_key": key,
+            "result_sha256": _sha256_json(result),
+            "result": dict(result),
+        }
+        if path.exists():
+            existing = json.loads(path.read_text(encoding="utf-8"))
+            if existing != payload:
+                raise RuntimeError(f"pair diagnostic cache collision: {path}")
+            return path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(path, payload)
+        return path
+
+    def prime_from_shadow_associations(
+        self, report_paths: Sequence[Path]
+    ) -> None:
+        seen_cache_keys: set[str] = set()
+        for report_path in sorted(
+            (path.expanduser().resolve() for path in report_paths), key=str
+        ):
+            try:
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(report, dict):
+                continue
+            expected_result = report.get("result_sha256")
+            unhashed = dict(report)
+            unhashed.pop("result_sha256", None)
+            if (
+                report.get("artifact_kind")
+                != "speaker_profile_shadow_association"
+                or report.get("shadow_mode") is not True
+                or report.get("registry_mutation_allowed") is not False
+                or not isinstance(expected_result, str)
+                or _sha256_json(unhashed) != expected_result
+            ):
+                continue
+            profiles = report.get("profiles")
+            if not isinstance(profiles, list):
+                continue
+            for profile in profiles:
+                comparisons = (
+                    profile.get("comparisons")
+                    if isinstance(profile, dict)
+                    else None
+                )
+                if not isinstance(comparisons, list):
+                    continue
+                for comparison in comparisons:
+                    if (
+                        not isinstance(comparison, dict)
+                        or comparison.get("reviewed_constraint") is True
+                    ):
+                        continue
+                    result = {
+                        key: value
+                        for key, value in comparison.items()
+                        if key
+                        not in {
+                            "exemplar_observation_id",
+                            "exemplar_fingerprint",
+                            "exemplar_normalized_audio_sha256",
+                        }
+                    }
+                    cache_input = self._input_from_result(result)
+                    if cache_input is None:
+                        continue
+                    cache_key = _sha256_json(cache_input)
+                    if cache_key in seen_cache_keys:
+                        continue
+                    seen_cache_keys.add(cache_key)
+                    before = self.put(result)
+                    if before is not None:
+                        self.primed += 1
+
+    def _path(self, key: str) -> Path:
+        return self.root / "pair-diagnostics" / f"{key}.json"
+
+    @staticmethod
+    def _key(
+        *,
+        base: Mapping[str, Any],
+        observation_a: str,
+        observation_b: str,
+        spans_a: Sequence[Mapping[str, Any]],
+        spans_b: Sequence[Mapping[str, Any]],
+    ) -> str:
+        return _sha256_json(
+            {
+                "cache_version": PAIR_DIAGNOSTIC_CACHE_VERSION,
+                "analyzer_version": base.get("analyzer_version"),
+                "model": base.get("model"),
+                "policy": base.get("policy"),
+                "observations": {"a": observation_a, "b": observation_b},
+                "spans": {"a": list(spans_a), "b": list(spans_b)},
+            }
+        )
+
+    @classmethod
+    def _input_from_result(
+        cls, result: Mapping[str, Any]
+    ) -> dict[str, Any] | None:
+        observations = result.get("observations")
+        spans = result.get("spans")
+        if (
+            result.get("analyzer_version") != ANALYZER_VERSION
+            or not isinstance(observations, Mapping)
+            or not isinstance(spans, Mapping)
+            or not isinstance(observations.get("a"), str)
+            or not isinstance(observations.get("b"), str)
+            or not isinstance(spans.get("a"), list)
+            or not isinstance(spans.get("b"), list)
+            or not isinstance(result.get("metrics"), Mapping)
+        ):
+            return None
+        return {
+            "cache_version": PAIR_DIAGNOSTIC_CACHE_VERSION,
+            "analyzer_version": result.get("analyzer_version"),
+            "model": result.get("model"),
+            "policy": result.get("policy"),
+            "observations": dict(observations),
+            "spans": {"a": list(spans["a"]), "b": list(spans["b"])},
+        }
+
+
 def build_embedding_centroid(
     *,
     observation: SpeakerObservation,
@@ -611,6 +794,7 @@ def analyze_observation_pair(
     span_specs_a: Sequence[SpanSpec] | None = None,
     span_specs_b: Sequence[SpanSpec] | None = None,
     span_specs_are_activity_qualified: bool = False,
+    pair_diagnostic_cache: PairDiagnosticCache | None = None,
 ) -> dict[str, Any]:
     base = {
         "schema_version": 1,
@@ -666,6 +850,16 @@ def analyze_observation_pair(
                     "b": [_span_evidence(value) for value in prepared_b],
                 },
             }
+        if pair_diagnostic_cache is not None:
+            cached_result = pair_diagnostic_cache.get(
+                base=base,
+                observation_a=observation_a.input_fingerprint,
+                observation_b=observation_b.input_fingerprint,
+                spans_a=valid_a,
+                spans_b=valid_b,
+            )
+            if cached_result is not None:
+                return cached_result
         embedded_a = [embedding_cache.get_or_compute(span, backend) for span in valid_a]
         embedded_b = [embedding_cache.get_or_compute(span, backend) for span in valid_b]
         vectors_a = [value[0] for value in embedded_a]
@@ -691,13 +885,19 @@ def analyze_observation_pair(
             "metrics": metrics,
         }
         if policy is None:
-            return {
+            outcome_result = {
                 **result,
                 "outcome": PairOutcome.INSUFFICIENT_EVIDENCE,
                 "reason": "decision_policy_unavailable",
             }
+            if pair_diagnostic_cache is not None:
+                pair_diagnostic_cache.put(outcome_result)
+            return outcome_result
         outcome, reason = apply_decision_policy(metrics, policy)
-        return {**result, "outcome": outcome, "reason": reason}
+        outcome_result = {**result, "outcome": outcome, "reason": reason}
+        if pair_diagnostic_cache is not None:
+            pair_diagnostic_cache.put(outcome_result)
+        return outcome_result
     except AcousticEvidenceUnavailableError as error:
         return {
             **base,

@@ -19,6 +19,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     DecisionPolicy,
     EmbeddingCache,
     ModelSpec,
+    PairDiagnosticCache,
     PairOutcome,
     SpanSpec,
     analyze_observation_pair,
@@ -166,6 +167,91 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
         write_pair_result(first_path, first)
         write_pair_result(second_path, second)
         self.assertEqual(first_path.read_bytes(), second_path.read_bytes())
+
+    def test_complete_pair_diagnostic_replays_independently(self):
+        backend = FakeBackend({"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)})
+        pair_cache = PairDiagnosticCache(self.root / "pair-cache")
+        kwargs = {
+            "observation_a": self.a,
+            "observation_b": self.b,
+            "audio_path_a": Path("a.wav"),
+            "audio_path_b": Path("b.wav"),
+            "span_cache": FakeSpanCache(self.root),
+            "embedding_cache": EmbeddingCache(self.root / "embedding-cache"),
+            "backend": backend,
+            "policy": approved_policy(),
+            "span_count": 3,
+            "pair_diagnostic_cache": pair_cache,
+        }
+
+        first = analyze_observation_pair(**kwargs)
+        calls_after_first = backend.calls
+        second = analyze_observation_pair(**kwargs)
+
+        self.assertEqual(first, second)
+        self.assertEqual(calls_after_first, backend.calls)
+        self.assertEqual(1, pair_cache.misses)
+        self.assertEqual(1, pair_cache.hits)
+
+    def test_pair_cache_primes_only_from_verified_association(self):
+        backend = FakeBackend({"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)})
+        span_cache = FakeSpanCache(self.root)
+        result = analyze_observation_pair(
+            observation_a=self.a,
+            observation_b=self.b,
+            audio_path_a=Path("a.wav"),
+            audio_path_b=Path("b.wav"),
+            span_cache=span_cache,
+            embedding_cache=EmbeddingCache(self.root / "prime-embeddings"),
+            backend=backend,
+            policy=approved_policy(),
+            span_count=3,
+        )
+        report = {
+            "artifact_kind": "speaker_profile_shadow_association",
+            "shadow_mode": True,
+            "registry_mutation_allowed": False,
+            "profiles": [
+                {
+                    "comparisons": [
+                        {
+                            "exemplar_observation_id": self.b.id,
+                            "exemplar_fingerprint": self.b.input_fingerprint,
+                            "exemplar_normalized_audio_sha256": "audio-b",
+                            **result,
+                        }
+                    ]
+                }
+            ],
+        }
+        encoded = json.dumps(
+            report, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        report["result_sha256"] = hashlib.sha256(encoded).hexdigest()
+        report_path = self.root / "association.json"
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+
+        pair_cache = PairDiagnosticCache(self.root / "primed-cache")
+        pair_cache.prime_from_shadow_associations((report_path,))
+        replay_backend = FakeBackend(
+            {"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)}
+        )
+        replay = analyze_observation_pair(
+            observation_a=self.a,
+            observation_b=self.b,
+            audio_path_a=Path("a.wav"),
+            audio_path_b=Path("b.wav"),
+            span_cache=span_cache,
+            embedding_cache=EmbeddingCache(self.root / "replay-embeddings"),
+            backend=replay_backend,
+            policy=approved_policy(),
+            span_count=3,
+            pair_diagnostic_cache=pair_cache,
+        )
+
+        self.assertEqual(result, replay)
+        self.assertEqual(1, pair_cache.hits)
+        self.assertEqual(0, replay_backend.calls)
 
     def test_audio_span_cache_verifies_nested_manifest_checksum_on_replay(self):
         source = self.root / "source.wav"
