@@ -143,6 +143,7 @@ from pastor_transcript_extractor.identity_coordination import (
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
     load_shadow_association_confirmation_pairs,
+    load_unmatched_association_fingerprints,
     write_identity_coordination_report,
 )
 from pastor_transcript_extractor.models import (
@@ -6552,6 +6553,7 @@ def review_next_speaker_pair(
                     if ranking.outcome == "same_speaker"
                 )
         association_confirmation_pairs = ()
+        unmatched_association_fingerprints = frozenset()
         if selection_objective in {
             SelectionGoal.PROFILE_GROWTH,
             SelectionGoal.AUTOMATION_READINESS,
@@ -6565,9 +6567,15 @@ def review_next_speaker_pair(
                 )
                 for row in active_machine_assignment_evidence(database)
             }
+            association_paths = tuple(
+                association_root.expanduser().resolve().glob("*/*.json")
+            )
+            unmatched_association_fingerprints = (
+                load_unmatched_association_fingerprints(association_paths)
+            )
             current_association_nominations = []
             for nomination in load_shadow_association_confirmation_pairs(
-                association_root.expanduser().resolve().glob("*/*.json")
+                association_paths
             ):
                 try:
                     canonical_profile_id = (
@@ -6737,6 +6745,9 @@ def review_next_speaker_pair(
                 profile_growth_acoustic_pairs=profile_growth_acoustic_pairs,
                 association_confirmation_pairs=association_confirmation_pairs,
                 automatic_profile_ready_ids=automatic_profile_ready_ids,
+                unmatched_association_fingerprints=(
+                    unmatched_association_fingerprints
+                ),
             )
         except ValueError as error:
             if (

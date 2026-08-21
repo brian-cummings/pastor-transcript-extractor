@@ -13,6 +13,7 @@ from pastor_transcript_extractor.identity_coordination import (
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
     load_shadow_association_confirmation_pairs,
+    load_unmatched_association_fingerprints,
     write_identity_coordination_report,
 )
 from pastor_transcript_extractor.speaker_profile_discovery import (
@@ -456,6 +457,10 @@ class IdentityCoordinationTests(unittest.TestCase):
             "reason": "approved_policy_same_band",
             "consistency_tier": "strong_strong",
             "registry_mutation_allowed": False,
+            "retrieval_reasons": [
+                "global_nearest_neighbor",
+                "source_local_nearest_neighbor",
+            ],
             "centroid_similarity": 0.94,
             "metrics": {"cross": {"p10": 0.72, "median": 0.78}},
             "policy": {
@@ -531,6 +536,11 @@ class IdentityCoordinationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(0.08, ranking.same_boundary_margin)
         self.assertEqual(0.94, ranking.centroid_similarity)
+        self.assertTrue(ranking.source_local)
+        self.assertIn(
+            "source_local_nearest_neighbor",
+            ranking.retrieval_reasons,
+        )
         exploratory = rankings[1]
         self.assertEqual("insufficient_evidence", exploratory.outcome)
         self.assertEqual("ambiguous_similarity", exploratory.reason)
@@ -598,6 +608,41 @@ class IdentityCoordinationTests(unittest.TestCase):
         )
         self.assertTrue(all(item.same_comparison_count == 2 for item in nominations))
         self.assertAlmostEqual(0.08, nominations[0].same_boundary_margin)
+
+    def test_unmatched_association_loader_excludes_any_proposed_candidate(
+        self,
+    ) -> None:
+        unmatched = self._association_payload()
+        unmatched["candidate"] = {"input_fingerprint": "unmatched"}
+        unmatched["outcome"] = "insufficient_evidence"
+        unmatched["proposed_profile_id"] = None
+        unmatched["result_sha256"] = _sha256(
+            {key: value for key, value in unmatched.items() if key != "result_sha256"}
+        )
+        proposed = self._association_payload()
+        second_unmatched = self._association_payload()
+        second_unmatched["candidate"] = {"input_fingerprint": "candidate"}
+        second_unmatched["outcome"] = "no_match"
+        second_unmatched["proposed_profile_id"] = None
+        second_unmatched["result_sha256"] = _sha256(
+            {
+                key: value
+                for key, value in second_unmatched.items()
+                if key != "result_sha256"
+            }
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            paths = []
+            for index, payload in enumerate(
+                (unmatched, proposed, second_unmatched)
+            ):
+                path = Path(tempdir) / f"association-{index}.json"
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                paths.append(path)
+
+            fingerprints = load_unmatched_association_fingerprints(paths)
+
+        self.assertEqual(frozenset(("unmatched",)), fingerprints)
 
     def test_association_loader_rejects_tampered_artifact(self) -> None:
         payload = self._association_payload()

@@ -513,6 +513,18 @@ def load_discovery_acoustic_ranking_pairs(
             report_path=str(report_path.expanduser().resolve()),
             outcome=str(outcome),
             reason=str(reason),
+            source_local=bool(
+                {
+                    "source_local_complete_link",
+                    "source_local_nearest_neighbor",
+                }
+                & set(result.get("retrieval_reasons") or ())
+            ),
+            retrieval_reasons=tuple(
+                str(value)
+                for value in (result.get("retrieval_reasons") or ())
+                if isinstance(value, str) and value
+            ),
         )
         existing = rankings.get(ranking.pair_key)
         if existing is None or (
@@ -534,6 +546,49 @@ def load_discovery_acoustic_ranking_pairs(
                 item.fingerprint_b,
             ),
         )
+    )
+
+
+def load_unmatched_association_fingerprints(
+    report_paths: Iterable[Path],
+) -> frozenset[str]:
+    """Return candidates that have only current safe no-match/abstention reports."""
+    outcomes_by_fingerprint: dict[str, set[str]] = {}
+    for report_path in sorted(
+        (path.expanduser().resolve() for path in report_paths),
+        key=str,
+    ):
+        payload = _load_verified_association_report(report_path)
+        if (
+            payload.get("artifact_kind")
+            != "speaker_profile_shadow_association"
+            or payload.get("association_version")
+            != SHADOW_ASSOCIATION_VERSION
+        ):
+            continue
+        span_selection = payload.get("span_selection")
+        if (
+            payload.get("shadow_mode") is not True
+            or payload.get("registry_mutation_allowed") is not False
+            or payload.get("automatic_assignment_allowed") is not False
+            or not isinstance(span_selection, Mapping)
+            or span_selection.get("version")
+            != TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION
+        ):
+            continue
+        candidate = payload.get("candidate")
+        outcome = payload.get("outcome")
+        if not isinstance(candidate, Mapping) or not isinstance(outcome, str):
+            continue
+        fingerprint = candidate.get("input_fingerprint")
+        if not isinstance(fingerprint, str) or not fingerprint:
+            continue
+        outcomes_by_fingerprint.setdefault(fingerprint, set()).add(outcome)
+    return frozenset(
+        fingerprint
+        for fingerprint, outcomes in outcomes_by_fingerprint.items()
+        if outcomes
+        and outcomes.issubset({"no_match", "insufficient_evidence"})
     )
 
 

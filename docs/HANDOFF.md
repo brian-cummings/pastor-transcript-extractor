@@ -348,7 +348,7 @@ different constraint anywhere across the two components are excluded. The
 exact audio clips and qualification prompts remain unchanged; the
 profile-oriented packet also exposes timestamped source-video links.
 
-When those positive-evidence nominations are exhausted, selector v21 may use a
+When those positive-evidence nominations are exhausted, selector v25 may use a
 verified discovery artifact's unreviewed `strong_strong` /
 `ambiguous_similarity` comparisons as a deterministic exploratory fallback.
 The pair must remain within 0.15 of the pinned same-speaker boundary. A new
@@ -361,6 +361,19 @@ review becomes durable identity evidence. Automation-readiness intentionally
 withholds this fallback. Identity coordination reports affected observations as
 `identity_human_review_nominatable` instead of claiming that the acoustic model
 resolved them or that they must simply await new corpus evidence.
+
+Selector v25 also turns current shadow-association abstentions into a bounded
+profile-bootstrap queue. A candidate whose current association artifacts are
+only `no_match` or `insufficient_evidence` may be paired with its nearest
+available unassociated discovery neighbor. Source-local retrieval ranks before
+global retrieval; a profiled observation, reviewed difference, stale artifact,
+or existing reviewed same component excludes the pair. Acoustic similarity is
+only deterministic nomination provenance and supplies no expected answer. A
+human-approved `same` review creates or grows the anonymous component. If
+separately bootstrapped components later receive a reviewed same-speaker bridge,
+normal evidence synchronization chooses one canonical profile, transfers
+memberships, and records redirects for the retired profile. It refuses to merge
+two configured identities or violate a reviewed different-speaker constraint.
 
 Observation suitability is now a separate shadow-calibration concern. Existing
 `qualified_single_speaker`, `multiple_speakers`, and `invalid_audio` decisions

@@ -46,6 +46,95 @@ def candidate(
 
 
 class SpeakerPairSelectorTests(unittest.TestCase):
+    def test_profile_growth_prefers_source_local_nearest_unassociated_fallback(
+        self,
+    ) -> None:
+        local = AcousticPairRanking(
+            fingerprint_a="unknown-a",
+            fingerprint_b="unknown-b",
+            same_boundary_margin=-0.01,
+            centroid_similarity=0.91,
+            report_result_sha256="a" * 64,
+            report_path="discovery.json",
+            outcome="insufficient_evidence",
+            reason="ambiguous_similarity",
+            source_local=True,
+            retrieval_reasons=("source_local_complete_link",),
+        )
+        stronger_global = AcousticPairRanking(
+            fingerprint_a="global-a",
+            fingerprint_b="global-b",
+            same_boundary_margin=0.08,
+            centroid_similarity=0.97,
+            report_result_sha256="a" * 64,
+            report_path="discovery.json",
+        )
+
+        selected = select_next_speaker_pair(
+            [
+                candidate("unknown-a", source_family="local"),
+                candidate("unknown-b", source_family="local"),
+                candidate("global-a", source_family="one"),
+                candidate("global-b", source_family="two"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+            profile_growth_acoustic_pairs=(local, stronger_global),
+            unmatched_association_fingerprints=frozenset(
+                ("unknown-a",)
+            ),
+        )
+
+        self.assertEqual(
+            {"unknown-a", "unknown-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            "nearest_unassociated_neighbor",
+            selected.manifest["selection_objective"],
+        )
+        ranking = selected.manifest["profile_growth_acoustic_ranking"]
+        self.assertTrue(ranking["source_local"])
+        self.assertFalse(ranking["identity_evidence"])
+
+    def test_nearest_unassociated_fallback_does_not_pair_profiled_observation(
+        self,
+    ) -> None:
+        ranking = AcousticPairRanking(
+            fingerprint_a="unknown",
+            fingerprint_b="profiled",
+            same_boundary_margin=-0.01,
+            centroid_similarity=0.91,
+            report_result_sha256="a" * 64,
+            report_path="discovery.json",
+            source_local=True,
+            outcome="insufficient_evidence",
+            reason="ambiguous_similarity",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate("unknown", source_family="local"),
+                    candidate(
+                        "profiled",
+                        source_family="local",
+                        profile_ids=frozenset((7,)),
+                    ),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                profile_growth_acoustic_pairs=(ranking,),
+                unmatched_association_fingerprints=frozenset(("unknown",)),
+                automatic_profile_ready_ids=frozenset((7,)),
+            )
+
     def test_profile_growth_prioritizes_empty_configured_profile_bootstrap(
         self,
     ) -> None:

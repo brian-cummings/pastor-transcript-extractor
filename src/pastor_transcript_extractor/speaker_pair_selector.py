@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v24"
+SELECTOR_VERSION = "speaker_pair_selector_v25"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -121,6 +121,8 @@ class AcousticPairRanking:
     report_path: str
     outcome: str = "same_speaker"
     reason: str = "approved_policy_same_band"
+    source_local: bool = False
+    retrieval_reasons: tuple[str, ...] = ()
 
     @property
     def pair_key(self) -> frozenset[str]:
@@ -393,6 +395,7 @@ def select_next_speaker_pair(
         AssociationConfirmationPair
     ] = (),
     automatic_profile_ready_ids: frozenset[int] = frozenset(),
+    unmatched_association_fingerprints: frozenset[str] = frozenset(),
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
     try:
@@ -529,6 +532,21 @@ def select_next_speaker_pair(
             observation_use=observation_use,
             source_use=source_use,
             source_family_use=source_family_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+        )
+        or _select_nearest_unassociated_neighbor_pair(
+            pairs,
+            candidates=candidates,
+            history=history,
+            acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
+            unmatched_association_fingerprints=(
+                unmatched_association_fingerprints
+            ),
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
             disfavored=disfavored,
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
@@ -923,6 +941,10 @@ def select_next_speaker_pair(
             "role": "review_ranking_only",
             "identity_evidence": False,
             "durable_evidence_source": "approved_blinded_pair_review_only",
+            "source_local": selected_acoustic_ranking.source_local,
+            "retrieval_reasons": list(
+                selected_acoustic_ranking.retrieval_reasons
+            ),
         }
         reason_codes.insert(
             1,
@@ -1135,6 +1157,103 @@ def _select_association_confirmation_pair(
             frozenset((observation_b.input_fingerprint,)),
         ),
     )
+
+
+def _select_nearest_unassociated_neighbor_pair(
+    pairs: Sequence[
+        tuple[
+            PairCandidateObservation,
+            PairCandidateObservation,
+            SelectionStratum,
+            SourceRelation,
+        ]
+    ],
+    *,
+    candidates: Sequence[PairCandidateObservation],
+    history: PairSelectionHistory,
+    acoustic_ranking_by_pair: Mapping[
+        frozenset[str], AcousticPairRanking
+    ],
+    unmatched_association_fingerprints: frozenset[str],
+    source_family_use: Mapping[str, int],
+    observation_use: Mapping[str, int],
+    source_use: Mapping[str, int],
+    disfavored: Mapping[str, int],
+    disfavored_sources: Mapping[str, int],
+    condition_counts: Mapping[str, int],
+) -> tuple[
+    PairCandidateObservation,
+    PairCandidateObservation,
+    SelectionStratum,
+    SourceRelation,
+    str,
+    tuple[frozenset[str], frozenset[str]],
+] | None:
+    """Nominate the closest reviewable unknown pair after profile abstention."""
+    if not unmatched_association_fingerprints:
+        return None
+    components = _profile_growth_components(candidates, history)
+    options = []
+    for observation_a, observation_b, stratum, relation in pairs:
+        if (
+            observation_a.reviewed_profile_ids
+            or observation_b.reviewed_profile_ids
+            or (
+                observation_a.input_fingerprint
+                not in unmatched_association_fingerprints
+                and observation_b.input_fingerprint
+                not in unmatched_association_fingerprints
+            )
+            or disfavored.get(observation_a.input_fingerprint, 0)
+            or disfavored.get(observation_b.input_fingerprint, 0)
+        ):
+            continue
+        pair_key = frozenset(
+            (
+                observation_a.input_fingerprint,
+                observation_b.input_fingerprint,
+            )
+        )
+        ranking = acoustic_ranking_by_pair.get(pair_key)
+        if ranking is None:
+            continue
+        component_a = components[observation_a.input_fingerprint]
+        component_b = components[observation_b.input_fingerprint]
+        if component_a == component_b:
+            continue
+        options.append(
+            (
+                observation_a,
+                observation_b,
+                stratum,
+                relation,
+                "nearest_unassociated_neighbor",
+                (component_a, component_b),
+                ranking,
+            )
+        )
+    if not options:
+        return None
+    selected = min(
+        options,
+        key=lambda item: (
+            0 if item[6].source_local else 1,
+            0 if item[6].outcome == "same_speaker" else 1,
+            -item[6].same_boundary_margin,
+            -item[6].centroid_similarity,
+            _rank_pair(
+                item[0],
+                item[1],
+                source_family_use,
+                observation_use,
+                source_use,
+                disfavored,
+                disfavored_sources,
+                condition_counts,
+            ),
+        ),
+    )
+    return selected[:6]
 
 
 def _select_profile_growth_pair(

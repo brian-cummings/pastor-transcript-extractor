@@ -830,6 +830,18 @@ identity evidence, cannot attach observations, and cannot replace the blinded
 human judgment. Reviewed different-speaker constraints and component safety
 checks remain authoritative.
 
+When a current shadow association cannot match an observation to an existing
+profile, profile growth can also nominate its nearest unassociated discovery
+neighbor. Source-local neighbors rank before global neighbors, and both
+observations must still be unprofiled, reviewable, and free of reviewed
+different-speaker conflicts. This is a bootstrap route for speakers whose
+profiles do not exist yet, not a relaxed machine match: the acoustic result is
+selection provenance only and remains hidden from the blinded packet. An
+approved `same` judgment creates or joins the anonymous reviewed component; a
+later reviewed bridge to an existing profile consolidates memberships through
+the normal canonical-profile and redirect workflow. An approved `different`
+judgment blocks that merge.
+
 Exploratory rankings are also bound to the reviewed constraints captured by the
 discovery artifact. After a new same/different judgment involving its
 observations, rerun `pte identity run --all` before further exploratory review.
