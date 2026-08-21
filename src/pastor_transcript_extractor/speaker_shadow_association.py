@@ -697,46 +697,140 @@ def evaluate_shadow_association(
         "proposed_profile_id": proposed_profile_id,
         "profiles": profile_results,
     }
-    report["input_fingerprint"] = _sha256_json(
+    report["input_fingerprint"] = build_shadow_association_input_fingerprint(
+        candidate=candidate,
+        candidate_audio_sha256=candidate_audio_sha256,
+        candidate_normalized_names=sorted(candidate_names),
+        profiles=profiles,
+        policy_spec=policy_spec,
+        model_fingerprint=model_fingerprint,
+        minimum_same_exemplars=minimum_same_exemplars,
+        reviewed_difference_pairs=reviewed_difference_pairs,
+        span_selection=report["span_selection"],
+        routing=report["routing"],
+    )
+    report["result_sha256"] = _sha256_json(report)
+    return report
+
+
+def build_shadow_association_input_fingerprint(
+    *,
+    candidate: SpeakerObservation,
+    candidate_audio_sha256: str,
+    candidate_normalized_names: Sequence[str],
+    profiles: Sequence[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+    ],
+    policy_spec: ShadowPolicySpec,
+    model_fingerprint: str,
+    minimum_same_exemplars: int,
+    reviewed_difference_pairs: Sequence[tuple[int, int]] = (),
+    span_selection: Mapping[str, Any] | None = None,
+    routing: Mapping[str, Any] | None = None,
+) -> str:
+    reviewed_differences = {
+        tuple(sorted(pair)) for pair in reviewed_difference_pairs
+    }
+    candidate_payload = {
+        "observation_id": candidate.id,
+        "video_id": candidate.video_id,
+        "input_fingerprint": candidate.input_fingerprint,
+        "normalized_audio_sha256": candidate_audio_sha256,
+        "normalized_names": sorted(
+            name.strip()
+            for name in candidate_normalized_names
+            if name.strip()
+        ),
+    }
+    policy_payload = {
+        "version": policy_spec.policy.version,
+        "review_status": policy_spec.review_status,
+        "artifact_sha256": policy_spec.artifact_sha256,
+        "automatic_use_allowed": policy_spec.automatic_use_allowed,
+    }
+    routing_payload = (
+        dict(routing)
+        if routing is not None
+        else {
+            "route": "legacy_exhaustive",
+            "exhaustive": True,
+            "priority_profile_ids": [],
+            "shortlisted_profile_ids": [
+                readiness.profile_id for readiness, _ in profiles
+            ],
+            "total_routable_profiles": len(profiles),
+        }
+    )
+    return _sha256_json(
         {
             "association_version": SHADOW_ASSOCIATION_VERSION,
             "input_fingerprint_version": (
                 SHADOW_ASSOCIATION_FINGERPRINT_VERSION
             ),
-            "candidate": report["candidate"],
+            "candidate": candidate_payload,
             "model_fingerprint": model_fingerprint,
-            "policy": report["policy"],
+            "policy": policy_payload,
             "minimum_same_exemplars": minimum_same_exemplars,
-            "routing": report["routing"],
-            "span_selection": report["span_selection"],
+            "routing": routing_payload,
+            "span_selection": dict(span_selection) if span_selection else None,
             "profile_inputs": [
                 {
                     "readiness": asdict(readiness),
                     "exemplars": [
                         {
-                            "observation_fingerprint": comparison[
-                                "exemplar_fingerprint"
-                            ],
-                            "normalized_audio_sha256": comparison[
-                                "exemplar_normalized_audio_sha256"
-                            ],
+                            "observation_fingerprint": (
+                                exemplar.observation.input_fingerprint
+                            ),
+                            "normalized_audio_sha256": exemplar.audio_sha256,
                             "reviewed_different_speaker_constraint": (
-                                comparison.get("reviewed_constraint") is True
+                                tuple(
+                                    sorted(
+                                        (
+                                            candidate.id,
+                                            exemplar.observation.id,
+                                        )
+                                    )
+                                )
+                                in reviewed_differences
                             ),
                         }
-                        for comparison in result["comparisons"]
+                        for exemplar in exemplars
                     ],
                 }
-                for (readiness, _exemplars), result in zip(
-                    profiles,
-                    profile_results,
-                    strict=True,
-                )
+                for readiness, exemplars in profiles
             ],
         }
     )
-    report["result_sha256"] = _sha256_json(report)
-    return report
+
+
+def load_reusable_shadow_association(
+    output_root: Path,
+    *,
+    candidate_fingerprint: str,
+    input_fingerprint: str,
+) -> tuple[Path, dict[str, Any]] | None:
+    destination = (
+        output_root.expanduser().resolve()
+        / candidate_fingerprint[:16]
+        / f"{input_fingerprint}.json"
+    )
+    if not destination.exists():
+        return None
+    payload = json.loads(destination.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("cached shadow association must be an object")
+    expected_result = payload.get("result_sha256")
+    unhashed = dict(payload)
+    unhashed.pop("result_sha256", None)
+    if (
+        payload.get("input_fingerprint") != input_fingerprint
+        or not isinstance(expected_result, str)
+        or _sha256_json(unhashed) != expected_result
+    ):
+        raise ValueError(
+            f"cached shadow association failed verification: {destination}"
+        )
+    return destination, payload
 
 
 def write_shadow_association(

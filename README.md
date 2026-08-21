@@ -867,6 +867,13 @@ was exhaustive. As a fail-closed defense, any non-exhaustive proposal cannot
 create machine-assignment evidence or automatically confirm a discovery
 profile. Legacy exhaustive artifacts remain replayable.
 
+Shadow association precomputes the complete content-addressed input fingerprint
+before detailed profile comparison. If the candidate, accepted observation,
+normalized media, selected spans, routing, profile exemplars, reviewed
+constraints, model, and policy are unchanged, the existing verified artifact is
+replayed and the acoustic comparisons are skipped. Re-running the consolidated
+identity workflow is therefore idempotent at the association stage.
+
 The same run now projects qualifying current proposals into a separate,
 append-only machine-evidence ledger. It requires a current accepted-sermon
 observation, an automatic-profile-ready target, a unique multi-exemplar match,

@@ -26,7 +26,9 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     ShadowExemplar,
     ShadowPolicySpec,
     assess_profile_association_readiness,
+    build_shadow_association_input_fingerprint,
     evaluate_shadow_association,
+    load_reusable_shadow_association,
     load_shadow_policy,
     select_routed_association_profiles,
     select_staged_association_profiles,
@@ -520,6 +522,25 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
             SHADOW_ASSOCIATION_FINGERPRINT_VERSION,
         )
         destination = write_shadow_association(self.root / "runs", report)
+        precomputed_fingerprint = build_shadow_association_input_fingerprint(
+            candidate=candidate,
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=("alice example",),
+            profiles=profiles,
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+            minimum_same_exemplars=2,
+        )
+        self.assertEqual(report["input_fingerprint"], precomputed_fingerprint)
+        reusable = load_reusable_shadow_association(
+            self.root / "runs",
+            candidate_fingerprint=candidate.input_fingerprint,
+            input_fingerprint=precomputed_fingerprint,
+        )
+        self.assertIsNotNone(reusable)
+        assert reusable is not None
+        self.assertEqual(destination, reusable[0])
+        self.assertEqual(report, reusable[1])
         self.assertEqual(
             write_shadow_association(self.root / "runs", report),
             destination,

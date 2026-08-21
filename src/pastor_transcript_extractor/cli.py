@@ -291,7 +291,9 @@ from pastor_transcript_extractor.speaker_profile_promotion import (
 from pastor_transcript_extractor.speaker_shadow_association import (
     ShadowExemplar,
     assess_profile_association_readiness,
+    build_shadow_association_input_fingerprint,
     evaluate_shadow_association,
+    load_reusable_shadow_association,
     load_shadow_policy,
     select_profile_exemplars,
     select_routed_association_profiles,
@@ -6054,6 +6056,7 @@ def shadow_associate_speakers_command(
     routing_counts: dict[str, int] = {}
     detailed_profile_comparisons = 0
     exhaustive_profile_comparisons = 0
+    reused_associations = 0
     sermon_window_quality_flag_count = 0
     written_reports: list[Path] = []
     for index, (video, eligibility, _span_specs) in enumerate(
@@ -6110,6 +6113,51 @@ def shadow_associate_speakers_command(
             selected_profiles,
             routing_payload,
         ):
+            span_selection_payload = {
+                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+                "required_label": "sermon",
+                "span_count": 5,
+                "duration_seconds": 12.0,
+                "minimum_words": 8,
+                "minimum_unique_words": 4,
+                "candidate_multiplier": 3,
+                "activity_qualified": True,
+                "distributed_first": True,
+                "within_observation_consistency_fallback": True,
+                "candidate_selection": (
+                    span_selection_by_observation_id.get(observation.id)
+                ),
+                "exemplar_selections": {
+                    str(exemplar.observation.id): (
+                        span_selection_by_observation_id.get(
+                            exemplar.observation.id
+                        )
+                    )
+                    for _profile, exemplars in selected_profiles
+                    for exemplar in exemplars
+                },
+            }
+            input_fingerprint = build_shadow_association_input_fingerprint(
+                candidate=observation,
+                candidate_audio_sha256=media_artifact.content_sha256,
+                candidate_normalized_names=sorted(explicit_candidate_names),
+                profiles=selected_profiles,
+                policy_spec=policy_spec,
+                model_fingerprint=backend.spec.fingerprint,
+                minimum_same_exemplars=minimum_same_exemplars,
+                reviewed_difference_pairs=(
+                    database.list_effective_observation_difference_pairs()
+                ),
+                routing=routing_payload,
+                span_selection=span_selection_payload,
+            )
+            reusable = load_reusable_shadow_association(
+                output_root,
+                candidate_fingerprint=observation.input_fingerprint,
+                input_fingerprint=input_fingerprint,
+            )
+            if reusable is not None:
+                return reusable[1], reusable[0]
             return evaluate_shadow_association(
                 candidate=observation,
                 candidate_audio_path=Path(media_artifact.artifact_path),
@@ -6124,36 +6172,16 @@ def shadow_associate_speakers_command(
                     database.list_effective_observation_difference_pairs()
                 ),
                 routing=routing_payload,
-                span_selection={
-                    "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
-                    "required_label": "sermon",
-                    "span_count": 5,
-                    "duration_seconds": 12.0,
-                    "minimum_words": 8,
-                    "minimum_unique_words": 4,
-                    "candidate_multiplier": 3,
-                    "activity_qualified": True,
-                    "distributed_first": True,
-                    "within_observation_consistency_fallback": True,
-                    "candidate_selection": (
-                        span_selection_by_observation_id.get(observation.id)
-                    ),
-                    "exemplar_selections": {
-                        str(exemplar.observation.id): (
-                            span_selection_by_observation_id.get(
-                                exemplar.observation.id
-                            )
-                        )
-                        for _profile, exemplars in selected_profiles
-                        for exemplar in exemplars
-                    },
-                },
-            )
+                span_selection=span_selection_payload,
+            ), None
 
-        report = evaluate_profiles(candidate_profiles, initial_routing_payload)
-        detailed_profile_comparisons += len(candidate_profiles)
+        report, reusable_path = evaluate_profiles(
+            candidate_profiles, initial_routing_payload
+        )
+        if reusable_path is None:
+            detailed_profile_comparisons += len(candidate_profiles)
         if report["outcome"] == "proposed_match" and not routing.exhaustive:
-            report = evaluate_profiles(
+            report, reusable_path = evaluate_profiles(
                 legacy_routed_profiles,
                 {
                     "route": "exhaustive_validation_after_shortlist_proposal",
@@ -6170,11 +6198,15 @@ def shadow_associate_speakers_command(
                     "initial_shortlist_result": "proposed_match",
                 },
             )
-            detailed_profile_comparisons += len(legacy_routed_profiles)
+            if reusable_path is None:
+                detailed_profile_comparisons += len(legacy_routed_profiles)
         final_routing = report["routing"]
         routing_route = str(final_routing["route"])
         routing_counts[routing_route] = routing_counts.get(routing_route, 0) + 1
-        destination = write_shadow_association(output_root, report)
+        destination = reusable_path or write_shadow_association(
+            output_root, report
+        )
+        reused_associations += int(reusable_path is not None)
         written_reports.append(destination)
         outcome = str(report["outcome"])
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
@@ -6195,6 +6227,7 @@ def shadow_associate_speakers_command(
             f"{outcome} profile={report['proposed_profile_id']} "
             f"reason={report['reason']} "
             f"artifact={destination}"
+            f" reused={reusable_path is not None}"
             f"{window_flag_text}"
         )
     console.print(
@@ -6211,7 +6244,8 @@ def shadow_associate_speakers_command(
             for route, count in sorted(routing_counts.items())
         )
         + f" detailed_profiles={detailed_profile_comparisons} "
-        f"exhaustive_profiles={exhaustive_profile_comparisons}"
+        f"exhaustive_profiles={exhaustive_profile_comparisons} "
+        f"reused_associations={reused_associations}"
     )
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."

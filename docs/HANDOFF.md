@@ -526,6 +526,13 @@ Use `--maximum-global-profiles` to change the global shortlist size for an
 explicit experiment. A two-member target remains machine-ineligible even if it produces a
 proposal; source-local or attribution routing only decides whether to compare,
 and the proposal exists solely to nominate the blinded human pair workflow.
+
+Before detailed comparison, association computes the same content-addressed
+input fingerprint used by the final artifact. A verified artifact with that
+fingerprint is a replay hit: comparison is skipped and the CLI reports
+`reused=True` plus a final `reused_associations` count. Changes to observation or
+media provenance, spans, routing, profile readiness or exemplars, reviewed
+constraints, model, or policy produce a new fingerprint and force evaluation.
 Candidates and exemplars oversample up to fifteen distributed transcript-grounded
 sermon-speech candidates, apply a recording-relative activity gate, and retain
 five qualified clips. Distribution is primary: a coherent initial five is
