@@ -925,12 +925,19 @@ class MediaArtifactTests(unittest.TestCase):
             audio_path=str(normalized_path),
         )
         extraction = self.database.get_latest_extraction_result_for_video(video.id)
+        legacy_observation_path = audio_root / "legacy-observation.json"
+        legacy_observation_path.write_text(
+            json.dumps({"extractor_version": "speaker_evidence_v1"}),
+            encoding="utf-8",
+        )
         observation = self.database.add_speaker_observation(
             video_id=video.id, extraction_result_id=extraction.id,
             role="sermon_speaker", multiplicity_state="single",
             start_seconds=0.1, end_seconds=0.8,
-            artifact_path=str(normalized_path), content_sha256=normalized.content_sha256,
-            extractor_version="test", input_fingerprint="observation-current",
+            artifact_path=str(legacy_observation_path),
+            content_sha256="legacy-evidence-content-sha256",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="observation-current",
         )
         blocked = normalized_archive_eligibility(self.database, self.paths)
         self.assertFalse(blocked[0].eligible)
@@ -965,12 +972,17 @@ class MediaArtifactTests(unittest.TestCase):
                 video_ids={video.id},
             ),
         )
+        prepared = normalized_archive_eligibility(self.database, self.paths)
+        self.assertTrue(prepared[0].eligible)
+        self.assertEqual("current", prepared[0].clip_preparation_status)
         changed_observation = self.database.add_speaker_observation(
             video_id=video.id, extraction_result_id=extraction.id,
             role="sermon_speaker", multiplicity_state="single",
             start_seconds=0.2, end_seconds=0.8,
-            artifact_path=str(normalized_path), content_sha256=normalized.content_sha256,
-            extractor_version="test", input_fingerprint="observation-changed-window",
+            artifact_path=str(legacy_observation_path),
+            content_sha256="legacy-evidence-content-sha256",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="observation-changed-window",
         )
         stale = normalized_archive_eligibility(self.database, self.paths)
         self.assertFalse(stale[0].eligible)
@@ -985,11 +997,18 @@ class MediaArtifactTests(unittest.TestCase):
             video_ids={video.id},
         )
         self.assertEqual(1, source_result.counts["archived"])
+        normalized_preflight = []
         result = archive_normalized_media(
             self.database, self.paths, archive_root=archive_root,
             video_ids={video.id},
+            preflight_callback=normalized_preflight.append,
         )
         self.assertEqual(1, result.counts["archived"])
+        persisted = next(
+            event for event in normalized_preflight
+            if event.check == "persisted state"
+        )
+        self.assertEqual("pending=0, archived=0, failed=0", persisted.detail)
         self.assertTrue(normalized_path.is_symlink())
         entry = self.database.get_media_archive_entry_for_artifact(normalized.id)
         self.assertEqual(normalized.id, entry.media_artifact_id)

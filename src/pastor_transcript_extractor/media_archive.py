@@ -299,8 +299,18 @@ def _archive_source_media_locked(
         root, preflight_callback
     )
     existing_entries = database.list_media_archive_entries()
+    artifact_kind_by_id = {
+        artifact.id: artifact.artifact_kind
+        for video in database.list_videos()
+        for artifact in database.list_media_artifacts_for_video(video.id)
+    }
+    relevant_entries = [
+        entry
+        for entry in existing_entries
+        if artifact_kind_by_id.get(entry.media_artifact_id) == artifact_kind
+    ]
     state_counts = {
-        status: sum(entry.status == status for entry in existing_entries)
+        status: sum(entry.status == status for entry in relevant_entries)
         for status in ("pending", "archived", "failed")
     }
     _notify_preflight(
@@ -313,12 +323,17 @@ def _archive_source_media_locked(
         preflight_callback,
         "eligibility",
         "running",
-        "verifying normalized audio for new, pending, and failed sources; "
-        "persisted archived sources are skipped",
+        (
+            "verifying normalized audio for new, pending, and failed sources; "
+            "persisted archived sources are skipped"
+            if artifact_kind == "source_audio"
+            else "evaluating authoritative normalized audio and canonical clip "
+            "preparation; persisted archived normalized artifacts are skipped"
+        ),
     )
     archived_artifact_ids = {
         entry.media_artifact_id
-        for entry in existing_entries
+        for entry in relevant_entries
         if entry.status == "archived"
     }
     eligibility: tuple[NormalizedArchiveEligibility, ...] = ()
@@ -553,10 +568,25 @@ def normalized_archive_eligibility(
         if observation is None:
             results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, True, "classification finalized without clip-eligible observation", "not_applicable"))
             continue
-        if _observation_normalized_sha256(observation) != artifact.content_sha256:
-            results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, False, "current observation is not bound to normalized audio", "stale"))
-            continue
         status = _canonical_clip_preparation_status(artifact, observation, policy_version)
+        observation_is_audio_bound = (
+            _observation_normalized_sha256(observation) == artifact.content_sha256
+        )
+        # A current canonical manifest is itself immutable proof binding the
+        # exact observation fingerprint/window to this normalized SHA-256 and
+        # policy. This permits legacy observations without weakening identity.
+        if not observation_is_audio_bound and status != "current":
+            results.append(
+                NormalizedArchiveEligibility(
+                    video.id,
+                    video.youtube_video_id,
+                    artifact,
+                    False,
+                    "current observation is not bound to normalized audio",
+                    status,
+                )
+            )
+            continue
         eligible = status == "current"
         reason = "canonical clip preparation complete" if eligible else ("canonical clip preparation is stale" if status == "stale" else "blocked by incomplete clip/fingerprint generation")
         results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, eligible, reason, status))

@@ -135,6 +135,14 @@ window, fingerprint, or policy makes preparation stale. Human review completion
 is deliberately not an eligibility condition. A finalized recording with no
 clip-eligible observation does not need a clip manifest.
 
+For legacy `speaker_evidence_v1` observations, a current checksum-verified
+canonical preparation manifest also supplies the observation-to-normalized-audio
+binding: it proves that the exact legacy fingerprint and window produced clips
+from the authoritative normalized SHA-256 under the current policy. This avoids
+rewriting identity history or regenerating valid clips merely to duplicate that
+binding in newer observation metadata. Missing, changed, or corrupt canonical
+inputs remain blocked.
+
 Audit eligibility and explain every block without moving bytes:
 
 ```bash
