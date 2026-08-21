@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from pastor_transcript_extractor.media_artifacts import (
     StageSourceAudioResult,
@@ -14,6 +14,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 AUDIO_STAGE_SCHEMA_VERSION = 1
+AudioStageVerificationProgress = Callable[[int, int, str], None]
 
 
 def write_audio_stage_manifest(
@@ -53,6 +54,8 @@ def write_audio_stage_manifest(
 def load_and_verify_audio_stage_manifest(
     database: Database,
     path: Path,
+    *,
+    progress_callback: AudioStageVerificationProgress | None = None,
 ) -> set[int]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -67,6 +70,11 @@ def load_and_verify_audio_stage_manifest(
     video_ids: set[int] = set()
     invalid_verified: list[str] = []
     manifest_video_ids: set[int] = set()
+    verified_total = sum(
+        isinstance(row, dict) and row.get("outcome") == "verified"
+        for row in videos
+    )
+    verified_index = 0
     for row in videos:
         if not isinstance(row, dict) or not isinstance(row.get("video_id"), int):
             raise ValueError(f"Malformed audio stage manifest row: {path}")
@@ -77,6 +85,9 @@ def load_and_verify_audio_stage_manifest(
         manifest_video_ids.add(video_id)
         if row.get("outcome") != "verified":
             continue
+        verified_index += 1
+        if progress_callback is not None:
+            progress_callback(verified_index, verified_total, youtube_id)
         matching = [
             artifact
             for artifact in database.list_media_artifacts_for_video(video_id)

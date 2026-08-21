@@ -120,7 +120,18 @@ class MediaArtifactTests(unittest.TestCase):
         self.assertTrue(first.downloaded)
         self.assertFalse(second.downloaded)
         manifest = write_audio_stage_manifest(self.paths.logs, [second])
-        self.assertEqual({video.id}, load_and_verify_audio_stage_manifest(self.database, manifest))
+        progress = []
+        self.assertEqual(
+            {video.id},
+            load_and_verify_audio_stage_manifest(
+                self.database,
+                manifest,
+                progress_callback=lambda index, total, youtube_id: progress.append(
+                    (index, total, youtube_id)
+                ),
+            ),
+        )
+        self.assertEqual([(1, 1, video.youtube_video_id)], progress)
 
         Path(second.artifact.artifact_path).write_bytes(b"mutated")
         with self.assertRaisesRegex(ValueError, "no longer verifies"):

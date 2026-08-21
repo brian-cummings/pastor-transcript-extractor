@@ -10194,20 +10194,69 @@ def run_workflow_service(
             raise ValueError("--replace-existing is not valid with --resume-stage.")
         database = get_database(base_dir)
         paths = build_paths(base_dir, remember=True)
-        video_ids = load_and_verify_audio_stage_manifest(database, resume_stage)
+        console.print(
+            "Resume checkpoint: verifying every checksum-pinned staged source artifact."
+        )
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            verification_task = progress.add_task(
+                "Reading audio-stage manifest", total=None
+            )
+
+            def report_stage_verification(
+                index: int,
+                total: int,
+                youtube_video_id: str,
+            ) -> None:
+                progress.update(
+                    verification_task,
+                    total=total,
+                    completed=index - 1,
+                    description=(
+                        f"Verifying staged source [{index}/{total}] "
+                        f"{youtube_video_id}"
+                    ),
+                )
+
+            video_ids = load_and_verify_audio_stage_manifest(
+                database,
+                resume_stage,
+                progress_callback=report_stage_verification,
+            )
+            progress.update(
+                verification_task,
+                total=len(video_ids),
+                completed=len(video_ids),
+                description=f"Verified {len(video_ids)} staged source artifact(s)",
+            )
         console.print(
             f"Resuming {len(video_ids)} video(s) from verified audio stage {resume_stage}."
         )
         if acquire_captions:
             console.print(
-                f"Acquiring available captions for {len(video_ids)} resumed video(s)."
+                "Resume checkpoint: reconciling requested online captions; "
+                "persisted caption artifacts will be skipped."
             )
             fetch_captions_service(
                 base_dir=base_dir,
                 video_ids=video_ids,
                 request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
             )
+        else:
+            console.print(
+                "Resume checkpoint: skipping caption acquisition; persisted captions "
+                "remain available and caption misses will use staged audio."
+            )
         if not captions_only:
+            console.print(
+                "Resume checkpoint: reconciling local transcripts; completed transcript "
+                "artifacts will be skipped."
+            )
             transcribe_videos_service(
                 missing_only=False,
                 captions_missing_only=transcribe_missing,
@@ -10216,6 +10265,12 @@ def run_workflow_service(
                 video_ids=video_ids,
                 allow_network=False,
             )
+        else:
+            console.print("Resume checkpoint: local transcription disabled by --captions-only.")
+        console.print(
+            "Resume checkpoint: reconciling sermon extraction; completed extraction "
+            "artifacts will be skipped."
+        )
         extraction = extract_batch(
             database,
             paths,
@@ -10232,10 +10287,15 @@ def run_workflow_service(
             f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; "
             f"failed {extraction.failed}."
         )
+        console.print(
+            "Resume checkpoint: ensuring normalized audio and archiving eligible "
+            "source artifacts."
+        )
         _ensure_and_archive_run_media(
             database, paths, video_ids=video_ids, allow_download=False
         )
         if not skip_review:
+            console.print("Resume checkpoint: refreshing review exports.")
             pastor_slugs = {
                 record.slug
                 for video_id in video_ids
@@ -10255,8 +10315,13 @@ def run_workflow_service(
                         event_callback=lambda message: console.print(message, markup=False),
                     )
                 )
+        else:
+            console.print("Resume checkpoint: review export skipped by --skip-review.")
         if run_identity:
+            console.print("Resume checkpoint: starting the requested identity workflow.")
             _run_post_content_identity(base_dir)
+        else:
+            console.print("Resume complete; identity was not requested.")
         return
 
     if stage_audio_only:
