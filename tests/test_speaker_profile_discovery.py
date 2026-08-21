@@ -905,6 +905,16 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             refined.selection["consistency_fallback_replacement_count"],
         )
         self.assertEqual(
+            20,
+            refined.selection["consistency_fallback_subsets_evaluated"],
+        )
+        self.assertLessEqual(
+            refined.selection[
+                "consistency_fallback_pairwise_similarities"
+            ],
+            21,
+        )
+        self.assertEqual(
             [
                 {
                     "flag": "speaker_inconsistent_edge",
@@ -992,6 +1002,46 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             refined.selection[
                 "consistency_fallback_found_coherent_subset"
             ]
+        )
+
+    def test_consistency_fallback_caches_pairwise_work_across_subsets(self) -> None:
+        observation = self._signature("bounded", (1.0, 0.0)).candidate.observation
+        specs = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in range(120, 1620, 100)
+        )
+        prepared = prepare_activity_qualified_spans(
+            observation=observation,
+            audio_path=Path("bounded.wav"),
+            span_cache=FakeActivitySpanCache(
+                {spec.start_seconds: -40.0 for spec in specs},
+                {spec.start_seconds: 0.8 for spec in specs},
+            ),
+            candidate_specs=specs,
+        )
+        embeddings = {
+            spec.start_seconds: (
+                (1.0, 0.0) if index % 2 == 0 else (0.0, 1.0)
+            )
+            for index, spec in enumerate(specs)
+        }
+
+        refined = refine_activity_qualified_spans(
+            prepared,
+            embedding_cache=FakeEmbeddingCache(embeddings),
+            backend=object(),
+            policy=self._policy().policy,
+        )
+
+        self.assertEqual(
+            500,
+            refined.selection["consistency_fallback_subsets_evaluated"],
+        )
+        self.assertLessEqual(
+            refined.selection[
+                "consistency_fallback_pairwise_similarities"
+            ],
+            105,
         )
 
     def test_incomplete_component_is_blocked(self) -> None:

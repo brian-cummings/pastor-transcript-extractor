@@ -428,6 +428,18 @@ def refine_activity_qualified_spans(
     def metrics_for(spans: Sequence[CachedSpan]) -> Mapping[str, Any]:
         return observation_consistency_metrics(embeddings_for(spans))
 
+    pairwise_similarity_cache: dict[tuple[str, str], float] = {}
+
+    def similarity(left: CachedSpan, right: CachedSpan) -> float:
+        key = tuple(sorted((left.wav_sha256, right.wav_sha256)))
+        cached = pairwise_similarity_cache.get(key)
+        if cached is not None:
+            return cached
+        left_embedding, right_embedding = embeddings_for((left, right))
+        value = _cosine(left_embedding, right_embedding)
+        pairwise_similarity_cache[key] = value
+        return value
+
     def coherent(metrics: Mapping[str, Any]) -> bool:
         pairwise = metrics["pairwise_similarity"]
         return bool(
@@ -438,11 +450,10 @@ def refine_activity_qualified_spans(
     def subset_pairwise_summary(
         spans: Sequence[CachedSpan],
     ) -> tuple[float, float]:
-        embeddings = embeddings_for(spans)
         similarities = sorted(
-            _cosine(left, right)
-            for index, left in enumerate(embeddings)
-            for right in embeddings[index + 1 :]
+            similarity(left, right)
+            for index, left in enumerate(spans)
+            for right in spans[index + 1 :]
         )
         return (
             _percentile_value(similarities, 0.10),
@@ -490,6 +501,7 @@ def refine_activity_qualified_spans(
             tuple[float, float],
         ]
     ] = []
+    evaluated_subset_count = 0
     selected_hashes = {span.wav_sha256 for span in selected}
     for subset in itertools.combinations(qualified, requested_count):
         if subset == selected:
@@ -499,6 +511,7 @@ def refine_activity_qualified_spans(
         )
         if replacement_count > TRANSCRIPT_SPAN_MAX_CONSISTENCY_REPLACEMENTS:
             continue
+        evaluated_subset_count += 1
         pairwise_p10, pairwise_median = subset_pairwise_summary(subset)
         if (
             pairwise_median < policy.min_within_median
@@ -524,6 +537,12 @@ def refine_activity_qualified_spans(
         )
     if not coherent_subsets:
         selection["consistency_fallback_found_coherent_subset"] = False
+        selection["consistency_fallback_subsets_evaluated"] = (
+            evaluated_subset_count
+        )
+        selection["consistency_fallback_pairwise_similarities"] = len(
+            pairwise_similarity_cache
+        )
         return ActivityQualifiedSpans(
             spans=selected,
             qualified_spans=qualified,
@@ -583,6 +602,10 @@ def refine_activity_qualified_spans(
             "consistency_fallback_used": True,
             "consistency_fallback_replacement_count": sum(
                 span.wav_sha256 not in original_hashes for span in refined
+            ),
+            "consistency_fallback_subsets_evaluated": evaluated_subset_count,
+            "consistency_fallback_pairwise_similarities": len(
+                pairwise_similarity_cache
             ),
             "refined_consistency": refined_metrics,
             "sermon_window_quality_flags": window_quality_flags,
