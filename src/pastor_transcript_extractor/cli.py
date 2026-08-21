@@ -5788,9 +5788,21 @@ def shadow_associate_speakers_command(
     }
     eligible_exemplars: list[ShadowExemplar] = []
     span_specs_by_observation_id: dict[int, tuple[SpanSpec, ...]] = {}
-    for profile in readiness:
-        if not profile.review_ready:
-            continue
+    review_ready_profiles = [
+        profile for profile in readiness if profile.review_ready
+    ]
+    console.print(
+        "Association preprocessing: "
+        f"preparing exemplars for {len(review_ready_profiles)} review-ready "
+        "profile(s)."
+    )
+    for profile_index, profile in enumerate(review_ready_profiles, start=1):
+        console.print(
+            "Association preprocessing: "
+            f"profile {profile_index}/{len(review_ready_profiles)} "
+            f"id={profile.profile_id} "
+            f"members={len(profile.member_observation_ids)}"
+        )
         for observation_id in profile.member_observation_ids:
             observation = database.get_speaker_observation(observation_id)
             if observation is None:
@@ -5854,7 +5866,22 @@ def shadow_associate_speakers_command(
 
     candidates = []
     ineligible_reasons: dict[str, int] = {}
-    for video in requested_videos:
+    console.print(
+        "Association preprocessing: "
+        f"scanning {len(requested_videos)} video(s) for eligible candidates."
+    )
+    for video_index, video in enumerate(requested_videos, start=1):
+        if (
+            video_index == 1
+            or video_index == len(requested_videos)
+            or video_index % 25 == 0
+        ):
+            console.print(
+                "Association preprocessing: "
+                f"video={video_index}/{len(requested_videos)} "
+                f"eligible_so_far={len(candidates)} "
+                f"excluded_so_far={sum(ineligible_reasons.values())}"
+            )
         eligibility = assess_automatic_speaker_observation(
             database,
             video.id,
@@ -5970,6 +5997,11 @@ def shadow_associate_speakers_command(
     assert backend is not None
     assert embedding_cache is not None
     exemplar_centroids: dict[int, tuple[float, ...]] = {}
+    console.print(
+        "Association preprocessing: building retrieval centroids for "
+        f"{sum(len(exemplars) for _profile, exemplars in usable_profiles)} "
+        "selected exemplar(s)."
+    )
     for _profile, exemplars in usable_profiles:
         for exemplar in exemplars:
             if exemplar.observation.id in exemplar_centroids:
