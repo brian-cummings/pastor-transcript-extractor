@@ -3599,9 +3599,6 @@ def profile_status_command(
             discovery_report_path = candidate_path
             break
         database = Database(paths.database, readonly=True)
-        verification_cache = MediaVerificationCache(
-            evaluation_root.expanduser().resolve() / "cache"
-        )
         eligible_automatic_observation_ids = frozenset(
             eligibility.observation.id
             for video in database.list_videos()
@@ -3609,7 +3606,7 @@ def profile_status_command(
                 eligibility := assess_automatic_speaker_observation(
                     database,
                     video.id,
-                    verification_cache=verification_cache,
+                    verify_media=False,
                 )
             ).eligible
             and eligibility.observation is not None

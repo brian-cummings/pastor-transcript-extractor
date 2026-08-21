@@ -154,6 +154,28 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
             result.reason_code,
         )
 
+    def test_metadata_only_status_eligibility_does_not_verify_media(self) -> None:
+        with (
+            patch(
+                "pastor_transcript_extractor.speaker_pair_eligibility."
+                "get_registered_normalized_media_artifact",
+                return_value=self.media,
+            ) as registered,
+            patch(
+                "pastor_transcript_extractor.speaker_pair_eligibility."
+                "get_verified_normalized_media_artifact"
+            ) as verified,
+        ):
+            result = assess_automatic_speaker_observation(
+                self.database,
+                self.video.id,
+                verify_media=False,
+            )
+
+        self.assertTrue(result.eligible)
+        registered.assert_called_once_with(self.database, self.video.id)
+        verified.assert_not_called()
+
     def test_review_required_recording_is_excluded(self) -> None:
         self.payload["final_disposition"] = {"status": "review_required"}
         self._write_payload()

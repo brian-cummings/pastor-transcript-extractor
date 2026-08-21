@@ -855,6 +855,36 @@ def get_verified_normalized_media_artifact(
     return artifact
 
 
+def get_registered_normalized_media_artifact(
+    database: Database,
+    video_id: int,
+    *,
+    require_isolated_sermon: bool = True,
+) -> MediaArtifact | None:
+    """Select authoritative normalized-media metadata without touching its bytes.
+
+    This is intended for read-only inventory and status reporting. Callers that
+    will consume media must use ``get_verified_normalized_media_artifact``.
+    """
+    artifacts = database.list_media_artifacts_for_video(video_id)
+    for provenance_kind in ("derived", "reconstructed_existing"):
+        for artifact in reversed(artifacts):
+            if (
+                artifact.artifact_kind != "normalized_audio"
+                or artifact.provenance_kind != provenance_kind
+            ):
+                continue
+            covers_required_audio = media_artifact_covers_isolated_sermon(
+                database, artifact
+            ) or (
+                not require_isolated_sermon
+                and media_artifact_covers_complete_recording(database, artifact)
+            )
+            if covers_required_audio:
+                return artifact
+    return None
+
+
 def get_authoritative_normalized_media_artifact(
     database: Database,
     video_id: int,

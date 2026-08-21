@@ -882,6 +882,11 @@ new or changed exemplars execute. The first run after this cache is introduced
 primes it from checksum-verified historical association artifacts. The routing
 summary reports pair-cache hits and misses so incremental work is visible.
 
+`pte identity profile-status` uses authoritative registered media metadata for
+its read-only inventory; it does not stat or hash every local or SMB audio
+artifact. Commands that select, compare, or consume audio continue to verify
+the actual media bytes and fail closed when they are unavailable or corrupt.
+
 The same run now projects qualifying current proposals into a separate,
 append-only machine-evidence ledger. It requires a current accepted-sermon
 observation, an automatic-profile-ready target, a unique multi-exemplar match,

@@ -9,6 +9,7 @@ from pastor_transcript_extractor.disposition import ACCEPTED_SERMON
 from pastor_transcript_extractor.media_artifacts import (
     ArchivedMediaUnavailableError,
     MediaVerificationCache,
+    get_registered_normalized_media_artifact,
     get_verified_normalized_media_artifact,
 )
 from pastor_transcript_extractor.models import MediaArtifact, SpeakerObservation
@@ -38,8 +39,14 @@ def assess_automatic_speaker_observation(
     video_id: int,
     *,
     verification_cache: MediaVerificationCache | None = None,
+    verify_media: bool = True,
 ) -> AutomaticSpeakerObservationEligibility:
-    """Admit only an observation derived from the current accepted sermon window."""
+    """Admit only an observation derived from the current accepted sermon window.
+
+    ``verify_media=False`` is metadata-only and must be used only for inventory
+    or status reporting. Automatic selection and media consumption retain the
+    default byte-verifying behavior.
+    """
     extraction = database.get_latest_extraction_result_for_video(video_id)
     if extraction is None or not extraction.proposed_json_path:
         return AutomaticSpeakerObservationEligibility("extraction_unavailable")
@@ -95,22 +102,29 @@ def assess_automatic_speaker_observation(
     if not diagnostic_spans:
         return AutomaticSpeakerObservationEligibility("diagnostic_spans_unavailable")
 
-    try:
-        media = get_verified_normalized_media_artifact(
-            database,
-            video_id,
-            verification_cache=verification_cache,
-        )
-    except ArchivedMediaUnavailableError:
-        return AutomaticSpeakerObservationEligibility(
-            "archived_media_unavailable",
-            observation=observation,
-        )
-    except OSError:
-        media = None
+    if verify_media:
+        try:
+            media = get_verified_normalized_media_artifact(
+                database,
+                video_id,
+                verification_cache=verification_cache,
+            )
+        except ArchivedMediaUnavailableError:
+            return AutomaticSpeakerObservationEligibility(
+                "archived_media_unavailable",
+                observation=observation,
+            )
+        except OSError:
+            media = None
+    else:
+        media = get_registered_normalized_media_artifact(database, video_id)
     if media is None:
         return AutomaticSpeakerObservationEligibility(
-            "verified_normalized_media_unavailable"
+            (
+                "verified_normalized_media_unavailable"
+                if verify_media
+                else "registered_normalized_media_unavailable"
+            )
         )
     return AutomaticSpeakerObservationEligibility(
         "eligible",

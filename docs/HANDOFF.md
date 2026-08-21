@@ -183,7 +183,10 @@ pte identity profile-status \
 `profile-status` is read-only. It reports registry observations by effective
 qualification, reviewed pair relations and components, canonical and retired
 profiles, profile members, attached name claims, configured-identity links,
-and the reviewed single-speaker observations that remain ungrouped. It also
+and the reviewed single-speaker observations that remain ungrouped. Its media
+readiness inventory uses authoritative registered artifact metadata and does
+not stat or hash every local or SMB audio file. Actual pair selection and
+acoustic processing still verify media bytes and fail closed. It also
 loads the newest valid artifact under
 `evaluation/speaker-profile-discovery/shadow-runs` and reports unpromoted
 `shadow-candidate` components separately from candidates already promoted into
