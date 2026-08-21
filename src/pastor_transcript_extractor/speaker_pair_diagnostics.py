@@ -182,6 +182,12 @@ class AudioSpanCache:
         self.root = root
         self.ffmpeg = ffmpeg
         self._source_hashes: dict[tuple[str, int, int], str] = {}
+        self._observation_source_hashes: dict[str, str] = {}
+        self._span_manifest_index: dict[
+            tuple[str, str, str, float, float],
+            tuple[Path, dict[str, Any]],
+        ] | None = None
+        self._verified_span_files: set[tuple[str, int, int, str]] = set()
 
     def prepare(
         self,
@@ -268,6 +274,13 @@ class AudioSpanCache:
         manifest = {"schema_version": 1, "cache_key": key, "input": key_payload, "span": asdict(cached)}
         manifest["span"].pop("cache_hit")
         _write_json(manifest_path, manifest)
+        if self._span_manifest_index is not None:
+            manifest_key = self._span_manifest_key(key_payload)
+            if manifest_key is not None:
+                self._span_manifest_index[manifest_key] = (
+                    manifest_path,
+                    manifest,
+                )
         return cached
 
     def _find_cached_span(
@@ -278,36 +291,112 @@ class AudioSpanCache:
         span: SpanSpec,
     ) -> CachedSpan | None:
         """Use source-bound cached inputs without touching an offline archive."""
-        directory = self.root / "spans"
-        if not directory.is_dir():
+        self._ensure_span_manifest_index()
+        assert self._span_manifest_index is not None
+        manifest_key = (
+            observation.input_fingerprint,
+            self._observation_source_audio_sha256(observation),
+            str(source_audio_path),
+            span.start_seconds,
+            span.end_seconds,
+        )
+        indexed = self._span_manifest_index.get(manifest_key)
+        if indexed is None:
             return None
-        for manifest_path in directory.glob("*.json"):
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                item = manifest["input"]
-                span_payload = dict(manifest["span"])
-                wav_path = Path(span_payload["wav_path"])
-            except (OSError, KeyError, TypeError, json.JSONDecodeError):
-                continue
-            if (
-                item.get("extractor_version") != SPAN_EXTRACTOR_VERSION
-                or item.get("observation_fingerprint") != observation.input_fingerprint
-                or item.get("source_audio_sha256")
-                != self._observation_source_audio_sha256(observation)
-                or item.get("source_audio_path") != str(source_audio_path)
-                or item.get("start_seconds") != span.start_seconds
-                or item.get("end_seconds") != span.end_seconds
-                or not wav_path.is_file()
-                or _sha256_file(wav_path) != span_payload.get("wav_sha256")
-            ):
-                continue
-            if span_payload.get("non_silent_fraction") is None:
-                span_payload["non_silent_fraction"] = measure_non_silent_fraction(wav_path)
-            return CachedSpan(**{**span_payload, "cache_hit": True})
-        return None
+        _manifest_path, manifest = indexed
+        try:
+            span_payload = dict(manifest["span"])
+            wav_path = Path(span_payload["wav_path"])
+            expected_sha256 = str(span_payload["wav_sha256"])
+        except (KeyError, TypeError):
+            return None
+        if not self._verify_cached_span_file(wav_path, expected_sha256):
+            return None
+        if span_payload.get("non_silent_fraction") is None:
+            span_payload["non_silent_fraction"] = measure_non_silent_fraction(
+                wav_path
+            )
+        return CachedSpan(**{**span_payload, "cache_hit": True})
+
+    def _ensure_span_manifest_index(self) -> None:
+        if self._span_manifest_index is not None:
+            return
+        index: dict[
+            tuple[str, str, str, float, float],
+            tuple[Path, dict[str, Any]],
+        ] = {}
+        directory = self.root / "spans"
+        if directory.is_dir():
+            for manifest_path in sorted(directory.glob("*.json")):
+                try:
+                    manifest = json.loads(
+                        manifest_path.read_text(encoding="utf-8")
+                    )
+                    item = manifest["input"]
+                except (OSError, KeyError, TypeError, json.JSONDecodeError):
+                    continue
+                manifest_key = self._span_manifest_key(item)
+                if manifest_key is not None:
+                    index.setdefault(manifest_key, (manifest_path, manifest))
+        self._span_manifest_index = index
 
     @staticmethod
-    def _observation_source_audio_sha256(observation: SpeakerObservation) -> str:
+    def _span_manifest_key(
+        item: Mapping[str, Any],
+    ) -> tuple[str, str, str, float, float] | None:
+        if not isinstance(item, Mapping):
+            return None
+        if item.get("extractor_version") != SPAN_EXTRACTOR_VERSION:
+            return None
+        observation_fingerprint = item.get("observation_fingerprint")
+        source_audio_sha256 = item.get("source_audio_sha256")
+        source_audio_path = item.get("source_audio_path")
+        start_seconds = item.get("start_seconds")
+        end_seconds = item.get("end_seconds")
+        if (
+            not isinstance(observation_fingerprint, str)
+            or not isinstance(source_audio_sha256, str)
+            or not isinstance(source_audio_path, str)
+            or not isinstance(start_seconds, (int, float))
+            or not isinstance(end_seconds, (int, float))
+        ):
+            return None
+        return (
+            observation_fingerprint,
+            source_audio_sha256,
+            source_audio_path,
+            float(start_seconds),
+            float(end_seconds),
+        )
+
+    def _verify_cached_span_file(
+        self, path: Path, expected_sha256: str
+    ) -> bool:
+        try:
+            file_stat = path.stat()
+        except OSError:
+            return False
+        key = (
+            str(path),
+            file_stat.st_size,
+            file_stat.st_mtime_ns,
+            expected_sha256,
+        )
+        if key in self._verified_span_files:
+            return True
+        if _sha256_file(path) != expected_sha256:
+            return False
+        self._verified_span_files.add(key)
+        return True
+
+    def _observation_source_audio_sha256(
+        self, observation: SpeakerObservation
+    ) -> str:
+        cached = self._observation_source_hashes.get(
+            observation.input_fingerprint
+        )
+        if cached is not None:
+            return cached
         try:
             payload = json.loads(
                 Path(observation.artifact_path).read_text(encoding="utf-8")
@@ -316,9 +405,16 @@ class AudioSpanCache:
             if isinstance(provenance, dict) and isinstance(
                 provenance.get("content_sha256"), str
             ):
-                return provenance["content_sha256"]
+                value = provenance["content_sha256"]
+                self._observation_source_hashes[
+                    observation.input_fingerprint
+                ] = value
+                return value
         except (OSError, UnicodeError, json.JSONDecodeError):
             pass
+        self._observation_source_hashes[
+            observation.input_fingerprint
+        ] = observation.content_sha256
         return observation.content_sha256
 
     def _source_audio_sha256(self, path: Path) -> str:
