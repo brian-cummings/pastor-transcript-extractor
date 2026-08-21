@@ -18,6 +18,7 @@ from pastor_transcript_extractor.filesystem_capacity import (
     filesystem_capacity,
 )
 from pastor_transcript_extractor.media_artifacts import (
+    MediaVerificationCache,
     get_authoritative_normalized_media_artifact,
     get_archive_safe_normalized_media_artifact,
     verify_media_artifact,
@@ -299,10 +300,20 @@ def _archive_source_media_locked(
         root, preflight_callback
     )
     existing_entries = database.list_media_archive_entries()
+    videos = database.list_videos()
+    artifacts_by_video = {
+        video.id: database.list_media_artifacts_for_video(video.id)
+        for video in videos
+    }
     artifact_kind_by_id = {
         artifact.id: artifact.artifact_kind
-        for video in database.list_videos()
-        for artifact in database.list_media_artifacts_for_video(video.id)
+        for artifacts in artifacts_by_video.values()
+        for artifact in artifacts
+    }
+    artifact_video_id_by_id = {
+        artifact.id: artifact.video_id
+        for artifacts in artifacts_by_video.values()
+        for artifact in artifacts
     }
     relevant_entries = [
         entry
@@ -342,7 +353,36 @@ def _archive_source_media_locked(
             database, video_ids=video_ids, excluded_artifact_ids=archived_artifact_ids
         )
     else:
-        eligibility = tuple(normalized_archive_eligibility(database, app_paths, video_ids=video_ids))
+        archived_normalized_ids = {
+            entry.media_artifact_id
+            for entry in relevant_entries
+            if entry.status == "archived"
+        }
+        archived_authoritative_video_ids = {
+            video_id
+            for artifact_id in archived_normalized_ids
+            if (video_id := artifact_video_id_by_id.get(artifact_id)) is not None
+            and _preferred_normalized_artifact_id(
+                artifacts_by_video.get(video_id, ())
+            )
+            == artifact_id
+        }
+        normalized_video_ids = {
+            video.id
+            for video in videos
+            if (video_ids is None or video.id in video_ids)
+            and video.id not in archived_authoritative_video_ids
+        }
+        eligibility = tuple(
+            normalized_archive_eligibility(
+                database,
+                app_paths,
+                video_ids=normalized_video_ids,
+                verification_cache=MediaVerificationCache(
+                    app_paths.logs / "normalized-archive-verification"
+                ),
+            )
+        )
         candidates = [
             item.artifact for item in eligibility
             if item.eligible and item.artifact is not None and item.artifact.id not in archived_artifact_ids
@@ -466,7 +506,12 @@ def _archive_source_media_locked(
             entry=entry,
             stage=stage,
         )
-        outcome, detail = _archive_one(artifact, entry, notify_stage)
+        outcome, detail = _archive_one(
+            artifact,
+            entry,
+            notify_stage,
+            source_preverified=(artifact_kind == "normalized_audio"),
+        )
         database.add_media_archive_attempt(
             archive_entry_id=entry.id,
             outcome=outcome,
@@ -541,13 +586,17 @@ def normalized_archive_eligibility(
     *,
     video_ids: set[int] | None = None,
     policy_version: str = CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+    verification_cache: MediaVerificationCache | None = None,
 ) -> list[NormalizedArchiveEligibility]:
     results: list[NormalizedArchiveEligibility] = []
     for video in database.list_videos():
         if video_ids is not None and video.id not in video_ids:
             continue
         artifact, availability = get_authoritative_normalized_media_artifact(
-            database, video.id, require_isolated_sermon=False
+            database,
+            video.id,
+            require_isolated_sermon=False,
+            verification_cache=verification_cache,
         )
         if artifact is None:
             results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, None, False, "authoritative normalized audio is missing or invalid", "not_applicable"))
@@ -684,6 +733,20 @@ def _eligible_source_artifacts(
     return sorted(candidates, key=lambda artifact: artifact.id)
 
 
+def _preferred_normalized_artifact_id(
+    artifacts: tuple[MediaArtifact, ...] | list[MediaArtifact],
+) -> int | None:
+    """Return the persisted provenance-priority candidate without opening bytes."""
+    for provenance_kind in ("derived", "reconstructed_existing"):
+        for artifact in reversed(artifacts):
+            if (
+                artifact.artifact_kind == "normalized_audio"
+                and artifact.provenance_kind == provenance_kind
+            ):
+                return artifact.id
+    return None
+
+
 def _archive_path(app_paths: AppPaths, root: Path, artifact: MediaArtifact) -> Path:
     source = Path(artifact.artifact_path)
     try:
@@ -697,6 +760,8 @@ def _archive_one(
     artifact: MediaArtifact,
     entry: MediaArchiveEntry,
     stage_callback: Callable[[str], None] | None = None,
+    *,
+    source_preverified: bool = False,
 ) -> tuple[str, str | None]:
     source = Path(entry.source_path)
     destination = Path(entry.archive_path)
@@ -713,7 +778,7 @@ def _archive_one(
                 return "failed", f"archive path collision: {destination}"
         else:
             _stage(stage_callback, "verifying local source")
-            if not verify_media_artifact(artifact):
+            if not source_preverified and not verify_media_artifact(artifact):
                 return "failed", f"source media is missing or corrupt: {source}"
             destination.parent.mkdir(parents=True, exist_ok=True)
             partial = destination.with_name(f".{destination.name}.pte-partial-{artifact.id}")

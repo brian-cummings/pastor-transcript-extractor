@@ -200,6 +200,14 @@ the current artifact number, total, filename, and lifecycle stage while work is
 active. Each completed artifact prints a persistent outcome line, so a long SMB
 copy or checksum pass is distinguishable from an idle or stopped process.
 
+Normalized archival keeps stat-bound verification receipts under the application
+log root. An interrupted run reuses a receipt when the local path, size, inode,
+and modification time are unchanged. It also excludes already-archived current
+normalized artifacts before opening their SMB symlinks. A new or changed local
+artifact is still fully hashed before copying, and every copied archive file is
+independently size- and SHA-256-verified before publication. The copy checksum
+also replaces what would otherwise be a redundant second pre-copy local hash.
+
 ## Replay guarantees
 
 - Existing verified content is reused without redownload.

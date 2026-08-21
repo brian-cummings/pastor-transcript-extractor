@@ -998,11 +998,15 @@ class MediaArtifactTests(unittest.TestCase):
         )
         self.assertEqual(1, source_result.counts["archived"])
         normalized_preflight = []
-        result = archive_normalized_media(
-            self.database, self.paths, archive_root=archive_root,
-            video_ids={video.id},
-            preflight_callback=normalized_preflight.append,
-        )
+        with patch(
+            "pastor_transcript_extractor.media_archive.verify_media_artifact"
+        ) as duplicate_local_verification:
+            result = archive_normalized_media(
+                self.database, self.paths, archive_root=archive_root,
+                video_ids={video.id},
+                preflight_callback=normalized_preflight.append,
+            )
+        duplicate_local_verification.assert_not_called()
         self.assertEqual(1, result.counts["archived"])
         persisted = next(
             event for event in normalized_preflight
@@ -1028,11 +1032,77 @@ class MediaArtifactTests(unittest.TestCase):
             normalized.id,
             get_verified_normalized_media_artifact(self.database, video.id).id,
         )
+        with patch(
+            "pastor_transcript_extractor.media_archive."
+            "get_authoritative_normalized_media_artifact"
+        ) as select_archived:
+            replay = archive_normalized_media(
+                self.database,
+                self.paths,
+                video_ids={video.id},
+            )
+        self.assertEqual(0, replay.eligible)
+        select_archived.assert_not_called()
         archived_path.write_bytes(b"corrupt archive bytes")
         self.assertEqual(
             "corrupt",
             media_artifact_availability(self.database, normalized).status,
         )
+
+    def test_normalized_archive_resume_reuses_persisted_verification_receipt(self) -> None:
+        video, _ = self._video("normreceipt1")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        normalized_path = audio_root / "media" / "normalized.wav"
+        write_wav(normalized_path)
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        self.database.add_transcript_artifact(
+            video_id=video.id,
+            source_kind=TranscriptSourceKind.LOCAL_ASR,
+            audio_path=str(normalized_path),
+        )
+        archive_root = self.paths.root / "nas-receipt"
+        archive_root.mkdir()
+
+        first = archive_normalized_media(
+            self.database,
+            self.paths,
+            archive_root=archive_root,
+            dry_run=True,
+            video_ids={video.id},
+        )
+        self.assertEqual(1, first.counts["would_archive"])
+        receipts = list(
+            (
+                self.paths.logs
+                / "normalized-archive-verification"
+                / "media-verifications"
+            ).glob("*.json")
+        )
+        self.assertEqual(1, len(receipts))
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts._sha256_file",
+            side_effect=AssertionError("unchanged normalized audio was rehashed"),
+        ):
+            resumed = archive_normalized_media(
+                self.database,
+                self.paths,
+                dry_run=True,
+                video_ids={video.id},
+            )
+        self.assertEqual(1, resumed.counts["would_archive"])
 
     def test_source_archive_persists_unavailable_attempt_and_retries_later(self) -> None:
         video, _ = self._video("retryarchive")
