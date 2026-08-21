@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -59,6 +60,18 @@ class ShadowExemplar:
     span_specs: tuple[SpanSpec, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class StagedAssociationRouting:
+    profiles: tuple[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
+    ]
+    exhaustive: bool
+    route: str
+    priority_profile_ids: tuple[int, ...]
+    shortlisted_profile_ids: tuple[int, ...]
+    total_routable_profiles: int
+
+
 def select_routed_association_profiles(
     profiles: Sequence[
         tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
@@ -89,6 +102,109 @@ def select_routed_association_profiles(
             for exemplar in exemplars
         )
     )
+
+
+def select_staged_association_profiles(
+    profiles: Sequence[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+    ],
+    *,
+    candidate_source_id: int,
+    candidate_normalized_names: Sequence[str],
+    source_id_by_video_id: Mapping[int, int],
+    candidate_centroid: Sequence[float],
+    exemplar_centroids: Mapping[int, Sequence[float]],
+    maximum_global_profiles: int = 3,
+) -> StagedAssociationRouting:
+    """Prioritize source/name routes and bound expensive global comparisons."""
+    if maximum_global_profiles < 1:
+        raise ValueError("global association shortlist must contain a profile")
+    routable = select_routed_association_profiles(
+        profiles,
+        candidate_source_id=candidate_source_id,
+        candidate_normalized_names=candidate_normalized_names,
+        source_id_by_video_id=source_id_by_video_id,
+    )
+    names = {
+        name.strip() for name in candidate_normalized_names if name.strip()
+    }
+
+    def priority_reason(
+        item: tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]],
+    ) -> tuple[bool, bool]:
+        readiness, exemplars = item
+        source_match = any(
+            source_id_by_video_id.get(exemplar.observation.video_id)
+            == candidate_source_id
+            for exemplar in exemplars
+        )
+        name_match = bool(names & set(readiness.normalized_names))
+        return source_match, name_match
+
+    priority = [item for item in routable if any(priority_reason(item))]
+    priority_ids = {item[0].profile_id for item in priority}
+    global_candidates = [
+        item for item in routable if item[0].profile_id not in priority_ids
+    ]
+
+    def profile_similarity(
+        item: tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]],
+    ) -> float:
+        similarities = [
+            _cosine_centroids(
+                candidate_centroid,
+                exemplar_centroids[exemplar.observation.id],
+            )
+            for exemplar in item[1]
+            if exemplar.observation.id in exemplar_centroids
+        ]
+        return max(similarities) if similarities else -1.0
+
+    global_candidates.sort(
+        key=lambda item: (-profile_similarity(item), item[0].profile_id)
+    )
+    shortlisted = global_candidates[:maximum_global_profiles]
+    selected = sorted(
+        (*priority, *shortlisted),
+        key=lambda item: (
+            0 if priority_reason(item)[0] else 1,
+            0 if priority_reason(item)[1] else 1,
+            -profile_similarity(item),
+            item[0].profile_id,
+        ),
+    )
+    exhaustive = len(selected) == len(routable)
+    return StagedAssociationRouting(
+        profiles=tuple(selected),
+        exhaustive=exhaustive,
+        route=(
+            "exhaustive"
+            if exhaustive
+            else "source_name_priority_with_global_centroid_shortlist"
+        ),
+        priority_profile_ids=tuple(
+            sorted(item[0].profile_id for item in priority)
+        ),
+        shortlisted_profile_ids=tuple(
+            item[0].profile_id for item in shortlisted
+        ),
+        total_routable_profiles=len(routable),
+    )
+
+
+def _cosine_centroids(
+    left: Sequence[float], right: Sequence[float]
+) -> float:
+    if not left or len(left) != len(right):
+        return -1.0
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    if left_norm <= 0.0 or right_norm <= 0.0:
+        return -1.0
+    similarity = sum(a * b for a, b in zip(left, right, strict=True)) / (
+        left_norm * right_norm
+    )
+    return similarity if math.isfinite(similarity) else -1.0
 
 
 PairComparer = Callable[
@@ -413,6 +529,7 @@ def evaluate_shadow_association(
     minimum_same_exemplars: int = 2,
     reviewed_difference_pairs: Sequence[tuple[int, int]] = (),
     span_selection: Mapping[str, Any] | None = None,
+    routing: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if minimum_same_exemplars < 2:
         raise ValueError("a shadow match requires at least two same exemplars")
@@ -560,6 +677,19 @@ def evaluate_shadow_association(
             "automatic_use_allowed": policy_spec.automatic_use_allowed,
         },
         "minimum_same_exemplars": minimum_same_exemplars,
+        "routing": (
+            dict(routing)
+            if routing is not None
+            else {
+                "route": "legacy_exhaustive",
+                "exhaustive": True,
+                "priority_profile_ids": [],
+                "shortlisted_profile_ids": [
+                    readiness.profile_id for readiness, _ in profiles
+                ],
+                "total_routable_profiles": len(profiles),
+            }
+        ),
         "span_selection": dict(span_selection) if span_selection else None,
         "sermon_window_quality_flags": sermon_window_quality_flags,
         "outcome": outcome,
@@ -577,6 +707,7 @@ def evaluate_shadow_association(
             "model_fingerprint": model_fingerprint,
             "policy": report["policy"],
             "minimum_same_exemplars": minimum_same_exemplars,
+            "routing": report["routing"],
             "span_selection": report["span_selection"],
             "profile_inputs": [
                 {

@@ -855,6 +855,18 @@ it launches a corpus acoustic pass. Association scores and expected outcomes
 remain absent from the listening packet and never become durable identity
 evidence without the approved blinded review.
 
+Corpus association uses staged profile routing. Every same-source or explicit
+name route is retained first, then cached observation centroids select up to
+three additional global profiles for detailed multi-exemplar comparison. This
+keeps cross-source guest and pastor matches possible without comparing every
+candidate to every mature profile. A shortlisted proposal triggers a second
+exhaustive validation pass before it is persisted; abstentions avoid that cost
+and flow to nearest-unassociated review. The artifact records the route,
+complete profile count, priority targets, shortlist, and whether the comparison
+was exhaustive. As a fail-closed defense, any non-exhaustive proposal cannot
+create machine-assignment evidence or automatically confirm a discovery
+profile. Legacy exhaustive artifacts remain replayable.
+
 The same run now projects qualifying current proposals into a separate,
 append-only machine-evidence ledger. It requires a current accepted-sermon
 observation, an automatic-profile-ready target, a unique multi-exemplar match,

@@ -353,6 +353,12 @@ def _validate_confirmation(
         raise ValueError("unsupported or unsafe association artifact")
     if report.get("outcome") != "proposed_match":
         return None
+    routing = report.get("routing")
+    if routing is not None and (
+        not isinstance(routing, Mapping)
+        or routing.get("exhaustive") is not True
+    ):
+        return None
     span_selection = report.get("span_selection")
     if (
         not isinstance(span_selection, Mapping)

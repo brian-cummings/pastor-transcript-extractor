@@ -186,6 +186,27 @@ class SpeakerProfilePromotionTests(unittest.TestCase):
                 }
             ],
         }
+        shortlisted_association = {
+            **association,
+            "routing": {
+                "route": "source_name_priority_with_global_centroid_shortlist",
+                "exhaustive": False,
+            },
+        }
+        shortlisted_association["result_sha256"] = _sha256(
+            shortlisted_association
+        )
+        shortlisted_path = self.root / "association-shortlisted.json"
+        shortlisted_path.write_text(
+            json.dumps(shortlisted_association),
+            encoding="utf-8",
+        )
+        shortlisted_plan = plan_candidate_confirmations(
+            self.database,
+            [shortlisted_path],
+        )
+        self.assertEqual((), shortlisted_plan.candidates)
+
         association["result_sha256"] = _sha256(association)
         association_path = self.root / "association.json"
         association_path.write_text(

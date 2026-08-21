@@ -513,7 +513,17 @@ pte identity shadow-associate-speakers \
 Execute the shadow matcher with `--all-eligible`, or use
 `--youtube-video-id VIDEO_ID` for one sermon. It compares an eligible,
 unassigned observation against up to three eligible exemplars per review-ready
-profile. A two-member target remains machine-ineligible even if it produces a
+profile. Routing retains every same-source and explicit-name profile, then uses
+cached activity-qualified embedding centroids to add at most three nearest
+global profiles by default. Detailed pair diagnostics run only for those
+targets. A shortlist `proposed_match` is exhaustively validated against all
+routable profiles before writing the final artifact; abstentions retain their
+non-exhaustive provenance and feed nearest-unassociated human review. The
+association artifact records whether routing covered every routable profile.
+Machine assignment and automatic discovery confirmation fail closed on any
+non-exhaustive proposal as a defensive contract.
+Use `--maximum-global-profiles` to change the global shortlist size for an
+explicit experiment. A two-member target remains machine-ineligible even if it produces a
 proposal; source-local or attribution routing only decides whether to compare,
 and the proposal exists solely to nominate the blinded human pair workflow.
 Candidates and exemplars oversample up to fifteen distributed transcript-grounded

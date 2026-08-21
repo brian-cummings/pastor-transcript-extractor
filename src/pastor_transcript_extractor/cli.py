@@ -193,6 +193,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     SherpaOnnxEmbeddingBackend,
     SpanSpec,
     analyze_observation_pair,
+    build_embedding_centroid,
     evaluate_reviewed_pair_results,
     validate_reviewed_pair_fixture,
     write_pair_result,
@@ -294,6 +295,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     load_shadow_policy,
     select_profile_exemplars,
     select_routed_association_profiles,
+    select_staged_association_profiles,
     summarize_shadow_associations,
     write_shadow_association,
 )
@@ -4936,6 +4938,7 @@ def run_identity_workflow_service(
         minimum_profile_members=3,
         maximum_exemplars=3,
         minimum_same_exemplars=2,
+        maximum_global_profiles=3,
         model_path=Path(
             "evaluation/speaker-pairs/models/"
             "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
@@ -5504,6 +5507,7 @@ def coordinate_identity_command(
                     minimum_profile_members=3,
                     maximum_exemplars=3,
                     minimum_same_exemplars=2,
+                    maximum_global_profiles=3,
                     model_path=model_path,
                     model_sha256=model_sha256,
                     policy_path=policy_path,
@@ -5644,6 +5648,14 @@ def shadow_associate_speakers_command(
         2,
         min=2,
         help="Same-speaker comparisons required to propose one profile.",
+    ),
+    maximum_global_profiles: int = typer.Option(
+        3,
+        min=1,
+        help=(
+            "Maximum globally retrieved profiles per candidate in addition "
+            "to every same-source or explicit-name profile."
+        ),
     ),
     model_path: Path = typer.Option(
         Path(
@@ -5957,6 +5969,23 @@ def shadow_associate_speakers_command(
 
     assert backend is not None
     assert embedding_cache is not None
+    exemplar_centroids: dict[int, tuple[float, ...]] = {}
+    for _profile, exemplars in usable_profiles:
+        for exemplar in exemplars:
+            if exemplar.observation.id in exemplar_centroids:
+                continue
+            exemplar_centroids[exemplar.observation.id] = (
+                build_embedding_centroid(
+                    observation=exemplar.observation,
+                    audio_path=exemplar.audio_path,
+                    span_specs=span_specs_by_observation_id[
+                        exemplar.observation.id
+                    ],
+                    span_cache=span_cache,
+                    embedding_cache=embedding_cache,
+                    backend=backend,
+                )
+            )
     candidate_names_by_observation: dict[int, set[str]] = {}
     for claim in database.list_speaker_name_claims():
         if (
@@ -5990,6 +6019,9 @@ def shadow_associate_speakers_command(
         )
 
     outcome_counts: dict[str, int] = {}
+    routing_counts: dict[str, int] = {}
+    detailed_profile_comparisons = 0
+    exhaustive_profile_comparisons = 0
     sermon_window_quality_flag_count = 0
     written_reports: list[Path] = []
     for index, (video, eligibility, _span_specs) in enumerate(
@@ -6007,50 +6039,109 @@ def shadow_associate_speakers_command(
         routing_names = explicit_candidate_names | (
             {title_hint} if title_hint else set()
         )
-        candidate_profiles = select_routed_association_profiles(
+        legacy_routed_profiles = select_routed_association_profiles(
             usable_profiles,
             candidate_source_id=video.source_id,
             candidate_normalized_names=sorted(routing_names),
             source_id_by_video_id=source_id_by_video_id,
         )
-        report = evaluate_shadow_association(
-            candidate=observation,
-            candidate_audio_path=Path(media_artifact.artifact_path),
-            candidate_audio_sha256=media_artifact.content_sha256,
-            candidate_normalized_names=sorted(explicit_candidate_names),
-            profiles=candidate_profiles,
-            compare=compare,
-            policy_spec=policy_spec,
-            model_fingerprint=backend.spec.fingerprint,
-            minimum_same_exemplars=minimum_same_exemplars,
-            reviewed_difference_pairs=(
-                database.list_effective_observation_difference_pairs()
-            ),
-            span_selection={
-                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
-                "required_label": "sermon",
-                "span_count": 5,
-                "duration_seconds": 12.0,
-                "minimum_words": 8,
-                "minimum_unique_words": 4,
-                "candidate_multiplier": 3,
-                "activity_qualified": True,
-                "distributed_first": True,
-                "within_observation_consistency_fallback": True,
-                "candidate_selection": (
-                    span_selection_by_observation_id.get(observation.id)
-                ),
-                "exemplar_selections": {
-                    str(exemplar.observation.id): (
-                        span_selection_by_observation_id.get(
-                            exemplar.observation.id
-                        )
-                    )
-                    for _profile, exemplars in candidate_profiles
-                    for exemplar in exemplars
-                },
-            },
+        candidate_centroid = build_embedding_centroid(
+            observation=observation,
+            audio_path=Path(media_artifact.artifact_path),
+            span_specs=span_specs_by_observation_id[observation.id],
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
         )
+        routing = select_staged_association_profiles(
+            usable_profiles,
+            candidate_source_id=video.source_id,
+            candidate_normalized_names=sorted(routing_names),
+            source_id_by_video_id=source_id_by_video_id,
+            candidate_centroid=candidate_centroid,
+            exemplar_centroids=exemplar_centroids,
+            maximum_global_profiles=maximum_global_profiles,
+        )
+        candidate_profiles = routing.profiles
+        exhaustive_profile_comparisons += len(legacy_routed_profiles)
+        initial_routing_payload = {
+            "route": routing.route,
+            "exhaustive": routing.exhaustive,
+            "priority_profile_ids": list(routing.priority_profile_ids),
+            "shortlisted_profile_ids": list(routing.shortlisted_profile_ids),
+            "total_routable_profiles": routing.total_routable_profiles,
+            "maximum_global_profiles": maximum_global_profiles,
+            "retrieval_evidence_only": True,
+        }
+
+        def evaluate_profiles(
+            selected_profiles,
+            routing_payload,
+        ):
+            return evaluate_shadow_association(
+                candidate=observation,
+                candidate_audio_path=Path(media_artifact.artifact_path),
+                candidate_audio_sha256=media_artifact.content_sha256,
+                candidate_normalized_names=sorted(explicit_candidate_names),
+                profiles=selected_profiles,
+                compare=compare,
+                policy_spec=policy_spec,
+                model_fingerprint=backend.spec.fingerprint,
+                minimum_same_exemplars=minimum_same_exemplars,
+                reviewed_difference_pairs=(
+                    database.list_effective_observation_difference_pairs()
+                ),
+                routing=routing_payload,
+                span_selection={
+                    "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+                    "required_label": "sermon",
+                    "span_count": 5,
+                    "duration_seconds": 12.0,
+                    "minimum_words": 8,
+                    "minimum_unique_words": 4,
+                    "candidate_multiplier": 3,
+                    "activity_qualified": True,
+                    "distributed_first": True,
+                    "within_observation_consistency_fallback": True,
+                    "candidate_selection": (
+                        span_selection_by_observation_id.get(observation.id)
+                    ),
+                    "exemplar_selections": {
+                        str(exemplar.observation.id): (
+                            span_selection_by_observation_id.get(
+                                exemplar.observation.id
+                            )
+                        )
+                        for _profile, exemplars in selected_profiles
+                        for exemplar in exemplars
+                    },
+                },
+            )
+
+        report = evaluate_profiles(candidate_profiles, initial_routing_payload)
+        detailed_profile_comparisons += len(candidate_profiles)
+        if report["outcome"] == "proposed_match" and not routing.exhaustive:
+            report = evaluate_profiles(
+                legacy_routed_profiles,
+                {
+                    "route": "exhaustive_validation_after_shortlist_proposal",
+                    "exhaustive": True,
+                    "priority_profile_ids": list(
+                        routing.priority_profile_ids
+                    ),
+                    "shortlisted_profile_ids": list(
+                        routing.shortlisted_profile_ids
+                    ),
+                    "total_routable_profiles": len(legacy_routed_profiles),
+                    "maximum_global_profiles": maximum_global_profiles,
+                    "retrieval_evidence_only": False,
+                    "initial_shortlist_result": "proposed_match",
+                },
+            )
+            detailed_profile_comparisons += len(legacy_routed_profiles)
+        final_routing = report["routing"]
+        routing_route = str(final_routing["route"])
+        routing_counts[routing_route] = routing_counts.get(routing_route, 0) + 1
         destination = write_shadow_association(output_root, report)
         written_reports.append(destination)
         outcome = str(report["outcome"])
@@ -6080,6 +6171,15 @@ def shadow_associate_speakers_command(
             f"{outcome}={count}"
             for outcome, count in sorted(outcome_counts.items())
         )
+    )
+    console.print(
+        "Association routing: "
+        + " ".join(
+            f"{route}={count}"
+            for route, count in sorted(routing_counts.items())
+        )
+        + f" detailed_profiles={detailed_profile_comparisons} "
+        f"exhaustive_profiles={exhaustive_profile_comparisons}"
     )
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."

@@ -29,6 +29,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     evaluate_shadow_association,
     load_shadow_policy,
     select_routed_association_profiles,
+    select_staged_association_profiles,
     summarize_shadow_associations,
     write_shadow_association,
 )
@@ -366,6 +367,67 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
 
         self.assertEqual((), unrelated)
         self.assertEqual((profiles[0],), local)
+
+    def test_staged_routing_keeps_local_and_shortlists_nearest_global(self) -> None:
+        observations = [self._observation(str(index)) for index in range(5)]
+
+        def profile_input(index: int):
+            readiness = ProfileAssociationReadiness(
+                profile_id=index + 1,
+                member_observation_ids=(observations[index].id,),
+                member_fingerprints=(observations[index].input_fingerprint,),
+                recording_count=3,
+                source_count=1,
+                normalized_names=(),
+                shadow_ready=True,
+                automatic_profile_ready=True,
+                shadow_blockers=(),
+                automatic_blockers=(),
+                review_ready=True,
+            )
+            return (
+                readiness,
+                (
+                    ShadowExemplar(
+                        readiness.profile_id,
+                        observations[index],
+                        Path(f"{index}.wav"),
+                        f"audio-{index}",
+                    ),
+                ),
+            )
+
+        profiles = tuple(profile_input(index) for index in range(5))
+        routing = select_staged_association_profiles(
+            profiles,
+            candidate_source_id=99,
+            candidate_normalized_names=(),
+            source_id_by_video_id={
+                observations[0].video_id: 99,
+                observations[1].video_id: 1,
+                observations[2].video_id: 2,
+                observations[3].video_id: 3,
+                observations[4].video_id: 4,
+            },
+            candidate_centroid=(1.0, 0.0),
+            exemplar_centroids={
+                observations[0].id: (0.0, 1.0),
+                observations[1].id: (0.9, 0.1),
+                observations[2].id: (0.8, 0.2),
+                observations[3].id: (0.7, 0.3),
+                observations[4].id: (-1.0, 0.0),
+            },
+            maximum_global_profiles=2,
+        )
+
+        self.assertEqual((1,), routing.priority_profile_ids)
+        self.assertEqual((2, 3), routing.shortlisted_profile_ids)
+        self.assertEqual(
+            {1, 2, 3},
+            {readiness.profile_id for readiness, _ in routing.profiles},
+        )
+        self.assertFalse(routing.exhaustive)
+        self.assertEqual(5, routing.total_routable_profiles)
 
     def test_multi_exemplar_unique_match_is_shadow_proposal_only(self) -> None:
         candidate = self._observation("candidate")

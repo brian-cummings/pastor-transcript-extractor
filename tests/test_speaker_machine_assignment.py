@@ -247,6 +247,37 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
         self.assertEqual(1, replay.evidence_reused)
         self.assertEqual(1, len(self.database.list_speaker_machine_evidence()))
 
+    def test_nonexhaustive_shortlist_proposal_is_not_machine_evidence(self) -> None:
+        candidate = self._observation("shortlisted")
+        path = self._report(candidate, "shortlisted")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload.pop("result_sha256")
+        payload["routing"] = {
+            "route": "source_name_priority_with_global_centroid_shortlist",
+            "exhaustive": False,
+        }
+        payload["result_sha256"] = _sha256(payload)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with patch(
+            "pastor_transcript_extractor.speaker_machine_assignment."
+            "assess_automatic_speaker_observation",
+            side_effect=self._eligibility,
+        ):
+            plan = plan_machine_assignments(
+                self.database,
+                [path],
+                readiness=self.readiness,
+                policy=self.shadow_policy,
+            )
+
+        self.assertEqual((), plan.candidates)
+        self.assertEqual(
+            1,
+            plan.skipped_counts["stale_or_nonproposal_artifact"],
+        )
+        self.assertEqual([], self.database.list_speaker_machine_evidence())
+
     def test_canary_confirmation_requires_reviewed_membership(self) -> None:
         candidate = self._observation("candidate")
         plan = self._plan((candidate,), self.canary_policy)

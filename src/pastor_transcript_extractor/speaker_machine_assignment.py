@@ -777,6 +777,12 @@ def _load_verified_association(path: Path) -> dict[str, Any] | None:
         raise ValueError("unsafe association artifact")
     if payload.get("outcome") != "proposed_match":
         return None
+    routing = payload.get("routing")
+    if routing is not None and (
+        not isinstance(routing, Mapping)
+        or routing.get("exhaustive") is not True
+    ):
+        return None
     return payload
 
 

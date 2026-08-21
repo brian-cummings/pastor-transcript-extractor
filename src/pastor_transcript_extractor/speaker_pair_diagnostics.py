@@ -463,6 +463,42 @@ class EmbeddingCache:
         return embedding, False
 
 
+def build_embedding_centroid(
+    *,
+    observation: SpeakerObservation,
+    audio_path: Path,
+    span_specs: Sequence[SpanSpec],
+    span_cache: AudioSpanCache,
+    embedding_cache: EmbeddingCache,
+    backend: EmbeddingBackend,
+) -> tuple[float, ...]:
+    """Build a normalized retrieval centroid from already-qualified spans."""
+    if not span_specs:
+        raise ValueError("embedding centroid requires qualified spans")
+    vectors = [
+        embedding_cache.get_or_compute(
+            span_cache.prepare(
+                observation=observation,
+                source_audio_path=audio_path,
+                span=span,
+            ),
+            backend,
+        )[0]
+        for span in span_specs
+    ]
+    dimensions = {len(vector) for vector in vectors}
+    if len(dimensions) != 1 or not dimensions or 0 in dimensions:
+        raise ValueError("embedding centroid vectors have incompatible dimensions")
+    centroid = tuple(
+        sum(vector[index] for vector in vectors) / len(vectors)
+        for index in range(len(vectors[0]))
+    )
+    norm = math.sqrt(sum(value * value for value in centroid))
+    if norm <= 0.0 or not math.isfinite(norm):
+        raise ValueError("embedding centroid has invalid norm")
+    return tuple(value / norm for value in centroid)
+
+
 def analyze_observation_pair(
     *,
     observation_a: SpeakerObservation | None,
