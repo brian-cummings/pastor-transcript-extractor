@@ -5158,21 +5158,62 @@ def _archive_normalized_after_identity(
         video_ids=video_ids,
     )
 
-    def report_preflight(event: ArchivePreflightEvent) -> None:
-        console.print(
-            f"Identity archive preflight {event.check}: {event.status} — {event.detail}",
-            markup=False,
+    with Progress(
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task(
+            "Evaluating normalized-audio eligibility", total=None
         )
 
-    archive = archive_normalized_media(
-        database,
-        paths,
-        video_ids=video_ids,
-        all_eligible=all_eligible,
-        wait_for_lock=True,
-        progress_callback=None,
-        preflight_callback=report_preflight,
-    )
+        def report_preflight(event: ArchivePreflightEvent) -> None:
+            progress.console.print(
+                f"Identity archive preflight {event.check}: "
+                f"{event.status} — {event.detail}",
+                markup=False,
+            )
+
+        def report_progress(event: ArchiveProgressEvent) -> None:
+            if event.stage == "complete":
+                detail = f" ({event.detail})" if event.detail else ""
+                progress.console.print(
+                    f"Identity archive [{event.index}/{event.total}] normalized "
+                    f"artifact #{event.media_artifact_id}: {event.outcome} -> "
+                    f"{event.archive_path}{detail}",
+                    markup=False,
+                )
+                progress.update(
+                    task_id,
+                    total=event.total,
+                    completed=event.index,
+                    description=(
+                        f"Identity normalized archive "
+                        f"({event.index}/{event.total})"
+                    ),
+                )
+                return
+            progress.update(
+                task_id,
+                total=event.total,
+                completed=event.index - 1,
+                description=(
+                    f"Identity archive [{event.index}/{event.total}] "
+                    f"{event.source_path.name}: {event.stage}"
+                ),
+            )
+
+        archive = archive_normalized_media(
+            database,
+            paths,
+            video_ids=video_ids,
+            all_eligible=all_eligible,
+            wait_for_lock=True,
+            progress_callback=report_progress,
+            preflight_callback=report_preflight,
+        )
     counts = archive.counts
     blocked = sum(not item.eligible for item in archive.eligibility)
     deferred = counts["destination_unavailable"]
@@ -7454,15 +7495,62 @@ def media_archive_normalized(
             raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
         video_ids = {video.id}
     try:
-        result = archive_normalized_media(
-            database,
-            build_paths(base_dir),
-            archive_root=archive_root,
-            dry_run=dry_run,
-            limit=limit,
-            video_ids=video_ids,
-            all_eligible=all_eligible,
-        )
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task(
+                "Evaluating normalized-audio eligibility", total=None
+            )
+
+            def report_preflight(event: ArchivePreflightEvent) -> None:
+                progress.console.print(
+                    f"Preflight {event.check}: {event.status} — {event.detail}",
+                    markup=False,
+                )
+
+            def report_progress(event: ArchiveProgressEvent) -> None:
+                if event.stage == "complete":
+                    detail = f" ({event.detail})" if event.detail else ""
+                    progress.console.print(
+                        f"[{event.index}/{event.total}] normalized artifact "
+                        f"#{event.media_artifact_id}: {event.outcome} -> "
+                        f"{event.archive_path}{detail}",
+                        markup=False,
+                    )
+                    progress.update(
+                        task_id,
+                        total=event.total,
+                        completed=event.index,
+                        description=(
+                            f"Normalized archive ({event.index}/{event.total})"
+                        ),
+                    )
+                    return
+                progress.update(
+                    task_id,
+                    total=event.total,
+                    completed=event.index - 1,
+                    description=(
+                        f"[{event.index}/{event.total}] "
+                        f"{event.source_path.name}: {event.stage}"
+                    ),
+                )
+
+            result = archive_normalized_media(
+                database,
+                build_paths(base_dir),
+                archive_root=archive_root,
+                dry_run=dry_run,
+                limit=limit,
+                video_ids=video_ids,
+                all_eligible=all_eligible,
+                progress_callback=report_progress,
+                preflight_callback=report_preflight,
+            )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     for item in result.eligibility:

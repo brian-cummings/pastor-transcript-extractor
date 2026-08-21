@@ -5,10 +5,12 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from typer.testing import CliRunner
 
 from pastor_transcript_extractor.cli import (
     _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
+    app,
     run_identity_workflow_service,
 )
 from pastor_transcript_extractor.config import AppPaths
@@ -204,8 +206,74 @@ class IdentityRunTests(unittest.TestCase):
             video_ids={7, 8},
         )
         self.assertTrue(archive.call_args.kwargs["wait_for_lock"])
+        self.assertTrue(callable(archive.call_args.kwargs["progress_callback"]))
+        self.assertTrue(callable(archive.call_args.kwargs["preflight_callback"]))
         self.assertEqual({7, 8}, archive.call_args.kwargs["video_ids"])
         self.assertIn("deferred=2", output.call_args_list[-1].args[0])
+
+    def test_standalone_normalized_archive_prints_item_progress(self) -> None:
+        paths = AppPaths(
+            root=Path("/tmp/normalized-progress-test"),
+            database=Path("/tmp/normalized-progress-test/app.db"),
+            artifacts=Path("/tmp/normalized-progress-test/artifacts"),
+            logs=Path("/tmp/normalized-progress-test/logs"),
+            exports=Path("/tmp/normalized-progress-test/exports"),
+            pastors=Path("/tmp/normalized-progress-test/pastors"),
+        )
+        archive_result = SimpleNamespace(
+            destination=SimpleNamespace(archive_root="/archive"),
+            eligible=1,
+            eligibility=(),
+            counts={
+                "archived": 1,
+                "already_archived": 0,
+                "destination_unavailable": 0,
+                "failed": 0,
+                "would_archive": 0,
+            },
+        )
+
+        def fake_archive(*_args, **kwargs):
+            kwargs["preflight_callback"](
+                SimpleNamespace(
+                    check="eligibility", status="passed", detail="1 artifact"
+                )
+            )
+            kwargs["progress_callback"](
+                SimpleNamespace(
+                    index=1,
+                    total=1,
+                    media_artifact_id=99,
+                    source_path=Path("normalized.wav"),
+                    archive_path=Path("/archive/normalized.wav"),
+                    stage="complete",
+                    outcome="archived",
+                    detail=None,
+                )
+            )
+            return archive_result
+
+        with (
+            patch("pastor_transcript_extractor.cli.get_database", return_value=object()),
+            patch("pastor_transcript_extractor.cli.build_paths", return_value=paths),
+            patch(
+                "pastor_transcript_extractor.cli.archive_normalized_media",
+                side_effect=fake_archive,
+            ),
+        ):
+            result = CliRunner().invoke(
+                app,
+                [
+                    "media",
+                    "archive-normalized",
+                    "--all-eligible",
+                    "--base-dir",
+                    str(paths.root),
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertIn("[1/1] normalized artifact #99: archived", result.output)
 
     def test_plan_only_rejects_registry_mutation_flags(self) -> None:
         with self.assertRaisesRegex(ValueError, "plan-only"):

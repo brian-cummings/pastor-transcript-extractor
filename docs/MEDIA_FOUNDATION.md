@@ -195,6 +195,11 @@ another source or normalized archive process. An offline destination is reported
 as deferred and leaves local media untouched. `--plan-only` never writes a clip
 manifest, archive entry, archive attempt, file, or symlink.
 
+Both automatic identity finalization and `pte media archive-normalized` display
+the current artifact number, total, filename, and lifecycle stage while work is
+active. Each completed artifact prints a persistent outcome line, so a long SMB
+copy or checksum pass is distinguishable from an idle or stopped process.
+
 ## Replay guarantees
 
 - Existing verified content is reused without redownload.
