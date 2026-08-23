@@ -7663,22 +7663,73 @@ def media_ensure_audio(
             raise typer.BadParameter(f"Unknown video id: {video_id}")
     else:
         videos = []
-        for video in database.list_videos():
+        inventory = database.list_videos()
+        verification_cache_root = Path(
+            "evaluation/speaker-pairs/cache"
+        ).resolve()
+        verification_cache = MediaVerificationCache(
+            verification_cache_root,
+            fallback_roots=(
+                verification_cache_root / "media-verification",
+            ),
+        )
+        existing = 0
+        console.print(
+            "Audio ensure inventory: scanning "
+            f"{len(inventory)} video(s) for isolated sermons missing "
+            "verified normalized audio."
+        )
+        for inventory_index, video in enumerate(inventory, start=1):
+            if (
+                inventory_index == 1
+                or inventory_index == len(inventory)
+                or inventory_index % 25 == 0
+            ):
+                console.print(
+                    "Audio ensure inventory: "
+                    f"video={inventory_index}/{len(inventory)} "
+                    f"queued={len(videos)} existing={existing}"
+                )
             if not video_has_isolated_sermon(database, video.id)[0]:
                 continue
-            if get_verified_normalized_media_artifact(database, video.id) is not None:
+            try:
+                verified = get_verified_normalized_media_artifact(
+                    database,
+                    video.id,
+                    verification_cache=verification_cache,
+                )
+            except ArchivedMediaUnavailableError:
+                existing += 1
+                continue
+            if verified is not None:
+                existing += 1
                 continue
             videos.append(video)
         if limit is not None:
             videos = videos[:limit]
+        console.print(
+            "Audio ensure inventory complete: "
+            f"queued={len(videos)} existing={existing}."
+        )
     counts = {"verified": 0, "unavailable": 0, "failed": 0, "skipped": 0}
     downloaded = 0
     for index, video in enumerate(videos, start=1):
+        console.print(
+            f"Audio ensure [{index}/{len(videos)}] "
+            f"{video.youtube_video_id}: starting"
+        )
         result = ensure_audio_for_video(
             database,
             paths,
             tools,
             video_id=video.id,
+            event_callback=lambda message, index=index, video=video: (
+                console.print(
+                    f"Audio ensure [{index}/{len(videos)}] "
+                    f"{video.youtube_video_id}: {message}",
+                    markup=False,
+                )
+            ),
         )
         counts[result.outcome] += 1
         downloaded += int(result.downloaded)

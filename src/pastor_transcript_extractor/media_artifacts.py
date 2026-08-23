@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 import wave
 
 from pastor_transcript_extractor.artifact_namespace import (
@@ -545,6 +545,7 @@ def ensure_audio_for_video(
     video_id: int,
     tool_versions: dict[str, str] | None = None,
     allow_download: bool = True,
+    event_callback: Callable[[str], None] | None = None,
 ) -> EnsureAudioResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -567,6 +568,8 @@ def ensure_audio_for_video(
         else None
     )
 
+    emit = event_callback or (lambda _message: None)
+    emit("checking existing media registration and integrity")
     backfill_existing_media_artifacts(database, app_paths, video_id=video.id)
     existing = get_verified_normalized_media_artifact(database, video.id)
     if existing is not None:
@@ -613,6 +616,7 @@ def ensure_audio_for_video(
                 raise RuntimeError(
                     "offline media processing requires a verified staged source artifact"
                 )
+            emit("normalized audio missing; preparing source audio")
             staged = stage_source_audio_for_video(
                 database,
                 app_paths,
@@ -620,6 +624,7 @@ def ensure_audio_for_video(
                 video_id=video.id,
                 tool_versions=versions,
                 record_attempt=False,
+                event_callback=event_callback,
             )
             if staged.artifact is None:
                 reason_code = (
@@ -649,6 +654,7 @@ def ensure_audio_for_video(
             downloaded_source = staged.downloaded
         with tempfile.TemporaryDirectory(prefix=".media-work-", dir=video_paths.audio) as work:
             work_root = Path(work)
+            emit("normalizing source audio")
             normalized_work = normalize_audio(
                 Path(source_artifact.artifact_path),
                 work_root / "normalized.wav",
@@ -657,6 +663,7 @@ def ensure_audio_for_video(
             normalized_path = _materialize_content_addressed(
                 normalized_work, media_root, prefix="normalized"
             )
+            emit("registering and verifying normalized audio")
             normalized_artifact = register_media_file(
                 database,
                 app_paths,
@@ -734,11 +741,14 @@ def stage_source_audio_for_video(
     video_id: int,
     tool_versions: dict[str, str] | None = None,
     record_attempt: bool = True,
+    event_callback: Callable[[str], None] | None = None,
 ) -> StageSourceAudioResult:
     """Download and register source audio without normalizing or changing video state."""
     video = database.get_video_by_id(video_id)
     if video is None:
         raise ValueError(f"Unknown video id: {video_id}")
+    emit = event_callback or (lambda _message: None)
+    emit("checking for verified source audio")
     existing = get_verified_source_media_artifact(database, video.id)
     if existing is not None:
         return StageSourceAudioResult(
@@ -754,12 +764,14 @@ def stage_source_audio_for_video(
     media_root.mkdir(parents=True, exist_ok=True)
     try:
         with tempfile.TemporaryDirectory(prefix=".source-stage-", dir=video_paths.audio) as work:
+            emit("downloading source audio")
             downloaded = download_source_audio(
                 video.url,
                 tools.yt_dlp_bin,
                 Path(work) / "source",
                 tools.yt_dlp_js_runtimes,
             )
+            emit("source download complete; registering source audio")
             source_path = _materialize_content_addressed(downloaded, media_root, prefix="source")
             artifact = register_media_file(
                 database,

@@ -456,6 +456,7 @@ class MediaArtifactTests(unittest.TestCase):
         )
         proposed_before = proposed_path.read_bytes()
         transcript_count = self.database.counts_by_table()["transcript_artifacts"]
+        events: list[str] = []
 
         def fake_download(_url, _bin, output_path, _runtimes):
             write_wav(output_path, sample_rate=44100, channels=2, value=1200)
@@ -478,6 +479,7 @@ class MediaArtifactTests(unittest.TestCase):
                 self.tools,
                 video_id=video.id,
                 tool_versions={"yt-dlp": "test-yt", "ffmpeg": "test-ffmpeg"},
+                event_callback=events.append,
             )
             counts_after_first = self.database.counts_by_table()
             second = ensure_audio_for_video(
@@ -490,6 +492,18 @@ class MediaArtifactTests(unittest.TestCase):
 
         self.assertEqual("verified", first.outcome)
         self.assertTrue(first.downloaded)
+        self.assertEqual(
+            [
+                "checking existing media registration and integrity",
+                "normalized audio missing; preparing source audio",
+                "checking for verified source audio",
+                "downloading source audio",
+                "source download complete; registering source audio",
+                "normalizing source audio",
+                "registering and verifying normalized audio",
+            ],
+            events,
+        )
         self.assertEqual("verified", second.outcome)
         self.assertFalse(second.downloaded)
         download.assert_called_once()
