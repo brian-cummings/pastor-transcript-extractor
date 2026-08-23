@@ -164,11 +164,12 @@ from pastor_transcript_extractor.media_archive import (
     ArchiveProgressEvent,
     ArchiveRunResult,
     AudioSweepProgressEvent,
+    CanonicalAudioPreparationProgressEvent,
     archive_normalized_media,
     archive_source_media,
     archive_status,
     media_archive_lock_held,
-    persist_cached_canonical_clip_preparations,
+    prepare_canonical_audio,
     sweep_local_audio,
     write_canonical_clip_preparation_manifest,
 )
@@ -5144,18 +5145,52 @@ def _archive_normalized_after_identity(
     video_ids: set[int] | None,
     all_eligible: bool,
 ) -> None:
-    destination = database.get_active_media_archive_destination()
-    if destination is None:
-        console.print(
-            "Normalized archive skipped: no archive destination is configured."
-        )
-        return
-    prepared = persist_cached_canonical_clip_preparations(
+    def report_preparation(event: CanonicalAudioPreparationProgressEvent) -> None:
+        if event.stage == "complete":
+            console.print(
+                f"Identity canonical audio [{event.index}/{event.total}] "
+                f"{event.youtube_video_id}: {event.outcome} — {event.detail}",
+                markup=False,
+            )
+        elif event.stage == "preparing_clips":
+            console.print(
+                f"Identity canonical audio [{event.index}/{event.total}] "
+                f"{event.youtube_video_id}: preparing clips",
+                markup=False,
+            )
+
+    preparation = prepare_canonical_audio(
         database,
         paths,
         cache_root=Path("evaluation/speaker-pairs/cache"),
         video_ids=video_ids,
+        all_eligible=all_eligible,
+        wait_for_lock=True,
+        progress_callback=report_preparation,
     )
+    preparation_counts = preparation.counts
+    if not all_eligible and len(video_ids or ()) == 1:
+        deferred = next(
+            (item for item in preparation.items if item.outcome == "deferred"),
+            None,
+        )
+        if deferred is not None:
+            retry = (
+                "pte media prepare-canonical-audio "
+                f"--youtube-video-id {deferred.youtube_video_id} "
+                f"--base-dir {shlex.quote(str(paths.root))}"
+            )
+            raise ValueError(
+                f"archived_media_unavailable for {deferred.youtube_video_id}. "
+                f"Retry: {retry}"
+            )
+    destination = database.get_active_media_archive_destination()
+    if destination is None:
+        console.print(
+            "Normalized archive skipped: no archive destination is configured; "
+            "canonical audio preparation completed."
+        )
+        return
 
     with Progress(
         TextColumn("{task.description}"),
@@ -5218,7 +5253,12 @@ def _archive_normalized_after_identity(
     deferred = counts["destination_unavailable"]
     console.print(
         "Identity normalized archive: "
-        f"canonical_preparations={prepared}; eligible={archive.eligible}; "
+        f"canonical_prepared={preparation_counts['prepared']}; "
+        f"canonical_current={preparation_counts['already_prepared']}; "
+        f"canonical_deferred={preparation_counts['deferred']}; "
+        f"canonical_blocked={preparation_counts['blocked']}; "
+        f"canonical_failed={preparation_counts['failed']}; "
+        f"eligible={archive.eligible}; "
         f"archived={counts['archived']}; "
         f"already_archived={counts['already_archived']}; deferred={deferred}; "
         f"failed={counts['failed']}; blocked={blocked}."
@@ -7467,6 +7507,104 @@ def media_archive_sources(
         f"archived={counts['archived']}; already_archived={counts['already_archived']}; "
         f"unavailable={counts['destination_unavailable']}; failed={counts['failed']}; "
         f"would_archive={counts['would_archive']}."
+    )
+
+
+@media_app.command(
+    "prepare-canonical-audio",
+    help="Prepare current canonical speaker clips without running comparisons.",
+)
+def media_prepare_canonical_audio(
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    limit: int | None = typer.Option(None, min=1),
+    youtube_video_id: str | None = typer.Option(None, "--youtube-video-id"),
+    all_eligible: bool = typer.Option(False, "--all-eligible"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    if (youtube_video_id is None) == (not all_eligible):
+        raise typer.BadParameter(
+            "Pass exactly one of --youtube-video-id or --all-eligible."
+        )
+    database = get_database(base_dir)
+    paths = build_paths(base_dir)
+    video_ids = None
+    if youtube_video_id is not None:
+        video = database.get_video_by_youtube_id(youtube_video_id)
+        if video is None:
+            raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
+        video_ids = {video.id}
+
+    with Progress(
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("Scanning canonical audio", total=None)
+
+        def report(event: CanonicalAudioPreparationProgressEvent) -> None:
+            if event.stage == "complete":
+                progress.console.print(
+                    f"[{event.index}/{event.total}] {event.youtube_video_id}: "
+                    f"{event.outcome} — {event.detail}",
+                    markup=False,
+                )
+                progress.update(
+                    task_id,
+                    total=event.total,
+                    completed=event.index,
+                    description=(
+                        f"Canonical audio ({event.index}/{event.total})"
+                    ),
+                )
+                return
+            progress.update(
+                task_id,
+                total=event.total,
+                completed=event.index - 1,
+                description=(
+                    f"[{event.index}/{event.total}] "
+                    f"{event.youtube_video_id}: {event.stage}"
+                ),
+            )
+
+        try:
+            result = prepare_canonical_audio(
+                database,
+                paths,
+                cache_root=Path("evaluation/speaker-pairs/cache"),
+                video_ids=video_ids,
+                all_eligible=all_eligible,
+                dry_run=dry_run,
+                limit=limit,
+                wait_for_lock=True,
+                progress_callback=report,
+            )
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+
+    deferred = next(
+        (item for item in result.items if item.outcome == "deferred"),
+        None,
+    )
+    if youtube_video_id is not None and deferred is not None:
+        retry = (
+            "pte media prepare-canonical-audio "
+            f"--youtube-video-id {youtube_video_id} "
+            f"--base-dir {shlex.quote(str(paths.root))}"
+        )
+        raise typer.BadParameter(
+            f"archived_media_unavailable for {youtube_video_id}. Retry: {retry}"
+        )
+    counts = result.counts
+    console.print(
+        "Canonical audio preparation: "
+        f"prepared={counts['prepared']} "
+        f"would_prepare={counts['would_prepare']} "
+        f"already_prepared={counts['already_prepared']} "
+        f"deferred={counts['deferred']} blocked={counts['blocked']} "
+        f"failed={counts['failed']}."
     )
 
 
@@ -11318,6 +11456,7 @@ def run(
     run_identity: bool = typer.Option(
         False,
         "--identity",
+        "--run-identity",
         help=(
             "After content processing, run the corpus identity workflow so "
             "new shadow associations and review nominations are available."

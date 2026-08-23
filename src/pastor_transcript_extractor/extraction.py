@@ -14,6 +14,9 @@ from pastor_transcript_extractor.identity import (
     record_shadow_identity_assessment,
 )
 from pastor_transcript_extractor.local_llm import LocalLlmClient
+from pastor_transcript_extractor.media_artifacts import (
+    get_registered_normalized_media_artifact,
+)
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.recording_verifier import (
     ARTIFACT_SCHEMA_VERSION as RECORDING_VERIFIER_SCHEMA_VERSION,
@@ -73,6 +76,11 @@ def _record_speaker_evidence_safely(
     ):
         return
     try:
+        normalized_audio_artifact = get_registered_normalized_media_artifact(
+            database,
+            video.id,
+            require_isolated_sermon=False,
+        )
         if isinstance(getattr(pastor, "id", None), int):
             record_shadow_identity_assessment(
                 database,
@@ -81,6 +89,7 @@ def _record_speaker_evidence_safely(
                 pastor=pastor,
                 extraction_result=extraction_result,
                 content_disposition=content_disposition,
+                normalized_audio_artifact=normalized_audio_artifact,
             )
         else:
             record_neutral_speaker_evidence(
@@ -88,6 +97,7 @@ def _record_speaker_evidence_safely(
                 app_paths,
                 video=video,
                 extraction_result=extraction_result,
+                normalized_audio_artifact=normalized_audio_artifact,
             )
     except Exception as error:  # pragma: no cover - defensive production isolation
         warnings.warn(

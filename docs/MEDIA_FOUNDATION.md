@@ -143,6 +143,29 @@ rewriting identity history or regenerating valid clips merely to duplicate that
 binding in newer observation metadata. Missing, changed, or corrupt canonical
 inputs remain blocked.
 
+Canonical preparation is an explicit lifecycle stage; it does not depend on a
+pair comparison, discovery run, or human review having happened to request the
+same spans. Inspect the existing corpus without writing clips or manifests:
+
+```bash
+pte media prepare-canonical-audio --all-eligible --dry-run \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Apply the idempotent backfill after reviewing that output:
+
+```bash
+pte media prepare-canonical-audio --all-eligible \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Use `--limit N` for a bounded batch or replace `--all-eligible` with
+`--youtube-video-id VIDEO_ID`. Each current accepted observation is matched to
+its exact extraction window and authoritative normalized SHA-256. Current
+checksum-valid canonical spans are reused; missing spans are generated under a
+policy-versioned cache namespace and published in an atomic manifest. Legacy
+observations are not rewritten.
+
 Audit eligibility and explain every block without moving bytes:
 
 ```bash
@@ -188,12 +211,18 @@ review revocation, observation detachment, membership changes, or cache writes.
 Executing `pte identity run VIDEO_ID` or `pte identity run --all` performs this
 normalized archival finalization automatically after shadow association,
 discovery, and final coordination have finished their audio-dependent work. It
-promotes only checksum-valid cached spans bound to the current observation and
-normalized SHA-256 into canonical preparation manifests, then archives the
-eligible normalized artifacts in the identity scope. The finalizer waits behind
-another source or normalized archive process. An offline destination is reported
-as deferred and leaves local media untouched. `--plan-only` never writes a clip
-manifest, archive entry, archive attempt, file, or symlink.
+generates missing canonical inputs for every current clip-eligible observation
+in scope, then archives eligible normalized artifacts. Top-level
+`pte run --identity` (also available as `--run-identity`) reaches the same
+finalizer after content processing. Preparation and archival each hold the
+exclusive media-archive lock while they can read or transition normalized
+audio, without nesting the lock. The finalizer waits behind another source or
+normalized archive process. An unavailable archive-backed artifact is deferred
+in a corpus batch and other videos continue. A single-video command reports
+`archived_media_unavailable` with the exact retry command. Local normalized
+audio, identity state, reviews, and registry membership remain untouched on
+failure. `--plan-only` never writes a clip manifest, archive entry, archive
+attempt, file, or symlink.
 
 Both automatic identity finalization and `pte media archive-normalized` display
 the current artifact number, total, filename, and lifecycle stage while work is

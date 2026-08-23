@@ -159,6 +159,7 @@ class IdentityRunTests(unittest.TestCase):
     def test_identity_archive_waits_for_lock_and_reports_unavailable_as_deferred(
         self,
     ) -> None:
+        lifecycle_order = []
         database = SimpleNamespace(
             get_active_media_archive_destination=lambda: SimpleNamespace(id=1)
         )
@@ -183,8 +184,18 @@ class IdentityRunTests(unittest.TestCase):
         )
         with (
             patch(
-                "pastor_transcript_extractor.cli.persist_cached_canonical_clip_preparations",
-                return_value=2,
+                "pastor_transcript_extractor.cli.prepare_canonical_audio",
+                return_value=SimpleNamespace(
+                    items=(),
+                    counts={
+                        "prepared": 2,
+                        "would_prepare": 0,
+                        "already_prepared": 0,
+                        "deferred": 0,
+                        "blocked": 0,
+                        "failed": 0,
+                    },
+                ),
             ) as prepare,
             patch(
                 "pastor_transcript_extractor.cli.archive_normalized_media",
@@ -192,6 +203,23 @@ class IdentityRunTests(unittest.TestCase):
             ) as archive,
             patch("pastor_transcript_extractor.cli.console.print") as output,
         ):
+            prepare.side_effect = lambda *args, **kwargs: (
+                lifecycle_order.append("prepare")
+                or SimpleNamespace(
+                    items=(),
+                    counts={
+                        "prepared": 2,
+                        "would_prepare": 0,
+                        "already_prepared": 0,
+                        "deferred": 0,
+                        "blocked": 0,
+                        "failed": 0,
+                    },
+                )
+            )
+            archive.side_effect = lambda *args, **kwargs: (
+                lifecycle_order.append("archive") or archive_result
+            )
             _archive_normalized_after_identity(
                 database,
                 paths,
@@ -204,11 +232,15 @@ class IdentityRunTests(unittest.TestCase):
             paths,
             cache_root=Path("evaluation/speaker-pairs/cache"),
             video_ids={7, 8},
+            all_eligible=False,
+            wait_for_lock=True,
+            progress_callback=unittest.mock.ANY,
         )
         self.assertTrue(archive.call_args.kwargs["wait_for_lock"])
         self.assertTrue(callable(archive.call_args.kwargs["progress_callback"]))
         self.assertTrue(callable(archive.call_args.kwargs["preflight_callback"]))
         self.assertEqual({7, 8}, archive.call_args.kwargs["video_ids"])
+        self.assertEqual(["prepare", "archive"], lifecycle_order)
         self.assertIn("deferred=2", output.call_args_list[-1].args[0])
 
     def test_standalone_normalized_archive_prints_item_progress(self) -> None:
@@ -274,6 +306,55 @@ class IdentityRunTests(unittest.TestCase):
 
         self.assertEqual(0, result.exit_code, result.output)
         self.assertIn("[1/1] normalized artifact #99: archived", result.output)
+
+    def test_single_identity_finalization_reports_offline_preparation_retry(self) -> None:
+        database = SimpleNamespace(
+            get_active_media_archive_destination=lambda: SimpleNamespace(id=1)
+        )
+        paths = AppPaths(
+            root=Path("/tmp/identity-offline-test"),
+            database=Path("/tmp/identity-offline-test/app.db"),
+            artifacts=Path("/tmp/identity-offline-test/artifacts"),
+            logs=Path("/tmp/identity-offline-test/logs"),
+            exports=Path("/tmp/identity-offline-test/exports"),
+            pastors=Path("/tmp/identity-offline-test/pastors"),
+        )
+        preparation = SimpleNamespace(
+            items=(
+                SimpleNamespace(
+                    outcome="deferred", youtube_video_id="offline001"
+                ),
+            ),
+            counts={
+                "prepared": 0,
+                "would_prepare": 0,
+                "already_prepared": 0,
+                "deferred": 1,
+                "blocked": 0,
+                "failed": 0,
+            },
+        )
+        with (
+            patch(
+                "pastor_transcript_extractor.cli.prepare_canonical_audio",
+                return_value=preparation,
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.archive_normalized_media"
+            ) as archive,
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "pte media prepare-canonical-audio --youtube-video-id offline001",
+            ):
+                _archive_normalized_after_identity(
+                    database,
+                    paths,
+                    video_ids={7},
+                    all_eligible=False,
+                )
+
+        archive.assert_not_called()
 
     def test_plan_only_rejects_registry_mutation_flags(self) -> None:
         with self.assertRaisesRegex(ValueError, "plan-only"):

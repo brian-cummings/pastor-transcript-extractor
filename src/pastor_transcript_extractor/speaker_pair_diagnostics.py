@@ -185,7 +185,7 @@ class AudioSpanCache:
         self._source_hashes: dict[tuple[str, int, int], str] = {}
         self._observation_source_hashes: dict[str, str] = {}
         self._span_manifest_index: dict[
-            tuple[str, str, str, float, float],
+            tuple[str, str, str, float, float, str | None],
             tuple[Path, dict[str, Any]],
         ] | None = None
         self._verified_span_files: set[tuple[str, int, int, str]] = set()
@@ -196,13 +196,26 @@ class AudioSpanCache:
         observation: SpeakerObservation,
         source_audio_path: Path,
         span: SpanSpec,
+        expected_source_audio_sha256: str | None = None,
+        generation_policy_version: str | None = None,
     ) -> CachedSpan:
         cached = self._find_cached_span(
-            observation=observation, source_audio_path=source_audio_path, span=span
+            observation=observation,
+            source_audio_path=source_audio_path,
+            span=span,
+            expected_source_audio_sha256=expected_source_audio_sha256,
+            generation_policy_version=generation_policy_version,
         )
         if cached is not None:
             return cached
         source_audio_sha256 = self._source_audio_sha256(source_audio_path)
+        if (
+            expected_source_audio_sha256 is not None
+            and source_audio_sha256 != expected_source_audio_sha256
+        ):
+            raise AcousticEvidenceUnavailableError(
+                "normalized audio checksum does not match its authoritative artifact"
+            )
         key_payload = {
             "extractor_version": SPAN_EXTRACTOR_VERSION,
             "observation_fingerprint": observation.input_fingerprint,
@@ -211,6 +224,7 @@ class AudioSpanCache:
             "start_seconds": span.start_seconds,
             "end_seconds": span.end_seconds,
             "format": "pcm_s16le_mono_16000hz",
+            "generation_policy_version": generation_policy_version,
         }
         key = _sha256_json(key_payload)
         wav_path = self.root / "spans" / f"{key}.wav"
@@ -290,16 +304,22 @@ class AudioSpanCache:
         observation: SpeakerObservation,
         source_audio_path: Path,
         span: SpanSpec,
+        expected_source_audio_sha256: str | None = None,
+        generation_policy_version: str | None = None,
     ) -> CachedSpan | None:
         """Use source-bound cached inputs without touching an offline archive."""
         self._ensure_span_manifest_index()
         assert self._span_manifest_index is not None
         manifest_key = (
             observation.input_fingerprint,
-            self._observation_source_audio_sha256(observation),
+            (
+                expected_source_audio_sha256
+                or self._observation_source_audio_sha256(observation)
+            ),
             str(source_audio_path),
             span.start_seconds,
             span.end_seconds,
+            generation_policy_version,
         )
         indexed = self._span_manifest_index.get(manifest_key)
         if indexed is None:
@@ -323,7 +343,7 @@ class AudioSpanCache:
         if self._span_manifest_index is not None:
             return
         index: dict[
-            tuple[str, str, str, float, float],
+            tuple[str, str, str, float, float, str | None],
             tuple[Path, dict[str, Any]],
         ] = {}
         directory = self.root / "spans"
@@ -344,7 +364,7 @@ class AudioSpanCache:
     @staticmethod
     def _span_manifest_key(
         item: Mapping[str, Any],
-    ) -> tuple[str, str, str, float, float] | None:
+    ) -> tuple[str, str, str, float, float, str | None] | None:
         if not isinstance(item, Mapping):
             return None
         if item.get("extractor_version") != SPAN_EXTRACTOR_VERSION:
@@ -354,12 +374,17 @@ class AudioSpanCache:
         source_audio_path = item.get("source_audio_path")
         start_seconds = item.get("start_seconds")
         end_seconds = item.get("end_seconds")
+        generation_policy_version = item.get("generation_policy_version")
         if (
             not isinstance(observation_fingerprint, str)
             or not isinstance(source_audio_sha256, str)
             or not isinstance(source_audio_path, str)
             or not isinstance(start_seconds, (int, float))
             or not isinstance(end_seconds, (int, float))
+            or (
+                generation_policy_version is not None
+                and not isinstance(generation_policy_version, str)
+            )
         ):
             return None
         return (
@@ -368,6 +393,7 @@ class AudioSpanCache:
             source_audio_path,
             float(start_seconds),
             float(end_seconds),
+            generation_policy_version,
         )
 
     def _verify_cached_span_file(

@@ -1030,14 +1030,18 @@ class MediaArtifactTests(unittest.TestCase):
         )
 
     def test_normalized_archive_requires_current_clip_manifest_and_preserves_authority_offline(self) -> None:
-        video, _ = self._video("normarchive1")
+        video, proposed_path = self._video(
+            "normarchive1",
+            sermon_end_seconds=90.0,
+            video_duration_seconds=100,
+        )
         audio_root = build_video_artifact_paths(
             self.paths, self.pastor.slug, video.youtube_video_id
         ).audio
         source_path = audio_root / "media" / "source.wav"
         normalized_path = audio_root / "media" / "normalized.wav"
-        write_wav(source_path)
-        write_wav(normalized_path)
+        write_wav(source_path, duration_seconds=100)
+        write_wav(normalized_path, duration_seconds=100)
         source = register_media_file(
             self.database, self.paths, video=video, pastor_slug=self.pastor.slug,
             artifact_path=source_path, artifact_kind="source_audio",
@@ -1063,7 +1067,7 @@ class MediaArtifactTests(unittest.TestCase):
         observation = self.database.add_speaker_observation(
             video_id=video.id, extraction_result_id=extraction.id,
             role="sermon_speaker", multiplicity_state="single",
-            start_seconds=0.1, end_seconds=0.8,
+            start_seconds=0.1, end_seconds=90.0,
             artifact_path=str(legacy_observation_path),
             content_sha256="legacy-evidence-content-sha256",
             extractor_version="speaker_evidence_v1",
@@ -1105,10 +1109,28 @@ class MediaArtifactTests(unittest.TestCase):
         prepared = normalized_archive_eligibility(self.database, self.paths)
         self.assertTrue(prepared[0].eligible)
         self.assertEqual("current", prepared[0].clip_preparation_status)
+        proposed_path.write_text(
+            json.dumps(
+                {
+                    "sermon_window": {
+                        "start_seconds": 0.2,
+                        "end_seconds": 90.0,
+                    },
+                    "final_disposition": {"status": "accepted_sermon"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        changed_extraction = self.database.add_extraction_result(
+            video_id=video.id,
+            version=2,
+            proposed_text_path=str(proposed_path.with_suffix(".md")),
+            proposed_json_path=str(proposed_path),
+        )
         changed_observation = self.database.add_speaker_observation(
-            video_id=video.id, extraction_result_id=extraction.id,
+            video_id=video.id, extraction_result_id=changed_extraction.id,
             role="sermon_speaker", multiplicity_state="single",
-            start_seconds=0.2, end_seconds=0.8,
+            start_seconds=0.2, end_seconds=90.0,
             artifact_path=str(legacy_observation_path),
             content_sha256="legacy-evidence-content-sha256",
             extractor_version="speaker_evidence_v1",

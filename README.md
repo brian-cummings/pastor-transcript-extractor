@@ -989,3 +989,19 @@ pte media sweep-audio --apply \
 The first command is read-only. Apply mode leaves unmatched, failed, pending,
 and unverified files untouched. See `docs/MEDIA_FOUNDATION.md` for the complete
 safety and offline semantics.
+
+Prepare canonical speaker inputs explicitly, without requiring pair comparison,
+discovery, or human review:
+
+```bash
+pte media prepare-canonical-audio --all-eligible --dry-run \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+pte media prepare-canonical-audio --all-eligible \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Preparation binds the authoritative normalized SHA-256 to the exact current
+observation fingerprint, sermon window, and clip policy. It is idempotent and
+is also performed automatically before normalized archival by
+`pte identity run` and top-level `pte run --identity`/`--run-identity`.

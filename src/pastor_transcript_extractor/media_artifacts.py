@@ -863,8 +863,9 @@ def get_registered_normalized_media_artifact(
 ) -> MediaArtifact | None:
     """Select authoritative normalized-media metadata without touching its bytes.
 
-    This is intended for read-only inventory and status reporting. Callers that
-    will consume media must use ``get_verified_normalized_media_artifact``.
+    This is intended for metadata-only ingestion, inventory, and status work.
+    Callers that will consume media must use
+    ``get_verified_normalized_media_artifact``.
     """
     artifacts = database.list_media_artifacts_for_video(video_id)
     for provenance_kind in ("derived", "reconstructed_existing"):

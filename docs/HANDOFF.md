@@ -153,6 +153,22 @@ pte media archive-sources \
 The destination argument is omitted because it is already persisted. Inspect
 progress or retry state with `pte media archive-status --base-dir ...`.
 
+Normalized audio now has an explicit canonical-preparation handoff independent
+of pair comparison and discovery. New extraction observations bind the selected
+authoritative normalized SHA-256. Existing immutable observations gain the same
+archive eligibility through an exact fingerprint/window/hash/policy manifest,
+without rewriting history. Production backfill starts with:
+
+```bash
+pte media prepare-canonical-audio --all-eligible --dry-run \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Then apply with the same command minus `--dry-run`. `pte identity run` and
+top-level `pte run --identity`/`--run-identity` invoke the same preparation
+service before normalized archival. Offline archived inputs defer in batch
+mode; a single-video run prints an exact retry command.
+
 ## Anonymous Speaker Grouping
 
 The registry now exposes the narrow manual lifecycle needed by the pair

@@ -266,6 +266,7 @@ def record_shadow_identity_assessment(
     pastor: Pastor,
     extraction_result: ExtractionResult,
     content_disposition: dict[str, Any],
+    normalized_audio_artifact: MediaArtifact | None = None,
 ) -> ShadowIdentityResult:
     """Record the identity contract before any recognition backend is enabled."""
     speaker_record = record_neutral_speaker_evidence(
@@ -274,6 +275,7 @@ def record_shadow_identity_assessment(
         video=video,
         pastor=pastor,
         extraction_result=extraction_result,
+        normalized_audio_artifact=normalized_audio_artifact,
     )
     metadata_artifact = speaker_record.metadata_artifact
     attribution = speaker_record.attribution

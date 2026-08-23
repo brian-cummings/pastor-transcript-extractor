@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import time
 from typing import Callable
@@ -18,10 +19,18 @@ from pastor_transcript_extractor.filesystem_capacity import (
     filesystem_capacity,
 )
 from pastor_transcript_extractor.media_artifacts import (
+    ArchivedMediaUnavailableError,
     MediaVerificationCache,
     get_authoritative_normalized_media_artifact,
     get_archive_safe_normalized_media_artifact,
     verify_media_artifact,
+)
+from pastor_transcript_extractor.speaker_pair_diagnostics import (
+    AcousticEvidenceUnavailableError,
+    AudioSpanCache,
+)
+from pastor_transcript_extractor.speaker_pair_eligibility import (
+    assess_automatic_speaker_observation,
 )
 from pastor_transcript_extractor.models import (
     MediaArchiveDestination,
@@ -117,6 +126,54 @@ class AudioSweepResult:
         )
 
 CANONICAL_CLIP_PREPARATION_POLICY_VERSION = "canonical_speaker_clips_v1"
+CANONICAL_CLIP_CACHE_NAMESPACE = "canonical-audio"
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalAudioPreparationItem:
+    video_id: int
+    youtube_video_id: str
+    outcome: str
+    reason: str
+    media_artifact_id: int | None = None
+    observation_id: int | None = None
+    clip_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalAudioPreparationResult:
+    items: tuple[CanonicalAudioPreparationItem, ...]
+    dry_run: bool
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return {
+            outcome: sum(item.outcome == outcome for item in self.items)
+            for outcome in (
+                "prepared",
+                "would_prepare",
+                "already_prepared",
+                "deferred",
+                "blocked",
+                "failed",
+            )
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalAudioPreparationProgressEvent:
+    index: int
+    total: int
+    video_id: int
+    youtube_video_id: str
+    stage: str
+    outcome: str | None = None
+    detail: str | None = None
+
+
+CanonicalAudioPreparationProgressCallback = Callable[
+    [CanonicalAudioPreparationProgressEvent], None
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,6 +368,311 @@ def persist_cached_canonical_clip_preparations(
         )
         written += 1
     return written
+
+
+def prepare_canonical_audio(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    cache_root: Path,
+    video_ids: set[int] | None = None,
+    all_eligible: bool = False,
+    dry_run: bool = False,
+    limit: int | None = None,
+    wait_for_lock: bool = False,
+    lock_retry_seconds: float = 1.0,
+    progress_callback: CanonicalAudioPreparationProgressCallback | None = None,
+) -> CanonicalAudioPreparationResult:
+    """Prepare canonical speaker inputs independently of comparison workflows."""
+    if video_ids is None and not all_eligible:
+        raise ValueError("Pass --youtube-video-id or --all-eligible")
+    if limit is not None and limit < 1:
+        raise ValueError("Canonical preparation limit must be positive")
+    with _archive_lock(
+        app_paths.root,
+        wait_for_lock=wait_for_lock,
+        retry_seconds=lock_retry_seconds,
+    ):
+        return _prepare_canonical_audio_locked(
+            database,
+            app_paths,
+            cache_root=cache_root,
+            video_ids=video_ids,
+            dry_run=dry_run,
+            limit=limit,
+            progress_callback=progress_callback,
+        )
+
+
+def _prepare_canonical_audio_locked(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    cache_root: Path,
+    video_ids: set[int] | None,
+    dry_run: bool,
+    limit: int | None,
+    progress_callback: CanonicalAudioPreparationProgressCallback | None,
+) -> CanonicalAudioPreparationResult:
+    candidates = []
+    for video in database.list_videos():
+        if video_ids is not None and video.id not in video_ids:
+            continue
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verify_media=False,
+        )
+        observation = eligibility.observation
+        if observation is None:
+            observation = database.get_latest_speaker_observation_for_video(video.id)
+        # Non-sermons and finalized recordings without a clip observation are
+        # intentionally outside this lifecycle stage.
+        if observation is None or eligibility.reason_code in {
+            "extraction_unavailable",
+            "extraction_artifact_unreadable",
+            "extraction_artifact_malformed",
+            "disposition_missing_or_malformed",
+            "disposition_not_accepted",
+            "sermon_window_invalid",
+        }:
+            continue
+        candidates.append((video, eligibility, observation))
+    if limit is not None:
+        candidates = candidates[:limit]
+
+    span_cache = AudioSpanCache(
+        cache_root.expanduser().resolve()
+        / CANONICAL_CLIP_CACHE_NAMESPACE
+        / CANONICAL_CLIP_PREPARATION_POLICY_VERSION
+    )
+    verification_cache = MediaVerificationCache(
+        app_paths.logs / "canonical-audio-verification"
+    )
+    items: list[CanonicalAudioPreparationItem] = []
+    total = len(candidates)
+    for index, (video, eligibility, observation) in enumerate(candidates, start=1):
+        _notify_canonical_progress(
+            progress_callback,
+            index=index,
+            total=total,
+            video=video,
+            stage="checking",
+        )
+        if not eligibility.eligible:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "blocked",
+                eligibility.reason_code,
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+
+        try:
+            artifact, availability = get_authoritative_normalized_media_artifact(
+                database,
+                video.id,
+                require_isolated_sermon=False,
+                verification_cache=verification_cache,
+            )
+        except ArchivedMediaUnavailableError:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "deferred",
+                "archived_media_unavailable",
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        except (OSError, RuntimeError, ValueError) as error:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "failed",
+                f"{type(error).__name__}: {error}",
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        if (
+            artifact is not None
+            and availability is not None
+            and availability.status == "archived_media_unavailable"
+        ):
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "deferred",
+                "archived_media_unavailable",
+                media_artifact_id=artifact.id,
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        if (
+            artifact is None
+            or availability is None
+            or not availability.verified
+        ):
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "blocked",
+                availability.status if availability is not None else "normalized_audio_unavailable",
+                media_artifact_id=artifact.id if artifact is not None else None,
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+
+        preparation_status = _canonical_clip_preparation_status(
+            artifact,
+            observation,
+            CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+        )
+        if preparation_status == "current":
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "already_prepared",
+                "canonical preparation is current",
+                media_artifact_id=artifact.id,
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        if dry_run:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "would_prepare",
+                f"canonical preparation is {preparation_status}",
+                media_artifact_id=artifact.id,
+                observation_id=observation.id,
+                clip_count=len(eligibility.diagnostic_spans),
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+
+        try:
+            _notify_canonical_progress(
+                progress_callback,
+                index=index,
+                total=total,
+                video=video,
+                stage="preparing_clips",
+            )
+            clips = tuple(
+                span_cache.prepare(
+                    observation=observation,
+                    source_audio_path=Path(artifact.artifact_path),
+                    span=span,
+                    expected_source_audio_sha256=artifact.content_sha256,
+                    generation_policy_version=(
+                        CANONICAL_CLIP_PREPARATION_POLICY_VERSION
+                    ),
+                )
+                for span in eligibility.diagnostic_spans
+            )
+            if not clips:
+                raise ValueError("no canonical diagnostic spans were selected")
+            write_canonical_clip_preparation_manifest(
+                app_paths,
+                artifact,
+                observation,
+                clip_paths=tuple(Path(clip.wav_path) for clip in clips),
+            )
+            if (
+                _canonical_clip_preparation_status(
+                    artifact,
+                    observation,
+                    CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+                )
+                != "current"
+            ):
+                raise RuntimeError("canonical preparation manifest did not verify")
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "prepared",
+                "canonical clips and manifest prepared",
+                media_artifact_id=artifact.id,
+                observation_id=observation.id,
+                clip_count=len(clips),
+            )
+        except ArchivedMediaUnavailableError:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "deferred",
+                "archived_media_unavailable",
+                media_artifact_id=artifact.id,
+                observation_id=observation.id,
+            )
+        except (
+            AcousticEvidenceUnavailableError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            subprocess.SubprocessError,
+        ) as error:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "failed",
+                f"{type(error).__name__}: {error}",
+                media_artifact_id=artifact.id,
+                observation_id=observation.id,
+            )
+        items.append(item)
+        _notify_canonical_item(progress_callback, index, total, video, item)
+    return CanonicalAudioPreparationResult(tuple(items), dry_run)
+
+
+def _notify_canonical_progress(
+    callback: CanonicalAudioPreparationProgressCallback | None,
+    *,
+    index: int,
+    total: int,
+    video,
+    stage: str,
+    outcome: str | None = None,
+    detail: str | None = None,
+) -> None:
+    if callback is not None:
+        callback(
+            CanonicalAudioPreparationProgressEvent(
+                index=index,
+                total=total,
+                video_id=video.id,
+                youtube_video_id=video.youtube_video_id,
+                stage=stage,
+                outcome=outcome,
+                detail=detail,
+            )
+        )
+
+
+def _notify_canonical_item(callback, index, total, video, item) -> None:
+    _notify_canonical_progress(
+        callback,
+        index=index,
+        total=total,
+        video=video,
+        stage="complete",
+        outcome=item.outcome,
+        detail=item.reason,
+    )
 
 
 def media_archive_lock_held(app_root: Path) -> bool:
@@ -665,7 +1027,16 @@ def normalized_archive_eligibility(
         if not all((artifact.content_sha256, artifact.byte_size, artifact.format_name, artifact.duration_seconds, artifact.manifest_path)) or not Path(artifact.manifest_path).is_file():
             results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, False, "normalized metadata or provenance manifest incomplete", "not_applicable"))
             continue
-        observation = database.get_latest_speaker_observation_for_video(video.id)
+        observation_eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verify_media=False,
+        )
+        observation = (
+            observation_eligibility.observation
+            if observation_eligibility.eligible
+            else None
+        )
         if observation is None:
             results.append(NormalizedArchiveEligibility(video.id, video.youtube_video_id, artifact, True, "classification finalized without clip-eligible observation", "not_applicable"))
             continue
@@ -1058,7 +1429,16 @@ def _registered_unarchived_sweep_detail(
             "authoritative normalized artifact is blocked: metadata or provenance "
             "manifest incomplete"
         )
-    observation = database.get_latest_speaker_observation_for_video(artifact.video_id)
+    observation_eligibility = assess_automatic_speaker_observation(
+        database,
+        artifact.video_id,
+        verify_media=False,
+    )
+    observation = (
+        observation_eligibility.observation
+        if observation_eligibility.eligible
+        else None
+    )
     if observation is None:
         return (
             "authoritative normalized artifact appears eligible after finalized "

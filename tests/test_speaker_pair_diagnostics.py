@@ -14,6 +14,7 @@ import wave
 
 from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
+    AcousticEvidenceUnavailableError,
     AudioSpanCache,
     CachedSpan,
     DecisionPolicy,
@@ -323,6 +324,80 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
             for path in manifests
         }
         self.assertEqual(2, len(source_hashes))
+
+    def test_audio_span_cache_never_reuses_a_mismatched_authoritative_hash(self):
+        source = self.root / "source.wav"
+        source.write_bytes(b"authoritative-source")
+        source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        cache = AudioSpanCache(self.root / "hash-bound-cache")
+        span = select_diagnostic_spans(self.a, count=3)[0]
+
+        def fake_ffmpeg(arguments, **_kwargs):
+            with wave.open(arguments[-1], "wb") as destination:
+                destination.setnchannels(1)
+                destination.setsampwidth(2)
+                destination.setframerate(16000)
+                destination.writeframes(
+                    (1000).to_bytes(2, "little", signed=True) * (16000 * 12)
+                )
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_diagnostics.subprocess.run",
+            side_effect=fake_ffmpeg,
+        ):
+            first = cache.prepare(
+                observation=self.a,
+                source_audio_path=source,
+                span=span,
+                expected_source_audio_sha256=source_hash,
+            )
+
+        self.assertFalse(first.cache_hit)
+        with self.assertRaises(AcousticEvidenceUnavailableError):
+            cache.prepare(
+                observation=self.a,
+                source_audio_path=source,
+                span=span,
+                expected_source_audio_sha256="wrong-authoritative-hash",
+            )
+
+    def test_audio_span_cache_does_not_cross_generation_policies(self):
+        source = self.root / "source.wav"
+        source.write_bytes(b"policy-bound-source")
+        cache = AudioSpanCache(self.root / "policy-bound-cache")
+        span = select_diagnostic_spans(self.a, count=3)[0]
+        ffmpeg_calls = []
+
+        def fake_ffmpeg(arguments, **_kwargs):
+            ffmpeg_calls.append(arguments)
+            with wave.open(arguments[-1], "wb") as destination:
+                destination.setnchannels(1)
+                destination.setsampwidth(2)
+                destination.setframerate(16000)
+                destination.writeframes(
+                    (1000).to_bytes(2, "little", signed=True) * (16000 * 12)
+                )
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_diagnostics.subprocess.run",
+            side_effect=fake_ffmpeg,
+        ):
+            first = cache.prepare(
+                observation=self.a,
+                source_audio_path=source,
+                span=span,
+                generation_policy_version="canonical-v1",
+            )
+            second = cache.prepare(
+                observation=self.a,
+                source_audio_path=source,
+                span=span,
+                generation_policy_version="canonical-v2",
+            )
+
+        self.assertFalse(first.cache_hit)
+        self.assertFalse(second.cache_hit)
+        self.assertEqual(2, len(ffmpeg_calls))
 
     def test_audio_span_cache_replays_source_bound_clip_while_archive_is_offline(self):
         archive = self.root / "archive"
