@@ -68,6 +68,7 @@ class DiscoveryCandidate:
     consistency_score: float | None = None
     span_specs: tuple[SpanSpec, ...] = ()
     activity_qualify_spans: bool = False
+    normalized_audio_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +304,7 @@ def build_discovery_signature(
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
     min_rms_dbfs: float = -52.0,
+    activity_selection_cache: ActivityQualifiedSelectionCache | None = None,
 ) -> DiscoverySignature:
     specs = (
         candidate.span_specs
@@ -316,21 +318,46 @@ def build_discovery_signature(
         raise ValueError("observation_too_short")
     selection: Mapping[str, Any] | None = None
     if candidate.activity_qualify_spans:
-        qualified = prepare_activity_qualified_spans(
-            observation=candidate.observation,
-            audio_path=candidate.audio_path,
-            span_cache=span_cache,
-            candidate_specs=specs,
-            requested_count=span_count,
-        )
-        qualified = refine_activity_qualified_spans(
-            qualified,
-            embedding_cache=embedding_cache,
-            backend=backend,
-            policy=policy,
-        )
-        valid = qualified.spans
-        selection = qualified.selection
+        if (
+            activity_selection_cache is not None
+            and candidate.normalized_audio_sha256
+        ):
+            cached_selection = activity_selection_cache.get_or_prepare(
+                observation=candidate.observation,
+                source_audio_sha256=candidate.normalized_audio_sha256,
+                candidate_specs=specs,
+                span_cache=span_cache,
+                audio_path=candidate.audio_path,
+                embedding_cache=embedding_cache,
+                backend=backend,
+                policy=policy,
+                requested_count=span_count,
+            )
+            valid = tuple(
+                span_cache.prepare(
+                    observation=candidate.observation,
+                    source_audio_path=candidate.audio_path,
+                    span=spec,
+                )
+                for spec in cached_selection.span_specs
+            )
+            selection = cached_selection.selection
+        else:
+            qualified = prepare_activity_qualified_spans(
+                observation=candidate.observation,
+                audio_path=candidate.audio_path,
+                span_cache=span_cache,
+                candidate_specs=specs,
+                requested_count=span_count,
+            )
+            qualified = refine_activity_qualified_spans(
+                qualified,
+                embedding_cache=embedding_cache,
+                backend=backend,
+                policy=policy,
+            )
+            valid = qualified.spans
+            selection = qualified.selection
     else:
         prepared = tuple(
             span_cache.prepare(

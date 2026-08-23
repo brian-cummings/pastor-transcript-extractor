@@ -4310,10 +4310,27 @@ def shadow_discover_profiles_command(
                     + 1
                 )
                 continue
+        verified_eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verification_cache=verification_cache,
+            verify_media=True,
+        )
+        if (
+            not verified_eligibility.eligible
+            or verified_eligibility.observation is None
+            or verified_eligibility.media_artifact is None
+            or verified_eligibility.observation.id != observation.id
+        ):
+            reason = verified_eligibility.reason_code
+            excluded_reasons[reason] = excluded_reasons.get(reason, 0) + 1
+            continue
         candidates.append(
             DiscoveryCandidate(
                 observation=observation,
-                audio_path=Path(eligibility.media_artifact.artifact_path),
+                audio_path=Path(
+                    verified_eligibility.media_artifact.artifact_path
+                ),
                 source_id=video.source_id,
                 normalized_names=tuple(
                     sorted(names_by_observation.get(observation.id, ()))
@@ -4321,6 +4338,9 @@ def shadow_discover_profiles_command(
                 consistency_score=consistency_score,
                 span_specs=span_specs,
                 activity_qualify_spans=True,
+                normalized_audio_sha256=(
+                    verified_eligibility.media_artifact.content_sha256
+                ),
             )
         )
     candidates.sort(
@@ -4409,10 +4429,16 @@ def shadow_discover_profiles_command(
         raise typer.BadParameter(str(error)) from error
     span_cache = AudioSpanCache(cache_root)
     embedding_cache = EmbeddingCache(cache_root)
+    activity_selection_cache = ActivityQualifiedSelectionCache(cache_root)
     signatures = []
     signature_failures: list[dict[str, object]] = []
     for index, candidate in enumerate(candidates, start=1):
         try:
+            if candidate.normalized_audio_sha256:
+                span_cache.remember_verified_source(
+                    candidate.audio_path,
+                    candidate.normalized_audio_sha256,
+                )
             signatures.append(
                 build_discovery_signature(
                     candidate,
@@ -4420,6 +4446,7 @@ def shadow_discover_profiles_command(
                     embedding_cache=embedding_cache,
                     backend=backend,
                     policy=policy_spec.policy,
+                    activity_selection_cache=activity_selection_cache,
                 )
             )
         except (OSError, RuntimeError, ValueError) as error:
@@ -4439,6 +4466,12 @@ def shadow_discover_profiles_command(
             f"Signature {index}/{len(candidates)}: "
             f"{candidate.observation.input_fingerprint[:16]}"
         )
+    console.print(
+        "Discovery signature preparation: "
+        f"selection_cache_hits={activity_selection_cache.hits} "
+        f"selection_cache_misses={activity_selection_cache.misses} "
+        f"selection_failure_hits={activity_selection_cache.failure_hits}."
+    )
     if len(signatures) < minimum_component_members:
         raise typer.BadParameter(
             "Too few observations produced usable discovery signatures."
