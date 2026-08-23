@@ -4096,6 +4096,84 @@ def review_profile_attribution_command(
 
 
 @identity_app.command(
+    "analyze-profile-metadata",
+    help=(
+        "Run only cached Ollama metadata-name consolidation for unnamed profiles."
+    ),
+)
+def analyze_profile_metadata_command(
+    all_profiles: bool = typer.Option(
+        False,
+        "--all",
+        help="Analyze every current unnamed canonical profile.",
+    ),
+    profile_id: int | None = typer.Option(
+        None,
+        "--profile-id",
+        help="Analyze one exact canonical profile.",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Override the configured Ollama model.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    if all_profiles == (profile_id is not None):
+        raise typer.BadParameter("Pass exactly one of --all or --profile-id.")
+    paths = build_paths(base_dir, remember=True)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    config = build_llm_config()
+    if model is not None:
+        config = replace(config, model=model)
+    if not config.enabled:
+        raise typer.BadParameter("Local LLM is disabled by PTE_LLM_ENABLED.")
+    database = Database(paths.database, readonly=True)
+    selected_ids = (
+        None if all_profiles else frozenset((int(profile_id),))
+    )
+    candidate_ids = profile_metadata_candidate_profile_ids(
+        database,
+        profile_ids=selected_ids,
+    )
+    if not candidate_ids:
+        console.print("Profile metadata attribution: eligible=0; no Ollama calls.")
+        return
+    try:
+        client = OllamaClient(config)
+        result = run_profile_metadata_attribution(
+            database,
+            paths.logs / "profile-metadata-attribution",
+            client,
+            model_digest=client.model_digest(),
+            profile_ids=frozenset(candidate_ids),
+            progress_callback=(
+                lambda index, total, current_profile_id, outcome: console.print(
+                    "Profile metadata attribution "
+                    f"[{index}/{total}] profile={current_profile_id}: {outcome}"
+                )
+            ),
+        )
+    except (LocalLlmError, OSError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Profile metadata attribution complete: "
+        f"eligible={result.eligible} proposed={result.proposed} "
+        f"insufficient_evidence={result.insufficient_evidence} "
+        f"conflicting_evidence={result.conflicting_evidence} "
+        f"invalid_metadata={result.invalid_metadata} "
+        f"cache_hits={result.cache_hits} model_calls={result.model_calls} "
+        f"failed={result.failed}."
+    )
+
+
+@identity_app.command(
     "association-audit",
     help="Verify that every latest extraction has a terminal association-coverage state.",
 )

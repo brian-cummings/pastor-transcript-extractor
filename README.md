@@ -952,6 +952,13 @@ pastor-name match links its placeholder identity to the voice profile; unmatched
 names remain attributed but unlinked, and existing links are never merged from
 name similarity alone.
 
+Rerun only metadata consolidation—without acoustic association or discovery—with:
+
+```bash
+pte identity analyze-profile-metadata --all --base-dir /path/to/app-data
+pte identity analyze-profile-metadata --profile-id PROFILE_ID --base-dir /path/to/app-data
+```
+
 Run the complete identity layer independently with the same scope convention as
 top-level `pte run`:
 

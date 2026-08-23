@@ -226,6 +226,65 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         self.assertEqual(0, run.failed)
         self.assertEqual("human_review_required", run.results[0].routing)
 
+    def test_program_name_cannot_be_proposed_as_a_person(self) -> None:
+        client = FakeMetadataClient(
+            {
+                "decision": "propose_name",
+                "proposed_name": "Sabbath Service",
+                "reason_codes": ["repeated_name_across_recordings"],
+                "evidence": [
+                    {
+                        "youtube_video_id": "curt-a",
+                        "field_path": "video.title",
+                        "exact_excerpt": "Sabbath Service",
+                    },
+                    {
+                        "youtube_video_id": "curt-b",
+                        "field_path": "video.title",
+                        "exact_excerpt": "Sabbath Service",
+                    },
+                ],
+                "conflicting_names": [],
+            }
+        )
+
+        run = run_profile_metadata_attribution(
+            self.database,
+            self.root / "program-name",
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(1, run.failed)
+        self.assertEqual(0, run.proposed)
+
+    def test_hallucinated_conflicts_cannot_be_persisted(self) -> None:
+        client = FakeMetadataClient(
+            {
+                "decision": "conflicting_evidence",
+                "proposed_name": "",
+                "reason_codes": ["multiple_candidate_names"],
+                "evidence": [
+                    {
+                        "youtube_video_id": "curt-c",
+                        "field_path": "video.title",
+                        "exact_excerpt": "Worship Service",
+                    }
+                ],
+                "conflicting_names": ["Pastor NAME", "Unknown"],
+            }
+        )
+
+        run = run_profile_metadata_attribution(
+            self.database,
+            self.root / "hallucinated-conflict",
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(1, run.failed)
+        self.assertEqual(0, run.conflicting_evidence)
+
     def test_existing_explicit_claim_removes_profile_from_model_queue(self) -> None:
         observation = self.observations[0]
         self.database.add_speaker_name_claim(

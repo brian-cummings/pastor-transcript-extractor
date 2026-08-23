@@ -13,8 +13,8 @@ from pastor_transcript_extractor.speaker_registry import normalize_person_name
 from pastor_transcript_extractor.storage import Database
 
 
-PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v1"
-PROFILE_METADATA_PROMPT_VERSION = "profile_metadata_name_consolidation_v1"
+PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v2"
+PROFILE_METADATA_PROMPT_VERSION = "profile_metadata_name_consolidation_v2"
 PROFILE_METADATA_OUTPUT_TOKEN_BUDGET = 768
 PROFILE_METADATA_TEXT_LIMIT = 800
 PROFILE_METADATA_TOTAL_TEXT_LIMIT = 14_000
@@ -37,6 +37,27 @@ _REASON_CODES = {
     "multiple_candidate_names",
     "metadata_unavailable",
     "model_output_unverifiable",
+}
+_NON_PERSON_NAME_TOKENS = {
+    "advent",
+    "baptist",
+    "church",
+    "divine",
+    "fellowship",
+    "livestream",
+    "message",
+    "ministry",
+    "sabbath",
+    "sermon",
+    "service",
+    "stream",
+    "worship",
+}
+_PLACEHOLDER_NAMES = {
+    "name",
+    "none",
+    "unknown",
+    "speaker name",
 }
 
 
@@ -155,9 +176,15 @@ def profile_metadata_prompt(candidate: ProfileMetadataInput) -> str:
         "Use insufficient_evidence when support is absent or occurs in only one "
         "recording. Use conflicting_evidence for competing plausible speaker "
         "names. Use invalid_metadata only when the supplied metadata cannot be "
-        "interpreted. Every evidence excerpt must be copied exactly from its "
-        "supplied field. Never invent, expand initials, or infer a name from the "
-        "source.\n\nMETADATA:\n"
+        "interpreted. For propose_name, use only consistent_speaker_credit and "
+        "repeated_name_across_recordings as reason codes and leave conflicting_names "
+        "empty. For conflicting_evidence, cite at least two different full person "
+        "names, include multiple_candidate_names, and ensure every conflicting name "
+        "appears in a supplied evidence excerpt. For insufficient_evidence, leave "
+        "conflicting_names empty. Every evidence excerpt must be copied exactly from "
+        "its supplied field. A church, city, program, worship service, placeholder "
+        "such as NAME/Unknown/None, or channel is never a person. Never invent, "
+        "expand initials, or infer a name from the source.\n\nMETADATA:\n"
         + json.dumps(records, indent=2, ensure_ascii=False)
     )
 
@@ -360,7 +387,7 @@ def run_profile_metadata_attribution(
                     index,
                     len(candidates),
                     candidate.profile_id,
-                    f"failed:{type(error).__name__}",
+                    f"failed:{type(error).__name__}: {error}",
                 )
             continue
         payload = {
@@ -478,7 +505,7 @@ def _validate_response(
     }
     if decision == "propose_name":
         if (
-            len(normalized_name.split()) < 2
+            not _valid_person_name(normalized_name)
             or len(supporting_recordings) < 2
             or raw_conflicts
         ):
@@ -486,7 +513,57 @@ def _validate_response(
         routing = "human_confirmation_available"
         normalized: str | None = normalized_name
         proposal: str | None = proposed_name.strip()
+        raw_reasons = [
+            "consistent_speaker_credit",
+            "repeated_name_across_recordings",
+        ]
+    elif decision == "conflicting_evidence":
+        normalized_conflicts = {
+            normalize_person_name(name): name.strip()
+            for name in raw_conflicts
+            if _valid_person_name(normalize_person_name(name))
+        }
+        supported_conflicts = {
+            normalized
+            for normalized in normalized_conflicts
+            if any(
+                _normalized_name_occurs(
+                    normalized,
+                    item["exact_excerpt"],
+                )
+                for item in evidence
+            )
+        }
+        if (
+            len(normalized_conflicts) < 2
+            or supported_conflicts != set(normalized_conflicts)
+            or "multiple_candidate_names" not in raw_reasons
+        ):
+            raise ValueError(
+                "conflicting names lack verbatim metadata support"
+            )
+        routing = "human_review_required"
+        normalized = None
+        proposal = None
+        raw_conflicts = list(normalized_conflicts.values())
+        raw_reasons = ["multiple_candidate_names"]
     else:
+        if raw_conflicts:
+            raise ValueError(
+                "non-conflict metadata result contains conflicting names"
+            )
+        if decision == "insufficient_evidence":
+            raw_reasons = [
+                reason
+                for reason in raw_reasons
+                if reason
+                in {
+                    "single_recording_only",
+                    "no_speaker_credit",
+                    "ambiguous_program_metadata",
+                    "metadata_unavailable",
+                }
+            ] or ["ambiguous_program_metadata"]
         routing = "human_review_required"
         normalized = None
         proposal = None
@@ -576,6 +653,15 @@ def _normalized_name_occurs(normalized_name: str, excerpt: str) -> bool:
     return any(
         excerpt_tokens[index : index + len(name_tokens)] == name_tokens
         for index in range(len(excerpt_tokens) - len(name_tokens) + 1)
+    )
+
+
+def _valid_person_name(normalized_name: str) -> bool:
+    tokens = normalized_name.split()
+    return (
+        2 <= len(tokens) <= 5
+        and normalized_name not in _PLACEHOLDER_NAMES
+        and not any(token in _NON_PERSON_NAME_TOKENS for token in tokens)
     )
 
 
