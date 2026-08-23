@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,12 +16,24 @@ from pastor_transcript_extractor.cli import (
     _load_actionable_review_prewarm,
     _prepare_actionable_review_audio,
     app,
+    review_next_speaker_pair,
     run_identity_workflow_service,
+    validate_source_families,
 )
 from pastor_transcript_extractor.config import AppPaths
 
 
 class IdentityRunTests(unittest.TestCase):
+    def test_hidden_prewarm_fallback_parameter_belongs_to_review_command(self):
+        self.assertIn(
+            "ignore_prewarm",
+            inspect.signature(review_next_speaker_pair).parameters,
+        )
+        self.assertNotIn(
+            "ignore_prewarm",
+            inspect.signature(validate_source_families).parameters,
+        )
+
     def test_held_out_fixture_observations_are_reserved_from_machine_use(
         self,
     ) -> None:

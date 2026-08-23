@@ -474,7 +474,6 @@ def validate_source_families(
         help="Fixture corpus whose source-family coverage should be checked.",
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-    ignore_prewarm: bool = typer.Option(False, hidden=True),
 ) -> None:
     try:
         registry = load_source_family_registry(registry_path.expanduser().resolve())
@@ -7168,6 +7167,7 @@ def review_next_speaker_pair(
         ),
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+    ignore_prewarm: bool = typer.Option(False, hidden=True),
 ) -> None:
     paths = build_paths(base_dir)
     if not paths.database.exists():
