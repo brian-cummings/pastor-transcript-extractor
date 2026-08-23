@@ -1059,20 +1059,40 @@ def write_canonical_clip_preparation_manifest(
         },
         "policy_version": policy_version,
     }
-    fingerprint = hashlib.sha256(
-        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
     manifest_dir = Path(artifact.manifest_path).parent / "canonical-clips"
-    manifest_path = manifest_dir / f"{fingerprint}.json"
     payload = {"schema_version": 1, "input": identity, "clips": clips}
     manifest_dir.mkdir(parents=True, exist_ok=True)
+
+    # Multiple workflows may prepare different valid clip sets for the same
+    # immutable observation/audio/policy identity. Any existing valid proof
+    # satisfies canonical preparation; clip-set variation is not a collision.
+    for existing_path in sorted(manifest_dir.glob("*.json")):
+        try:
+            existing = json.loads(existing_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if existing == payload:
+            return existing_path
+        if (
+            isinstance(existing, dict)
+            and existing.get("input") == identity
+            and _canonical_clip_payload_is_current(existing)
+        ):
+            return existing_path
+
+    # Include the output clip set in new filenames so stale proof can be
+    # superseded without mutating or deleting immutable historical evidence.
+    fingerprint = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    manifest_path = manifest_dir / f"{fingerprint}.json"
     if manifest_path.exists():
         if json.loads(manifest_path.read_text(encoding="utf-8")) != payload:
             raise RuntimeError(f"canonical clip manifest collision: {manifest_path}")
-    else:
-        temporary = manifest_path.with_suffix(".json.partial")
-        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(temporary, manifest_path)
+        return manifest_path
+    temporary = manifest_path.with_suffix(".json.partial")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, manifest_path)
     return manifest_path
 
 
@@ -1178,14 +1198,25 @@ def _canonical_clip_preparation_status(artifact, observation, policy_version: st
         }
         if payload.get("input") != expected:
             continue
-        clips = payload.get("clips")
-        if isinstance(clips, list) and clips and all(
-            isinstance(item, dict) and Path(str(item.get("path", ""))).is_file()
-            and _sha256_file(Path(str(item["path"]))) == item.get("sha256")
-            for item in clips
-        ):
+        if _canonical_clip_payload_is_current(payload):
             return "current"
     return "stale" if saw_manifest else "missing"
+
+
+def _canonical_clip_payload_is_current(payload: object) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    clips = payload.get("clips")
+    return bool(
+        isinstance(clips, list)
+        and clips
+        and all(
+            isinstance(item, dict)
+            and Path(str(item.get("path", ""))).is_file()
+            and _sha256_file(Path(str(item["path"]))) == item.get("sha256")
+            for item in clips
+        )
+    )
 
 
 def archive_status(

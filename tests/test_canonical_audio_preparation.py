@@ -410,6 +410,67 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
                 ),
             )
 
+    def test_existing_valid_manifest_accepts_review_clip_variation(self) -> None:
+        first_clip = self.root / "canonical-first.wav"
+        second_clip = self.root / "review-second.wav"
+        first_clip.write_bytes(b"first-valid-clip")
+        second_clip.write_bytes(b"second-valid-clip")
+
+        first_manifest = write_canonical_clip_preparation_manifest(
+            self.paths,
+            self.artifact,
+            self.observation,
+            clip_paths=(first_clip,),
+        )
+        replay_manifest = write_canonical_clip_preparation_manifest(
+            self.paths,
+            self.artifact,
+            self.observation,
+            clip_paths=(second_clip,),
+        )
+
+        self.assertEqual(first_manifest, replay_manifest)
+        self.assertEqual(
+            "current",
+            _canonical_clip_preparation_status(
+                self.artifact,
+                self.observation,
+                CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+            ),
+        )
+
+    def test_new_clip_set_supersedes_stale_manifest_without_mutation(self) -> None:
+        stale_clip = self.root / "stale-canonical.wav"
+        replacement_clip = self.root / "replacement-canonical.wav"
+        stale_clip.write_bytes(b"stale-clip")
+        replacement_clip.write_bytes(b"replacement-clip")
+        stale_manifest = write_canonical_clip_preparation_manifest(
+            self.paths,
+            self.artifact,
+            self.observation,
+            clip_paths=(stale_clip,),
+        )
+        stale_payload = stale_manifest.read_bytes()
+        stale_clip.unlink()
+
+        replacement_manifest = write_canonical_clip_preparation_manifest(
+            self.paths,
+            self.artifact,
+            self.observation,
+            clip_paths=(replacement_clip,),
+        )
+
+        self.assertNotEqual(stale_manifest, replacement_manifest)
+        self.assertEqual(stale_payload, stale_manifest.read_bytes())
+        self.assertEqual(
+            "current",
+            _canonical_clip_preparation_status(
+                self.artifact,
+                self.observation,
+                CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+            ),
+        )
+
     def test_single_video_cli_reports_offline_retry(self) -> None:
         result_payload = SimpleNamespace(
             items=(
