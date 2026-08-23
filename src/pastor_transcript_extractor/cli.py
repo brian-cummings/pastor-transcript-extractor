@@ -277,6 +277,7 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     write_profile_attribution_packet,
 )
 from pastor_transcript_extractor.speaker_profile_discovery import (
+    ActivityQualifiedSelectionCache,
     DiscoveryCandidate,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
     build_discovery_signature,
@@ -6131,11 +6132,13 @@ def shadow_associate_speakers_command(
             )
 
     span_selection_by_observation_id: dict[int, Mapping[str, Any]] = {}
+    activity_selection_cache = ActivityQualifiedSelectionCache(cache_root)
 
     def transcript_grounded_spans(
         video_id: int,
         observation: SpeakerObservation,
         audio_path: Path,
+        source_audio_sha256: str,
     ) -> tuple[SpanSpec, ...]:
         extraction = database.get_latest_extraction_result_for_video(video_id)
         if extraction is None or not extraction.proposed_json_path:
@@ -6156,14 +6159,12 @@ def shadow_associate_speakers_command(
             return candidates
         assert backend is not None
         assert embedding_cache is not None
-        qualified = prepare_activity_qualified_spans(
+        qualified = activity_selection_cache.get_or_prepare(
             observation=observation,
+            source_audio_sha256=source_audio_sha256,
             audio_path=audio_path,
             span_cache=span_cache,
             candidate_specs=candidates,
-        )
-        qualified = refine_activity_qualified_spans(
-            qualified,
             embedding_cache=embedding_cache,
             backend=backend,
             policy=policy_spec.policy,
@@ -6171,10 +6172,7 @@ def shadow_associate_speakers_command(
         span_selection_by_observation_id[observation.id] = (
             qualified.selection
         )
-        return tuple(
-            SpanSpec(span.start_seconds, span.end_seconds)
-            for span in qualified.spans
-        )
+        return qualified.span_specs
 
     videos_by_id = {video.id: video for video in database.list_videos()}
     source_id_by_video_id = {
@@ -6223,6 +6221,7 @@ def shadow_associate_speakers_command(
                     observation.video_id,
                     observation,
                     audio_path,
+                    eligibility.media_artifact.content_sha256,
                 )
             except (OSError, RuntimeError, ValueError):
                 continue
@@ -6335,6 +6334,7 @@ def shadow_associate_speakers_command(
                 video.id,
                 eligibility.observation,
                 audio_path,
+                eligibility.media_artifact.content_sha256,
             )
         except (OSError, RuntimeError, ValueError) as error:
             reason = str(error) or "activity_qualified_spans_unavailable"
@@ -6662,7 +6662,10 @@ def shadow_associate_speakers_command(
         f"exhaustive_profiles={exhaustive_profile_comparisons} "
         f"reused_associations={reused_associations} "
         f"pair_cache_hits={pair_diagnostic_cache.hits} "
-        f"pair_cache_misses={pair_diagnostic_cache.misses}"
+        f"pair_cache_misses={pair_diagnostic_cache.misses} "
+        f"selection_cache_hits={activity_selection_cache.hits} "
+        f"selection_cache_misses={activity_selection_cache.misses} "
+        f"selection_failure_hits={activity_selection_cache.failure_hits}"
     )
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."

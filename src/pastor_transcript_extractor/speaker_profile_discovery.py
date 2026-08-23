@@ -5,6 +5,7 @@ import hashlib
 import itertools
 import json
 import math
+import os
 from pathlib import Path
 import re
 import statistics
@@ -53,6 +54,9 @@ TRANSCRIPT_SPAN_MAXIMUM_THRESHOLD_DBFS = -50.0
 TRANSCRIPT_SPAN_RMS_MARGIN_DB = 3.0
 TRANSCRIPT_SPAN_MAX_CONSISTENCY_REPLACEMENTS = 2
 TRANSCRIPT_SPAN_EDGE_WINDOW_FRACTION = 0.10
+ACTIVITY_QUALIFIED_SELECTION_CACHE_VERSION = (
+    "activity_qualified_span_selection_cache_v1"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +86,184 @@ class ActivityQualifiedSpans:
     spans: tuple[CachedSpan, ...]
     selection: Mapping[str, Any]
     qualified_spans: tuple[CachedSpan, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CachedActivityQualifiedSelection:
+    span_specs: tuple[SpanSpec, ...]
+    selection: Mapping[str, Any]
+
+
+class ActivityQualifiedSelectionCache:
+    """Persist deterministic activity and consistency span selection."""
+
+    def __init__(self, root: Path):
+        self.root = root / "observation-span-selections"
+        self.hits = 0
+        self.misses = 0
+        self.failure_hits = 0
+
+    def get_or_prepare(
+        self,
+        *,
+        observation: SpeakerObservation,
+        source_audio_sha256: str,
+        candidate_specs: Sequence[SpanSpec],
+        span_cache: AudioSpanCache,
+        audio_path: Path,
+        embedding_cache: EmbeddingCache,
+        backend: EmbeddingBackend,
+        policy: DecisionPolicy,
+        requested_count: int = 5,
+    ) -> CachedActivityQualifiedSelection:
+        cache_input = {
+            "cache_version": ACTIVITY_QUALIFIED_SELECTION_CACHE_VERSION,
+            "selection_version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+            "observation_fingerprint": observation.input_fingerprint,
+            "source_audio_sha256": source_audio_sha256,
+            "candidate_specs": [asdict(spec) for spec in candidate_specs],
+            "requested_count": requested_count,
+            "model": asdict(backend.spec),
+            "policy": asdict(policy),
+        }
+        key = _sha256_json(cache_input)
+        path = self.root / f"{key}.json"
+        cached = self._load(path, key=key, cache_input=cache_input)
+        if cached is not None:
+            outcome, value = cached
+            if outcome == "failure":
+                self.failure_hits += 1
+                raise ValueError(str(value))
+            self.hits += 1
+            assert isinstance(value, CachedActivityQualifiedSelection)
+            return value
+
+        self.misses += 1
+        try:
+            prepared = prepare_activity_qualified_spans(
+                observation=observation,
+                audio_path=audio_path,
+                span_cache=span_cache,
+                candidate_specs=candidate_specs,
+                requested_count=requested_count,
+            )
+            prepared = refine_activity_qualified_spans(
+                prepared,
+                embedding_cache=embedding_cache,
+                backend=backend,
+                policy=policy,
+            )
+        except ValueError as error:
+            reason = str(error)
+            if reason in {
+                "too_few_span_candidates",
+                "too_few_activity_qualified_spans",
+            }:
+                self._write(
+                    path,
+                    key=key,
+                    cache_input=cache_input,
+                    result={"outcome": "failure", "reason": reason},
+                )
+            raise
+
+        result = {
+            "outcome": "prepared",
+            "span_specs": [
+                {
+                    "start_seconds": span.start_seconds,
+                    "end_seconds": span.end_seconds,
+                }
+                for span in prepared.spans
+            ],
+            "selection": dict(prepared.selection),
+        }
+        self._write(
+            path,
+            key=key,
+            cache_input=cache_input,
+            result=result,
+        )
+        return CachedActivityQualifiedSelection(
+            span_specs=tuple(
+                SpanSpec(span.start_seconds, span.end_seconds)
+                for span in prepared.spans
+            ),
+            selection=prepared.selection,
+        )
+
+    def _load(
+        self,
+        path: Path,
+        *,
+        key: str,
+        cache_input: Mapping[str, Any],
+    ) -> tuple[str, CachedActivityQualifiedSelection | str] | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return None
+        result = payload.get("result") if isinstance(payload, dict) else None
+        if (
+            not isinstance(result, dict)
+            or payload.get("schema_version") != 1
+            or payload.get("cache_key") != key
+            or payload.get("input") != cache_input
+            or payload.get("result_sha256") != _sha256_json(result)
+        ):
+            return None
+        if result.get("outcome") == "failure" and isinstance(
+            result.get("reason"), str
+        ):
+            return "failure", result["reason"]
+        raw_specs = result.get("span_specs")
+        selection = result.get("selection")
+        if (
+            result.get("outcome") != "prepared"
+            or not isinstance(raw_specs, list)
+            or not isinstance(selection, dict)
+        ):
+            return None
+        try:
+            specs = tuple(
+                SpanSpec(
+                    float(item["start_seconds"]),
+                    float(item["end_seconds"]),
+                )
+                for item in raw_specs
+                if isinstance(item, dict)
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+        if len(specs) != len(raw_specs) or not specs:
+            return None
+        return "prepared", CachedActivityQualifiedSelection(
+            span_specs=specs,
+            selection=selection,
+        )
+
+    def _write(
+        self,
+        path: Path,
+        *,
+        key: str,
+        cache_input: Mapping[str, Any],
+        result: Mapping[str, Any],
+    ) -> None:
+        payload = {
+            "schema_version": 1,
+            "cache_key": key,
+            "input": dict(cache_input),
+            "result_sha256": _sha256_json(result),
+            "result": dict(result),
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".json.partial")
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, path)
 
 
 @dataclass(frozen=True, slots=True)

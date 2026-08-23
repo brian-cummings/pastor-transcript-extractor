@@ -9,12 +9,14 @@ from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     CachedSpan,
     DecisionPolicy,
+    ModelSpec,
     SpanSpec,
 )
 from pastor_transcript_extractor.speaker_observation_consistency import (
     DiscoveryConsistencyPolicySpec,
 )
 from pastor_transcript_extractor.speaker_profile_discovery import (
+    ActivityQualifiedSelectionCache,
     DiscoveryCandidate,
     DiscoverySignature,
     evaluate_shadow_profile_discovery,
@@ -862,6 +864,61 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             prepared.selection["silence_threshold_dbfs"],
             -60.0,
         )
+
+    def test_activity_selection_cache_reuses_consistency_result(self) -> None:
+        observation = self._signature(
+            "selection-cache",
+            (1.0, 0.0),
+        ).candidate.observation
+        specs = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in (110, 250, 400, 550, 700)
+        )
+        span_cache = FakeActivitySpanCache(
+            {spec.start_seconds: -40.0 for spec in specs},
+            {spec.start_seconds: 0.8 for spec in specs},
+        )
+        embeddings = {
+            spec.start_seconds: (1.0, 0.0) for spec in specs
+        }
+        backend = type(
+            "Backend",
+            (),
+            {
+                "spec": ModelSpec(
+                    backend="test",
+                    model_name="test",
+                    model_sha256="model-sha",
+                    runtime_version="1",
+                )
+            },
+        )()
+        cache = ActivityQualifiedSelectionCache(self.root / "cache")
+
+        first = cache.get_or_prepare(
+            observation=observation,
+            source_audio_sha256="audio-sha",
+            candidate_specs=specs,
+            span_cache=span_cache,
+            audio_path=Path("audio.wav"),
+            embedding_cache=FakeEmbeddingCache(embeddings),
+            backend=backend,
+            policy=self._policy().policy,
+        )
+        replay = cache.get_or_prepare(
+            observation=observation,
+            source_audio_sha256="audio-sha",
+            candidate_specs=specs,
+            span_cache=object(),
+            audio_path=Path("offline.wav"),
+            embedding_cache=object(),
+            backend=backend,
+            policy=self._policy().policy,
+        )
+
+        self.assertEqual(first, replay)
+        self.assertEqual(1, cache.misses)
+        self.assertEqual(1, cache.hits)
 
     def test_consistency_fallback_replaces_one_distributed_outlier(self) -> None:
         observation = self._signature("fallback", (1.0, 0.0)).candidate.observation
