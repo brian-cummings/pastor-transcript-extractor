@@ -570,7 +570,10 @@ class IdentityRunTests(unittest.TestCase):
             database_path.touch()
             discovery_path = Path(tempdir) / "discovery.json"
             discovery_path.touch()
-            paths = SimpleNamespace(database=database_path)
+            paths = SimpleNamespace(
+                database=database_path,
+                logs=Path(tempdir) / "logs",
+            )
             with (
                 patch(
                     "pastor_transcript_extractor.cli.build_paths",

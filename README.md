@@ -918,8 +918,10 @@ reused by the current identity invocation can enter the ledger.
 When grounded attribution leaves a reviewed voice profile unnamed, run
 `pte identity review-profile-attribution --reviewer REVIEWER_ID`. The command
 selects the largest unnamed canonical profile (or accepts `--profile-id`), opens
-an HTML packet with representative member videos at their sermon timestamps,
-and prompts for the backing video and speaker name. Approval creates and
+an HTML packet with representative member videos at persisted identity-clip
+timestamps, and prompts for the backing video and speaker name. Cached profile
+metadata analysis may propose a name as the prompt default; insufficient or
+conflicting metadata is explicitly routed to human review. Approval creates and
 attaches an append-only manual attribution claim. An exact unique configured
 pastor-name match links its placeholder identity to the voice profile; unmatched
 names remain attributed but unlinked, and existing links are never merged from
@@ -938,7 +940,11 @@ pte identity run --all --plan-only --base-dir /path/to/app-data
 Execution first synchronizes already-reviewed speaker evidence, then chains
 neutral-artifact backfill, shadow association, validated confirmation planning,
 corpus discovery for `--all`, provisional-promotion planning, and a final
-coordination audit. An executing `--all` run then prewarms exact review clips
+coordination audit. After promotion, one cached Ollama metadata-consolidation
+pass runs for each unnamed profile whose exact membership or source metadata
+has changed. It may produce an evidence-grounded name proposal, but never
+creates acoustic membership or applies a name without human confirmation.
+An executing `--all` run then prewarms exact review clips
 for up to 24 actionable observations before normalized archival. Set
 `--review-prewarm-limit 0` to disable this bounded stage or choose another
 limit. Discovery and association remain shadow computations.

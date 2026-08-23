@@ -278,6 +278,11 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     record_profile_attribution_deferral,
     write_profile_attribution_packet,
 )
+from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
+    load_profile_metadata_attributions,
+    profile_metadata_candidate_profile_ids,
+    run_profile_metadata_attribution,
+)
 from pastor_transcript_extractor.speaker_profile_discovery import (
     ActivityQualifiedSelectionCache,
     DiscoveryCandidate,
@@ -3801,6 +3806,9 @@ def review_profile_attribution_command(
     paths = build_paths(base_dir, remember=True)
     database = get_database(base_dir)
     deferral_root = paths.logs / "profile-attribution-reviews" / "deferrals"
+    metadata_attributions = load_profile_metadata_attributions(
+        paths.logs / "profile-metadata-attribution"
+    )
     clip_timestamps = load_profile_attribution_clip_timestamps(cache_dir)
     console.print(
         "Attribution timing: loaded "
@@ -3815,6 +3823,7 @@ def review_profile_attribution_command(
                     database,
                     representative_limit=representative_videos,
                     clip_timestamps=clip_timestamps,
+                    metadata_attributions=metadata_attributions,
                 )
                 if candidate.membership_fingerprint not in deferred
             )
@@ -3831,6 +3840,7 @@ def review_profile_attribution_command(
                     profile_id,
                     representative_limit=representative_videos,
                     clip_timestamps=clip_timestamps,
+                    metadata_attributions=metadata_attributions,
                 ),
             )
     except (OSError, ValueError) as error:
@@ -3867,12 +3877,32 @@ def review_profile_attribution_command(
             )
         console.print(table)
         console.print(f"Prepared profile attribution packet: {packet_path}")
+        metadata_attribution = candidate.metadata_attribution
+        suggested_name = ""
+        if metadata_attribution is not None:
+            if (
+                metadata_attribution.decision == "propose_name"
+                and metadata_attribution.proposed_name
+            ):
+                suggested_name = metadata_attribution.proposed_name
+                console.print(
+                    "Metadata attribution: proposed "
+                    f"{suggested_name!r} from "
+                    f"{metadata_attribution.supporting_recording_count} "
+                    "recording(s); human confirmation required."
+                )
+            else:
+                console.print(
+                    "Metadata attribution: "
+                    f"{metadata_attribution.decision}; routed for human review "
+                    f"(reasons={','.join(metadata_attribution.reason_codes)})."
+                )
         if open_packet:
             webbrowser.open(packet_path.as_uri())
         name = typer.prompt(
             "Speaker name (blank or 'skip' defers this evidence set)",
-            default="",
-            show_default=False,
+            default=suggested_name,
+            show_default=bool(suggested_name),
         ).strip()
         if not name or name.casefold() in {"s", "skip", "cannot"}:
             try:
@@ -5387,6 +5417,88 @@ def run_identity_workflow_service(
         )
     elif all_extractions:
         console.print("Discovery promotion: no completed report available.")
+
+    metadata_attribution_root = paths.logs / "profile-metadata-attribution"
+    if plan_only:
+        metadata_candidate_count = len(
+            profile_metadata_candidate_profile_ids(
+                Database(paths.database, readonly=True)
+            )
+        )
+        console.print(
+            "Profile metadata attribution: plan-only; "
+            f"eligible={metadata_candidate_count}; no Ollama calls or artifacts "
+            "were created."
+        )
+    else:
+        metadata_config = build_llm_config()
+        if not metadata_config.enabled:
+            console.print(
+                "Profile metadata attribution: skipped — local LLM is disabled."
+            )
+        else:
+            metadata_database = Database(paths.database, readonly=True)
+            scoped_profile_ids = None
+            if database_video_id is not None:
+                scoped_observation = (
+                    metadata_database.get_latest_speaker_observation_for_video(
+                        database_video_id
+                    )
+                )
+                scoped_profile_ids = frozenset(
+                    metadata_database.resolve_speaker_profile_id(profile_id)
+                    for profile_id in (
+                        metadata_database.list_effective_profile_ids_for_observation(
+                            scoped_observation.id
+                        )
+                        if scoped_observation is not None
+                        else ()
+                    )
+                )
+            candidate_profile_ids = profile_metadata_candidate_profile_ids(
+                metadata_database,
+                profile_ids=scoped_profile_ids,
+            )
+            if not candidate_profile_ids:
+                console.print(
+                    "Profile metadata attribution: eligible=0; no Ollama calls."
+                )
+            else:
+                try:
+                    metadata_client = OllamaClient(metadata_config)
+                    metadata_run = run_profile_metadata_attribution(
+                        metadata_database,
+                        metadata_attribution_root,
+                        metadata_client,
+                        model_digest=metadata_client.model_digest(),
+                        profile_ids=frozenset(candidate_profile_ids),
+                        progress_callback=(
+                            lambda index, total, profile_id, outcome: console.print(
+                                "Profile metadata attribution "
+                                f"[{index}/{total}] profile={profile_id}: "
+                                f"{outcome}"
+                            )
+                        ),
+                    )
+                except (LocalLlmError, OSError, ValueError) as error:
+                    console.print(
+                        "Profile metadata attribution: skipped — "
+                        f"{type(error).__name__}: {error}"
+                    )
+                else:
+                    console.print(
+                        "Profile metadata attribution: "
+                        f"eligible={metadata_run.eligible} "
+                        f"proposed={metadata_run.proposed} "
+                        f"insufficient_evidence="
+                        f"{metadata_run.insufficient_evidence} "
+                        f"conflicting_evidence="
+                        f"{metadata_run.conflicting_evidence} "
+                        f"invalid_metadata={metadata_run.invalid_metadata} "
+                        f"cache_hits={metadata_run.cache_hits} "
+                        f"model_calls={metadata_run.model_calls} "
+                        f"failed={metadata_run.failed}."
+                    )
 
     coordinate_identity_command(
         youtube_video_id=youtube_video_id,

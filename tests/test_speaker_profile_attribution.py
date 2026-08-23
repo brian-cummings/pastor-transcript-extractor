@@ -16,6 +16,10 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     record_profile_attribution_deferral,
     write_profile_attribution_packet,
 )
+from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
+    ProfileMetadataAttribution,
+    ProfileMetadataEvidence,
+)
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
     ensure_configured_pastor_profile,
@@ -161,6 +165,45 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
                 self.database,
                 clip_timestamps={},
             ),
+        )
+
+    def test_metadata_proposal_flows_into_attribution_packet(self) -> None:
+        initial = list_unnamed_profile_attribution_candidates(self.database)[0]
+        proposal = ProfileMetadataAttribution(
+            profile_id=self.profile.id,
+            membership_fingerprint=initial.membership_fingerprint,
+            input_fingerprint="metadata-input",
+            decision="propose_name",
+            routing="human_confirmation_available",
+            proposed_name="Curt DeWitt",
+            normalized_name="curt dewitt",
+            reason_codes=("repeated_name_across_recordings",),
+            evidence=(
+                ProfileMetadataEvidence(
+                    "video-1",
+                    "video.title",
+                    "Curt DeWitt",
+                ),
+            ),
+            conflicting_names=(),
+            supporting_recording_count=2,
+            artifact_path=self.root / "metadata.json",
+            cache_hit=True,
+        )
+
+        candidate = list_unnamed_profile_attribution_candidates(
+            self.database,
+            metadata_attributions={initial.membership_fingerprint: proposal},
+        )[0]
+        packet_path = write_profile_attribution_packet(
+            candidate,
+            self.root / "metadata-profile.html",
+        )
+
+        self.assertEqual(proposal, candidate.metadata_attribution)
+        self.assertIn(
+            "Metadata proposal:</strong> Curt DeWitt",
+            packet_path.read_text(encoding="utf-8"),
         )
 
     def test_reviewed_name_claim_links_unique_configured_pastor(self) -> None:

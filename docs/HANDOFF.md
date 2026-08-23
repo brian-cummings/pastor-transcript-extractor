@@ -57,6 +57,7 @@ Implemented:
 - universal acquisition is an explicit shadow command and has not been inserted into the stable `run` workflow
 - no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
 - machine-assignment lifecycle events are append-only and reversible; the checked-in human-on-loop policy pins model/policy fingerprints, requires unique multi-exemplar agreement and automatic-ready profiles, caps active assignments, and activates only through an explicit apply workflow
+- identity runs cache one metadata-only Ollama name-consolidation result per exact unnamed-profile membership and metadata snapshot; proposals require verbatim support from at least two recordings, while insufficient/conflicting evidence routes to human attribution review and human deferrals remain separate events
 - machine ledger tables are created by normal database initialization; there is no historical backfill, because only association artifacts refreshed by the current identity run are eligible
 - 284 tests pass
 

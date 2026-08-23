@@ -14,6 +14,9 @@ from pastor_transcript_extractor.speaker_registry import (
     record_name_claim_review,
     record_profile_redirect,
 )
+from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
+    ProfileMetadataAttribution,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -41,6 +44,7 @@ class ProfileAttributionCandidate:
     member_count: int
     evidence: tuple[ProfileAttributionEvidence, ...]
     membership_fingerprint: str
+    metadata_attribution: ProfileMetadataAttribution | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +62,9 @@ def list_unnamed_profile_attribution_candidates(
     *,
     representative_limit: int = 6,
     clip_timestamps: Mapping[str, int] | None = None,
+    metadata_attributions: Mapping[
+        str, ProfileMetadataAttribution
+    ] | None = None,
 ) -> tuple[ProfileAttributionCandidate, ...]:
     candidates: list[ProfileAttributionCandidate] = []
     for profile in database.list_speaker_profiles():
@@ -78,15 +85,21 @@ def list_unnamed_profile_attribution_candidates(
             clip_timestamps=clip_timestamps,
         )
         if evidence:
+            membership_fingerprint = _membership_fingerprint(
+                database,
+                profile.id,
+                member_ids,
+            )
             candidates.append(
                 ProfileAttributionCandidate(
                     profile_id=profile.id,
                     member_count=len(member_ids),
                     evidence=evidence,
-                    membership_fingerprint=_membership_fingerprint(
-                        database,
-                        profile.id,
-                        member_ids,
+                    membership_fingerprint=membership_fingerprint,
+                    metadata_attribution=(
+                        metadata_attributions.get(membership_fingerprint)
+                        if metadata_attributions is not None
+                        else None
                     ),
                 )
             )
@@ -101,6 +114,9 @@ def get_profile_attribution_candidate(
     *,
     representative_limit: int = 6,
     clip_timestamps: Mapping[str, int] | None = None,
+    metadata_attributions: Mapping[
+        str, ProfileMetadataAttribution
+    ] | None = None,
 ) -> ProfileAttributionCandidate:
     profile = database.get_speaker_profile(profile_id)
     if profile is None or profile.created_reason not in _REVIEWABLE_PROFILE_REASONS:
@@ -118,11 +134,19 @@ def get_profile_attribution_candidate(
     )
     if not evidence:
         raise ValueError(f"Profile {profile_id} has no reviewable backing videos")
+    membership_fingerprint = _membership_fingerprint(
+        database, profile_id, member_ids
+    )
     return ProfileAttributionCandidate(
         profile_id,
         len(member_ids),
         evidence,
-        _membership_fingerprint(database, profile_id, member_ids),
+        membership_fingerprint,
+        (
+            metadata_attributions.get(membership_fingerprint)
+            if metadata_attributions is not None
+            else None
+        ),
     )
 
 
@@ -289,10 +313,28 @@ def write_profile_attribution_packet(
             'rel="noopener">Open identity clip timestamp</a>'
             f" · observation {evidence.observation_id}</p></section>"
         )
+    metadata = candidate.metadata_attribution
+    metadata_summary = ""
+    if metadata is not None:
+        if metadata.decision == "propose_name" and metadata.proposed_name:
+            metadata_summary = (
+                "<aside><strong>Metadata proposal:</strong> "
+                f"{html.escape(metadata.proposed_name)} from "
+                f"{metadata.supporting_recording_count} recording(s). "
+                "Confirm against the identity clips; metadata is not voice proof."
+                "</aside>"
+            )
+        else:
+            metadata_summary = (
+                "<aside><strong>Metadata attribution:</strong> "
+                f"{html.escape(metadata.decision.replace('_', ' '))}; "
+                "human review required.</aside>"
+            )
     document = """<!doctype html><html><head><meta charset="utf-8">
 <title>Speaker profile attribution</title><style>
 body{font-family:system-ui;margin:2rem auto;max-width:1100px;padding:0 1rem}
 section{margin:2rem 0}.video{display:block;position:relative;background:#222}
+aside{padding:1rem;background:#fff4cc;border-left:4px solid #b8860b}
 .video img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;opacity:.82}
 .video span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
 background:#c00;color:#fff;padding:.8rem 1.1rem;border-radius:.5rem;font-weight:700}
@@ -301,6 +343,7 @@ background:#c00;color:#fff;padding:.8rem 1.1rem;border-radius:.5rem;font-weight:
         f"<p>{candidate.member_count} member recordings. Each link opens at a "
         "persisted speech-qualified identity clip. Use the terminal prompt to "
         "choose the evidence video and enter the speaker name.</p>"
+        + metadata_summary
         + "".join(cards)
         + "</body></html>"
     )
