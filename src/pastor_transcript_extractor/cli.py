@@ -4844,6 +4844,140 @@ def _held_out_speaker_fixture_fingerprints(
     return frozenset(fingerprints)
 
 
+@dataclass(frozen=True, slots=True)
+class ActionableReviewAudioPreparation:
+    requested: int
+    prepared: int
+    already_cached: int
+    excluded: int
+    failed: int
+
+
+def _actionable_review_fingerprints(
+    *,
+    discovery_report: Path | None,
+    association_reports: Sequence[Path],
+) -> tuple[str, ...]:
+    """Order observations by current human-review nomination value."""
+    ordered: list[str] = []
+    if association_reports:
+        for nomination in load_shadow_association_confirmation_pairs(
+            association_reports
+        ):
+            ordered.extend(
+                (
+                    nomination.candidate_fingerprint,
+                    nomination.exemplar_fingerprint,
+                )
+            )
+    if discovery_report is not None:
+        for nomination in load_discovery_resolution_pairs(discovery_report):
+            ordered.extend(
+                (nomination.fingerprint_a, nomination.fingerprint_b)
+            )
+        for nomination in load_discovery_acoustic_ranking_pairs(
+            discovery_report
+        ):
+            ordered.extend(
+                (nomination.fingerprint_a, nomination.fingerprint_b)
+            )
+    return tuple(dict.fromkeys(ordered))
+
+
+def _prepare_actionable_review_audio(
+    database: Database,
+    paths: AppPaths,
+    *,
+    discovery_report: Path | None,
+    association_reports: Sequence[Path],
+    cache_dir: Path = Path("evaluation/speaker-pairs/cache"),
+    limit: int = 24,
+) -> ActionableReviewAudioPreparation:
+    """Prewarm exact review clips for the current actionable frontier."""
+    if limit < 1:
+        raise ValueError("review audio prewarm limit must be positive")
+    fingerprints = _actionable_review_fingerprints(
+        discovery_report=discovery_report,
+        association_reports=association_reports,
+    )[:limit]
+    span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
+    verification_cache = MediaVerificationCache(
+        cache_dir.expanduser().resolve()
+    )
+    prepared = 0
+    already_cached = 0
+    excluded = 0
+    failed = 0
+    for index, fingerprint in enumerate(fingerprints, start=1):
+        observation = database.get_speaker_observation_by_fingerprint(
+            fingerprint
+        )
+        video = (
+            database.get_video_by_id(observation.video_id)
+            if observation is not None
+            else None
+        )
+        if observation is None or video is None:
+            excluded += 1
+            continue
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verification_cache=verification_cache,
+            verify_media=True,
+        )
+        if (
+            not eligibility.eligible
+            or eligibility.observation is None
+            or eligibility.media_artifact is None
+            or eligibility.observation.input_fingerprint != fingerprint
+        ):
+            excluded += 1
+            continue
+        try:
+            result = prepare_review_observation(
+                observation=observation,
+                audio_path=Path(eligibility.media_artifact.artifact_path),
+                span_cache=span_cache,
+            )
+            cache_hits = sum(span.cache_hit for span in result.spans)
+            write_canonical_clip_preparation_manifest(
+                paths,
+                eligibility.media_artifact,
+                observation,
+                clip_paths=tuple(
+                    Path(span.wav_path) for span in result.spans
+                ),
+            )
+        except (
+            ArchivedMediaUnavailableError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            subprocess.SubprocessError,
+        ):
+            failed += 1
+            continue
+        if cache_hits == len(result.spans):
+            already_cached += 1
+            outcome = "cached"
+        else:
+            prepared += 1
+            outcome = "prepared"
+        console.print(
+            f"Review prewarm [{index}/{len(fingerprints)}] "
+            f"{video.youtube_video_id}: {outcome} "
+            f"({len(result.spans)} clips; cache_hits={cache_hits})"
+        )
+    return ActionableReviewAudioPreparation(
+        requested=len(fingerprints),
+        prepared=prepared,
+        already_cached=already_cached,
+        excluded=excluded,
+        failed=failed,
+    )
+
+
 def run_identity_workflow_service(
     *,
     youtube_video_id: str | None,
@@ -4855,6 +4989,7 @@ def run_identity_workflow_service(
     apply_promotions: bool,
     apply_machine_canary: bool = False,
     machine_assignment_policy_path: Path | None = None,
+    review_prewarm_limit: int = 24,
     base_dir: Path | None,
 ) -> None:
     if (youtube_video_id is None) == (not all_extractions):
@@ -4874,6 +5009,8 @@ def run_identity_workflow_service(
         raise ValueError("automatic profile promotion requires --all")
     if not all_extractions and apply_machine_canary:
         raise ValueError("machine canary activation requires --all")
+    if review_prewarm_limit < 0:
+        raise ValueError("review prewarm limit cannot be negative")
     paths = build_paths(base_dir, remember=not plan_only)
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
@@ -5123,6 +5260,40 @@ def run_identity_workflow_service(
     )
     if plan_only:
         console.print(
+            "Review audio prewarm: plan-only; actionable review clips were "
+            "not prepared."
+        )
+    elif all_extractions and review_prewarm_limit:
+        try:
+            review_preparation = _prepare_actionable_review_audio(
+                Database(paths.database, readonly=True),
+                paths,
+                discovery_report=latest_discovery,
+                association_reports=current_association_reports,
+                limit=review_prewarm_limit,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            console.print(
+                "Review audio prewarm: skipped — "
+                f"{type(error).__name__}: {error}"
+            )
+        else:
+            console.print(
+                "Review audio prewarm: "
+                f"requested={review_preparation.requested} "
+                f"prepared={review_preparation.prepared} "
+                f"cached={review_preparation.already_cached} "
+                f"excluded={review_preparation.excluded} "
+                f"failed={review_preparation.failed}."
+            )
+    elif all_extractions:
+        console.print("Review audio prewarm: disabled by limit=0.")
+    else:
+        console.print(
+            "Review audio prewarm: deferred to a corpus-wide identity run."
+        )
+    if plan_only:
+        console.print(
             "Normalized archive: plan-only; canonical manifests and media were not changed."
         )
     elif isinstance(paths, AppPaths):
@@ -5328,6 +5499,15 @@ def identity_run_command(
             "checked-in policy is shadow-only."
         ),
     ),
+    review_prewarm_limit: int = typer.Option(
+        24,
+        "--review-prewarm-limit",
+        min=0,
+        help=(
+            "Precompute exact clips for this many current actionable review "
+            "observations during an --all run; use 0 to disable."
+        ),
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
@@ -5344,6 +5524,7 @@ def identity_run_command(
             apply_promotions=apply_promotions,
             apply_machine_canary=apply_machine_canary,
             machine_assignment_policy_path=machine_assignment_policy,
+            review_prewarm_limit=review_prewarm_limit,
             base_dir=base_dir,
         )
     except ValueError as error:
@@ -6651,6 +6832,75 @@ def prepare_speaker_review_audio(
         f"Review audio preparation complete: prepared={prepared_count} "
         f"insufficient={insufficient_count} failed={failed_count}; "
         "no drafts or review events were created."
+    )
+
+
+@identity_app.command(
+    "prepare-actionable-review-audio",
+    help=(
+        "Precompute exact clips for current automation-readiness and "
+        "profile-growth nominations without creating drafts."
+    ),
+)
+def prepare_actionable_review_audio_command(
+    limit: int = typer.Option(
+        24,
+        "--limit",
+        min=1,
+        help="Maximum unique nominated observations to prepare.",
+    ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Ignored exact-span audio cache shared with pair review.",
+    ),
+    discovery_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+        help="Discovery artifacts used to prioritize review observations.",
+    ),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Association artifacts used to prioritize review observations.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    discovery_reports = list(
+        discovery_root.expanduser().resolve().glob("*/*.json")
+    )
+    latest_discovery = (
+        max(
+            discovery_reports,
+            key=lambda path: (path.stat().st_mtime_ns, str(path)),
+        )
+        if discovery_reports
+        else None
+    )
+    association_reports = tuple(
+        association_root.expanduser().resolve().glob("*/*.json")
+    )
+    try:
+        result = _prepare_actionable_review_audio(
+            Database(paths.database, readonly=True),
+            paths,
+            discovery_report=latest_discovery,
+            association_reports=association_reports,
+            cache_dir=cache_dir,
+            limit=limit,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Actionable review audio preparation complete: "
+        f"requested={result.requested} prepared={result.prepared} "
+        f"cached={result.already_cached} excluded={result.excluded} "
+        f"failed={result.failed}; no drafts or review events were created."
     )
 
 

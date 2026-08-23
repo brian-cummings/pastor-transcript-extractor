@@ -839,6 +839,13 @@ excluded. Accepted manual window overrides remain eligible when their current
 observation matches the override. This is derived at selection time and adds no
 database migration or lifecycle state.
 
+Corpus-wide `pte identity run --all` also performs a bounded, selector-aware
+review prewarm before normalized archival. It prepares the exact
+activity-qualified clips for up to 24 observations from current association
+confirmations and discovery/profile-growth frontiers. The standalone equivalent
+is `pte identity prepare-actionable-review-audio --limit 24`; neither path
+creates drafts or advances selection history.
+
 Selector v11 in the default evaluation objective first checks for unreviewed
 pairs nominated by explicit curated
 relations. Two observations reviewed into the same effective profile may

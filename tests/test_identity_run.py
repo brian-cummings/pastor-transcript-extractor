@@ -8,8 +8,11 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from pastor_transcript_extractor.cli import (
+    ActionableReviewAudioPreparation,
+    _actionable_review_fingerprints,
     _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
+    _prepare_actionable_review_audio,
     app,
     run_identity_workflow_service,
 )
@@ -116,6 +119,16 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.coordinate_identity_command"
                 ) as coordinate,
                 patch(
+                    "pastor_transcript_extractor.cli._prepare_actionable_review_audio",
+                    return_value=ActionableReviewAudioPreparation(
+                        requested=4,
+                        prepared=2,
+                        already_cached=2,
+                        excluded=0,
+                        failed=0,
+                    ),
+                ) as prewarm,
+                patch(
                     "pastor_transcript_extractor.cli._archive_normalized_after_identity"
                 ) as archive_normalized,
                 patch.object(Path, "glob", return_value=[]),
@@ -149,11 +162,157 @@ class IdentityRunTests(unittest.TestCase):
         self.assertFalse(discover.call_args.kwargs["plan_only"])
         promote.assert_not_called()
         self.assertTrue(coordinate.call_args.kwargs["all_extractions"])
+        prewarm.assert_called_once_with(
+            unittest.mock.ANY,
+            paths,
+            discovery_report=None,
+            association_reports=(current_report,),
+            limit=24,
+        )
         archive_normalized.assert_called_once_with(
             unittest.mock.ANY,
             paths,
             video_ids=None,
             all_eligible=True,
+        )
+
+    def test_actionable_review_fingerprints_prioritize_and_deduplicate(self) -> None:
+        association = SimpleNamespace(
+            candidate_fingerprint="candidate",
+            exemplar_fingerprint="shared",
+        )
+        resolution = SimpleNamespace(
+            fingerprint_a="shared",
+            fingerprint_b="frontier",
+        )
+        acoustic = SimpleNamespace(
+            fingerprint_a="acoustic-a",
+            fingerprint_b="acoustic-b",
+        )
+        with (
+            patch(
+                "pastor_transcript_extractor.cli."
+                "load_shadow_association_confirmation_pairs",
+                return_value=(association,),
+            ),
+            patch(
+                "pastor_transcript_extractor.cli."
+                "load_discovery_resolution_pairs",
+                return_value=(resolution,),
+            ),
+            patch(
+                "pastor_transcript_extractor.cli."
+                "load_discovery_acoustic_ranking_pairs",
+                return_value=(acoustic,),
+            ),
+        ):
+            fingerprints = _actionable_review_fingerprints(
+                discovery_report=Path("discovery.json"),
+                association_reports=(Path("association.json"),),
+            )
+
+        self.assertEqual(
+            (
+                "candidate",
+                "shared",
+                "frontier",
+                "acoustic-a",
+                "acoustic-b",
+            ),
+            fingerprints,
+        )
+
+    def test_actionable_review_audio_prepares_only_current_eligible_inputs(
+        self,
+    ) -> None:
+        root = Path("/tmp/actionable-review-prewarm-test")
+        paths = AppPaths(
+            root=root,
+            database=root / "app.db",
+            artifacts=root / "artifacts",
+            logs=root / "logs",
+            exports=root / "exports",
+            pastors=root / "pastors",
+        )
+        observations = {
+            "current": SimpleNamespace(
+                video_id=1,
+                input_fingerprint="current",
+            ),
+            "stale": SimpleNamespace(
+                video_id=2,
+                input_fingerprint="stale",
+            ),
+        }
+        videos = {
+            1: SimpleNamespace(id=1, youtube_video_id="video-current"),
+            2: SimpleNamespace(id=2, youtube_video_id="video-stale"),
+        }
+        database = SimpleNamespace(
+            get_speaker_observation_by_fingerprint=observations.get,
+            get_video_by_id=videos.get,
+        )
+        media = SimpleNamespace(artifact_path="/tmp/current.wav")
+        prepared = SimpleNamespace(
+            spans=(
+                SimpleNamespace(
+                    wav_path="/tmp/current-clip.wav",
+                    cache_hit=False,
+                ),
+            )
+        )
+
+        def eligibility(_database, video_id, **_kwargs):
+            if video_id == 2:
+                return SimpleNamespace(eligible=False)
+            return SimpleNamespace(
+                eligible=True,
+                observation=observations["current"],
+                media_artifact=media,
+            )
+
+        with (
+            patch(
+                "pastor_transcript_extractor.cli."
+                "_actionable_review_fingerprints",
+                return_value=("current", "stale"),
+            ),
+            patch(
+                "pastor_transcript_extractor.cli."
+                "assess_automatic_speaker_observation",
+                side_effect=eligibility,
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.prepare_review_observation",
+                return_value=prepared,
+            ) as prepare,
+            patch(
+                "pastor_transcript_extractor.cli."
+                "write_canonical_clip_preparation_manifest"
+            ) as write_manifest,
+        ):
+            result = _prepare_actionable_review_audio(
+                database,
+                paths,
+                discovery_report=Path("discovery.json"),
+                association_reports=(),
+                limit=24,
+            )
+
+        self.assertEqual(
+            ActionableReviewAudioPreparation(2, 1, 0, 1, 0),
+            result,
+        )
+        prepare.assert_called_once()
+        self.assertEqual(
+            Path("/tmp/current.wav"),
+            prepare.call_args.kwargs["audio_path"],
+        )
+        write_manifest.assert_called_once_with(
+            paths,
+            media,
+            observations["current"],
+            clip_paths=(Path("/tmp/current-clip.wav"),),
         )
 
     def test_identity_archive_waits_for_lock_and_reports_unavailable_as_deferred(
@@ -417,6 +576,7 @@ class IdentityRunTests(unittest.TestCase):
                     apply_automatic=True,
                     apply_confirmations=False,
                     apply_promotions=False,
+                    review_prewarm_limit=0,
                     base_dir=Path(tempdir),
                 )
 

@@ -573,6 +573,19 @@ pte identity prepare-speaker-review-audio \
 This cache-only operation creates no pair drafts, reviews, fixtures, registry
 memberships, or identity claims.
 
+To prepare the observations most likely to be selected for profile growth or
+automation-readiness review, use the selector-aware bounded prewarmer:
+
+```bash
+pte identity prepare-actionable-review-audio \
+  --limit 24 \
+  --base-dir /path/to/app-data
+```
+
+It prioritizes current association confirmations, discovery frontiers, and
+acoustic growth nominations, then prepares the exact activity-qualified clips
+used by blinded review. It creates no draft and does not consume a nomination.
+
 Backfill neutral speaker observations and, where a pastor target exists, shadow
 identity artifacts for existing extractions without invoking classification or
 rewriting sermon artifacts:
@@ -921,7 +934,10 @@ pte identity run --all --plan-only --base-dir /path/to/app-data
 Execution first synchronizes already-reviewed speaker evidence, then chains
 neutral-artifact backfill, shadow association, validated confirmation planning,
 corpus discovery for `--all`, provisional-promotion planning, and a final
-coordination audit. Discovery and association remain shadow computations.
+coordination audit. An executing `--all` run then prewarms exact review clips
+for up to 24 actionable observations before normalized archival. Set
+`--review-prewarm-limit 0` to disable this bounded stage or choose another
+limit. Discovery and association remain shadow computations.
 `--apply-automatic` applies validated confirmations and promotions; the older
 `--apply-confirmations` and `--apply-promotions` switches remain available for
 granular control. Human pair review, profile attribution, conflicts, and policy
