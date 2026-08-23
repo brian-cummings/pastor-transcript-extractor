@@ -4185,7 +4185,8 @@ def shadow_discover_profiles_command(
     database = Database(paths.database, readonly=True)
     cache_root = cache_dir.expanduser().resolve()
     verification_cache = MediaVerificationCache(
-        cache_root / "media-verification"
+        cache_root,
+        fallback_roots=(cache_root / "media-verification",),
     )
     try:
         policy_spec = load_shadow_policy(policy_path)
@@ -4233,6 +4234,7 @@ def shadow_discover_profiles_command(
             database,
             video.id,
             verification_cache=verification_cache,
+            verify_media=False,
         )
         if (
             not eligibility.eligible
@@ -6302,6 +6304,17 @@ def shadow_associate_speakers_command(
         if review_action not in {None, "qualified_single_speaker"}:
             reason = f"reviewed_{review_action}"
             ineligible_reasons[reason] = ineligible_reasons.get(reason, 0) + 1
+            continue
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verification_cache=verification_cache,
+            verify_media=True,
+        )
+        if not eligibility.eligible or eligibility.observation is None:
+            ineligible_reasons[eligibility.reason_code] = (
+                ineligible_reasons.get(eligibility.reason_code, 0) + 1
+            )
             continue
         if eligibility.media_artifact is None:
             ineligible_reasons["verified_normalized_media_unavailable"] = (

@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from typing import Any
+from typing import Any, Sequence
 import wave
 
 from pastor_transcript_extractor.artifact_namespace import (
@@ -206,8 +206,18 @@ def require_media_artifact_bytes(
 class MediaVerificationCache:
     """Reuse a full artifact hash while the underlying file is unchanged."""
 
-    def __init__(self, root: Path):
+    def __init__(
+        self,
+        root: Path,
+        *,
+        fallback_roots: Sequence[Path] = (),
+    ):
         self.root = root
+        self.fallback_roots = tuple(
+            fallback_root
+            for fallback_root in fallback_roots
+            if fallback_root != root
+        )
 
     def verify(self, artifact: MediaArtifact) -> bool:
         path = Path(artifact.artifact_path)
@@ -225,17 +235,27 @@ class MediaVerificationCache:
             "size": file_stat.st_size,
             "mtime_ns": file_stat.st_mtime_ns,
         }
-        try:
-            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            receipt = None
-        if (
-            isinstance(receipt, dict)
-            and receipt.get("schema_version") == MEDIA_VERIFICATION_RECEIPT_VERSION
-            and receipt.get("artifact") == self._artifact_identity(artifact)
-            and receipt.get("file_stat") == expected_stat
-        ):
-            return True
+        for candidate_path in self._receipt_paths(artifact):
+            try:
+                receipt = json.loads(
+                    candidate_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if (
+                isinstance(receipt, dict)
+                and receipt.get("schema_version")
+                == MEDIA_VERIFICATION_RECEIPT_VERSION
+                and receipt.get("artifact") == self._artifact_identity(artifact)
+                and receipt.get("file_stat") == expected_stat
+            ):
+                if candidate_path != receipt_path:
+                    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+                    receipt_path.write_text(
+                        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                return True
 
         if _sha256_file(path) != artifact.content_sha256:
             return False
@@ -252,12 +272,29 @@ class MediaVerificationCache:
         return True
 
     def _receipt_path(self, artifact: MediaArtifact) -> Path:
+        return self._receipt_path_under(self.root, artifact)
+
+    def _receipt_paths(self, artifact: MediaArtifact) -> tuple[Path, ...]:
+        return (
+            self._receipt_path(artifact),
+            *(
+                self._receipt_path_under(root, artifact)
+                for root in self.fallback_roots
+            ),
+        )
+
+    @classmethod
+    def _receipt_path_under(
+        cls,
+        root: Path,
+        artifact: MediaArtifact,
+    ) -> Path:
         identity = json.dumps(
-            self._artifact_identity(artifact),
+            cls._artifact_identity(artifact),
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
-        return self.root / "media-verifications" / f"{hashlib.sha256(identity).hexdigest()}.json"
+        return root / "media-verifications" / f"{hashlib.sha256(identity).hexdigest()}.json"
 
     @staticmethod
     def _artifact_identity(artifact: MediaArtifact) -> dict[str, object]:

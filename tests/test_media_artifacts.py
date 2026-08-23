@@ -557,6 +557,45 @@ class MediaArtifactTests(unittest.TestCase):
             )
         )
 
+    def test_verification_cache_promotes_valid_fallback_receipt(self) -> None:
+        video, _ = self._video("fallbackcache1")
+        source = (
+            build_video_artifact_paths(
+                self.paths,
+                self.pastor.slug,
+                video.youtube_video_id,
+            ).audio
+            / "media"
+            / "normalized.wav"
+        )
+        write_wav(source)
+        artifact = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        legacy_root = self.paths.root / "legacy-verification-cache"
+        current_root = self.paths.root / "current-verification-cache"
+        self.assertTrue(MediaVerificationCache(legacy_root).verify(artifact))
+
+        cache = MediaVerificationCache(
+            current_root,
+            fallback_roots=(legacy_root,),
+        )
+        with patch(
+            "pastor_transcript_extractor.media_artifacts._sha256_file",
+            side_effect=AssertionError("fallback receipt should avoid hashing"),
+        ):
+            self.assertTrue(cache.verify(artifact))
+
+        self.assertTrue(cache._receipt_path(artifact).exists())
+
     def test_unavailable_and_failed_are_persisted_separately(self) -> None:
         unavailable_video, _ = self._video("unavailable1")
         failed_video, _ = self._video("failed00001")
