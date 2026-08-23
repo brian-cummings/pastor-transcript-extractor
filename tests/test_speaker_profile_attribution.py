@@ -8,7 +8,9 @@ from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
+    load_profile_attribution_deferrals,
     list_unnamed_profile_attribution_candidates,
+    record_profile_attribution_deferral,
     write_profile_attribution_packet,
 )
 from pastor_transcript_extractor.speaker_registry import (
@@ -31,6 +33,7 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
             SourceType.CHANNEL,
             pastor_id=None,
         )
+        self.source = source
         self.observations = []
         for index in range(1, 4):
             video = self.database.add_video(
@@ -130,6 +133,66 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
         self.assertEqual(
             (),
             list_unnamed_profile_attribution_candidates(self.database),
+        )
+
+    def test_deferral_applies_only_to_exact_profile_membership(self) -> None:
+        candidate = list_unnamed_profile_attribution_candidates(
+            self.database
+        )[0]
+        root = self.root / "deferrals"
+
+        event = record_profile_attribution_deferral(
+            candidate,
+            reviewer="Brian Cummings",
+            root=root,
+        )
+
+        self.assertTrue(event.is_file())
+        self.assertEqual(
+            frozenset((candidate.membership_fingerprint,)),
+            load_profile_attribution_deferrals(root),
+        )
+        video = self.database.add_video(
+            source_id=self.source.id,
+            pastor_id=None,
+            youtube_video_id="video-new-evidence",
+            title="New evidence",
+            url="https://www.youtube.com/watch?v=video-new-evidence",
+            status=VideoStatus.EXTRACTED,
+        )
+        extraction = self.database.add_extraction_result(
+            video_id=video.id,
+            version=1,
+            proposed_text_path="new.md",
+            proposed_json_path="new.json",
+        )
+        observation = self.database.add_speaker_observation(
+            video_id=video.id,
+            extraction_result_id=extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=100.0,
+            end_seconds=1000.0,
+            artifact_path="new.speaker.json",
+            content_sha256="new-content",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="new-fingerprint",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=self.profile.id,
+            observation_id=observation.id,
+            reviewer="Brian Cummings",
+            reason="New reviewed evidence",
+            review_event_key="new-reviewed-evidence",
+        )
+
+        changed = list_unnamed_profile_attribution_candidates(
+            self.database
+        )[0]
+        self.assertNotEqual(
+            candidate.membership_fingerprint,
+            changed.membership_fingerprint,
         )
 
 

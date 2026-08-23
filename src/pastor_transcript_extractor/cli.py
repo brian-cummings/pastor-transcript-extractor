@@ -273,7 +273,9 @@ from pastor_transcript_extractor.speaker_negative_window_audit import (
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     get_profile_attribution_candidate,
+    load_profile_attribution_deferrals,
     list_unnamed_profile_attribution_candidates,
+    record_profile_attribution_deferral,
     write_profile_attribution_packet,
 )
 from pastor_transcript_extractor.speaker_profile_discovery import (
@@ -3821,104 +3823,135 @@ def review_profile_attribution_command(
 ) -> None:
     paths = build_paths(base_dir, remember=True)
     database = get_database(base_dir)
+    deferral_root = paths.logs / "profile-attribution-reviews" / "deferrals"
     try:
         if profile_id is None:
-            candidates = list_unnamed_profile_attribution_candidates(
-                database,
-                representative_limit=representative_videos,
+            deferred = load_profile_attribution_deferrals(deferral_root)
+            candidates = tuple(
+                candidate
+                for candidate in list_unnamed_profile_attribution_candidates(
+                    database,
+                    representative_limit=representative_videos,
+                )
+                if candidate.membership_fingerprint not in deferred
             )
             if not candidates:
-                console.print("No unnamed profile has reviewable backing videos.")
+                console.print(
+                    "No non-deferred unnamed profile has reviewable backing "
+                    "videos. Pass --profile-id to revisit a deferred profile."
+                )
                 return
-            candidate = candidates[0]
-            console.print(
-                f"Selected profile {candidate.profile_id}: "
-                f"members={candidate.member_count} "
-                f"unnamed_queue={len(candidates)}"
-            )
         else:
-            candidate = get_profile_attribution_candidate(
-                database,
-                profile_id,
-                representative_limit=representative_videos,
+            candidates = (
+                get_profile_attribution_candidate(
+                    database,
+                    profile_id,
+                    representative_limit=representative_videos,
+                ),
             )
-        packet_path = write_profile_attribution_packet(
-            candidate,
-            paths.logs
-            / "profile-attribution-reviews"
-            / f"profile-{candidate.profile_id}.html",
-        )
     except (OSError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
 
-    table = Table(title=f"Profile {candidate.profile_id} backing videos")
-    table.add_column("#", justify="right")
-    table.add_column("Title")
-    table.add_column("Timestamped video")
-    for index, evidence in enumerate(candidate.evidence, start=1):
-        table.add_row(
-            str(index),
-            evidence.title,
-            youtube_timestamp_url(
-                evidence.video_url,
-                evidence.timestamp_seconds,
-            ),
-        )
-    console.print(table)
-    console.print(f"Prepared profile attribution packet: {packet_path}")
-    if open_packet:
-        webbrowser.open(packet_path.as_uri())
-    name = typer.prompt(
-        "Speaker name (leave blank to defer)",
-        default="",
-        show_default=False,
-    ).strip()
-    if not name:
-        console.print("Attribution deferred; no registry mutation occurred.")
-        return
-    evidence_number = typer.prompt(
-        "Backing video number",
-        default=1,
-        type=int,
-    )
-    if evidence_number < 1 or evidence_number > len(candidate.evidence):
-        raise typer.BadParameter("backing video number is outside the packet")
-    evidence = candidate.evidence[evidence_number - 1]
-    reason = typer.prompt(
-        "Evidence/reason",
-        default=(
-            "Visually identified in backing video "
-            f"{evidence.youtube_video_id} at "
-            f"{evidence.timestamp_seconds} seconds"
-        ),
-    ).strip()
-    if not typer.confirm(
-        f"Attach {name!r} to profile {candidate.profile_id}?",
-        default=False,
-    ):
-        console.print("Attribution cancelled; no registry mutation occurred.")
-        return
-    try:
-        result = apply_reviewed_profile_attribution(
-            database,
-            profile_id=candidate.profile_id,
-            observation_id=evidence.observation_id,
-            display_name=name,
-            reviewer=reviewer,
-            reason=reason,
-            packet_path=packet_path,
-        )
-    except ValueError as error:
-        raise typer.BadParameter(str(error)) from error
-    console.print(
-        f"Attributed profile {candidate.profile_id}: "
-        f"name={result.normalized_name} claim={result.claim_id} "
-        f"link_status={result.link_status}"
-    )
-    if result.linked_pastor_slug is not None:
+    for queue_index, candidate in enumerate(candidates, start=1):
         console.print(
-            f"Linked configured pastor: {result.linked_pastor_slug}"
+            f"Selected profile {candidate.profile_id}: "
+            f"members={candidate.member_count} "
+            f"queue={queue_index}/{len(candidates)}"
         )
+        try:
+            packet_path = write_profile_attribution_packet(
+                candidate,
+                paths.logs
+                / "profile-attribution-reviews"
+                / f"profile-{candidate.profile_id}.html",
+            )
+        except OSError as error:
+            raise typer.BadParameter(str(error)) from error
+
+        table = Table(title=f"Profile {candidate.profile_id} backing videos")
+        table.add_column("#", justify="right")
+        table.add_column("Title")
+        table.add_column("Timestamped video")
+        for index, evidence in enumerate(candidate.evidence, start=1):
+            table.add_row(
+                str(index),
+                evidence.title,
+                youtube_timestamp_url(
+                    evidence.video_url,
+                    evidence.timestamp_seconds,
+                ),
+            )
+        console.print(table)
+        console.print(f"Prepared profile attribution packet: {packet_path}")
+        if open_packet:
+            webbrowser.open(packet_path.as_uri())
+        name = typer.prompt(
+            "Speaker name (blank or 'skip' defers this evidence set)",
+            default="",
+            show_default=False,
+        ).strip()
+        if not name or name.casefold() in {"s", "skip", "cannot"}:
+            try:
+                deferral_path = record_profile_attribution_deferral(
+                    candidate,
+                    reviewer=reviewer,
+                    root=deferral_root,
+                )
+            except (OSError, ValueError) as error:
+                raise typer.BadParameter(str(error)) from error
+            console.print(
+                "Attribution deferred for this exact profile membership; "
+                f"event={deferral_path}"
+            )
+            if profile_id is not None:
+                return
+            continue
+        evidence_number = typer.prompt(
+            "Backing video number",
+            default=1,
+            type=int,
+        )
+        if evidence_number < 1 or evidence_number > len(candidate.evidence):
+            raise typer.BadParameter("backing video number is outside the packet")
+        evidence = candidate.evidence[evidence_number - 1]
+        reason = typer.prompt(
+            "Evidence/reason",
+            default=(
+                "Visually identified in backing video "
+                f"{evidence.youtube_video_id} at "
+                f"{evidence.timestamp_seconds} seconds"
+            ),
+        ).strip()
+        if not typer.confirm(
+            f"Attach {name!r} to profile {candidate.profile_id}?",
+            default=False,
+        ):
+            console.print("Attribution cancelled; no registry mutation occurred.")
+            return
+        try:
+            result = apply_reviewed_profile_attribution(
+                database,
+                profile_id=candidate.profile_id,
+                observation_id=evidence.observation_id,
+                display_name=name,
+                reviewer=reviewer,
+                reason=reason,
+                packet_path=packet_path,
+            )
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        console.print(
+            f"Attributed profile {candidate.profile_id}: "
+            f"name={result.normalized_name} claim={result.claim_id} "
+            f"link_status={result.link_status}"
+        )
+        if result.linked_pastor_slug is not None:
+            console.print(
+                f"Linked configured pastor: {result.linked_pastor_slug}"
+            )
+        return
+
+    console.print("All currently reviewable unnamed profiles were deferred.")
 
 
 @identity_app.command(

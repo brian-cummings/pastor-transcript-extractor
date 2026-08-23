@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import hashlib
 import html
 import json
@@ -37,6 +38,7 @@ class ProfileAttributionCandidate:
     profile_id: int
     member_count: int
     evidence: tuple[ProfileAttributionEvidence, ...]
+    membership_fingerprint: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +79,11 @@ def list_unnamed_profile_attribution_candidates(
                     profile_id=profile.id,
                     member_count=len(member_ids),
                     evidence=evidence,
+                    membership_fingerprint=_membership_fingerprint(
+                        database,
+                        profile.id,
+                        member_ids,
+                    ),
                 )
             )
     return tuple(
@@ -105,7 +112,87 @@ def get_profile_attribution_candidate(
     )
     if not evidence:
         raise ValueError(f"Profile {profile_id} has no reviewable backing videos")
-    return ProfileAttributionCandidate(profile_id, len(member_ids), evidence)
+    return ProfileAttributionCandidate(
+        profile_id,
+        len(member_ids),
+        evidence,
+        _membership_fingerprint(database, profile_id, member_ids),
+    )
+
+
+def load_profile_attribution_deferrals(root: Path) -> frozenset[str]:
+    """Load valid exact-membership deferrals; malformed events fail closed."""
+    deferred: set[str] = set()
+    if not root.is_dir():
+        return frozenset()
+    for path in sorted(root.glob("profile-*/*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        event_key = payload.get("event_key")
+        stable = {
+            key: payload.get(key)
+            for key in (
+                "version",
+                "profile_id",
+                "membership_fingerprint",
+                "reviewer",
+                "reason",
+            )
+        }
+        if (
+            payload.get("version") == PROFILE_ATTRIBUTION_REVIEW_VERSION
+            and payload.get("decision") == "deferred_unverifiable"
+            and isinstance(payload.get("membership_fingerprint"), str)
+            and event_key == _sha256(stable)
+        ):
+            deferred.add(payload["membership_fingerprint"])
+    return frozenset(deferred)
+
+
+def record_profile_attribution_deferral(
+    candidate: ProfileAttributionCandidate,
+    *,
+    reviewer: str,
+    root: Path,
+    reason: str = "identity_cannot_be_verified_from_current_evidence",
+) -> Path:
+    reviewer = reviewer.strip()
+    reason = reason.strip()
+    if not reviewer or not reason:
+        raise ValueError("reviewer and deferral reason are required")
+    stable = {
+        "version": PROFILE_ATTRIBUTION_REVIEW_VERSION,
+        "profile_id": candidate.profile_id,
+        "membership_fingerprint": candidate.membership_fingerprint,
+        "reviewer": reviewer,
+        "reason": reason,
+    }
+    event_key = _sha256(stable)
+    destination = (
+        root.expanduser().resolve()
+        / f"profile-{candidate.profile_id}"
+        / f"{event_key}.json"
+    )
+    if destination.exists():
+        return destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        **stable,
+        "decision": "deferred_unverifiable",
+        "event_key": event_key,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    temporary = destination.with_suffix(".json.partial")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(destination)
+    return destination
 
 
 def write_profile_attribution_packet(
@@ -305,6 +392,24 @@ def _profile_evidence(
             )
         )
     return tuple(evidence[:representative_limit])
+
+
+def _membership_fingerprint(
+    database: Database,
+    profile_id: int,
+    member_ids: list[int],
+) -> str:
+    fingerprints = []
+    for observation_id in sorted(member_ids):
+        observation = database.get_speaker_observation(observation_id)
+        if observation is not None:
+            fingerprints.append(observation.input_fingerprint)
+    return _sha256(
+        {
+            "profile_id": profile_id,
+            "observation_fingerprints": fingerprints,
+        }
+    )
 
 
 def _sha256(value: object) -> str:
