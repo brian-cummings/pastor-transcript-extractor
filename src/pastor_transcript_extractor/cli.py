@@ -216,6 +216,7 @@ from pastor_transcript_extractor.speaker_association_audit import (
 )
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
+    select_verified_automatic_speaker_pair,
 )
 from pastor_transcript_extractor.speaker_pair_review import (
     CLIP_ACTIVITY_POLICY_VERSION,
@@ -240,6 +241,7 @@ from pastor_transcript_extractor.speaker_observation_consistency import (
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
     PairCandidateObservation,
+    PairSelection,
     SelectionGoal,
     select_next_speaker_pair,
     selection_history_from_artifacts,
@@ -6912,6 +6914,7 @@ def review_next_speaker_pair(
                 database,
                 video.id,
                 verification_cache=verification_cache,
+                verify_media=False,
             )
             if not eligibility.eligible:
                 continue
@@ -7004,9 +7007,12 @@ def review_next_speaker_pair(
                 ),
             )
             candidates.append(candidate)
-        try:
-            selection = select_next_speaker_pair(
-                candidates,
+
+        def select_pair(
+            remaining: Sequence[PairCandidateObservation],
+        ) -> PairSelection:
+            return select_next_speaker_pair(
+                remaining,
                 history,
                 evaluation_partition=(
                     None if evaluation_scope == "all" else evaluation_scope
@@ -7020,6 +7026,15 @@ def review_next_speaker_pair(
                     unmatched_association_fingerprints
                 ),
             )
+
+        try:
+            verified_selection = select_verified_automatic_speaker_pair(
+                database,
+                candidates,
+                select_pair=select_pair,
+                verification_cache=verification_cache,
+            )
+            selection = verified_selection.selection
         except ValueError as error:
             if (
                 selection_objective == SelectionGoal.PROFILE_GROWTH
@@ -7033,6 +7048,14 @@ def review_next_speaker_pair(
                     f"--base-dir {paths.root}`, then retry"
                 ) from error
             raise
+        selection.manifest["media_verification_scope"] = "selected_pair"
+        selection.manifest["media_verification_attempts"] = (
+            verified_selection.selection_attempts
+        )
+        if verified_selection.rejection_counts:
+            selection.manifest["media_verification_rejections"] = dict(
+                sorted(verified_selection.rejection_counts.items())
+            )
         if (
             consistency_index.report_sha256
             and selection.manifest.get("observation_consistency_scores")

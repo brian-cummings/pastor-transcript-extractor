@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
+from typing import Callable, Sequence
 
 from pastor_transcript_extractor.disposition import ACCEPTED_SERMON
 from pastor_transcript_extractor.media_artifacts import (
@@ -16,6 +17,10 @@ from pastor_transcript_extractor.models import MediaArtifact, SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     SpanSpec,
     select_diagnostic_spans,
+)
+from pastor_transcript_extractor.speaker_pair_selector import (
+    PairCandidateObservation,
+    PairSelection,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -34,6 +39,93 @@ class AutomaticSpeakerObservationEligibility:
         return self.reason_code == "eligible"
 
 
+@dataclass(frozen=True, slots=True)
+class VerifiedAutomaticPairSelection:
+    """A deterministic nomination whose two media artifacts were verified."""
+
+    selection: PairSelection
+    selection_attempts: int
+    rejection_counts: dict[str, int]
+
+
+def select_verified_automatic_speaker_pair(
+    database: Database,
+    observations: Sequence[PairCandidateObservation],
+    *,
+    select_pair: Callable[[Sequence[PairCandidateObservation]], PairSelection],
+    verification_cache: MediaVerificationCache | None = None,
+) -> VerifiedAutomaticPairSelection:
+    """Select from metadata, then byte-verify only nominated observations.
+
+    A failed or stale nomination is removed and selection is replayed over the
+    remaining observations. Filtering preserves candidate order, so the result
+    is deterministic while uncertainty remains fail-closed.
+    """
+    remaining = list(observations)
+    rejection_counts: dict[str, int] = {}
+    attempts = 0
+    while True:
+        try:
+            selection = select_pair(remaining)
+        except ValueError as error:
+            if not rejection_counts:
+                raise
+            details = ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(rejection_counts.items())
+            )
+            raise ValueError(
+                f"{error}; selected-pair verification exclusions: {details}"
+            ) from error
+
+        attempts += 1
+        failed_fingerprints: set[str] = set()
+        for candidate in (
+            selection.observation_a,
+            selection.observation_b,
+        ):
+            video = database.get_video_by_youtube_id(candidate.video_id)
+            if video is None:
+                reason = "selected_video_unavailable"
+            else:
+                eligibility = assess_automatic_speaker_observation(
+                    database,
+                    video.id,
+                    verification_cache=verification_cache,
+                    verify_media=True,
+                )
+                if not eligibility.eligible:
+                    reason = eligibility.reason_code
+                elif (
+                    eligibility.observation is None
+                    or eligibility.observation.input_fingerprint
+                    != candidate.input_fingerprint
+                ):
+                    reason = "selected_observation_changed"
+                else:
+                    continue
+            failed_fingerprints.add(candidate.input_fingerprint)
+            rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
+
+        if not failed_fingerprints:
+            return VerifiedAutomaticPairSelection(
+                selection=selection,
+                selection_attempts=attempts,
+                rejection_counts=rejection_counts,
+            )
+
+        next_remaining = [
+            candidate
+            for candidate in remaining
+            if candidate.input_fingerprint not in failed_fingerprints
+        ]
+        if len(next_remaining) == len(remaining):
+            raise RuntimeError(
+                "selected-pair verification did not remove a failed candidate"
+            )
+        remaining = next_remaining
+
+
 def assess_automatic_speaker_observation(
     database: Database,
     video_id: int,
@@ -43,9 +135,10 @@ def assess_automatic_speaker_observation(
 ) -> AutomaticSpeakerObservationEligibility:
     """Admit only an observation derived from the current accepted sermon window.
 
-    ``verify_media=False`` is metadata-only and must be used only for inventory
-    or status reporting. Automatic selection and media consumption retain the
-    default byte-verifying behavior.
+    ``verify_media=False`` is metadata-only. It may be used for inventory,
+    status reporting, or candidate ranking only when the selected observation
+    is subsequently reassessed with the default byte-verifying behavior before
+    any media is consumed.
     """
     extraction = database.get_latest_extraction_result_for_video(video_id)
     if extraction is None or not extraction.proposed_json_path:

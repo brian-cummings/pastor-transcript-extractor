@@ -10,7 +10,13 @@ from unittest.mock import patch
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_pair_eligibility import (
+    AutomaticSpeakerObservationEligibility,
     assess_automatic_speaker_observation,
+    select_verified_automatic_speaker_pair,
+)
+from pastor_transcript_extractor.speaker_pair_selector import (
+    PairCandidateObservation,
+    PairSelection,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -175,6 +181,123 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
         self.assertTrue(result.eligible)
         registered.assert_called_once_with(self.database, self.video.id)
         verified.assert_not_called()
+
+    def test_selected_pair_only_is_verified(self) -> None:
+        candidates = [
+            PairCandidateObservation(
+                input_fingerprint=fingerprint,
+                video_id=f"video-{fingerprint}",
+                recording_date=None,
+            )
+            for fingerprint in ("a", "b", "c")
+        ]
+        videos = {
+            candidate.video_id: SimpleNamespace(id=index)
+            for index, candidate in enumerate(candidates, start=1)
+        }
+        database = SimpleNamespace(get_video_by_youtube_id=videos.get)
+
+        def select_pair(remaining):
+            return PairSelection(remaining[0], remaining[1], {})
+
+        fingerprints_by_id = {
+            video.id: candidate.input_fingerprint
+            for candidate, video in zip(candidates, videos.values())
+        }
+
+        def assess(_database, video_id, **_kwargs):
+            return AutomaticSpeakerObservationEligibility(
+                "eligible",
+                observation=SimpleNamespace(
+                    input_fingerprint=fingerprints_by_id[video_id]
+                ),
+                media_artifact=self.media,
+            )
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_eligibility."
+            "assess_automatic_speaker_observation",
+            side_effect=assess,
+        ) as assess_mock:
+            result = select_verified_automatic_speaker_pair(
+                database,
+                candidates,
+                select_pair=select_pair,
+            )
+
+        self.assertEqual("a", result.selection.observation_a.input_fingerprint)
+        self.assertEqual("b", result.selection.observation_b.input_fingerprint)
+        self.assertEqual(1, result.selection_attempts)
+        self.assertEqual({}, result.rejection_counts)
+        self.assertEqual(
+            [1, 2],
+            [call.args[1] for call in assess_mock.call_args_list],
+        )
+        self.assertTrue(
+            all(
+                call.kwargs["verify_media"]
+                for call in assess_mock.call_args_list
+            )
+        )
+
+    def test_failed_selected_media_advances_deterministically(self) -> None:
+        candidates = [
+            PairCandidateObservation(
+                input_fingerprint=fingerprint,
+                video_id=f"video-{fingerprint}",
+                recording_date=None,
+            )
+            for fingerprint in ("a", "b", "c", "d")
+        ]
+        videos = {
+            candidate.video_id: SimpleNamespace(id=index)
+            for index, candidate in enumerate(candidates, start=1)
+        }
+        database = SimpleNamespace(get_video_by_youtube_id=videos.get)
+
+        def select_pair(remaining):
+            return PairSelection(remaining[0], remaining[1], {})
+
+        fingerprints_by_id = {
+            video.id: candidate.input_fingerprint
+            for candidate, video in zip(candidates, videos.values())
+        }
+
+        def assess(_database, video_id, **_kwargs):
+            if video_id == 1:
+                return AutomaticSpeakerObservationEligibility(
+                    "verified_normalized_media_unavailable"
+                )
+            return AutomaticSpeakerObservationEligibility(
+                "eligible",
+                observation=SimpleNamespace(
+                    input_fingerprint=fingerprints_by_id[video_id]
+                ),
+                media_artifact=self.media,
+            )
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_eligibility."
+            "assess_automatic_speaker_observation",
+            side_effect=assess,
+        ) as assess_mock:
+            result = select_verified_automatic_speaker_pair(
+                database,
+                candidates,
+                select_pair=select_pair,
+            )
+
+        self.assertEqual("b", result.selection.observation_a.input_fingerprint)
+        self.assertEqual("c", result.selection.observation_b.input_fingerprint)
+        self.assertEqual(2, result.selection_attempts)
+        self.assertEqual(
+            {"verified_normalized_media_unavailable": 1},
+            result.rejection_counts,
+        )
+        self.assertEqual(
+            [1, 2, 2, 3],
+            [call.args[1] for call in assess_mock.call_args_list],
+        )
 
     def test_review_required_recording_is_excluded(self) -> None:
         self.payload["final_disposition"] = {"status": "review_required"}
