@@ -107,19 +107,19 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self,
     ) -> None:
         self.assertEqual(
-            "identity run",
+            "automatic",
             status_need_execution_label(
                 StatusNeed("association_validation", "associate", "association")
             ),
         )
         self.assertEqual(
-            "manual",
+            "human review",
             status_need_execution_label(
                 StatusNeed("grow_profile_evidence", "review", "profile-growth")
             ),
         )
         self.assertEqual(
-            "informational",
+            "info",
             status_need_execution_label(
                 StatusNeed(
                     "automatic_policy_approval",
@@ -444,6 +444,78 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(1, status.stale_or_ineligible_ungrouped_single_count)
         self.assertEqual(0, status.attributed_frontier_observation_count)
         self.assertEqual(1, status.unmatched_named_ungrouped_single_count)
+
+    def test_automatic_ready_profile_routes_frontier_to_identity_run(self) -> None:
+        members = [self._observation(key) for key in ("a", "b", "c")]
+        frontier = self._observation("frontier")
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same component",
+            review_event_key="automatic-ready-profile",
+        )
+        for observation in members:
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="same component",
+                review_event_key=f"attach-{observation.id}",
+            )
+            claim = self._claim(observation, "Alice Example")
+            record_name_claim_review(
+                self.database,
+                claim_id=claim.id,
+                profile_id=profile.id,
+                attach=True,
+                reviewer="reviewer",
+                reason="reviewed attribution",
+                review_event_key=f"claim-{claim.id}",
+            )
+        self._claim(frontier, "Alice Example")
+        record_observation_disposition(
+            self.database,
+            observation_id=frontier.id,
+            action="qualified_single_speaker",
+            reviewer="reviewer",
+            reason="pair review",
+            review_event_key="frontier-single",
+        )
+        provenance = (ReviewProvenance("event", "pair", "reviewer"),)
+        evidence = ReviewedSpeakerEvidence(
+            qualifications={},
+            qualification_conflicts={},
+            pair_relations={
+                frozenset((left.input_fingerprint, right.input_fingerprint)): (
+                    PairRelation(
+                        frozenset(
+                            (left.input_fingerprint, right.input_fingerprint)
+                        ),
+                        "same_speaker",
+                        provenance,
+                    )
+                )
+                for index, left in enumerate(members)
+                for right in members[index + 1 :]
+            },
+            pair_conflicts={},
+            review_event_count=3,
+        )
+
+        status = build_profile_pipeline_status(self.database, evidence)
+
+        row = status.profiles[0]
+        self.assertTrue(row.automatic_profile_ready)
+        self.assertNotIn(
+            "attributed_profile_frontier",
+            {need.code for need in row.needs},
+        )
+        self.assertIn("association_validation", {need.code for need in row.needs})
+        self.assertNotIn(
+            "attributed_profile_frontiers",
+            {action.code for action in status.actions},
+        )
 
     def test_anonymous_bridge_profile_reports_both_reinforcement_and_name(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c")]

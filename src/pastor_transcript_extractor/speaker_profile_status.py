@@ -145,10 +145,10 @@ def applicable_status_commands(needs: tuple[StatusNeed, ...]) -> tuple[str, ...]
 
 def status_need_execution_label(need: StatusNeed) -> str:
     if need.code in IDENTITY_RUN_COVERED_NEED_CODES:
-        return "identity run"
+        return "automatic"
     if need.actionable:
-        return "manual"
-    return "informational"
+        return "human review"
+    return "info"
 
 
 def build_profile_pipeline_status(
@@ -490,6 +490,7 @@ def build_profile_pipeline_status(
     }
     attributed_frontier_by_profile: dict[int, int] = defaultdict(int)
     attributed_frontier_observation_ids: set[int] = set()
+    human_review_attributed_frontier_observation_ids: set[int] = set()
     for observation_id in named_ungrouped_ids:
         normalized_name = next(iter(explicit_names_by_observation[observation_id]))
         matching_profile_ids = profile_ids_by_name.get(normalized_name, ())
@@ -497,6 +498,10 @@ def build_profile_pipeline_status(
             attributed_frontier_observation_ids.add(observation_id)
         for profile_id in matching_profile_ids:
             attributed_frontier_by_profile[profile_id] += 1
+            if not association_readiness[profile_id].automatic_profile_ready:
+                human_review_attributed_frontier_observation_ids.add(
+                    observation_id
+                )
     unmatched_named_ungrouped_ids = (
         named_ungrouped_ids - attributed_frontier_observation_ids
     )
@@ -640,7 +645,7 @@ def build_profile_pipeline_status(
             registry_profile.created_reason != DISCOVERY_PROFILE_REASON
             and state in {"linked", "attributed", "anonymous"}
         ):
-            if frontier_count:
+            if frontier_count and not profile_readiness.automatic_profile_ready:
                 needs.append(
                     StatusNeed(
                         "attributed_profile_frontier",
@@ -697,8 +702,8 @@ def build_profile_pipeline_status(
                 needs.append(
                     StatusNeed(
                         "association_validation",
-                        "accumulate shadow-association validation evidence in the "
-                        "consolidated identity workflow",
+                        "human-on-the-loop: identity run handles eligible sermon "
+                        "matches; review only exceptions",
                         "association-validation",
                         IDENTITY_RUN_AUTOMATIC_COMMAND,
                     )
@@ -819,12 +824,13 @@ def build_profile_pipeline_status(
                 "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
             )
         )
-    if attributed_frontier_observation_ids:
+    if human_review_attributed_frontier_observation_ids:
         actions.append(
             StatusNeed(
                 "attributed_profile_frontiers",
-                f"Review {len(attributed_frontier_observation_ids)} named "
-                "single-speaker observation(s) that match existing profiles.",
+                f"Review {len(human_review_attributed_frontier_observation_ids)} "
+                "named observation(s) that match existing profiles not yet "
+                "automatic-ready.",
                 "profile-growth",
                 "pte identity review-next-speaker-pair --selection-objective "
                 "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",

@@ -256,7 +256,6 @@ from pastor_transcript_extractor.speaker_review_invalidation import (
 from pastor_transcript_extractor.speaker_profile_status import (
     applicable_status_commands,
     build_profile_pipeline_status,
-    status_need_execution_label,
 )
 from pastor_transcript_extractor.speaker_machine_assignment import (
     active_machine_assignment_evidence,
@@ -3636,9 +3635,9 @@ def profile_status_command(
         raise typer.BadParameter(str(error)) from error
 
     qualifications = status.qualification_counts
-    console.print("[bold]Speaker identity pipeline[/bold]")
+    console.print("[bold]Speaker identity status[/bold]")
     console.print(
-        f"Registry observations: {status.registry_observation_count} | "
+        f"Observations: {status.registry_observation_count} | "
         f"single={qualifications.get('qualified_single_speaker', 0)} "
         f"multiple={qualifications.get('multiple_speakers', 0)} "
         f"invalid={qualifications.get('invalid', 0)} "
@@ -3646,48 +3645,28 @@ def profile_status_command(
         f"unreviewed={qualifications.get('unreviewed', 0)}"
     )
     console.print(
-        f"Reviewed evidence: events={status.review_event_count} "
-        f"pair_relations={status.pair_relation_count} "
-        f"same_components={status.same_component_count} "
-        f"conflicts={status.evidence_conflict_count}"
-    )
-    console.print(
-        "Speaker-negative windows: "
-        f"reviewed={len(negative_window_audit.records)} "
-        f"actionable={len(negative_window_audit.actionable)} "
-        f"stale={sum(not record.currently_selected for record in negative_window_audit.records)} "
-        f"broad_actionable={sum('broad_window' in record.reason_codes for record in negative_window_audit.actionable)}"
-    )
-    console.print(
-        f"Pending sync: qualifications={status.pending_qualification_count} "
+        f"Evidence: reviews={status.review_event_count} "
+        f"relations={status.pair_relation_count} "
+        f"conflicts={status.evidence_conflict_count} | pending_sync="
+        f"{status.pending_qualification_count + status.pending_same_component_count + status.pending_difference_count} "
+        f"(qualifications={status.pending_qualification_count} "
         f"same_components={status.pending_same_component_count} "
         f"different_relations={status.pending_difference_count} "
-        f"missing_observations={status.missing_reviewed_observation_count}"
+        f"missing={status.missing_reviewed_observation_count})"
     )
     console.print(
         f"Profiles: canonical={status.canonical_profile_count} "
-        f"retired_redirects={status.retired_profile_count} "
-        f"member_observations={status.profile_member_count} "
-        f"attached_name_claims={status.attached_name_claim_count} "
-        f"configured_links={status.configured_identity_count}"
+        f"shadow_ready={status.shadow_ready_profile_count} "
+        f"human_on_loop={status.automatic_profile_ready_count} "
+        f"linked={status.configured_identity_count}"
     )
     console.print(
-        f"Association readiness: "
-        f"shadow_ready_profiles={status.shadow_ready_profile_count} "
-        f"automatic_profile_ready={status.automatic_profile_ready_count} "
-        "(system promotion remains separate)"
-    )
-    console.print(
-        f"Reviewed single-speaker backlog: "
+        f"Backlog: "
         f"ungrouped={status.ungrouped_single_count} "
-        f"stale_or_ineligible="
-        f"{status.stale_or_ineligible_ungrouped_single_count} "
-        f"named={status.named_ungrouped_single_count} "
-        f"matched_frontiers={status.attributed_frontier_observation_count} "
         f"unmatched_named={status.unmatched_named_ungrouped_single_count} "
         f"unnamed={status.unnamed_ungrouped_single_count} "
-        f"merge_candidate_profiles={status.merge_candidate_count} "
-        f"attribution_conflict_profiles={status.attribution_conflict_count}"
+        f"stale_or_ineligible={status.stale_or_ineligible_ungrouped_single_count} "
+        f"window_review={len(negative_window_audit.actionable)}"
     )
     if status.discovery_report_path is not None:
         console.print(
@@ -3695,17 +3674,9 @@ def profile_status_command(
             f"candidates={status.shadow_discovery_candidate_count} "
             f"promoted={status.promoted_discovery_candidate_count} "
             f"stale={status.stale_discovery_candidate_count} "
-            f"blocked_components={status.blocked_discovery_component_count} "
-            f"actionable_review_frontiers="
-            f"{status.actionable_discovery_frontier_component_count} "
-            f"immediate_frontiers="
-            f"{status.immediate_discovery_frontier_component_count} "
-            f"staged_frontiers="
-            f"{status.staged_discovery_frontier_component_count} "
-            f"distant_staged_frontiers="
-            f"{status.distant_staged_discovery_component_count} "
-            f"report={status.discovery_result_sha256[:12]} "
-            f"invalid_artifacts_skipped={invalid_discovery_artifacts}"
+            f"blocked={status.blocked_discovery_component_count} "
+            f"review_frontiers={status.actionable_discovery_frontier_component_count} "
+            f"report={status.discovery_result_sha256[:12]}"
         )
     else:
         console.print(
@@ -3732,9 +3703,9 @@ def profile_status_command(
                 f"{profile.source_count} src"
             ),
             (
-                "profile-ready"
+                "human-on-loop"
                 if profile.automatic_profile_ready
-                else "shadow"
+                else "building"
                 if profile.shadow_ready
                 else "blocked"
             ),
@@ -3763,14 +3734,15 @@ def profile_status_command(
             )
         console.print(discovery_table)
 
-    console.print("[bold]Profile next needs[/bold]")
-    for profile in status.profiles:
-        for need in profile.needs:
-            console.print(
-                f"- Profile {profile.profile_id} "
-                f"[{status_need_execution_label(need)}]: {need.message}"
-            )
-    console.print("[bold]What to do next[/bold]")
+    console.print("[bold]Guidance[/bold]")
+    console.print(
+        "- Building/blocked profiles: human review supplies identity evidence."
+    )
+    console.print(
+        "- Human-on-loop profiles: the identity run associates eligible sermons; "
+        "humans handle exceptions, conflicts, and attribution."
+    )
+    console.print("[bold]Next actions[/bold]")
     if negative_window_audit.actionable:
         console.print(
             f"- Review {len(negative_window_audit.actionable)} current sermon window(s) "
@@ -3794,7 +3766,7 @@ def profile_status_command(
             "- pte identity review-next-speaker-negative-window "
             "--reviewer REVIEWER_ID --base-dir BASE_DIR"
         )
-    console.print("This report is read-only and does not create or mature profiles.")
+    console.print("Read-only status; use the commands above to make changes.")
 
 
 @identity_app.command(
