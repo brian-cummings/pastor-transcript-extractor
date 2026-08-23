@@ -745,6 +745,15 @@ are derived at selection time as attribution hints. They do not rewrite speaker
 observations and may route review, but never establish profile membership or an
 expected pair answer.
 
+After any completed speaker-pair adjudication, the CLI preserves the append-only
+review event and immediately runs the same idempotent reviewed-evidence sync used
+by `identity run`. This materializes qualifications, memberships, difference
+constraints, and reviewed profile merges before the next selection. A sync
+conflict leaves the review intact, defers only the affected registry mutation,
+and prints the standalone recovery command. The explicit
+`sync-reviewed-speaker-evidence` command remains available for replay and
+recovery.
+
 Configured pastor profiles with no reviewed observations are bootstrapped only
 through `profile-growth` human review. Two source-local title matches, or one
 title match plus cached same-speaker acoustic support, may nominate a blinded

@@ -263,6 +263,13 @@ pte identity sync-reviewed-speaker-evidence \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
+Normal `review-speaker-pair` and `review-next-speaker-pair` adjudication now
+runs this idempotent synchronization immediately after preserving the review
+event. This includes `multiple`, `invalid`, and `cannot` observation outcomes,
+not only approved binary pair judgments. The explicit command remains the
+replay and recovery path. If automatic synchronization encounters a conflict,
+the review remains durable and only the affected registry mutation is deferred.
+
 The sync joins append-only review events to their immutable drafts, reuses
 consistent per-observation qualifications, and derives confirmed same/different
 relations only from approved binary pair reviews. Confirmed same edges form

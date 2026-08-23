@@ -3449,6 +3449,10 @@ def review_speaker_pair(
         )
     else:
         console.print("Review was preserved but did not create a fixture.")
+    _sync_reviewed_speaker_evidence_after_review(
+        paths,
+        evaluation_root.expanduser().resolve(),
+    )
 
 
 def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
@@ -3532,6 +3536,54 @@ def _print_reviewed_evidence_summary(
         console.print(f"[cyan]Merge candidate:[/cyan] {candidate}")
     for conflict in result.conflicts:
         console.print(f"[yellow]Review conflict:[/yellow] {conflict}")
+
+
+def _sync_reviewed_speaker_evidence_after_review(
+    paths: AppPaths,
+    evaluation_root: Path,
+) -> ReviewedEvidenceSyncResult | None:
+    """Materialize a durable review immediately without risking its event."""
+    try:
+        evidence = load_reviewed_speaker_evidence(evaluation_root)
+        database = Database(paths.database)
+        database.initialize()
+        result = sync_reviewed_speaker_evidence(database, evidence)
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        sqlite3.Error,
+        json.JSONDecodeError,
+    ) as error:
+        console.print(
+            "[yellow]Review preserved; automatic registry sync failed:[/yellow] "
+            f"{error}"
+        )
+        console.print(
+            "Retry with: pte identity sync-reviewed-speaker-evidence "
+            f"--base-dir {shlex.quote(str(paths.root))}"
+        )
+        return None
+    console.print(
+        "Automatic registry sync: "
+        f"qualifications={result.qualification_events_added} "
+        f"profiles={result.profiles_added} "
+        f"memberships={result.membership_events_added} "
+        f"different_constraints={result.difference_events_added} "
+        f"name_claims={result.name_claim_events_added} "
+        f"profile_redirects={result.profile_redirect_events_added} "
+        f"missing={len(result.missing_observations)} "
+        f"merge_candidates={len(result.merge_candidates)} "
+        f"conflicts={len(result.conflicts)}"
+    )
+    for candidate in result.merge_candidates:
+        console.print(f"[cyan]Merge candidate:[/cyan] {candidate}")
+    for conflict in result.conflicts:
+        console.print(
+            "[yellow]Review conflict; affected registry mutation was "
+            f"deferred:[/yellow] {conflict}"
+        )
+    return result
 
 
 @identity_app.command(
