@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 import hashlib
 import html
 import json
+import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from pastor_transcript_extractor.speaker_registry import (
     normalize_person_name,
@@ -31,6 +32,7 @@ class ProfileAttributionEvidence:
     title: str
     video_url: str
     timestamp_seconds: int
+    timestamp_source: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +57,7 @@ def list_unnamed_profile_attribution_candidates(
     database: Database,
     *,
     representative_limit: int = 6,
+    clip_timestamps: Mapping[str, int] | None = None,
 ) -> tuple[ProfileAttributionCandidate, ...]:
     candidates: list[ProfileAttributionCandidate] = []
     for profile in database.list_speaker_profiles():
@@ -72,6 +75,7 @@ def list_unnamed_profile_attribution_candidates(
             database,
             member_ids,
             representative_limit=representative_limit,
+            clip_timestamps=clip_timestamps,
         )
         if evidence:
             candidates.append(
@@ -96,6 +100,7 @@ def get_profile_attribution_candidate(
     profile_id: int,
     *,
     representative_limit: int = 6,
+    clip_timestamps: Mapping[str, int] | None = None,
 ) -> ProfileAttributionCandidate:
     profile = database.get_speaker_profile(profile_id)
     if profile is None or profile.created_reason not in _REVIEWABLE_PROFILE_REASONS:
@@ -109,6 +114,7 @@ def get_profile_attribution_candidate(
         database,
         member_ids,
         representative_limit=representative_limit,
+        clip_timestamps=clip_timestamps,
     )
     if not evidence:
         raise ValueError(f"Profile {profile_id} has no reviewable backing videos")
@@ -195,6 +201,65 @@ def record_profile_attribution_deferral(
     return destination
 
 
+def load_profile_attribution_clip_timestamps(
+    cache_root: Path,
+) -> dict[str, int]:
+    """Index persisted identity-selected spans by observation fingerprint.
+
+    Invalid or incomplete cache entries are ignored. When multiple valid
+    selections exist for one observation, the newest persisted selection wins.
+    """
+    directory = (
+        cache_root.expanduser().resolve() / "observation-span-selections"
+    )
+    selected: dict[str, tuple[int, int]] = {}
+    if not directory.is_dir():
+        return {}
+    for path in sorted(directory.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            modified_at = path.stat().st_mtime_ns
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        cache_input = payload.get("input") if isinstance(payload, dict) else None
+        result = payload.get("result") if isinstance(payload, dict) else None
+        if (
+            not isinstance(cache_input, dict)
+            or not isinstance(result, dict)
+            or payload.get("schema_version") != 1
+            or payload.get("result_sha256") != _sha256(result)
+            or result.get("outcome") != "prepared"
+        ):
+            continue
+        fingerprint = cache_input.get("observation_fingerprint")
+        raw_specs = result.get("span_specs")
+        if not isinstance(fingerprint, str) or not isinstance(raw_specs, list):
+            continue
+        starts: list[float] = []
+        for spec in raw_specs:
+            start = spec.get("start_seconds") if isinstance(spec, dict) else None
+            if (
+                isinstance(start, bool)
+                or not isinstance(start, (int, float))
+                or not math.isfinite(float(start))
+                or float(start) < 0
+            ):
+                starts = []
+                break
+            starts.append(float(start))
+        if not starts:
+            continue
+        starts.sort()
+        timestamp = max(0, int(starts[len(starts) // 2]))
+        previous = selected.get(fingerprint)
+        if previous is None or modified_at > previous[0]:
+            selected[fingerprint] = (modified_at, timestamp)
+    return {
+        fingerprint: timestamp
+        for fingerprint, (_, timestamp) in selected.items()
+    }
+
+
 def write_profile_attribution_packet(
     candidate: ProfileAttributionCandidate,
     destination: Path,
@@ -219,9 +284,9 @@ def write_profile_attribution_packet(
             'target="_blank" rel="noopener">'
             f'<img src="{html.escape(thumbnail)}" '
             f'alt="Open {html.escape(evidence.title)} on YouTube">'
-            '<span>Watch on YouTube at the sermon timestamp</span></a>'
+            '<span>Watch at an identity-selected speech clip</span></a>'
             f'<p><a href="{html.escape(timestamp_url)}" target="_blank" '
-            'rel="noopener">Open timestamped video</a>'
+            'rel="noopener">Open identity clip timestamp</a>'
             f" · observation {evidence.observation_id}</p></section>"
         )
     document = """<!doctype html><html><head><meta charset="utf-8">
@@ -233,8 +298,9 @@ section{margin:2rem 0}.video{display:block;position:relative;background:#222}
 background:#c00;color:#fff;padding:.8rem 1.1rem;border-radius:.5rem;font-weight:700}
 </style></head><body>""" + (
         f"<h1>Name speaker profile {candidate.profile_id}</h1>"
-        f"<p>{candidate.member_count} member recordings. Use the terminal prompt "
-        "to choose the evidence video and enter the speaker name.</p>"
+        f"<p>{candidate.member_count} member recordings. Each link opens at a "
+        "persisted speech-qualified identity clip. Use the terminal prompt to "
+        "choose the evidence video and enter the speaker name.</p>"
         + "".join(cards)
         + "</body></html>"
     )
@@ -370,6 +436,7 @@ def _profile_evidence(
     member_ids: list[int],
     *,
     representative_limit: int,
+    clip_timestamps: Mapping[str, int] | None = None,
 ) -> tuple[ProfileAttributionEvidence, ...]:
     evidence: list[ProfileAttributionEvidence] = []
     for observation_id in member_ids:
@@ -381,6 +448,16 @@ def _profile_evidence(
         )
         if observation is None or video is None:
             continue
+        if clip_timestamps is None:
+            timestamp_seconds = max(0, int(observation.start_seconds))
+            timestamp_source = "observation_start_compatibility"
+        else:
+            timestamp_seconds = clip_timestamps.get(
+                observation.input_fingerprint
+            )
+            if timestamp_seconds is None:
+                continue
+            timestamp_source = "persisted_identity_clip_selection"
         evidence.append(
             ProfileAttributionEvidence(
                 observation_id=observation.id,
@@ -388,7 +465,8 @@ def _profile_evidence(
                 youtube_video_id=video.youtube_video_id,
                 title=video.title,
                 video_url=video.url,
-                timestamp_seconds=max(0, int(observation.start_seconds)),
+                timestamp_seconds=timestamp_seconds,
+                timestamp_source=timestamp_source,
             )
         )
     return tuple(evidence[:representative_limit])

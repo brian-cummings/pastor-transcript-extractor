@@ -273,6 +273,7 @@ from pastor_transcript_extractor.speaker_negative_window_audit import (
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     get_profile_attribution_candidate,
+    load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
     list_unnamed_profile_attribution_candidates,
     record_profile_attribution_deferral,
@@ -3816,6 +3817,10 @@ def review_profile_attribution_command(
         "--open-packet/--no-open-packet",
         help="Open the local HTML packet containing timestamped videos.",
     ),
+    cache_dir: Path = typer.Option(
+        Path("evaluation/speaker-pairs/cache"),
+        help="Persisted identity clip-selection cache used for timestamps.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
@@ -3824,6 +3829,11 @@ def review_profile_attribution_command(
     paths = build_paths(base_dir, remember=True)
     database = get_database(base_dir)
     deferral_root = paths.logs / "profile-attribution-reviews" / "deferrals"
+    clip_timestamps = load_profile_attribution_clip_timestamps(cache_dir)
+    console.print(
+        "Attribution timing: loaded "
+        f"{len(clip_timestamps)} persisted identity clip timestamp(s)."
+    )
     try:
         if profile_id is None:
             deferred = load_profile_attribution_deferrals(deferral_root)
@@ -3832,6 +3842,7 @@ def review_profile_attribution_command(
                 for candidate in list_unnamed_profile_attribution_candidates(
                     database,
                     representative_limit=representative_videos,
+                    clip_timestamps=clip_timestamps,
                 )
                 if candidate.membership_fingerprint not in deferred
             )
@@ -3847,6 +3858,7 @@ def review_profile_attribution_command(
                     database,
                     profile_id,
                     representative_limit=representative_videos,
+                    clip_timestamps=clip_timestamps,
                 ),
             )
     except (OSError, ValueError) as error:

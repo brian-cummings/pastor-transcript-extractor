@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +10,7 @@ from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
+    load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
     list_unnamed_profile_attribution_candidates,
     record_profile_attribution_deferral,
@@ -100,6 +103,65 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
         self.assertIn("i.ytimg.com/vi/video-1/hqdefault.jpg", packet)
         self.assertIn("watch?v=video-1&amp;t=101s", packet)
         self.assertNotIn("<iframe", packet)
+
+    def test_persisted_identity_clip_controls_review_timestamp(self) -> None:
+        cache_root = self.root / "cache"
+        cache_directory = cache_root / "observation-span-selections"
+        cache_directory.mkdir(parents=True)
+        result = {
+            "outcome": "prepared",
+            "span_specs": [
+                {"start_seconds": 210.5, "end_seconds": 225.5},
+                {"start_seconds": 610.25, "end_seconds": 625.25},
+                {"start_seconds": 410.75, "end_seconds": 425.75},
+            ],
+            "selection": {"strategy": "test"},
+        }
+        encoded = json.dumps(
+            result,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        payload = {
+            "schema_version": 1,
+            "cache_key": "test",
+            "input": {
+                "observation_fingerprint": self.observations[0].input_fingerprint,
+            },
+            "result_sha256": hashlib.sha256(encoded).hexdigest(),
+            "result": result,
+        }
+        (cache_directory / "test.json").write_text(
+            json.dumps(payload),
+            encoding="utf-8",
+        )
+
+        timestamps = load_profile_attribution_clip_timestamps(cache_root)
+        candidates = list_unnamed_profile_attribution_candidates(
+            self.database,
+            clip_timestamps=timestamps,
+        )
+
+        self.assertEqual(
+            {self.observations[0].input_fingerprint: 410},
+            timestamps,
+        )
+        self.assertEqual(1, len(candidates[0].evidence))
+        self.assertEqual(410, candidates[0].evidence[0].timestamp_seconds)
+        self.assertEqual(
+            "persisted_identity_clip_selection",
+            candidates[0].evidence[0].timestamp_source,
+        )
+
+    def test_missing_identity_clip_excludes_unaligned_evidence(self) -> None:
+        self.assertEqual(
+            (),
+            list_unnamed_profile_attribution_candidates(
+                self.database,
+                clip_timestamps={},
+            ),
+        )
 
     def test_reviewed_name_claim_links_unique_configured_pastor(self) -> None:
         pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
