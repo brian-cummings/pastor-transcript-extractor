@@ -208,6 +208,41 @@ artifact is still fully hashed before copying, and every copied archive file is
 independently size- and SHA-256-verified before publication. The copy checksum
 also replaces what would otherwise be a redundant second pre-copy local hash.
 
+### Reclaiming legacy local audio
+
+Archive eligibility intentionally does not delete historical or unregistered
+audio. After archive migrations, audit the physical files that remain with:
+
+```bash
+pte media sweep-audio \
+  --report /tmp/pte-audio-sweep.json \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The command is a dry-run unless `--apply` is supplied. It inventories regular
+audio files under `pastors/` without following symlinks and reports registered
+unarchived media, failed archive entries, ambiguous registrations, unmatched
+legacy files, and exact duplicates of archived media. Candidate hashing is
+limited by byte size, and both the local SHA-256 and the independently read
+archive SHA-256 must match the persisted archive record.
+
+To reclaim only the verified duplicate bytes:
+
+```bash
+pte media sweep-audio --apply \
+  --report /tmp/pte-audio-sweep-applied.json \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Apply mode does not delete paths. It transactionally replaces an exact local
+duplicate with a symlink to the verified archive object. If the local file is a
+registered artifact without its own archive entry, the sweeper records an entry
+for that artifact before completing the link so archive-offline behavior stays
+authoritative. A failed link restores the local file. Unmatched files, pending
+or failed archive entries, and registered files without a verified archived
+duplicate remain untouched. Use `archive-sources` or `archive-normalized` to
+handle those registered items; use `--verbose` to print every retained path.
+
 ## Replay guarantees
 
 - Existing verified content is reused without redownload.

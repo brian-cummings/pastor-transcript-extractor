@@ -163,11 +163,13 @@ from pastor_transcript_extractor.media_archive import (
     ArchivePreflightEvent,
     ArchiveProgressEvent,
     ArchiveRunResult,
+    AudioSweepProgressEvent,
     archive_normalized_media,
     archive_source_media,
     archive_status,
     media_archive_lock_held,
     persist_cached_canonical_clip_preparations,
+    sweep_local_audio,
     write_canonical_clip_preparation_manifest,
 )
 from pastor_transcript_extractor.media_artifacts import (
@@ -7612,6 +7614,141 @@ def media_archive_status(
         f"eligible={eligible}; stale_clip_preparation={stale}; "
         f"blocked_clip_fingerprint_generation={blocked}."
     )
+
+
+@media_app.command(
+    "sweep-audio",
+    help=(
+        "Audit physical local audio and optionally replace byte-identical archived "
+        "duplicates with symlinks. Dry-run is the default."
+    ),
+)
+def media_sweep_audio(
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help=(
+            "Replace only byte-identical, checksum-verified archived duplicates "
+            "with symlinks. Unmatched files are never removed."
+        ),
+    ),
+    report: Path | None = typer.Option(
+        None,
+        "--report",
+        help="Write the complete machine-readable audit as JSON.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Print every retained file in addition to reclaimable files.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir)
+    last_stage: tuple[Path, str] | None = None
+
+    with Progress(
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("Inventorying physical local audio", total=None)
+
+        def report_progress(event: AudioSweepProgressEvent) -> None:
+            nonlocal last_stage
+            current = (event.path, event.stage)
+            if current == last_stage:
+                return
+            last_stage = current
+            progress.update(
+                task_id,
+                total=event.total,
+                completed=event.index - 1,
+                description=(
+                    f"[{event.index}/{event.total}] {event.path.name}: {event.stage}"
+                ),
+            )
+
+        try:
+            result = sweep_local_audio(
+                database,
+                paths,
+                apply=apply,
+                progress_callback=report_progress,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            raise typer.BadParameter(str(error)) from error
+        progress.update(
+            task_id,
+            completed=len(result.items),
+            total=len(result.items),
+            description="Local audio sweep complete",
+        )
+
+    for item in result.items:
+        if not verbose and item.outcome not in {
+            "would_link_to_archive",
+            "linked_to_archive",
+            "retained_link_failed",
+        }:
+            continue
+        destination = f" -> {item.archive_path}" if item.archive_path else ""
+        console.print(
+            f"{item.outcome}: {_format_sync_bytes(item.byte_size)} "
+            f"{item.path}{destination} ({item.detail})",
+            markup=False,
+        )
+
+    summary = Table(title="Local audio sweep")
+    summary.add_column("Outcome")
+    summary.add_column("Files", justify="right")
+    summary.add_column("Bytes", justify="right")
+    for outcome, count in sorted(result.counts.items()):
+        summary.add_row(
+            outcome,
+            str(count),
+            _format_sync_bytes(result.bytes_by_outcome[outcome]),
+        )
+    console.print(summary)
+    action = "reclaimed" if apply else "reclaimable"
+    console.print(
+        f"Sweep mode={'apply' if apply else 'dry-run'}; {action}="
+        f"{_format_sync_bytes(result.reclaimable_bytes)}. "
+        "Registered unarchived and failed items remain for the normal archive commands."
+    )
+
+    if report is not None:
+        report_path = report.expanduser().resolve(strict=False)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "mode": "apply" if apply else "dry-run",
+            "reclaimable_bytes": result.reclaimable_bytes,
+            "counts": result.counts,
+            "bytes_by_outcome": result.bytes_by_outcome,
+            "items": [
+                {
+                    "path": str(item.path),
+                    "byte_size": item.byte_size,
+                    "category": item.category,
+                    "outcome": item.outcome,
+                    "detail": item.detail,
+                    "media_artifact_id": item.media_artifact_id,
+                    "archive_path": (
+                        str(item.archive_path) if item.archive_path else None
+                    ),
+                }
+                for item in result.items
+            ],
+        }
+        report_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        console.print(f"Report written: {report_path}", markup=False)
 
 
 def _unknown_pastor_error(pastor_slug: str, base_dir: Path | None = None) -> typer.BadParameter:

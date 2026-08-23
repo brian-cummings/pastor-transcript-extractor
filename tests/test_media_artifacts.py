@@ -32,6 +32,7 @@ from pastor_transcript_extractor.media_archive import (
     media_archive_lock_held,
     normalized_archive_eligibility,
     persist_cached_canonical_clip_preparations,
+    sweep_local_audio,
     write_canonical_clip_preparation_manifest,
 )
 from pastor_transcript_extractor.media_artifacts import (
@@ -94,6 +95,135 @@ class MediaArtifactTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
+
+    def test_audio_sweep_replaces_only_verified_untracked_duplicate(self) -> None:
+        video, _ = self._video("sweepuntracked1")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "media" / "source.wav"
+        normalized_path = audio_root / "media" / "normalized.wav"
+        write_wav(source_path, value=311)
+        write_wav(normalized_path, value=722)
+        source = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="original_download",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+            parent=source,
+        )
+        archive_root = self.paths.root / "nas-sweep"
+        archive_root.mkdir()
+        archive_source_media(
+            self.database,
+            self.paths,
+            archive_root=archive_root,
+            video_ids={video.id},
+        )
+        duplicate = audio_root / "downloaded.wav"
+        duplicate.write_bytes(source_path.read_bytes())
+        unmatched = audio_root / "unmatched.wav"
+        unmatched.write_bytes(b"not an archived file")
+        stranded = audio_root / "stranded.wav"
+        stranded.write_bytes(b"interrupted sweep bytes")
+        stranded_backup = stranded.with_name(
+            f".{stranded.name}.pte-audio-sweep-staging"
+        )
+        stranded.rename(stranded_backup)
+
+        dry_run = sweep_local_audio(self.database, self.paths)
+        duplicate_item = next(item for item in dry_run.items if item.path == duplicate)
+        unmatched_item = next(item for item in dry_run.items if item.path == unmatched)
+        self.assertEqual("would_link_to_archive", duplicate_item.outcome)
+        self.assertEqual("retained_untracked_unmatched", unmatched_item.outcome)
+        self.assertFalse(duplicate.is_symlink())
+        self.assertTrue(stranded.is_file())
+        self.assertFalse(stranded_backup.exists())
+
+        applied = sweep_local_audio(self.database, self.paths, apply=True)
+        duplicate_item = next(item for item in applied.items if item.path == duplicate)
+        self.assertEqual("linked_to_archive", duplicate_item.outcome)
+        self.assertTrue(duplicate.is_symlink())
+        self.assertEqual(source_path.resolve(), duplicate.resolve())
+        self.assertTrue(unmatched.is_file())
+        self.assertFalse(unmatched.is_symlink())
+
+    def test_audio_sweep_registers_shared_archive_for_registered_duplicate(self) -> None:
+        first_video, _ = self._video("sweepregistered1")
+        second_video, _ = self._video("sweepregistered2")
+        registered_sources = []
+        for video in (first_video, second_video):
+            audio_root = build_video_artifact_paths(
+                self.paths, self.pastor.slug, video.youtube_video_id
+            ).audio
+            source_path = audio_root / "media" / "source.wav"
+            normalized_path = audio_root / "media" / "normalized.wav"
+            write_wav(source_path, value=811)
+            write_wav(normalized_path, value=video.id)
+            source = register_media_file(
+                self.database,
+                self.paths,
+                video=video,
+                pastor_slug=self.pastor.slug,
+                artifact_path=source_path,
+                artifact_kind="source_audio",
+                provenance_kind="original_download",
+                acquisition_tool="test",
+                acquisition_tool_version="1",
+            )
+            register_media_file(
+                self.database,
+                self.paths,
+                video=video,
+                pastor_slug=self.pastor.slug,
+                artifact_path=normalized_path,
+                artifact_kind="normalized_audio",
+                provenance_kind="derived",
+                acquisition_tool="test",
+                acquisition_tool_version="1",
+                parent=source,
+            )
+            registered_sources.append((source, source_path))
+
+        archive_root = self.paths.root / "nas-shared-sweep"
+        archive_root.mkdir()
+        archive_source_media(
+            self.database,
+            self.paths,
+            archive_root=archive_root,
+            video_ids={first_video.id},
+        )
+        second_source, second_path = registered_sources[1]
+
+        dry_run = sweep_local_audio(self.database, self.paths)
+        item = next(item for item in dry_run.items if item.path == second_path)
+        self.assertEqual("would_link_to_archive", item.outcome)
+        self.assertIsNone(
+            self.database.get_media_archive_entry_for_artifact(second_source.id)
+        )
+
+        sweep_local_audio(self.database, self.paths, apply=True)
+        entry = self.database.get_media_archive_entry_for_artifact(second_source.id)
+        self.assertIsNotNone(entry)
+        self.assertEqual("archived", entry.status)
+        self.assertTrue(second_path.is_symlink())
+        self.assertEqual(Path(entry.archive_path).resolve(), second_path.resolve())
 
     def test_source_audio_stage_is_idempotent_and_manifest_detects_mutation(self) -> None:
         video, _ = self._video("stagecache1")

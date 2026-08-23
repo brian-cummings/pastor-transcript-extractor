@@ -972,3 +972,20 @@ pte media archive-status \
 
 If the NAS is unavailable, PTE records the failed attempt and retries pending
 entries the next time `archive-sources` is run.
+
+After archival, audit remaining physical audio and safely replace only
+byte-identical, checksum-verified archived duplicates with symlinks:
+
+```bash
+pte media sweep-audio \
+  --report /tmp/pte-audio-sweep.json \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+
+pte media sweep-audio --apply \
+  --report /tmp/pte-audio-sweep-applied.json \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The first command is read-only. Apply mode leaves unmatched, failed, pending,
+and unverified files untouched. See `docs/MEDIA_FOUNDATION.md` for the complete
+safety and offline semantics.

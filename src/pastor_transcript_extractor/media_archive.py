@@ -64,6 +64,58 @@ class ArchivePreflightEvent:
 
 ArchivePreflightCallback = Callable[[ArchivePreflightEvent], None]
 
+
+@dataclass(frozen=True, slots=True)
+class AudioSweepProgressEvent:
+    index: int
+    total: int
+    path: Path
+    stage: str
+
+
+AudioSweepProgressCallback = Callable[[AudioSweepProgressEvent], None]
+
+
+@dataclass(frozen=True, slots=True)
+class AudioSweepItem:
+    path: Path
+    byte_size: int
+    category: str
+    outcome: str
+    detail: str
+    media_artifact_id: int | None = None
+    archive_path: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AudioSweepResult:
+    items: tuple[AudioSweepItem, ...]
+    applied: bool
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return {
+            outcome: sum(item.outcome == outcome for item in self.items)
+            for outcome in sorted({item.outcome for item in self.items})
+        }
+
+    @property
+    def bytes_by_outcome(self) -> dict[str, int]:
+        return {
+            outcome: sum(
+                item.byte_size for item in self.items if item.outcome == outcome
+            )
+            for outcome in sorted({item.outcome for item in self.items})
+        }
+
+    @property
+    def reclaimable_bytes(self) -> int:
+        return sum(
+            item.byte_size
+            for item in self.items
+            if item.outcome in {"would_link_to_archive", "linked_to_archive"}
+        )
+
 CANONICAL_CLIP_PREPARATION_POLICY_VERSION = "canonical_speaker_clips_v1"
 
 
@@ -708,6 +760,337 @@ def archive_status(
     )
 
 
+def sweep_local_audio(
+    database: Database,
+    app_paths: AppPaths,
+    *,
+    apply: bool = False,
+    progress_callback: AudioSweepProgressCallback | None = None,
+) -> AudioSweepResult:
+    """Audit local audio and safely deduplicate exact archived copies.
+
+    Dry-run is the default. Apply mode only replaces a physical local file when
+    its bytes match an accessible, checksum-verified archived artifact. The
+    original logical path remains available as a symlink. Unmatched, failed,
+    and merely eligible files are never removed by this operation.
+    """
+    with _archive_lock(app_paths.root, wait_for_lock=False, retry_seconds=1.0):
+        _recover_audio_sweep_staging(app_paths.pastors)
+        videos = database.list_videos()
+        artifacts_by_video = {
+            video.id: database.list_media_artifacts_for_video(video.id)
+            for video in videos
+        }
+        artifacts = [
+            artifact
+            for video_artifacts in artifacts_by_video.values()
+            for artifact in video_artifacts
+        ]
+        artifacts_by_path: dict[Path, list[MediaArtifact]] = {}
+        for artifact in artifacts:
+            artifacts_by_path.setdefault(
+                Path(artifact.artifact_path).expanduser().resolve(strict=False), []
+            ).append(artifact)
+        entries = database.list_media_archive_entries()
+        entries_by_artifact_id = {
+            entry.media_artifact_id: entry for entry in entries
+        }
+        archived_by_size: dict[int, list[MediaArchiveEntry]] = {}
+        for entry in entries:
+            if entry.status == "archived":
+                archived_by_size.setdefault(entry.byte_size, []).append(entry)
+        transcript_audio_paths = {
+            Path(item.audio_path).expanduser().resolve(strict=False)
+            for item in database.list_transcript_artifacts()
+            if item.audio_path
+        }
+        physical_files = _physical_audio_files(app_paths.pastors)
+        archive_verification: dict[int, bool] = {}
+        results: list[AudioSweepItem] = []
+
+        for index, path in enumerate(physical_files, start=1):
+            _notify_audio_sweep(
+                progress_callback, index, len(physical_files), path, "classifying"
+            )
+            size = path.stat().st_size
+            category = _audio_sweep_category(path)
+            path_key = path.resolve(strict=False)
+            registered = artifacts_by_path.get(path_key, [])
+            if len(registered) > 1:
+                results.append(
+                    AudioSweepItem(
+                        path,
+                        size,
+                        category,
+                        "retained_ambiguous_registration",
+                        f"{len(registered)} media artifacts use this path",
+                    )
+                )
+                continue
+
+            artifact = registered[0] if registered else None
+            entry = (
+                entries_by_artifact_id.get(artifact.id)
+                if artifact is not None
+                else None
+            )
+            if entry is not None and entry.status != "archived":
+                retry_command = (
+                    "pte media archive-normalized --all-eligible"
+                    if artifact.artifact_kind == "normalized_audio"
+                    else "pte media archive-sources"
+                )
+                results.append(
+                    AudioSweepItem(
+                        path,
+                        size,
+                        category,
+                        f"retained_archive_{entry.status}",
+                        f"local bytes are required; retry with `{retry_command}`",
+                        artifact.id,
+                        Path(entry.archive_path),
+                    )
+                )
+                continue
+
+            matching_entry: MediaArchiveEntry | None = None
+            if entry is not None:
+                _notify_audio_sweep(
+                    progress_callback,
+                    index,
+                    len(physical_files),
+                    path,
+                    "hashing local candidate",
+                )
+                local_sha256 = _sha256_file(path)
+                local_matches_entry = (
+                    size == entry.byte_size
+                    and local_sha256 == entry.content_sha256
+                )
+                if local_matches_entry:
+                    _notify_audio_sweep(
+                        progress_callback,
+                        index,
+                        len(physical_files),
+                        path,
+                        "verifying archived target",
+                    )
+                if local_matches_entry and _verified_archive_entry(
+                    entry, archive_verification
+                ):
+                    matching_entry = entry
+            else:
+                candidates = [
+                    candidate
+                    for candidate in archived_by_size.get(size, ())
+                    if artifact is None
+                    or candidate.media_artifact_id != artifact.id
+                ]
+                if candidates:
+                    _notify_audio_sweep(
+                        progress_callback,
+                        index,
+                        len(physical_files),
+                        path,
+                        "hashing local candidate",
+                    )
+                    local_sha256 = _sha256_file(path)
+                    if artifact is not None and (
+                        size != artifact.byte_size
+                        or local_sha256 != artifact.content_sha256
+                    ):
+                        results.append(
+                            AudioSweepItem(
+                                path,
+                                size,
+                                category,
+                                "retained_registered_corrupt",
+                                "local bytes do not match the registered artifact identity",
+                                artifact.id,
+                            )
+                        )
+                        continue
+                    for candidate in sorted(candidates, key=lambda item: item.id):
+                        if candidate.content_sha256 != local_sha256:
+                            continue
+                        _notify_audio_sweep(
+                            progress_callback,
+                            index,
+                            len(physical_files),
+                            path,
+                            "verifying archived duplicate",
+                        )
+                        if _verified_archive_entry(candidate, archive_verification):
+                            matching_entry = candidate
+                            break
+
+            if matching_entry is None:
+                if entry is not None:
+                    outcome = "retained_archive_unavailable_or_corrupt"
+                    detail = "recorded archive target is unavailable or failed checksum verification"
+                elif artifact is not None:
+                    outcome = "retained_registered_unarchived"
+                    detail = _registered_unarchived_sweep_detail(
+                        database,
+                        artifact,
+                        artifacts_by_video.get(artifact.video_id, ()),
+                    )
+                else:
+                    outcome = "retained_untracked_unmatched"
+                    reference = (
+                        " and is referenced by a transcript"
+                        if path_key in transcript_audio_paths
+                        else ""
+                    )
+                    detail = "not registered and has no verified archived byte-identical copy" + reference
+                results.append(
+                    AudioSweepItem(
+                        path,
+                        size,
+                        category,
+                        outcome,
+                        detail,
+                        artifact.id if artifact is not None else None,
+                        Path(entry.archive_path) if entry is not None else None,
+                    )
+                )
+                continue
+
+            archive_path = Path(matching_entry.archive_path)
+            outcome = "would_link_to_archive"
+            detail = (
+                f"exact duplicate of archived media artifact "
+                f"#{matching_entry.media_artifact_id}"
+            )
+            if apply:
+                if artifact is not None and entry is None:
+                    entry = database.upsert_media_archive_entry(
+                        media_artifact_id=artifact.id,
+                        destination_id=matching_entry.destination_id,
+                        source_path=str(path),
+                        archive_path=str(archive_path),
+                        content_sha256=artifact.content_sha256,
+                        byte_size=artifact.byte_size,
+                    )
+                try:
+                    _replace_duplicate_with_symlink(
+                        path,
+                        archive_path,
+                        size,
+                        matching_entry.content_sha256,
+                    )
+                except (OSError, RuntimeError) as error:
+                    if entry is not None and entry.status != "archived":
+                        database.update_media_archive_entry_status(entry.id, "failed")
+                        database.add_media_archive_attempt(
+                            archive_entry_id=entry.id,
+                            outcome="failed",
+                            detail=f"audio sweep failed: {error}",
+                        )
+                    results.append(
+                        AudioSweepItem(
+                            path,
+                            size,
+                            category,
+                            "retained_link_failed",
+                            str(error),
+                            artifact.id if artifact is not None else None,
+                            archive_path,
+                        )
+                    )
+                    continue
+                if entry is not None and entry.status != "archived":
+                    database.update_media_archive_entry_status(entry.id, "archived")
+                    database.add_media_archive_attempt(
+                        archive_entry_id=entry.id,
+                        outcome="already_archived",
+                        detail=(
+                            "audio sweep linked byte-identical local artifact to "
+                            f"archive entry #{matching_entry.id}"
+                        ),
+                    )
+                outcome = "linked_to_archive"
+            results.append(
+                AudioSweepItem(
+                    path,
+                    size,
+                    category,
+                    outcome,
+                    detail,
+                    artifact.id if artifact is not None else None,
+                    archive_path,
+                )
+            )
+        return AudioSweepResult(tuple(results), apply)
+
+
+def _registered_unarchived_sweep_detail(
+    database: Database,
+    artifact: MediaArtifact,
+    video_artifacts: tuple[MediaArtifact, ...] | list[MediaArtifact],
+) -> str:
+    if artifact.artifact_kind == "source_audio":
+        return (
+            "registered source has no verified archived duplicate; run "
+            "`pte media archive-sources`"
+        )
+    if _preferred_normalized_artifact_id(video_artifacts) != artifact.id:
+        return (
+            "historical/non-authoritative normalized artifact is preserved by "
+            "archive-normalized policy"
+        )
+    if database.get_latest_transcript_artifact_for_video(artifact.video_id) is None:
+        return "authoritative normalized artifact is blocked: transcription incomplete"
+    if database.get_latest_extraction_result_for_video(artifact.video_id) is None:
+        return (
+            "authoritative normalized artifact is blocked: sermon classification incomplete"
+        )
+    if not all(
+        (
+            artifact.content_sha256,
+            artifact.byte_size,
+            artifact.format_name,
+            artifact.duration_seconds,
+            artifact.manifest_path,
+        )
+    ) or not Path(artifact.manifest_path).is_file():
+        return (
+            "authoritative normalized artifact is blocked: metadata or provenance "
+            "manifest incomplete"
+        )
+    observation = database.get_latest_speaker_observation_for_video(artifact.video_id)
+    if observation is None:
+        return (
+            "authoritative normalized artifact appears eligible after finalized "
+            "classification; run `pte media archive-normalized --all-eligible`"
+        )
+    preparation = _canonical_clip_preparation_status(
+        artifact, observation, CANONICAL_CLIP_PREPARATION_POLICY_VERSION
+    )
+    if (
+        _observation_normalized_sha256(observation) != artifact.content_sha256
+        and preparation != "current"
+    ):
+        return (
+            "authoritative normalized artifact is blocked: current observation is "
+            f"not bound to normalized audio; clip_preparation={preparation}"
+        )
+    if preparation == "current":
+        return (
+            "authoritative normalized artifact appears eligible; run "
+            "`pte media archive-normalized --all-eligible`"
+        )
+    return (
+        "authoritative normalized artifact is blocked: "
+        + (
+            "canonical clip preparation is stale"
+            if preparation == "stale"
+            else "clip/fingerprint generation is incomplete"
+        )
+        + f"; clip_preparation={preparation}"
+    )
+
+
 def _eligible_source_artifacts(
     database: Database,
     *,
@@ -829,6 +1212,143 @@ def _replace_source_with_symlink(
         raise
     if backup.exists():
         backup.unlink()
+
+
+def _physical_audio_files(root: Path) -> list[Path]:
+    extensions = {".aac", ".flac", ".m4a", ".mp3", ".mp4", ".ogg", ".wav", ".webm"}
+    paths: list[Path] = []
+    if not root.is_dir():
+        return paths
+    for directory, directory_names, file_names in os.walk(root, followlinks=False):
+        directory_path = Path(directory)
+        directory_names[:] = [
+            name
+            for name in directory_names
+            if not (directory_path / name).is_symlink()
+        ]
+        for name in file_names:
+            path = directory_path / name
+            if path.suffix.lower() not in extensions or path.is_symlink():
+                continue
+            try:
+                if path.is_file():
+                    paths.append(path)
+            except OSError:
+                continue
+    return sorted(paths, key=str)
+
+
+def _audio_sweep_category(path: Path) -> str:
+    if path.name == "downloaded.wav":
+        return "legacy_downloaded"
+    if path.name == "normalized.wav":
+        return "legacy_normalized"
+    if path.name.startswith("normalized-"):
+        return "content_addressed_normalized"
+    if path.name.startswith("source-"):
+        return "content_addressed_source"
+    return "other_audio"
+
+
+def _verified_archive_entry(
+    entry: MediaArchiveEntry, cache: dict[int, bool]
+) -> bool:
+    if entry.id not in cache:
+        archive_path = Path(entry.archive_path)
+        try:
+            cache[entry.id] = (
+                archive_path.is_file()
+                and archive_path.stat().st_size == entry.byte_size
+                and _sha256_file(archive_path) == entry.content_sha256
+            )
+        except OSError:
+            cache[entry.id] = False
+    return cache[entry.id]
+
+
+def _replace_duplicate_with_symlink(
+    source: Path,
+    destination: Path,
+    expected_size: int,
+    expected_sha256: str,
+) -> None:
+    if source.is_symlink() or not source.is_file():
+        raise RuntimeError(f"local cleanup candidate is no longer a regular file: {source}")
+    backup = source.with_name(f".{source.name}.pte-audio-sweep-staging")
+    if backup.exists() or backup.is_symlink():
+        raise RuntimeError(f"audio sweep staging path already exists: {backup}")
+    source.rename(backup)
+    try:
+        if (
+            backup.stat().st_size != expected_size
+            or _sha256_file(backup) != expected_sha256
+        ):
+            raise RuntimeError(
+                "local cleanup candidate changed after duplicate verification"
+            )
+        source.symlink_to(destination)
+        if (
+            source.resolve(strict=False) != destination.resolve(strict=False)
+            or not source.exists()
+            or source.stat().st_size != expected_size
+        ):
+            raise RuntimeError("audio sweep symlink failed post-write verification")
+    except (OSError, RuntimeError):
+        if source.exists() or source.is_symlink():
+            source.unlink()
+        backup.rename(source)
+        raise
+    backup.unlink()
+
+
+def _recover_audio_sweep_staging(root: Path) -> None:
+    suffix = ".pte-audio-sweep-staging"
+    if not root.is_dir():
+        return
+    for directory, directory_names, file_names in os.walk(root, followlinks=False):
+        directory_path = Path(directory)
+        directory_names[:] = [
+            name
+            for name in directory_names
+            if not (directory_path / name).is_symlink()
+        ]
+        for name in file_names:
+            if not name.startswith(".") or not name.endswith(suffix):
+                continue
+            backup = directory_path / name
+            source = directory_path / name[1:-len(suffix)]
+            if not source.exists() and not source.is_symlink():
+                backup.rename(source)
+                continue
+            if not source.is_symlink():
+                raise RuntimeError(
+                    f"audio sweep recovery found conflicting paths: {source}, {backup}"
+                )
+            try:
+                target = source.resolve(strict=True)
+                completed = (
+                    target.is_file()
+                    and target.stat().st_size == backup.stat().st_size
+                    and _sha256_file(target) == _sha256_file(backup)
+                )
+            except OSError:
+                completed = False
+            if completed:
+                backup.unlink()
+                continue
+            source.unlink()
+            backup.rename(source)
+
+
+def _notify_audio_sweep(
+    callback: AudioSweepProgressCallback | None,
+    index: int,
+    total: int,
+    path: Path,
+    stage: str,
+) -> None:
+    if callback is not None:
+        callback(AudioSweepProgressEvent(index, total, path, stage))
 
 
 def _source_points_to_archive(source: Path, destination: Path) -> bool:
