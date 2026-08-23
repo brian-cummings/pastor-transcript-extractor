@@ -471,6 +471,77 @@ def _prepare_canonical_audio_locked(
             _notify_canonical_item(progress_callback, index, total, video, item)
             continue
 
+        registered_artifact = eligibility.media_artifact
+        if registered_artifact is None:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "blocked",
+                "normalized_audio_unavailable",
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        access_status = _canonical_media_access_status(
+            database, registered_artifact
+        )
+        if access_status == "archived_media_unavailable":
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "deferred",
+                access_status,
+                media_artifact_id=registered_artifact.id,
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        if access_status != "available":
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "blocked",
+                access_status,
+                media_artifact_id=registered_artifact.id,
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+
+        preparation_status = _canonical_clip_preparation_status(
+            registered_artifact,
+            observation,
+            CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+        )
+        if preparation_status == "current":
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "already_prepared",
+                "canonical preparation is current",
+                media_artifact_id=registered_artifact.id,
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        if dry_run:
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "would_prepare",
+                f"canonical preparation is {preparation_status}",
+                media_artifact_id=registered_artifact.id,
+                observation_id=observation.id,
+                clip_count=len(eligibility.diagnostic_spans),
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+
         try:
             artifact, availability = get_authoritative_normalized_media_artifact(
                 database,
@@ -495,6 +566,25 @@ def _prepare_canonical_audio_locked(
                 video.youtube_video_id,
                 "failed",
                 f"{type(error).__name__}: {error}",
+                observation_id=observation.id,
+            )
+            items.append(item)
+            _notify_canonical_item(progress_callback, index, total, video, item)
+            continue
+        if (
+            artifact is not None
+            and (
+                artifact.id != registered_artifact.id
+                or artifact.content_sha256
+                != registered_artifact.content_sha256
+            )
+        ):
+            item = CanonicalAudioPreparationItem(
+                video.id,
+                video.youtube_video_id,
+                "failed",
+                "authoritative normalized artifact changed during preparation",
+                media_artifact_id=artifact.id,
                 observation_id=observation.id,
             )
             items.append(item)
@@ -528,37 +618,6 @@ def _prepare_canonical_audio_locked(
                 availability.status if availability is not None else "normalized_audio_unavailable",
                 media_artifact_id=artifact.id if artifact is not None else None,
                 observation_id=observation.id,
-            )
-            items.append(item)
-            _notify_canonical_item(progress_callback, index, total, video, item)
-            continue
-
-        preparation_status = _canonical_clip_preparation_status(
-            artifact,
-            observation,
-            CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
-        )
-        if preparation_status == "current":
-            item = CanonicalAudioPreparationItem(
-                video.id,
-                video.youtube_video_id,
-                "already_prepared",
-                "canonical preparation is current",
-                media_artifact_id=artifact.id,
-                observation_id=observation.id,
-            )
-            items.append(item)
-            _notify_canonical_item(progress_callback, index, total, video, item)
-            continue
-        if dry_run:
-            item = CanonicalAudioPreparationItem(
-                video.id,
-                video.youtube_video_id,
-                "would_prepare",
-                f"canonical preparation is {preparation_status}",
-                media_artifact_id=artifact.id,
-                observation_id=observation.id,
-                clip_count=len(eligibility.diagnostic_spans),
             )
             items.append(item)
             _notify_canonical_item(progress_callback, index, total, video, item)
@@ -637,6 +696,29 @@ def _prepare_canonical_audio_locked(
         items.append(item)
         _notify_canonical_item(progress_callback, index, total, video, item)
     return CanonicalAudioPreparationResult(tuple(items), dry_run)
+
+
+def _canonical_media_access_status(database: Database, artifact: MediaArtifact) -> str:
+    """Check availability and persisted archive authority without hashing audio."""
+    path = Path(artifact.artifact_path)
+    get_entry = getattr(database, "get_media_archive_entry_for_artifact", None)
+    entry = get_entry(artifact.id) if callable(get_entry) else None
+    archived = entry is not None and entry.status == "archived"
+    try:
+        file_stat = path.stat()
+    except OSError:
+        return "archived_media_unavailable" if archived else "normalized_audio_missing"
+    byte_size = getattr(artifact, "byte_size", None)
+    if isinstance(byte_size, int) and file_stat.st_size != byte_size:
+        return "normalized_audio_size_mismatch"
+    if archived:
+        archive_path = Path(entry.archive_path)
+        if (
+            not path.is_symlink()
+            or path.resolve(strict=False) != archive_path.resolve(strict=False)
+        ):
+            return "normalized_audio_archive_provenance_mismatch"
+    return "available"
 
 
 def _notify_canonical_progress(

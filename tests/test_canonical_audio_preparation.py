@@ -67,6 +67,7 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
             manifest_path=str(self.root / "normalized-manifest.json"),
             content_sha256="normalized-sha",
         )
+        Path(self.artifact.artifact_path).write_bytes(b"normalized-audio")
         self.spans = (SpanSpec(300.0, 312.0), SpanSpec(600.0, 612.0))
         self.eligibility = AutomaticSpeakerObservationEligibility(
             "eligible",
@@ -218,7 +219,7 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
             patch(
                 "pastor_transcript_extractor.media_archive."
                 "_canonical_clip_preparation_status",
-                side_effect=("missing", "current"),
+                side_effect=("missing", "missing", "current"),
             ),
             patch(
                 "pastor_transcript_extractor.media_archive.AudioSpanCache.prepare",
@@ -253,7 +254,7 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
                     self.artifact,
                     SimpleNamespace(status="verified_local", verified=True),
                 ),
-            ),
+            ) as verify_audio,
             patch(
                 "pastor_transcript_extractor.media_archive."
                 "_canonical_clip_preparation_status",
@@ -276,6 +277,7 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
             )
 
         self.assertEqual(1, result.counts["would_prepare"])
+        verify_audio.assert_not_called()
         prepare_span.assert_not_called()
         write_manifest.assert_not_called()
 
