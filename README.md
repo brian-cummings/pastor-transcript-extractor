@@ -938,31 +938,34 @@ coordination audit. An executing `--all` run then prewarms exact review clips
 for up to 24 actionable observations before normalized archival. Set
 `--review-prewarm-limit 0` to disable this bounded stage or choose another
 limit. Discovery and association remain shadow computations.
-`--apply-automatic` applies validated confirmations and promotions; the older
-`--apply-confirmations` and `--apply-promotions` switches remain available for
-granular control. Human pair review, profile attribution, conflicts, and policy
-approval are never inferred by the runner. Use `--skip-discovery` when only
-association reconciliation is wanted.
+`--apply-automatic` applies validated confirmations and promotions and activates
+eligible reversible human-on-loop assignments to automatic-ready profiles. The
+older `--apply-confirmations`, `--apply-promotions`, and
+`--apply-machine-canary` switches remain available for granular control. Human
+pair review, profile attribution, conflicts, and policy changes are never
+inferred by the runner. Use `--skip-discovery` when only association
+reconciliation is wanted.
 
-Provisional machine assignment is a separate, explicitly gated canary. A
-canary policy must pin the allowed association-policy hash and model
-fingerprint, cap the total active assignments, and permit activation. It can
-then be supplied only to an all-corpus identity run:
+Provisional machine assignment is the human-on-loop path for sermons uniquely
+matched to an automatic-ready profile. The checked-in policy pins the allowed
+association-policy hash and model fingerprint, requires two agreeing exemplars,
+rejects attribution conflicts, caps active assignments, and leaves every
+assignment reversible. Activate it with the consolidated workflow:
 
 ```bash
 pte identity run --all \
-  --machine-assignment-policy /path/to/approved-canary-policy.json \
-  --apply-machine-canary \
+  --apply-automatic \
   --base-dir /path/to/app-data
 ```
 
 Active provisional assignments remain outside reviewed profile membership and
-cannot become acoustic exemplars. They are moved to the front of the existing
-blinded `automation-readiness` review queue. A confirming human review appends
-a confirmation; a contradiction revokes the assignment, trips that exact
-policy fingerprint, and revokes its other active assignments. Stale or rejected
-sermon observations are revoked conservatively. Rollback is plan-only unless
-`--apply` is passed.
+cannot become acoustic exemplars. Automatic-ready profile proposals no longer
+consume the normal blinded pair-review queue. Operators can inspect active and
+evidence-only assignments with `machine-assignment-status`; stale or rejected
+sermon observations are revoked conservatively, and reviewed contradictions
+trip the exact policy fingerprint. Rollback is plan-only unless `--apply` is
+passed. A different policy can still be supplied explicitly with
+`--machine-assignment-policy`.
 
 ## Planning Docs
 

@@ -853,28 +853,27 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual("review_nomination_only", provenance["role"])
         self.assertFalse(provenance["identity_evidence"])
 
-    def test_association_confirmation_can_grow_automatic_ready_profile(
+    def test_association_confirmation_skips_automatic_ready_profile(
         self,
     ) -> None:
-        selected = select_next_speaker_pair(
-            [
-                candidate("candidate"),
-                candidate("ready", profile_ids=frozenset((7,))),
-            ],
-            PairSelectionHistory(),
-            selection_goal="automation-readiness",
-            association_confirmation_pairs=(
-                self._association_nomination("candidate", "ready"),
-            ),
-            automatic_profile_ready_ids=frozenset((7,)),
-        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable automation-readiness pair remains",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate("candidate"),
+                    candidate("ready", profile_ids=frozenset((7,))),
+                ],
+                PairSelectionHistory(),
+                selection_goal="automation-readiness",
+                association_confirmation_pairs=(
+                    self._association_nomination("candidate", "ready"),
+                ),
+                automatic_profile_ready_ids=frozenset((7,)),
+            )
 
-        self.assertEqual(
-            "shadow_association_confirmation",
-            selected.manifest["selection_objective"],
-        )
-
-    def test_active_machine_assignment_is_reviewed_before_shadow_nomination(
+    def test_ready_active_assignment_does_not_displace_nonready_nomination(
         self,
     ) -> None:
         selected = select_next_speaker_pair(
@@ -901,21 +900,22 @@ class SpeakerPairSelectorTests(unittest.TestCase):
                     provisional_assignment_active=True,
                 ),
             ),
+            automatic_profile_ready_ids=frozenset((8,)),
         )
 
         self.assertEqual(
-            {"active-candidate", "active-exemplar"},
+            {"shadow-candidate", "shadow-exemplar"},
             {
                 selected.observation_a.input_fingerprint,
                 selected.observation_b.input_fingerprint,
             },
         )
         self.assertEqual(
-            "machine_assignment_validation",
+            "shadow_association_confirmation",
             selected.manifest["selection_objective"],
         )
         provenance = selected.manifest["shadow_association_confirmation"]
-        self.assertTrue(provenance["provisional_assignment_active"])
+        self.assertFalse(provenance["provisional_assignment_active"])
         self.assertFalse(provenance["identity_evidence"])
 
     def test_stale_association_candidate_is_excluded_after_profile_assignment(

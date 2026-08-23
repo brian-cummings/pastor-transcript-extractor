@@ -56,7 +56,7 @@ Implemented:
 - media acquisition outcomes distinguish verified, unavailable, and failed; they remain non-gating for sermon content
 - universal acquisition is an explicit shadow command and has not been inserted into the stable `run` workflow
 - no acoustic prediction mutates profiles, memberships, name claims, target policy, or sermon artifacts
-- machine-assignment lifecycle events are append-only and reversible; the checked-in policy records shadow evidence only, while any future canary must pin model/policy fingerprints, cap active assignments, and survive blinded human review
+- machine-assignment lifecycle events are append-only and reversible; the checked-in human-on-loop policy pins model/policy fingerprints, requires unique multi-exemplar agreement and automatic-ready profiles, caps active assignments, and activates only through an explicit apply workflow
 - machine ledger tables are created by normal database initialization; there is no historical backfill, because only association artifacts refreshed by the current identity run are eligible
 - 284 tests pass
 

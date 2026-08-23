@@ -531,6 +531,20 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pin approved"):
             load_machine_assignment_policy(policy_path)
 
+    def test_checked_in_human_on_loop_policy_is_pinned_and_bounded(self) -> None:
+        policy = load_machine_assignment_policy(
+            Path(
+                "evaluation/speaker-associations/policies/"
+                "machine-assignment-human-on-loop-v1.json"
+            )
+        )
+
+        self.assertEqual("canary_provisional", policy.mode)
+        self.assertTrue(policy.allow_provisional_activation)
+        self.assertEqual(600, policy.maximum_active_assignments)
+        self.assertEqual(1, len(policy.allowed_association_policy_sha256))
+        self.assertEqual(1, len(policy.allowed_model_fingerprints))
+
 
 def _sha256(value: object) -> str:
     encoded = json.dumps(

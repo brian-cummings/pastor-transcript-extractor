@@ -4857,6 +4857,7 @@ def _actionable_review_fingerprints(
     *,
     discovery_report: Path | None,
     association_reports: Sequence[Path],
+    automatic_profile_ready_ids: frozenset[int] = frozenset(),
 ) -> tuple[str, ...]:
     """Order observations by current human-review nomination value."""
     ordered: list[str] = []
@@ -4864,6 +4865,8 @@ def _actionable_review_fingerprints(
         for nomination in load_shadow_association_confirmation_pairs(
             association_reports
         ):
+            if nomination.profile_id in automatic_profile_ready_ids:
+                continue
             ordered.extend(
                 (
                     nomination.candidate_fingerprint,
@@ -4892,6 +4895,7 @@ def _prepare_actionable_review_audio(
     association_reports: Sequence[Path],
     cache_dir: Path = Path("evaluation/speaker-pairs/cache"),
     limit: int = 24,
+    automatic_profile_ready_ids: frozenset[int] = frozenset(),
 ) -> ActionableReviewAudioPreparation:
     """Prewarm exact review clips for the current actionable frontier."""
     if limit < 1:
@@ -4899,6 +4903,7 @@ def _prepare_actionable_review_audio(
     fingerprints = _actionable_review_fingerprints(
         discovery_report=discovery_report,
         association_reports=association_reports,
+        automatic_profile_ready_ids=automatic_profile_ready_ids,
     )[:limit]
     span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
     verification_cache = MediaVerificationCache(
@@ -4996,6 +5001,7 @@ def run_identity_workflow_service(
         raise ValueError("Pass exactly one YouTube video ID or --all.")
     effective_apply_confirmations = apply_automatic or apply_confirmations
     effective_apply_promotions = apply_automatic or apply_promotions
+    effective_apply_machine = apply_automatic or apply_machine_canary
     if plan_only and (
         apply_automatic
         or apply_confirmations
@@ -5100,7 +5106,7 @@ def run_identity_workflow_service(
         machine_assignment_policy_path
         or Path(
             "evaluation/speaker-associations/policies/"
-            "machine-assignment-shadow-v1.json"
+            "machine-assignment-human-on-loop-v1.json"
         )
     )
     machine_database = Database(paths.database, readonly=True)
@@ -5157,7 +5163,7 @@ def run_identity_workflow_service(
         machine_apply = apply_machine_assignment_plan(
             Database(paths.database),
             machine_plan,
-            activate_canary=apply_machine_canary,
+            activate_canary=effective_apply_machine,
         )
         console.print(
             "Machine assignment evidence: "
@@ -5271,6 +5277,11 @@ def run_identity_workflow_service(
                 discovery_report=latest_discovery,
                 association_reports=current_association_reports,
                 limit=review_prewarm_limit,
+                automatic_profile_ready_ids=frozenset(
+                    item.profile_id
+                    for item in machine_readiness
+                    if item.automatic_profile_ready
+                ),
             )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             console.print(
@@ -5307,7 +5318,7 @@ def run_identity_workflow_service(
         )
     console.print(
         "Identity run complete. Human pair review, attribution, conflict "
-        "adjudication, and policy approval remain explicit."
+        "adjudication, and policy changes remain explicit."
     )
 
 
@@ -5469,8 +5480,8 @@ def identity_run_command(
         False,
         "--apply-automatic",
         help=(
-            "Apply validated confirmations and promotions; reviewed evidence "
-            "is synchronized by every executing identity run. Requires --all."
+            "Apply validated confirmations, promotions, and policy-gated "
+            "human-on-loop provisional assignments. Requires --all."
         ),
     ),
     apply_confirmations: bool = typer.Option(
@@ -5487,8 +5498,8 @@ def identity_run_command(
         False,
         "--apply-machine-canary",
         help=(
-            "Activate eligible reversible machine assignments only when the "
-            "versioned machine policy permits canary activation. Requires --all."
+            "Activate only eligible reversible machine assignments without "
+            "also applying profile confirmations or promotions. Requires --all."
         ),
     ),
     machine_assignment_policy: Path | None = typer.Option(
@@ -6886,13 +6897,26 @@ def prepare_actionable_review_audio_command(
         association_root.expanduser().resolve().glob("*/*.json")
     )
     try:
+        database = Database(paths.database, readonly=True)
+        reviewed_evidence = load_reviewed_speaker_evidence(
+            Path("evaluation/speaker-pairs").resolve()
+        )
+        automatic_profile_ready_ids = frozenset(
+            item.profile_id
+            for item in assess_profile_association_readiness(
+                database,
+                reviewed_evidence,
+            )
+            if item.automatic_profile_ready
+        )
         result = _prepare_actionable_review_audio(
-            Database(paths.database, readonly=True),
+            database,
             paths,
             discovery_report=latest_discovery,
             association_reports=association_reports,
             cache_dir=cache_dir,
             limit=limit,
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error

@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v25"
+SELECTOR_VERSION = "speaker_pair_selector_v26"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -529,6 +529,7 @@ def select_next_speaker_pair(
             association_confirmation_by_pair=(
                 association_confirmation_by_pair
             ),
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
             observation_use=observation_use,
             source_use=source_use,
             source_family_use=source_family_use,
@@ -574,6 +575,7 @@ def select_next_speaker_pair(
             association_confirmation_by_pair=(
                 association_confirmation_by_pair
             ),
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
             observation_use=observation_use,
             source_use=source_use,
             source_family_use=source_family_use,
@@ -1069,6 +1071,7 @@ def _select_association_confirmation_pair(
     association_confirmation_by_pair: Mapping[
         frozenset[str], AssociationConfirmationPair
     ],
+    automatic_profile_ready_ids: frozenset[int],
     source_family_use: Mapping[str, int],
     observation_use: Mapping[str, int],
     source_use: Mapping[str, int],
@@ -1115,6 +1118,7 @@ def _select_association_confirmation_pair(
             != nomination.exemplar_fingerprint
             or candidate.reviewed_profile_ids
             or nomination.profile_id not in exemplar.reviewed_profile_ids
+            or nomination.profile_id in automatic_profile_ready_ids
             or disfavored.get(candidate.input_fingerprint, 0)
             or disfavored.get(exemplar.input_fingerprint, 0)
         ):

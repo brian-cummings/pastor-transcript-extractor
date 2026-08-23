@@ -119,11 +119,13 @@ correct. The replay is read-only.
 
 ## Machine-assignment boundary
 
-Shadow results can now flow into a versioned machine-evidence ledger, but the
-checked-in `machine-assignment-shadow-v1` policy cannot activate assignments.
-Ledger rows are immutable proposal evidence. A separate append-only lifecycle
-records activation, revocation, or human confirmation, and active provisional
-assignments never become reviewed profile membership or profile exemplars.
+Shadow results can flow into a versioned machine-evidence ledger. The default
+checked-in `machine-assignment-human-on-loop-v1` policy permits bounded,
+reversible activation only when `--apply-automatic` or
+`--apply-machine-canary` is explicitly requested. Ledger rows are immutable
+proposal evidence. A separate append-only lifecycle records activation,
+revocation, or human confirmation, and active provisional assignments never
+become reviewed profile membership or profile exemplars.
 
 Every machine candidate must have a current accepted sermon observation, a
 current automatic-profile-ready target, a unique multi-exemplar same-speaker
@@ -143,21 +145,25 @@ pte identity machine-assignment-status \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Promotion to a canary policy still requires both:
+Human-on-loop activation requires both:
 
 1. an automatic-profile-ready target; and
-2. an independently promoted acoustic model and decision policy, including
-   the required same/different counts, zero observed errors, variation
-   coverage, frozen held-out evaluation, and no technical failures.
+2. the exactly pinned acoustic model and association policy, with unique
+   multi-exemplar agreement and no contradictory or failed comparison.
 
-A canary policy artifact must pin those exact model and policy fingerprints,
-set a hard maximum active-assignment count, and explicitly allow provisional
-activation. Activation also requires `pte identity run --all
---apply-machine-canary --machine-assignment-policy POLICY.json`; neither normal
-`pte identity run` nor top-level `pte run --identity` activates it. The existing
-blinded review queue prioritizes active canaries. One reviewed contradiction
-trips the exact policy fingerprint and revokes every remaining active assignment
-under it. Any policy can also be rolled back explicitly:
+This does not relabel the current acoustic candidate as a reviewed identity
+authority. The output remains provisional, reversible, excluded from acoustic
+exemplars, and subject to reconciliation and the policy circuit breaker.
+
+A machine policy artifact must pin exact model and policy fingerprints, set a
+hard maximum active-assignment count, and explicitly allow provisional
+activation. The default is activated by `pte identity run --all
+--apply-automatic`; the narrower `--apply-machine-canary` switch remains
+available. Normal `pte identity run` and top-level `pte run --identity` record
+evidence but do not activate it. Automatic-ready targets are withheld from the
+ordinary blinded review queue. One reviewed contradiction trips the exact
+policy fingerprint and revokes every remaining active assignment under it. Any
+policy can also be rolled back explicitly:
 
 ```bash
 pte identity rollback-machine-assignments \

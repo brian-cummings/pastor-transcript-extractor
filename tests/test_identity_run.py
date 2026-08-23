@@ -105,7 +105,7 @@ class IdentityRunTests(unittest.TestCase):
                         assignments_activated=0,
                         activation_blocked=0,
                     ),
-                ),
+                ) as apply_machine,
                 patch(
                     "pastor_transcript_extractor.cli.confirm_discovered_profiles_command"
                 ) as confirm,
@@ -158,6 +158,7 @@ class IdentityRunTests(unittest.TestCase):
             (current_report,),
             plan_machine.call_args.args[1],
         )
+        self.assertFalse(apply_machine.call_args.kwargs["activate_canary"])
         self.assertFalse(confirm.call_args.kwargs["apply"])
         self.assertFalse(discover.call_args.kwargs["plan_only"])
         promote.assert_not_called()
@@ -168,6 +169,7 @@ class IdentityRunTests(unittest.TestCase):
             discovery_report=None,
             association_reports=(current_report,),
             limit=24,
+            automatic_profile_ready_ids=frozenset(),
         )
         archive_normalized.assert_called_once_with(
             unittest.mock.ANY,
@@ -180,6 +182,12 @@ class IdentityRunTests(unittest.TestCase):
         association = SimpleNamespace(
             candidate_fingerprint="candidate",
             exemplar_fingerprint="shared",
+            profile_id=7,
+        )
+        ready_association = SimpleNamespace(
+            candidate_fingerprint="ready-candidate",
+            exemplar_fingerprint="ready-exemplar",
+            profile_id=99,
         )
         resolution = SimpleNamespace(
             fingerprint_a="shared",
@@ -193,7 +201,7 @@ class IdentityRunTests(unittest.TestCase):
             patch(
                 "pastor_transcript_extractor.cli."
                 "load_shadow_association_confirmation_pairs",
-                return_value=(association,),
+                return_value=(association, ready_association),
             ),
             patch(
                 "pastor_transcript_extractor.cli."
@@ -209,6 +217,7 @@ class IdentityRunTests(unittest.TestCase):
             fingerprints = _actionable_review_fingerprints(
                 discovery_report=Path("discovery.json"),
                 association_reports=(Path("association.json"),),
+                automatic_profile_ready_ids=frozenset((99,)),
             )
 
         self.assertEqual(
@@ -555,6 +564,23 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
                 ),
                 patch(
+                    "pastor_transcript_extractor.cli.plan_machine_assignments",
+                    return_value=SimpleNamespace(
+                        candidates=(),
+                        skipped_counts={},
+                        tripped_policy_fingerprints=frozenset(),
+                    ),
+                ),
+                patch(
+                    "pastor_transcript_extractor.cli.apply_machine_assignment_plan",
+                    return_value=SimpleNamespace(
+                        evidence_recorded=0,
+                        evidence_reused=0,
+                        assignments_activated=0,
+                        activation_blocked=0,
+                    ),
+                ) as apply_machine,
+                patch(
                     "pastor_transcript_extractor.cli.confirm_discovered_profiles_command"
                 ) as confirm,
                 patch(
@@ -582,6 +608,7 @@ class IdentityRunTests(unittest.TestCase):
 
         self.assertTrue(confirm.call_args.kwargs["apply"])
         self.assertTrue(promote.call_args.kwargs["apply"])
+        self.assertTrue(apply_machine.call_args.kwargs["activate_canary"])
 
     def test_requires_exactly_one_scope(self) -> None:
         with self.assertRaisesRegex(ValueError, "exactly one"):

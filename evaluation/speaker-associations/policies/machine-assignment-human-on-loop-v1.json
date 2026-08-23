@@ -1,0 +1,15 @@
+{
+  "allowed_association_policy_sha256": [
+    "f7ef1575519327bd2e17ef19ddf3d6846ef6cca38e066939cb6fbd486df8824a"
+  ],
+  "allowed_model_fingerprints": [
+    "5b5489d0c3a766d17a31008eb41841eeec87813338e23ef132532100c1f753b0"
+  ],
+  "allow_provisional_activation": true,
+  "maximum_active_assignments": 600,
+  "minimum_same_exemplars": 2,
+  "mode": "canary_provisional",
+  "policy_version": "machine-assignment-human-on-loop-v1",
+  "require_automatic_profile_ready": true,
+  "require_unique_profile": true
+}
