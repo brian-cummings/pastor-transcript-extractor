@@ -6211,11 +6211,16 @@ def shadow_associate_speakers_command(
                 or eligibility.observation.id != observation.id
             ):
                 continue
+            audio_path = Path(eligibility.media_artifact.artifact_path)
+            span_cache.remember_verified_source(
+                audio_path,
+                eligibility.media_artifact.content_sha256,
+            )
             try:
                 span_specs = transcript_grounded_spans(
                     observation.video_id,
                     observation,
-                    Path(eligibility.media_artifact.artifact_path),
+                    audio_path,
                 )
             except (OSError, RuntimeError, ValueError):
                 continue
@@ -6226,7 +6231,7 @@ def shadow_associate_speakers_command(
                 ShadowExemplar(
                     profile_id=profile.profile_id,
                     observation=observation,
-                    audio_path=Path(eligibility.media_artifact.artifact_path),
+                    audio_path=audio_path,
                     audio_sha256=eligibility.media_artifact.content_sha256,
                     span_specs=span_specs,
                 )
@@ -6307,11 +6312,16 @@ def shadow_associate_speakers_command(
                 + 1
             )
             continue
+        audio_path = Path(eligibility.media_artifact.artifact_path)
+        span_cache.remember_verified_source(
+            audio_path,
+            eligibility.media_artifact.content_sha256,
+        )
         try:
             span_specs = transcript_grounded_spans(
                 video.id,
                 eligibility.observation,
-                Path(eligibility.media_artifact.artifact_path),
+                audio_path,
             )
         except (OSError, RuntimeError, ValueError) as error:
             reason = str(error) or "activity_qualified_spans_unavailable"

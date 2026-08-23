@@ -361,6 +361,35 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
                 expected_source_audio_sha256="wrong-authoritative-hash",
             )
 
+    def test_audio_span_cache_reuses_hash_from_verified_media_layer(self):
+        source = self.root / "verified-source.wav"
+        source.write_bytes(b"already-verified-source")
+        source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        cache = AudioSpanCache(self.root / "verified-source-cache")
+
+        cache.remember_verified_source(source, source_hash)
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_diagnostics._sha256_file",
+            side_effect=AssertionError("full source must not be rehashed"),
+        ):
+            self.assertEqual(source_hash, cache._source_audio_sha256(source))
+
+    def test_verified_source_hash_is_invalidated_by_file_stat_change(self):
+        source = self.root / "verified-source-change.wav"
+        source.write_bytes(b"first")
+        cache = AudioSpanCache(self.root / "verified-source-change-cache")
+        cache.remember_verified_source(
+            source,
+            hashlib.sha256(source.read_bytes()).hexdigest(),
+        )
+        source.write_bytes(b"a changed source")
+
+        self.assertEqual(
+            hashlib.sha256(source.read_bytes()).hexdigest(),
+            cache._source_audio_sha256(source),
+        )
+
     def test_audio_span_cache_does_not_cross_generation_policies(self):
         source = self.root / "source.wav"
         source.write_bytes(b"policy-bound-source")

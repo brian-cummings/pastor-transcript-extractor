@@ -190,6 +190,28 @@ class AudioSpanCache:
         ] | None = None
         self._verified_span_files: set[tuple[str, int, int, str]] = set()
 
+    def remember_verified_source(
+        self,
+        source_audio_path: Path,
+        content_sha256: str,
+    ) -> None:
+        """Reuse a hash established by the authoritative media verifier.
+
+        Callers must only use this after byte verification (or a valid
+        persistent verification receipt) has succeeded.  The file stat is
+        included in the in-process key, so a subsequent file change still
+        forces ``_source_audio_sha256`` to hash the changed source.
+        """
+        if not content_sha256:
+            raise ValueError("verified source audio hash is required")
+        file_stat = source_audio_path.stat()
+        key = (
+            str(source_audio_path.expanduser().resolve()),
+            file_stat.st_size,
+            file_stat.st_mtime_ns,
+        )
+        self._source_hashes[key] = content_sha256
+
     def prepare(
         self,
         *,
