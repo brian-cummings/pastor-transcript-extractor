@@ -96,6 +96,42 @@ class ExtractionParallelismTests(unittest.TestCase):
         self.assertEqual(0, result.failed)
         self.assertEqual(2, maximum_active)
 
+    def test_extract_batch_progress_identifies_the_video(self) -> None:
+        video = SimpleNamespace(
+            id=1620,
+            pastor_id=1,
+            title="Sermon",
+            status=VideoStatus.DISCOVERED,
+            duration_seconds=None,
+            published_at=None,
+        )
+        database = SimpleNamespace(
+            list_videos=lambda: [video],
+            get_latest_transcript_artifact_for_video=lambda _: SimpleNamespace(),
+            get_latest_extraction_result_for_video=lambda _: None,
+            update_video_status=lambda *args: None,
+        )
+        progress_events = []
+
+        def extract(*args, **kwargs):
+            kwargs["progress"]("coarse", 4, 23)
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "pastor_transcript_extractor.application.extract_video",
+            side_effect=extract,
+        ):
+            result = extract_batch(
+                database,
+                build_paths(Path(tmp)),
+                classifier="rules",
+                progress_callback=lambda stage, current, total: progress_events.append(
+                    (stage, current, total)
+                ),
+            )
+
+        self.assertEqual(1, result.processed)
+        self.assertEqual([("video #1620 coarse", 4, 23)], progress_events)
+
     def test_extract_batch_rejects_nonpositive_worker_count(self) -> None:
         with self.assertRaisesRegex(ValueError, "at least 1"):
             extract_batch(

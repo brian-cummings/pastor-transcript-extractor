@@ -186,6 +186,13 @@ def extract_batch(
 
     def extract_one(video) -> None:
         _emit(event_callback, f"Extracting video #{video.id}: {video.title}")
+        video_progress = (
+            None
+            if progress_callback is None
+            else lambda stage, current, total: progress_callback(
+                f"video #{video.id} {stage}", current, total
+            )
+        )
         extract_video(
             database,
             paths,
@@ -194,7 +201,7 @@ def extract_batch(
             llm_client=llm_client,
             prompt_version=llm_config.prompt_version,
             context_size=llm_config.context_size,
-            progress=progress_callback,
+            progress=video_progress,
             recording_verifier_client=verifier_client,
             recording_verifier_model_digest=verifier_digest,
         )
