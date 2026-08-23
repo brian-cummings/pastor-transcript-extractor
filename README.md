@@ -731,6 +731,15 @@ targets before they are shadow-ready when source-local or attribution routing
 supports the comparison. A resulting proposal can nominate the ordinary
 blinded human pair workflow, but cannot create a machine assignment; automatic
 assignment still requires the stronger automatic-profile-ready gate.
+Automatic readiness is based on a contradiction-free certified core, not every
+peripheral member of a unified profile. Reviewed same-speaker bridges may attach
+new members or join already certified components without demoting the profile.
+Only members inside a redundant reviewed core—or a promoted discovery seed with
+independent confirmation—may serve as automatic association exemplars. Known
+different-speaker evidence or conflicting attribution still blocks the whole
+profile. `profile-status` groups primary readiness blockers below its compact
+profile table and separately lists ready profiles whose peripheral members are
+excluded from automatic exemplars.
 Conservative leading title credits such as `Andy Crosby - Genuine Conversion`
 are derived at selection time as attribution hints. They do not rewrite speaker
 observations and may route review, but never establish profile membership or an

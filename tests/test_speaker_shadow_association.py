@@ -19,6 +19,8 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
     create_anonymous_profile,
+    record_observation_difference,
+    record_profile_redirect,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
@@ -30,6 +32,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     evaluate_shadow_association,
     load_reusable_shadow_association,
     load_shadow_policy,
+    select_profile_exemplars,
     select_routed_association_profiles,
     select_staged_association_profiles,
     summarize_shadow_associations,
@@ -204,6 +207,152 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         self.assertIn(
             "fewer_than_three_profile_members",
             readiness.shadow_blockers,
+        )
+
+    def test_certified_core_survives_bridge_only_member(self) -> None:
+        observations = {
+            key: self._observation(key) for key in ("a", "b", "c", "leaf")
+        }
+        profile = self._profile(list(observations.values()))
+        readiness = assess_profile_association_readiness(
+            self.database,
+            self._evidence(
+                (("a", "b"), ("b", "c"), ("a", "c"), ("c", "leaf"))
+            ),
+        )[0]
+
+        self.assertTrue(readiness.automatic_profile_ready)
+        self.assertEqual(
+            {observations[key].id for key in ("a", "b", "c")},
+            set(readiness.certified_exemplar_observation_ids),
+        )
+        exemplars = tuple(
+            ShadowExemplar(
+                profile.id,
+                observation,
+                Path(f"{observation.id}.wav"),
+                f"audio-{observation.id}",
+            )
+            for observation in observations.values()
+        )
+        selected = select_profile_exemplars(
+            readiness,
+            exemplars,
+            videos_by_id={
+                video.id: video for video in self.database.list_videos()
+            },
+        )
+        self.assertNotIn(
+            observations["leaf"].id,
+            {item.observation.id for item in selected},
+        )
+
+    def test_merged_certified_components_remain_ready(self) -> None:
+        left = [self._observation(key) for key in ("a", "b", "c")]
+        right = [self._observation(key) for key in ("d", "e", "f")]
+        left_profile = self._profile(left)
+        right_profile = self._profile(right)
+        record_profile_redirect(
+            self.database,
+            from_profile_id=left_profile.id,
+            to_profile_id=right_profile.id,
+            reviewer="reviewer",
+            reason="reviewed duplicate profiles",
+            review_event_key="merge-certified-components",
+        )
+
+        readiness = assess_profile_association_readiness(
+            self.database,
+            self._evidence(
+                (
+                    ("a", "b"),
+                    ("b", "c"),
+                    ("a", "c"),
+                    ("d", "e"),
+                    ("e", "f"),
+                    ("d", "f"),
+                    ("c", "d"),
+                )
+            ),
+        )
+
+        self.assertEqual(1, len(readiness))
+        self.assertEqual(right_profile.id, readiness[0].profile_id)
+        self.assertTrue(readiness[0].automatic_profile_ready)
+        self.assertEqual(
+            {item.id for item in (*left, *right)},
+            set(readiness[0].certified_exemplar_observation_ids),
+        )
+        record_profile_redirect(
+            self.database,
+            from_profile_id=left_profile.id,
+            to_profile_id=None,
+            reviewer="reviewer",
+            reason="reverse merge direction",
+            review_event_key="clear-merge-certified-components",
+        )
+        record_profile_redirect(
+            self.database,
+            from_profile_id=right_profile.id,
+            to_profile_id=left_profile.id,
+            reviewer="reviewer",
+            reason="reviewed duplicate profiles",
+            review_event_key="reverse-merge-certified-components",
+        )
+
+        reversed_readiness = assess_profile_association_readiness(
+            self.database,
+            self._evidence(
+                (
+                    ("a", "b"),
+                    ("b", "c"),
+                    ("a", "c"),
+                    ("d", "e"),
+                    ("e", "f"),
+                    ("d", "f"),
+                    ("c", "d"),
+                )
+            ),
+        )
+        self.assertEqual(left_profile.id, reversed_readiness[0].profile_id)
+        self.assertTrue(reversed_readiness[0].automatic_profile_ready)
+        self.assertEqual(
+            {item.id for item in (*left, *right)},
+            set(reversed_readiness[0].certified_exemplar_observation_ids),
+        )
+
+    def test_reviewed_difference_suspends_certified_core(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c")]
+        profile = self._profile(observations)
+        conflicting = self._observation("conflicting")
+        conflicting_profile = self._profile((conflicting,))
+        record_observation_difference(
+            self.database,
+            observation_a_id=observations[0].id,
+            observation_b_id=conflicting.id,
+            different=True,
+            reviewer="reviewer",
+            reason="reviewed contradiction",
+            review_event_key="certified-core-contradiction",
+        )
+        record_profile_redirect(
+            self.database,
+            from_profile_id=conflicting_profile.id,
+            to_profile_id=profile.id,
+            reviewer="reviewer",
+            reason="later profile merge",
+            review_event_key="contradictory-profile-merge",
+        )
+
+        readiness = assess_profile_association_readiness(
+            self.database,
+            self._evidence((("a", "b"), ("b", "c"), ("a", "c"))),
+        )[0]
+
+        self.assertFalse(readiness.automatic_profile_ready)
+        self.assertIn(
+            "internal_reviewed_difference",
+            readiness.automatic_blockers,
         )
 
     def test_review_ready_profile_can_propose_human_confirmation(self) -> None:

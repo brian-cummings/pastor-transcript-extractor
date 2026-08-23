@@ -507,6 +507,7 @@ class SpeakerProfileStatusTests(unittest.TestCase):
 
         row = status.profiles[0]
         self.assertTrue(row.automatic_profile_ready)
+        self.assertEqual(3, row.certified_exemplar_count)
         self.assertNotIn(
             "attributed_profile_frontier",
             {need.code for need in row.needs},
@@ -556,6 +557,7 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(row.state, "anonymous")
         self.assertTrue(row.shadow_ready)
         self.assertFalse(row.automatic_profile_ready)
+        self.assertEqual(0, row.certified_exemplar_count)
         self.assertEqual(
             {need.code for need in row.needs},
             {

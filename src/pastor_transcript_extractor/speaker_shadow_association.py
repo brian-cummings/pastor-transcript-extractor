@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from pastor_transcript_extractor.models import SpeakerObservation
+from pastor_transcript_extractor.models import SpeakerObservation, SpeakerProfile
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedSpeakerEvidence,
 )
@@ -20,9 +20,9 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v5"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v6"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
-    "speaker_shadow_association_input_v4"
+    "speaker_shadow_association_input_v5"
 )
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
@@ -49,6 +49,7 @@ class ProfileAssociationReadiness:
     shadow_blockers: tuple[str, ...]
     automatic_blockers: tuple[str, ...]
     review_ready: bool = False
+    certified_exemplar_observation_ids: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,9 +291,13 @@ def assess_profile_association_readiness(
     members_by_profile: dict[int, set[int]] = {
         profile_id: set() for profile_id in canonical_ids
     }
+    constituents_by_profile: dict[int, list[SpeakerProfile]] = {
+        profile_id: [] for profile_id in canonical_ids
+    }
     for profile in profiles:
         canonical_id = database.resolve_speaker_profile_id(profile.id)
         if canonical_id in canonical_ids:
+            constituents_by_profile[canonical_id].append(profile)
             members_by_profile[canonical_id].update(
                 database.list_effective_observation_ids_for_profile(profile.id)
             )
@@ -363,35 +368,75 @@ def assess_profile_association_readiness(
         profile_edges = {
             edge for edge in same_edges if edge.issubset(fingerprints)
         }
-        automatic_blockers = list(shadow_blockers)
-        profile = next(item for item in profiles if item.id == profile_id)
-        if profile.created_reason == DISCOVERY_PROFILE_REASON:
+        certified_fingerprints = _review_graph_certified_nodes(
+            fingerprints,
+            profile_edges,
+            minimum_members=minimum_members,
+        )
+        certified_observation_ids = {
+            observation.id
+            for observation in member_observations
+            if observation.input_fingerprint in certified_fingerprints
+        }
+        discovery_blockers: list[str] = []
+        has_reviewed_constituent = False
+        for constituent in constituents_by_profile[profile_id]:
+            if constituent.created_reason == REVIEWED_PROFILE_REASON:
+                has_reviewed_constituent = True
+                continue
             promotion = database.get_speaker_profile_discovery_promotion(
-                profile_id
+                constituent.id
             )
             confirmations = (
                 database.list_speaker_profile_candidate_confirmations(
-                    profile_id
+                    constituent.id
                 )
                 if promotion is not None
                 else []
             )
             if promotion is None:
-                shadow_blockers.append("discovery_promotion_provenance_missing")
-                automatic_blockers.append(
+                discovery_blockers.append(
                     "discovery_promotion_provenance_missing"
                 )
+                continue
             if not confirmations:
-                automatic_blockers.append(
-                    "discovery_candidate_unconfirmed"
-                )
-        else:
-            automatic_blockers.extend(
-                _review_graph_blockers(
-                    fingerprints,
-                    profile_edges,
+                discovery_blockers.append("discovery_candidate_unconfirmed")
+                continue
+            certified_observation_ids.update(
+                _certified_discovery_observation_ids(
+                    promotion,
+                    confirmations,
+                    member_ids=frozenset(member_ids),
                 )
             )
+
+        certified_recording_ids = {
+            observations[observation_id].video_id
+            for observation_id in certified_observation_ids
+            if observation_id in observations
+        }
+        has_certified_core = (
+            len(certified_observation_ids) >= minimum_members
+            and len(certified_recording_ids) >= minimum_members
+        )
+        automatic_blockers = list(shadow_blockers)
+        if not has_certified_core:
+            automatic_blockers.extend(discovery_blockers)
+            if has_reviewed_constituent:
+                automatic_blockers.extend(
+                    _review_graph_blockers(
+                        fingerprints,
+                        profile_edges,
+                    )
+                )
+            if (
+                discovery_blockers
+                and "discovery_promotion_provenance_missing"
+                in discovery_blockers
+            ):
+                shadow_blockers.append(
+                    "discovery_promotion_provenance_missing"
+                )
         shadow_blockers = list(dict.fromkeys(shadow_blockers))
         automatic_blockers = list(dict.fromkeys(automatic_blockers))
         review_ready = (
@@ -419,6 +464,11 @@ def assess_profile_association_readiness(
                 shadow_blockers=tuple(shadow_blockers),
                 automatic_blockers=tuple(automatic_blockers),
                 review_ready=review_ready,
+                certified_exemplar_observation_ids=(
+                    tuple(sorted(certified_observation_ids))
+                    if has_certified_core
+                    else ()
+                ),
             )
         )
     profile_ids_by_name: dict[str, list[int]] = defaultdict(list)
@@ -472,12 +522,20 @@ def select_profile_exemplars(
 ) -> tuple[ShadowExemplar, ...]:
     if maximum_exemplars < 2:
         raise ValueError("shadow association requires at least two exemplars")
+    allowed_observation_ids = (
+        readiness.certified_exemplar_observation_ids
+        if (
+            readiness.automatic_profile_ready
+            and readiness.certified_exemplar_observation_ids
+        )
+        else readiness.member_observation_ids
+    )
     candidates = [
         exemplar
         for exemplar in eligible_exemplars
         if (
             exemplar.profile_id == readiness.profile_id
-            and exemplar.observation.id in readiness.member_observation_ids
+            and exemplar.observation.id in allowed_observation_ids
         )
     ]
     candidates.sort(
@@ -585,6 +643,9 @@ def evaluate_shadow_association(
                     "review_ready": readiness.review_ready,
                     "shadow_ready": readiness.shadow_ready,
                     "automatic_profile_ready": readiness.automatic_profile_ready,
+                    "certified_exemplar_observation_ids": list(
+                        readiness.certified_exemplar_observation_ids
+                    ),
                     "automatic_blockers": list(readiness.automatic_blockers),
                 },
                 "normalized_names": list(readiness.normalized_names),
@@ -1014,15 +1075,85 @@ def _review_graph_blockers(
     return blockers
 
 
-def _has_bridge(adjacency: Mapping[str, set[str]]) -> bool:
+def _review_graph_certified_nodes(
+    fingerprints: Sequence[str],
+    edges: set[frozenset[str]],
+    *,
+    minimum_members: int,
+) -> frozenset[str]:
+    """Return members supported by a redundant reviewed-same core.
+
+    Bridges may connect a certified core to newly reviewed members or another
+    certified core, but those bridge edges do not make either core less
+    trustworthy. Removing bridges leaves the independently reinforced pieces.
+    """
+    adjacency = {fingerprint: set() for fingerprint in fingerprints}
+    for edge in edges:
+        left, right = tuple(edge)
+        if left in adjacency and right in adjacency:
+            adjacency[left].add(right)
+            adjacency[right].add(left)
+    bridges = _bridge_edges(adjacency)
+    certified: set[str] = set()
+    unseen = set(adjacency)
+    while unseen:
+        start = min(unseen)
+        component: set[str] = set()
+        pending = [start]
+        while pending:
+            current = pending.pop()
+            if current in component:
+                continue
+            component.add(current)
+            unseen.discard(current)
+            pending.extend(
+                neighbor
+                for neighbor in adjacency[current]
+                if frozenset((current, neighbor)) not in bridges
+                and neighbor not in component
+            )
+        if len(component) >= minimum_members:
+            certified.update(component)
+    return frozenset(certified)
+
+
+def _certified_discovery_observation_ids(
+    promotion: Mapping[str, object],
+    confirmations: Sequence[Mapping[str, object]],
+    *,
+    member_ids: frozenset[int],
+) -> frozenset[int]:
+    try:
+        raw_seed_ids = json.loads(str(promotion["seed_observation_ids_json"]))
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raw_seed_ids = []
+    certified = {
+        int(observation_id)
+        for observation_id in raw_seed_ids
+        if isinstance(observation_id, int) and observation_id in member_ids
+    }
+    certified.update(
+        int(confirmation["observation_id"])
+        for confirmation in confirmations
+        if (
+            isinstance(confirmation.get("observation_id"), int)
+            and int(confirmation["observation_id"]) in member_ids
+        )
+    )
+    return frozenset(certified)
+
+
+def _bridge_edges(
+    adjacency: Mapping[str, set[str]],
+) -> frozenset[frozenset[str]]:
     discovery: dict[str, int] = {}
     low: dict[str, int] = {}
     parent: dict[str, str | None] = {}
     time = 0
-    found_bridge = False
+    bridges: set[frozenset[str]] = set()
 
     def visit(node: str) -> None:
-        nonlocal time, found_bridge
+        nonlocal time
         time += 1
         discovery[node] = low[node] = time
         for neighbor in adjacency[node]:
@@ -1031,7 +1162,7 @@ def _has_bridge(adjacency: Mapping[str, set[str]]) -> bool:
                 visit(neighbor)
                 low[node] = min(low[node], low[neighbor])
                 if low[neighbor] > discovery[node]:
-                    found_bridge = True
+                    bridges.add(frozenset((node, neighbor)))
             elif parent.get(node) != neighbor:
                 low[node] = min(low[node], discovery[neighbor])
 
@@ -1039,7 +1170,11 @@ def _has_bridge(adjacency: Mapping[str, set[str]]) -> bool:
         if node not in discovery:
             parent[node] = None
             visit(node)
-    return found_bridge
+    return frozenset(bridges)
+
+
+def _has_bridge(adjacency: Mapping[str, set[str]]) -> bool:
+    return bool(_bridge_edges(adjacency))
 
 
 def _sha256_json(value: object) -> str:

@@ -52,6 +52,7 @@ class ProfileStatus:
     state: str
     shadow_ready: bool
     automatic_profile_ready: bool
+    certified_exemplar_count: int
     automatic_blockers: tuple[str, ...]
     needs: tuple[StatusNeed, ...]
     next_need: str
@@ -731,6 +732,9 @@ def build_profile_pipeline_status(
                 shadow_ready=profile_readiness.shadow_ready,
                 automatic_profile_ready=(
                     profile_readiness.automatic_profile_ready
+                ),
+                certified_exemplar_count=len(
+                    profile_readiness.certified_exemplar_observation_ids
                 ),
                 automatic_blockers=profile_readiness.automatic_blockers,
                 needs=tuple(needs),

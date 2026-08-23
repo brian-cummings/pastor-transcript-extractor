@@ -3695,6 +3695,20 @@ def profile_status_command(
     table.add_column("Evidence", no_wrap=True)
     table.add_column("Automation", no_wrap=True)
     table.add_column("Identity evidence")
+    blocker_labels = {
+        "fewer_than_three_profile_members": "need 3 members",
+        "fewer_than_three_distinct_recordings": "need 3 recordings",
+        "fewer_than_three_reviewed_members": "need reinforced core",
+        "reviewed_same_graph_disconnected": "no reinforced core",
+        "reviewed_same_graph_contains_bridge": "no reinforced core",
+        "discovery_candidate_unconfirmed": "needs confirmation",
+        "discovery_promotion_provenance_missing": "missing promotion evidence",
+        "conflicting_explicit_attribution": "conflicting names",
+        "conflicting_name_claim_review": "conflicting name review",
+        "internal_reviewed_difference": "speaker conflict",
+        "attribution_spans_multiple_profiles": "duplicate attributed profile",
+        "member_observation_missing": "missing observation",
+    }
     for profile in status.profiles:
         identity = ", ".join(
             profile.configured_identities or profile.names
@@ -3717,6 +3731,66 @@ def profile_status_command(
             identity,
         )
     console.print(table)
+
+    blocker_priority = (
+        "internal_reviewed_difference",
+        "conflicting_explicit_attribution",
+        "conflicting_name_claim_review",
+        "attribution_spans_multiple_profiles",
+        "member_observation_missing",
+        "discovery_promotion_provenance_missing",
+        "discovery_candidate_unconfirmed",
+        "fewer_than_three_distinct_recordings",
+        "fewer_than_three_profile_members",
+        "fewer_than_three_reviewed_members",
+        "reviewed_same_graph_disconnected",
+        "reviewed_same_graph_contains_bridge",
+    )
+    profiles_by_primary_blocker: dict[str, list[int]] = {}
+    for profile in status.profiles:
+        if profile.automatic_profile_ready or not profile.automatic_blockers:
+            continue
+        blocker = next(
+            (
+                candidate
+                for candidate in blocker_priority
+                if candidate in profile.automatic_blockers
+            ),
+            profile.automatic_blockers[0],
+        )
+        label = blocker_labels.get(blocker, blocker)
+        profiles_by_primary_blocker.setdefault(label, []).append(
+            profile.profile_id
+        )
+    if profiles_by_primary_blocker:
+        console.print("[bold]Why profiles are not human-on-loop[/bold]")
+        for label, profile_ids in sorted(profiles_by_primary_blocker.items()):
+            console.print(
+                f"  {label}: "
+                + ", ".join(str(profile_id) for profile_id in profile_ids)
+            )
+
+    partial_cores = [
+        profile
+        for profile in status.profiles
+        if (
+            profile.automatic_profile_ready
+            and profile.certified_exemplar_count < profile.member_count
+        )
+    ]
+    if partial_cores:
+        console.print(
+            "[bold]Ready profiles with peripheral members excluded from "
+            "automatic exemplars[/bold]"
+        )
+        console.print(
+            "  "
+            + ", ".join(
+                f"{profile.profile_id} "
+                f"({profile.certified_exemplar_count}/{profile.member_count})"
+                for profile in partial_cores
+            )
+        )
 
     if status.discovered_profiles:
         discovery_table = Table(title="Auto-discovered profile candidates")
@@ -6354,9 +6428,19 @@ def shadow_associate_speakers_command(
             "Association preprocessing: "
             f"profile {profile_index}/{len(review_ready_profiles)} "
             f"id={profile.profile_id} "
-            f"members={len(profile.member_observation_ids)}"
+            f"members={len(profile.member_observation_ids)} "
+            f"certified_exemplars="
+            f"{len(profile.certified_exemplar_observation_ids)}"
         )
-        for observation_id in profile.member_observation_ids:
+        preparation_observation_ids = (
+            profile.certified_exemplar_observation_ids
+            if (
+                profile.automatic_profile_ready
+                and profile.certified_exemplar_observation_ids
+            )
+            else profile.member_observation_ids
+        )
+        for observation_id in preparation_observation_ids:
             observation = database.get_speaker_observation(observation_id)
             if observation is None:
                 continue

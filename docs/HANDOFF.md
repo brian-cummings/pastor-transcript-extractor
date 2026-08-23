@@ -473,9 +473,14 @@ readiness is deliberately split:
 - **shadow-ready** requires at least three reviewed members from three distinct
   recordings, complete member observations, no internal reviewed
   different-speaker constraint, and no conflicting explicit attribution;
-- **automatic-profile-ready** additionally requires the reviewed same-speaker
-  graph to be connected with no bridge edge, so membership has redundant human
-  support instead of depending on one transitive link.
+- **automatic-profile-ready** requires a contradiction-free certified core of
+  at least three observations from three recordings. A certified reviewed core
+  has redundant same-speaker paths; promoted discovery seeds require an
+  independent confirmation. Bridge-only peripheral members remain unified
+  profile members but are not automatic exemplars until reinforced. Joining a
+  peripheral member or another certified component therefore does not demote an
+  existing core, while known different-speaker evidence or conflicting
+  attribution still blocks the whole profile.
 
 A promoted discovery profile blocked on independent confirmation is not a
 global association target merely because it has three seed recordings. Until
