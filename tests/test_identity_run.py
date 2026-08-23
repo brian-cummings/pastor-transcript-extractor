@@ -12,6 +12,7 @@ from pastor_transcript_extractor.cli import (
     _actionable_review_fingerprints,
     _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
+    _load_actionable_review_prewarm,
     _prepare_actionable_review_audio,
     app,
     run_identity_workflow_service,
@@ -300,16 +301,25 @@ class IdentityRunTests(unittest.TestCase):
                 "write_canonical_clip_preparation_manifest"
             ) as write_manifest,
         ):
+            cache_dir = root / "cache"
             result = _prepare_actionable_review_audio(
                 database,
                 paths,
                 discovery_report=Path("discovery.json"),
                 association_reports=(),
+                cache_dir=cache_dir,
                 limit=24,
             )
 
         self.assertEqual(
-            ActionableReviewAudioPreparation(2, 1, 0, 1, 0),
+            ActionableReviewAudioPreparation(
+                2,
+                1,
+                0,
+                1,
+                0,
+                ("current",),
+            ),
             result,
         )
         prepare.assert_called_once()
@@ -322,6 +332,10 @@ class IdentityRunTests(unittest.TestCase):
             media,
             observations["current"],
             clip_paths=(Path("/tmp/current-clip.wav"),),
+        )
+        self.assertEqual(
+            ("current",),
+            _load_actionable_review_prewarm(cache_dir),
         )
 
     def test_identity_archive_waits_for_lock_and_reports_unavailable_as_deferred(

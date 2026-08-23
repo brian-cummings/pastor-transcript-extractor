@@ -584,7 +584,11 @@ pte identity prepare-actionable-review-audio \
 
 It prioritizes current association confirmations, discovery frontiers, and
 acoustic growth nominations, then prepares the exact activity-qualified clips
-used by blinded review. It creates no draft and does not consume a nomination.
+used by blinded review. It also persists the usable prepared-observation pool
+and shared association-nomination index. `review-next-speaker-pair` announces
+that pool immediately and selects from it before considering the full corpus;
+only an exhausted or stale pool triggers a clearly announced corpus fallback.
+Prewarming creates no draft and does not consume a nomination.
 
 Backfill neutral speaker observations and, where a pastor target exists, shadow
 identity artifacts for existing extractions without invoking classification or

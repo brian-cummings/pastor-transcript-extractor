@@ -4,8 +4,9 @@ import hashlib
 import itertools
 import json
 import math
+import os
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from pastor_transcript_extractor.models import utc_now
 from pastor_transcript_extractor.speaker_profile_discovery import (
@@ -24,6 +25,9 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 
 
 IDENTITY_COORDINATION_VERSION = "identity_coordination_shadow_v2"
+ASSOCIATION_CONFIRMATION_CACHE_VERSION = (
+    "association_confirmation_nomination_cache_v1"
+)
 SUPPORTED_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v1",
@@ -551,13 +555,26 @@ def load_discovery_acoustic_ranking_pairs(
 
 def load_unmatched_association_fingerprints(
     report_paths: Iterable[Path],
+    *,
+    cache_path: Path | None = None,
 ) -> frozenset[str]:
     """Return candidates that have only current safe no-match/abstention reports."""
-    outcomes_by_fingerprint: dict[str, set[str]] = {}
-    for report_path in sorted(
+    ordered_paths = sorted(
         (path.expanduser().resolve() for path in report_paths),
         key=str,
-    ):
+    )
+    if cache_path is not None:
+        cached = _load_unmatched_association_cache(
+            cache_path,
+            report_set_fingerprint=_association_report_set_fingerprint(
+                ordered_paths
+            ),
+            report_count=len(ordered_paths),
+        )
+        if cached is not None:
+            return cached
+    outcomes_by_fingerprint: dict[str, set[str]] = {}
+    for report_path in ordered_paths:
         payload = _load_verified_association_report(report_path)
         if (
             payload.get("artifact_kind")
@@ -669,14 +686,33 @@ def count_missing_discovery_reviewed_constraints(
 
 def load_shadow_association_confirmation_pairs(
     report_paths: Iterable[Path],
+    *,
+    progress_callback: Callable[[int, int, Path], None] | None = None,
+    cache_path: Path | None = None,
 ) -> tuple[AssociationConfirmationPair, ...]:
     """Load exact same edges from safe multi-exemplar profile proposals."""
-    nominations: dict[frozenset[str], AssociationConfirmationPair] = {}
-    for report_path in sorted(
+    ordered_paths = sorted(
         (path.expanduser().resolve() for path in report_paths),
         key=str,
-    ):
+    )
+    report_set_fingerprint = _association_report_set_fingerprint(
+        ordered_paths
+    )
+    if cache_path is not None:
+        cached = _load_association_confirmation_cache(
+            cache_path,
+            report_set_fingerprint=report_set_fingerprint,
+            report_count=len(ordered_paths),
+        )
+        if cached is not None:
+            return cached
+
+    nominations: dict[frozenset[str], AssociationConfirmationPair] = {}
+    outcomes_by_fingerprint: dict[str, set[str]] = {}
+    for index, report_path in enumerate(ordered_paths, start=1):
         payload = _load_verified_association_report(report_path)
+        if progress_callback is not None:
+            progress_callback(index, len(ordered_paths), report_path)
         if (
             payload.get("artifact_kind")
             != "speaker_profile_shadow_association"
@@ -696,11 +732,20 @@ def load_shadow_association_confirmation_pairs(
             raise ValueError(
                 "shadow association artifact uses an unsupported contract"
             )
-        if payload.get("outcome") != "proposed_match":
-            continue
         candidate = payload.get("candidate")
         profile_id = payload.get("proposed_profile_id")
-        if not isinstance(candidate, Mapping) or not isinstance(profile_id, int):
+        outcome = payload.get("outcome")
+        if isinstance(candidate, Mapping) and isinstance(outcome, str):
+            fingerprint = candidate.get("input_fingerprint")
+            if isinstance(fingerprint, str) and fingerprint:
+                outcomes_by_fingerprint.setdefault(fingerprint, set()).add(
+                    outcome
+                )
+        if (
+            outcome != "proposed_match"
+            or not isinstance(candidate, Mapping)
+            or not isinstance(profile_id, int)
+        ):
             continue
         candidate_fingerprint = candidate.get("input_fingerprint")
         if not isinstance(candidate_fingerprint, str) or not candidate_fingerprint:
@@ -792,7 +837,7 @@ def load_shadow_association_confirmation_pairs(
                 existing.report_result_sha256,
             ):
                 nominations[nomination.pair_key] = nomination
-    return tuple(
+    result = tuple(
         sorted(
             nominations.values(),
             key=lambda item: (
@@ -804,6 +849,132 @@ def load_shadow_association_confirmation_pairs(
             ),
         )
     )
+    if cache_path is not None:
+        _write_association_confirmation_cache(
+            cache_path,
+            report_set_fingerprint=report_set_fingerprint,
+            report_count=len(ordered_paths),
+            nominations=result,
+            unmatched_fingerprints=frozenset(
+                fingerprint
+                for fingerprint, outcomes in outcomes_by_fingerprint.items()
+                if outcomes
+                and outcomes.issubset(
+                    {"no_match", "insufficient_evidence"}
+                )
+            ),
+        )
+    return result
+
+
+def _association_report_set_fingerprint(paths: Iterable[Path]) -> str:
+    digest = hashlib.sha256()
+    for path in paths:
+        stat = path.stat()
+        digest.update(str(path).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(stat.st_size).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(str(stat.st_mtime_ns).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _load_association_confirmation_cache(
+    path: Path,
+    *,
+    report_set_fingerprint: str,
+    report_count: int,
+) -> tuple[AssociationConfirmationPair, ...] | None:
+    resolved = path.expanduser().resolve()
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        raw_nominations = payload["nominations"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("cache_version")
+        != ASSOCIATION_CONFIRMATION_CACHE_VERSION
+        or payload.get("report_set_fingerprint")
+        != report_set_fingerprint
+        or payload.get("report_count") != report_count
+        or not isinstance(raw_nominations, list)
+    ):
+        return None
+    try:
+        return tuple(
+            AssociationConfirmationPair(**item)
+            for item in raw_nominations
+            if isinstance(item, dict)
+        )
+    except TypeError:
+        return None
+
+
+def _write_association_confirmation_cache(
+    path: Path,
+    *,
+    report_set_fingerprint: str,
+    report_count: int,
+    nominations: tuple[AssociationConfirmationPair, ...],
+    unmatched_fingerprints: frozenset[str],
+) -> None:
+    resolved = path.expanduser().resolve()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "cache_version": ASSOCIATION_CONFIRMATION_CACHE_VERSION,
+        "report_set_fingerprint": report_set_fingerprint,
+        "report_count": report_count,
+        "unmatched_fingerprints": sorted(unmatched_fingerprints),
+        "nominations": [
+            {
+                "candidate_fingerprint": item.candidate_fingerprint,
+                "exemplar_fingerprint": item.exemplar_fingerprint,
+                "profile_id": item.profile_id,
+                "same_comparison_count": item.same_comparison_count,
+                "same_boundary_margin": item.same_boundary_margin,
+                "report_result_sha256": item.report_result_sha256,
+                "report_path": item.report_path,
+                "provisional_assignment_active": (
+                    item.provisional_assignment_active
+                ),
+            }
+            for item in nominations
+        ],
+    }
+    temporary = resolved.with_suffix(resolved.suffix + ".partial")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, resolved)
+
+
+def _load_unmatched_association_cache(
+    path: Path,
+    *,
+    report_set_fingerprint: str,
+    report_count: int,
+) -> frozenset[str] | None:
+    resolved = path.expanduser().resolve()
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        values = payload["unmatched_fingerprints"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("cache_version")
+        != ASSOCIATION_CONFIRMATION_CACHE_VERSION
+        or payload.get("report_set_fingerprint")
+        != report_set_fingerprint
+        or payload.get("report_count") != report_count
+        or not isinstance(values, list)
+        or not all(isinstance(value, str) and value for value in values)
+    ):
+        return None
+    return frozenset(values)
 
 
 def _finite_float(value: object) -> float | None:

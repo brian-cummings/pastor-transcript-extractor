@@ -5,6 +5,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
@@ -595,8 +596,27 @@ class IdentityCoordinationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir) / "association.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
+            cache_path = Path(tempdir) / "cache.json"
+            progress = []
 
-            nominations = load_shadow_association_confirmation_pairs((path,))
+            nominations = load_shadow_association_confirmation_pairs(
+                (path,),
+                progress_callback=lambda index, total, report_path: (
+                    progress.append((index, total, report_path))
+                ),
+                cache_path=cache_path,
+            )
+            with patch(
+                "pastor_transcript_extractor.identity_coordination."
+                "_load_verified_association_report",
+                side_effect=AssertionError("cache miss"),
+            ):
+                cached_nominations = (
+                    load_shadow_association_confirmation_pairs(
+                        (path,),
+                        cache_path=cache_path,
+                    )
+                )
 
         self.assertEqual(2, len(nominations))
         self.assertEqual(
@@ -608,6 +628,8 @@ class IdentityCoordinationTests(unittest.TestCase):
         )
         self.assertTrue(all(item.same_comparison_count == 2 for item in nominations))
         self.assertAlmostEqual(0.08, nominations[0].same_boundary_margin)
+        self.assertEqual([(1, 1, path.resolve())], progress)
+        self.assertEqual(nominations, cached_nominations)
 
     def test_unmatched_association_loader_excludes_any_proposed_candidate(
         self,

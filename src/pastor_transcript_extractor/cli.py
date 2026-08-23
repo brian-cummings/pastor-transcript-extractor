@@ -473,6 +473,7 @@ def validate_source_families(
         help="Fixture corpus whose source-family coverage should be checked.",
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+    ignore_prewarm: bool = typer.Option(False, hidden=True),
 ) -> None:
     try:
         registry = load_source_family_registry(registry_path.expanduser().resolve())
@@ -4851,6 +4852,56 @@ class ActionableReviewAudioPreparation:
     already_cached: int
     excluded: int
     failed: int
+    ready_fingerprints: tuple[str, ...] = ()
+
+
+ACTIONABLE_REVIEW_PREWARM_VERSION = "actionable_review_prewarm_v1"
+
+
+def _actionable_review_prewarm_path(cache_dir: Path) -> Path:
+    return (
+        cache_dir.expanduser().resolve()
+        / "selector-context"
+        / "actionable-review-prewarm-v1.json"
+    )
+
+
+def _load_actionable_review_prewarm(cache_dir: Path) -> tuple[str, ...]:
+    path = _actionable_review_prewarm_path(cache_dir)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        fingerprints = payload["ready_fingerprints"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        return ()
+    if (
+        not isinstance(payload, dict)
+        or payload.get("version") != ACTIONABLE_REVIEW_PREWARM_VERSION
+        or not isinstance(fingerprints, list)
+        or not all(
+            isinstance(fingerprint, str) and fingerprint
+            for fingerprint in fingerprints
+        )
+    ):
+        return ()
+    return tuple(dict.fromkeys(fingerprints))
+
+
+def _write_actionable_review_prewarm(
+    cache_dir: Path,
+    fingerprints: Sequence[str],
+) -> None:
+    path = _actionable_review_prewarm_path(cache_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": ACTIONABLE_REVIEW_PREWARM_VERSION,
+        "ready_fingerprints": list(dict.fromkeys(fingerprints)),
+    }
+    temporary = path.with_suffix(".json.partial")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
 
 
 def _actionable_review_fingerprints(
@@ -4858,12 +4909,17 @@ def _actionable_review_fingerprints(
     discovery_report: Path | None,
     association_reports: Sequence[Path],
     automatic_profile_ready_ids: frozenset[int] = frozenset(),
+    association_progress_callback: Callable[[int, int, Path], None]
+    | None = None,
+    association_cache_path: Path | None = None,
 ) -> tuple[str, ...]:
     """Order observations by current human-review nomination value."""
     ordered: list[str] = []
     if association_reports:
         for nomination in load_shadow_association_confirmation_pairs(
-            association_reports
+            association_reports,
+            progress_callback=association_progress_callback,
+            cache_path=association_cache_path,
         ):
             if nomination.profile_id in automatic_profile_ready_ids:
                 continue
@@ -4896,6 +4952,8 @@ def _prepare_actionable_review_audio(
     cache_dir: Path = Path("evaluation/speaker-pairs/cache"),
     limit: int = 24,
     automatic_profile_ready_ids: frozenset[int] = frozenset(),
+    association_progress_callback: Callable[[int, int, Path], None]
+    | None = None,
 ) -> ActionableReviewAudioPreparation:
     """Prewarm exact review clips for the current actionable frontier."""
     if limit < 1:
@@ -4904,6 +4962,12 @@ def _prepare_actionable_review_audio(
         discovery_report=discovery_report,
         association_reports=association_reports,
         automatic_profile_ready_ids=automatic_profile_ready_ids,
+        association_progress_callback=association_progress_callback,
+        association_cache_path=(
+            cache_dir.expanduser().resolve()
+            / "selector-context"
+            / "association-nominations-v1.json"
+        ),
     )[:limit]
     span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
     verification_cache = MediaVerificationCache(
@@ -4913,6 +4977,7 @@ def _prepare_actionable_review_audio(
     already_cached = 0
     excluded = 0
     failed = 0
+    ready_fingerprints: list[str] = []
     for index, fingerprint in enumerate(fingerprints, start=1):
         observation = database.get_speaker_observation_by_fingerprint(
             fingerprint
@@ -4924,7 +4989,16 @@ def _prepare_actionable_review_audio(
         )
         if observation is None or video is None:
             excluded += 1
+            console.print(
+                f"Review prewarm [{index}/{len(fingerprints)}] "
+                f"{fingerprint[:12]}: excluded "
+                "(observation_or_video_unavailable)"
+            )
             continue
+        console.print(
+            f"Review prewarm [{index}/{len(fingerprints)}] "
+            f"{video.youtube_video_id}: verifying current media"
+        )
         eligibility = assess_automatic_speaker_observation(
             database,
             video.id,
@@ -4938,8 +5012,21 @@ def _prepare_actionable_review_audio(
             or eligibility.observation.input_fingerprint != fingerprint
         ):
             excluded += 1
+            reason = (
+                getattr(eligibility, "reason_code", "ineligible")
+                if not eligibility.eligible
+                else "selected_observation_changed"
+            )
+            console.print(
+                f"Review prewarm [{index}/{len(fingerprints)}] "
+                f"{video.youtube_video_id}: excluded ({reason})"
+            )
             continue
         try:
+            console.print(
+                f"Review prewarm [{index}/{len(fingerprints)}] "
+                f"{video.youtube_video_id}: preparing review clips"
+            )
             result = prepare_review_observation(
                 observation=observation,
                 audio_path=Path(eligibility.media_artifact.artifact_path),
@@ -4960,8 +5047,13 @@ def _prepare_actionable_review_audio(
             RuntimeError,
             ValueError,
             subprocess.SubprocessError,
-        ):
+        ) as error:
             failed += 1
+            console.print(
+                f"Review prewarm [{index}/{len(fingerprints)}] "
+                f"{video.youtube_video_id}: failed "
+                f"({type(error).__name__}: {error})"
+            )
             continue
         if cache_hits == len(result.spans):
             already_cached += 1
@@ -4969,17 +5061,20 @@ def _prepare_actionable_review_audio(
         else:
             prepared += 1
             outcome = "prepared"
+        ready_fingerprints.append(fingerprint)
         console.print(
             f"Review prewarm [{index}/{len(fingerprints)}] "
             f"{video.youtube_video_id}: {outcome} "
             f"({len(result.spans)} clips; cache_hits={cache_hits})"
         )
+    _write_actionable_review_prewarm(cache_dir, ready_fingerprints)
     return ActionableReviewAudioPreparation(
         requested=len(fingerprints),
         prepared=prepared,
         already_cached=already_cached,
         excluded=excluded,
         failed=failed,
+        ready_fingerprints=tuple(ready_fingerprints),
     )
 
 
@@ -6896,8 +6991,16 @@ def prepare_actionable_review_audio_command(
     association_reports = tuple(
         association_root.expanduser().resolve().glob("*/*.json")
     )
+    console.print(
+        "Actionable review preprocessing: "
+        f"association_artifacts={len(association_reports)} "
+        f"discovery_report={latest_discovery or 'none'}."
+    )
     try:
         database = Database(paths.database, readonly=True)
+        console.print(
+            "Actionable review preprocessing: assessing profile readiness."
+        )
         reviewed_evidence = load_reviewed_speaker_evidence(
             Path("evaluation/speaker-pairs").resolve()
         )
@@ -6917,6 +7020,14 @@ def prepare_actionable_review_audio_command(
             cache_dir=cache_dir,
             limit=limit,
             automatic_profile_ready_ids=automatic_profile_ready_ids,
+            association_progress_callback=(
+                lambda index, total, _path: console.print(
+                    "Actionable review preprocessing: association artifact "
+                    f"{index}/{total}."
+                )
+                if index == 1 or index == total or index % 50 == 0
+                else None
+            ),
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -7005,6 +7116,22 @@ def review_next_speaker_pair(
     database = Database(paths.database, readonly=True)
     root = evaluation_root.expanduser().resolve()
     verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
+    prewarmed_fingerprints = (
+        ()
+        if ignore_prewarm
+        else _load_actionable_review_prewarm(cache_dir)
+    )
+    if prewarmed_fingerprints:
+        console.print(
+            "Speaker pair selection: using prewarmed pool with "
+            f"{len(prewarmed_fingerprints)} observation(s); corpus fallback "
+            "will run only if this pool is exhausted or stale."
+        )
+    else:
+        console.print(
+            "Speaker pair selection: no prewarmed pool is available; "
+            "building selection from the corpus."
+        )
     try:
         allowed_scopes = {"all", "development", "validation", "held_out"}
         if evaluation_scope not in allowed_scopes:
@@ -7117,12 +7244,23 @@ def review_next_speaker_pair(
             association_paths = tuple(
                 association_root.expanduser().resolve().glob("*/*.json")
             )
-            unmatched_association_fingerprints = (
-                load_unmatched_association_fingerprints(association_paths)
+            association_cache_path = (
+                cache_dir.expanduser().resolve()
+                / "selector-context"
+                / "association-nominations-v1.json"
             )
             current_association_nominations = []
             for nomination in load_shadow_association_confirmation_pairs(
-                association_paths
+                association_paths,
+                cache_path=association_cache_path,
+                progress_callback=(
+                    lambda index, total, _path: console.print(
+                        "Speaker pair selection: association artifact "
+                        f"{index}/{total}."
+                    )
+                    if index == 1 or index == total or index % 50 == 0
+                    else None
+                ),
             ):
                 try:
                     canonical_profile_id = (
@@ -7148,6 +7286,12 @@ def review_next_speaker_pair(
             association_confirmation_pairs = tuple(
                 current_association_nominations
             )
+            unmatched_association_fingerprints = (
+                load_unmatched_association_fingerprints(
+                    association_paths,
+                    cache_path=association_cache_path,
+                )
+            )
         consistency_index = load_consistency_score_index(
             observation_consistency_report.expanduser().resolve()
         )
@@ -7171,7 +7315,19 @@ def review_next_speaker_pair(
         configured_bootstrap_by_source_id: dict[
             int, tuple[int, str] | None
         ] = {}
+        prewarmed_video_ids = {
+            observation.video_id
+            for fingerprint in prewarmed_fingerprints
+            if (
+                observation := database.get_speaker_observation_by_fingerprint(
+                    fingerprint
+                )
+            )
+            is not None
+        }
         for video in database.list_videos():
+            if prewarmed_fingerprints and video.id not in prewarmed_video_ids:
+                continue
             source = database.get_source_by_id(video.source_id)
             if source is None:
                 continue
@@ -7310,6 +7466,30 @@ def review_next_speaker_pair(
             )
             selection = verified_selection.selection
         except ValueError as error:
+            if prewarmed_fingerprints:
+                console.print(
+                    "Speaker pair selection: prewarmed pool is exhausted or "
+                    "stale; rebuilding from the full corpus now."
+                )
+                review_next_speaker_pair(
+                    reviewer=reviewer,
+                    evaluation_root=evaluation_root,
+                    cache_dir=cache_dir,
+                    source_family_registry=source_family_registry,
+                    open_packet=open_packet,
+                    prepare_only=prepare_only,
+                    evaluation_scope=evaluation_scope,
+                    selection_objective=selection_objective,
+                    discovery_report=discovery_report,
+                    discovery_root=discovery_root,
+                    association_root=association_root,
+                    observation_consistency_report=(
+                        observation_consistency_report
+                    ),
+                    base_dir=base_dir,
+                    ignore_prewarm=True,
+                )
+                return
             if (
                 selection_objective == SelectionGoal.PROFILE_GROWTH
                 and missing_discovery_reviewed_constraints

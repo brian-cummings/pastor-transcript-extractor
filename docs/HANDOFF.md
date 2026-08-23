@@ -844,7 +844,9 @@ review prewarm before normalized archival. It prepares the exact
 activity-qualified clips for up to 24 observations from current association
 confirmations and discovery/profile-growth frontiers. The standalone equivalent
 is `pte identity prepare-actionable-review-audio --limit 24`; neither path
-creates drafts or advances selection history.
+creates drafts or advances selection history. The prewarmer persists a usable
+observation pool and shared association-nomination index. Pair review consumes
+that pool first and announces before doing a full corpus fallback.
 
 Selector v11 in the default evaluation objective first checks for unreviewed
 pairs nominated by explicit curated
