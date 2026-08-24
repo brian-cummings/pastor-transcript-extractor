@@ -303,6 +303,7 @@ from pastor_transcript_extractor.speaker_profile_promotion import (
     plan_discovery_promotions,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
+    DISCOVERY_PROFILE_REASON,
     ShadowExemplar,
     assess_profile_association_readiness,
     build_shadow_association_input_fingerprint,

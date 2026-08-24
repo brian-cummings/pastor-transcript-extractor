@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from pastor_transcript_extractor.cli import (
     ActionableReviewAudioPreparation,
+    DISCOVERY_PROFILE_REASON,
     _actionable_review_fingerprints,
     _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
@@ -21,9 +22,18 @@ from pastor_transcript_extractor.cli import (
     validate_source_families,
 )
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.speaker_shadow_association import (
+    DISCOVERY_PROFILE_REASON as SHARED_DISCOVERY_PROFILE_REASON,
+)
 
 
 class IdentityRunTests(unittest.TestCase):
+    def test_confirmation_routing_uses_shared_discovery_profile_reason(self):
+        self.assertEqual(
+            SHARED_DISCOVERY_PROFILE_REASON,
+            DISCOVERY_PROFILE_REASON,
+        )
+
     def test_hidden_prewarm_fallback_parameter_belongs_to_review_command(self):
         self.assertIn(
             "ignore_prewarm",
