@@ -280,6 +280,7 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     write_profile_attribution_packet,
 )
 from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
+    ProfileMetadataAttributionRun,
     load_profile_metadata_attributions,
     profile_metadata_candidate_profile_ids,
     run_profile_metadata_attribution,
@@ -4142,6 +4143,11 @@ def analyze_profile_metadata_command(
         "--model",
         help="Override the configured Ollama model.",
     ),
+    details: bool = typer.Option(
+        False,
+        "--details",
+        help="Show names, evidence excerpts, failures, and artifact paths.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
@@ -4196,6 +4202,69 @@ def analyze_profile_metadata_command(
         f"cache_hits={result.cache_hits} model_calls={result.model_calls} "
         f"failed={result.failed}."
     )
+    _print_profile_metadata_proposals(result)
+    if details:
+        _print_profile_metadata_details(result)
+
+
+def _print_profile_metadata_proposals(
+    result: ProfileMetadataAttributionRun,
+) -> None:
+    proposals = tuple(
+        item for item in result.results if item.decision == "propose_name"
+    )
+    if not proposals:
+        return
+    console.print("[bold]Metadata name proposals[/bold]")
+    for item in proposals:
+        console.print(
+            f"  profile={item.profile_id} name={item.proposed_name!r} "
+            f"recordings={item.supporting_recording_count} "
+            f"cache_hit={item.cache_hit} artifact={item.artifact_path}",
+            markup=False,
+        )
+
+
+def _print_profile_metadata_details(
+    result: ProfileMetadataAttributionRun,
+) -> None:
+    console.print("[bold]Metadata attribution details[/bold]")
+    for item in result.results:
+        console.print(
+            f"  profile={item.profile_id} decision={item.decision} "
+            f"routing={item.routing} name={item.proposed_name!r} "
+            f"recordings={item.supporting_recording_count} "
+            f"cache_hit={item.cache_hit}",
+            markup=False,
+        )
+        console.print(
+            f"    reasons={','.join(item.reason_codes)} "
+            f"conflicts={','.join(item.conflicting_names) or 'none'}",
+            markup=False,
+        )
+        for evidence in item.evidence:
+            console.print(
+                f"    evidence={evidence.youtube_video_id}:"
+                f"{evidence.field_path} {evidence.exact_excerpt!r}",
+                markup=False,
+            )
+        console.print(f"    artifact={item.artifact_path}", markup=False)
+        console.print(
+            "    diagnostic_artifact="
+            f"{item.artifact_path.with_suffix('.attempt.json')}",
+            markup=False,
+        )
+    for failure in result.failures:
+        console.print(
+            f"  profile={failure.profile_id} decision=failed "
+            f"cache_hit={failure.cache_hit} "
+            f"error={failure.error_type}: {failure.error_message}",
+            markup=False,
+        )
+        console.print(
+            f"    diagnostic_artifact={failure.artifact_path}",
+            markup=False,
+        )
 
 
 @identity_app.command(
@@ -5729,6 +5798,14 @@ def run_identity_workflow_service(
                         f"model_calls={metadata_run.model_calls} "
                         f"failed={metadata_run.failed}."
                     )
+                    _print_profile_metadata_proposals(metadata_run)
+                    if metadata_run.failed:
+                        console.print(
+                            "Profile metadata diagnostics were persisted. "
+                            "Inspect them with `pte identity "
+                            "analyze-profile-metadata --all --details "
+                            f"--base-dir {paths.root}`."
+                        )
 
     coordinate_identity_command(
         youtube_video_id=youtube_video_id,

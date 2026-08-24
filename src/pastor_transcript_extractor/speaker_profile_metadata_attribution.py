@@ -13,8 +13,12 @@ from pastor_transcript_extractor.speaker_registry import normalize_person_name
 from pastor_transcript_extractor.storage import Database
 
 
-PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v2"
-PROFILE_METADATA_PROMPT_VERSION = "profile_metadata_name_consolidation_v2"
+PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v3"
+PROFILE_METADATA_PROMPT_VERSION = "profile_metadata_name_consolidation_v3"
+_SUPPORTED_ATTRIBUTION_VERSIONS = {
+    "profile_metadata_attribution_v2",
+    PROFILE_METADATA_ATTRIBUTION_VERSION,
+}
 PROFILE_METADATA_OUTPUT_TOKEN_BUDGET = 768
 PROFILE_METADATA_TEXT_LIMIT = 800
 PROFILE_METADATA_TOTAL_TEXT_LIMIT = 14_000
@@ -101,6 +105,16 @@ class ProfileMetadataAttribution:
 
 
 @dataclass(frozen=True, slots=True)
+class ProfileMetadataFailure:
+    profile_id: int
+    input_fingerprint: str
+    error_type: str
+    error_message: str
+    artifact_path: Path
+    cache_hit: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileMetadataAttributionRun:
     eligible: int
     proposed: int
@@ -111,6 +125,7 @@ class ProfileMetadataAttributionRun:
     model_calls: int
     failed: int
     results: tuple[ProfileMetadataAttribution, ...]
+    failures: tuple[ProfileMetadataFailure, ...]
 
 
 def profile_metadata_schema() -> dict[str, Any]:
@@ -175,14 +190,18 @@ def profile_metadata_prompt(candidate: ProfileMetadataInput) -> str:
         "name is supported by at least two distinct recordings with no conflict. "
         "Use insufficient_evidence when support is absent or occurs in only one "
         "recording. Use conflicting_evidence for competing plausible speaker "
-        "names. Use invalid_metadata only when the supplied metadata cannot be "
-        "interpreted. For propose_name, use only consistent_speaker_credit and "
+        "names. The proposed spelling may omit an honorific or middle initial, "
+        "but must otherwise name the person shown in the supplied metadata. Use "
+        "invalid_metadata only when the supplied metadata cannot be interpreted. "
+        "For propose_name, use only consistent_speaker_credit and "
         "repeated_name_across_recordings as reason codes and leave conflicting_names "
         "empty. For conflicting_evidence, cite at least two different full person "
         "names, include multiple_candidate_names, and ensure every conflicting name "
-        "appears in a supplied evidence excerpt. For insufficient_evidence, leave "
-        "conflicting_names empty. Every evidence excerpt must be copied exactly from "
-        "its supplied field. A church, city, program, worship service, placeholder "
+        "appears in a supplied evidence field. For insufficient_evidence, leave "
+        "conflicting_names empty. Cite the exact video and field containing each "
+        "name; copy a short exact excerpt when possible. PTE will independently "
+        "ground names against the original field text. A church, city, program, "
+        "worship service, placeholder "
         "such as NAME/Unknown/None, or channel is never a person. Never invent, "
         "expand initials, or infer a name from the source.\n\nMETADATA:\n"
         + json.dumps(records, indent=2, ensure_ascii=False)
@@ -342,6 +361,7 @@ def run_profile_metadata_attribution(
         model_digest=model_digest,
     )
     results: list[ProfileMetadataAttribution] = []
+    failures: list[ProfileMetadataFailure] = []
     cache_hits = 0
     model_calls = 0
     failed = 0
@@ -351,6 +371,7 @@ def run_profile_metadata_attribution(
             / f"profile-{candidate.profile_id}"
             / f"{candidate.input_fingerprint}.json"
         )
+        attempt_path = path.with_suffix(".attempt.json")
         cached = _load_artifact(path, cache_hit=True)
         if cached is not None:
             cache_hits += 1
@@ -363,6 +384,25 @@ def run_profile_metadata_attribution(
                     f"cached:{cached.decision}",
                 )
             continue
+        cached_failure = _load_failure_artifact(
+            attempt_path,
+            candidate=candidate,
+            cache_hit=True,
+        )
+        if cached_failure is not None:
+            cache_hits += 1
+            failed += 1
+            failures.append(cached_failure)
+            if progress_callback is not None:
+                progress_callback(
+                    index,
+                    len(candidates),
+                    candidate.profile_id,
+                    "cached_failure:"
+                    f"{cached_failure.error_type}: "
+                    f"{cached_failure.error_message}",
+                )
+            continue
         model_calls += 1
         if progress_callback is not None:
             progress_callback(
@@ -371,6 +411,7 @@ def run_profile_metadata_attribution(
                 candidate.profile_id,
                 "analyzing",
             )
+        response = None
         try:
             response = client.generate_json(
                 profile_metadata_prompt(candidate),
@@ -382,6 +423,18 @@ def run_profile_metadata_attribution(
             validated = _validate_response(candidate, response.content)
         except (LocalLlmError, OSError, ValueError) as error:
             failed += 1
+            failure = _write_failure_artifact(
+                attempt_path,
+                candidate=candidate,
+                model=client.model,
+                model_digest=model_digest,
+                response=(response.content if response is not None else None),
+                raw_response=(
+                    response.raw_content if response is not None else None
+                ),
+                error=error,
+            )
+            failures.append(failure)
             if progress_callback is not None:
                 progress_callback(
                     index,
@@ -390,6 +443,15 @@ def run_profile_metadata_attribution(
                     f"failed:{type(error).__name__}: {error}",
                 )
             continue
+        _write_success_attempt_artifact(
+            attempt_path,
+            candidate=candidate,
+            model=client.model,
+            model_digest=model_digest,
+            response=response.content,
+            raw_response=response.raw_content,
+            validated=validated,
+        )
         payload = {
             "schema_version": 1,
             "version": PROFILE_METADATA_ATTRIBUTION_VERSION,
@@ -428,6 +490,7 @@ def run_profile_metadata_attribution(
         model_calls=model_calls,
         failed=failed,
         results=tuple(results),
+        failures=tuple(failures),
     )
 
 
@@ -471,11 +534,11 @@ def _validate_response(
         or any(not isinstance(name, str) for name in raw_conflicts)
     ):
         raise ValueError("metadata attribution response shape is invalid")
+    cited_evidence: list[dict[str, str]] = []
     fields = {
         (field.youtube_video_id, field.field_path): field.text
         for field in candidate.fields
     }
-    evidence: list[dict[str, str]] = []
     for item in raw_evidence:
         if not isinstance(item, Mapping):
             raise ValueError("metadata attribution evidence is invalid")
@@ -486,28 +549,69 @@ def _validate_response(
             not isinstance(video_id, str)
             or not isinstance(field_path, str)
             or not isinstance(excerpt, str)
-            or not excerpt.strip()
-            or excerpt not in fields.get((video_id, field_path), "")
+            or (video_id, field_path) not in fields
         ):
-            raise ValueError("metadata attribution evidence is not verbatim")
-        evidence.append(
+            raise ValueError("metadata attribution evidence field is invalid")
+        source_text = fields[(video_id, field_path)]
+        grounded_excerpt = (
+            excerpt.strip()
+            if excerpt.strip() and excerpt.strip() in source_text
+            else source_text[:240].strip()
+        )
+        if not grounded_excerpt:
+            continue
+        cited_evidence.append(
             {
                 "youtube_video_id": video_id,
                 "field_path": field_path,
-                "exact_excerpt": excerpt,
+                "exact_excerpt": grounded_excerpt,
             }
         )
     normalized_name = normalize_person_name(proposed_name)
-    supporting_recordings = {
-        item["youtube_video_id"]
-        for item in evidence
-        if _normalized_name_occurs(normalized_name, item["exact_excerpt"])
+    normalized_conflicts = {
+        normalize_person_name(name): name.strip()
+        for name in raw_conflicts
+        if _valid_person_name(normalize_person_name(name))
     }
+    conflict_evidence, conflict_support = _ground_name_evidence(
+        candidate,
+        tuple(normalized_conflicts),
+    )
+    supported_conflicts = {
+        name for name, recordings in conflict_support.items() if recordings
+    }
+    if len(supported_conflicts) >= 2:
+        return {
+            "decision": "conflicting_evidence",
+            "routing": "human_review_required",
+            "proposed_name": None,
+            "normalized_name": None,
+            "reason_codes": ["multiple_candidate_names"],
+            "evidence": conflict_evidence,
+            "conflicting_names": [
+                normalized_conflicts[name]
+                for name in sorted(supported_conflicts)
+            ],
+            "supporting_recording_count": len(
+                {
+                    video_id
+                    for name in supported_conflicts
+                    for video_id in conflict_support[name]
+                }
+            ),
+        }
+    if decision == "conflicting_evidence":
+        decision = "insufficient_evidence"
+        raw_reasons = ["ambiguous_program_metadata"]
     if decision == "propose_name":
+        evidence, support = _ground_name_evidence(
+            candidate,
+            (normalized_name,),
+        )
+        supporting_recordings = support.get(normalized_name, set())
         if (
             not _valid_person_name(normalized_name)
             or len(supporting_recordings) < 2
-            or raw_conflicts
         ):
             raise ValueError("proposed name lacks independent metadata support")
         routing = "human_confirmation_available"
@@ -517,41 +621,7 @@ def _validate_response(
             "consistent_speaker_credit",
             "repeated_name_across_recordings",
         ]
-    elif decision == "conflicting_evidence":
-        normalized_conflicts = {
-            normalize_person_name(name): name.strip()
-            for name in raw_conflicts
-            if _valid_person_name(normalize_person_name(name))
-        }
-        supported_conflicts = {
-            normalized
-            for normalized in normalized_conflicts
-            if any(
-                _normalized_name_occurs(
-                    normalized,
-                    item["exact_excerpt"],
-                )
-                for item in evidence
-            )
-        }
-        if (
-            len(normalized_conflicts) < 2
-            or supported_conflicts != set(normalized_conflicts)
-            or "multiple_candidate_names" not in raw_reasons
-        ):
-            raise ValueError(
-                "conflicting names lack verbatim metadata support"
-            )
-        routing = "human_review_required"
-        normalized = None
-        proposal = None
-        raw_conflicts = list(normalized_conflicts.values())
-        raw_reasons = ["multiple_candidate_names"]
     else:
-        if raw_conflicts:
-            raise ValueError(
-                "non-conflict metadata result contains conflicting names"
-            )
         if decision == "insufficient_evidence":
             raw_reasons = [
                 reason
@@ -567,6 +637,9 @@ def _validate_response(
         routing = "human_review_required"
         normalized = None
         proposal = None
+        evidence = cited_evidence
+        supporting_recordings = set()
+        raw_conflicts = []
     return {
         "decision": decision,
         "routing": routing,
@@ -577,6 +650,90 @@ def _validate_response(
         "conflicting_names": list(dict.fromkeys(raw_conflicts)),
         "supporting_recording_count": len(supporting_recordings),
     }
+
+
+def _ground_name_evidence(
+    candidate: ProfileMetadataInput,
+    normalized_names: Sequence[str],
+) -> tuple[list[dict[str, str]], dict[str, set[str]]]:
+    support = {name: set() for name in normalized_names}
+    evidence: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for normalized_name in normalized_names:
+        for field in candidate.fields:
+            if field.field_path == "video.channel_name":
+                continue
+            span = _normalized_name_span(normalized_name, field.text)
+            if span is None:
+                continue
+            support[normalized_name].add(field.youtube_video_id)
+            key = (
+                normalized_name,
+                field.youtube_video_id,
+                field.field_path,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            evidence.append(
+                {
+                    "youtube_video_id": field.youtube_video_id,
+                    "field_path": field.field_path,
+                    "exact_excerpt": _exact_excerpt_window(
+                        field.text,
+                        start=span[0],
+                        end=span[1],
+                    ),
+                }
+            )
+    return evidence, support
+
+
+def _normalized_name_span(
+    normalized_name: str,
+    text: str,
+) -> tuple[int, int] | None:
+    name_tokens = normalized_name.split()
+    if not name_tokens:
+        return None
+    text_tokens = tuple(
+        (match.group(0), match.start(), match.end())
+        for match in re.finditer(r"[a-z]+", text.casefold())
+    )
+    for start_index, (token, start, _end) in enumerate(text_tokens):
+        if token != name_tokens[0]:
+            continue
+        text_index = start_index
+        matched_end = text_tokens[start_index][2]
+        for expected in name_tokens[1:]:
+            text_index += 1
+            while (
+                text_index < len(text_tokens)
+                and len(text_tokens[text_index][0]) == 1
+                and text_tokens[text_index][0] != expected
+            ):
+                text_index += 1
+            if (
+                text_index >= len(text_tokens)
+                or text_tokens[text_index][0] != expected
+            ):
+                break
+            matched_end = text_tokens[text_index][2]
+        else:
+            return start, matched_end
+    return None
+
+
+def _exact_excerpt_window(
+    text: str,
+    *,
+    start: int,
+    end: int,
+    radius: int = 80,
+) -> str:
+    window_start = max(0, start - radius)
+    window_end = min(len(text), end + radius)
+    return text[window_start:window_end].strip()
 
 
 def _artifact_fields(
@@ -645,17 +802,6 @@ def _compact_text(value: str) -> str:
     return " ".join(value.split())[:PROFILE_METADATA_TEXT_LIMIT]
 
 
-def _normalized_name_occurs(normalized_name: str, excerpt: str) -> bool:
-    if not normalized_name:
-        return False
-    name_tokens = normalized_name.split()
-    excerpt_tokens = re.findall(r"[a-z]+", excerpt.casefold())
-    return any(
-        excerpt_tokens[index : index + len(name_tokens)] == name_tokens
-        for index in range(len(excerpt_tokens) - len(name_tokens) + 1)
-    )
-
-
 def _valid_person_name(normalized_name: str) -> bool:
     tokens = normalized_name.split()
     return (
@@ -677,7 +823,7 @@ def _load_artifact(
     result = payload.get("result") if isinstance(payload, Mapping) else None
     if (
         payload.get("schema_version") != 1
-        or payload.get("version") != PROFILE_METADATA_ATTRIBUTION_VERSION
+        or payload.get("version") not in _SUPPORTED_ATTRIBUTION_VERSIONS
         or not isinstance(result, Mapping)
         or payload.get("result_sha256") != _sha256(result)
         or result.get("decision") not in _DECISIONS
@@ -724,6 +870,141 @@ def _load_artifact(
         )
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def _load_failure_artifact(
+    path: Path,
+    *,
+    candidate: ProfileMetadataInput,
+    cache_hit: bool,
+) -> ProfileMetadataFailure | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    expected = payload.pop("attempt_sha256", None)
+    if (
+        payload.get("schema_version") != 1
+        or payload.get("artifact_kind")
+        != "profile_metadata_attribution_attempt"
+        or payload.get("version") != PROFILE_METADATA_ATTRIBUTION_VERSION
+        or payload.get("status") != "failed"
+        or payload.get("cacheable") is not True
+        or payload.get("profile_id") != candidate.profile_id
+        or payload.get("input_fingerprint") != candidate.input_fingerprint
+        or expected != _sha256(payload)
+    ):
+        return None
+    error = payload.get("error")
+    if not isinstance(error, Mapping):
+        return None
+    try:
+        return ProfileMetadataFailure(
+            profile_id=candidate.profile_id,
+            input_fingerprint=candidate.input_fingerprint,
+            error_type=str(error["type"]),
+            error_message=str(error["message"]),
+            artifact_path=path,
+            cache_hit=cache_hit,
+        )
+    except KeyError:
+        return None
+
+
+def _write_failure_artifact(
+    path: Path,
+    *,
+    candidate: ProfileMetadataInput,
+    model: str,
+    model_digest: str,
+    response: Mapping[str, Any] | None,
+    raw_response: str | None,
+    error: Exception,
+) -> ProfileMetadataFailure:
+    payload = _attempt_payload(
+        candidate=candidate,
+        model=model,
+        model_digest=model_digest,
+        status="failed",
+        response=response,
+        raw_response=raw_response,
+        validated=None,
+        error={"type": type(error).__name__, "message": str(error)},
+    )
+    _write_artifact(path, payload)
+    return ProfileMetadataFailure(
+        profile_id=candidate.profile_id,
+        input_fingerprint=candidate.input_fingerprint,
+        error_type=type(error).__name__,
+        error_message=str(error),
+        artifact_path=path,
+        cache_hit=False,
+    )
+
+
+def _write_success_attempt_artifact(
+    path: Path,
+    *,
+    candidate: ProfileMetadataInput,
+    model: str,
+    model_digest: str,
+    response: Mapping[str, Any],
+    raw_response: str,
+    validated: Mapping[str, Any],
+) -> None:
+    _write_artifact(
+        path,
+        _attempt_payload(
+            candidate=candidate,
+            model=model,
+            model_digest=model_digest,
+            status="validated",
+            response=response,
+            raw_response=raw_response,
+            validated=validated,
+            error=None,
+        ),
+    )
+
+
+def _attempt_payload(
+    *,
+    candidate: ProfileMetadataInput,
+    model: str,
+    model_digest: str,
+    status: str,
+    response: Mapping[str, Any] | None,
+    raw_response: str | None,
+    validated: Mapping[str, Any] | None,
+    error: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema_version": 1,
+        "artifact_kind": "profile_metadata_attribution_attempt",
+        "version": PROFILE_METADATA_ATTRIBUTION_VERSION,
+        "prompt_version": PROFILE_METADATA_PROMPT_VERSION,
+        "profile_id": candidate.profile_id,
+        "membership_fingerprint": candidate.membership_fingerprint,
+        "input_fingerprint": candidate.input_fingerprint,
+        "model": model,
+        "model_digest": model_digest,
+        "status": status,
+        "cacheable": (
+            error is not None and error.get("type") == "ValueError"
+        ),
+        "input_fields": [asdict(field) for field in candidate.fields],
+        "response": dict(response) if response is not None else None,
+        "raw_response": raw_response,
+        "validated_result": (
+            dict(validated) if validated is not None else None
+        ),
+        "error": dict(error) if error is not None else None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    payload["attempt_sha256"] = _sha256(payload)
+    return payload
 
 
 def _write_artifact(path: Path, payload: Mapping[str, Any]) -> None:

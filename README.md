@@ -961,7 +961,17 @@ Rerun only metadata consolidation—without acoustic association or discovery—
 ```bash
 pte identity analyze-profile-metadata --all --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --profile-id PROFILE_ID --base-dir /path/to/app-data
+pte identity analyze-profile-metadata --all --details --base-dir /path/to/app-data
 ```
+
+`--details` prints proposed names, grounded evidence, validation failures, cache
+state, and artifact paths. Every model attempt is persisted beside its validated
+result, including the supplied metadata, raw structured response, and validation
+error. Exact failed inputs are replayed as cached failures until profile
+membership, metadata, prompt version, model, or model digest changes. Name
+support is grounded deterministically against the original fields across
+distinct recordings; the model does not need to reproduce punctuation or the
+supporting excerpt verbatim.
 
 Run the complete identity layer independently with the same scope convention as
 top-level `pte run`:

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from pastor_transcript_extractor.config import build_paths, ensure_directories
-from pastor_transcript_extractor.local_llm import LocalLlmResponse
+from pastor_transcript_extractor.local_llm import LocalLlmError, LocalLlmResponse
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_profile_attribution import (
     list_unnamed_profile_attribution_candidates,
@@ -44,6 +44,17 @@ class FakeMetadataClient:
             json.dumps(self.content),
             self.model,
         )
+
+
+class FailingMetadataClient:
+    model = "fixture-metadata:1"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_json(self, *_args, **_kwargs) -> LocalLlmResponse:
+        self.calls += 1
+        raise LocalLlmError("temporary outage")
 
 
 class ProfileMetadataAttributionTests(unittest.TestCase):
@@ -162,6 +173,16 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         self.assertEqual(1, client.calls)
         self.assertEqual(1, replay.cache_hits)
         self.assertEqual(0, replay.model_calls)
+        attempt_path = first.results[0].artifact_path.with_suffix(
+            ".attempt.json"
+        )
+        attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+        self.assertEqual("validated", attempt["status"])
+        self.assertEqual("propose_name", attempt["response"]["decision"])
+        self.assertEqual(
+            "Curt DeWitt",
+            attempt["validated_result"]["proposed_name"],
+        )
         loaded = load_profile_metadata_attributions(output)
         self.assertEqual(
             "Curt DeWitt",
@@ -177,6 +198,70 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         )
 
     def test_unverifiable_single_recording_proposal_fails_closed(self) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id = ?",
+                ("Worship Service", self.observations[1].video_id),
+            )
+        client = FakeMetadataClient(
+            {
+                "decision": "propose_name",
+                "proposed_name": "Curt DeWitt",
+                "reason_codes": ["consistent_speaker_credit"],
+                "evidence": [
+                    {
+                        "youtube_video_id": "curt-a",
+                        "field_path": "video.title",
+                        "exact_excerpt": "Pastor Curt DeWitt",
+                    }
+                ],
+                "conflicting_names": [],
+            }
+        )
+
+        output = self.root / "failed-closed"
+        run = run_profile_metadata_attribution(
+            self.database,
+            output,
+            client,
+            model_digest="digest-1",
+        )
+        replay = run_profile_metadata_attribution(
+            self.database,
+            output,
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(0, run.insufficient_evidence)
+        self.assertEqual(1, run.failed)
+        self.assertEqual((), run.results)
+        self.assertEqual(1, len(run.failures))
+        self.assertTrue(run.failures[0].artifact_path.is_file())
+        failed_attempt = json.loads(
+            run.failures[0].artifact_path.read_text(encoding="utf-8")
+        )
+        self.assertTrue(failed_attempt["cacheable"])
+        self.assertEqual("failed", failed_attempt["status"])
+        self.assertEqual("ValueError", failed_attempt["error"]["type"])
+        self.assertTrue(failed_attempt["input_fields"])
+        self.assertEqual(1, replay.failed)
+        self.assertEqual(1, replay.cache_hits)
+        self.assertEqual(0, replay.model_calls)
+        self.assertEqual(1, client.calls)
+
+    def test_name_is_grounded_despite_nonverbatim_excerpt_and_middle_initial(
+        self,
+    ) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id IN (?, ?)",
+                (
+                    "Message with Pastor Curt A. DeWitt",
+                    self.observations[0].video_id,
+                    self.observations[1].video_id,
+                ),
+            )
         client = FakeMetadataClient(
             {
                 "decision": "propose_name",
@@ -195,14 +280,20 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
 
         run = run_profile_metadata_attribution(
             self.database,
-            self.root / "failed-closed",
+            self.root / "normalized-grounding",
             client,
             model_digest="digest-1",
         )
 
-        self.assertEqual(0, run.insufficient_evidence)
-        self.assertEqual(1, run.failed)
-        self.assertEqual((), run.results)
+        self.assertEqual(1, run.proposed)
+        self.assertEqual(0, run.failed)
+        self.assertEqual(2, run.results[0].supporting_recording_count)
+        self.assertTrue(
+            all(
+                "Curt A. DeWitt" in item.exact_excerpt
+                for item in run.results[0].evidence
+            )
+        )
 
     def test_insufficient_evidence_is_cached_for_human_review(self) -> None:
         client = FakeMetadataClient(
@@ -225,6 +316,32 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         self.assertEqual(1, run.insufficient_evidence)
         self.assertEqual(0, run.failed)
         self.assertEqual("human_review_required", run.results[0].routing)
+
+    def test_transient_model_failure_is_recorded_but_not_cached(self) -> None:
+        client = FailingMetadataClient()
+        output = self.root / "transient"
+
+        first = run_profile_metadata_attribution(
+            self.database,
+            output,
+            client,
+            model_digest="digest-1",
+        )
+        replay = run_profile_metadata_attribution(
+            self.database,
+            output,
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(1, first.failed)
+        self.assertEqual(1, replay.failed)
+        self.assertEqual(0, replay.cache_hits)
+        self.assertEqual(2, client.calls)
+        attempt = json.loads(
+            replay.failures[0].artifact_path.read_text(encoding="utf-8")
+        )
+        self.assertFalse(attempt["cacheable"])
 
     def test_program_name_cannot_be_proposed_as_a_person(self) -> None:
         client = FakeMetadataClient(
@@ -282,8 +399,10 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
             model_digest="digest-1",
         )
 
-        self.assertEqual(1, run.failed)
+        self.assertEqual(0, run.failed)
         self.assertEqual(0, run.conflicting_evidence)
+        self.assertEqual(1, run.insufficient_evidence)
+        self.assertEqual((), run.results[0].conflicting_names)
 
     def test_existing_explicit_claim_removes_profile_from_model_queue(self) -> None:
         observation = self.observations[0]
