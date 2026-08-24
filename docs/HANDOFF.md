@@ -491,9 +491,14 @@ readiness is deliberately split:
 
 A promoted discovery profile blocked on independent confirmation is not a
 global association target merely because it has three seed recordings. Until
-confirmed, it is routed only by a shared source or compatible attribution.
-This preserves the confirmation opportunity while avoiding corpus-wide
-irrelevant comparisons.
+confirmed, normal routing remains limited to shared-source or compatible
+attribution evidence. A bounded confirmation lane additionally routes each
+pending profile's two nearest eligible observations from independent recordings
+as retrieval hints. Any resulting proposal must satisfy the unchanged
+multi-exemplar policy and is exhaustively checked against every usable profile
+before it can become confirmation evidence. This preserves confirmation
+coverage without making every provisional profile a global target for every
+recording.
 
 These are profile gates only. The independent model/policy promotion gate must
 also pass before automatic registry mutation can be considered.

@@ -32,6 +32,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     evaluate_shadow_association,
     load_reusable_shadow_association,
     load_shadow_policy,
+    plan_pending_discovery_confirmation_routes,
     select_profile_exemplars,
     select_routed_association_profiles,
     select_staged_association_profiles,
@@ -518,6 +519,45 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
 
         self.assertEqual((), unrelated)
         self.assertEqual((profiles[0],), local)
+
+        candidate_a = self._observation("candidate-a")
+        candidate_b = self._observation("candidate-b")
+        same_recording = self._observation("same-recording")
+        confirmation_routes = plan_pending_discovery_confirmation_routes(
+            profiles,
+            candidate_centroids={
+                candidate_a.id: (1.0, 0.0),
+                candidate_b.id: (0.8, 0.2),
+                same_recording.id: (1.0, 0.0),
+            },
+            candidate_video_ids={
+                candidate_a.id: candidate_a.video_id,
+                candidate_b.id: candidate_b.video_id,
+                same_recording.id: observation.video_id,
+            },
+            exemplar_centroids={observation.id: (1.0, 0.0)},
+            candidates_per_profile=2,
+        )
+        self.assertEqual(
+            {
+                candidate_a.id: (93,),
+                candidate_b.id: (93,),
+            },
+            confirmation_routes,
+        )
+
+        forced = select_staged_association_profiles(
+            profiles,
+            candidate_source_id=8,
+            candidate_normalized_names=(),
+            source_id_by_video_id={observation.video_id: 7},
+            candidate_centroid=(1.0, 0.0),
+            exemplar_centroids={observation.id: (1.0, 0.0)},
+            maximum_global_profiles=1,
+            confirmation_priority_profile_ids=frozenset((93,)),
+        )
+        self.assertEqual((profiles[0],), forced.profiles)
+        self.assertEqual((93,), forced.confirmation_priority_profile_ids)
 
     def test_staged_routing_keeps_local_and_shortlists_nearest_global(self) -> None:
         observations = [self._observation(str(index)) for index in range(5)]

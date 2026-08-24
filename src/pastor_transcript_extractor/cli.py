@@ -309,6 +309,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     evaluate_shadow_association,
     load_reusable_shadow_association,
     load_shadow_policy,
+    plan_pending_discovery_confirmation_routes,
     select_profile_exemplars,
     select_routed_association_profiles,
     select_staged_association_profiles,
@@ -6731,6 +6732,82 @@ def shadow_associate_speakers_command(
                     backend=backend,
                 )
             )
+    candidate_centroids: dict[int, tuple[float, ...]] = {}
+    candidate_video_ids: dict[int, int] = {}
+    console.print(
+        "Association preprocessing: building retrieval centroids for "
+        f"{len(candidates)} candidate observation(s)."
+    )
+    for candidate_index, (_video, eligibility, _span_specs) in enumerate(
+        candidates,
+        start=1,
+    ):
+        observation = eligibility.observation
+        media_artifact = eligibility.media_artifact
+        if observation is None or media_artifact is None:
+            continue
+        if (
+            candidate_index == 1
+            or candidate_index == len(candidates)
+            or candidate_index % 25 == 0
+        ):
+            console.print(
+                "Association preprocessing: candidate centroid "
+                f"{candidate_index}/{len(candidates)}"
+            )
+        candidate_centroids[observation.id] = build_embedding_centroid(
+            observation=observation,
+            audio_path=Path(media_artifact.artifact_path),
+            span_specs=span_specs_by_observation_id[observation.id],
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
+        )
+        candidate_video_ids[observation.id] = observation.video_id
+    pending_confirmation_profiles = tuple(
+        (profile, exemplars)
+        for profile, exemplars in usable_profiles
+        if (
+            "discovery_candidate_unconfirmed"
+            in profile.automatic_blockers
+            and (
+                registry_profile := database.get_speaker_profile(
+                    profile.profile_id
+                )
+            )
+            is not None
+            and registry_profile.created_reason
+            == DISCOVERY_PROFILE_REASON
+            and database.get_speaker_profile_discovery_promotion(
+                profile.profile_id
+            )
+            is not None
+        )
+    )
+    confirmation_routes = plan_pending_discovery_confirmation_routes(
+        pending_confirmation_profiles,
+        candidate_centroids=candidate_centroids,
+        candidate_video_ids=candidate_video_ids,
+        exemplar_centroids=exemplar_centroids,
+        candidates_per_profile=2,
+    )
+    pending_confirmation_profile_ids = {
+        profile.profile_id
+        for profile, _exemplars in pending_confirmation_profiles
+    }
+    routed_pending_profile_ids = {
+        profile_id
+        for profile_ids in confirmation_routes.values()
+        for profile_id in profile_ids
+    }
+    console.print(
+        "Pending discovery confirmation routing: "
+        f"profiles={len(pending_confirmation_profile_ids)} "
+        f"profiles_routed={len(routed_pending_profile_ids)} "
+        f"candidate_observations={len(confirmation_routes)} "
+        f"profile_candidate_routes="
+        f"{sum(len(profile_ids) for profile_ids in confirmation_routes.values())}"
+    )
     candidate_names_by_observation: dict[int, set[str]] = {}
     for claim in database.list_speaker_name_claims():
         if (
@@ -6770,6 +6847,7 @@ def shadow_associate_speakers_command(
     exhaustive_profile_comparisons = 0
     reused_associations = 0
     sermon_window_quality_flag_count = 0
+    proposal_targets: dict[int, int] = {}
     written_reports: list[Path] = []
     for index, (video, eligibility, _span_specs) in enumerate(
         candidates,
@@ -6792,13 +6870,9 @@ def shadow_associate_speakers_command(
             candidate_normalized_names=sorted(routing_names),
             source_id_by_video_id=source_id_by_video_id,
         )
-        candidate_centroid = build_embedding_centroid(
-            observation=observation,
-            audio_path=Path(media_artifact.artifact_path),
-            span_specs=span_specs_by_observation_id[observation.id],
-            span_cache=span_cache,
-            embedding_cache=embedding_cache,
-            backend=backend,
+        candidate_centroid = candidate_centroids[observation.id]
+        confirmation_priority_profile_ids = frozenset(
+            confirmation_routes.get(observation.id, ())
         )
         routing = select_staged_association_profiles(
             usable_profiles,
@@ -6808,6 +6882,9 @@ def shadow_associate_speakers_command(
             candidate_centroid=candidate_centroid,
             exemplar_centroids=exemplar_centroids,
             maximum_global_profiles=maximum_global_profiles,
+            confirmation_priority_profile_ids=(
+                confirmation_priority_profile_ids
+            ),
         )
         candidate_profiles = routing.profiles
         exhaustive_profile_comparisons += len(legacy_routed_profiles)
@@ -6820,6 +6897,10 @@ def shadow_associate_speakers_command(
             "maximum_global_profiles": maximum_global_profiles,
             "retrieval_evidence_only": True,
         }
+        if routing.confirmation_priority_profile_ids:
+            initial_routing_payload[
+                "confirmation_priority_profile_ids"
+            ] = list(routing.confirmation_priority_profile_ids)
 
         def evaluate_profiles(
             selected_profiles,
@@ -6893,25 +6974,41 @@ def shadow_associate_speakers_command(
         if reusable_path is None:
             detailed_profile_comparisons += len(candidate_profiles)
         if report["outcome"] == "proposed_match" and not routing.exhaustive:
+            proposed_profile_id = report.get("proposed_profile_id")
+            exhaustive_profiles = (
+                usable_profiles
+                if proposed_profile_id in pending_confirmation_profile_ids
+                else legacy_routed_profiles
+            )
+            exhaustive_routing_payload = {
+                "route": (
+                    "exhaustive_pending_discovery_confirmation_validation"
+                    if proposed_profile_id
+                    in pending_confirmation_profile_ids
+                    else "exhaustive_validation_after_shortlist_proposal"
+                ),
+                "exhaustive": True,
+                "priority_profile_ids": list(
+                    routing.priority_profile_ids
+                ),
+                "shortlisted_profile_ids": list(
+                    routing.shortlisted_profile_ids
+                ),
+                "total_routable_profiles": len(exhaustive_profiles),
+                "maximum_global_profiles": maximum_global_profiles,
+                "retrieval_evidence_only": False,
+                "initial_shortlist_result": "proposed_match",
+            }
+            if routing.confirmation_priority_profile_ids:
+                exhaustive_routing_payload[
+                    "confirmation_priority_profile_ids"
+                ] = list(routing.confirmation_priority_profile_ids)
             report, reusable_path = evaluate_profiles(
-                legacy_routed_profiles,
-                {
-                    "route": "exhaustive_validation_after_shortlist_proposal",
-                    "exhaustive": True,
-                    "priority_profile_ids": list(
-                        routing.priority_profile_ids
-                    ),
-                    "shortlisted_profile_ids": list(
-                        routing.shortlisted_profile_ids
-                    ),
-                    "total_routable_profiles": len(legacy_routed_profiles),
-                    "maximum_global_profiles": maximum_global_profiles,
-                    "retrieval_evidence_only": False,
-                    "initial_shortlist_result": "proposed_match",
-                },
+                exhaustive_profiles,
+                exhaustive_routing_payload,
             )
             if reusable_path is None:
-                detailed_profile_comparisons += len(legacy_routed_profiles)
+                detailed_profile_comparisons += len(exhaustive_profiles)
         final_routing = report["routing"]
         routing_route = str(final_routing["route"])
         routing_counts[routing_route] = routing_counts.get(routing_route, 0) + 1
@@ -6922,6 +7019,13 @@ def shadow_associate_speakers_command(
         written_reports.append(destination)
         outcome = str(report["outcome"])
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+        proposed_profile_id = report.get("proposed_profile_id")
+        if outcome == "proposed_match" and isinstance(
+            proposed_profile_id, int
+        ):
+            proposal_targets[proposed_profile_id] = (
+                proposal_targets.get(proposed_profile_id, 0) + 1
+            )
         window_flags = report["sermon_window_quality_flags"]
         sermon_window_quality_flag_count += len(window_flags)
         window_flag_text = (
@@ -6963,6 +7067,22 @@ def shadow_associate_speakers_command(
         f"selection_cache_hits={activity_selection_cache.hits} "
         f"selection_cache_misses={activity_selection_cache.misses} "
         f"selection_failure_hits={activity_selection_cache.failure_hits}"
+    )
+    console.print(
+        "Association proposal targets: "
+        + (
+            ", ".join(
+                f"profile_{profile_id}={count}"
+                + (
+                    "(pending_confirmation)"
+                    if profile_id in pending_confirmation_profile_ids
+                    else ""
+                )
+                for profile_id, count in sorted(proposal_targets.items())
+            )
+            if proposal_targets
+            else "none"
+        )
     )
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."

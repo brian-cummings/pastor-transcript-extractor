@@ -71,6 +71,7 @@ class StagedAssociationRouting:
     priority_profile_ids: tuple[int, ...]
     shortlisted_profile_ids: tuple[int, ...]
     total_routable_profiles: int
+    confirmation_priority_profile_ids: tuple[int, ...] = ()
 
 
 def select_routed_association_profiles(
@@ -116,31 +117,46 @@ def select_staged_association_profiles(
     candidate_centroid: Sequence[float],
     exemplar_centroids: Mapping[int, Sequence[float]],
     maximum_global_profiles: int = 3,
+    confirmation_priority_profile_ids: frozenset[int] = frozenset(),
 ) -> StagedAssociationRouting:
     """Prioritize source/name routes and bound expensive global comparisons."""
     if maximum_global_profiles < 1:
         raise ValueError("global association shortlist must contain a profile")
-    routable = select_routed_association_profiles(
-        profiles,
-        candidate_source_id=candidate_source_id,
-        candidate_normalized_names=candidate_normalized_names,
-        source_id_by_video_id=source_id_by_video_id,
+    routable_by_id = {
+        readiness.profile_id: (readiness, exemplars)
+        for readiness, exemplars in select_routed_association_profiles(
+            profiles,
+            candidate_source_id=candidate_source_id,
+            candidate_normalized_names=candidate_normalized_names,
+            source_id_by_video_id=source_id_by_video_id,
+        )
+    }
+    routable_by_id.update(
+        {
+            readiness.profile_id: (readiness, exemplars)
+            for readiness, exemplars in profiles
+            if readiness.profile_id in confirmation_priority_profile_ids
+        }
     )
+    routable = tuple(routable_by_id.values())
     names = {
         name.strip() for name in candidate_normalized_names if name.strip()
     }
 
     def priority_reason(
         item: tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]],
-    ) -> tuple[bool, bool]:
+    ) -> tuple[bool, bool, bool]:
         readiness, exemplars = item
+        confirmation_match = (
+            readiness.profile_id in confirmation_priority_profile_ids
+        )
         source_match = any(
             source_id_by_video_id.get(exemplar.observation.video_id)
             == candidate_source_id
             for exemplar in exemplars
         )
         name_match = bool(names & set(readiness.normalized_names))
-        return source_match, name_match
+        return confirmation_match, source_match, name_match
 
     priority = [item for item in routable if any(priority_reason(item))]
     priority_ids = {item[0].profile_id for item in priority}
@@ -170,6 +186,7 @@ def select_staged_association_profiles(
         key=lambda item: (
             0 if priority_reason(item)[0] else 1,
             0 if priority_reason(item)[1] else 1,
+            0 if priority_reason(item)[2] else 1,
             -profile_similarity(item),
             item[0].profile_id,
         ),
@@ -181,7 +198,12 @@ def select_staged_association_profiles(
         route=(
             "exhaustive"
             if exhaustive
-            else "source_name_priority_with_global_centroid_shortlist"
+            else (
+                "pending_discovery_confirmation_priority_with_global_"
+                "centroid_shortlist"
+                if confirmation_priority_profile_ids
+                else "source_name_priority_with_global_centroid_shortlist"
+            )
         ),
         priority_profile_ids=tuple(
             sorted(item[0].profile_id for item in priority)
@@ -190,7 +212,63 @@ def select_staged_association_profiles(
             item[0].profile_id for item in shortlisted
         ),
         total_routable_profiles=len(routable),
+        confirmation_priority_profile_ids=tuple(
+            sorted(
+                confirmation_priority_profile_ids
+                & set(routable_by_id)
+            )
+        ),
     )
+
+
+def plan_pending_discovery_confirmation_routes(
+    profiles: Sequence[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+    ],
+    *,
+    candidate_centroids: Mapping[int, Sequence[float]],
+    candidate_video_ids: Mapping[int, int],
+    exemplar_centroids: Mapping[int, Sequence[float]],
+    candidates_per_profile: int = 2,
+) -> dict[int, tuple[int, ...]]:
+    """Assign each pending discovery profile its nearest independent candidates."""
+    if candidates_per_profile < 1:
+        raise ValueError(
+            "pending discovery confirmation requires at least one candidate"
+        )
+    profile_ids_by_candidate: dict[int, list[int]] = defaultdict(list)
+    for readiness, exemplars in profiles:
+        if "discovery_candidate_unconfirmed" not in readiness.automatic_blockers:
+            continue
+        seed_video_ids = {
+            exemplar.observation.video_id for exemplar in exemplars
+        }
+        ranked_candidates: list[tuple[float, int]] = []
+        for candidate_id, candidate_centroid in candidate_centroids.items():
+            if candidate_video_ids.get(candidate_id) in seed_video_ids:
+                continue
+            similarity = max(
+                (
+                    _cosine_centroids(
+                        candidate_centroid,
+                        exemplar_centroids[exemplar.observation.id],
+                    )
+                    for exemplar in exemplars
+                    if exemplar.observation.id in exemplar_centroids
+                ),
+                default=-1.0,
+            )
+            ranked_candidates.append((-similarity, candidate_id))
+        for _negative_similarity, candidate_id in sorted(ranked_candidates)[
+            :candidates_per_profile
+        ]:
+            profile_ids_by_candidate[candidate_id].append(
+                readiness.profile_id
+            )
+    return {
+        candidate_id: tuple(sorted(profile_ids))
+        for candidate_id, profile_ids in sorted(profile_ids_by_candidate.items())
+    }
 
 
 def _cosine_centroids(

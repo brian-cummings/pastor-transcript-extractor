@@ -725,6 +725,13 @@ target. Confirmation work therefore avoids comparing every unrelated sermon
 against every newly promoted profile.
 Confirmation is also plan-only unless `--apply` is passed; acoustic
 model/policy approval remains a separate gate.
+Association preprocessing gives every promoted profile awaiting confirmation a
+bounded retrieval lane: its two nearest eligible observations from independent
+recordings are routed against its exemplars before ordinary global matching.
+Retrieval distance is only a nomination hint. A proposed confirmation must
+still satisfy the unchanged multi-exemplar acoustic policy and then survive an
+exhaustive comparison against every usable profile. Runs report the pending
+profiles covered by this lane and proposal counts by target profile.
 
 Reviewed two-recording profiles may participate as `review_ready` comparison
 targets before they are shadow-ready when source-local or attribution routing
