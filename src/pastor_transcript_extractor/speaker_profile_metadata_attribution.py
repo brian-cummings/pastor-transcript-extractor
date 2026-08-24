@@ -13,10 +13,11 @@ from pastor_transcript_extractor.speaker_registry import normalize_person_name
 from pastor_transcript_extractor.storage import Database
 
 
-PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v3"
+PROFILE_METADATA_ATTRIBUTION_VERSION = "profile_metadata_attribution_v4"
 PROFILE_METADATA_PROMPT_VERSION = "profile_metadata_name_consolidation_v3"
 _SUPPORTED_ATTRIBUTION_VERSIONS = {
     "profile_metadata_attribution_v2",
+    "profile_metadata_attribution_v3",
     PROFILE_METADATA_ATTRIBUTION_VERSION,
 }
 PROFILE_METADATA_OUTPUT_TOKEN_BUDGET = 768
@@ -43,18 +44,27 @@ _REASON_CODES = {
     "model_output_unverifiable",
 }
 _NON_PERSON_NAME_TOKENS = {
+    "a",
     "advent",
+    "an",
+    "and",
     "baptist",
     "church",
     "divine",
     "fellowship",
+    "in",
     "livestream",
     "message",
     "ministry",
+    "of",
     "sabbath",
     "sermon",
     "service",
     "stream",
+    "the",
+    "to",
+    "today",
+    "events",
     "worship",
 }
 _PLACEHOLDER_NAMES = {
@@ -580,6 +590,27 @@ def _validate_response(
     supported_conflicts = {
         name for name, recordings in conflict_support.items() if recordings
     }
+    if (
+        decision == "conflicting_evidence"
+        and len(normalized_conflicts) == 1
+        and len(supported_conflicts) == 1
+    ):
+        normalized = next(iter(supported_conflicts))
+        supporting_recordings = conflict_support[normalized]
+        if len(supporting_recordings) >= 2:
+            return {
+                "decision": "propose_name",
+                "routing": "human_confirmation_available",
+                "proposed_name": normalized_conflicts[normalized],
+                "normalized_name": normalized,
+                "reason_codes": [
+                    "consistent_speaker_credit",
+                    "repeated_name_across_recordings",
+                ],
+                "evidence": conflict_evidence,
+                "conflicting_names": [],
+                "supporting_recording_count": len(supporting_recordings),
+            }
     if len(supported_conflicts) >= 2:
         return {
             "decision": "conflicting_evidence",

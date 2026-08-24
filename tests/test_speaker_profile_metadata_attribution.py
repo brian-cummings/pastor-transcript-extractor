@@ -404,6 +404,74 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         self.assertEqual(1, run.insufficient_evidence)
         self.assertEqual((), run.results[0].conflicting_names)
 
+    def test_single_repeated_name_mislabeled_as_conflict_is_proposed(self) -> None:
+        client = FakeMetadataClient(
+            {
+                "decision": "conflicting_evidence",
+                "proposed_name": "",
+                "reason_codes": ["multiple_candidate_names"],
+                "evidence": [
+                    {
+                        "youtube_video_id": "curt-a",
+                        "field_path": "video.title",
+                        "exact_excerpt": "Pastor Curt DeWitt",
+                    }
+                ],
+                "conflicting_names": ["Curt DeWitt", "Curt DeWitt"],
+            }
+        )
+
+        run = run_profile_metadata_attribution(
+            self.database,
+            self.root / "single-false-conflict",
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(1, run.proposed)
+        self.assertEqual("Curt DeWitt", run.results[0].proposed_name)
+        self.assertEqual(2, run.results[0].supporting_recording_count)
+
+    def test_repeated_program_phrases_are_not_conflicting_people(self) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id = ?",
+                (
+                    "World Cups: Hurtling to the End - Last Day Events Today",
+                    self.observations[0].video_id,
+                ),
+            )
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id = ?",
+                (
+                    "Revival: Hurtling to the End - Last Day Events Today",
+                    self.observations[1].video_id,
+                ),
+            )
+        client = FakeMetadataClient(
+            {
+                "decision": "conflicting_evidence",
+                "proposed_name": "",
+                "reason_codes": ["multiple_candidate_names"],
+                "evidence": [],
+                "conflicting_names": [
+                    "Hurtling to the End",
+                    "Last Day Events Today",
+                ],
+            }
+        )
+
+        run = run_profile_metadata_attribution(
+            self.database,
+            self.root / "program-phrase-conflict",
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(1, run.insufficient_evidence)
+        self.assertEqual(0, run.conflicting_evidence)
+        self.assertEqual((), run.results[0].conflicting_names)
+
     def test_existing_explicit_claim_removes_profile_from_model_queue(self) -> None:
         observation = self.observations[0]
         self.database.add_speaker_name_claim(
