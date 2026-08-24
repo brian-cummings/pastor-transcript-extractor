@@ -937,6 +937,10 @@ fixture observations. The checked-in policy is shadow-only: it records
 replayable evidence but creates neither reviewed membership nor an active
 provisional assignment. `machine-assignment-status` reports evidence, active,
 confirmed, revoked, and circuit-breaker state by exact policy fingerprint.
+Use `--details` for the current sermon-level ledger, with `--profile-id` and
+`--state` to narrow it. `profile-status` keeps reviewed membership separate and
+lists compact per-profile counts for automatically associated sermons below the
+main table, so human-on-loop growth is visible without widening the table.
 Historical association files are not bulk-imported: only artifacts produced or
 reused by the current identity invocation can enter the ledger.
 

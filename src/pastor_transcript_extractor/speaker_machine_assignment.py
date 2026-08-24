@@ -722,6 +722,7 @@ def machine_assignment_status(database: Database) -> dict[str, object]:
             {"active": 0, "confirmed": 0, "revoked": 0, "evidence_only": 0},
         )
         grouped[state] += 1
+    report = machine_assignment_report(database)
     return {
         "evidence_count": len(evidence),
         "event_count": len(events),
@@ -730,6 +731,207 @@ def machine_assignment_status(database: Database) -> dict[str, object]:
         "tripped_policy_fingerprints": sorted(
             _tripped_policy_fingerprints(evidence, events)
         ),
+        "current_counts": report["counts"],
+        "profile_counts": report["profile_counts"],
+        "assignments": report["assignments"],
+        "policy_trips": report["policy_trips"],
+    }
+
+
+def machine_assignment_report(database: Database) -> dict[str, object]:
+    """Project machine evidence into current sermon/profile associations."""
+    evidence_rows = database.list_speaker_machine_evidence()
+    events = database.list_speaker_machine_assignment_events()
+    latest_events = _latest_events_by_evidence(events)
+    tripped_policies = _tripped_policy_fingerprints(evidence_rows, events)
+    evidence_by_id = {int(row["id"]): row for row in evidence_rows}
+    observations_by_id = {
+        observation.id: observation
+        for observation in database.list_speaker_observations()
+    }
+    videos_by_id = {video.id: video for video in database.list_videos()}
+    resolved_profiles: dict[int, int] = {}
+    assignments: list[dict[str, object]] = []
+    for evidence in evidence_rows:
+        evidence_id = int(evidence["id"])
+        observation_id = int(evidence["observation_id"])
+        original_profile_id = int(evidence["profile_id"])
+        profile_id = resolved_profiles.get(original_profile_id)
+        if profile_id is None:
+            try:
+                profile_id = database.resolve_speaker_profile_id(
+                    original_profile_id
+                )
+            except ValueError:
+                profile_id = original_profile_id
+            resolved_profiles[original_profile_id] = profile_id
+        observation = observations_by_id.get(observation_id)
+        video = (
+            videos_by_id.get(observation.video_id)
+            if observation is not None
+            else None
+        )
+        event = latest_events.get(evidence_id)
+        if event is None:
+            if str(evidence["policy_fingerprint"]) in tripped_policies:
+                state = "blocked_policy"
+                reason = "policy_circuit_breaker_tripped"
+            else:
+                state = "awaiting_activation"
+                reason = "machine_evidence_not_activated"
+            event_created_at = None
+        else:
+            state = {
+                "activate": "active",
+                "confirm": "confirmed",
+                "revoke": "revoked",
+            }[str(event["action"])]
+            reason = str(event["reason"])
+            event_created_at = str(event["created_at"])
+        assignments.append(
+            {
+                "machine_evidence_id": evidence_id,
+                "observation_id": observation_id,
+                "youtube_video_id": (
+                    video.youtube_video_id if video is not None else None
+                ),
+                "video_title": video.title if video is not None else None,
+                "original_profile_id": original_profile_id,
+                "profile_id": profile_id,
+                "state": state,
+                "reason": reason,
+                "policy_fingerprint": str(evidence["policy_fingerprint"]),
+                "model_fingerprint": str(evidence["model_fingerprint"]),
+                "association_artifact_path": str(
+                    evidence["association_artifact_path"]
+                ),
+                "association_result_sha256": str(
+                    evidence["association_result_sha256"]
+                ),
+                "same_exemplar_count": int(
+                    evidence["same_exemplar_count"]
+                ),
+                "evidence_created_at": str(evidence["created_at"]),
+                "event_created_at": event_created_at,
+            }
+        )
+
+    state_precedence = {
+        "confirmed": 5,
+        "active": 4,
+        "blocked_policy": 3,
+        "awaiting_activation": 2,
+        "revoked": 1,
+    }
+    current_by_association: dict[
+        tuple[int, int], dict[str, object]
+    ] = {}
+    for assignment in assignments:
+        key = (
+            int(assignment["observation_id"]),
+            int(assignment["profile_id"]),
+        )
+        persisted = current_by_association.get(key)
+        assignment_rank = (
+            state_precedence[str(assignment["state"])],
+            str(
+                assignment["event_created_at"]
+                or assignment["evidence_created_at"]
+            ),
+            int(assignment["machine_evidence_id"]),
+        )
+        persisted_rank = (
+            (
+                state_precedence[str(persisted["state"])],
+                str(
+                    persisted["event_created_at"]
+                    or persisted["evidence_created_at"]
+                ),
+                int(persisted["machine_evidence_id"]),
+            )
+            if persisted is not None
+            else None
+        )
+        if persisted_rank is None or assignment_rank > persisted_rank:
+            current_by_association[key] = assignment
+    current = tuple(
+        sorted(
+            current_by_association.values(),
+            key=lambda item: (
+                int(item["profile_id"]),
+                str(item["state"]),
+                str(item["youtube_video_id"] or ""),
+                int(item["observation_id"]),
+            ),
+        )
+    )
+    states = (
+        "active",
+        "awaiting_activation",
+        "blocked_policy",
+        "confirmed",
+        "revoked",
+    )
+    counts = {
+        state: sum(item["state"] == state for item in current)
+        for state in states
+    }
+    profile_counts: dict[int, dict[str, int]] = {}
+    for assignment in current:
+        grouped = profile_counts.setdefault(
+            int(assignment["profile_id"]),
+            {state: 0 for state in states},
+        )
+        grouped[str(assignment["state"])] += 1
+
+    policy_trips: list[dict[str, object]] = []
+    for policy_fingerprint in sorted(tripped_policies):
+        triggering_events = [
+            event
+            for event in events
+            if str(event["reason"]).startswith("contradiction:")
+            and (
+                evidence := evidence_by_id.get(
+                    int(event["machine_evidence_id"])
+                )
+            )
+            is not None
+            and str(evidence["policy_fingerprint"])
+            == policy_fingerprint
+        ]
+        if not triggering_events:
+            continue
+        trigger = min(triggering_events, key=lambda item: int(item["id"]))
+        trigger_observation = observations_by_id.get(
+            int(trigger["observation_id"])
+        )
+        trigger_video = (
+            videos_by_id.get(trigger_observation.video_id)
+            if trigger_observation is not None
+            else None
+        )
+        policy_trips.append(
+            {
+                "policy_fingerprint": policy_fingerprint,
+                "reason": str(trigger["reason"]),
+                "created_at": str(trigger["created_at"]),
+                "observation_id": int(trigger["observation_id"]),
+                "youtube_video_id": (
+                    trigger_video.youtube_video_id
+                    if trigger_video is not None
+                    else None
+                ),
+                "profile_id": int(trigger["profile_id"]),
+            }
+        )
+    return {
+        "evidence_count": len(evidence_rows),
+        "current_association_count": len(current),
+        "counts": counts,
+        "profile_counts": dict(sorted(profile_counts.items())),
+        "assignments": current,
+        "tripped_policy_fingerprints": tuple(sorted(tripped_policies)),
+        "policy_trips": tuple(policy_trips),
     }
 
 

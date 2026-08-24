@@ -8,6 +8,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from typer.testing import CliRunner
+
+from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_machine_assignment import (
@@ -15,6 +18,7 @@ from pastor_transcript_extractor.speaker_machine_assignment import (
     active_machine_assignment_evidence,
     apply_machine_assignment_plan,
     load_machine_assignment_policy,
+    machine_assignment_report,
     machine_assignment_status,
     plan_machine_assignments,
     reconcile_machine_assignments,
@@ -237,6 +241,18 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
                 "evidence_only"
             ],
         )
+        report = machine_assignment_report(self.database)
+        self.assertEqual(1, report["counts"]["awaiting_activation"])
+        self.assertEqual(
+            "video-candidate",
+            report["assignments"][0]["youtube_video_id"],
+        )
+        self.assertEqual(
+            1,
+            report["profile_counts"][self.profile.id][
+                "awaiting_activation"
+            ],
+        )
 
         replay = apply_machine_assignment_plan(
             self.database,
@@ -278,6 +294,34 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
         )
         self.assertEqual([], self.database.list_speaker_machine_evidence())
 
+    def test_status_cli_lists_filtered_sermon_assignments(self) -> None:
+        candidate = self._observation("candidate")
+        apply_machine_assignment_plan(
+            self.database,
+            self._plan((candidate,), self.shadow_policy),
+            activate_canary=False,
+        )
+
+        result = CliRunner().invoke(
+            app,
+            [
+                "identity",
+                "machine-assignment-status",
+                "--details",
+                "--profile-id",
+                str(self.profile.id),
+                "--state",
+                "awaiting_activation",
+                "--base-dir",
+                str(self.paths.root),
+            ],
+        )
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertIn("Current sermon-level associations (1)", result.output)
+        self.assertIn("awaiting_activation video-candidate", result.output)
+        self.assertIn("association-candidate.json", result.output)
+
     def test_canary_confirmation_requires_reviewed_membership(self) -> None:
         candidate = self._observation("candidate")
         plan = self._plan((candidate,), self.canary_policy)
@@ -315,6 +359,12 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
             1,
             machine_assignment_status(self.database)["counts"]["confirmed"],
         )
+        report = machine_assignment_report(self.database)
+        self.assertEqual(1, report["counts"]["confirmed"])
+        self.assertEqual(
+            "video-candidate",
+            report["assignments"][0]["youtube_video_id"],
+        )
 
     def test_contradiction_trips_policy_and_revokes_other_active_assignments(
         self,
@@ -348,6 +398,23 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
         self.assertEqual(1, result.circuit_breaker_revoked)
         self.assertEqual(0, len(active_machine_assignment_evidence(self.database)))
         self.assertEqual(1, len(result.tripped_policy_fingerprints))
+
+        candidate_c = self._observation("candidate-c")
+        blocked_plan = self._plan((candidate_c,), self.canary_policy)
+        blocked_result = apply_machine_assignment_plan(
+            self.database,
+            blocked_plan,
+            activate_canary=True,
+        )
+        self.assertEqual(1, blocked_result.activation_blocked)
+        report = machine_assignment_report(self.database)
+        self.assertEqual(2, report["counts"]["revoked"])
+        self.assertEqual(1, report["counts"]["blocked_policy"])
+        self.assertEqual(1, len(report["policy_trips"]))
+        self.assertEqual(
+            "contradiction:reviewed_difference_against_profile",
+            report["policy_trips"][0]["reason"],
+        )
 
     def test_manual_policy_rollback_is_append_only(self) -> None:
         candidate = self._observation("candidate")

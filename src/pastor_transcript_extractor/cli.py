@@ -261,6 +261,7 @@ from pastor_transcript_extractor.speaker_machine_assignment import (
     active_machine_assignment_evidence,
     apply_machine_assignment_plan,
     load_machine_assignment_policy,
+    machine_assignment_report,
     machine_assignment_status,
     plan_machine_assignments,
     reconcile_machine_assignments,
@@ -3690,6 +3691,7 @@ def profile_status_command(
         negative_window_audit = audit_speaker_negative_windows(
             database, evaluation_root.expanduser().resolve()
         )
+        assignment_report = machine_assignment_report(database)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -3845,6 +3847,28 @@ def profile_status_command(
                 for profile in partial_cores
             )
         )
+
+    profile_assignment_counts = assignment_report["profile_counts"]
+    if profile_assignment_counts:
+        identity_by_profile = {
+            profile.profile_id: ", ".join(
+                profile.configured_identities or profile.names
+            )
+            or "unnamed"
+            for profile in status.profiles
+        }
+        console.print("[bold]Automatic sermon associations by profile[/bold]")
+        for profile_id, counts in profile_assignment_counts.items():
+            nonzero = [
+                f"{state}={count}"
+                for state, count in counts.items()
+                if count
+            ]
+            console.print(
+                f"  {profile_id} "
+                f"{identity_by_profile.get(profile_id, 'unnamed')}: "
+                + " ".join(nonzero)
+            )
 
     if status.discovered_profiles:
         discovery_table = Table(title="Auto-discovered profile candidates")
@@ -6012,19 +6036,47 @@ def identity_run_command(
     help="Report reversible machine evidence and provisional assignment state.",
 )
 def machine_assignment_status_command(
+    details: bool = typer.Option(
+        False,
+        "--details",
+        help="List the current sermon-level associations and evidence paths.",
+    ),
+    profile_id: int | None = typer.Option(
+        None,
+        "--profile-id",
+        help="Only show current associations for this canonical profile.",
+    ),
+    state: str | None = typer.Option(
+        None,
+        "--state",
+        help=(
+            "Only show active, awaiting_activation, blocked_policy, "
+            "confirmed, or revoked associations."
+        ),
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
     ),
 ) -> None:
+    valid_states = {
+        "active",
+        "awaiting_activation",
+        "blocked_policy",
+        "confirmed",
+        "revoked",
+    }
+    if state is not None and state not in valid_states:
+        raise typer.BadParameter(
+            "--state must be one of: " + ", ".join(sorted(valid_states))
+        )
     paths = build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
         )
-    status = machine_assignment_status(
-        Database(paths.database, readonly=True)
-    )
+    database = Database(paths.database, readonly=True)
+    status = machine_assignment_status(database)
     counts = status["counts"]
     console.print(
         "Machine assignments: "
@@ -6040,6 +6092,15 @@ def machine_assignment_status_command(
     console.print(
         "Machine assignments remain separate from reviewed profile membership."
     )
+    current_counts = status["current_counts"]
+    console.print(
+        "Current sermon associations: "
+        f"active={current_counts['active']} "
+        f"awaiting_activation={current_counts['awaiting_activation']} "
+        f"blocked_policy={current_counts['blocked_policy']} "
+        f"confirmed={current_counts['confirmed']} "
+        f"revoked={current_counts['revoked']}."
+    )
     for policy_fingerprint, policy_counts in status["policies"].items():
         console.print(
             f"  policy={policy_fingerprint} "
@@ -6048,6 +6109,61 @@ def machine_assignment_status_command(
             f"confirmed={policy_counts['confirmed']} "
             f"revoked={policy_counts['revoked']}"
         )
+    for trip in status["policy_trips"]:
+        trigger = trip["youtube_video_id"] or (
+            f"observation:{trip['observation_id']}"
+        )
+        console.print(
+            "  circuit-breaker "
+            f"policy={trip['policy_fingerprint']} trigger={trigger} "
+            f"reason={trip['reason']} at={trip['created_at']}"
+        )
+
+    assignments = [
+        assignment
+        for assignment in status["assignments"]
+        if (profile_id is None or assignment["profile_id"] == profile_id)
+        and (state is None or assignment["state"] == state)
+    ]
+    if details or profile_id is not None or state is not None:
+        labels: dict[int, str] = {}
+        for profile in database.list_speaker_profiles():
+            try:
+                canonical_id = database.resolve_speaker_profile_id(profile.id)
+            except ValueError:
+                canonical_id = profile.id
+            if profile.display_label:
+                labels.setdefault(canonical_id, profile.display_label)
+        console.print(
+            f"[bold]Current sermon-level associations ({len(assignments)})[/bold]"
+        )
+        previous_profile_id = None
+        for assignment in assignments:
+            assignment_profile_id = int(assignment["profile_id"])
+            if assignment_profile_id != previous_profile_id:
+                console.print(
+                    f"[bold]Profile {assignment_profile_id} — "
+                    f"{labels.get(assignment_profile_id, 'unnamed')}[/bold]"
+                )
+                previous_profile_id = assignment_profile_id
+            video = assignment["youtube_video_id"] or (
+                f"observation:{assignment['observation_id']}"
+            )
+            title = assignment["video_title"] or "untitled"
+            console.print(
+                f"  {assignment['state']} {video} — {title}",
+                markup=False,
+            )
+            console.print(
+                f"    reason={assignment['reason']} "
+                f"evidence={assignment['machine_evidence_id']} "
+                f"created={assignment['evidence_created_at']}",
+                markup=False,
+            )
+            console.print(
+                f"    artifact={assignment['association_artifact_path']}",
+                markup=False,
+            )
 
 
 @identity_app.command(
