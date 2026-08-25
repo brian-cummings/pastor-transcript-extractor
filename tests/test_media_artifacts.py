@@ -48,6 +48,7 @@ from pastor_transcript_extractor.media_artifacts import (
     resolve_normalized_audio_path,
     stage_source_audio_for_video,
     verify_media_artifact,
+    _materialize_content_addressed,
     get_verified_normalized_media_artifact,
     media_artifact_availability,
 )
@@ -335,6 +336,153 @@ class MediaArtifactTests(unittest.TestCase):
         download.assert_called_once()
         self.assertEqual("verified", result.outcome)
         self.assertFalse(result.downloaded)
+
+    def test_audio_ensure_quarantines_unregistered_stale_collision(self) -> None:
+        video, _ = self._video("stalecollision1")
+        audio_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio
+        source_path = audio_root / "media" / "source.wav"
+        write_wav(source_path, value=123)
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="original_download",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        expected = self.paths.root / "expected-normalized.wav"
+        write_wav(expected, value=987)
+        expected_sha256 = hashlib.sha256(expected.read_bytes()).hexdigest()
+        destination = (
+            audio_root / "media" / f"normalized-{expected_sha256}.wav"
+        )
+        stale_bytes = b"abandoned partial normalized audio"
+        destination.write_bytes(stale_bytes)
+        events: list[str] = []
+
+        def fake_normalize(_input, output, _ffmpeg):
+            output.write_bytes(expected.read_bytes())
+            return output
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.normalize_audio",
+            side_effect=fake_normalize,
+        ):
+            result = ensure_audio_for_video(
+                self.database,
+                self.paths,
+                self.tools,
+                video_id=video.id,
+                tool_versions={"yt-dlp": "test", "ffmpeg": "test"},
+                allow_download=False,
+                event_callback=events.append,
+            )
+
+        self.assertEqual("verified", result.outcome)
+        self.assertEqual(expected.read_bytes(), destination.read_bytes())
+        quarantine = list(
+            (
+                self.paths.logs
+                / "media-recovery"
+                / video.youtube_video_id
+            ).glob("*.mismatched-*")
+        )
+        self.assertEqual(1, len(quarantine))
+        self.assertEqual(stale_bytes, quarantine[0].read_bytes())
+        self.assertTrue(
+            any("quarantined stale unregistered" in event for event in events)
+        )
+
+    def test_content_addressed_publication_cleans_failed_partial(self) -> None:
+        root = self.paths.root / "atomic-media"
+        source = self.paths.root / "atomic-source.wav"
+        write_wav(source, value=444)
+        expected_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+        destination = root / f"normalized-{expected_sha256}.wav"
+
+        def fail_copy(source_file, destination_file):
+            destination_file.write(source_file.read(1024))
+            raise OSError("simulated interrupted copy")
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.shutil.copyfileobj",
+            side_effect=fail_copy,
+        ):
+            with self.assertRaisesRegex(OSError, "simulated interrupted copy"):
+                _materialize_content_addressed(
+                    source,
+                    root,
+                    prefix="normalized",
+                    quarantine_root=self.paths.logs / "media-recovery-test",
+                )
+
+        self.assertFalse(destination.exists())
+        self.assertEqual([], list(root.glob("*.pte-partial-*")))
+        abandoned = root / f".{destination.name}.pte-partial-abandoned"
+        abandoned.write_bytes(b"abandoned bytes")
+        events: list[str] = []
+        published = _materialize_content_addressed(
+            source,
+            root,
+            prefix="normalized",
+            quarantine_root=self.paths.logs / "media-recovery-test",
+            event_callback=events.append,
+        )
+        self.assertEqual(destination, published)
+        self.assertEqual(expected_sha256, hashlib.sha256(published.read_bytes()).hexdigest())
+        self.assertFalse(abandoned.exists())
+        self.assertTrue(any("removed abandoned media partial" in item for item in events))
+
+    def test_content_addressed_recovery_refuses_registered_collision(self) -> None:
+        root = self.paths.root / "protected-media"
+        source = self.paths.root / "protected-source.wav"
+        write_wav(source, value=555)
+        expected_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+        destination = root / f"normalized-{expected_sha256}.wav"
+        destination.parent.mkdir(parents=True)
+        stale_bytes = b"registered bytes must not be quarantined"
+        destination.write_bytes(stale_bytes)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "registered content-addressed media collision"
+        ):
+            _materialize_content_addressed(
+                source,
+                root,
+                prefix="normalized",
+                protected_paths={destination.absolute()},
+                quarantine_root=self.paths.logs / "media-recovery-test",
+            )
+
+        self.assertEqual(stale_bytes, destination.read_bytes())
+        self.assertFalse((self.paths.logs / "media-recovery-test").exists())
+
+    def test_content_addressed_recovery_refuses_symlink_collision(self) -> None:
+        root = self.paths.root / "symlink-media"
+        source = self.paths.root / "symlink-source.wav"
+        target = self.paths.root / "unrelated-target.wav"
+        write_wav(source, value=666)
+        write_wav(target, value=777)
+        expected_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+        destination = root / f"normalized-{expected_sha256}.wav"
+        destination.parent.mkdir(parents=True)
+        destination.symlink_to(target)
+
+        with self.assertRaisesRegex(RuntimeError, "refusing to replace.*symlink"):
+            _materialize_content_addressed(
+                source,
+                root,
+                prefix="normalized",
+                quarantine_root=self.paths.logs / "media-recovery-test",
+            )
+
+        self.assertTrue(destination.is_symlink())
+        self.assertEqual(target.resolve(), destination.resolve())
 
     def _video(
         self,

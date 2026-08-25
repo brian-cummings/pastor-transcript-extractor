@@ -85,6 +85,20 @@ The ensure service first migrates and verifies existing audio. It downloads
 only when no valid normalized artifact is available, and it never invokes
 Whisper or creates a transcript artifact.
 
+Content-addressed source and normalized files are published through a
+same-directory partial file. PTE fsyncs and checksum-verifies the partial before
+atomically replacing the final path. A per-destination lock serializes retries,
+and the next run removes an abandoned PTE partial left by interruption.
+
+If the final content-addressed path exists but its bytes do not match the hash
+in its filename, `ensure-audio` recovers only when the path is an unregistered
+regular file. It moves that stale output into
+`logs/media-recovery/YOUTUBE_VIDEO_ID/`, reports the quarantine, regenerates the
+media, and verifies it before registration. Registered paths, symlinks, and
+non-regular collisions are never moved or overwritten; they fail explicitly
+for manual investigation. This makes retry the normal recovery operation while
+preserving unexpected bytes for audit.
+
 ## Source and normalized audio archive
 
 Original compressed downloads and historical `downloaded.wav` files are not

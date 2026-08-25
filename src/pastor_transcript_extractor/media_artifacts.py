@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -661,7 +663,14 @@ def ensure_audio_for_video(
                 tools.ffmpeg_bin,
             )
             normalized_path = _materialize_content_addressed(
-                normalized_work, media_root, prefix="normalized"
+                normalized_work,
+                media_root,
+                prefix="normalized",
+                protected_paths=_registered_media_paths(database, video.id),
+                quarantine_root=(
+                    app_paths.logs / "media-recovery" / video.youtube_video_id
+                ),
+                event_callback=event_callback,
             )
             emit("registering and verifying normalized audio")
             normalized_artifact = register_media_file(
@@ -772,7 +781,16 @@ def stage_source_audio_for_video(
                 tools.yt_dlp_js_runtimes,
             )
             emit("source download complete; registering source audio")
-            source_path = _materialize_content_addressed(downloaded, media_root, prefix="source")
+            source_path = _materialize_content_addressed(
+                downloaded,
+                media_root,
+                prefix="source",
+                protected_paths=_registered_media_paths(database, video.id),
+                quarantine_root=(
+                    app_paths.logs / "media-recovery" / video.youtube_video_id
+                ),
+                event_callback=event_callback,
+            )
             artifact = register_media_file(
                 database,
                 app_paths,
@@ -1076,7 +1094,13 @@ def repair_normalized_audio_provenance(
                 tools.ffmpeg_bin,
             )
             normalized_path = _materialize_content_addressed(
-                normalized_work, media_root, prefix="normalized"
+                normalized_work,
+                media_root,
+                prefix="normalized",
+                protected_paths=_registered_media_paths(database, video.id),
+                quarantine_root=(
+                    app_paths.logs / "media-recovery" / video.youtube_video_id
+                ),
             )
             repaired = register_media_file(
                 database,
@@ -1289,19 +1313,126 @@ def _probe_audio(path: Path) -> dict[str, Any]:
     return metadata
 
 
-def _materialize_content_addressed(source: Path, root: Path, *, prefix: str) -> Path:
+def _registered_media_paths(database: Database, video_id: int) -> set[Path]:
+    return {
+        Path(artifact.artifact_path).expanduser().absolute()
+        for artifact in database.list_media_artifacts_for_video(video_id)
+    }
+
+
+def _materialize_content_addressed(
+    source: Path,
+    root: Path,
+    *,
+    prefix: str,
+    protected_paths: set[Path] | None = None,
+    quarantine_root: Path | None = None,
+    event_callback: Callable[[str], None] | None = None,
+) -> Path:
+    """Publish immutable media atomically and recover abandoned local outputs."""
     content_sha256 = _sha256_file(source)
     suffix = source.suffix.lower() or ".bin"
     destination = root / f"{prefix}-{content_sha256}{suffix}"
-    if destination.exists():
-        if _sha256_file(destination) != content_sha256:
-            raise RuntimeError(f"content-addressed media collision: {destination}")
-        return destination
     root.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    if _sha256_file(destination) != content_sha256:
-        raise RuntimeError(f"media copy verification failed: {destination}")
-    return destination
+    protected = {
+        path.expanduser().absolute() for path in (protected_paths or set())
+    }
+    emit = event_callback or (lambda _message: None)
+    lock_path = root / ".pte-materialize.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            partial_pattern = f".{destination.name}.pte-partial-*"
+            for abandoned in root.glob(partial_pattern):
+                if abandoned.is_symlink() or not abandoned.is_file():
+                    raise RuntimeError(
+                        f"unsafe media partial recovery target: {abandoned}"
+                    )
+                abandoned.unlink()
+                emit(f"removed abandoned media partial: {abandoned}")
+
+            if destination.exists() or destination.is_symlink():
+                actual_sha256 = (
+                    _sha256_file(destination)
+                    if not destination.is_symlink() and destination.is_file()
+                    else None
+                )
+                if (
+                    actual_sha256 is not None
+                    and actual_sha256 == content_sha256
+                ):
+                    return destination
+                if destination.is_symlink():
+                    raise RuntimeError(
+                        f"refusing to replace content-addressed media symlink: "
+                        f"{destination}"
+                    )
+                if destination.expanduser().absolute() in protected:
+                    raise RuntimeError(
+                        f"registered content-addressed media collision: {destination}"
+                    )
+                if not destination.is_file():
+                    raise RuntimeError(
+                        f"unsafe content-addressed media collision: {destination}"
+                    )
+                if quarantine_root is None:
+                    raise RuntimeError(
+                        f"content-addressed media collision: {destination}"
+                    )
+                assert actual_sha256 is not None
+                quarantine_root.mkdir(parents=True, exist_ok=True)
+                quarantine = _unique_quarantine_path(
+                    quarantine_root,
+                    destination.name,
+                    actual_sha256,
+                )
+                destination.rename(quarantine)
+                emit(
+                    "quarantined stale unregistered media collision: "
+                    f"{destination} -> {quarantine} "
+                    f"(expected_sha256={content_sha256}, "
+                    f"actual_sha256={actual_sha256})"
+                )
+
+            partial_file = tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix=f".{destination.name}.pte-partial-",
+                dir=root,
+                delete=False,
+            )
+            partial = Path(partial_file.name)
+            try:
+                with partial_file:
+                    with source.open("rb") as source_file:
+                        shutil.copyfileobj(source_file, partial_file)
+                    partial_file.flush()
+                    os.fsync(partial_file.fileno())
+                if (
+                    partial.stat().st_size != source.stat().st_size
+                    or _sha256_file(partial) != content_sha256
+                ):
+                    raise RuntimeError(
+                        f"media copy verification failed: {destination}"
+                    )
+                os.replace(partial, destination)
+            finally:
+                if partial.exists() or partial.is_symlink():
+                    partial.unlink()
+            return destination
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _unique_quarantine_path(
+    root: Path, original_name: str, actual_sha256: str
+) -> Path:
+    stem = f"{original_name}.mismatched-{actual_sha256[:16]}"
+    candidate = root / stem
+    sequence = 1
+    while candidate.exists() or candidate.is_symlink():
+        candidate = root / f"{stem}-{sequence}"
+        sequence += 1
+    return candidate
 
 
 def _tool_version(command: str, flag: str) -> str:
