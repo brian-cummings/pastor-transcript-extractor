@@ -1,7 +1,7 @@
 # Pipeline diagnostics
 
 Pipeline diagnostics are a read-only observability layer over existing sermon-isolation
-artifacts. The canonical product is `diagnostic-trace-v5.json`; Markdown, Mermaid, and
+artifacts. The canonical product is `diagnostic-trace-v6.json`; Markdown, Mermaid, and
 systemic summaries are deterministic projections of that trace.
 
 ## Diagnostic model
@@ -25,7 +25,7 @@ intermediate candidates as diagnostic evidence and evaluate the final acceptance
 
 `earliest_observed_failure` is kept separate from `root_cause_hypothesis`. The former is a
 measurement; the latter is an inference with confidence, supporting evidence, alternatives,
-and explicit instrumentation gaps. V5 also labels automatic recovery and failures masked
+and explicit instrumentation gaps. V6 also labels automatic recovery and failures masked
 by manual overrides, and evaluates localization, contamination, sermon existence, and final
 disposition separately. Its composed overall outcome keeps those component contracts visible.
 
@@ -36,11 +36,18 @@ selection lost coverage during refinement. Contamination attribution records the
 stage that breached the threshold, any later recovery, stage-to-stage deltas, and whether
 the final boundary overreached or clipped the start or end.
 
-V5 adds dimension-aware contract paths and counterfactual stage regret. Contract paths
+V6 includes dimension-aware contract paths and counterfactual stage regret. Contract paths
 separately follow localization, contamination, existence, verifier, and disposition from
 their earliest breach through recovery or terminal failure. Refinement and arbitration
 regret compare persisted alternatives with the chosen output, making quality lost by those
 decisions visible without claiming that an unavailable alternative affected production.
+
+Candidate precision analysis evaluates every persisted proposal for coverage,
+contamination, boundary error, and duration. Its Pareto frontier distinguishes an overbroad
+proposal set from a ranking loss and from a genuine recall/precision tradeoff. Boundary-side
+attribution separately measures start overreach, end overreach, and internal contamination,
+including their earliest material stage. Automatic and manual-override precision cohorts
+remain separate in the systemic evidence.
 
 Identity is connected as a feedback edge rather than another linear extraction stage.
 Persisted `speaker_inconsistent_edge` evidence is attached to the start or end boundary and
@@ -48,6 +55,11 @@ compared with the later sermon window. Existing identity artifacts are advisorie
 later inward or outward movement is reported as temporal association only. A causal claim
 requires one persisted adjustment event containing the pre-adjustment boundary, speaker
 evidence, decision, and post-adjustment boundary.
+
+When an advisory remains unchanged and reviewed truth shows material overreach on that same
+edge, the trace emits `identity_signal_unconsumed`. This is a diagnostic gap, not permission
+to trim automatically: it means the pipeline did not persist whether the signal was ignored,
+accepted, rejected, or routed to review.
 
 ## Single-run diagnosis
 
@@ -66,7 +78,7 @@ video artifact namespace.
 
 The command writes:
 
-- `diagnostic-trace-v5.json`: durable machine-readable evidence, including a snapshot of
+- `diagnostic-trace-v6.json`: durable machine-readable evidence, including a snapshot of
   the versioned stage contract.
 - `diagnostic-report.md`: Mermaid pipeline loss map, static timeline overlay, stage
   transitions, coverage/contamination tradeoffs, and causal assessment.
@@ -105,7 +117,10 @@ The comparison reports fixed, improved, regressed, tradeoff, policy-changed, cha
 unchanged, added, and removed runs, plus failure-signature membership changes. It records
 per-dimension transitions, stage-regret transitions, source artifact hashes, and algorithm
 versions so a diagnostic interpretation change can be distinguished from an artifact or
-pipeline change. Older reports remain readable by the comparator, which derives an overall
+pipeline change. V6 adds semantic fingerprints for transcript, discovery, selection,
+refinement, arbitration, verifier, disposition, and identity components. Whole-file rewrites
+can therefore be labeled as metadata-only rather than behavioral changes. Older reports
+remain readable by the comparator, which derives an overall
 outcome from their component contracts when necessary.
 
 ## Known evidence gaps

@@ -152,10 +152,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("fine", trace["earliest_observed_failure"]["stage"])
         self.assertEqual("fine_refinement", trace["root_cause_hypothesis"]["stage"])
         self.assertEqual(
-            "sermon-isolation-contracts-v5",
+            "sermon-isolation-contracts-v6",
             trace["contract_definition"]["version"],
         )
-        self.assertEqual(5, trace["schema_version"])
+        self.assertEqual(6, trace["schema_version"])
         self.assertEqual("refinement_loss", trace["candidate_regret"]["classification"])
         self.assertEqual(
             "localization_regression",
@@ -444,6 +444,27 @@ class PipelineDiagnosticTests(unittest.TestCase):
         )
         self.assertEqual("fail", trace["overall_outcome"]["status"])
 
+    def test_arbitration_ignores_immaterial_numeric_jitter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["classification"]["retained_segment_indexes"] = [0, 1, 2]
+            proposed["sermon_window"].update(
+                {"start_seconds": 0.0, "end_seconds": 299.9}
+            )
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+
+        arbitration = trace["stage_regret"]["arbitration"]
+        self.assertEqual("none", arbitration["classification"])
+        self.assertGreater(arbitration["coverage_regret_against_fine"], 0.0)
+        self.assertEqual(0.01, arbitration["materiality_thresholds"]["coverage_delta"])
+
     def test_systemic_view_separates_observed_failures_from_hypotheses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -506,6 +527,63 @@ class PipelineDiagnosticTests(unittest.TestCase):
                 "discovery_omission", trace["candidate_regret"]["classification"]
             )
 
+    def test_candidate_precision_distinguishes_proposal_and_ranking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            fixture_path = root / "fixture-video.json"
+            payload = {
+                "video_id": "fixture-video",
+                "expected_outcome": "sermon",
+                "expected_spans": [
+                    {"start_seconds": 100.0, "end_seconds": 250.0}
+                ],
+                "allowed_interruptions": [],
+                "ground_truth_version": 1,
+                "reviewed_by": "Reviewer",
+            }
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            fixture = validate_fixture_payload(payload, path=fixture_path)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=fixture,
+            )
+            self.assertEqual(
+                "proposal_boundary_failure",
+                trace["candidate_regret"]["precision_classification"],
+            )
+            self.assertEqual(
+                "candidate_proposals_all_violate_precision_contract",
+                trace["root_cause_hypothesis"]["code"],
+            )
+
+            proposed["classification"]["search"]["candidates"].append(
+                {
+                    "rank": 2,
+                    "source": "coarse_llm",
+                    "start_seconds": 100.0,
+                    "end_seconds": 250.0,
+                }
+            )
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=fixture,
+            )
+
+        regret = trace["candidate_regret"]
+        self.assertEqual("ranking_precision_loss", regret["precision_classification"])
+        self.assertEqual(2, regret["best_precision_candidate_rank"])
+        self.assertIn(2, regret["pareto_candidate_ranks"])
+        self.assertEqual(
+            "cleaner_complete_candidate_not_selected",
+            trace["root_cause_hypothesis"]["code"],
+        )
+
     def test_contamination_attribution_and_systemic_sensitivity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -531,8 +609,18 @@ class PipelineDiagnosticTests(unittest.TestCase):
         attribution = trace["contamination_attribution"]
         self.assertEqual("selected", attribution["earliest_breach_stage"])
         self.assertIn("end_overreach", attribution["final_boundary_error_patterns"])
+        self.assertEqual(
+            50.0,
+            attribution["final_contamination_seconds"]["end_overreach_seconds"],
+        )
+        self.assertEqual(
+            "selected",
+            attribution["terminal_component_causal_stages"][
+                "end_overreach_seconds"
+            ],
+        )
         systemic = aggregate_diagnostic_traces([trace])
-        self.assertEqual(5, systemic["schema_version"])
+        self.assertEqual(6, systemic["schema_version"])
         self.assertEqual(1, systemic["unknown_evaluation_partition_count"])
         self.assertEqual(
             [0, 0, 0, 1],
@@ -572,6 +660,47 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("pass", path["terminal_status"])
         self.assertFalse(path["terminal_failure"])
         self.assertEqual("recovered_automatically", trace["causal_path_status"])
+
+    def test_contamination_attribution_separates_internal_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["classification"]["retained_segment_indexes"] = [0, 1, 2]
+            proposed["sermon_window"].update(
+                {"start_seconds": 0.0, "end_seconds": 300.0}
+            )
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            payload = {
+                "video_id": "fixture-video",
+                "expected_outcome": "sermon",
+                "expected_spans": [
+                    {"start_seconds": 0.0, "end_seconds": 100.0},
+                    {"start_seconds": 200.0, "end_seconds": 300.0},
+                ],
+                "allowed_interruptions": [],
+                "ground_truth_version": 1,
+                "reviewed_by": "Reviewer",
+            }
+            fixture_path = root / "fixture-video.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=validate_fixture_payload(payload, path=fixture_path),
+            )
+
+        attribution = trace["contamination_attribution"]
+        self.assertEqual(
+            100.0,
+            attribution["final_contamination_seconds"][
+                "internal_contamination_seconds"
+            ],
+        )
+        self.assertEqual(
+            ["internal_contamination"],
+            attribution["material_final_contamination_patterns"],
+        )
 
     def test_identity_edge_advisory_surfaces_temporal_boundary_feedback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -639,6 +768,57 @@ class PipelineDiagnosticTests(unittest.TestCase):
         )
         self.assertIn("Identity boundary feedback", build_systemic_markdown(systemic))
 
+    def test_identity_signal_unconsumed_requires_same_edge_overreach(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["sermon_window"].update(
+                {"start_seconds": 0.0, "end_seconds": 300.0}
+            )
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            fixture_payload = {
+                "video_id": "fixture-video",
+                "expected_outcome": "sermon",
+                "expected_spans": [
+                    {"start_seconds": 100.0, "end_seconds": 300.0}
+                ],
+                "allowed_interruptions": [],
+                "ground_truth_version": 1,
+                "reviewed_by": "Reviewer",
+            }
+            fixture_path = root / "fixture-video.json"
+            fixture_path.write_text(json.dumps(fixture_payload), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=validate_fixture_payload(
+                    fixture_payload, path=fixture_path
+                ),
+                identity_boundary_feedback=[
+                    {
+                        "edge": "start",
+                        "evidence_window": {
+                            "start_seconds": 0.0,
+                            "end_seconds": 300.0,
+                        },
+                        "causal_adjustment_persisted": False,
+                    }
+                ],
+            )
+
+        feedback = trace["identity_boundary_feedback"]
+        self.assertEqual(1, feedback["unconsumed_same_edge_signal_count"])
+        self.assertTrue(feedback["events"][0]["identity_signal_unconsumed"])
+        self.assertEqual(
+            100.0,
+            feedback["events"][0]["reviewed_same_edge_overreach_seconds"],
+        )
+        self.assertIn(
+            "identity_signal_unconsumed",
+            {gap["code"] for gap in trace["diagnostic_gaps"]},
+        )
+
     def test_systemic_comparison_marks_fixed_and_signature_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -657,7 +837,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
         after = aggregate_diagnostic_traces([fixed_trace])
         comparison = compare_systemic_reports(before, after)
         self.assertEqual(1, comparison["change_counts"]["fixed"])
-        self.assertEqual(2, comparison["schema_version"])
+        self.assertEqual(3, comparison["schema_version"])
         self.assertIn("source_artifact_sha256", comparison["runs"][0]["before"])
         self.assertIn("fixture-video", build_comparison_markdown(comparison))
 
@@ -683,6 +863,56 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("tradeoff", run["change"])
         self.assertEqual(["contract:localization"], run["improved_components"])
         self.assertEqual(["contract:contamination"], run["regressed_components"])
+
+    def test_comparison_labels_whole_file_only_change_as_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+        rewritten = json.loads(json.dumps(trace))
+        rewritten["source_artifact"]["sha256"] = "different-whole-file-hash"
+        comparison = compare_systemic_reports(
+            aggregate_diagnostic_traces([trace]),
+            aggregate_diagnostic_traces([rewritten]),
+        )
+
+        run = comparison["runs"][0]
+        self.assertEqual("unchanged", run["change"])
+        self.assertEqual(["metadata_only"], run["change_reasons"])
+        self.assertEqual([], run["changed_artifact_components"])
+
+    def test_comparison_attributes_final_range_component_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+        changed = json.loads(json.dumps(trace))
+        final = next(stage for stage in changed["stages"] if stage["key"] == "final")
+        final["output_ranges"] = [
+            {"start_seconds": 100.0, "end_seconds": 299.0}
+        ]
+        changed.pop("component_fingerprints")
+        comparison = compare_systemic_reports(
+            aggregate_diagnostic_traces([trace]),
+            aggregate_diagnostic_traces([changed]),
+        )
+
+        run = comparison["runs"][0]
+        self.assertEqual("changed", run["change"])
+        self.assertIn(
+            "arbitration_final_window", run["changed_artifact_components"]
+        )
+        self.assertIn("boundary_behavior_changed", run["change_reasons"])
 
 
 if __name__ == "__main__":
