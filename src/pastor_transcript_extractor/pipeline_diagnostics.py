@@ -10,8 +10,8 @@ from typing import Any, Iterable
 from pastor_transcript_extractor.fixture_validation import ValidatedFixture
 
 
-TRACE_SCHEMA_VERSION = 4
-CONTRACT_VERSION = "sermon-isolation-contracts-v4"
+TRACE_SCHEMA_VERSION = 5
+CONTRACT_VERSION = "sermon-isolation-contracts-v5"
 REVIEWED_COVERAGE_THRESHOLD = 0.90
 MAX_CONTAMINATION_RATIO = 0.10
 TIMELINE_WIDTH = 72
@@ -59,6 +59,10 @@ def diagnostic_contract_definition() -> dict[str, Any]:
                 "first selected-path stage above the contamination contract, later recovery, "
                 "and final boundary-error direction"
             ),
+            "stage_regret": (
+                "reviewed quality lost between selected, refined, arbitrated, and rejected "
+                "alternative windows; never available to production decisions"
+            ),
         },
         "interpretation": {
             "without_ground_truth": (
@@ -84,6 +88,10 @@ def diagnostic_contract_definition() -> dict[str, Any]:
             "overall_outcome": (
                 "composition of existence, localization, contamination, verifier, disposition, and "
                 "manual-override state without hiding the component contracts"
+            ),
+            "identity_boundary_feedback": (
+                "speaker-consistency evidence is a boundary advisory; causality is claimed only "
+                "when an artifact explicitly persists the resulting adjustment"
             ),
         },
     }
@@ -379,6 +387,143 @@ def _contamination_attribution(
         "final_boundary_error_patterns": patterns or ["aligned"],
         "stage_deltas": series,
     }
+
+
+def _stage_regret(
+    stages: list[dict[str, Any]], fixture: ValidatedFixture | None
+) -> dict[str, Any]:
+    if fixture is None or fixture.expected_outcome != "sermon":
+        unavailable = {
+            "status": "not_evaluated",
+            "reason": "positive_ground_truth_unavailable",
+        }
+        return {"refinement": dict(unavailable), "arbitration": dict(unavailable)}
+    by_key = {stage["key"]: stage for stage in stages}
+
+    def metrics(stage_key: str) -> dict[str, Any]:
+        measurements = by_key[stage_key]["measurements"]
+        return {
+            "reviewed_sermon_coverage": measurements.get("reviewed_sermon_coverage"),
+            "contamination_ratio": measurements.get("contamination_ratio"),
+            "output_duration_seconds": measurements.get("output_duration_seconds"),
+        }
+
+    selected = metrics("selected")
+    fine = metrics("fine")
+    selected_coverage = selected["reviewed_sermon_coverage"]
+    fine_coverage = fine["reviewed_sermon_coverage"]
+    selected_contamination = selected["contamination_ratio"]
+    fine_contamination = fine["contamination_ratio"]
+    coverage_delta = (
+        round(fine_coverage - selected_coverage, 6)
+        if isinstance(selected_coverage, (int, float))
+        and isinstance(fine_coverage, (int, float))
+        else None
+    )
+    contamination_delta = (
+        round(fine_contamination - selected_contamination, 6)
+        if isinstance(selected_contamination, (int, float))
+        and isinstance(fine_contamination, (int, float))
+        else None
+    )
+    structural_retention = by_key["fine"]["measurements"].get(
+        "previous_stage_retention"
+    )
+    if (
+        isinstance(selected_coverage, (int, float))
+        and selected_coverage >= REVIEWED_COVERAGE_THRESHOLD
+        and isinstance(fine_coverage, (int, float))
+        and fine_coverage < REVIEWED_COVERAGE_THRESHOLD
+    ):
+        refinement_classification = "localization_regression"
+    elif (
+        isinstance(coverage_delta, (int, float))
+        and coverage_delta <= -0.25
+    ) or (
+        isinstance(structural_retention, (int, float))
+        and structural_retention < 0.5
+    ):
+        refinement_classification = "catastrophic_structural_loss"
+    elif isinstance(contamination_delta, (int, float)) and contamination_delta >= 0.05:
+        refinement_classification = "contamination_regression"
+    elif (
+        isinstance(contamination_delta, (int, float))
+        and contamination_delta <= -0.05
+    ):
+        refinement_classification = "contamination_improved"
+    else:
+        refinement_classification = "none"
+    refinement = {
+        "status": "evaluated",
+        "classification": refinement_classification,
+        "selected": selected,
+        "fine": fine,
+        "coverage_delta": coverage_delta,
+        "contamination_delta": contamination_delta,
+        "structural_retention": structural_retention,
+    }
+
+    rule = metrics("rule")
+    final = metrics("final")
+    fine_coverage = fine["reviewed_sermon_coverage"]
+    final_coverage = final["reviewed_sermon_coverage"]
+    fine_contamination = fine["contamination_ratio"]
+    final_contamination = final["contamination_ratio"]
+    coverage_regret = (
+        round(max(0.0, fine_coverage - final_coverage), 6)
+        if isinstance(fine_coverage, (int, float))
+        and isinstance(final_coverage, (int, float))
+        else None
+    )
+    contamination_regret = (
+        round(max(0.0, final_contamination - fine_contamination), 6)
+        if isinstance(fine_contamination, (int, float))
+        and isinstance(final_contamination, (int, float))
+        else None
+    )
+    if (
+        isinstance(fine_coverage, (int, float))
+        and fine_coverage >= REVIEWED_COVERAGE_THRESHOLD
+        and isinstance(final_coverage, (int, float))
+        and final_coverage < REVIEWED_COVERAGE_THRESHOLD
+    ):
+        arbitration_classification = "localization_regression"
+    elif isinstance(contamination_regret, (int, float)) and contamination_regret >= 0.05:
+        arbitration_classification = "contamination_regression"
+    elif (
+        isinstance(coverage_regret, (int, float))
+        and coverage_regret > 0
+    ) or (
+        isinstance(contamination_regret, (int, float))
+        and contamination_regret > 0
+    ):
+        arbitration_classification = "minor_tradeoff"
+    else:
+        arbitration_classification = "none"
+    arbitration_evidence = by_key["arbitration"].get("evidence", {}).get(
+        "arbitration", {}
+    )
+    arbitration = {
+        "status": "evaluated",
+        "classification": arbitration_classification,
+        "fine": fine,
+        "rule": rule,
+        "chosen_final": final,
+        "coverage_regret_against_fine": coverage_regret,
+        "contamination_regret_against_fine": contamination_regret,
+        "decision": (
+            arbitration_evidence.get("decision")
+            if isinstance(arbitration_evidence, dict)
+            else None
+        ),
+        "reason": (
+            arbitration_evidence.get("reason")
+            if isinstance(arbitration_evidence, dict)
+            else None
+        ),
+        "measurement_semantics": "reviewed counterfactual; unavailable to production policy",
+    }
+    return {"refinement": refinement, "arbitration": arbitration}
 
 
 def _stage_measurements(
@@ -840,6 +985,108 @@ def _overall_outcome(outcome_contracts: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _contract_paths(
+    stages: list[dict[str, Any]], outcome_contracts: dict[str, Any]
+) -> dict[str, Any]:
+    stage_order = [stage["key"] for stage in stages]
+
+    def measured_path(
+        dimension: str, tracked_stages: set[str]
+    ) -> dict[str, Any]:
+        observations: list[dict[str, Any]] = []
+        for stage in stages:
+            if stage["key"] not in tracked_stages:
+                continue
+            contract = stage.get("quality_contracts", {}).get(dimension, {})
+            status = contract.get("status")
+            if status not in {"pass", "fail"}:
+                continue
+            observations.append(
+                {
+                    "stage": stage["key"],
+                    "status": status,
+                    "observed": contract.get("observed"),
+                    "threshold": contract.get("threshold"),
+                }
+            )
+        breach_indexes = [
+            index
+            for index, observation in enumerate(observations)
+            if observation["status"] == "fail"
+        ]
+        earliest = observations[breach_indexes[0]]["stage"] if breach_indexes else None
+        recoveries = [
+            observation["stage"]
+            for index, observation in enumerate(observations)
+            if observation["status"] == "pass"
+            and any(breach < index for breach in breach_indexes)
+        ]
+        terminal = outcome_contracts.get(dimension, {}).get("status", "not_evaluated")
+        likely_causal = None
+        if terminal == "fail" and breach_indexes:
+            last_pass_index = max(
+                (
+                    index
+                    for index, observation in enumerate(observations)
+                    if observation["status"] == "pass"
+                ),
+                default=-1,
+            )
+            likely_causal = next(
+                (
+                    observation["stage"]
+                    for index, observation in enumerate(observations)
+                    if index > last_pass_index and observation["status"] == "fail"
+                ),
+                earliest,
+            )
+        return {
+            "status": "evaluated" if observations else "not_evaluated",
+            "earliest_breach_stage": earliest,
+            "recovery_stages": recoveries,
+            "terminal_status": terminal,
+            "terminal_failure": terminal == "fail",
+            "likely_causal_stage": likely_causal,
+            "observations": observations,
+        }
+
+    localization = measured_path(
+        "localization",
+        {"transcript", "candidates", "selected", "joined", "fine", "arbitration", "final"},
+    )
+    contamination = measured_path(
+        "contamination", {"selected", "joined", "fine", "arbitration", "final"}
+    )
+
+    def terminal_path(dimension: str, stage: str) -> dict[str, Any]:
+        contract = outcome_contracts.get(dimension, {})
+        status = contract.get("status", "not_evaluated")
+        return {
+            "status": (
+                "evaluated"
+                if status in {"pass", "fail", "review_required"}
+                else "not_evaluated"
+            ),
+            "earliest_breach_stage": stage if status == "fail" else None,
+            "recovery_stages": [],
+            "terminal_status": status,
+            "terminal_failure": status == "fail",
+            "likely_causal_stage": stage if status == "fail" else None,
+            "observations": [
+                {"stage": stage, "status": status, "code": contract.get("code")}
+            ],
+        }
+
+    return {
+        "stage_order": stage_order,
+        "localization": localization,
+        "contamination": contamination,
+        "existence": terminal_path("existence", "final"),
+        "verifier": terminal_path("verifier", "verifier"),
+        "disposition": terminal_path("disposition", "final"),
+    }
+
+
 def _recovery_status(
     observed: dict[str, Any] | None,
     stages: list[dict[str, Any]],
@@ -853,6 +1100,209 @@ def _recovery_status(
     return "recovered_automatically" if final["contract"]["status"] == "pass" else "unrecovered"
 
 
+def load_identity_boundary_feedback(
+    root: Path,
+    *,
+    database_video_ids: set[int] | None = None,
+) -> dict[int, list[dict[str, Any]]]:
+    """Load and deduplicate persisted identity edge advisories by database video id."""
+    resolved = root.expanduser().resolve()
+    if not resolved.is_dir():
+        return {}
+    grouped: dict[int, dict[tuple[Any, ...], dict[str, Any]]] = {}
+    for path in sorted(resolved.glob("*/*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        candidate = payload.get("candidate")
+        candidate = candidate if isinstance(candidate, dict) else {}
+        video_id = candidate.get("video_id")
+        if not isinstance(video_id, int):
+            continue
+        if database_video_ids is not None and video_id not in database_video_ids:
+            continue
+        flags = payload.get("sermon_window_quality_flags")
+        if not isinstance(flags, list):
+            continue
+        span_selection = payload.get("span_selection")
+        span_selection = span_selection if isinstance(span_selection, dict) else {}
+        candidate_selection = span_selection.get("candidate_selection")
+        candidate_selection = (
+            candidate_selection if isinstance(candidate_selection, dict) else {}
+        )
+        evidence_window = _range(
+            candidate_selection.get("observation_start_seconds"),
+            candidate_selection.get("observation_end_seconds"),
+        )
+        for raw_flag in flags:
+            if not isinstance(raw_flag, dict):
+                continue
+            if raw_flag.get("flag") != "speaker_inconsistent_edge":
+                continue
+            edge = raw_flag.get("edge")
+            if edge not in {"start", "end"}:
+                continue
+            flagged_span = _range(
+                raw_flag.get("start_seconds"), raw_flag.get("end_seconds")
+            )
+            reasons = tuple(
+                sorted(
+                    str(reason)
+                    for reason in raw_flag.get("reason_codes", [])
+                    if isinstance(reason, str)
+                )
+            )
+            key = (
+                edge,
+                evidence_window,
+                flagged_span,
+                reasons,
+                bool(raw_flag.get("automatic_boundary_change_allowed")),
+            )
+            events = grouped.setdefault(video_id, {})
+            existing = events.get(key)
+            if existing is None:
+                existing = {
+                    "event_kind": "identity_boundary_feedback",
+                    "source": "speaker_profile_shadow_association",
+                    "edge": edge,
+                    "evidence_window": (
+                        {
+                            "start_seconds": evidence_window[0],
+                            "end_seconds": evidence_window[1],
+                        }
+                        if evidence_window is not None
+                        else None
+                    ),
+                    "flagged_span": (
+                        {
+                            "start_seconds": flagged_span[0],
+                            "end_seconds": flagged_span[1],
+                        }
+                        if flagged_span is not None
+                        else None
+                    ),
+                    "window_fraction": raw_flag.get("window_fraction"),
+                    "relationship": "speaker_inconsistent_edge",
+                    "decision": "boundary_advisory_only",
+                    "automatic_boundary_change_allowed": bool(
+                        raw_flag.get("automatic_boundary_change_allowed")
+                    ),
+                    "reason_codes": list(reasons),
+                    "association_versions": [],
+                    "model_fingerprints": [],
+                    "representative_artifact_path": str(path),
+                    "artifact_occurrence_count": 0,
+                    "causal_adjustment_persisted": False,
+                }
+                events[key] = existing
+            existing["artifact_occurrence_count"] += 1
+            association_version = payload.get("association_version")
+            if (
+                isinstance(association_version, str)
+                and association_version not in existing["association_versions"]
+            ):
+                existing["association_versions"].append(association_version)
+            model_fingerprint = payload.get("model_fingerprint")
+            if (
+                isinstance(model_fingerprint, str)
+                and model_fingerprint not in existing["model_fingerprints"]
+            ):
+                existing["model_fingerprints"].append(model_fingerprint)
+    return {
+        video_id: sorted(
+            events.values(),
+            key=lambda event: (
+                str(event.get("edge")),
+                _number((event.get("flagged_span") or {}).get("start_seconds")) or 0.0,
+            ),
+        )
+        for video_id, events in grouped.items()
+    }
+
+
+def _identity_boundary_feedback_projection(
+    events: list[dict[str, Any]],
+    *,
+    final_ranges: list[Range],
+    expected: list[Range] | None,
+    allowed_interruptions: list[Range] | None,
+) -> dict[str, Any]:
+    final_boundary = _boundary(final_ranges)
+    projected: list[dict[str, Any]] = []
+    for raw in events:
+        event = dict(raw)
+        evidence = event.get("evidence_window")
+        evidence = evidence if isinstance(evidence, dict) else {}
+        evidence_range = _range(
+            evidence.get("start_seconds"), evidence.get("end_seconds")
+        )
+        edge = event.get("edge")
+        movement = None
+        effect = "advisory_without_comparable_window"
+        if evidence_range is not None and final_boundary is not None:
+            movement = (
+                final_boundary["start_seconds"] - evidence_range[0]
+                if edge == "start"
+                else final_boundary["end_seconds"] - evidence_range[1]
+            )
+            inward = (edge == "start" and movement > 0) or (
+                edge == "end" and movement < 0
+            )
+            if abs(movement) < 0.001:
+                effect = "advisory_no_boundary_change"
+            elif inward:
+                effect = "boundary_moved_inward_after_advisory"
+            else:
+                effect = "boundary_moved_outward_after_advisory"
+        event["observed_boundary_movement_seconds"] = (
+            round(movement, 3) if isinstance(movement, (int, float)) else None
+        )
+        event["observed_effect"] = effect
+        if evidence_range is not None and expected is not None:
+            before = _stage_measurements(
+                [evidence_range], [evidence_range], expected, allowed_interruptions
+            )
+            after = _stage_measurements(
+                final_ranges, [evidence_range], expected, allowed_interruptions
+            )
+            event["reviewed_quality_impact"] = {
+                "coverage_before": before.get("reviewed_sermon_coverage"),
+                "coverage_after": after.get("reviewed_sermon_coverage"),
+                "contamination_before": before.get("contamination_ratio"),
+                "contamination_after": after.get("contamination_ratio"),
+                "attribution": (
+                    "causal" if event.get("causal_adjustment_persisted") else "temporal_only"
+                ),
+            }
+        projected.append(event)
+    return {
+        "status": "available" if projected else "not_observed",
+        "event_count": len(projected),
+        "start_edge_event_count": sum(event.get("edge") == "start" for event in projected),
+        "end_edge_event_count": sum(event.get("edge") == "end" for event in projected),
+        "causal_adjustment_count": sum(
+            bool(event.get("causal_adjustment_persisted")) for event in projected
+        ),
+        "temporal_boundary_movement_count": sum(
+            event.get("observed_effect")
+            in {
+                "boundary_moved_inward_after_advisory",
+                "boundary_moved_outward_after_advisory",
+            }
+            for event in projected
+        ),
+        "events": projected,
+        "interpretation": (
+            "Identity evidence is surfaced as advisory unless the causing adjustment is "
+            "explicitly persisted; later boundary movement is not proof of causality."
+        ),
+    }
+
+
 def build_diagnostic_trace(
     proposed: dict[str, Any],
     *,
@@ -861,6 +1311,7 @@ def build_diagnostic_trace(
     database_video_id: int | None = None,
     fixture: ValidatedFixture | None = None,
     media_duration_seconds: float | None = None,
+    identity_boundary_feedback: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     segments = [item for item in proposed.get("segments", []) if isinstance(item, dict)]
     classification = proposed.get("classification")
@@ -1156,7 +1607,6 @@ def build_diagnostic_trace(
                 ),
             }
         )
-    recovery_status = _recovery_status(observed, stages, manual_override)
     outcome_contracts = _outcome_contracts(
         stages=stages,
         fixture=fixture,
@@ -1166,7 +1616,47 @@ def build_diagnostic_trace(
         manual_override=manual_override,
     )
     overall_outcome = _overall_outcome(outcome_contracts)
+    contract_paths = _contract_paths(stages, outcome_contracts)
+    any_breach = any(
+        path.get("earliest_breach_stage") is not None
+        for key, path in contract_paths.items()
+        if key != "stage_order" and isinstance(path, dict)
+    )
+    if manual_override:
+        recovery_status = (
+            "masked_by_manual_override" if any_breach else "manual_override_applied"
+        )
+    elif overall_outcome["status"] == "fail":
+        recovery_status = "unrecovered"
+    elif any_breach:
+        recovery_status = "recovered_automatically"
+    else:
+        recovery_status = "clean"
     fine_stage = next(stage for stage in stages if stage["key"] == "fine")
+    identity_feedback = _identity_boundary_feedback_projection(
+        identity_boundary_feedback or [],
+        final_ranges=final_ranges,
+        expected=expected,
+        allowed_interruptions=allowed_interruptions,
+    )
+    if (
+        identity_feedback["temporal_boundary_movement_count"]
+        and not identity_feedback["causal_adjustment_count"]
+    ):
+        diagnostic_gaps.append(
+            {
+                "code": "identity_boundary_adjustment_causality_not_persisted",
+                "stage": "arbitration",
+                "impact": (
+                    "Identity edge evidence and later boundary movement coexist, but the trace "
+                    "cannot prove that identity caused the adjustment."
+                ),
+                "recommended_instrumentation": (
+                    "Persist the pre-adjustment boundary, proposed boundary, decision, immutable "
+                    "speaker evidence spans, and post-adjustment boundary as one event."
+                ),
+            }
+        )
     cohort = {
         **_fixture_metadata(fixture),
         "outcome_mode": "manual_override" if manual_override else "automatic",
@@ -1207,13 +1697,16 @@ def build_diagnostic_trace(
         "root_cause_hypothesis": _root_cause(observed, stages, fixture),
         "cohort": cohort,
         "overall_outcome": overall_outcome,
+        "contract_paths": contract_paths,
         "candidate_regret": _candidate_regret(
             candidates,
             selected,
             expected,
             fine_stage["measurements"].get("reviewed_sermon_coverage"),
         ),
+        "stage_regret": _stage_regret(stages, fixture),
         "contamination_attribution": _contamination_attribution(stages, fixture),
+        "identity_boundary_feedback": identity_feedback,
         "join_observability": {
             "joined_candidate_count": sum(
                 candidate.get("source") == "joined_coarse_llm" for candidate in candidates
@@ -1288,6 +1781,17 @@ def build_pipeline_mermaid(trace: dict[str, Any]) -> str:
         lines.append(
             f"  S{indexes['rule']} -. comparator .-> S{indexes['arbitration']}"
         )
+    identity = trace.get("identity_boundary_feedback", {})
+    identity_event_count = int(identity.get("event_count") or 0)
+    if identity_event_count and "final" in indexes and "arbitration" in indexes:
+        lines.extend(
+            [
+                f'  I["Identity edge evidence<br/>{identity_event_count} advisories"]',
+                f"  S{indexes['final']} -. sermon window .-> I",
+                f"  I -. boundary advisory .-> S{indexes['arbitration']}",
+            ]
+        )
+        classes["unknown"].append("I")
     lines.extend(
         [
             "  classDef pass fill:#d9f2df,stroke:#26733a,color:#102915",
@@ -1370,9 +1874,15 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
         "| Dimension | Status | Observed | Threshold |",
         "|---|---|---:|---:|",
     ]
-    for dimension in ("existence", "localization", "contamination"):
+    for dimension in (
+        "existence",
+        "localization",
+        "contamination",
+        "verifier",
+        "disposition",
+    ):
         contract = trace.get("outcome_contracts", {}).get(dimension, {})
-        observed_value = contract.get("observed")
+        observed_value = contract.get("observed", contract.get("value"))
         threshold = contract.get("threshold")
         lines.append(
             f"| {dimension} | {contract.get('status', 'unknown')} | "
@@ -1447,6 +1957,7 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
             )
             previous_recall = recall if isinstance(recall, (int, float)) else previous_recall
     regret = trace.get("candidate_regret", {})
+    stage_regret = trace.get("stage_regret", {})
     attribution = trace.get("contamination_attribution", {})
     lines.extend(
         [
@@ -1458,6 +1969,66 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
             f"- Best candidate: rank {regret.get('best_candidate_rank', '—')} at "
             f"{regret.get('best_candidate_coverage', '—')} coverage",
             f"- Selected-candidate regret: {regret.get('selected_candidate_regret', '—')}",
+            "",
+            "## Stage regret",
+            "",
+            "| Stage | Classification | Coverage delta | Contamination delta |",
+            "|---|---|---:|---:|",
+        ]
+    )
+    for stage_key in ("refinement", "arbitration"):
+        value = stage_regret.get(stage_key, {})
+        coverage_change = value.get(
+            "coverage_delta", value.get("coverage_regret_against_fine", "—")
+        )
+        contamination_change = value.get(
+            "contamination_delta",
+            value.get("contamination_regret_against_fine", "—"),
+        )
+        lines.append(
+            f"| {stage_key} | {value.get('classification', 'not_evaluated')} | "
+            f"{coverage_change} | {contamination_change} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Contract paths",
+            "",
+            "| Dimension | Earliest breach | Recovery | Terminal | Likely cause |",
+            "|---|---|---|---|---|",
+        ]
+    )
+    for dimension, path in trace.get("contract_paths", {}).items():
+        if dimension == "stage_order" or not isinstance(path, dict):
+            continue
+        lines.append(
+            f"| {dimension} | {path.get('earliest_breach_stage') or 'none'} | "
+            f"{', '.join(path.get('recovery_stages', [])) or 'none'} | "
+            f"{path.get('terminal_status', 'not_evaluated')} | "
+            f"{path.get('likely_causal_stage') or 'none'} |"
+        )
+    identity = trace.get("identity_boundary_feedback", {})
+    lines.extend(
+        [
+            "",
+            "## Identity boundary feedback",
+            "",
+            f"- Events: {identity.get('event_count', 0)}",
+            "- Boundary movement after evidence: "
+            f"{identity.get('temporal_boundary_movement_count', 0)}",
+            f"- Causal adjustments persisted: {identity.get('causal_adjustment_count', 0)}",
+            f"- Interpretation: {identity.get('interpretation', 'not observed')}",
+        ]
+    )
+    for event in identity.get("events", []) or []:
+        quality = event.get("reviewed_quality_impact", {})
+        lines.append(
+            f"- {event.get('edge', 'unknown')} edge: "
+            f"{event.get('observed_effect', 'unknown')} "
+            f"(attribution: {quality.get('attribution', 'advisory_only')})"
+        )
+    lines.extend(
+        [
             "",
             "## Contamination attribution",
             "",
@@ -1547,8 +2118,13 @@ def _cohort_summary(traces: list[dict[str, Any]], field: str) -> dict[str, Any]:
         dispositions = Counter()
         for trace in members:
             contracts = trace.get("outcome_contracts", {})
+            disposition_contract = contracts.get("disposition", {})
             dispositions[
-                str(contracts.get("disposition", {}).get("status") or "unknown")
+                str(
+                    disposition_contract.get("value")
+                    or disposition_contract.get("status")
+                    or "unknown"
+                )
             ] += 1
             if trace.get("ground_truth", {}).get("expected_outcome") == "sermon":
                 localization[
@@ -1623,8 +2199,17 @@ def aggregate_diagnostic_traces(
     existence = Counter()
     overall = Counter()
     regret = Counter()
+    refinement_regret = Counter()
+    arbitration_regret = Counter()
+    terminal_failure_causes = Counter()
     contamination_breach = Counter()
     boundary_patterns = Counter()
+    identity_effects = Counter()
+    identity_edge_counts = Counter()
+    identity_event_count = 0
+    identity_trace_count = 0
+    identity_temporal_movement_count = 0
+    identity_causal_adjustment_count = 0
     manual_override_count = 0
     joined_candidate_count = 0
     traces_with_joined_candidates = 0
@@ -1643,13 +2228,45 @@ def aggregate_diagnostic_traces(
         regret[
             str(trace.get("candidate_regret", {}).get("classification") or "not_evaluated")
         ] += 1
+        stage_regret = trace.get("stage_regret", {})
+        refinement_classification = str(
+            stage_regret.get("refinement", {}).get("classification") or "not_evaluated"
+        )
+        arbitration_classification = str(
+            stage_regret.get("arbitration", {}).get("classification") or "not_evaluated"
+        )
+        refinement_regret[refinement_classification] += 1
+        arbitration_regret[arbitration_classification] += 1
+        for dimension, path in trace.get("contract_paths", {}).items():
+            if dimension == "stage_order" or not isinstance(path, dict):
+                continue
+            if path.get("terminal_failure"):
+                stage = str(path.get("likely_causal_stage") or "unknown")
+                terminal_failure_causes[f"{dimension}:{stage}"] += 1
+        identity = trace.get("identity_boundary_feedback", {})
+        event_count = int(identity.get("event_count") or 0)
+        identity_event_count += event_count
+        identity_trace_count += int(event_count > 0)
+        identity_temporal_movement_count += int(
+            identity.get("temporal_boundary_movement_count") or 0
+        )
+        identity_causal_adjustment_count += int(
+            identity.get("causal_adjustment_count") or 0
+        )
+        for event in identity.get("events", []) or []:
+            identity_effects[str(event.get("observed_effect") or "unknown")] += 1
+            identity_edge_counts[str(event.get("edge") or "unknown")] += 1
         attribution = trace.get("contamination_attribution", {})
         contamination_breach[str(attribution.get("earliest_breach_stage") or "none")] += 1
         for pattern in attribution.get("final_boundary_error_patterns", []) or []:
             boundary_patterns[str(pattern)] += 1
         contracts = trace.get("outcome_contracts", {})
-        disposition = contracts.get("disposition", {}).get("status") or "unknown"
-        dispositions[str(disposition)] += 1
+        disposition_contract = contracts.get("disposition", {})
+        disposition_status = str(disposition_contract.get("status") or "unknown")
+        disposition_value = str(
+            disposition_contract.get("value") or disposition_status
+        )
+        dispositions[disposition_value] += 1
         existence[str(contracts.get("existence", {}).get("status") or "not_evaluated")] += 1
         if expected_outcome == "sermon":
             localization[
@@ -1692,8 +2309,22 @@ def aggregate_diagnostic_traces(
                 run_signatures.append("arbitration_clipped_valid_refined_window")
             if failed("final", "contamination"):
                 run_signatures.append("high_final_contamination")
-            if disposition == "review_required":
+            if (
+                disposition_status == "review_required"
+                or disposition_value == "review_required"
+            ):
                 run_signatures.append("positive_requires_review")
+            if refinement_classification in {
+                "localization_regression",
+                "catastrophic_structural_loss",
+                "contamination_regression",
+            }:
+                run_signatures.append(f"refinement_{refinement_classification}")
+            if arbitration_classification in {
+                "localization_regression",
+                "contamination_regression",
+            }:
+                run_signatures.append(f"arbitration_{arbitration_classification}")
         elif expected_outcome == "no_sermon":
             if failed("verifier"):
                 run_signatures.append("recording_verifier_false_positive")
@@ -1702,7 +2333,7 @@ def aggregate_diagnostic_traces(
         for signature in run_signatures:
             signatures.setdefault(signature, []).append(video_id)
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "report_kind": "sermon_isolation_systemic_diagnostics",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trace_count": len(traces),
@@ -1738,8 +2369,30 @@ def aggregate_diagnostic_traces(
             ),
         },
         "candidate_regret_classification_counts": dict(sorted(regret.items())),
+        "refinement_regret_classification_counts": dict(
+            sorted(refinement_regret.items())
+        ),
+        "arbitration_regret_classification_counts": dict(
+            sorted(arbitration_regret.items())
+        ),
+        "terminal_failure_causal_counts": dict(
+            sorted(terminal_failure_causes.items())
+        ),
         "contamination_earliest_breach_counts": dict(sorted(contamination_breach.items())),
         "final_boundary_error_pattern_counts": dict(sorted(boundary_patterns.items())),
+        "identity_boundary_feedback_summary": {
+            "event_count": identity_event_count,
+            "trace_count": identity_trace_count,
+            "temporal_boundary_movement_count": identity_temporal_movement_count,
+            "causal_adjustment_count": identity_causal_adjustment_count,
+            "observed_effect_counts": dict(sorted(identity_effects.items())),
+            "edge_counts": dict(sorted(identity_edge_counts.items())),
+            "causal_interpretation": (
+                "causal events persisted"
+                if identity_causal_adjustment_count
+                else "temporal association only"
+            ),
+        },
         "join_observability": {
             "joined_candidate_count": joined_candidate_count,
             "traces_with_joined_candidates": traces_with_joined_candidates,
@@ -1853,6 +2506,39 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
     )
     lines.extend(
         [
+            "",
+            "## Stage regret and terminal causes",
+            "",
+            "| Measure | Classification | Count |",
+            "|---|---|---:|",
+        ]
+    )
+    for stage_key in ("refinement", "arbitration"):
+        for classification, count in report.get(
+            f"{stage_key}_regret_classification_counts", {}
+        ).items():
+            lines.append(f"| {stage_key} regret | {classification} | {count} |")
+    for cause, count in report.get("terminal_failure_causal_counts", {}).items():
+        lines.append(f"| terminal cause | {cause} | {count} |")
+    identity = report.get("identity_boundary_feedback_summary", {})
+    lines.extend(
+        [
+            "",
+            "## Identity boundary feedback",
+            "",
+            f"- Advisories: {identity.get('event_count', 0)} across "
+            f"{identity.get('trace_count', 0)} trace(s)",
+            "- Later boundary movements: "
+            f"{identity.get('temporal_boundary_movement_count', 0)}",
+            f"- Persisted causal adjustments: {identity.get('causal_adjustment_count', 0)}",
+            f"- Interpretation: {identity.get('causal_interpretation', 'not observed')}",
+            "",
+            "Identity evidence is not credited as the cause of a boundary adjustment unless "
+            "the adjustment event itself was persisted.",
+        ]
+    )
+    lines.extend(
+        [
         "",
         "## Recovery and masking",
         "",
@@ -1929,12 +2615,82 @@ def compare_systemic_reports(
         )
         measurements = final.get("measurements", {})
         failure = trace.get("earliest_observed_failure") or {}
+        contracts = trace.get("outcome_contracts", {})
+        paths = trace.get("contract_paths", {})
+        source = trace.get("source_artifact", {})
+        identity = trace.get("identity_boundary_feedback", {})
         return {
             "overall_outcome": _trace_overall_status(trace),
             "earliest_observed_failure": failure.get("stage"),
             "reviewed_sermon_coverage": measurements.get("reviewed_sermon_coverage"),
             "contamination_ratio": measurements.get("contamination_ratio"),
+            "outcome_dimensions": {
+                dimension: contracts.get(dimension, {}).get("status")
+                for dimension in (
+                    "existence",
+                    "localization",
+                    "contamination",
+                    "verifier",
+                    "disposition",
+                )
+            },
+            "disposition": contracts.get("disposition", {}).get("value"),
+            "terminal_failure_causes": {
+                dimension: path.get("likely_causal_stage")
+                for dimension, path in paths.items()
+                if dimension != "stage_order"
+                and isinstance(path, dict)
+                and path.get("terminal_failure")
+            },
+            "stage_regret": {
+                stage: trace.get("stage_regret", {})
+                .get(stage, {})
+                .get("classification")
+                for stage in ("refinement", "arbitration")
+            },
+            "identity_boundary_feedback": {
+                "event_count": int(identity.get("event_count") or 0),
+                "temporal_boundary_movement_count": int(
+                    identity.get("temporal_boundary_movement_count") or 0
+                ),
+                "causal_adjustment_count": int(
+                    identity.get("causal_adjustment_count") or 0
+                ),
+            },
+            "source_artifact_sha256": source.get("sha256"),
+            "algorithm_version": source.get("algorithm_version")
+            or trace.get("cohort", {}).get("algorithm_version"),
+            "trace_schema_version": trace.get("schema_version"),
+            "contract_version": trace.get("contract_version"),
         }
+
+    def component_directions(
+        old: dict[str, Any], new: dict[str, Any]
+    ) -> tuple[list[str], list[str]]:
+        improved: list[str] = []
+        regressed: list[str] = []
+        rank = {"fail": 0, "review_required": 1, "pass": 2}
+        old_dimensions = old.get("outcome_dimensions", {})
+        new_dimensions = new.get("outcome_dimensions", {})
+        for dimension in sorted(set(old_dimensions) | set(new_dimensions)):
+            old_status = old_dimensions.get(dimension)
+            new_status = new_dimensions.get(dimension)
+            if old_status not in rank or new_status not in rank or old_status == new_status:
+                continue
+            target = improved if rank[new_status] > rank[old_status] else regressed
+            target.append(f"contract:{dimension}")
+        for stage in ("refinement", "arbitration"):
+            old_regret = old.get("stage_regret", {}).get(stage)
+            new_regret = new.get("stage_regret", {}).get(stage)
+            if old_regret is None or new_regret is None or old_regret == new_regret:
+                continue
+            old_bad = old_regret not in {None, "none", "not_evaluated"}
+            new_bad = new_regret not in {None, "none", "not_evaluated"}
+            if old_bad and not new_bad:
+                improved.append(f"regret:{stage}")
+            elif not old_bad and new_bad:
+                regressed.append(f"regret:{stage}")
+        return improved, regressed
 
     runs: list[dict[str, Any]] = []
     transitions = Counter()
@@ -1949,16 +2705,52 @@ def compare_systemic_reports(
         else:
             old_failed = old["overall_outcome"] == "fail"
             new_failed = new["overall_outcome"] == "fail"
+            improved_components, regressed_components = component_directions(old, new)
             if old_failed and not new_failed:
                 change = "fixed"
             elif not old_failed and new_failed:
                 change = "regressed"
             elif old == new:
                 change = "unchanged"
+            elif improved_components and regressed_components:
+                change = "tradeoff"
+            elif improved_components:
+                change = "improved"
+            elif regressed_components:
+                change = "regressed"
+            elif (
+                old.get("disposition") != new.get("disposition")
+                and old.get("source_artifact_sha256") == new.get("source_artifact_sha256")
+            ):
+                change = "policy_changed"
             else:
                 change = "changed"
         transitions[change] += 1
-        runs.append({"youtube_video_id": video_id, "change": change, "before": old, "after": new})
+        runs.append(
+            {
+                "youtube_video_id": video_id,
+                "change": change,
+                "improved_components": (
+                    improved_components if old is not None and new is not None else []
+                ),
+                "regressed_components": (
+                    regressed_components if old is not None and new is not None else []
+                ),
+                "artifact_changed": bool(
+                    old
+                    and new
+                    and old.get("source_artifact_sha256")
+                    != new.get("source_artifact_sha256")
+                ),
+                "algorithm_changed": bool(
+                    old
+                    and new
+                    and old.get("algorithm_version") != new.get("algorithm_version")
+                ),
+                "before": old,
+                "after": new,
+            }
+        )
 
     def signature_members(report: dict[str, Any]) -> dict[str, set[str]]:
         return {
@@ -1981,7 +2773,7 @@ def compare_systemic_reports(
             "new_video_ids": sorted(new_ids - old_ids),
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "report_kind": "sermon_isolation_diagnostic_comparison",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "before": {
@@ -2044,8 +2836,8 @@ def build_comparison_markdown(comparison: dict[str, Any]) -> str:
             "",
             "## Changed runs",
             "",
-            "| Video | Change | Before | After |",
-            "|---|---|---|---|",
+            "| Video | Change | Before | After | Components | Provenance |",
+            "|---|---|---|---|---|---|",
         ]
     )
     for run in comparison.get("runs", []):
@@ -2053,12 +2845,25 @@ def build_comparison_markdown(comparison: dict[str, Any]) -> str:
             continue
         before = run.get("before") or {}
         after = run.get("after") or {}
+        components = [
+            *(f"+{item}" for item in run.get("improved_components", [])),
+            *(f"-{item}" for item in run.get("regressed_components", [])),
+        ]
+        provenance = ", ".join(
+            label
+            for changed, label in (
+                (run.get("artifact_changed"), "artifact"),
+                (run.get("algorithm_changed"), "algorithm"),
+            )
+            if changed
+        )
         lines.append(
             f"| {run['youtube_video_id']} | {run['change']} | "
             f"{before.get('overall_outcome', '—')} / "
             f"{before.get('earliest_observed_failure') or 'none'} | "
             f"{after.get('overall_outcome', '—')} / "
-            f"{after.get('earliest_observed_failure') or 'none'} |"
+            f"{after.get('earliest_observed_failure') or 'none'} | "
+            f"{', '.join(components) or '—'} | {provenance or 'diagnostic/policy'} |"
         )
     lines.append("")
     return "\n".join(lines)

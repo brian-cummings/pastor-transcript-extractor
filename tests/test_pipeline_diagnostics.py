@@ -13,6 +13,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_diagnostic_trace,
     build_systemic_markdown,
     compare_systemic_reports,
+    load_identity_boundary_feedback,
 )
 
 
@@ -151,11 +152,18 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("fine", trace["earliest_observed_failure"]["stage"])
         self.assertEqual("fine_refinement", trace["root_cause_hypothesis"]["stage"])
         self.assertEqual(
-            "sermon-isolation-contracts-v4",
+            "sermon-isolation-contracts-v5",
             trace["contract_definition"]["version"],
         )
-        self.assertEqual(4, trace["schema_version"])
+        self.assertEqual(5, trace["schema_version"])
         self.assertEqual("refinement_loss", trace["candidate_regret"]["classification"])
+        self.assertEqual(
+            "localization_regression",
+            trace["stage_regret"]["refinement"]["classification"],
+        )
+        self.assertEqual(
+            "fine", trace["contract_paths"]["localization"]["likely_causal_stage"]
+        )
         self.assertEqual("fail", trace["overall_outcome"]["status"])
         self.assertEqual("development", trace["cohort"]["evaluation_partition"])
 
@@ -316,10 +324,12 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("fail", stages["arbitration"]["contract"]["status"])
         self.assertEqual("arbitration", trace["earliest_observed_failure"]["stage"])
         systemic = aggregate_diagnostic_traces([trace])
-        self.assertEqual(
-            {"arbitration_clipped_valid_refined_window": 1},
-            systemic["failure_signature_counts"],
-        )
+        self.assertEqual(1, systemic["failure_signature_counts"][
+            "arbitration_clipped_valid_refined_window"
+        ])
+        self.assertEqual(1, systemic["failure_signature_counts"][
+            "arbitration_localization_regression"
+        ])
 
     def test_recording_verifier_false_positive_is_earliest_negative_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -522,7 +532,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("selected", attribution["earliest_breach_stage"])
         self.assertIn("end_overreach", attribution["final_boundary_error_patterns"])
         systemic = aggregate_diagnostic_traces([trace])
-        self.assertEqual(4, systemic["schema_version"])
+        self.assertEqual(5, systemic["schema_version"])
         self.assertEqual(1, systemic["unknown_evaluation_partition_count"])
         self.assertEqual(
             [0, 0, 0, 1],
@@ -532,6 +542,102 @@ class PipelineDiagnosticTests(unittest.TestCase):
             ],
         )
         self.assertIn("Threshold sensitivity", build_systemic_markdown(systemic))
+
+    def test_contract_path_records_automatic_contamination_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            fixture_path = root / "fixture-video.json"
+            payload = {
+                "video_id": "fixture-video",
+                "expected_outcome": "sermon",
+                "expected_spans": [
+                    {"start_seconds": 100.0, "end_seconds": 300.0}
+                ],
+                "allowed_interruptions": [],
+                "ground_truth_version": 1,
+                "reviewed_by": "Reviewer",
+            }
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=validate_fixture_payload(payload, path=fixture_path),
+            )
+
+        path = trace["contract_paths"]["contamination"]
+        self.assertEqual("selected", path["earliest_breach_stage"])
+        self.assertIn("fine", path["recovery_stages"])
+        self.assertEqual("pass", path["terminal_status"])
+        self.assertFalse(path["terminal_failure"])
+        self.assertEqual("recovered_automatically", trace["causal_path_status"])
+
+    def test_identity_edge_advisory_surfaces_temporal_boundary_feedback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            run = root / "shadow-run"
+            run.mkdir()
+            identity_payload = {
+                "candidate": {"video_id": 7},
+                "association_version": "speaker-association-v1",
+                "model_fingerprint": "model-abc",
+                "span_selection": {
+                    "candidate_selection": {
+                        "observation_start_seconds": 0.0,
+                        "observation_end_seconds": 300.0,
+                    }
+                },
+                "sermon_window_quality_flags": [
+                    {
+                        "flag": "speaker_inconsistent_edge",
+                        "edge": "start",
+                        "start_seconds": 0.0,
+                        "end_seconds": 100.0,
+                        "reason_codes": ["coherent_replacement_speaker"],
+                        "automatic_boundary_change_allowed": False,
+                    }
+                ],
+            }
+            (run / "association.json").write_text(
+                json.dumps(identity_payload), encoding="utf-8"
+            )
+            loaded = load_identity_boundary_feedback(root, database_video_ids={7})
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                database_video_id=7,
+                fixture=self._fixture(root),
+                identity_boundary_feedback=loaded[7],
+            )
+
+        feedback = trace["identity_boundary_feedback"]
+        self.assertEqual(1, feedback["event_count"])
+        self.assertEqual(1, feedback["temporal_boundary_movement_count"])
+        self.assertEqual(0, feedback["causal_adjustment_count"])
+        self.assertEqual(
+            "boundary_moved_inward_after_advisory",
+            feedback["events"][0]["observed_effect"],
+        )
+        self.assertEqual(
+            "temporal_only",
+            feedback["events"][0]["reviewed_quality_impact"]["attribution"],
+        )
+        self.assertIn(
+            "identity_boundary_adjustment_causality_not_persisted",
+            {gap["code"] for gap in trace["diagnostic_gaps"]},
+        )
+        diagnostic_markdown = build_diagnostic_markdown(trace)
+        self.assertIn("Identity edge evidence", diagnostic_markdown)
+        self.assertIn("boundary advisory", diagnostic_markdown)
+        systemic = aggregate_diagnostic_traces([trace])
+        self.assertEqual(
+            "temporal association only",
+            systemic["identity_boundary_feedback_summary"]["causal_interpretation"],
+        )
+        self.assertIn("Identity boundary feedback", build_systemic_markdown(systemic))
 
     def test_systemic_comparison_marks_fixed_and_signature_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -551,7 +657,32 @@ class PipelineDiagnosticTests(unittest.TestCase):
         after = aggregate_diagnostic_traces([fixed_trace])
         comparison = compare_systemic_reports(before, after)
         self.assertEqual(1, comparison["change_counts"]["fixed"])
+        self.assertEqual(2, comparison["schema_version"])
+        self.assertIn("source_artifact_sha256", comparison["runs"][0]["before"])
         self.assertIn("fixture-video", build_comparison_markdown(comparison))
+
+    def test_systemic_comparison_identifies_dimension_tradeoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+        changed = json.loads(json.dumps(trace))
+        changed["outcome_contracts"]["localization"]["status"] = "pass"
+        changed["outcome_contracts"]["contamination"]["status"] = "fail"
+        comparison = compare_systemic_reports(
+            aggregate_diagnostic_traces([trace]),
+            aggregate_diagnostic_traces([changed]),
+        )
+
+        run = comparison["runs"][0]
+        self.assertEqual("tradeoff", run["change"])
+        self.assertEqual(["contract:localization"], run["improved_components"])
+        self.assertEqual(["contract:contamination"], run["regressed_components"])
 
 
 if __name__ == "__main__":

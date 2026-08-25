@@ -198,6 +198,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_diagnostic_trace,
     build_systemic_markdown,
     compare_systemic_reports,
+    load_identity_boundary_feedback,
 )
 from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
@@ -700,6 +701,11 @@ def diagnose_pipeline(
         "--output-dir",
         help="Output directory; defaults to the video's immutable artifact namespace.",
     ),
+    identity_feedback_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        "--identity-feedback-root",
+        help="Existing identity shadow artifacts containing sermon-edge advisories.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -721,6 +727,10 @@ def diagnose_pipeline(
         fixture,
         youtube_video_id=video.youtube_video_id,
     )
+    identity_feedback = load_identity_boundary_feedback(
+        identity_feedback_root,
+        database_video_ids={video.id},
+    )
     trace = build_diagnostic_trace(
         proposed,
         proposed_path=proposed_path,
@@ -728,6 +738,7 @@ def diagnose_pipeline(
         database_video_id=video.id,
         fixture=reviewed_fixture,
         media_duration_seconds=float(video.duration_seconds) if video.duration_seconds else None,
+        identity_boundary_feedback=identity_feedback.get(video.id, []),
     )
     root = (
         output_dir.expanduser().resolve()
@@ -735,7 +746,7 @@ def diagnose_pipeline(
         else resolve_video_artifact_paths(database, paths, video).root / "diagnostics"
     )
     root.mkdir(parents=True, exist_ok=True)
-    trace_path = root / "diagnostic-trace-v3.json"
+    trace_path = root / "diagnostic-trace-v5.json"
     report_path = root / "diagnostic-report.md"
     trace_path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
     report_path.write_text(build_diagnostic_markdown(trace), encoding="utf-8")
@@ -764,6 +775,11 @@ def diagnose_pipeline_system(
         Path("evaluation/diagnostics"),
         help="Generated systemic diagnostic root.",
     ),
+    identity_feedback_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        "--identity-feedback-root",
+        help="Existing identity shadow artifacts containing sermon-edge advisories.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -771,6 +787,16 @@ def diagnose_pipeline_system(
         fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
     except FixtureValidationError as error:
         raise typer.BadParameter(str(error)) from error
+    fixture_database_video_ids = {
+        video.id
+        for reviewed_fixture in fixtures
+        if (video := database.get_video_by_youtube_id(reviewed_fixture.video_id))
+        is not None
+    }
+    identity_feedback = load_identity_boundary_feedback(
+        identity_feedback_root,
+        database_video_ids=fixture_database_video_ids,
+    )
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     output_dir = output_root.expanduser().resolve() / run_id
     video_root = output_dir / "videos"
@@ -819,11 +845,12 @@ def diagnose_pipeline_system(
             media_duration_seconds=(
                 float(video.duration_seconds) if video.duration_seconds else None
             ),
+            identity_boundary_feedback=identity_feedback.get(video.id, []),
         )
         traces.append(trace)
         per_video = video_root / video.youtube_video_id
         per_video.mkdir(parents=True, exist_ok=True)
-        (per_video / "diagnostic-trace-v3.json").write_text(
+        (per_video / "diagnostic-trace-v5.json").write_text(
             json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8"
         )
         (per_video / "diagnostic-report.md").write_text(
