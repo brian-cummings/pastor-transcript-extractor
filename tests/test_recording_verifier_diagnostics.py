@@ -216,8 +216,8 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
 
         self.assertEqual("sermon", result["predicted_outcome"])
         self.assertEqual("llm_recording_verifier", result["source"])
-        self.assertEqual("recording-sermon-verifier-v3", result["prompt_version"])
-        self.assertEqual("recording-sermon-verifier-policy-v4", result["policy_version"])
+        self.assertEqual("recording-sermon-verifier-v4", result["prompt_version"])
+        self.assertEqual("recording-sermon-verifier-policy-v5", result["policy_version"])
         self.assertEqual(
             ["sustained_biblical_exposition"],
             result["sermon_specific_reason_codes"],
@@ -259,6 +259,46 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
         self.assertIsNone(result["predicted_outcome"])
         self.assertEqual(["translated_or_alternating_speakers"], result["contradictory_reason_codes"])
         self.assertIn("explicit_contradictory_program_evidence", result["policy_reason_codes"])
+
+    def test_multi_speaker_attribution_cannot_negate_coherent_principal_message(self) -> None:
+        payload = proposed()
+        candidate = payload["classification"]["search"]["candidates"][0]
+        candidate.update(
+            {
+                "fine_support_block_ids": list(range(12)),
+                "boundary_recovery": {
+                    "discarded_component_block_ids": [],
+                    "objective_separator_block_ids": [],
+                },
+            }
+        )
+        client = FakeVerifierClient(
+            "multi_speaker_or_student_program",
+            reason_codes=[
+                "multiple_short_speakers_or_sermonettes",
+                "facilitated_group_structure",
+            ],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = verify_recording(
+                title="Worship service with a principal message",
+                proposed={"youtube_video_id": "fc-shape", **payload},
+                client=client,
+                model_digest="digest",
+                cache_dir=Path(tmp),
+            )
+
+        self.assertIsNone(result["predicted_outcome"])
+        self.assertEqual("unclear", result["decision"])
+        self.assertEqual("medium", result["confidence"])
+        self.assertEqual(
+            "multi_speaker_or_student_program",
+            result["model_verdict"]["decision"],
+        )
+        self.assertIn(
+            "coherent_principal_candidate_conflicts_with_multi_speaker_rejection",
+            result["policy_reason_codes"],
+        )
 
     def _assert_single_sustained_shape_requires_review(self, title: str) -> None:
         client = FakeVerifierClient(

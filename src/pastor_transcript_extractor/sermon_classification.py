@@ -701,6 +701,39 @@ def _refine_retained_boundaries(
     return refined, reasons, start_refinement
 
 
+def _apply_refinement_retention_safety(
+    proposed: set[int],
+    pre_refinement: set[int],
+    *,
+    objective_separator_block_ids: list[int],
+) -> tuple[set[int], dict[str, Any]]:
+    retention = len(proposed & pre_refinement) / max(len(pre_refinement), 1)
+    triggered = (
+        bool(pre_refinement)
+        and retention < 0.5
+        and not objective_separator_block_ids
+    )
+    evidence = {
+        "contract_version": "fine-retention-v1",
+        "triggered": triggered,
+        "pre_refinement_segment_count": len(pre_refinement),
+        "proposed_segment_count": len(proposed),
+        "proposed_retention_ratio": round(retention, 6),
+        "objective_separator_present": bool(objective_separator_block_ids),
+        "decision": (
+            "restore_pre_refinement_component"
+            if triggered
+            else "accept_boundary_refinement"
+        ),
+        "reason": (
+            "catastrophic_trim_without_independent_boundary_evidence"
+            if triggered
+            else "retention_within_contract_or_objective_separator_present"
+        ),
+    }
+    return (set(pre_refinement) if triggered else set(proposed)), evidence
+
+
 def _sustained_noise_separator_positions(
     positions: list[int], blocks: list[TranscriptBlock], drafts: list[SegmentDraft]
 ) -> set[int]:
@@ -1253,6 +1286,7 @@ def classify_sermon_content_adaptive(
     fine_blocks = [all_fine_blocks[position] for position in fine_positions]
     fine_audit = [fine_audit_by_position[position] for position in fine_positions]
 
+    pre_boundary_refinement_retained = set(retained)
     retained, refinement_reasons, start_refinement = _refine_retained_boundaries(
         drafts,
         fine_blocks,
@@ -1260,6 +1294,17 @@ def classify_sermon_content_adaptive(
         preserve_joined_start=selected_candidate.get("source") == "joined_coarse_llm",
         default_pre_roll_start=max(0.0, selected_range[0] - 120.0),
     )
+    objective_separator_ids = boundary_recovery["objective_separator_block_ids"]
+    retained, refinement_safety = _apply_refinement_retention_safety(
+        retained,
+        pre_boundary_refinement_retained,
+        objective_separator_block_ids=objective_separator_ids,
+    )
+    if refinement_safety["triggered"]:
+        refinement_reasons.append(
+            "rejected boundary trim that removed most coherent fine-supported content"
+        )
+    boundary_recovery["refinement_safety"] = refinement_safety
     retained_timed = [
         drafts[index]
         for index in retained

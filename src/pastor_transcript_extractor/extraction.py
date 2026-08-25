@@ -424,7 +424,37 @@ def _arbitrate_hybrid_window(
     adaptive_duration = max(ends) - min(starts) if starts and ends else 0.0
     if rule_duration > 0.0 and adaptive_duration >= rule_duration * 1.5:
         adaptive_score += 0.5
-    substantial_disagreement = bool(rule_indexes) and overlap < 0.5
+    rule_is_strict_subset = bool(rule_indexes) and rule_indexes < adaptive_indexes
+    rule_retention_of_adaptive = (
+        len(rule_indexes & adaptive_indexes) / max(len(adaptive_indexes), 1)
+    )
+    clipped_adaptive_seconds = sum(
+        max(0.0, float(drafts[index].end_seconds) - float(drafts[index].start_seconds))
+        for index in adaptive_indexes - rule_indexes
+        if drafts[index].start_seconds is not None and drafts[index].end_seconds is not None
+    )
+    objective_separators = (
+        recovery.get("objective_separator_block_ids") or []
+        if isinstance(recovery, dict)
+        else []
+    )
+    discarded_components = (
+        recovery.get("discarded_component_block_ids") or []
+        if isinstance(recovery, dict)
+        else []
+    )
+    coherent_supported_extension = (
+        rule_is_strict_subset
+        and rule_retention_of_adaptive < 0.9
+        and clipped_adaptive_seconds >= 60.0
+        and fine_support_count >= 3
+        and not objective_separators
+        and not discarded_components
+        and any(status == "recording_edge" for status in boundary_statuses)
+    )
+    substantial_disagreement = bool(rule_indexes) and (
+        overlap < 0.5 or coherent_supported_extension
+    )
     rule_alternative = _window_alternative(window)
     adaptive_alternative = {
         "source": "hybrid_llm",
@@ -436,7 +466,9 @@ def _arbitrate_hybrid_window(
         "fine_support_block_ids": list(selected.get("fine_support_block_ids") or []),
         "boundary_recovery": recovery,
     }
-    adaptive_stronger = adaptive_score > rule_score + 0.25
+    adaptive_stronger = (
+        adaptive_score > rule_score + 0.25 or coherent_supported_extension
+    )
     choose_adaptive = (
         not substantial_disagreement and hybrid.confidence_tier != "low"
     ) or (substantial_disagreement and adaptive_stronger)
@@ -458,11 +490,15 @@ def _arbitrate_hybrid_window(
         )
         rejected = adaptive_alternative
     arbitration = {
-        "schema_version": 1,
+        "schema_version": 2,
         "decision": decision,
         "reason": reason,
         "substantial_disagreement": substantial_disagreement,
         "segment_iou": round(overlap, 6),
+        "rule_is_strict_subset": rule_is_strict_subset,
+        "rule_retention_of_adaptive": round(rule_retention_of_adaptive, 6),
+        "clipped_adaptive_seconds": round(clipped_adaptive_seconds, 3),
+        "coherent_supported_extension": coherent_supported_extension,
         "adaptive_evidence_score": round(adaptive_score, 3),
         "rule_evidence_score": round(rule_score, 3),
         "recording_verifier_role": "sermon_existence_only",

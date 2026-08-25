@@ -10,8 +10,8 @@ from typing import Any, Iterable
 from pastor_transcript_extractor.fixture_validation import ValidatedFixture
 
 
-TRACE_SCHEMA_VERSION = 3
-CONTRACT_VERSION = "sermon-isolation-contracts-v3"
+TRACE_SCHEMA_VERSION = 4
+CONTRACT_VERSION = "sermon-isolation-contracts-v4"
 REVIEWED_COVERAGE_THRESHOLD = 0.90
 MAX_CONTAMINATION_RATIO = 0.10
 TIMELINE_WIDTH = 72
@@ -82,7 +82,7 @@ def diagnostic_contract_definition() -> dict[str, Any]:
                 "reviewed final output; automatic pre-override outcome must be reported separately"
             ),
             "overall_outcome": (
-                "composition of existence, localization, contamination, disposition, and "
+                "composition of existence, localization, contamination, verifier, disposition, and "
                 "manual-override state without hiding the component contracts"
             ),
         },
@@ -607,6 +607,7 @@ def _make_stage(
 
 
 def _observed_failure(stages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    contamination_tracked = {"selected", "joined", "fine", "arbitration", "final"}
     for stage in stages:
         contract = stage["contract"]
         if contract.get("status") == "fail":
@@ -616,6 +617,15 @@ def _observed_failure(stages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "message": contract.get("message"),
                 "observed": contract.get("observed"),
                 "threshold": contract.get("threshold"),
+            }
+        contamination = stage.get("quality_contracts", {}).get("contamination", {})
+        if stage["key"] in contamination_tracked and contamination.get("status") == "fail":
+            return {
+                "stage": stage["key"],
+                "code": "contamination_above_contract",
+                "message": "Selected-path contamination exceeds the precision contract.",
+                "observed": contamination.get("observed"),
+                "threshold": contamination.get("threshold"),
             }
     return None
 
@@ -659,10 +669,13 @@ def _root_cause(
         "final": ("final_disposition", "final_disposition_contract_failure"),
     }
     cause_stage, code = mapping.get(stage, (stage, "unclassified_contract_failure"))
+    if observed.get("code") == "contamination_above_contract":
+        code = "contamination_introduced_or_retained"
     current = by_key[stage]
     evidence = [
         f"contract={current['contract'].get('code')}",
         f"coverage={current['measurements'].get('reviewed_sermon_coverage')}",
+        f"contamination={current['measurements'].get('contamination_ratio')}",
         f"seconds_removed={current['transition'].get('seconds_removed')}",
     ]
     confidence = (
@@ -680,7 +693,7 @@ def _root_cause(
         "code": code,
         "confidence": confidence,
         "reason": (
-            f"The earliest measured coverage contract fails at {stage}; "
+            f"The earliest measured quality contract fails at {stage}; "
             "the hypothesis is limited to persisted evidence."
         ),
         "supporting_evidence": evidence,
@@ -756,25 +769,46 @@ def _outcome_contracts(
             "code": "negative_accepted" if accepted else "negative_not_accepted",
         }
     else:
-        rejected = final_disposition == "rejected_no_sermon"
+        rejected = final_disposition in {
+            "rejected_no_sermon",
+            "rejected_ambiguous_speakers",
+        }
         existence = {
             "status": "fail" if rejected else "pass",
             "code": "positive_rejected" if rejected else "positive_sermon_retained",
+        }
+    verifier = next(stage for stage in stages if stage["key"] == "verifier")
+    if fixture is None:
+        disposition_contract = {"status": "not_evaluated"}
+    elif fixture.expected_outcome == "no_sermon":
+        disposition_contract = {
+            "status": "fail" if final_disposition == "accepted_sermon" else (
+                "review_required" if final_disposition == "review_required" else "pass"
+            )
+        }
+    else:
+        disposition_contract = {
+            "status": (
+                "pass" if final_disposition == "accepted_sermon" else
+                "review_required" if final_disposition == "review_required" else "fail"
+            )
         }
     return {
         "existence": existence,
         "localization": final["quality_contracts"]["localization"],
         "contamination": final["quality_contracts"]["contamination"],
         "disposition": {
-            "status": final_disposition or "unknown",
+            **disposition_contract,
+            "value": final_disposition or "unknown",
             "automatically_accepted": final_disposition == "accepted_sermon",
         },
+        "verifier": dict(verifier["contract"]),
         "manual_override_applied": manual_override,
     }
 
 
 def _overall_outcome(outcome_contracts: dict[str, Any]) -> dict[str, Any]:
-    dimensions = ("existence", "localization", "contamination")
+    dimensions = ("existence", "localization", "contamination", "verifier", "disposition")
     failed = [
         dimension
         for dimension in dimensions
@@ -785,7 +819,7 @@ def _overall_outcome(outcome_contracts: dict[str, Any]) -> dict[str, Any]:
         for dimension in dimensions
         if outcome_contracts.get(dimension, {}).get("status") in {"pass", "fail"}
     ]
-    disposition = outcome_contracts.get("disposition", {}).get("status")
+    disposition = outcome_contracts.get("disposition", {}).get("value")
     manual_override = bool(outcome_contracts.get("manual_override_applied"))
     if failed:
         status = "fail"
@@ -1668,7 +1702,7 @@ def aggregate_diagnostic_traces(
         for signature in run_signatures:
             signatures.setdefault(signature, []).append(video_id)
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "report_kind": "sermon_isolation_systemic_diagnostics",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trace_count": len(traces),

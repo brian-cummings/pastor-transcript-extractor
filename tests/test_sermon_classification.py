@@ -40,6 +40,7 @@ from pastor_transcript_extractor.sermon_classification import (
     _candidate_strength,
     _candidate_score_components,
     _adaptive_confidence_tier,
+    _apply_refinement_retention_safety,
     _coarse_candidate_ranges,
     _joined_candidate,
     _long_recording_edge_expansion,
@@ -581,6 +582,71 @@ class HybridClassificationTests(unittest.TestCase):
 
         self.assertEqual("adaptive_selected", arbitration["decision"])
         self.assertTrue(arbitration["substantial_disagreement"])
+
+    def test_low_confidence_rule_subset_cannot_clip_supported_recording_edge(self) -> None:
+        drafts = [draft(index * 2.0, (index + 1) * 2.0, "sermon") for index in range(500)]
+        window = {
+            "start_seconds": 0.0,
+            "end_seconds": 840.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(420)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v5", "fixture", "fixture", "low", list(range(500)), [], [],
+            ["coarse and fine labels disagree across the candidate center"], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(12)),
+                    "boundary_recovery": {
+                        "anchored_component_block_ids": list(range(12)),
+                        "discarded_component_block_ids": [],
+                        "objective_separator_block_ids": [],
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=False
+        )
+
+        self.assertEqual("adaptive_selected", arbitration["decision"])
+        self.assertTrue(arbitration["coherent_supported_extension"])
+        self.assertAlmostEqual(0.84, arbitration["rule_retention_of_adaptive"])
+        self.assertEqual(160.0, arbitration["clipped_adaptive_seconds"])
+
+    def test_refinement_safety_restores_catastrophic_late_anchor_trim(self) -> None:
+        retained, evidence = _apply_refinement_retention_safety(
+            set(range(90, 100)),
+            set(range(100)),
+            objective_separator_block_ids=[],
+        )
+
+        self.assertEqual(set(range(100)), retained)
+        self.assertTrue(evidence["triggered"])
+        self.assertEqual(10, evidence["proposed_segment_count"])
+        self.assertEqual(
+            "catastrophic_trim_without_independent_boundary_evidence",
+            evidence["reason"],
+        )
+
+    def test_refinement_safety_allows_trim_with_objective_separator(self) -> None:
+        proposed_indexes = set(range(90, 100))
+        retained, evidence = _apply_refinement_retention_safety(
+            proposed_indexes,
+            set(range(100)),
+            objective_separator_block_ids=[7],
+        )
+
+        self.assertEqual(proposed_indexes, retained)
+        self.assertFalse(evidence["triggered"])
 
     def test_primary_discovery_skips_likelihood_rescue_when_it_finds_a_candidate(self) -> None:
         drafts = [

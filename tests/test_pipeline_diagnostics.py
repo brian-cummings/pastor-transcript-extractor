@@ -151,10 +151,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("fine", trace["earliest_observed_failure"]["stage"])
         self.assertEqual("fine_refinement", trace["root_cause_hypothesis"]["stage"])
         self.assertEqual(
-            "sermon-isolation-contracts-v3",
+            "sermon-isolation-contracts-v4",
             trace["contract_definition"]["version"],
         )
-        self.assertEqual(3, trace["schema_version"])
+        self.assertEqual(4, trace["schema_version"])
         self.assertEqual("refinement_loss", trace["candidate_regret"]["classification"])
         self.assertEqual("fail", trace["overall_outcome"]["status"])
         self.assertEqual("development", trace["cohort"]["evaluation_partition"])
@@ -361,6 +361,79 @@ class PipelineDiagnosticTests(unittest.TestCase):
             systemic["failure_signature_counts"],
         )
 
+    def test_positive_verifier_and_disposition_failures_are_composed_separately(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["classification"]["retained_segment_indexes"] = [0, 1, 2]
+            proposed["sermon_window"].update(
+                {
+                    "start_seconds": 0.0,
+                    "end_seconds": 300.0,
+                    "included_segment_indexes": [0, 1, 2],
+                }
+            )
+            proposed["recording_verification"] = {
+                "source": "llm_recording_verifier",
+                "decision": "multi_speaker_or_student_program",
+                "predicted_outcome": "no_sermon",
+                "confidence": "high",
+                "reason_codes": ["multiple_short_speakers_or_sermonettes"],
+            }
+            proposed["final_disposition"] = {
+                "status": "rejected_ambiguous_speakers",
+                "reason_codes": ["recording_verifier_multi_speaker_or_student_program"],
+            }
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+
+        self.assertEqual("pass", trace["outcome_contracts"]["localization"]["status"])
+        self.assertEqual("fail", trace["outcome_contracts"]["verifier"]["status"])
+        self.assertEqual("fail", trace["outcome_contracts"]["disposition"]["status"])
+        self.assertEqual(
+            "rejected_ambiguous_speakers",
+            trace["outcome_contracts"]["disposition"]["value"],
+        )
+        self.assertEqual("fail", trace["overall_outcome"]["status"])
+        self.assertIn("verifier", trace["overall_outcome"]["failed_dimensions"])
+        self.assertIn("disposition", trace["overall_outcome"]["failed_dimensions"])
+
+    def test_final_contamination_breach_is_an_observed_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["classification"]["retained_segment_indexes"] = [0, 1, 2]
+            proposed["sermon_window"].update(
+                {
+                    "start_seconds": 0.0,
+                    "end_seconds": 400.0,
+                    "included_segment_indexes": [0, 1, 2, 3],
+                }
+            )
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+
+        self.assertEqual("arbitration", trace["earliest_observed_failure"]["stage"])
+        self.assertEqual(
+            "contamination_above_contract",
+            trace["earliest_observed_failure"]["code"],
+        )
+        self.assertEqual(
+            "contamination_introduced_or_retained",
+            trace["root_cause_hypothesis"]["code"],
+        )
+        self.assertEqual("fail", trace["overall_outcome"]["status"])
+
     def test_systemic_view_separates_observed_failures_from_hypotheses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -449,7 +522,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("selected", attribution["earliest_breach_stage"])
         self.assertIn("end_overreach", attribution["final_boundary_error_patterns"])
         systemic = aggregate_diagnostic_traces([trace])
-        self.assertEqual(3, systemic["schema_version"])
+        self.assertEqual(4, systemic["schema_version"])
         self.assertEqual(1, systemic["unknown_evaluation_partition_count"])
         self.assertEqual(
             [0, 0, 0, 1],

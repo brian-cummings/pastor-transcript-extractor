@@ -13,8 +13,8 @@ from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmRespon
 from pastor_transcript_extractor.storage import Database
 
 
-PROMPT_VERSION = "recording-sermon-verifier-v3"
-POLICY_VERSION = "recording-sermon-verifier-policy-v4"
+PROMPT_VERSION = "recording-sermon-verifier-v4"
+POLICY_VERSION = "recording-sermon-verifier-policy-v5"
 ARTIFACT_SCHEMA_VERSION = 1
 DECISIONS = (
     "worship_service_sermon",
@@ -165,6 +165,7 @@ UNCLEAR means the supplied evidence cannot reliably distinguish these outcomes.
 The title is useful context but may be stale or misleading. Give transcript structure priority. Do not call rhetorical questions, quoted dialogue, or brief congregational responses multiple speakers. Return only the required JSON.
 An explicit Bible Class or Sabbath School title is religious education, even when one teacher gives a long monologue, unless the evidence clearly contains a separate worship-service sermon. A sermon-like title or introduction is never sufficient by itself. WORSHIP_SERVICE_SERMON requires both single_sustained_message and independent sermon-specific evidence: sustained_biblical_exposition or sermon_application_or_exhortation.
 Actively check for contradictions before accepting: curriculum or facilitated instruction; ceremonies or extended religious speeches; translation or regular alternation between speakers; and programs containing several speakers without one principal sermon. Include every supported negative or contradictory reason code. If positive and contradictory evidence are both plausible, choose UNCLEAR rather than worship_service_sermon.
+Do not infer that a recording lacks a sermon merely because its opening, closing, or service context contains several speakers. MULTI_SPEAKER_OR_STUDENT_PROGRAM requires evidence that the sampled candidate itself is divided into short messages or regular alternation and has no principal sustained sermon. When one long candidate remains sermon-like but speaker attribution is uncertain, choose UNCLEAR; this verifier decides sermon existence, not pastor identity.
 
 {case.evidence_packet}"""
 
@@ -234,7 +235,33 @@ def validate_verdict(content: dict[str, Any]) -> None:
         raise ValueError("worship-service sermon lacks sustained-message evidence")
 
 
-def _apply_acceptance_policy(content: dict[str, Any]) -> dict[str, Any]:
+def _has_coherent_principal_candidate(proposed: dict[str, Any] | None) -> bool:
+    classification = proposed.get("classification") if isinstance(proposed, dict) else None
+    search = classification.get("search") if isinstance(classification, dict) else None
+    candidates = search.get("candidates") if isinstance(search, dict) else None
+    selected_rank = search.get("selected_rank") if isinstance(search, dict) else None
+    selected = next(
+        (
+            candidate
+            for candidate in candidates or []
+            if isinstance(candidate, dict) and candidate.get("rank") == selected_rank
+        ),
+        None,
+    )
+    if not isinstance(selected, dict):
+        return False
+    recovery = selected.get("boundary_recovery")
+    return (
+        len(selected.get("fine_support_block_ids") or []) >= 6
+        and isinstance(recovery, dict)
+        and not recovery.get("discarded_component_block_ids")
+        and not recovery.get("objective_separator_block_ids")
+    )
+
+
+def _apply_acceptance_policy(
+    content: dict[str, Any], *, proposed: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Require two-factor sermon evidence and preserve the model's raw verdict."""
     decision = str(content["decision"])
     confidence = str(content["confidence"])
@@ -250,6 +277,16 @@ def _apply_acceptance_policy(content: dict[str, Any]) -> dict[str, Any]:
         if policy_reasons:
             decision = "unclear"
             confidence = "medium" if content["confidence"] == "high" else "low"
+    elif (
+        decision == "multi_speaker_or_student_program"
+        and confidence == "high"
+        and _has_coherent_principal_candidate(proposed)
+    ):
+        policy_reasons.append(
+            "coherent_principal_candidate_conflicts_with_multi_speaker_rejection"
+        )
+        decision = "unclear"
+        confidence = "medium"
     return {
         "decision": decision,
         "confidence": confidence,
@@ -369,7 +406,7 @@ def verify_recording(
                 "confidence": confidence,
                 "reason_codes": list(reason_codes),
             }
-            policy = _apply_acceptance_policy(response.content)
+            policy = _apply_acceptance_policy(response.content, proposed=proposed)
             decision = policy["decision"]
             confidence = policy["confidence"]
             reason_codes = policy["reason_codes"]

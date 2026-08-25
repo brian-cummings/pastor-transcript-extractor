@@ -125,6 +125,24 @@ class FinalDispositionTests(unittest.TestCase):
         self.assertEqual("rejected_ambiguous_speakers", result["status"])
         self.assertTrue(result["diagnostic_candidate_present"])
 
+    def test_attribution_ambiguity_with_supported_sermon_requires_review(self) -> None:
+        result = build_final_disposition(
+            {"confidence_tier": "medium", "retained_segment_indexes": [1, 2]},
+            {"start_seconds": 60.0, "end_seconds": 600.0, "source": "hybrid_llm"},
+            recording_verification={
+                "policy_version": "recording-sermon-verifier-policy-v5",
+                "decision": "unclear",
+                "predicted_outcome": None,
+                "model_verdict": {
+                    "decision": "multi_speaker_or_student_program",
+                    "confidence": "high",
+                },
+            },
+        )
+
+        self.assertEqual("review_required", result["status"])
+        self.assertEqual(["medium_confidence_requires_review"], result["reason_codes"])
+
     def test_guest_speaker_safeguard_precedes_recording_verifier(self) -> None:
         result = build_final_disposition(
             {"confidence_tier": "medium", "retained_segment_indexes": [1, 2]},
