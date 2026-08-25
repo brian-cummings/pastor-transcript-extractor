@@ -168,7 +168,28 @@ def plan_machine_assignments(
         for event in latest_events.values()
         if event["action"] == "activate"
     }
-    tripped = _tripped_policy_fingerprints(evidence_rows, events)
+    tripped = set(_tripped_policy_fingerprints(evidence_rows, events))
+    tripped_provenance = _tripped_assignment_provenance(
+        database,
+        evidence_rows=evidence_rows,
+        events=events,
+    )
+    for evidence in evidence_rows:
+        try:
+            profile_id = database.resolve_speaker_profile_id(
+                int(evidence["profile_id"])
+            )
+        except ValueError:
+            continue
+        disposition = _reviewed_evidence_disposition(
+            database,
+            evidence=evidence,
+            profile_id=profile_id,
+        )
+        if disposition is not None and disposition[1].startswith(
+            "contradiction:"
+        ):
+            tripped.add(str(evidence["policy_fingerprint"]))
     skipped: dict[str, int] = {}
     candidates_by_evidence: dict[str, MachineAssignmentCandidate] = {}
     for path in sorted(
@@ -426,6 +447,11 @@ def plan_machine_assignments(
             different_exemplar_count=different_count,
             evidence_fingerprint=_sha256(stable),
         )
+        if (
+            candidate.model_fingerprint,
+            str(association_policy_sha256),
+        ) in tripped_provenance:
+            tripped.add(candidate.policy_fingerprint)
         persisted = evidence_by_fingerprint.get(candidate.evidence_fingerprint)
         persisted_event = (
             latest_events.get(int(persisted["id"]))
@@ -452,7 +478,7 @@ def plan_machine_assignments(
             )
         ),
         skipped_counts=dict(sorted(skipped.items())),
-        tripped_policy_fingerprints=tripped,
+        tripped_policy_fingerprints=frozenset(tripped),
     )
 
 
@@ -558,74 +584,55 @@ def reconcile_machine_assignments(
     }
     events = database.list_speaker_machine_assignment_events()
     latest = _latest_events_by_evidence(events)
-    active = [event for event in latest.values() if event["action"] == "activate"]
     confirmed = revoked = unchanged = 0
     newly_tripped: set[str] = set()
-    for event in active:
-        evidence = evidence_by_id.get(int(event["machine_evidence_id"]))
-        if evidence is None:
+    for evidence_id, evidence in sorted(evidence_by_id.items()):
+        event = latest.get(evidence_id)
+        if event is not None and event["action"] in {"confirm", "revoke"}:
             continue
-        observation_id = int(event["observation_id"])
-        profile_id = database.resolve_speaker_profile_id(int(event["profile_id"]))
-        memberships = {
-            database.resolve_speaker_profile_id(value)
-            for value in database.list_effective_profile_ids_for_observation(
-                observation_id
+        observation_id = int(evidence["observation_id"])
+        profile_id = database.resolve_speaker_profile_id(
+            int(evidence["profile_id"])
+        )
+        disposition = _reviewed_evidence_disposition(
+            database,
+            evidence=evidence,
+            profile_id=profile_id,
+        )
+        action, reason = disposition if disposition is not None else (None, None)
+        if action is None and event is not None and event["action"] == "activate":
+            observation = database.get_speaker_observation(observation_id)
+            eligibility = (
+                assess_automatic_speaker_observation(
+                    database,
+                    observation.video_id,
+                    verification_cache=verification_cache,
+                )
+                if observation is not None
+                else None
             )
-        }
-        action = None
-        reason = None
-        if profile_id in memberships:
-            action = "confirm"
-            reason = "Reviewed evidence confirmed provisional assignment"
-            confirmed += 1
-        elif memberships:
-            action = "revoke"
-            reason = "contradiction:reviewed_membership_targets_other_profile"
-        else:
-            target_members = database.list_effective_observation_ids_for_profile(
-                profile_id
-            )
-            different_pairs = set(
-                database.list_effective_observation_difference_pairs()
-            )
-            if any(
-                tuple(sorted((observation_id, member_id))) in different_pairs
-                for member_id in target_members
+            if (
+                eligibility is None
+                or not eligibility.eligible
+                or eligibility.observation is None
+                or eligibility.observation.id != observation_id
+                or eligibility.observation.input_fingerprint
+                != evidence["candidate_input_fingerprint"]
+                or not _machine_evidence_provenance_current(
+                    database,
+                    evidence=evidence,
+                    profile_id=profile_id,
+                    eligibility=eligibility,
+                    verification_cache=verification_cache,
+                )
             ):
                 action = "revoke"
-                reason = "contradiction:reviewed_difference_against_profile"
-            else:
-                observation = database.get_speaker_observation(observation_id)
-                eligibility = (
-                    assess_automatic_speaker_observation(
-                        database,
-                        observation.video_id,
-                        verification_cache=verification_cache,
-                    )
-                    if observation is not None
-                    else None
-                )
-                if (
-                    eligibility is None
-                    or not eligibility.eligible
-                    or eligibility.observation is None
-                    or eligibility.observation.id != observation_id
-                    or eligibility.observation.input_fingerprint
-                    != evidence["candidate_input_fingerprint"]
-                    or not _machine_evidence_provenance_current(
-                        database,
-                        evidence=evidence,
-                        profile_id=profile_id,
-                        eligibility=eligibility,
-                        verification_cache=verification_cache,
-                    )
-                ):
-                    action = "revoke"
-                    reason = "stale:candidate_observation_no_longer_current"
+                reason = "stale:candidate_observation_no_longer_current"
         if action is None:
             unchanged += 1
             continue
+        if action == "confirm":
+            confirmed += 1
         if action == "revoke":
             revoked += 1
             if str(reason).startswith("contradiction:"):
@@ -705,7 +712,25 @@ def machine_assignment_status(database: Database) -> dict[str, object]:
     for row in evidence:
         event = latest.get(int(row["id"]))
         state = "evidence_only"
-        if event is None:
+        try:
+            resolved_profile_id = database.resolve_speaker_profile_id(
+                int(row["profile_id"])
+            )
+        except ValueError:
+            resolved_profile_id = int(row["profile_id"])
+        reviewed_disposition = _reviewed_evidence_disposition(
+            database,
+            evidence=row,
+            profile_id=resolved_profile_id,
+        )
+        if reviewed_disposition is not None:
+            state = (
+                "confirmed"
+                if reviewed_disposition[0] == "confirm"
+                else "revoked"
+            )
+            counts[state] += 1
+        elif event is None:
             counts["evidence_only"] += 1
         elif event["action"] == "activate":
             counts["active"] += 1
@@ -723,13 +748,37 @@ def machine_assignment_status(database: Database) -> dict[str, object]:
         )
         grouped[state] += 1
     report = machine_assignment_report(database)
+    policy_health: dict[str, dict[str, int]] = {}
+    for assignment in report["assignments"]:
+        grouped = policy_health.setdefault(
+            str(assignment["policy_fingerprint"]),
+            {
+                "reviewed_confirmed": 0,
+                "reviewed_contradicted": 0,
+                "pending_review": 0,
+                "other_revoked": 0,
+            },
+        )
+        if assignment["state"] == "confirmed":
+            grouped["reviewed_confirmed"] += 1
+        elif str(assignment["reason"]).startswith("contradiction:"):
+            grouped["reviewed_contradicted"] += 1
+        elif assignment["state"] in {
+            "active",
+            "awaiting_activation",
+            "blocked_policy",
+        }:
+            grouped["pending_review"] += 1
+        else:
+            grouped["other_revoked"] += 1
     return {
         "evidence_count": len(evidence),
         "event_count": len(events),
         "counts": counts,
         "policies": dict(sorted(policy_counts.items())),
-        "tripped_policy_fingerprints": sorted(
-            _tripped_policy_fingerprints(evidence, events)
+        "policy_health": dict(sorted(policy_health.items())),
+        "tripped_policy_fingerprints": list(
+            report["tripped_policy_fingerprints"]
         ),
         "current_counts": report["counts"],
         "profile_counts": report["profile_counts"],
@@ -743,7 +792,31 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
     evidence_rows = database.list_speaker_machine_evidence()
     events = database.list_speaker_machine_assignment_events()
     latest_events = _latest_events_by_evidence(events)
-    tripped_policies = _tripped_policy_fingerprints(evidence_rows, events)
+    tripped_policies = set(_tripped_policy_fingerprints(evidence_rows, events))
+    tripped_provenance = _tripped_assignment_provenance(
+        database,
+        evidence_rows=evidence_rows,
+        events=events,
+    )
+    for evidence in evidence_rows:
+        try:
+            profile_id = database.resolve_speaker_profile_id(
+                int(evidence["profile_id"])
+            )
+        except ValueError:
+            continue
+        disposition = _reviewed_evidence_disposition(
+            database,
+            evidence=evidence,
+            profile_id=profile_id,
+        )
+        if disposition is not None and disposition[1].startswith(
+            "contradiction:"
+        ):
+            tripped_policies.add(str(evidence["policy_fingerprint"]))
+        provenance = _machine_evidence_provenance_key(evidence)
+        if provenance is not None and provenance in tripped_provenance:
+            tripped_policies.add(str(evidence["policy_fingerprint"]))
     evidence_by_id = {int(row["id"]): row for row in evidence_rows}
     observations_by_id = {
         observation.id: observation
@@ -772,7 +845,17 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
             else None
         )
         event = latest_events.get(evidence_id)
-        if event is None:
+        reviewed_disposition = _reviewed_evidence_disposition(
+            database,
+            evidence=evidence,
+            profile_id=profile_id,
+        )
+        if reviewed_disposition is not None:
+            reviewed_action, reviewed_reason = reviewed_disposition
+            state = "confirmed" if reviewed_action == "confirm" else "revoked"
+            reason = reviewed_reason
+            event_created_at = None
+        elif event is None:
             if str(evidence["policy_fingerprint"]) in tripped_policies:
                 state = "blocked_policy"
                 reason = "policy_circuit_breaker_tripped"
@@ -792,6 +875,9 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
             {
                 "machine_evidence_id": evidence_id,
                 "observation_id": observation_id,
+                "candidate_input_fingerprint": str(
+                    evidence["candidate_input_fingerprint"]
+                ),
                 "youtube_video_id": (
                     video.youtube_video_id if video is not None else None
                 ),
@@ -816,13 +902,17 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
             }
         )
 
-    state_precedence = {
-        "confirmed": 5,
-        "active": 4,
-        "blocked_policy": 3,
-        "awaiting_activation": 2,
-        "revoked": 1,
-    }
+    def state_precedence(assignment: Mapping[str, object]) -> int:
+        state = str(assignment["state"])
+        reason = str(assignment["reason"])
+        if state == "confirmed" or reason.startswith("contradiction:"):
+            return 6
+        return {
+            "active": 5,
+            "blocked_policy": 4,
+            "awaiting_activation": 3,
+            "revoked": 2,
+        }[state]
     current_by_association: dict[
         tuple[int, int], dict[str, object]
     ] = {}
@@ -833,7 +923,7 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
         )
         persisted = current_by_association.get(key)
         assignment_rank = (
-            state_precedence[str(assignment["state"])],
+            state_precedence(assignment),
             str(
                 assignment["event_created_at"]
                 or assignment["evidence_created_at"]
@@ -842,7 +932,7 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
         )
         persisted_rank = (
             (
-                state_precedence[str(persisted["state"])],
+                state_precedence(persisted),
                 str(
                     persisted["event_created_at"]
                     or persisted["evidence_created_at"]
@@ -899,12 +989,43 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
             and str(evidence["policy_fingerprint"])
             == policy_fingerprint
         ]
-        if not triggering_events:
-            continue
-        trigger = min(triggering_events, key=lambda item: int(item["id"]))
-        trigger_observation = observations_by_id.get(
-            int(trigger["observation_id"])
-        )
+        if triggering_events:
+            trigger = min(triggering_events, key=lambda item: int(item["id"]))
+            trigger_observation_id = int(trigger["observation_id"])
+            trigger_profile_id = int(trigger["profile_id"])
+            trigger_reason = str(trigger["reason"])
+            trigger_created_at = str(trigger["created_at"])
+        else:
+            triggering_evidence = []
+            for evidence in evidence_rows:
+                if str(evidence["policy_fingerprint"]) != policy_fingerprint:
+                    continue
+                try:
+                    resolved_profile_id = database.resolve_speaker_profile_id(
+                        int(evidence["profile_id"])
+                    )
+                except ValueError:
+                    continue
+                disposition = _reviewed_evidence_disposition(
+                    database,
+                    evidence=evidence,
+                    profile_id=resolved_profile_id,
+                )
+                if disposition is not None and disposition[1].startswith(
+                    "contradiction:"
+                ):
+                    triggering_evidence.append(
+                        (evidence, resolved_profile_id, disposition[1])
+                    )
+            if not triggering_evidence:
+                continue
+            evidence, trigger_profile_id, trigger_reason = min(
+                triggering_evidence,
+                key=lambda item: int(item[0]["id"]),
+            )
+            trigger_observation_id = int(evidence["observation_id"])
+            trigger_created_at = str(evidence["created_at"])
+        trigger_observation = observations_by_id.get(trigger_observation_id)
         trigger_video = (
             videos_by_id.get(trigger_observation.video_id)
             if trigger_observation is not None
@@ -913,15 +1034,15 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
         policy_trips.append(
             {
                 "policy_fingerprint": policy_fingerprint,
-                "reason": str(trigger["reason"]),
-                "created_at": str(trigger["created_at"]),
-                "observation_id": int(trigger["observation_id"]),
+                "reason": trigger_reason,
+                "created_at": trigger_created_at,
+                "observation_id": trigger_observation_id,
                 "youtube_video_id": (
                     trigger_video.youtube_video_id
                     if trigger_video is not None
                     else None
                 ),
-                "profile_id": int(trigger["profile_id"]),
+                "profile_id": trigger_profile_id,
             }
         )
     return {
@@ -950,6 +1071,46 @@ def active_machine_assignment_evidence(
         for evidence_id, event in sorted(latest.items())
         if event["action"] == "activate" and evidence_id in evidence_by_id
     )
+
+
+def _reviewed_evidence_disposition(
+    database: Database,
+    *,
+    evidence: Mapping[str, object],
+    profile_id: int,
+) -> tuple[str, str] | None:
+    """Project authoritative reviewed identity over a machine proposal."""
+    observation_id = int(evidence["observation_id"])
+    memberships = {
+        database.resolve_speaker_profile_id(value)
+        for value in database.list_effective_profile_ids_for_observation(
+            observation_id
+        )
+    }
+    if profile_id in memberships:
+        return (
+            "confirm",
+            "Reviewed evidence confirmed machine assignment evidence",
+        )
+    if memberships:
+        return (
+            "revoke",
+            "contradiction:reviewed_membership_targets_other_profile",
+        )
+    different_pairs = set(
+        database.list_effective_observation_difference_pairs()
+    )
+    if any(
+        tuple(sorted((observation_id, member_id))) in different_pairs
+        for member_id in database.list_effective_observation_ids_for_profile(
+            profile_id
+        )
+    ):
+        return (
+            "revoke",
+            "contradiction:reviewed_difference_against_profile",
+        )
+    return None
 
 
 def _load_verified_association(path: Path) -> dict[str, Any] | None:
@@ -1110,6 +1271,65 @@ def _tripped_policy_fingerprints(
         if str(event["reason"]).startswith("contradiction:")
         and int(event["machine_evidence_id"]) in evidence_by_id
     )
+
+
+def _tripped_assignment_provenance(
+    database: Database,
+    *,
+    evidence_rows: Sequence[Mapping[str, object]],
+    events: Sequence[Mapping[str, object]],
+) -> frozenset[tuple[str, str]]:
+    latest = _latest_events_by_evidence(events)
+    tripped: set[tuple[str, str]] = set()
+    for evidence in evidence_rows:
+        event = latest.get(int(evidence["id"]))
+        event_contradiction = event is not None and str(
+            event["reason"]
+        ).startswith("contradiction:")
+        try:
+            profile_id = database.resolve_speaker_profile_id(
+                int(evidence["profile_id"])
+            )
+        except ValueError:
+            continue
+        disposition = _reviewed_evidence_disposition(
+            database,
+            evidence=evidence,
+            profile_id=profile_id,
+        )
+        reviewed_contradiction = (
+            disposition is not None
+            and disposition[1].startswith("contradiction:")
+        )
+        if not event_contradiction and not reviewed_contradiction:
+            continue
+        provenance = _machine_evidence_provenance_key(evidence)
+        if provenance is not None:
+            tripped.add(provenance)
+    return frozenset(tripped)
+
+
+def _machine_evidence_provenance_key(
+    evidence: Mapping[str, object],
+) -> tuple[str, str] | None:
+    try:
+        report = _load_verified_association(
+            Path(str(evidence["association_artifact_path"]))
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    policy = report.get("policy") if report is not None else None
+    association_policy_sha256 = (
+        policy.get("artifact_sha256")
+        if isinstance(policy, Mapping)
+        else None
+    )
+    model_fingerprint = evidence.get("model_fingerprint")
+    if not isinstance(model_fingerprint, str) or not isinstance(
+        association_policy_sha256, str
+    ):
+        return None
+    return model_fingerprint, association_policy_sha256
 
 
 def _append_assignment_event(

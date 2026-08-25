@@ -145,6 +145,27 @@ pte identity machine-assignment-status \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
+The status projection treats current reviewed membership as authoritative for
+all machine evidence, including evidence that was never provisionally
+activated. Reviewed matches appear confirmed, reviewed matches to another
+profile appear revoked as contradictions, and neither remains in the activation
+queue. Policy health counts use current deduplicated sermon/profile
+associations rather than raw historical evidence rows.
+
+Review the next pending or circuit-blocked machine proposal through the normal
+blinded exact-span packet:
+
+```bash
+pte identity review-next-speaker-pair \
+  --selection-objective automation-readiness \
+  --reviewer REVIEWER_ID \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+Machine-validation nominations are prioritized over ordinary association
+confirmations. The machine outcome remains hidden and the approved human pair
+judgment is still the only durable identity evidence.
+
 Human-on-loop activation requires both:
 
 1. an automatic-profile-ready target; and
@@ -162,8 +183,11 @@ activation. The default is activated by `pte identity run --all
 available. Normal `pte identity run` and top-level `pte run --identity` record
 evidence but do not activate it. Automatic-ready targets are withheld from the
 ordinary blinded review queue. One reviewed contradiction trips the exact
-policy fingerprint and revokes every remaining active assignment under it. Any
-policy can also be rolled back explicitly:
+policy fingerprint and revokes every remaining active assignment under it.
+The trip also follows the implicated acoustic-model and association-policy
+provenance across machine rollout-policy revisions; changing only a cap or
+rollout artifact cannot silently reactivate the same contradicted decision
+system. Any policy can also be rolled back explicitly:
 
 ```bash
 pte identity rollback-machine-assignments \

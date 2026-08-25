@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v26"
+SELECTOR_VERSION = "speaker_pair_selector_v27"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -141,6 +141,7 @@ class AssociationConfirmationPair:
     report_result_sha256: str
     report_path: str
     provisional_assignment_active: bool = False
+    machine_assignment_reviewable: bool = False
 
     @property
     def pair_key(self) -> frozenset[str]:
@@ -827,6 +828,9 @@ def select_next_speaker_pair(
             "provisional_assignment_active": (
                 selected_association.provisional_assignment_active
             ),
+            "machine_assignment_reviewable": (
+                selected_association.machine_assignment_reviewable
+            ),
             "durable_evidence_source": "approved_blinded_pair_review_only",
         }
     if anchor_component is not None:
@@ -1118,7 +1122,13 @@ def _select_association_confirmation_pair(
             != nomination.exemplar_fingerprint
             or candidate.reviewed_profile_ids
             or nomination.profile_id not in exemplar.reviewed_profile_ids
-            or nomination.profile_id in automatic_profile_ready_ids
+            or (
+                nomination.profile_id in automatic_profile_ready_ids
+                and not (
+                    nomination.provisional_assignment_active
+                    or nomination.machine_assignment_reviewable
+                )
+            )
             or disfavored.get(candidate.input_fingerprint, 0)
             or disfavored.get(exemplar.input_fingerprint, 0)
         ):
@@ -1129,7 +1139,12 @@ def _select_association_confirmation_pair(
     pair, selected_nomination = min(
         eligible,
         key=lambda item: (
-            0 if item[1].provisional_assignment_active else 1,
+            0
+            if (
+                item[1].provisional_assignment_active
+                or item[1].machine_assignment_reviewable
+            )
+            else 1,
             -item[1].same_comparison_count,
             -item[1].same_boundary_margin,
             _rank_pair(
@@ -1153,7 +1168,10 @@ def _select_association_confirmation_pair(
         relation,
         (
             "machine_assignment_validation"
-            if selected_nomination.provisional_assignment_active
+            if (
+                selected_nomination.provisional_assignment_active
+                or selected_nomination.machine_assignment_reviewable
+            )
             else "shadow_association_confirmation"
         ),
         (

@@ -933,9 +933,10 @@ The same run now projects qualifying current proposals into a separate,
 append-only machine-evidence ledger. It requires a current accepted-sermon
 observation, an automatic-profile-ready target, a unique multi-exemplar match,
 no conflicting attribution or reviewed difference, and excludes held-out
-fixture observations. The checked-in policy is shadow-only: it records
-replayable evidence but creates neither reviewed membership nor an active
-provisional assignment. `machine-assignment-status` reports evidence, active,
+fixture observations. The checked-in human-on-loop policy permits explicitly
+requested provisional activation, while normal runs only record replayable
+evidence. Neither mode creates reviewed membership.
+`machine-assignment-status` reports evidence, active,
 confirmed, revoked, and circuit-breaker state by exact policy fingerprint.
 Use `--details` for the current sermon-level ledger, with `--profile-id` and
 `--state` to narrow it. `profile-status` keeps reviewed membership separate and
@@ -1029,11 +1030,15 @@ pte identity run --all \
 
 Active provisional assignments remain outside reviewed profile membership and
 cannot become acoustic exemplars. Automatic-ready profile proposals no longer
-consume the normal blinded pair-review queue. Operators can inspect active and
-evidence-only assignments with `machine-assignment-status`; stale or rejected
-sermon observations are revoked conservatively, and reviewed contradictions
-trip the exact policy fingerprint. Rollback is plan-only unless `--apply` is
-passed. A different policy can still be supplied explicitly with
+consume general profile reinforcement capacity, but active, awaiting, and
+policy-blocked machine proposals remain eligible for prioritized blinded human
+validation. Operators can inspect them with `machine-assignment-status`, then
+run `review-next-speaker-pair --selection-objective automation-readiness` to
+review the next exact candidate/exemplar edge. Reviewed membership is projected
+over every evidence row whether or not it was first activated; reviewed
+contradictions trip the exact policy fingerprint. Stale active assignments are
+revoked conservatively. Rollback is plan-only unless `--apply` is passed. A
+different policy can still be supplied explicitly with
 `--machine-assignment-policy`.
 
 ## Planning Docs

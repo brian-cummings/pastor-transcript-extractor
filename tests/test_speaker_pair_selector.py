@@ -259,6 +259,7 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         profile_id: int = 7,
         margin: float = 0.08,
         provisional_assignment_active: bool = False,
+        machine_assignment_reviewable: bool = False,
     ) -> AssociationConfirmationPair:
         return AssociationConfirmationPair(
             candidate_fingerprint=candidate_fingerprint,
@@ -269,6 +270,7 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             report_result_sha256="a" * 64,
             report_path="association.json",
             provisional_assignment_active=provisional_assignment_active,
+            machine_assignment_reviewable=machine_assignment_reviewable,
         )
 
     def test_default_selection_goal_preserves_evaluation_selector(self) -> None:
@@ -873,7 +875,7 @@ class SpeakerPairSelectorTests(unittest.TestCase):
                 automatic_profile_ready_ids=frozenset((7,)),
             )
 
-    def test_ready_active_assignment_does_not_displace_nonready_nomination(
+    def test_ready_active_assignment_is_prioritized_for_validation(
         self,
     ) -> None:
         selected = select_next_speaker_pair(
@@ -904,19 +906,47 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {"shadow-candidate", "shadow-exemplar"},
+            {"active-candidate", "active-exemplar"},
             {
                 selected.observation_a.input_fingerprint,
                 selected.observation_b.input_fingerprint,
             },
         )
         self.assertEqual(
-            "shadow_association_confirmation",
+            "machine_assignment_validation",
             selected.manifest["selection_objective"],
         )
         provenance = selected.manifest["shadow_association_confirmation"]
-        self.assertFalse(provenance["provisional_assignment_active"])
+        self.assertTrue(provenance["provisional_assignment_active"])
         self.assertFalse(provenance["identity_evidence"])
+
+    def test_blocked_machine_assignment_remains_reviewable(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("candidate"),
+                candidate("ready", profile_ids=frozenset((7,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            association_confirmation_pairs=(
+                self._association_nomination(
+                    "candidate",
+                    "ready",
+                    machine_assignment_reviewable=True,
+                ),
+            ),
+            automatic_profile_ready_ids=frozenset((7,)),
+        )
+
+        self.assertEqual(
+            "machine_assignment_validation",
+            selected.manifest["selection_objective"],
+        )
+        self.assertTrue(
+            selected.manifest["shadow_association_confirmation"][
+                "machine_assignment_reviewable"
+            ]
+        )
 
     def test_stale_association_candidate_is_excluded_after_profile_assignment(
         self,

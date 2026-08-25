@@ -6452,12 +6452,26 @@ def machine_assignment_status_command(
         f"revoked={current_counts['revoked']}."
     )
     for policy_fingerprint, policy_counts in status["policies"].items():
+        health = status["policy_health"].get(
+            policy_fingerprint,
+            {
+                "reviewed_confirmed": 0,
+                "reviewed_contradicted": 0,
+                "pending_review": 0,
+                "other_revoked": 0,
+            },
+        )
         console.print(
             f"  policy={policy_fingerprint} "
             f"evidence_only={policy_counts['evidence_only']} "
             f"active={policy_counts['active']} "
             f"confirmed={policy_counts['confirmed']} "
-            f"revoked={policy_counts['revoked']}"
+            f"revoked={policy_counts['revoked']} "
+            f"current_reviewed_confirmed="
+            f"{health['reviewed_confirmed']} "
+            f"current_reviewed_contradicted="
+            f"{health['reviewed_contradicted']} "
+            f"current_pending_review={health['pending_review']}"
         )
     for trip in status["policy_trips"]:
         trigger = trip["youtube_video_id"] or (
@@ -8221,6 +8235,16 @@ def review_next_speaker_pair(
             SelectionGoal.PROFILE_GROWTH,
             SelectionGoal.AUTOMATION_READINESS,
         }:
+            machine_report = machine_assignment_report(database)
+            reviewable_machine_keys = {
+                (
+                    str(item["candidate_input_fingerprint"]),
+                    int(item["profile_id"]),
+                )
+                for item in machine_report["assignments"]
+                if item["state"]
+                in {"active", "awaiting_activation", "blocked_policy"}
+            }
             active_machine_keys = {
                 (
                     str(row["candidate_input_fingerprint"]),
@@ -8269,6 +8293,13 @@ def review_next_speaker_pair(
                                 canonical_profile_id,
                             )
                             in active_machine_keys
+                        ),
+                        machine_assignment_reviewable=(
+                            (
+                                nomination.candidate_fingerprint,
+                                canonical_profile_id,
+                            )
+                            in reviewable_machine_keys
                         ),
                     )
                 )

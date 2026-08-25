@@ -10,6 +10,102 @@
   "source_families": [
     {
       "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-02f8c088ed82ab66",
+      "source_urls": [
+        "https://www.youtube.com/@light_bearers"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-06a653389e829234",
+      "source_urls": [
+        "https://www.youtube.com/@itiswritten"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-2895f089d00f6690",
+      "source_urls": [
+        "https://www.youtube.com/@amazingfacts"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-3be443cbb98e5596",
+      "source_urls": [
+        "https://www.youtube.com/@pioneermemorialchurch"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-7878004207719ad4",
+      "source_urls": [
+        "https://www.youtube.com/@hl365"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-9726eae2f7ed86d5",
+      "source_urls": [
+        "https://www.youtube.com/@lluchurch"
+      ]
+    },
+    {
+      "partition": "held_out",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-ab3055b9f0143e44",
+      "source_urls": [
+        "https://www.youtube.com/@pavelgoia"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-b6b2a1241843e903",
+      "source_urls": [
+        "https://www.youtube.com/@davidasscherick"
+      ]
+    },
+    {
+      "partition": "validation",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-c2f52b8c0751e3b5",
+      "source_urls": [
+        "https://www.youtube.com/channel/ucw7pu2osvbifug0kfx33psa"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-d2f6d55e122d6618",
+      "source_urls": [
+        "https://www.youtube.com/@spartanburgsda"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-d4ccaea5f54f2cac",
+      "source_urls": [
+        "https://www.youtube.com/@ivormyers"
+      ]
+    },
+    {
+      "partition": "development",
+      "partition_origin": "deterministic",
+      "source_family_id": "source-family-fec4e46709fbcd74",
+      "source_urls": [
+        "https://www.youtube.com/@secretsunsealed"
+      ]
+    },
+    {
+      "partition": "development",
       "partition_origin": "historical_tuning_exposure",
       "source_family_id": "youtube-adairsville-sda",
       "source_urls": [

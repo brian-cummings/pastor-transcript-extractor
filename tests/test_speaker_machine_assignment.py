@@ -366,6 +366,68 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
             report["assignments"][0]["youtube_video_id"],
         )
 
+    def test_evidence_only_membership_is_projected_and_reconciled(self) -> None:
+        candidate = self._observation("candidate")
+        apply_machine_assignment_plan(
+            self.database,
+            self._plan((candidate,), self.canary_policy),
+            activate_canary=False,
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=self.profile.id,
+            observation_id=candidate.id,
+            reviewer="reviewer",
+            reason="confirmed before activation",
+            review_event_key="confirm-evidence-only",
+        )
+
+        report = machine_assignment_report(self.database)
+        self.assertEqual(1, report["counts"]["confirmed"])
+        self.assertEqual(0, report["counts"]["awaiting_activation"])
+
+        result = reconcile_machine_assignments(self.database)
+
+        self.assertEqual(1, result.confirmed)
+        self.assertEqual(
+            "confirm",
+            self.database.list_speaker_machine_assignment_events()[0][
+                "action"
+            ],
+        )
+
+    def test_evidence_only_contradiction_trips_policy(self) -> None:
+        candidate = self._observation("candidate")
+        other = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="other profile",
+            review_event_key="other-profile",
+        )
+        apply_machine_assignment_plan(
+            self.database,
+            self._plan((candidate,), self.canary_policy),
+            activate_canary=False,
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=other.id,
+            observation_id=candidate.id,
+            reviewer="reviewer",
+            reason="contradicted before activation",
+            review_event_key="contradict-evidence-only",
+        )
+
+        report = machine_assignment_report(self.database)
+        self.assertEqual(1, report["counts"]["revoked"])
+        self.assertEqual(0, report["counts"]["awaiting_activation"])
+        self.assertEqual(1, len(report["tripped_policy_fingerprints"]))
+
+        result = reconcile_machine_assignments(self.database)
+
+        self.assertEqual(1, result.revoked)
+        self.assertEqual(1, len(result.tripped_policy_fingerprints))
+
     def test_contradiction_trips_policy_and_revokes_other_active_assignments(
         self,
     ) -> None:
@@ -415,6 +477,29 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
             "contradiction:reviewed_difference_against_profile",
             report["policy_trips"][0]["reason"],
         )
+
+        successor_policy = MachineAssignmentPolicy(
+            version="canary-v2",
+            mode="canary_provisional",
+            minimum_same_exemplars=2,
+            require_unique_profile=True,
+            require_automatic_profile_ready=True,
+            allow_provisional_activation=True,
+            artifact_sha256="3" * 64,
+            maximum_active_assignments=1,
+            allowed_association_policy_sha256=(
+                "association-policy-hash",
+            ),
+            allowed_model_fingerprints=("model-v1",),
+        )
+        candidate_d = self._observation("candidate-d")
+        successor_plan = self._plan((candidate_d,), successor_policy)
+        successor_result = apply_machine_assignment_plan(
+            self.database,
+            successor_plan,
+            activate_canary=True,
+        )
+        self.assertEqual(1, successor_result.activation_blocked)
 
     def test_manual_policy_rollback_is_append_only(self) -> None:
         candidate = self._observation("candidate")
