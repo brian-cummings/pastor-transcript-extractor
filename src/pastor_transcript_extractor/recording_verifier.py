@@ -14,7 +14,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 PROMPT_VERSION = "recording-sermon-verifier-v4"
-POLICY_VERSION = "recording-sermon-verifier-policy-v5"
+POLICY_VERSION = "recording-sermon-verifier-policy-v6"
 ARTIFACT_SCHEMA_VERSION = 1
 DECISIONS = (
     "worship_service_sermon",
@@ -228,11 +228,6 @@ def validate_verdict(content: dict[str, Any]) -> None:
         or len(reason_codes) != len(set(reason_codes))
     ):
         raise ValueError("verifier returned unsupported structured evidence")
-    if (
-        decision == "worship_service_sermon"
-        and "single_sustained_message" not in reason_codes
-    ):
-        raise ValueError("worship-service sermon lacks sustained-message evidence")
 
 
 def _has_coherent_principal_candidate(proposed: dict[str, Any] | None) -> bool:
@@ -270,6 +265,8 @@ def _apply_acceptance_policy(
     contradictions = sorted(CONTRADICTORY_REASON_CODES & set(reasons))
     policy_reasons: list[str] = []
     if decision == "worship_service_sermon":
+        if "single_sustained_message" not in reasons:
+            policy_reasons.append("missing_single_sustained_message_evidence")
         if not sermon_specific:
             policy_reasons.append("missing_independent_sermon_specific_evidence")
         if contradictions:

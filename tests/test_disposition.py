@@ -130,7 +130,7 @@ class FinalDispositionTests(unittest.TestCase):
             {"confidence_tier": "medium", "retained_segment_indexes": [1, 2]},
             {"start_seconds": 60.0, "end_seconds": 600.0, "source": "hybrid_llm"},
             recording_verification={
-                "policy_version": "recording-sermon-verifier-policy-v5",
+                "policy_version": "recording-sermon-verifier-policy-v6",
                 "decision": "unclear",
                 "predicted_outcome": None,
                 "model_verdict": {

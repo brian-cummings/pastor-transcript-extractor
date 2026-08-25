@@ -139,14 +139,44 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "requires confirmation"):
             validate_partition_access("held_out", confirm_frozen_policy=False)
         validate_partition_access("held_out", confirm_frozen_policy=True)
-        with self.assertRaisesRegex(ValueError, "sustained-message evidence"):
-            validate_verdict(
-                {
-                    "decision": "worship_service_sermon",
-                    "confidence": "high",
-                    "reason_codes": ["sermon_title_or_introduction"],
-                }
+
+    def test_missing_sustained_reason_is_policy_review_not_invalid_inference(self) -> None:
+        client = FakeVerifierClient(
+            "worship_service_sermon",
+            reason_codes=["sustained_biblical_exposition"],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = verify_recording(
+                title="Structurally valid incomplete verdict",
+                proposed={"youtube_video_id": "incomplete", **proposed()},
+                client=client,
+                model_digest="digest",
+                cache_dir=Path(tmp),
             )
+            cached_result = verify_recording(
+                title="Structurally valid incomplete verdict",
+                proposed={"youtube_video_id": "incomplete", **proposed()},
+                client=client,
+                model_digest="digest",
+                cache_dir=Path(tmp),
+            )
+
+        self.assertEqual("unclear", result["decision"])
+        self.assertEqual("medium", result["confidence"])
+        self.assertIsNone(result["predicted_outcome"])
+        self.assertIsNone(result["error"])
+        self.assertIsNotNone(result["raw_response"])
+        self.assertEqual(
+            "worship_service_sermon",
+            result["model_verdict"]["decision"],
+        )
+        self.assertIn(
+            "missing_single_sustained_message_evidence",
+            result["policy_reason_codes"],
+        )
+        self.assertTrue(cached_result["cache_hit"])
+        self.assertIsNotNone(cached_result["raw_response"])
+        self.assertEqual(1, client.calls)
 
     def test_diagnostic_records_accuracy_and_reuses_cache(self) -> None:
         case = RecordingVerifierCase(
@@ -217,7 +247,7 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
         self.assertEqual("sermon", result["predicted_outcome"])
         self.assertEqual("llm_recording_verifier", result["source"])
         self.assertEqual("recording-sermon-verifier-v4", result["prompt_version"])
-        self.assertEqual("recording-sermon-verifier-policy-v5", result["policy_version"])
+        self.assertEqual("recording-sermon-verifier-policy-v6", result["policy_version"])
         self.assertEqual(
             ["sustained_biblical_exposition"],
             result["sermon_specific_reason_codes"],
