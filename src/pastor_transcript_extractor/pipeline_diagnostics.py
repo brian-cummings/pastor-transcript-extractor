@@ -10,9 +10,10 @@ from typing import Any, Iterable
 from pastor_transcript_extractor.fixture_validation import ValidatedFixture
 
 
-TRACE_SCHEMA_VERSION = 1
-CONTRACT_VERSION = "sermon-isolation-contracts-v1"
+TRACE_SCHEMA_VERSION = 2
+CONTRACT_VERSION = "sermon-isolation-contracts-v2"
 REVIEWED_COVERAGE_THRESHOLD = 0.90
+MAX_CONTAMINATION_RATIO = 0.10
 TIMELINE_WIDTH = 72
 
 
@@ -26,13 +27,17 @@ def diagnostic_contract_definition() -> dict[str, Any]:
         "stage_order": [
             "transcript",
             "rule",
-            "coarse",
+            "coarse_evidence",
+            "candidates",
             "selected",
             "joined",
             "fine",
+            "arbitration",
+            "verifier",
             "final",
         ],
         "reviewed_sermon_coverage_threshold": REVIEWED_COVERAGE_THRESHOLD,
+        "maximum_contamination_ratio": MAX_CONTAMINATION_RATIO,
         "measurements": {
             "reviewed_sermon_coverage": (
                 "duration overlap with reviewed sermon spans divided by reviewed duration"
@@ -56,6 +61,15 @@ def diagnostic_contract_definition() -> dict[str, Any]:
             "rule_baseline": (
                 "informational comparator branching from transcript; not an upstream dependency "
                 "of coarse discovery"
+            ),
+            "coarse_evidence": (
+                "supporting evidence blocks, not the temporal extent of candidate proposals"
+            ),
+            "candidate_envelope": (
+                "persisted candidate start_seconds and end_seconds define proposed coverage"
+            ),
+            "manual_override": (
+                "reviewed final output; automatic pre-override outcome must be reported separately"
             ),
         },
     }
@@ -175,14 +189,18 @@ def _coarse_blocks(classification: dict[str, Any]) -> dict[int, Range]:
     return result
 
 
-def _candidate_initial_ranges(candidate: dict[str, Any], coarse: dict[int, Range]) -> list[Range]:
+def _candidate_support_ranges(
+    candidate: dict[str, Any], coarse: dict[int, Range]
+) -> list[Range]:
     support = candidate.get("coarse_support_block_ids")
     supported = [
         coarse[block_id]
         for block_id in support if isinstance(block_id, int) and block_id in coarse
     ] if isinstance(support, list) else []
-    if supported:
-        return _merge_ranges(supported)
+    return _merge_ranges(supported)
+
+
+def _candidate_envelope_ranges(candidate: dict[str, Any]) -> list[Range]:
     direct = _range(candidate.get("start_seconds"), candidate.get("end_seconds"))
     return [direct] if direct is not None else []
 
@@ -245,6 +263,21 @@ def _stage_measurements(
                 ),
             }
         )
+        output_boundary = _boundary(output)
+        expected_boundary = _boundary(expected)
+        if output_boundary is not None and expected_boundary is not None:
+            start_error = (
+                output_boundary["start_seconds"] - expected_boundary["start_seconds"]
+            )
+            end_error = output_boundary["end_seconds"] - expected_boundary["end_seconds"]
+            measurements.update(
+                {
+                    "start_error_seconds": round(start_error, 3),
+                    "end_error_seconds": round(end_error, 3),
+                    "missing_start_seconds": round(max(0.0, start_error), 3),
+                    "missing_end_seconds": round(max(0.0, -end_error), 3),
+                }
+            )
     else:
         measurements["measurement_semantics"] = "structural_retention_without_ground_truth"
     return measurements
@@ -289,12 +322,20 @@ def _contract(
                 else "The reviewed no-sermon recording was not automatically accepted."
             ),
         }
-    if stage_key == "rule":
+    if stage_key in {"rule", "coarse_evidence"}:
         return {
             "status": "informational",
-            "code": "comparison_baseline",
+            "code": (
+                "comparison_baseline"
+                if stage_key == "rule"
+                else "supporting_evidence_not_candidate_extent"
+            ),
             "observed": measurements.get("reviewed_sermon_coverage"),
-            "message": "The rule window is a comparator, not a required pipeline predecessor.",
+            "message": (
+                "The rule window is a comparator, not a required pipeline predecessor."
+                if stage_key == "rule"
+                else "Coarse blocks support proposals but do not define candidate coverage."
+            ),
         }
     coverage = measurements.get("reviewed_sermon_coverage")
     passed = isinstance(coverage, (int, float)) and coverage >= REVIEWED_COVERAGE_THRESHOLD
@@ -308,6 +349,40 @@ def _contract(
             if isinstance(coverage, (int, float))
             else "Reviewed-sermon coverage could not be measured."
         ),
+    }
+
+
+def _quality_contracts(
+    measurements: dict[str, Any], fixture: ValidatedFixture | None
+) -> dict[str, dict[str, Any]]:
+    if fixture is None or fixture.expected_outcome != "sermon":
+        return {
+            "localization": {"status": "not_evaluated"},
+            "contamination": {"status": "not_evaluated"},
+        }
+    coverage = measurements.get("reviewed_sermon_coverage")
+    contamination = measurements.get("contamination_ratio")
+    return {
+        "localization": {
+            "status": (
+                "pass"
+                if isinstance(coverage, (int, float))
+                and coverage >= REVIEWED_COVERAGE_THRESHOLD
+                else "fail"
+            ),
+            "observed": coverage,
+            "threshold": REVIEWED_COVERAGE_THRESHOLD,
+        },
+        "contamination": {
+            "status": (
+                "pass"
+                if isinstance(contamination, (int, float))
+                and contamination <= MAX_CONTAMINATION_RATIO
+                else "fail"
+            ),
+            "observed": contamination,
+            "threshold": MAX_CONTAMINATION_RATIO,
+        },
     }
 
 
@@ -346,7 +421,7 @@ def _make_stage(
         "seconds_added": measurements["seconds_added"],
         "seconds_removed": measurements["seconds_removed"],
     }
-    return {
+    stage = {
         "key": key,
         "label": label,
         "input_ranges": _serialize_ranges(previous),
@@ -366,6 +441,8 @@ def _make_stage(
         ),
         "warnings": warnings or [],
     }
+    stage["quality_contracts"] = _quality_contracts(measurements, fixture)
+    return stage
 
 
 def _observed_failure(stages: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -412,11 +489,13 @@ def _root_cause(
     mapping = {
         "transcript": ("transcript", "reviewed_span_absent_from_timed_transcript"),
         "rule": ("rule_baseline", "rule_window_omission"),
-        "coarse": ("coarse_discovery", "coarse_candidate_omission"),
+        "candidates": ("candidate_discovery", "candidate_envelope_omission"),
         "selected": ("candidate_ranking", "coverage_lost_during_candidate_selection"),
         "joined": ("join_logic", "continuation_not_recovered"),
         "fine": ("fine_refinement", "coverage_lost_during_fine_refinement"),
-        "final": ("final_window", "final_window_contract_failure"),
+        "arbitration": ("final_arbitration", "arbitration_selected_inferior_window"),
+        "verifier": ("recording_verifier", "recording_verifier_wrong_outcome"),
+        "final": ("final_disposition", "final_disposition_contract_failure"),
     }
     cause_stage, code = mapping.get(stage, (stage, "unclassified_contract_failure"))
     current = by_key[stage]
@@ -425,7 +504,11 @@ def _root_cause(
         f"coverage={current['measurements'].get('reviewed_sermon_coverage')}",
         f"seconds_removed={current['transition'].get('seconds_removed')}",
     ]
-    confidence = "high" if stage in {"transcript", "fine", "final"} else "medium"
+    confidence = (
+        "high"
+        if stage in {"transcript", "fine", "arbitration", "verifier", "final"}
+        else "medium"
+    )
     alternatives = ["upstream evidence not persisted", "reviewed boundary uncertainty"]
     if stage == "joined":
         confidence = "low"
@@ -442,6 +525,104 @@ def _root_cause(
         "supporting_evidence": evidence,
         "alternative_causes": alternatives,
     }
+
+
+def _verifier_contract(
+    verification: dict[str, Any], fixture: ValidatedFixture | None
+) -> dict[str, Any]:
+    source = verification.get("source")
+    decision = verification.get("decision")
+    predicted = verification.get("predicted_outcome")
+    if fixture is None:
+        return {
+            "status": "not_evaluated",
+            "code": "ground_truth_unavailable",
+            "message": "Recording-verifier correctness is not known.",
+        }
+    if source in {None, "not_required"} or (decision is None and predicted is None):
+        return {
+            "status": "informational",
+            "code": "recording_verifier_not_invoked",
+            "message": "The base classifier resolved the recording without verifier inference.",
+        }
+    predicted_sermon = (
+        predicted == "sermon" or decision == "worship_service_sermon"
+    )
+    if fixture.expected_outcome == "no_sermon":
+        return {
+            "status": "fail" if predicted_sermon else "pass",
+            "code": (
+                "recording_verifier_false_positive"
+                if predicted_sermon
+                else "recording_verifier_rejected_negative"
+            ),
+            "message": (
+                "The verifier identified a reviewed no-sermon recording as a sermon."
+                if predicted_sermon
+                else "The verifier did not identify the reviewed negative as a sermon."
+            ),
+        }
+    explicitly_negative = predicted not in {None, "sermon"} and not predicted_sermon
+    return {
+        "status": "fail" if explicitly_negative else "pass",
+        "code": (
+            "recording_verifier_false_negative"
+            if explicitly_negative
+            else "recording_verifier_supported_positive"
+        ),
+        "message": (
+            "The verifier rejected a reviewed sermon recording."
+            if explicitly_negative
+            else "The verifier outcome is compatible with the reviewed sermon."
+        ),
+    }
+
+
+def _outcome_contracts(
+    *,
+    stages: list[dict[str, Any]],
+    fixture: ValidatedFixture | None,
+    final_disposition: str | None,
+    manual_override: bool,
+) -> dict[str, Any]:
+    final = next(stage for stage in stages if stage["key"] == "final")
+    if fixture is None:
+        existence = {"status": "not_evaluated"}
+    elif fixture.expected_outcome == "no_sermon":
+        accepted = final_disposition == "accepted_sermon"
+        existence = {
+            "status": "fail" if accepted else "pass",
+            "code": "negative_accepted" if accepted else "negative_not_accepted",
+        }
+    else:
+        rejected = final_disposition == "rejected_no_sermon"
+        existence = {
+            "status": "fail" if rejected else "pass",
+            "code": "positive_rejected" if rejected else "positive_sermon_retained",
+        }
+    return {
+        "existence": existence,
+        "localization": final["quality_contracts"]["localization"],
+        "contamination": final["quality_contracts"]["contamination"],
+        "disposition": {
+            "status": final_disposition or "unknown",
+            "automatically_accepted": final_disposition == "accepted_sermon",
+        },
+        "manual_override_applied": manual_override,
+    }
+
+
+def _recovery_status(
+    observed: dict[str, Any] | None,
+    stages: list[dict[str, Any]],
+    manual_override: bool,
+) -> str:
+    if manual_override:
+        return "masked_by_manual_override" if observed else "manual_override_applied"
+    if observed is None:
+        return "clean"
+    final = next(stage for stage in stages if stage["key"] == "final")
+    return "recovered_automatically" if final["contract"]["status"] == "pass" else "unrecovered"
 
 
 def build_diagnostic_trace(
@@ -471,23 +652,18 @@ def build_diagnostic_trace(
     ordinary_candidates = [
         item for item in candidates if item.get("source") != "joined_coarse_llm"
     ]
-    coarse_ranges = _merge_ranges(
+    coarse_evidence_ranges = _merge_ranges(
         value
         for candidate in ordinary_candidates
-        for value in _candidate_initial_ranges(candidate, coarse_blocks)
+        for value in _candidate_support_ranges(candidate, coarse_blocks)
     )
-    selected_fragments = (
-        _candidate_initial_ranges(selected, coarse_blocks) if selected is not None else []
+    candidate_ranges = _merge_ranges(
+        value
+        for candidate in ordinary_candidates
+        for value in _candidate_envelope_ranges(candidate)
     )
-    selected_ranges = selected_fragments
-    if (
-        selected is not None
-        and selected.get("source") == "joined_coarse_llm"
-        and selected_fragments
-    ):
-        joined_ranges = [(selected_fragments[0][0], selected_fragments[-1][1])]
-    else:
-        joined_ranges = selected_fragments
+    selected_ranges = _candidate_envelope_ranges(selected) if selected is not None else []
+    joined_ranges = selected_ranges
     retained = classification.get("retained_segment_indexes")
     fine_ranges = _segment_ranges(
         segments,
@@ -501,6 +677,12 @@ def build_diagnostic_trace(
     final_ranges = [final_range] if final_range is not None else fine_ranges
     disposition = proposed.get("final_disposition")
     disposition = disposition if isinstance(disposition, dict) else {}
+    verification = proposed.get("recording_verification")
+    verification = verification if isinstance(verification, dict) else {}
+    manual_override = (
+        sermon_window.get("source") == "override"
+        or search.get("rule_baseline_source") == "manual_override"
+    )
     expected = fixture.expected_spans if fixture and fixture.expected_outcome == "sermon" else None
     allowed_interruptions = (
         fixture.allowed_interruptions
@@ -551,19 +733,34 @@ def build_diagnostic_trace(
             [],
         ),
         (
-            "coarse",
-            "Coarse candidates",
-            coarse_ranges,
+            "coarse_evidence",
+            "Coarse evidence",
+            coarse_evidence_ranges,
             transcript_ranges,
             {"discovery": search.get("discovery")},
-            {"candidate_count": len(ordinary_candidates)},
+            {
+                "candidate_count": len(ordinary_candidates),
+                "range_semantics": "coarse_support_blocks",
+            },
+            [],
+        ),
+        (
+            "candidates",
+            "Candidate envelopes",
+            candidate_ranges,
+            coarse_evidence_ranges,
+            {"discovery": search.get("discovery")},
+            {
+                "candidate_count": len(ordinary_candidates),
+                "range_semantics": "persisted_candidate_start_and_end",
+            },
             [],
         ),
         (
             "selected",
             "Selected candidate",
             selected_ranges,
-            coarse_ranges,
+            candidate_ranges,
             {
                 "selected_rank": search.get("selected_rank"),
                 "source": selected.get("source") if selected else None,
@@ -571,7 +768,10 @@ def build_diagnostic_trace(
             {
                 "score": selected.get("score") if selected else None,
                 "score_components": selected.get("score_components") if selected else None,
-                "boundary_provenance": "reconstructed_from_coarse_support_blocks",
+                "boundary_provenance": "persisted_candidate_start_and_end",
+                "coarse_support_block_ids": (
+                    selected.get("coarse_support_block_ids") if selected else None
+                ),
             },
             [],
         ),
@@ -608,14 +808,55 @@ def build_diagnostic_trace(
             ),
         ),
         (
-            "final",
-            "Final window",
+            "arbitration",
+            "Final arbitration",
             final_ranges,
             fine_ranges,
             {
                 "window_source": sermon_window.get("source"),
+                "window_method": sermon_window.get("method"),
+                "manual_override_applied": manual_override,
+                "suspicious_boundary_reasons": sermon_window.get(
+                    "suspicious_boundary_reasons", []
+                ),
+            },
+            {
+                "confidence_tier": classification.get("confidence_tier"),
+                "rule_baseline_source": search.get("rule_baseline_source"),
+            },
+            [],
+        ),
+        (
+            "verifier",
+            "Recording verifier",
+            final_ranges,
+            final_ranges,
+            {
+                "source": verification.get("source"),
+                "decision": verification.get("decision"),
+                "predicted_outcome": verification.get("predicted_outcome"),
+                "confidence": verification.get("confidence"),
+                "reason_codes": verification.get("reason_codes", []),
+            },
+            {
+                "policy_version": verification.get("policy_version"),
+                "prompt_version": verification.get("prompt_version"),
+                "model": verification.get("model"),
+                "model_digest": verification.get("model_digest"),
+                "evidence_packet_hash": verification.get("evidence_packet_hash"),
+            },
+            [],
+        ),
+        (
+            "final",
+            "Final outcome",
+            final_ranges,
+            final_ranges,
+            {
+                "window_source": sermon_window.get("source"),
                 "disposition_status": disposition.get("status"),
                 "reason_codes": disposition.get("reason_codes", []),
+                "manual_override_applied": manual_override,
             },
             {"confidence_tier": classification.get("confidence_tier")},
             [],
@@ -637,6 +878,8 @@ def build_diagnostic_trace(
         )
         for key, label, output, previous, decision, evidence, warnings in stage_specs
     ]
+    verifier_stage = next(stage for stage in stages if stage["key"] == "verifier")
+    verifier_stage["contract"] = _verifier_contract(verification, fixture)
     observed = _observed_failure(stages)
     diagnostic_gaps = [
         {
@@ -647,15 +890,21 @@ def build_diagnostic_trace(
                 "Persist each candidate pair, gap, decision, rejection code, and continuity cues."
             ),
         },
-        {
-            "code": "selected_pre_refinement_boundary_reconstructed",
-            "stage": "selected",
-            "impact": "The selected boundary is reconstructed from coarse support blocks.",
-            "recommended_instrumentation": (
-                "Persist selected candidate boundaries before refinement."
-            ),
-        },
     ]
+    if manual_override:
+        diagnostic_gaps.append(
+            {
+                "code": "automatic_pre_override_final_not_persisted",
+                "stage": "arbitration",
+                "impact": (
+                    "The reviewed result is known, but the automatic final choice immediately "
+                    "before override cannot be reconstructed reliably."
+                ),
+                "recommended_instrumentation": (
+                    "Persist the automatic window and disposition before applying an override."
+                ),
+            }
+        )
     if media_range is None:
         diagnostic_gaps.append(
             {
@@ -669,6 +918,15 @@ def build_diagnostic_trace(
                 ),
             }
         )
+    recovery_status = _recovery_status(observed, stages, manual_override)
+    outcome_contracts = _outcome_contracts(
+        stages=stages,
+        fixture=fixture,
+        final_disposition=(
+            str(disposition.get("status")) if disposition.get("status") else None
+        ),
+        manual_override=manual_override,
+    )
     return {
         "schema_version": TRACE_SCHEMA_VERSION,
         "trace_kind": "sermon_isolation",
@@ -698,6 +956,8 @@ def build_diagnostic_trace(
         "stages": stages,
         "earliest_observed_failure": observed,
         "root_cause_hypothesis": _root_cause(observed, stages, fixture),
+        "recovery_status": recovery_status,
+        "outcome_contracts": outcome_contracts,
         "diagnostic_gaps": diagnostic_gaps,
     }
 
@@ -721,6 +981,18 @@ def build_pipeline_mermaid(trace: dict[str, Any]) -> str:
     lines = ["flowchart LR"]
     classes: dict[str, list[str]] = {"pass": [], "fail": [], "unknown": []}
     stages = trace.get("stages", [])
+    indexes = {stage.get("key"): index for index, stage in enumerate(stages)}
+    predecessors = {
+        "rule": "transcript",
+        "coarse_evidence": "transcript",
+        "candidates": "coarse_evidence",
+        "selected": "candidates",
+        "joined": "selected",
+        "fine": "joined",
+        "arbitration": "fine",
+        "verifier": "arbitration",
+        "final": "verifier",
+    }
     for index, stage in enumerate(stages):
         node = f"S{index}"
         status = str(stage.get("contract", {}).get("status", "unknown"))
@@ -736,13 +1008,18 @@ def build_pipeline_mermaid(trace: dict[str, Any]) -> str:
                 if isinstance(removed, (int, float)) and removed > 0
                 else ""
             )
-            predecessor = 0 if stage.get("key") == "coarse" else index - 1
+            predecessor_key = predecessors.get(stage.get("key"))
+            predecessor = indexes.get(predecessor_key, index - 1)
             connector = "-.->" if stage.get("key") == "rule" else "-->"
             lines.append(
                 f"  S{predecessor} {connector}|{annotation}| {node}"
                 if annotation
                 else f"  S{predecessor} {connector} {node}"
             )
+    if "rule" in indexes and "arbitration" in indexes:
+        lines.append(
+            f"  S{indexes['rule']} -. comparator .-> S{indexes['arbitration']}"
+        )
     lines.extend(
         [
             "  classDef pass fill:#d9f2df,stroke:#26733a,color:#102915",
@@ -814,6 +1091,24 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
         f"- Earliest observed failure: {observed['stage'] if observed else 'none'}",
         f"- Likely causal stage: {cause.get('stage') or 'none'}",
         f"- Causal confidence: {cause.get('confidence') or 'n/a'}",
+        f"- Recovery status: {trace.get('recovery_status', 'unknown')}",
+        "",
+        "## Outcome contracts",
+        "",
+        "| Dimension | Status | Observed | Threshold |",
+        "|---|---|---:|---:|",
+    ]
+    for dimension in ("existence", "localization", "contamination"):
+        contract = trace.get("outcome_contracts", {}).get(dimension, {})
+        observed_value = contract.get("observed")
+        threshold = contract.get("threshold")
+        lines.append(
+            f"| {dimension} | {contract.get('status', 'unknown')} | "
+            f"{observed_value if observed_value is not None else '—'} | "
+            f"{threshold if threshold is not None else '—'} |"
+        )
+    lines.extend(
+        [
         "",
         "## Pipeline loss map",
         "",
@@ -829,7 +1124,8 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
         "",
         "| Stage | Contract | Boundary | Added | Removed | Coverage/retention | Decision |",
         "|---|---|---|---:|---:|---:|---|",
-    ]
+        ]
+    )
     for stage in trace["stages"]:
         boundary = stage.get("output_boundary")
         boundary_label = (
@@ -851,12 +1147,11 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
     else:
         lines.extend(
             [
-                "| Stage | Recall | Δ recall | Contamination | Δ contamination |",
-                "|---|---:|---:|---:|---:|",
+                "| Stage | Recall | Δ recall | Contamination | Start error | End error |",
+                "|---|---:|---:|---:|---:|---:|",
             ]
         )
         previous_recall: float | None = None
-        previous_contamination: float | None = None
         for stage in trace["stages"]:
             measurements = stage["measurements"]
             recall = measurements.get("reviewed_sermon_coverage")
@@ -866,24 +1161,19 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
                 if isinstance(recall, (int, float)) and previous_recall is not None
                 else None
             )
-            delta_contamination = (
-                contamination - previous_contamination
-                if isinstance(contamination, (int, float))
-                and previous_contamination is not None
-                else None
-            )
+            start_error = measurements.get("start_error_seconds")
+            end_error = measurements.get("end_error_seconds")
             lines.append(
                 f"| {stage['label']} | {recall:.1%} | "
-                f"{delta_recall:+.1%} | {contamination:.1%} | {delta_contamination:+.1%} |"
-                if delta_recall is not None and delta_contamination is not None
-                else f"| {stage['label']} | {recall:.1%} | — | {contamination:.1%} | — |"
+                f"{delta_recall:+.1%} | {contamination:.1%} | "
+                f"{start_error:.0f}s | {end_error:.0f}s |"
+                if delta_recall is not None
+                and isinstance(start_error, (int, float))
+                and isinstance(end_error, (int, float))
+                else f"| {stage['label']} | {recall:.1%} | — | "
+                f"{contamination:.1%} | — | — |"
             )
             previous_recall = recall if isinstance(recall, (int, float)) else previous_recall
-            previous_contamination = (
-                contamination
-                if isinstance(contamination, (int, float))
-                else previous_contamination
-            )
     lines.extend(
         [
             "",
@@ -921,17 +1211,88 @@ def aggregate_diagnostic_traces(
         for trace in traces
     )
     affected: dict[str, list[str]] = {}
+    signatures: dict[str, list[str]] = {}
+    fixture_outcomes = Counter()
+    recovery = Counter()
+    dispositions = Counter()
+    localization = Counter()
+    contamination = Counter()
+    existence = Counter()
+    manual_override_count = 0
     for trace in traces:
+        video_id = str(trace["video"]["youtube_video_id"])
         failure = (trace.get("earliest_observed_failure") or {}).get("stage") or "none"
-        affected.setdefault(str(failure), []).append(str(trace["video"]["youtube_video_id"]))
+        affected.setdefault(str(failure), []).append(video_id)
+        expected_outcome = trace.get("ground_truth", {}).get("expected_outcome") or "unreviewed"
+        fixture_outcomes[str(expected_outcome)] += 1
+        recovery[str(trace.get("recovery_status") or "unknown")] += 1
+        contracts = trace.get("outcome_contracts", {})
+        disposition = contracts.get("disposition", {}).get("status") or "unknown"
+        dispositions[str(disposition)] += 1
+        existence[str(contracts.get("existence", {}).get("status") or "not_evaluated")] += 1
+        if expected_outcome == "sermon":
+            localization[
+                str(contracts.get("localization", {}).get("status") or "not_evaluated")
+            ] += 1
+            contamination[
+                str(contracts.get("contamination", {}).get("status") or "not_evaluated")
+            ] += 1
+        manual_override = bool(contracts.get("manual_override_applied"))
+        manual_override_count += int(manual_override)
+        by_key = {stage["key"]: stage for stage in trace.get("stages", [])}
+
+        def failed(stage_key: str, contract: str = "contract") -> bool:
+            stage = by_key.get(stage_key, {})
+            if contract == "contamination":
+                value = stage.get("quality_contracts", {}).get("contamination", {})
+            else:
+                value = stage.get("contract", {})
+            return value.get("status") == "fail"
+
+        run_signatures: list[str] = []
+        if expected_outcome == "sermon":
+            if failed("candidates") and manual_override:
+                run_signatures.append("candidate_omission_masked_by_manual_override")
+            if failed("selected") and not failed("candidates") and manual_override:
+                run_signatures.append("ranking_loss_masked_by_manual_override")
+            if (
+                not failed("fine")
+                and failed("arbitration")
+                and not manual_override
+            ):
+                run_signatures.append("arbitration_clipped_valid_refined_window")
+            if failed("final", "contamination"):
+                run_signatures.append("high_final_contamination")
+            if disposition == "review_required":
+                run_signatures.append("positive_requires_review")
+        elif expected_outcome == "no_sermon":
+            if failed("verifier"):
+                run_signatures.append("recording_verifier_false_positive")
+            elif contracts.get("existence", {}).get("status") == "fail":
+                run_signatures.append("negative_false_acceptance_without_verifier_failure")
+        for signature in run_signatures:
+            signatures.setdefault(signature, []).append(video_id)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "report_kind": "sermon_isolation_systemic_diagnostics",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trace_count": len(traces),
         "missing_count": len(missing or []),
         "observed_failure_counts": dict(sorted(observed.items())),
         "root_cause_hypothesis_counts": dict(sorted(causes.items())),
+        "fixture_outcome_counts": dict(sorted(fixture_outcomes.items())),
+        "recovery_status_counts": dict(sorted(recovery.items())),
+        "final_disposition_counts": dict(sorted(dispositions.items())),
+        "existence_contract_counts": dict(sorted(existence.items())),
+        "positive_localization_contract_counts": dict(sorted(localization.items())),
+        "positive_contamination_contract_counts": dict(sorted(contamination.items())),
+        "manual_override_count": manual_override_count,
+        "failure_signature_counts": {
+            key: len(value) for key, value in sorted(signatures.items())
+        },
+        "affected_video_ids_by_failure_signature": {
+            key: sorted(value) for key, value in sorted(signatures.items())
+        },
         "affected_video_ids_by_observed_failure": {
             key: sorted(value) for key, value in sorted(affected.items())
         },
@@ -946,12 +1307,63 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         "",
         f"- Traces: {report['trace_count']}",
         f"- Missing artifacts: {report['missing_count']}",
+        f"- Manual overrides: {report['manual_override_count']}",
+        "",
+        "## Final outcomes",
+        "",
+        "| Measure | Pass | Fail | Not evaluated |",
+        "|---|---:|---:|---:|",
+        (
+            "| Sermon existence | "
+            f"{report['existence_contract_counts'].get('pass', 0)} | "
+            f"{report['existence_contract_counts'].get('fail', 0)} | "
+            f"{report['existence_contract_counts'].get('not_evaluated', 0)} |"
+        ),
+        (
+            "| Positive localization | "
+            f"{report['positive_localization_contract_counts'].get('pass', 0)} | "
+            f"{report['positive_localization_contract_counts'].get('fail', 0)} | "
+            f"{report['positive_localization_contract_counts'].get('not_evaluated', 0)} |"
+        ),
+        (
+            "| Positive contamination | "
+            f"{report['positive_contamination_contract_counts'].get('pass', 0)} | "
+            f"{report['positive_contamination_contract_counts'].get('fail', 0)} | "
+            f"{report['positive_contamination_contract_counts'].get('not_evaluated', 0)} |"
+        ),
+        "",
+        "## Recovery and masking",
+        "",
+        "| Status | Count |",
+        "|---|---:|",
+    ]
+    for status, count in sorted(
+        report["recovery_status_counts"].items(), key=lambda item: (-item[1], item[0])
+    ):
+        lines.append(f"| {status} | {count} |")
+    lines.extend(
+        [
+        "",
+        "## Failure signatures",
+        "",
+        "| Signature | Count | Representative runs |",
+        "|---|---:|---|",
+        ]
+    )
+    for signature, count in sorted(
+        report["failure_signature_counts"].items(), key=lambda item: (-item[1], item[0])
+    ):
+        videos = report["affected_video_ids_by_failure_signature"][signature]
+        lines.append(f"| {signature} | {count} | {', '.join(videos[:8])} |")
+    lines.extend(
+        [
         "",
         "## Observed contract violations",
         "",
         "```text",
         "Low-quality outcomes",
-    ]
+        ]
+    )
     for stage, count in sorted(
         report["observed_failure_counts"].items(), key=lambda item: (-item[1], item[0])
     ):

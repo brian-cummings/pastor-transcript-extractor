@@ -71,7 +71,7 @@ def proposed_payload() -> dict[str, object]:
                     {
                         "rank": 1,
                         "source": "coarse_llm",
-                        "start_seconds": 100.0,
+                        "start_seconds": 0.0,
                         "end_seconds": 300.0,
                         "score": 300.0,
                         "score_components": {"duration_seconds": 300.0},
@@ -144,9 +144,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("fine", trace["earliest_observed_failure"]["stage"])
         self.assertEqual("fine_refinement", trace["root_cause_hypothesis"]["stage"])
         self.assertEqual(
-            "sermon-isolation-contracts-v1",
+            "sermon-isolation-contracts-v2",
             trace["contract_definition"]["version"],
         )
+        self.assertEqual(2, trace["schema_version"])
 
     def test_human_views_are_deterministic_projections_of_trace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -223,6 +224,131 @@ class PipelineDiagnosticTests(unittest.TestCase):
 
         rule = next(stage for stage in trace["stages"] if stage["key"] == "rule")
         self.assertEqual(0.0, rule["measurements"]["contamination_ratio"])
+
+    def test_candidate_envelope_is_not_replaced_by_coarse_support_extent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            candidate = proposed["classification"]["search"]["candidates"][0]
+            candidate["coarse_support_block_ids"] = [1]
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+
+        stages = {stage["key"]: stage for stage in trace["stages"]}
+        self.assertAlmostEqual(
+            1 / 3,
+            stages["coarse_evidence"]["measurements"]["reviewed_sermon_coverage"],
+            places=5,
+        )
+        self.assertEqual("informational", stages["coarse_evidence"]["contract"]["status"])
+        self.assertEqual(
+            1.0,
+            stages["candidates"]["measurements"]["reviewed_sermon_coverage"],
+        )
+
+    def test_manual_override_masks_automatic_candidate_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            candidate = proposed["classification"]["search"]["candidates"][0]
+            candidate["start_seconds"] = 100.0
+            proposed["classification"]["search"]["rule_baseline_source"] = (
+                "manual_override"
+            )
+            proposed["classification"]["search"]["rule_baseline_algorithm_version"] = (
+                "manual_override_v1"
+            )
+            proposed["sermon_window"].update(
+                {
+                    "start_seconds": 0.0,
+                    "end_seconds": 300.0,
+                    "source": "override",
+                    "method": "manual_override_v1",
+                }
+            )
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+
+        self.assertEqual("candidates", trace["earliest_observed_failure"]["stage"])
+        self.assertEqual("masked_by_manual_override", trace["recovery_status"])
+        self.assertTrue(trace["outcome_contracts"]["manual_override_applied"])
+        self.assertIn(
+            "automatic_pre_override_final_not_persisted",
+            {gap["code"] for gap in trace["diagnostic_gaps"]},
+        )
+
+    def test_arbitration_failure_is_separate_from_valid_refinement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["classification"]["retained_segment_indexes"] = [0, 1, 2]
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+
+        stages = {stage["key"]: stage for stage in trace["stages"]}
+        self.assertEqual("pass", stages["fine"]["contract"]["status"])
+        self.assertEqual("fail", stages["arbitration"]["contract"]["status"])
+        self.assertEqual("arbitration", trace["earliest_observed_failure"]["stage"])
+        systemic = aggregate_diagnostic_traces([trace])
+        self.assertEqual(
+            {"arbitration_clipped_valid_refined_window": 1},
+            systemic["failure_signature_counts"],
+        )
+
+    def test_recording_verifier_false_positive_is_earliest_negative_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["recording_verification"] = {
+                "source": "llm_recording_verifier",
+                "decision": "worship_service_sermon",
+                "predicted_outcome": "sermon",
+                "confidence": "high",
+                "reason_codes": ["single_sustained_message"],
+            }
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            fixture_path = root / "negative.json"
+            payload = {
+                "video_id": "fixture-video",
+                "expected_outcome": "no_sermon",
+                "expected_spans": [],
+                "allowed_interruptions": [],
+                "ground_truth_version": 1,
+                "reviewed_by": "Reviewer",
+            }
+            fixture = validate_fixture_payload(payload, path=fixture_path)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=fixture,
+            )
+
+        self.assertEqual("verifier", trace["earliest_observed_failure"]["stage"])
+        self.assertEqual(
+            "recording_verifier",
+            trace["root_cause_hypothesis"]["stage"],
+        )
+        systemic = aggregate_diagnostic_traces([trace])
+        self.assertEqual(
+            {"recording_verifier_false_positive": 1},
+            systemic["failure_signature_counts"],
+        )
 
     def test_systemic_view_separates_observed_failures_from_hypotheses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

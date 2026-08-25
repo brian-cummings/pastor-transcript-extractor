@@ -733,7 +733,7 @@ def diagnose_pipeline(
         else resolve_video_artifact_paths(database, paths, video).root / "diagnostics"
     )
     root.mkdir(parents=True, exist_ok=True)
-    trace_path = root / "diagnostic-trace-v1.json"
+    trace_path = root / "diagnostic-trace-v2.json"
     report_path = root / "diagnostic-report.md"
     trace_path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
     report_path.write_text(build_diagnostic_markdown(trace), encoding="utf-8")
@@ -821,7 +821,7 @@ def diagnose_pipeline_system(
         traces.append(trace)
         per_video = video_root / video.youtube_video_id
         per_video.mkdir(parents=True, exist_ok=True)
-        (per_video / "diagnostic-trace-v1.json").write_text(
+        (per_video / "diagnostic-trace-v2.json").write_text(
             json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8"
         )
         (per_video / "diagnostic-report.md").write_text(
