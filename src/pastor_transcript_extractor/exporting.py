@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pastor_transcript_extractor.caption_normalization import (
+    NORMALIZER_VERSION,
+    normalize_caption_text,
+)
 from pastor_transcript_extractor.config import AppPaths, build_pastor_paths
 from pastor_transcript_extractor.disposition import build_final_disposition
 from pastor_transcript_extractor.models import Video, VideoStatus
@@ -198,9 +202,15 @@ def _window_segments(segments: list[dict[str, Any]], sermon_window: dict[str, An
 def _build_review_transcript_excerpt(
     proposed_json: dict[str, Any] | None,
     fallback_text: str,
+    *,
+    deduplicate_content: bool = False,
 ) -> str:
     if proposed_json is None:
-        return fallback_text
+        return (
+            normalize_caption_text(fallback_text).text
+            if deduplicate_content
+            else fallback_text
+        )
     segments = proposed_json.get("segments")
     sermon_window = proposed_json.get("sermon_window")
     classification = proposed_json.get("classification")
@@ -225,13 +235,20 @@ def _build_review_transcript_excerpt(
     ]
 
     if excerpt_parts:
-        return "\n\n".join(excerpt_parts)
+        excerpt = "\n".join(excerpt_parts)
+        return (
+            normalize_caption_text(excerpt).text
+            if deduplicate_content
+            else "\n\n".join(excerpt_parts)
+        )
     return "(No effective sermon excerpt is available; manual review is required.)"
 
 
 def _build_review_sections_for_videos(
     database: Database,
     videos: list[Video],
+    *,
+    deduplicate_transcript_content: bool = False,
 ) -> tuple[list[str], int, list[dict[str, object]]]:
     sections: list[str] = []
     skipped_count = 0
@@ -249,7 +266,11 @@ def _build_review_sections_for_videos(
 
         proposed_text = proposed_path.read_text(encoding="utf-8").rstrip()
         proposed_json = _load_json(proposed_json_path) if proposed_json_path is not None else None
-        review_excerpt = _build_review_transcript_excerpt(proposed_json, proposed_text)
+        review_excerpt = _build_review_transcript_excerpt(
+            proposed_json,
+            proposed_text,
+            deduplicate_content=deduplicate_transcript_content,
+        )
         transcript_source = None
         sermon_window = None
         guest_speaker_suspected = False
@@ -489,6 +510,7 @@ def export_profile_transcript_collection(
     sections, skipped_count, manifest_videos = _build_review_sections_for_videos(
         database,
         videos,
+        deduplicate_transcript_content=True,
     )
     observation_ids_by_video: dict[int, list[int]] = {}
     for observation_id in scope.observation_ids:
@@ -525,6 +547,7 @@ def export_profile_transcript_collection(
                 "profile_stable_key": profile.stable_key,
                 "profile_label": profile_label,
                 "selection_semantics": "effective_reviewed_profile_membership",
+                "transcript_content_normalizer": NORMALIZER_VERSION,
                 "generated_at": generated_at,
                 "video_count": len(manifest_videos),
                 "skipped_count": skipped_count,

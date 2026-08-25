@@ -43,7 +43,7 @@ class ProfileTranscriptCollectionTests(unittest.TestCase):
                     "sermon_window": {
                         "start_seconds": 10.0,
                         "end_seconds": 70.0,
-                        "included_segment_indexes": [1],
+                        "included_segment_indexes": [1, 2, 3],
                     },
                     "segments": [
                         {
@@ -53,6 +53,16 @@ class ProfileTranscriptCollectionTests(unittest.TestCase):
                         },
                         {
                             "start_seconds": 10.0,
+                            "end_seconds": 30.0,
+                            "text": "Open your Bible",
+                        },
+                        {
+                            "start_seconds": 30.0,
+                            "end_seconds": 50.0,
+                            "text": "Open your Bible to Mark",
+                        },
+                        {
+                            "start_seconds": 50.0,
                             "end_seconds": 70.0,
                             "text": "The profile sermon transcript.",
                         },
@@ -122,9 +132,16 @@ class ProfileTranscriptCollectionTests(unittest.TestCase):
             self.assertIn("# Reviewed Speaker Sermon Transcript Collection", markdown)
             self.assertIn("The profile sermon transcript.", markdown)
             self.assertNotIn("Host introduction", markdown)
+            self.assertEqual(1, markdown.count("Open your Bible"))
+            self.assertIn(
+                "Open your Bible to Mark\nThe profile sermon transcript.", markdown
+            )
             self.assertEqual(
                 "effective_reviewed_profile_membership",
                 manifest["selection_semantics"],
+            )
+            self.assertEqual(
+                "rolling-caption-v1", manifest["transcript_content_normalizer"]
             )
             self.assertEqual(
                 [observation_id], manifest["videos"][0]["profile_observation_ids"]
