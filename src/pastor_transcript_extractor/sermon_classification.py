@@ -20,7 +20,7 @@ CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v2"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
 FINE_COMPONENT_VERSION = "objective-noise-components+continuity-probe-v2"
-SEARCH_ALGORITHM_VERSION = "adaptive_llm_v4"
+SEARCH_ALGORITHM_VERSION = "adaptive_llm_v5"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
 MAX_PRE_ANCHOR_RECOVERY_SECONDS = 180.0
 
@@ -487,7 +487,7 @@ def _candidate_score_components(
         rule_coverage = rule_overlap_seconds / (
             rule_window.end_seconds - rule_window.start_seconds
         )
-        rule_bonus = rule_coverage * max(0.0, min(rule_window.confidence, 1.0)) * 2400.0
+        rule_bonus = rule_coverage * max(0.0, min(rule_window.confidence, 1.0)) * 1200.0
     return {
         "duration_seconds": round(duration, 3),
         "duration_score": round(duration_score, 3),
@@ -637,11 +637,12 @@ def _refine_retained_boundaries(
     if seed is not None and not preserve_joined_start:
         recovered: set[int] = set()
         stopped_by: str | None = None
-        recovery_floor = max(
-            0.0,
-            seed - MAX_PRE_ANCHOR_RECOVERY_SECONDS,
-            default_pre_roll_start if default_pre_roll_start is not None else 0.0,
+        default_floor = (
+            default_pre_roll_start
+            if default_pre_roll_start is not None and default_pre_roll_start < seed
+            else 0.0
         )
+        recovery_floor = max(0.0, seed - MAX_PRE_ANCHOR_RECOVERY_SECONDS, default_floor)
         for block in reversed(
             [
                 item
@@ -1327,6 +1328,14 @@ def classify_sermon_content_adaptive(
     consistency_warnings = _central_consistency_warnings(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
     )
+    if (
+        boundary_recovery["start"].get("status") == "recording_edge"
+        and boundary_recovery["end"].get("status") == "recording_edge"
+        and not selected_candidate["score_components"].get("matched_sermon_cues")
+    ):
+        consistency_warnings.append(
+            "candidate spans both recording edges without an explicit sermon boundary cue"
+        )
     warnings.extend(consistency_warnings)
     post_refinement_rescue_reasons: list[str] = []
     if consistency_warnings:

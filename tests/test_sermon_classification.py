@@ -403,6 +403,29 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual(180.0, evidence["pre_anchor_extension_seconds"])
         self.assertEqual(720.0, evidence["recall_guard_floor_seconds"])
 
+    def test_pre_anchor_recovery_ignores_default_floor_after_the_explicit_seed(self) -> None:
+        drafts = [
+            draft(index * 90.0, (index + 1) * 90.0, (
+                "Our sermon title today is Grace" if index == 5 else "continued exposition"
+            ))
+            for index in range(8)
+        ]
+        blocks = [
+            TranscriptBlock(index, [index], item.start_seconds or 0.0, item.end_seconds or 0.0, item.text)
+            for index, item in enumerate(drafts)
+        ]
+
+        retained, _, evidence = _refine_retained_boundaries(
+            drafts,
+            blocks,
+            set(range(8)),
+            default_pre_roll_start=600.0,
+        )
+
+        self.assertEqual(set(range(3, 8)), retained)
+        self.assertEqual(180.0, evidence["pre_anchor_extension_seconds"])
+        self.assertEqual(270.0, evidence["recall_guard_floor_seconds"])
+
     def test_raw_inference_cache_separates_namespaces_and_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cache = RawInferenceCache(
@@ -432,6 +455,25 @@ class TranscriptBlockTests(unittest.TestCase):
 
 
 class HybridClassificationTests(unittest.TestCase):
+    def test_edge_to_edge_candidate_without_explicit_sermon_cue_is_low_confidence(self) -> None:
+        drafts = [
+            draft(index * 300.0, (index + 1) * 300.0, "general religious speech")
+            for index in range(4)
+        ]
+        rule = SermonWindowResult(
+            0.0, 1200.0, 0.95, [], "rule_based_v1", list(range(4)), [], False, []
+        )
+
+        result = classify_sermon_content_adaptive(
+            drafts, rule, AllSermonLlmClient(), prompt_version="edge-risk-v1"
+        )
+
+        self.assertEqual("low", result.confidence_tier)
+        self.assertIn(
+            "candidate spans both recording edges without an explicit sermon boundary cue",
+            result.warnings,
+        )
+
     def test_candidate_ranking_caps_duration_and_rewards_independent_rule_agreement(self) -> None:
         blocks = [
             TranscriptBlock(index, [index], index * 300.0, (index + 1) * 300.0, "biblical exposition")
@@ -480,7 +522,7 @@ class HybridClassificationTests(unittest.TestCase):
             },
         }
         hybrid = HybridSermonResult(
-            method="adaptive_llm_v4",
+            method="adaptive_llm_v5",
             model="fixture",
             prompt_version="fixture",
             confidence_tier="low",
@@ -518,7 +560,7 @@ class HybridClassificationTests(unittest.TestCase):
             "suspicious_boundary": False,
         }
         hybrid = HybridSermonResult(
-            "adaptive_llm_v4", "fixture", "fixture", "low", list(range(100)), [], [],
+            "adaptive_llm_v5", "fixture", "fixture", "low", list(range(100)), [], [],
             ["coarse and fine labels disagree across the candidate center"], [], [],
             search={
                 "selected_rank": 1,
@@ -788,7 +830,7 @@ class HybridClassificationTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(result)
-        self.assertEqual("adaptive_llm_v4", classification["method"])
+        self.assertEqual("adaptive_llm_v5", classification["method"])
         self.assertEqual(1, classification["search"]["selected_rank"])
         candidate = classification["search"]["candidates"][0]
         self.assertEqual(candidate["score"], candidate["score_components"]["total_score"])
@@ -801,7 +843,7 @@ class HybridClassificationTests(unittest.TestCase):
 
     def test_classification_cache_key_includes_model_and_prompt(self) -> None:
         classification = {
-            "method": "adaptive_llm_v4",
+            "method": "adaptive_llm_v5",
             "block_builder_version": BLOCK_BUILDER_VERSION,
             "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
             "fine_component_version": FINE_COMPONENT_VERSION,
@@ -908,7 +950,7 @@ class HybridClassificationTests(unittest.TestCase):
             updated = json.loads(proposed_path.read_text(encoding="utf-8"))
             self.assertEqual([1, 2], updated["classification"]["retained_segment_indexes"])
             self.assertEqual("hybrid_llm", updated["sermon_window"]["source"])
-            self.assertEqual("adaptive_llm_v4", updated["classification"]["method"])
+            self.assertEqual("adaptive_llm_v5", updated["classification"]["method"])
             self.assertEqual("accepted_sermon", updated["final_disposition"]["status"])
             self.assertEqual(
                 updated["final_disposition"],

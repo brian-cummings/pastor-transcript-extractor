@@ -29,7 +29,7 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
         "segments": segments(),
         "sermon_window": {"source": "detected"},
         "classification": {
-            "method": "adaptive_llm_v4",
+            "method": "adaptive_llm_v5",
             "model": "fixture-model",
             "prompt_version": "v2",
             "confidence_tier": confidence,
@@ -50,7 +50,7 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
             "cache_stats": {"hits": 3, "misses": 0},
             "search": {
                 "schema_version": 1,
-                "algorithm_version": "adaptive_llm_v4",
+                "algorithm_version": "adaptive_llm_v5",
                 "model_digest": "digest",
                 "selected_rank": 1,
                 "rule_baseline": {"start_seconds": 0.0, "end_seconds": 20.0},
@@ -203,6 +203,35 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual("automatic", result["outcome_mode"])
         self.assertTrue(result["correct_top_candidate"])
         self.assertEqual("digest", result["model_digest"])
+
+    def test_manual_override_metrics_use_effective_window_not_diagnostic_candidate(self) -> None:
+        fixture = {
+            "video_id": "manual",
+            "expected_outcome": "sermon",
+            "expected_spans": [{"start_seconds": 30.0, "end_seconds": 50.0}],
+            "allowed_interruptions": [],
+            "ground_truth_version": 1,
+        }
+        payload = proposed([0, 1], confidence="medium")
+        sermon_window = payload["sermon_window"]
+        assert isinstance(sermon_window, dict)
+        sermon_window.update({
+            "source": "override",
+            "included_segment_indexes": [3, 4],
+        })
+
+        result = evaluate_fixture_payload(
+            fixture,
+            payload,
+            fixture_path=Path("manual.json"),
+            proposed_path=Path("proposed.json"),
+        )
+
+        self.assertEqual(1.0, result["sermon_recall"])
+        self.assertEqual(0.0, result["contamination_ratio"])
+        self.assertEqual(2, result["diagnostic_retained_segment_count"])
+        self.assertEqual(2, result["detected_retained_segment_count"])
+        self.assertEqual("manual_override", result["outcome_mode"])
 
     def test_negative_distinguishes_candidate_from_high_confidence_acceptance(self) -> None:
         fixture = {

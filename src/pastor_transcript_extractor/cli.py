@@ -12054,7 +12054,10 @@ def reclassify(
     eligible_videos = []
     minimum_duration = minimum_sermon_duration_seconds()
     for video in videos:
-        if not video_is_sermon_eligible(
+        # Frozen fixtures are explicit validation targets.  Do not silently
+        # leave stale classifier artifacts because a fixture now falls outside
+        # the production discovery eligibility policy.
+        if fixture_dir is None and not video_is_sermon_eligible(
             video.duration_seconds,
             video.published_at,
             minimum_seconds=minimum_duration,

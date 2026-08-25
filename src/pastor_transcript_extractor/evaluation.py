@@ -445,7 +445,9 @@ def evaluate_fixture_payload(
             "fixture_path": str(fixture_path),
             "proposed_path": str(proposed_path),
         }
-    detected = {index for index in retained_raw if isinstance(index, int) and 0 <= index < len(segments)}
+    diagnostic_detected = {
+        index for index in retained_raw if isinstance(index, int) and 0 <= index < len(segments)
+    }
     timed = _timed_segment_indexes(segments)
     expected_ranges = _ranges(fixture, "expected_spans")
     interruption_ranges = _ranges(fixture, "allowed_interruptions")
@@ -457,6 +459,16 @@ def evaluate_fixture_payload(
     confidence = str(classification.get("confidence_tier", "unknown"))
     cache_stats = classification.get("cache_stats") if isinstance(classification.get("cache_stats"), dict) else {}
     sermon_window = proposed.get("sermon_window") if isinstance(proposed.get("sermon_window"), dict) else {}
+    effective_indexes = sermon_window.get("included_segment_indexes")
+    detected = (
+        {
+            index
+            for index in effective_indexes
+            if isinstance(index, int) and 0 <= index < len(segments)
+        }
+        if isinstance(effective_indexes, list)
+        else diagnostic_detected
+    )
     final_disposition = proposed.get("final_disposition")
     recording_verification = proposed.get("recording_verification")
     if not isinstance(recording_verification, dict):
@@ -515,6 +527,7 @@ def evaluate_fixture_payload(
         return {
             **common,
             "candidate_produced": candidate_produced,
+            "diagnostic_retained_segment_count": len(diagnostic_detected),
             "retained_segment_count": len(detected),
             "timed_segment_count": len(timed),
             "false_positive_ratio": len(detected) / max(len(timed), 1),
@@ -541,6 +554,7 @@ def evaluate_fixture_payload(
         **common,
         "expected_retained_segment_count": len(expected),
         "detected_retained_segment_count": len(detected),
+        "diagnostic_retained_segment_count": len(diagnostic_detected),
         "true_positive_retained_segment_count": len(true_positive),
         "missed_sermon_segment_count": len(missed),
         "contaminating_segment_count": len(contamination),

@@ -164,6 +164,8 @@ class FixtureReclassificationCliTests(unittest.TestCase):
                     id=video_id,
                     title=f"Video {video_id}",
                     youtube_video_id=f"youtube-{video_id}",
+                    duration_seconds=3600,
+                    published_at=None,
                 )
                 for video_id in range(1, 5)
             ]
@@ -243,8 +245,18 @@ class FixtureReclassificationCliTests(unittest.TestCase):
                 json.dumps(valid_payload("youtube-b")), encoding="utf-8"
             )
             videos = {
-                "youtube-a": SimpleNamespace(id=20, title="Fixture A"),
-                "youtube-b": SimpleNamespace(id=10, title="Fixture B"),
+                "youtube-a": SimpleNamespace(
+                    id=20,
+                    title="Fixture A",
+                    duration_seconds=1,
+                    published_at=None,
+                ),
+                "youtube-b": SimpleNamespace(
+                    id=10,
+                    title="Fixture B",
+                    duration_seconds=1,
+                    published_at=None,
+                ),
             }
             database = SimpleNamespace(
                 get_video_by_youtube_id=lambda video_id: videos.get(video_id),
