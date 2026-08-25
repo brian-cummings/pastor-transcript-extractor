@@ -87,6 +87,30 @@ class FinalDispositionTests(unittest.TestCase):
             result["reason_codes"],
         )
 
+    def test_recording_verifier_cannot_resolve_boundary_arbitration_disagreement(self) -> None:
+        result = build_final_disposition(
+            {"confidence_tier": "low", "retained_segment_indexes": [1, 2, 3]},
+            {
+                "start_seconds": 600.0,
+                "end_seconds": 900.0,
+                "source": "detected",
+                "arbitration": {
+                    "decision": "review_required",
+                    "reason": "substantial_boundary_disagreement_without_stronger_refined_evidence",
+                },
+            },
+            recording_verification={
+                "decision": "worship_service_sermon",
+                "predicted_outcome": "sermon",
+            },
+        )
+
+        self.assertEqual("review_required", result["status"])
+        self.assertEqual(
+            ["substantial_window_disagreement_requires_boundary_review"],
+            result["reason_codes"],
+        )
+
     def test_recording_verifier_rejects_program_without_erasing_candidate(self) -> None:
         result = build_final_disposition(
             {"confidence_tier": "medium", "retained_segment_indexes": [1, 2]},

@@ -32,6 +32,7 @@ from pastor_transcript_extractor.sermon_classification import (
     CONFIDENCE_POLICY_VERSION,
     FINE_COMPONENT_VERSION,
     HybridSermonResult,
+    SEARCH_ALGORITHM_VERSION,
     classify_sermon_content_adaptive,
 )
 from pastor_transcript_extractor.storage import Database
@@ -186,7 +187,7 @@ def _classification_is_current(
 ) -> bool:
     current = (
         isinstance(classification, dict)
-        and classification.get("method") == "adaptive_llm_v3"
+        and classification.get("method") == SEARCH_ALGORITHM_VERSION
         and classification.get("block_builder_version") == BLOCK_BUILDER_VERSION
         and classification.get("coarse_discovery_version") == COARSE_DISCOVERY_VERSION
         and classification.get("fine_component_version") == FINE_COMPONENT_VERSION
@@ -331,6 +332,147 @@ def _promote_hybrid_window(
     )
 
 
+def _window_alternative(window: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": window.get("source"),
+        "method": window.get("method"),
+        "start_seconds": window.get("start_seconds"),
+        "end_seconds": window.get("end_seconds"),
+        "confidence": window.get("confidence"),
+        "included_segment_indexes": list(window.get("included_segment_indexes") or []),
+        "suspicious_boundary": window.get("suspicious_boundary") is True,
+        "suspicious_boundary_reasons": list(
+            window.get("suspicious_boundary_reasons") or []
+        ),
+    }
+
+
+def _arbitrate_hybrid_window(
+    window: dict[str, Any],
+    drafts: list[SegmentDraft],
+    hybrid: HybridSermonResult,
+    *,
+    recording_sermon_confirmed: bool,
+) -> dict[str, Any]:
+    """Compare boundary evidence; recording verification never supplies boundaries."""
+    if window.get("source") == "override" or not hybrid.retained_segment_indexes:
+        return {
+            "schema_version": 1,
+            "decision": "not_applicable",
+            "reason": "manual_override_or_missing_adaptive_window",
+            "recording_verifier_role": "sermon_existence_only",
+        }
+    if window.get("source") == "hybrid_llm" and isinstance(window.get("arbitration"), dict):
+        arbitration = dict(window["arbitration"])
+        arbitration["recording_sermon_confirmed"] = recording_sermon_confirmed
+        window["arbitration"] = arbitration
+        return arbitration
+    rule_indexes = {
+        index for index in window.get("included_segment_indexes", []) if isinstance(index, int)
+    }
+    adaptive_indexes = set(hybrid.retained_segment_indexes)
+    overlap = len(rule_indexes & adaptive_indexes) / max(len(rule_indexes | adaptive_indexes), 1)
+    search = hybrid.search if isinstance(hybrid.search, dict) else {}
+    candidates = search.get("candidates") if isinstance(search.get("candidates"), list) else []
+    selected_rank = search.get("selected_rank")
+    selected = next(
+        (
+            candidate
+            for candidate in candidates
+            if isinstance(candidate, dict) and candidate.get("rank") == selected_rank
+        ),
+        {},
+    )
+    fine_support_count = len(selected.get("fine_support_block_ids") or [])
+    recovery = selected.get("boundary_recovery") if isinstance(selected, dict) else None
+    boundary_statuses = [
+        recovery.get(edge, {}).get("status")
+        for edge in ("start", "end")
+    ] if isinstance(recovery, dict) else []
+    consistency_failed = any(
+        "candidate center" in warning or "candidate has no timestamped" in warning
+        for warning in hybrid.warnings
+    )
+    adaptive_score = (
+        (2.0 if fine_support_count >= 3 else 0.5 if fine_support_count else 0.0)
+        + (1.0 if not hybrid.uncertain_block_ids else 0.0)
+        + sum(
+            0.5 if status in {"semantic_transition", "objective_noise"} else 0.15
+            if status == "recording_edge"
+            else 0.0
+            for status in boundary_statuses
+        )
+        - (1.0 if consistency_failed else 0.0)
+    )
+    rule_confidence = window.get("confidence")
+    rule_score = (
+        max(0.0, min(float(rule_confidence), 1.0)) * 2.0
+        if isinstance(rule_confidence, (int, float))
+        else 0.0
+    )
+    rule_score += 0.75 if window.get("suspicious_boundary") is not True else 0.0
+    rule_score += 0.25 if window.get("source") == "detected" else 0.0
+    rule_duration = (
+        float(window["end_seconds"]) - float(window["start_seconds"])
+        if isinstance(window.get("start_seconds"), (int, float))
+        and isinstance(window.get("end_seconds"), (int, float))
+        else 0.0
+    )
+    retained = [drafts[index] for index in hybrid.retained_segment_indexes]
+    starts = [draft.start_seconds for draft in retained if draft.start_seconds is not None]
+    ends = [draft.end_seconds for draft in retained if draft.end_seconds is not None]
+    adaptive_duration = max(ends) - min(starts) if starts and ends else 0.0
+    if rule_duration > 0.0 and adaptive_duration >= rule_duration * 1.5:
+        adaptive_score += 0.5
+    substantial_disagreement = bool(rule_indexes) and overlap < 0.5
+    rule_alternative = _window_alternative(window)
+    adaptive_alternative = {
+        "source": "hybrid_llm",
+        "method": hybrid.method,
+        "start_seconds": min(starts) if starts else None,
+        "end_seconds": max(ends) if ends else None,
+        "included_segment_indexes": list(hybrid.retained_segment_indexes),
+        "confidence_tier": hybrid.confidence_tier,
+        "fine_support_block_ids": list(selected.get("fine_support_block_ids") or []),
+        "boundary_recovery": recovery,
+    }
+    adaptive_stronger = adaptive_score > rule_score + 0.25
+    choose_adaptive = (
+        not substantial_disagreement and hybrid.confidence_tier != "low"
+    ) or (substantial_disagreement and adaptive_stronger)
+    if choose_adaptive:
+        _promote_hybrid_window(window, drafts, hybrid)
+        decision = "adaptive_selected"
+        reason = (
+            "coherent_refined_evidence_stronger_than_short_rule_window"
+            if substantial_disagreement
+            else "rule_and_adaptive_windows_are_compatible"
+        )
+        rejected = rule_alternative
+    else:
+        decision = "review_required" if substantial_disagreement else "rule_retained"
+        reason = (
+            "substantial_boundary_disagreement_without_stronger_refined_evidence"
+            if substantial_disagreement
+            else "low_confidence_adaptive_window_not_promoted"
+        )
+        rejected = adaptive_alternative
+    arbitration = {
+        "schema_version": 1,
+        "decision": decision,
+        "reason": reason,
+        "substantial_disagreement": substantial_disagreement,
+        "segment_iou": round(overlap, 6),
+        "adaptive_evidence_score": round(adaptive_score, 3),
+        "rule_evidence_score": round(rule_score, 3),
+        "recording_verifier_role": "sermon_existence_only",
+        "recording_sermon_confirmed": recording_sermon_confirmed,
+        "rejected_alternative": rejected,
+    }
+    window["arbitration"] = arbitration
+    return arbitration
+
+
 def reclassify_video(
     database: Database,
     app_paths: AppPaths,
@@ -430,15 +572,18 @@ def reclassify_video(
     )
     hybrid = classify_sermon_content_adaptive(
         drafts,
-        detected_window,
+        # Manual review establishes the final content envelope only.  Candidate
+        # discovery and ranking must retain an independently recomputed rule
+        # comparator or the override leaks ground truth into automatic evidence.
+        recomputed_window,
         llm_client,
         prompt_version=prompt_version,
         progress=progress,
         cache_dir=inference_cache_dir or video_paths.extracted / "inference-cache",
         model_digest=model_digest,
         context_size=context_size,
-        rule_baseline_source="manual_override" if override is not None else "recomputed_rules",
-        rule_baseline_algorithm_version=detected_window.method,
+        rule_baseline_source="recomputed_rules",
+        rule_baseline_algorithm_version=recomputed_window.method,
         manual_override_present=override is not None,
     )
     classification = hybrid.to_dict()
@@ -452,10 +597,14 @@ def reclassify_video(
     if (
         override is None
         and isinstance(existing_window, dict)
-        and hybrid.confidence_tier != "low"
         and hybrid.retained_segment_indexes
     ):
-        _promote_hybrid_window(existing_window, drafts, hybrid)
+        classification["window_arbitration"] = _arbitrate_hybrid_window(
+            existing_window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=False,
+        )
     preliminary_disposition = build_final_disposition(
         classification,
         existing_window,
@@ -489,13 +638,15 @@ def reclassify_video(
     )
     classification["recording_verification"] = recording_verification
     payload["recording_verification"] = recording_verification
-    if (
-        override is None
-        and recording_verification.get("predicted_outcome") == "sermon"
-        and hybrid.retained_segment_indexes
-        and not existing_window.get("included_segment_indexes")
-    ):
-        _promote_hybrid_window(existing_window, drafts, hybrid)
+    if override is None and hybrid.retained_segment_indexes:
+        classification["window_arbitration"] = _arbitrate_hybrid_window(
+            existing_window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=(
+                recording_verification.get("predicted_outcome") == "sermon"
+            ),
+        )
     disposition = build_final_disposition(
         classification,
         existing_window,
@@ -758,26 +909,12 @@ def extract_video(
     override_path = video_paths.review / "window_override.json"
     override, override_error = _load_window_override(override_path)
     sermon_window = _effective_sermon_window(detected_window, override, override_error)
-    if (
-        hybrid_result is not None
-        and override is None
-        and hybrid_result.confidence_tier != "low"
-        and hybrid_result.retained_segment_indexes
-    ):
-        retained_drafts = [drafts[index] for index in hybrid_result.retained_segment_indexes]
-        timed_starts = [draft.start_seconds for draft in retained_drafts if draft.start_seconds is not None]
-        timed_ends = [draft.end_seconds for draft in retained_drafts if draft.end_seconds is not None]
-        sermon_window.update(
-            {
-                "start_seconds": min(timed_starts) if timed_starts else sermon_window["start_seconds"],
-                "end_seconds": max(timed_ends) if timed_ends else sermon_window["end_seconds"],
-                "method": hybrid_result.method,
-                "source": "hybrid_llm",
-                "included_segment_indexes": hybrid_result.retained_segment_indexes,
-                "excluded_segment_indexes": hybrid_result.excluded_segment_indexes,
-                "suspicious_boundary": hybrid_result.confidence_tier != "high",
-                "suspicious_boundary_reasons": hybrid_result.warnings,
-            }
+    if hybrid_result is not None and override is None and hybrid_result.retained_segment_indexes:
+        classification["window_arbitration"] = _arbitrate_hybrid_window(
+            sermon_window,
+            drafts,
+            hybrid_result,
+            recording_sermon_confirmed=False,
         )
     guest_flags = (
         detect_guest_speaker_flags(
@@ -834,14 +971,15 @@ def extract_video(
         RECORDING_VERIFIER_POLICY_VERSION
     )
     classification["recording_verification"] = recording_verification
-    if (
-        hybrid_result is not None
-        and override is None
-        and recording_verification.get("predicted_outcome") == "sermon"
-        and hybrid_result.retained_segment_indexes
-        and not sermon_window.get("included_segment_indexes")
-    ):
-        _promote_hybrid_window(sermon_window, drafts, hybrid_result)
+    if hybrid_result is not None and override is None and hybrid_result.retained_segment_indexes:
+        classification["window_arbitration"] = _arbitrate_hybrid_window(
+            sermon_window,
+            drafts,
+            hybrid_result,
+            recording_sermon_confirmed=(
+                recording_verification.get("predicted_outcome") == "sermon"
+            ),
+        )
     final_disposition = build_final_disposition(
         classification,
         sermon_window,

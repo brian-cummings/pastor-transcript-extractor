@@ -36,6 +36,12 @@ def build_final_disposition(
     has_window = _has_effective_window(sermon_window)
     window_source = sermon_window.get("source") if isinstance(sermon_window, dict) else None
     manual_override = window_source == "override"
+    arbitration = (
+        sermon_window.get("arbitration") if isinstance(sermon_window, dict) else None
+    )
+    arbitration_review_required = (
+        isinstance(arbitration, dict) and arbitration.get("decision") == "review_required"
+    )
     verification = (
         recording_verification if isinstance(recording_verification, dict) else {}
     )
@@ -60,6 +66,9 @@ def build_final_disposition(
     elif manual_override and has_window:
         status = ACCEPTED_SERMON
         reasons = ["manual_content_boundary_override_is_authoritative"]
+    elif arbitration_review_required:
+        status = REVIEW_REQUIRED
+        reasons = ["substantial_window_disagreement_requires_boundary_review"]
     elif verified_outcome == "sermon" and has_window:
         status = ACCEPTED_SERMON
         reasons = ["recording_verifier_confirmed_worship_service_sermon"]
@@ -92,4 +101,10 @@ def build_final_disposition(
         "recording_verifier_policy_version": verification.get("policy_version"),
         "recording_verifier_decision": verification_decision,
         "recording_verifier_outcome": verified_outcome,
+        "window_arbitration_decision": (
+            arbitration.get("decision") if isinstance(arbitration, dict) else None
+        ),
+        "window_arbitration_reason": (
+            arbitration.get("reason") if isinstance(arbitration, dict) else None
+        ),
     }

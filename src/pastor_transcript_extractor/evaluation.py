@@ -13,6 +13,7 @@ from pastor_transcript_extractor.disposition import (
     REVIEW_REQUIRED,
     build_final_disposition,
 )
+from pastor_transcript_extractor.sermon_classification import SEARCH_ALGORITHM_VERSION
 
 
 CATASTROPHIC_RECALL_THRESHOLD = 0.90
@@ -423,9 +424,9 @@ def evaluate_fixture_payload(
         }
     search_raw = classification.get("search")
     if (
-        classification.get("method") != "adaptive_llm_v3"
+        classification.get("method") != SEARCH_ALGORITHM_VERSION
         or not isinstance(search_raw, dict)
-        or search_raw.get("algorithm_version") != "adaptive_llm_v3"
+        or search_raw.get("algorithm_version") != SEARCH_ALGORITHM_VERSION
     ):
         return {
             "video_id": fixture.get("video_id"),
@@ -501,6 +502,9 @@ def evaluate_fixture_payload(
         "recording_verifier_decision": recording_verification.get("decision"),
         "recording_verifier_source": recording_verification.get("source"),
         "recording_verifier_cache_hit": recording_verification.get("cache_hit") is True,
+        "outcome_mode": (
+            "manual_override" if sermon_window.get("source") == "override" else "automatic"
+        ),
         "confidence_ablations": build_confidence_ablations(classification),
         "cache_hits": int(cache_stats.get("hits", 0)),
         "cache_misses": int(cache_stats.get("misses", 0)),
@@ -591,6 +595,24 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     ]
     recalls = [float(result["sermon_recall"]) for result in positives]
     contamination = [float(result["contamination_ratio"]) for result in positives]
+    start_errors = [
+        abs(float(result["start_boundary_error_seconds"]))
+        for result in positives
+        if isinstance(result.get("start_boundary_error_seconds"), (int, float))
+    ]
+    end_errors = [
+        abs(float(result["end_boundary_error_seconds"]))
+        for result in positives
+        if isinstance(result.get("end_boundary_error_seconds"), (int, float))
+    ]
+    manual_results = [
+        result for result in evaluated if result.get("outcome_mode") == "manual_override"
+    ]
+    automatic_results = [
+        result for result in evaluated if result.get("outcome_mode") != "manual_override"
+    ]
+    manual_positives = [result for result in manual_results if result.get("expected_outcome") == "sermon"]
+    automatic_positives = [result for result in automatic_results if result.get("expected_outcome") == "sermon"]
     top_candidates = [bool(result.get("correct_top_candidate")) for result in positives]
     aggregate = {
         "fixture_count": len(results),
@@ -601,6 +623,14 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "mean_sermon_recall": sum(recalls) / len(recalls) if recalls else None,
         "worst_sermon_recall": min(recalls) if recalls else None,
         "mean_contamination_ratio": sum(contamination) / len(contamination) if contamination else None,
+        "positive_mean_absolute_start_error_seconds": (
+            sum(start_errors) / len(start_errors) if start_errors else None
+        ),
+        "positive_mean_absolute_end_error_seconds": (
+            sum(end_errors) / len(end_errors) if end_errors else None
+        ),
+        "positive_contamination_over_10_percent": sum(value > 0.1 for value in contamination),
+        "positive_contamination_over_20_percent": sum(value > 0.2 for value in contamination),
         "catastrophic_omissions": sum(bool(result.get("catastrophic_omission")) for result in positives),
         "negative_candidates_produced": sum(bool(result.get("candidate_produced")) for result in negatives),
         "negative_high_confidence_false_positives": sum(bool(result.get("false_high_confidence_acceptance")) for result in negatives),
@@ -627,6 +657,20 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "negative_automatic_rejection_rate": (
             len(rejected_negatives) / len(negatives) if negatives else None
         ),
+        "manual_override_outcome_count": len(manual_results),
+        "automatic_outcome_count": len(automatic_results),
+        "manual_override_positive_mean_recall": (
+            sum(float(result["sermon_recall"]) for result in manual_positives)
+            / len(manual_positives)
+            if manual_positives
+            else None
+        ),
+        "automatic_positive_mean_recall": (
+            sum(float(result["sermon_recall"]) for result in automatic_positives)
+            / len(automatic_positives)
+            if automatic_positives
+            else None
+        ),
     }
     aggregate["confidence_ablations"] = aggregate_confidence_ablations(results)
     return aggregate
@@ -647,6 +691,11 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         f"- Mean sermon recall: {metric(aggregate['mean_sermon_recall'])}",
         f"- Worst sermon recall: {metric(aggregate['worst_sermon_recall'])}",
         f"- Mean contamination ratio: {metric(aggregate['mean_contamination_ratio'])}",
+        f"- Mean absolute start error: {metric(aggregate['positive_mean_absolute_start_error_seconds'])}s",
+        f"- Mean absolute end error: {metric(aggregate['positive_mean_absolute_end_error_seconds'])}s",
+        f"- Positive contamination >10% / >20%: "
+        f"{aggregate['positive_contamination_over_10_percent']} / "
+        f"{aggregate['positive_contamination_over_20_percent']}",
         f"- Correct top-candidate rate: {metric(aggregate['correct_top_candidate_rate'])}",
         f"- Automatic coverage: {metric(aggregate['automatic_coverage_rate'])} "
         f"({aggregate['automatic_resolution_count']}/{aggregate['evaluated_fixture_count']})",
@@ -663,6 +712,10 @@ def build_markdown_report(run: dict[str, Any]) -> str:
         f"- Catastrophic omissions: {aggregate['catastrophic_omissions']}",
         f"- Negative high-confidence false positives: {aggregate['negative_high_confidence_false_positives']}",
         f"- Negative accepted dispositions: {aggregate['negative_accepted_dispositions']}",
+        f"- Manual-override outcomes: {aggregate['manual_override_outcome_count']} "
+        f"(positive mean recall {metric(aggregate['manual_override_positive_mean_recall'])})",
+        f"- Automatic outcomes: {aggregate['automatic_outcome_count']} "
+        f"(positive mean recall {metric(aggregate['automatic_positive_mean_recall'])})",
         "",
         "## Confidence ablations",
         "",

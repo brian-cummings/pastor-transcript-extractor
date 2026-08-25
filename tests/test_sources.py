@@ -1313,7 +1313,7 @@ class CliTests(unittest.TestCase):
             video = database.get_video_by_youtube_id("reject12345")
             extraction = database.get_latest_extraction_result_for_video(video.id)
             payload = json.loads(Path(extraction.proposed_json_path).read_text(encoding="utf-8"))
-            self.assertEqual("adaptive_llm_v3", payload["classification"]["method"])
+            self.assertEqual("adaptive_llm_v4", payload["classification"]["method"])
             self.assertEqual("rejected_no_sermon", payload["final_disposition"]["status"])
             review_dir = build_pastor_paths(build_paths(base_dir), pastor.slug).exports
             review_text = (review_dir / "review.md").read_text(encoding="utf-8")

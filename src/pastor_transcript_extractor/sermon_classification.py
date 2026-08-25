@@ -18,10 +18,11 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v2"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
-COARSE_DISCOVERY_VERSION = "phase-primary-likelihood-rescue-v2"
+COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
 FINE_COMPONENT_VERSION = "objective-noise-components+continuity-probe-v2"
-SEARCH_ALGORITHM_VERSION = "adaptive_llm_v3"
+SEARCH_ALGORITHM_VERSION = "adaptive_llm_v4"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
+MAX_PRE_ANCHOR_RECOVERY_SECONDS = 180.0
 
 
 class ContentLabel(StrEnum):
@@ -423,18 +424,87 @@ def _candidate_strength(
 
 
 def _candidate_score_components(
-    candidate: tuple[float, float], blocks: list[TranscriptBlock]
+    candidate: tuple[float, float],
+    blocks: list[TranscriptBlock],
+    *,
+    audit: list[BlockClassification] | None = None,
+    rule_window: SermonWindowResult | None = None,
 ) -> dict[str, Any]:
     start, end = candidate
-    text = " ".join(block.text.lower() for block in blocks if _overlaps(block, start, end))
+    supporting_positions = [
+        position for position, block in enumerate(blocks) if _overlaps(block, start, end)
+    ]
+    text = " ".join(blocks[position].text.lower() for position in supporting_positions)
     matched_cues = [cue for cue in _SERMON_SEED_CUES if cue in text]
     duration = end - start
+    # Duration is useful evidence of continuity, but it is deliberately capped so
+    # a long religious program cannot outrank a more sermon-specific candidate by
+    # length alone.
+    duration_score = min(duration, 1200.0)
     cue_bonus = len(matched_cues) * 1800.0
+    sermon_specific_reasons = []
+    if audit is not None:
+        sermon_specific_reasons = [
+            item.evidence.partition(":")[2]
+            for position in supporting_positions
+            if position < len(audit)
+            and (item := audit[position]).evidence.partition(":")[2]
+            in {"biblical_exposition", "integrated_scripture"}
+        ]
+    semantic_ratio = len(sermon_specific_reasons) / max(len(supporting_positions), 1)
+    semantic_bonus = semantic_ratio * 900.0
+    cohesion_ratio = (
+        sum(
+            1
+            for position in supporting_positions
+            if audit is None
+            or (
+                position < len(audit)
+                and (
+                    getattr(audit[position], "label", None) == ContentLabel.SERMON
+                    or getattr(audit[position], "evidence", "").partition(":")[2]
+                    in {"biblical_exposition", "integrated_scripture"}
+                )
+            )
+        )
+        / max(len(supporting_positions), 1)
+    )
+    cohesion_bonus = cohesion_ratio * 450.0
+    rule_overlap_seconds = 0.0
+    rule_coverage = 0.0
+    rule_bonus = 0.0
+    if (
+        rule_window is not None
+        and rule_window.start_seconds is not None
+        and rule_window.end_seconds is not None
+        and rule_window.end_seconds > rule_window.start_seconds
+        and rule_window.method != "manual_override_v1"
+    ):
+        rule_overlap_seconds = max(
+            0.0,
+            min(end, rule_window.end_seconds) - max(start, rule_window.start_seconds),
+        )
+        rule_coverage = rule_overlap_seconds / (
+            rule_window.end_seconds - rule_window.start_seconds
+        )
+        rule_bonus = rule_coverage * max(0.0, min(rule_window.confidence, 1.0)) * 2400.0
     return {
         "duration_seconds": round(duration, 3),
+        "duration_score": round(duration_score, 3),
         "matched_sermon_cues": matched_cues,
         "cue_bonus": round(cue_bonus, 3),
-        "total_score": round(duration + cue_bonus, 3),
+        "sermon_specific_support_count": len(sermon_specific_reasons),
+        "sermon_specific_support_ratio": round(semantic_ratio, 6),
+        "semantic_bonus": round(semantic_bonus, 3),
+        "cohesion_ratio": round(cohesion_ratio, 6),
+        "cohesion_bonus": round(cohesion_bonus, 3),
+        "independent_rule_overlap_seconds": round(rule_overlap_seconds, 3),
+        "independent_rule_coverage": round(rule_coverage, 6),
+        "independent_rule_bonus": round(rule_bonus, 3),
+        "total_score": round(
+            duration_score + cue_bonus + semantic_bonus + cohesion_bonus + rule_bonus,
+            3,
+        ),
     }
 
 
@@ -453,6 +523,7 @@ def _joined_candidate(
     right: dict[str, Any],
     blocks: list[TranscriptBlock],
     audit: list[BlockClassification],
+    rule_window: SermonWindowResult | None = None,
 ) -> dict[str, Any] | None:
     left_end = float(left["end_seconds"])
     right_start = float(right["start_seconds"])
@@ -476,7 +547,9 @@ def _joined_candidate(
     continuity_cues = [cue for cue in _SERMON_SEED_CUES if cue in resumed_text]
     if not continuity_cues:
         return None
-    score_components = _candidate_score_components((start, end), blocks)
+    score_components = _candidate_score_components(
+        (start, end), blocks, audit=audit, rule_window=rule_window
+    )
     reasons = sorted({reason for _, reason in gap_evidence})
     score_components["join_gap_duration_seconds"] = round(gap_duration, 3)
     score_components["join_reason_codes"] = reasons
@@ -564,7 +637,18 @@ def _refine_retained_boundaries(
     if seed is not None and not preserve_joined_start:
         recovered: set[int] = set()
         stopped_by: str | None = None
-        for block in reversed([item for item in fine_blocks if item.start_seconds < seed]):
+        recovery_floor = max(
+            0.0,
+            seed - MAX_PRE_ANCHOR_RECOVERY_SECONDS,
+            default_pre_roll_start if default_pre_roll_start is not None else 0.0,
+        )
+        for block in reversed(
+            [
+                item
+                for item in fine_blocks
+                if item.start_seconds < seed and item.end_seconds > recovery_floor
+            ]
+        ):
             negative = _strong_pre_anchor_negative(block, drafts)
             if negative is not None:
                 stopped_by = negative
@@ -602,6 +686,7 @@ def _refine_retained_boundaries(
                 "pre_anchor_extension_seconds": round(extension, 3),
                 "extension_reason": "contiguous_sermon_like_exposition",
                 "stopped_by": stopped_by or "inspection_limit",
+                "recall_guard_floor_seconds": round(recovery_floor, 3),
             }
         else:
             reasons.append("anchored candidate start to an explicit sermon-title or message cue")
@@ -724,6 +809,10 @@ def classify_sermon_content_adaptive(
     rule_baseline_algorithm_version: str | None = None,
     manual_override_present: bool = False,
 ) -> HybridSermonResult:
+    if rule_window.method == "manual_override_v1" or rule_baseline_source == "manual_override":
+        raise ValueError(
+            "manual content overrides cannot be used as independent rule-baseline evidence"
+        )
     coarse_blocks = build_transcript_blocks(drafts, target_seconds=300.0, max_chars=9000)
     if not coarse_blocks:
         raise ValueError("LLM classification requires timestamped transcript segments")
@@ -771,12 +860,48 @@ def classify_sermon_content_adaptive(
         coarse_audit.append(BlockClassification(block.block_id, mapped_label, f"coarse:{reason}", response.raw_content))
 
     coarse_candidates = _coarse_candidate_ranges(coarse_blocks, phases)
-    rescue_triggered = not coarse_candidates
+    primary_candidates = list(coarse_candidates)
+    primary_score_components = [
+        _candidate_score_components(
+            candidate,
+            coarse_blocks,
+            audit=coarse_audit,
+            rule_window=rule_window,
+        )
+        for candidate in primary_candidates
+    ]
+    primary_top = max(
+        zip(primary_candidates, primary_score_components, strict=True),
+        key=lambda item: (float(item[1]["total_score"]), item[0][0]),
+        default=None,
+    )
+    rescue_reasons: list[str] = []
+    if not coarse_candidates:
+        rescue_reasons.append("primary_found_no_candidate")
+    elif primary_top is not None:
+        top_range, top_score = primary_top
+        if (
+            not top_score["matched_sermon_cues"]
+            and float(top_score["sermon_specific_support_ratio"]) < 0.75
+        ):
+            rescue_reasons.append("top_candidate_lacks_strong_sermon_specific_cues")
+        if (
+            len(primary_candidates) > 1
+            and any(candidate[0] > top_range[1] for candidate in primary_candidates)
+        ):
+            rescue_reasons.append("disjoint_later_candidate_requires_comparison")
+        if (
+            rule_window.start_seconds is not None
+            and rule_window.end_seconds is not None
+            and float(top_score["independent_rule_coverage"]) < 0.35
+        ):
+            rescue_reasons.append("rule_adaptive_evidence_disagrees_substantially")
+    rescue_triggered = bool(rescue_reasons)
     selected_discovery_mode = "primary"
     candidate_source = "coarse_llm"
+    rescue_audit: list[BlockClassification] = []
     if rescue_triggered:
         likelihood_phases: list[LikelihoodPhase] = []
-        rescue_audit: list[BlockClassification] = []
         for position, block in enumerate(coarse_blocks):
             if progress is not None:
                 progress("coarse-rescue", position + 1, total_estimate)
@@ -799,8 +924,8 @@ def classify_sermon_content_adaptive(
                 f"coarse-rescue:{reason}",
                 response.raw_content,
             ))
-        coarse_candidates = _likelihood_candidate_ranges(coarse_blocks, likelihood_phases)
-        phases = [
+        rescue_candidates = _likelihood_candidate_ranges(coarse_blocks, likelihood_phases)
+        rescue_phases = [
             CoarsePhase.SERMON
             if phase == LikelihoodPhase.SERMON_LIKELY
             else CoarsePhase.UNCERTAIN
@@ -808,24 +933,57 @@ def classify_sermon_content_adaptive(
             else CoarsePhase.WORSHIP
             for phase in likelihood_phases
         ]
-        coarse_audit = rescue_audit
-        selected_discovery_mode = "likelihood_rescue"
-        candidate_source = "coarse_likelihood_rescue"
+        if not primary_candidates:
+            coarse_candidates = rescue_candidates
+            phases = rescue_phases
+            coarse_audit = rescue_audit
+            selected_discovery_mode = "likelihood_rescue"
+            candidate_source = "coarse_likelihood_rescue"
+        else:
+            # Preserve independent primary evidence and add genuinely new rescue
+            # envelopes for ranking.  This avoids making rescue an all-or-nothing
+            # replacement of a useful primary scan.
+            coarse_candidates = list(primary_candidates)
+            for candidate in rescue_candidates:
+                if candidate not in coarse_candidates:
+                    coarse_candidates.append(candidate)
+            selected_discovery_mode = "primary_plus_likelihood_rescue"
     discovery = {
         "primary_version": "multiclass-phase-v1",
         "rescue_version": "sermon-likelihood-v1",
         "rescue_triggered": rescue_triggered,
+        "rescue_reasons": rescue_reasons,
+        "rescue_outcome": (
+            "added_or_reranked_candidates"
+            if rescue_triggered and coarse_candidates
+            else "no_candidate_found"
+            if rescue_triggered
+            else "not_triggered"
+        ),
         "selected_mode": selected_discovery_mode,
     }
     ranked_candidates: list[dict[str, Any]] = []
     for start, end in coarse_candidates:
-        score_components = _candidate_score_components((start, end), coarse_blocks)
+        candidate_is_primary = (start, end) in primary_candidates
+        scoring_audit = (
+            coarse_audit if candidate_is_primary or not rescue_audit else rescue_audit
+        )
+        score_components = _candidate_score_components(
+            (start, end),
+            coarse_blocks,
+            audit=scoring_audit,
+            rule_window=rule_window,
+        )
         supporting_blocks = [
             block.block_id for block in coarse_blocks if _overlaps(block, start, end)
         ]
         ranked_candidates.append(
             {
-                "source": candidate_source,
+                "source": (
+                    candidate_source
+                    if candidate_is_primary or not primary_candidates
+                    else "coarse_likelihood_rescue"
+                ),
                 "start_seconds": start,
                 "end_seconds": end,
                 "score": score_components["total_score"],
@@ -839,12 +997,18 @@ def classify_sermon_content_adaptive(
     joined_candidates = [
         joined
         for left, right in zip(chronological_candidates, chronological_candidates[1:], strict=False)
-        if (joined := _joined_candidate(left, right, coarse_blocks, coarse_audit)) is not None
+        if (
+            joined := _joined_candidate(
+                left, right, coarse_blocks, coarse_audit, rule_window
+            )
+        )
+        is not None
     ]
     ranked_candidates.extend(joined_candidates)
     ranked_candidates.sort(key=lambda candidate: (-float(candidate["score"]), float(candidate["start_seconds"])))
     for rank, candidate in enumerate(ranked_candidates, start=1):
         candidate["rank"] = rank
+        candidate["selection_state"] = "selected" if rank == 1 else "alternative"
     if ranked_candidates:
         selected_candidate = ranked_candidates[0]
     elif rule_window.start_seconds is not None and rule_window.end_seconds is not None:
@@ -1107,6 +1271,33 @@ def classify_sermon_content_adaptive(
         selected_candidate["end_seconds"] = max(
             draft.end_seconds for draft in retained_timed if draft.end_seconds is not None
         )
+    refined_start = selected_candidate.get("start_seconds")
+    refined_end = selected_candidate.get("end_seconds")
+    start_expansion = (
+        selected_range[0] - float(refined_start)
+        if isinstance(refined_start, (int, float))
+        else 0.0
+    )
+    end_expansion = (
+        float(refined_end) - selected_range[1]
+        if isinstance(refined_end, (int, float))
+        else 0.0
+    )
+    selected_candidate["boundary_precision"] = {
+        "objective_version": "recall_guarded_precision_v1",
+        "start_expansion_seconds": round(max(0.0, start_expansion), 3),
+        "end_expansion_seconds": round(max(0.0, end_expansion), 3),
+        "start_transition": boundary_recovery["start"],
+        "end_transition": boundary_recovery["end"],
+        "contamination_risk": (
+            "high"
+            if max(start_expansion, end_expansion) > 300.0
+            else "medium"
+            if max(start_expansion, end_expansion) > 120.0
+            else "low"
+        ),
+        "recall_guard": "boundaries_not_trimmed_without_independent_transition_evidence",
+    }
     selected_candidate["fine_support_block_ids"] = [
         block.block_id
         for block in fine_blocks
@@ -1137,6 +1328,29 @@ def classify_sermon_content_adaptive(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
     )
     warnings.extend(consistency_warnings)
+    post_refinement_rescue_reasons: list[str] = []
+    if consistency_warnings:
+        post_refinement_rescue_reasons.append("coarse_fine_classification_disagrees")
+    selected_end = float(selected_candidate["end_seconds"])
+    if any(
+        candidate is not selected_candidate
+        and float(candidate["start_seconds"]) > selected_end
+        and float(candidate["score_components"].get("sermon_specific_support_ratio", 0.0))
+        >= float(selected_candidate["score_components"].get("sermon_specific_support_ratio", 0.0))
+        for candidate in ranked_candidates
+    ):
+        post_refinement_rescue_reasons.append("alternative_indicates_uncovered_continuation")
+    discovery["post_refinement_rescue_reasons"] = post_refinement_rescue_reasons
+    discovery["refinement_strategy"] = {
+        "refined_ranks": [int(selected_candidate["rank"])],
+        "reranked_candidate_count": len(ranked_candidates),
+        "additional_refinement_required": bool(post_refinement_rescue_reasons),
+        "reason": (
+            "review_required_before_selecting_an_unrefined_alternative"
+            if post_refinement_rescue_reasons
+            else "top_evidence_candidate_was_coherent"
+        ),
+    }
     confidence = _adaptive_confidence_tier(
         agreement=agreement,
         retained=bool(retained),

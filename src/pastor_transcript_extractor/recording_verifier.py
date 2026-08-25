@@ -13,8 +13,8 @@ from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmRespon
 from pastor_transcript_extractor.storage import Database
 
 
-PROMPT_VERSION = "recording-sermon-verifier-v2"
-POLICY_VERSION = "recording-sermon-verifier-policy-v3"
+PROMPT_VERSION = "recording-sermon-verifier-v3"
+POLICY_VERSION = "recording-sermon-verifier-policy-v4"
 ARTIFACT_SCHEMA_VERSION = 1
 DECISIONS = (
     "worship_service_sermon",
@@ -26,13 +26,30 @@ DECISIONS = (
 CONFIDENCE_LEVELS = ("high", "medium", "low")
 REASON_CODES = (
     "single_sustained_message",
+    "sustained_biblical_exposition",
+    "sermon_application_or_exhortation",
     "sermon_title_or_introduction",
     "lesson_or_curriculum_structure",
     "facilitated_group_structure",
     "multiple_short_speakers_or_sermonettes",
     "ceremony_concert_or_technical_event",
+    "translated_or_alternating_speakers",
+    "extended_religious_speech_without_sermon_structure",
     "insufficient_recording_context",
 )
+
+SERMON_SPECIFIC_REASON_CODES = {
+    "sustained_biblical_exposition",
+    "sermon_application_or_exhortation",
+}
+CONTRADICTORY_REASON_CODES = {
+    "lesson_or_curriculum_structure",
+    "facilitated_group_structure",
+    "multiple_short_speakers_or_sermonettes",
+    "ceremony_concert_or_technical_event",
+    "translated_or_alternating_speakers",
+    "extended_religious_speech_without_sermon_structure",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,7 +163,8 @@ NON_SERMON_EVENT means a concert, graduation, technical test, announcements-only
 UNCLEAR means the supplied evidence cannot reliably distinguish these outcomes.
 
 The title is useful context but may be stale or misleading. Give transcript structure priority. Do not call rhetorical questions, quoted dialogue, or brief congregational responses multiple speakers. Return only the required JSON.
-An explicit Bible Class or Sabbath School title is religious education, even when one teacher gives a long monologue, unless the evidence clearly contains a separate worship-service sermon. A sermon-like title or introduction is never sufficient by itself: WORSHIP_SERVICE_SERMON requires single_sustained_message.
+An explicit Bible Class or Sabbath School title is religious education, even when one teacher gives a long monologue, unless the evidence clearly contains a separate worship-service sermon. A sermon-like title or introduction is never sufficient by itself. WORSHIP_SERVICE_SERMON requires both single_sustained_message and independent sermon-specific evidence: sustained_biblical_exposition or sermon_application_or_exhortation.
+Actively check for contradictions before accepting: curriculum or facilitated instruction; ceremonies or extended religious speeches; translation or regular alternation between speakers; and programs containing several speakers without one principal sermon. Include every supported negative or contradictory reason code. If positive and contradictory evidence are both plausible, choose UNCLEAR rather than worship_service_sermon.
 
 {case.evidence_packet}"""
 
@@ -214,6 +232,32 @@ def validate_verdict(content: dict[str, Any]) -> None:
         and "single_sustained_message" not in reason_codes
     ):
         raise ValueError("worship-service sermon lacks sustained-message evidence")
+
+
+def _apply_acceptance_policy(content: dict[str, Any]) -> dict[str, Any]:
+    """Require two-factor sermon evidence and preserve the model's raw verdict."""
+    decision = str(content["decision"])
+    confidence = str(content["confidence"])
+    reasons = list(content["reason_codes"])
+    sermon_specific = sorted(SERMON_SPECIFIC_REASON_CODES & set(reasons))
+    contradictions = sorted(CONTRADICTORY_REASON_CODES & set(reasons))
+    policy_reasons: list[str] = []
+    if decision == "worship_service_sermon":
+        if not sermon_specific:
+            policy_reasons.append("missing_independent_sermon_specific_evidence")
+        if contradictions:
+            policy_reasons.append("explicit_contradictory_program_evidence")
+        if policy_reasons:
+            decision = "unclear"
+            confidence = "medium" if content["confidence"] == "high" else "low"
+    return {
+        "decision": decision,
+        "confidence": confidence,
+        "reason_codes": reasons,
+        "sermon_specific_reason_codes": sermon_specific,
+        "contradictory_reason_codes": contradictions,
+        "policy_reason_codes": policy_reasons,
+    }
 
 
 class RecordingVerifierCache:
@@ -320,14 +364,18 @@ def verify_recording(
             confidence = response.content.get("confidence")
             reason_codes = response.content.get("reason_codes")
             validate_verdict(response.content)
-            if (
-                decision == "worship_service_sermon"
-                and "ceremony_concert_or_technical_event" in reason_codes
-                and not title_supports_worship_service(title)
-            ):
-                raise ValueError(
-                    "worship-service sermon has unsupported contradictory event evidence"
-                )
+            model_verdict = {
+                "decision": decision,
+                "confidence": confidence,
+                "reason_codes": list(reason_codes),
+            }
+            policy = _apply_acceptance_policy(response.content)
+            decision = policy["decision"]
+            confidence = policy["confidence"]
+            reason_codes = policy["reason_codes"]
+            sermon_specific_reason_codes = policy["sermon_specific_reason_codes"]
+            contradictory_reason_codes = policy["contradictory_reason_codes"]
+            policy_reason_codes = policy["policy_reason_codes"]
             source = "llm_recording_verifier"
             raw_response = response.raw_content
             error = None
@@ -339,6 +387,15 @@ def verify_recording(
             cache_hit = False
             raw_response = None
             error = f"{type(caught).__name__}: {caught}"
+            model_verdict = None
+            sermon_specific_reason_codes = []
+            contradictory_reason_codes = []
+            policy_reason_codes = ["invalid_or_failed_inference"]
+    if title_decision is not None:
+        model_verdict = None
+        sermon_specific_reason_codes = []
+        contradictory_reason_codes = list(reason_codes)
+        policy_reason_codes = ["deterministic_negative_title_gate"]
     predicted_outcome = (
         "sermon"
         if decision == "worship_service_sermon" and confidence == "high"
@@ -361,6 +418,10 @@ def verify_recording(
         "decision": decision,
         "confidence": confidence,
         "reason_codes": reason_codes,
+        "model_verdict": model_verdict,
+        "sermon_specific_reason_codes": sermon_specific_reason_codes,
+        "contradictory_reason_codes": contradictory_reason_codes,
+        "policy_reason_codes": policy_reason_codes,
         "predicted_outcome": predicted_outcome,
         "cache_hit": cache_hit,
         "evidence_packet_hash": hashlib.sha256(
@@ -466,20 +527,29 @@ def run_diagnostics(
                 confidence = response.content.get("confidence")
                 reason_codes = response.content.get("reason_codes")
                 validate_verdict(response.content)
-                if (
-                    decision == "worship_service_sermon"
-                    and "ceremony_concert_or_technical_event" in reason_codes
-                    and not title_supports_worship_service(case.title)
-                ):
-                    raise ValueError(
-                        "worship-service sermon has unsupported contradictory event evidence"
-                    )
+                model_verdict = {
+                    "decision": decision,
+                    "confidence": confidence,
+                    "reason_codes": list(reason_codes),
+                }
+                policy = _apply_acceptance_policy(response.content)
+                decision = policy["decision"]
+                confidence = policy["confidence"]
+                reason_codes = policy["reason_codes"]
+                sermon_specific_reason_codes = policy["sermon_specific_reason_codes"]
+                contradictory_reason_codes = policy["contradictory_reason_codes"]
+                policy_reason_codes = policy["policy_reason_codes"]
                 predicted = (
                     "sermon"
-                    if decision == "worship_service_sermon"
-                    else None
-                    if decision == "unclear"
+                    if decision == "worship_service_sermon" and confidence == "high"
                     else "no_sermon"
+                    if decision in {
+                        "religious_education_or_bible_class",
+                        "multi_speaker_or_student_program",
+                        "non_sermon_event",
+                    }
+                    and confidence == "high"
+                    else None
                 )
                 error = None
                 raw_response = response.raw_content
@@ -492,6 +562,15 @@ def run_diagnostics(
                 predicted = None
                 error = f"{type(caught).__name__}: {caught}"
                 raw_response = None
+                model_verdict = None
+                sermon_specific_reason_codes = []
+                contradictory_reason_codes = []
+                policy_reason_codes = ["invalid_or_failed_inference"]
+        if title_decision is not None:
+            model_verdict = None
+            sermon_specific_reason_codes = []
+            contradictory_reason_codes = list(reason_codes)
+            policy_reason_codes = ["deterministic_negative_title_gate"]
         results.append(
             {
                 "video_id": case.video_id,
@@ -500,6 +579,10 @@ def run_diagnostics(
                 "decision": decision,
                 "confidence": confidence,
                 "reason_codes": reason_codes,
+                "model_verdict": model_verdict,
+                "sermon_specific_reason_codes": sermon_specific_reason_codes,
+                "contradictory_reason_codes": contradictory_reason_codes,
+                "policy_reason_codes": policy_reason_codes,
                 "predicted_outcome": predicted,
                 "correct": predicted == case.expected_outcome if predicted else None,
                 "cache_hit": cached,

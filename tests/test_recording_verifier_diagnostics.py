@@ -43,9 +43,18 @@ def proposed() -> dict[str, object]:
 class FakeVerifierClient:
     model = "fixture-verifier"
 
-    def __init__(self, decision: str, confidence: str = "high") -> None:
+    def __init__(
+        self,
+        decision: str,
+        confidence: str = "high",
+        reason_codes: list[str] | None = None,
+    ) -> None:
         self.decision = decision
         self.confidence = confidence
+        self.reason_codes = reason_codes or [
+            "single_sustained_message",
+            "sustained_biblical_exposition",
+        ]
         self.calls = 0
 
     def generate_json(
@@ -56,7 +65,7 @@ class FakeVerifierClient:
         content = {
             "decision": self.decision,
             "confidence": self.confidence,
-            "reason_codes": ["single_sustained_message"],
+            "reason_codes": self.reason_codes,
         }
         return LocalLlmResponse(content, str(content), self.model)
 
@@ -207,8 +216,72 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
 
         self.assertEqual("sermon", result["predicted_outcome"])
         self.assertEqual("llm_recording_verifier", result["source"])
-        self.assertEqual("recording-sermon-verifier-v2", result["prompt_version"])
-        self.assertEqual("recording-sermon-verifier-policy-v3", result["policy_version"])
+        self.assertEqual("recording-sermon-verifier-v3", result["prompt_version"])
+        self.assertEqual("recording-sermon-verifier-policy-v4", result["policy_version"])
+        self.assertEqual(
+            ["sustained_biblical_exposition"],
+            result["sermon_specific_reason_codes"],
+        )
+
+    def test_single_sustained_message_non_sermon_event_requires_review(self) -> None:
+        self._assert_single_sustained_shape_requires_review(
+            "Community religious event and extended keynote speech"
+        )
+
+    def test_single_sustained_message_instructional_program_requires_review(self) -> None:
+        self._assert_single_sustained_shape_requires_review(
+            "Religious instructional program"
+        )
+
+    def test_single_sustained_message_translated_multi_speaker_program_requires_review(self) -> None:
+        self._assert_single_sustained_shape_requires_review(
+            "Translated alternating-speaker program"
+        )
+
+    def test_mixed_positive_and_alternating_speaker_evidence_requires_review(self) -> None:
+        client = FakeVerifierClient(
+            "worship_service_sermon",
+            reason_codes=[
+                "single_sustained_message",
+                "sustained_biblical_exposition",
+                "translated_or_alternating_speakers",
+            ],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = verify_recording(
+                title="Ambiguous translated program",
+                proposed={"youtube_video_id": "mixed", **proposed()},
+                client=client,
+                model_digest="digest",
+                cache_dir=Path(tmp),
+            )
+
+        self.assertIsNone(result["predicted_outcome"])
+        self.assertEqual(["translated_or_alternating_speakers"], result["contradictory_reason_codes"])
+        self.assertIn("explicit_contradictory_program_evidence", result["policy_reason_codes"])
+
+    def _assert_single_sustained_shape_requires_review(self, title: str) -> None:
+        client = FakeVerifierClient(
+            "worship_service_sermon",
+            reason_codes=["single_sustained_message"],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = verify_recording(
+                title=title,
+                proposed={"youtube_video_id": "shape", **proposed()},
+                client=client,
+                model_digest="digest",
+                cache_dir=Path(tmp),
+            )
+
+        self.assertIsNone(result["predicted_outcome"])
+        self.assertEqual("unclear", result["decision"])
+        self.assertEqual("medium", result["confidence"])
+        self.assertEqual("worship_service_sermon", result["model_verdict"]["decision"])
+        self.assertIn(
+            "missing_independent_sermon_specific_evidence",
+            result["policy_reason_codes"],
+        )
 
 
 if __name__ == "__main__":

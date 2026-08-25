@@ -29,7 +29,7 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
         "segments": segments(),
         "sermon_window": {"source": "detected"},
         "classification": {
-            "method": "adaptive_llm_v3",
+            "method": "adaptive_llm_v4",
             "model": "fixture-model",
             "prompt_version": "v2",
             "confidence_tier": confidence,
@@ -50,7 +50,7 @@ def proposed(retained: list[int], *, confidence: str = "low") -> dict[str, objec
             "cache_stats": {"hits": 3, "misses": 0},
             "search": {
                 "schema_version": 1,
-                "algorithm_version": "adaptive_llm_v3",
+                "algorithm_version": "adaptive_llm_v4",
                 "model_digest": "digest",
                 "selected_rank": 1,
                 "rule_baseline": {"start_seconds": 0.0, "end_seconds": 20.0},
@@ -198,6 +198,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(1, result["retained_allowed_interruption_segment_count"])
         self.assertEqual(1.0, result["sermon_recall"])
         self.assertEqual(0.5, result["contamination_ratio"])
+        self.assertEqual(0.0, result["start_boundary_error_seconds"])
+        self.assertEqual(10.0, result["end_boundary_error_seconds"])
+        self.assertEqual("automatic", result["outcome_mode"])
         self.assertTrue(result["correct_top_candidate"])
         self.assertEqual("digest", result["model_digest"])
 
@@ -259,6 +262,43 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(1.0, aggregate["automatic_accuracy"])
         self.assertEqual(0.0, aggregate["positive_automatic_acceptance_rate"])
         self.assertEqual(1.0, aggregate["negative_automatic_rejection_rate"])
+
+    def test_aggregate_reports_boundary_contamination_and_manual_outcomes_separately(self) -> None:
+        aggregate = aggregate_results([
+            {
+                "status": "evaluated",
+                "expected_outcome": "sermon",
+                "disposition_status": "accepted_sermon",
+                "outcome_mode": "manual_override",
+                "sermon_recall": 1.0,
+                "contamination_ratio": 0.25,
+                "start_boundary_error_seconds": -30.0,
+                "end_boundary_error_seconds": 60.0,
+                "catastrophic_omission": False,
+                "correct_top_candidate": True,
+            },
+            {
+                "status": "evaluated",
+                "expected_outcome": "sermon",
+                "disposition_status": "review_required",
+                "outcome_mode": "automatic",
+                "sermon_recall": 0.9,
+                "contamination_ratio": 0.05,
+                "start_boundary_error_seconds": 10.0,
+                "end_boundary_error_seconds": -20.0,
+                "catastrophic_omission": False,
+                "correct_top_candidate": True,
+            },
+        ])
+
+        self.assertEqual(20.0, aggregate["positive_mean_absolute_start_error_seconds"])
+        self.assertEqual(40.0, aggregate["positive_mean_absolute_end_error_seconds"])
+        self.assertEqual(1, aggregate["positive_contamination_over_10_percent"])
+        self.assertEqual(1, aggregate["positive_contamination_over_20_percent"])
+        self.assertEqual(1, aggregate["manual_override_outcome_count"])
+        self.assertEqual(1, aggregate["automatic_outcome_count"])
+        self.assertEqual(1.0, aggregate["manual_override_positive_mean_recall"])
+        self.assertEqual(0.9, aggregate["automatic_positive_mean_recall"])
 
     def test_aggregate_counts_wrong_automatic_dispositions_as_errors(self) -> None:
         aggregate = aggregate_results(

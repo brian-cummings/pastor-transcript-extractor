@@ -13,6 +13,7 @@ from pastor_transcript_extractor.caption_normalization import (
     normalize_caption_fragments,
 )
 from pastor_transcript_extractor.extraction import (
+    _arbitrate_hybrid_window,
     _baseline_window_payload,
     _classification_is_current,
     _classify_with_fallback,
@@ -28,13 +29,16 @@ from pastor_transcript_extractor.sermon_classification import (
     BLOCK_BUILDER_VERSION,
     COARSE_DISCOVERY_VERSION,
     CONFIDENCE_POLICY_VERSION,
+    BlockClassification,
     CoarsePhase,
     ContentLabel,
     FINE_COMPONENT_VERSION,
     LONG_EDGE_EXPANSION_SECONDS,
+    HybridSermonResult,
     RawInferenceCache,
     TranscriptBlock,
     _candidate_strength,
+    _candidate_score_components,
     _adaptive_confidence_tier,
     _coarse_candidate_ranges,
     _joined_candidate,
@@ -376,6 +380,29 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual({0, 1, 2, 3}, retained)
         self.assertFalse(any("trimmed candidate" in reason for reason in reasons))
 
+    def test_pre_anchor_precision_cap_preserves_recall_without_unbounded_contamination(self) -> None:
+        drafts = [
+            draft(index * 90.0, (index + 1) * 90.0, (
+                "Our sermon title today is Grace" if index == 10 else "continued exposition"
+            ))
+            for index in range(12)
+        ]
+        blocks = [
+            TranscriptBlock(index, [index], item.start_seconds or 0.0, item.end_seconds or 0.0, item.text)
+            for index, item in enumerate(drafts)
+        ]
+
+        retained, _, evidence = _refine_retained_boundaries(
+            drafts,
+            blocks,
+            set(range(12)),
+            default_pre_roll_start=720.0,
+        )
+
+        self.assertEqual(set(range(8, 12)), retained)
+        self.assertEqual(180.0, evidence["pre_anchor_extension_seconds"])
+        self.assertEqual(720.0, evidence["recall_guard_floor_seconds"])
+
     def test_raw_inference_cache_separates_namespaces_and_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cache = RawInferenceCache(
@@ -405,6 +432,114 @@ class TranscriptBlockTests(unittest.TestCase):
 
 
 class HybridClassificationTests(unittest.TestCase):
+    def test_candidate_ranking_caps_duration_and_rewards_independent_rule_agreement(self) -> None:
+        blocks = [
+            TranscriptBlock(index, [index], index * 300.0, (index + 1) * 300.0, "biblical exposition")
+            for index in range(8)
+        ]
+        audit = [
+            # Both envelopes have equivalent semantic evidence; only the later
+            # envelope agrees with the independently computed baseline.
+            BlockClassification(index, ContentLabel.SERMON, "coarse:biblical_exposition", "{}")
+            for index in range(8)
+        ]
+        rule = SermonWindowResult(
+            1800.0, 2400.0, 0.95, [], "rule_based_v1", [6, 7], list(range(6)), False, []
+        )
+
+        long_early = _candidate_score_components(
+            (0.0, 1800.0), blocks, audit=audit, rule_window=rule
+        )
+        coherent_late = _candidate_score_components(
+            (1800.0, 2400.0), blocks, audit=audit, rule_window=rule
+        )
+
+        self.assertEqual(1200.0, long_early["duration_score"])
+        self.assertGreater(coherent_late["total_score"], long_early["total_score"])
+        self.assertEqual(1.0, coherent_late["independent_rule_coverage"])
+
+    def test_short_rule_window_cannot_replace_stronger_coherent_refinement(self) -> None:
+        drafts = [draft(index * 30.0, (index + 1) * 30.0, "sermon") for index in range(100)]
+        rule_window = {
+            "start_seconds": 2100.0,
+            "end_seconds": 2640.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(70, 88)),
+            "excluded_segment_indexes": list(range(70)),
+            "suspicious_boundary": False,
+            "suspicious_boundary_reasons": [],
+        }
+        candidate = {
+            "rank": 1,
+            "fine_support_block_ids": list(range(30)),
+            "boundary_recovery": {
+                "start": {"status": "semantic_transition"},
+                "end": {"status": "semantic_transition"},
+            },
+        }
+        hybrid = HybridSermonResult(
+            method="adaptive_llm_v4",
+            model="fixture",
+            prompt_version="fixture",
+            confidence_tier="low",
+            retained_segment_indexes=list(range(100)),
+            excluded_segment_indexes=[],
+            uncertain_block_ids=[],
+            warnings=["coarse and fine labels disagree across the candidate center"],
+            blocks=[],
+            classifications=[],
+            search={"selected_rank": 1, "candidates": [candidate]},
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            rule_window, drafts, hybrid, recording_sermon_confirmed=True
+        )
+
+        self.assertEqual("adaptive_selected", arbitration["decision"])
+        self.assertEqual(
+            "coherent_refined_evidence_stronger_than_short_rule_window",
+            arbitration["reason"],
+        )
+        self.assertEqual("detected", arbitration["rejected_alternative"]["source"])
+        self.assertEqual("hybrid_llm", rule_window["source"])
+        self.assertEqual("sermon_existence_only", arbitration["recording_verifier_role"])
+
+    def test_recording_edge_refinement_still_beats_thirty_percent_rule_shape(self) -> None:
+        drafts = [draft(index * 30.0, (index + 1) * 30.0, "sermon") for index in range(100)]
+        window = {
+            "start_seconds": 1500.0,
+            "end_seconds": 2400.0,
+            "confidence": 0.94,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(50, 80)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v4", "fixture", "fixture", "low", list(range(100)), [], [],
+            ["coarse and fine labels disagree across the candidate center"], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(40)),
+                    "boundary_recovery": {
+                        "start": {"status": "semantic_transition"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=True
+        )
+
+        self.assertEqual("adaptive_selected", arbitration["decision"])
+        self.assertTrue(arbitration["substantial_disagreement"])
+
     def test_primary_discovery_skips_likelihood_rescue_when_it_finds_a_candidate(self) -> None:
         drafts = [
             draft(index * 300.0, (index + 1) * 300.0, "sustained biblical exposition")
@@ -420,15 +555,11 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual(3, client.primary_calls)
         self.assertEqual(0, client.rescue_calls)
         self.assertEqual("coarse_llm", result["search"]["candidates"][0]["source"])
-        self.assertEqual(
-            {
-                "primary_version": "multiclass-phase-v1",
-                "rescue_version": "sermon-likelihood-v1",
-                "rescue_triggered": False,
-                "selected_mode": "primary",
-            },
-            result["search"]["discovery"],
-        )
+        discovery = result["search"]["discovery"]
+        self.assertFalse(discovery["rescue_triggered"])
+        self.assertEqual([], discovery["rescue_reasons"])
+        self.assertEqual("not_triggered", discovery["rescue_outcome"])
+        self.assertEqual("primary", discovery["selected_mode"])
 
     def test_likelihood_rescue_runs_only_when_primary_finds_no_candidate(self) -> None:
         drafts = [
@@ -530,6 +661,12 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual("announcements", recovery["start"]["stopping_label"])
         self.assertEqual("announcements", recovery["end"]["stopping_label"])
         self.assertEqual("active", recovery["mode"])
+        precision = candidate["boundary_precision"]
+        self.assertEqual("recall_guarded_precision_v1", precision["objective_version"])
+        self.assertEqual(
+            "boundaries_not_trimmed_without_independent_transition_evidence",
+            precision["recall_guard"],
+        )
 
     def test_baseline_window_payload_replaces_stale_hybrid_state(self) -> None:
         recomputed = SermonWindowResult(
@@ -651,7 +788,7 @@ class HybridClassificationTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(result)
-        self.assertEqual("adaptive_llm_v3", classification["method"])
+        self.assertEqual("adaptive_llm_v4", classification["method"])
         self.assertEqual(1, classification["search"]["selected_rank"])
         candidate = classification["search"]["candidates"][0]
         self.assertEqual(candidate["score"], candidate["score_components"]["total_score"])
@@ -664,7 +801,7 @@ class HybridClassificationTests(unittest.TestCase):
 
     def test_classification_cache_key_includes_model_and_prompt(self) -> None:
         classification = {
-            "method": "adaptive_llm_v3",
+            "method": "adaptive_llm_v4",
             "block_builder_version": BLOCK_BUILDER_VERSION,
             "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
             "fine_component_version": FINE_COMPONENT_VERSION,
@@ -771,7 +908,7 @@ class HybridClassificationTests(unittest.TestCase):
             updated = json.loads(proposed_path.read_text(encoding="utf-8"))
             self.assertEqual([1, 2], updated["classification"]["retained_segment_indexes"])
             self.assertEqual("hybrid_llm", updated["sermon_window"]["source"])
-            self.assertEqual("adaptive_llm_v3", updated["classification"]["method"])
+            self.assertEqual("adaptive_llm_v4", updated["classification"]["method"])
             self.assertEqual("accepted_sermon", updated["final_disposition"]["status"])
             self.assertEqual(
                 updated["final_disposition"],
@@ -807,7 +944,7 @@ class HybridClassificationTests(unittest.TestCase):
             self.assertEqual(first_agreement, repeated_agreement)
             database.delete_transcript_segments_for_video.assert_not_called()
 
-    def test_manual_override_is_authoritative_reclassification_baseline(self) -> None:
+    def test_manual_override_cannot_leak_into_independent_baseline_evidence(self) -> None:
         drafts = [
             draft(0.0, 300.0, "opening"),
             draft(300.0, 600.0, "sermon"),
@@ -825,23 +962,16 @@ class HybridClassificationTests(unittest.TestCase):
             [],
         )
 
-        result = classify_sermon_content_adaptive(
-            drafts,
-            override_window,
-            FakeAdaptiveLlmClient(),
-            prompt_version="v1",
-            rule_baseline_source="manual_override",
-            rule_baseline_algorithm_version="manual_override_v1",
-            manual_override_present=True,
-        ).to_dict()
-
-        self.assertEqual(
-            {"start_seconds": 300.0, "end_seconds": 600.0, "confidence": 1.0},
-            result["search"]["rule_baseline"],
-        )
-        self.assertEqual("manual_override", result["search"]["rule_baseline_source"])
-        self.assertEqual("manual_override_v1", result["search"]["rule_baseline_algorithm_version"])
-        self.assertTrue(result["search"]["manual_override_present"])
+        with self.assertRaisesRegex(ValueError, "cannot be used"):
+            classify_sermon_content_adaptive(
+                drafts,
+                override_window,
+                FakeAdaptiveLlmClient(),
+                prompt_version="v1",
+                rule_baseline_source="manual_override",
+                rule_baseline_algorithm_version="manual_override_v1",
+                manual_override_present=True,
+            )
 
 
 if __name__ == "__main__":
