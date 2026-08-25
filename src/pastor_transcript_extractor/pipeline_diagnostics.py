@@ -10,14 +10,17 @@ from typing import Any, Iterable
 from pastor_transcript_extractor.fixture_validation import ValidatedFixture
 
 
-TRACE_SCHEMA_VERSION = 2
-CONTRACT_VERSION = "sermon-isolation-contracts-v2"
+TRACE_SCHEMA_VERSION = 3
+CONTRACT_VERSION = "sermon-isolation-contracts-v3"
 REVIEWED_COVERAGE_THRESHOLD = 0.90
 MAX_CONTAMINATION_RATIO = 0.10
 TIMELINE_WIDTH = 72
 
 
 Range = tuple[float, float]
+
+RECALL_SENSITIVITY_THRESHOLDS = (0.80, 0.90, 0.95, 0.99)
+CONTAMINATION_SENSITIVITY_THRESHOLDS = (0.05, 0.10, 0.20, 0.30)
 
 
 def diagnostic_contract_definition() -> dict[str, Any]:
@@ -49,6 +52,13 @@ def diagnostic_contract_definition() -> dict[str, Any]:
             "previous_stage_retention": (
                 "duration retained from the immediately preceding stage divided by its duration"
             ),
+            "candidate_regret": (
+                "best candidate reviewed coverage minus selected candidate reviewed coverage"
+            ),
+            "contamination_attribution": (
+                "first selected-path stage above the contamination contract, later recovery, "
+                "and final boundary-error direction"
+            ),
         },
         "interpretation": {
             "without_ground_truth": (
@@ -70,6 +80,10 @@ def diagnostic_contract_definition() -> dict[str, Any]:
             ),
             "manual_override": (
                 "reviewed final output; automatic pre-override outcome must be reported separately"
+            ),
+            "overall_outcome": (
+                "composition of existence, localization, contamination, disposition, and "
+                "manual-override state without hiding the component contracts"
             ),
         },
     }
@@ -218,6 +232,153 @@ def _selected_candidate(search: dict[str, Any]) -> dict[str, Any] | None:
         ),
         None,
     )
+
+
+def _fixture_metadata(fixture: ValidatedFixture | None) -> dict[str, Any]:
+    if fixture is None:
+        return {
+            "evaluation_partition": "unreviewed",
+            "source_family_id": "unknown",
+            "selection_origin": "unknown",
+        }
+    try:
+        payload = json.loads(fixture.path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+    manifest = payload.get("selection_manifest") if isinstance(payload, dict) else None
+    manifest = manifest if isinstance(manifest, dict) else {}
+    return {
+        "evaluation_partition": manifest.get("evaluation_partition") or "unknown",
+        "source_family_id": manifest.get("source_family_id") or "unknown",
+        "selection_origin": manifest.get("selection_origin") or "unknown",
+    }
+
+
+def _candidate_regret(
+    candidates: list[dict[str, Any]],
+    selected: dict[str, Any] | None,
+    expected: list[Range] | None,
+    fine_coverage: object,
+) -> dict[str, Any]:
+    if expected is None:
+        return {"status": "not_evaluated", "reason": "positive_ground_truth_unavailable"}
+    expected_duration = _duration(expected)
+
+    def coverage(candidate: dict[str, Any]) -> float:
+        ranges = _candidate_envelope_ranges(candidate)
+        return (
+            _intersection_duration(ranges, expected) / expected_duration
+            if expected_duration
+            else 0.0
+        )
+
+    rows = [
+        {
+            "rank": candidate.get("rank"),
+            "source": candidate.get("source"),
+            "reviewed_sermon_coverage": round(coverage(candidate), 6),
+            "selected": candidate is selected,
+        }
+        for candidate in candidates
+    ]
+    best = max(rows, key=lambda row: row["reviewed_sermon_coverage"], default=None)
+    union_ranges = _merge_ranges(
+        value for candidate in candidates for value in _candidate_envelope_ranges(candidate)
+    )
+    union_coverage = (
+        _intersection_duration(union_ranges, expected) / expected_duration
+        if expected_duration
+        else 0.0
+    )
+    selected_coverage = coverage(selected) if selected is not None else 0.0
+    best_coverage = float(best["reviewed_sermon_coverage"]) if best is not None else 0.0
+    if union_coverage < REVIEWED_COVERAGE_THRESHOLD:
+        classification = "discovery_omission"
+    elif (
+        best_coverage >= REVIEWED_COVERAGE_THRESHOLD
+        and selected_coverage < REVIEWED_COVERAGE_THRESHOLD
+    ):
+        classification = "ranking_loss"
+    elif (
+        selected_coverage >= REVIEWED_COVERAGE_THRESHOLD
+        and isinstance(fine_coverage, (int, float))
+        and fine_coverage < REVIEWED_COVERAGE_THRESHOLD
+    ):
+        classification = "refinement_loss"
+    else:
+        classification = "none"
+    return {
+        "status": "evaluated",
+        "classification": classification,
+        "candidate_union_coverage": round(union_coverage, 6),
+        "best_candidate_coverage": round(best_coverage, 6),
+        "best_candidate_rank": best.get("rank") if best else None,
+        "selected_candidate_coverage": round(selected_coverage, 6),
+        "selected_candidate_regret": round(max(0.0, best_coverage - selected_coverage), 6),
+        "candidates": rows,
+    }
+
+
+def _contamination_attribution(
+    stages: list[dict[str, Any]], fixture: ValidatedFixture | None
+) -> dict[str, Any]:
+    if fixture is None or fixture.expected_outcome != "sermon":
+        return {"status": "not_evaluated", "reason": "positive_ground_truth_unavailable"}
+    tracked = {"selected", "joined", "fine", "arbitration", "final"}
+    series: list[dict[str, Any]] = []
+    previous: float | None = None
+    for stage in stages:
+        if stage["key"] not in tracked:
+            continue
+        value = stage["measurements"].get("contamination_ratio")
+        if not isinstance(value, (int, float)):
+            continue
+        series.append(
+            {
+                "stage": stage["key"],
+                "contamination_ratio": value,
+                "delta": round(value - previous, 6) if previous is not None else None,
+            }
+        )
+        previous = value
+    breach_indexes = [
+        index
+        for index, item in enumerate(series)
+        if item["contamination_ratio"] > MAX_CONTAMINATION_RATIO
+    ]
+    earliest = series[breach_indexes[0]]["stage"] if breach_indexes else None
+    recovery = None
+    if breach_indexes:
+        recovery = next(
+            (
+                item["stage"]
+                for item in series[breach_indexes[0] + 1 :]
+                if item["contamination_ratio"] <= MAX_CONTAMINATION_RATIO
+            ),
+            None,
+        )
+    final = next(stage for stage in stages if stage["key"] == "final")
+    measurements = final["measurements"]
+    patterns: list[str] = []
+    start_error = measurements.get("start_error_seconds")
+    end_error = measurements.get("end_error_seconds")
+    if isinstance(start_error, (int, float)):
+        if start_error < 0:
+            patterns.append("start_overreach")
+        elif start_error > 0:
+            patterns.append("start_clipped")
+    if isinstance(end_error, (int, float)):
+        if end_error > 0:
+            patterns.append("end_overreach")
+        elif end_error < 0:
+            patterns.append("end_clipped")
+    return {
+        "status": "evaluated",
+        "earliest_breach_stage": earliest,
+        "recovery_stage": recovery,
+        "final_boundary_error_patterns": patterns or ["aligned"],
+        "stage_deltas": series,
+    }
 
 
 def _stage_measurements(
@@ -612,6 +773,39 @@ def _outcome_contracts(
     }
 
 
+def _overall_outcome(outcome_contracts: dict[str, Any]) -> dict[str, Any]:
+    dimensions = ("existence", "localization", "contamination")
+    failed = [
+        dimension
+        for dimension in dimensions
+        if outcome_contracts.get(dimension, {}).get("status") == "fail"
+    ]
+    evaluated = [
+        dimension
+        for dimension in dimensions
+        if outcome_contracts.get(dimension, {}).get("status") in {"pass", "fail"}
+    ]
+    disposition = outcome_contracts.get("disposition", {}).get("status")
+    manual_override = bool(outcome_contracts.get("manual_override_applied"))
+    if failed:
+        status = "fail"
+    elif not evaluated:
+        status = "not_evaluated"
+    elif disposition == "review_required":
+        status = "review_required"
+    elif manual_override:
+        status = "pass_with_manual_override"
+    else:
+        status = "pass"
+    return {
+        "status": status,
+        "failed_dimensions": failed,
+        "evaluated_dimensions": evaluated,
+        "disposition": disposition or "unknown",
+        "manual_override_applied": manual_override,
+    }
+
+
 def _recovery_status(
     observed: dict[str, Any] | None,
     stages: list[dict[str, Any]],
@@ -671,6 +865,10 @@ def build_diagnostic_trace(
     )
     sermon_window = proposed.get("sermon_window")
     sermon_window = sermon_window if isinstance(sermon_window, dict) else {}
+    arbitration = sermon_window.get("arbitration")
+    if not isinstance(arbitration, dict):
+        arbitration = classification.get("window_arbitration")
+    arbitration = arbitration if isinstance(arbitration, dict) else {}
     final_range = _range(
         sermon_window.get("start_seconds"), sermon_window.get("end_seconds")
     )
@@ -823,6 +1021,10 @@ def build_diagnostic_trace(
             {
                 "confidence_tier": classification.get("confidence_tier"),
                 "rule_baseline_source": search.get("rule_baseline_source"),
+                "arbitration": arbitration,
+                "boundary_precision": (
+                    selected.get("boundary_precision") if selected else None
+                ),
             },
             [],
         ),
@@ -874,7 +1076,9 @@ def build_diagnostic_trace(
             decision=decision,
             evidence=evidence,
             warnings=warnings,
-            final_disposition=str(disposition.get("status")) if disposition.get("status") else None,
+            final_disposition=(
+                str(disposition.get("status")) if disposition.get("status") else None
+            ),
         )
         for key, label, output, previous, decision, evidence, warnings in stage_specs
     ]
@@ -927,6 +1131,17 @@ def build_diagnostic_trace(
         ),
         manual_override=manual_override,
     )
+    overall_outcome = _overall_outcome(outcome_contracts)
+    fine_stage = next(stage for stage in stages if stage["key"] == "fine")
+    cohort = {
+        **_fixture_metadata(fixture),
+        "outcome_mode": "manual_override" if manual_override else "automatic",
+        "transcript_source": proposed.get("transcript_source") or "unknown",
+        "algorithm_version": search.get("algorithm_version") or "unknown",
+        "verifier_prompt_version": verification.get("prompt_version") or "unknown",
+        "verifier_policy_version": verification.get("policy_version") or "unknown",
+        "verifier_model": verification.get("model") or "unknown",
+    }
     return {
         "schema_version": TRACE_SCHEMA_VERSION,
         "trace_kind": "sermon_isolation",
@@ -956,6 +1171,25 @@ def build_diagnostic_trace(
         "stages": stages,
         "earliest_observed_failure": observed,
         "root_cause_hypothesis": _root_cause(observed, stages, fixture),
+        "cohort": cohort,
+        "overall_outcome": overall_outcome,
+        "candidate_regret": _candidate_regret(
+            candidates,
+            selected,
+            expected,
+            fine_stage["measurements"].get("reviewed_sermon_coverage"),
+        ),
+        "contamination_attribution": _contamination_attribution(stages, fixture),
+        "join_observability": {
+            "joined_candidate_count": sum(
+                candidate.get("source") == "joined_coarse_llm" for candidate in candidates
+            ),
+            "selected_joined_candidate": bool(
+                selected and selected.get("source") == "joined_coarse_llm"
+            ),
+            "rejected_join_attempts_persisted": False,
+        },
+        "causal_path_status": recovery_status,
         "recovery_status": recovery_status,
         "outcome_contracts": outcome_contracts,
         "diagnostic_gaps": diagnostic_gaps,
@@ -1091,7 +1325,11 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
         f"- Earliest observed failure: {observed['stage'] if observed else 'none'}",
         f"- Likely causal stage: {cause.get('stage') or 'none'}",
         f"- Causal confidence: {cause.get('confidence') or 'n/a'}",
-        f"- Recovery status: {trace.get('recovery_status', 'unknown')}",
+        f"- Overall outcome: {trace.get('overall_outcome', {}).get('status', 'unknown')}",
+        "- Causal path status: "
+        f"{trace.get('causal_path_status', trace.get('recovery_status', 'unknown'))}",
+        f"- Cohort: {trace.get('cohort', {}).get('outcome_mode', 'unknown')} / "
+        f"{trace.get('cohort', {}).get('evaluation_partition', 'unknown')}",
         "",
         "## Outcome contracts",
         "",
@@ -1174,6 +1412,27 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
                 f"{contamination:.1%} | — | — |"
             )
             previous_recall = recall if isinstance(recall, (int, float)) else previous_recall
+    regret = trace.get("candidate_regret", {})
+    attribution = trace.get("contamination_attribution", {})
+    lines.extend(
+        [
+            "",
+            "## Candidate regret",
+            "",
+            f"- Classification: {regret.get('classification', regret.get('status', 'unknown'))}",
+            f"- Candidate-union coverage: {regret.get('candidate_union_coverage', '—')}",
+            f"- Best candidate: rank {regret.get('best_candidate_rank', '—')} at "
+            f"{regret.get('best_candidate_coverage', '—')} coverage",
+            f"- Selected-candidate regret: {regret.get('selected_candidate_regret', '—')}",
+            "",
+            "## Contamination attribution",
+            "",
+            f"- Earliest breach: {attribution.get('earliest_breach_stage') or 'none'}",
+            f"- Recovery stage: {attribution.get('recovery_stage') or 'none'}",
+            "- Final boundary pattern: "
+            + ", ".join(attribution.get("final_boundary_error_patterns", []) or ["not evaluated"]),
+        ]
+    )
     lines.extend(
         [
             "",
@@ -1197,6 +1456,116 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _trace_overall_status(trace: dict[str, Any]) -> str:
+    explicit = trace.get("overall_outcome", {}).get("status")
+    if isinstance(explicit, str):
+        return explicit
+    contracts = trace.get("outcome_contracts")
+    if isinstance(contracts, dict):
+        return str(_overall_outcome(contracts)["status"])
+    final = next(
+        (stage for stage in trace.get("stages", []) if stage.get("key") == "final"),
+        None,
+    )
+    if final is None:
+        return "not_evaluated"
+    statuses = [final.get("contract", {}).get("status")]
+    statuses.extend(
+        contract.get("status")
+        for contract in final.get("quality_contracts", {}).values()
+        if isinstance(contract, dict)
+    )
+    if "fail" in statuses:
+        return "fail"
+    disposition = final.get("decision", {}).get("disposition_status")
+    if disposition == "review_required":
+        return "review_required"
+    if final.get("decision", {}).get("manual_override_applied"):
+        return "pass_with_manual_override"
+    if "pass" in statuses:
+        return "pass"
+    return "not_evaluated"
+
+
+def _cohort_summary(traces: list[dict[str, Any]], field: str) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for trace in traces:
+        value = str(trace.get("cohort", {}).get(field) or "unknown")
+        grouped.setdefault(value, []).append(trace)
+    result: dict[str, Any] = {}
+    for value, members in sorted(grouped.items()):
+        overall = Counter(_trace_overall_status(trace) for trace in members)
+        outcomes = Counter(
+            str(trace.get("ground_truth", {}).get("expected_outcome") or "unreviewed")
+            for trace in members
+        )
+        existence = Counter(
+            str(
+                trace.get("outcome_contracts", {})
+                .get("existence", {})
+                .get("status")
+                or "not_evaluated"
+            )
+            for trace in members
+        )
+        localization = Counter()
+        contamination = Counter()
+        dispositions = Counter()
+        for trace in members:
+            contracts = trace.get("outcome_contracts", {})
+            dispositions[
+                str(contracts.get("disposition", {}).get("status") or "unknown")
+            ] += 1
+            if trace.get("ground_truth", {}).get("expected_outcome") == "sermon":
+                localization[
+                    str(contracts.get("localization", {}).get("status") or "not_evaluated")
+                ] += 1
+                contamination[
+                    str(contracts.get("contamination", {}).get("status") or "not_evaluated")
+                ] += 1
+        result[value] = {
+            "trace_count": len(members),
+            "fixture_outcome_counts": dict(sorted(outcomes.items())),
+            "overall_outcome_counts": dict(sorted(overall.items())),
+            "existence_contract_counts": dict(sorted(existence.items())),
+            "positive_localization_contract_counts": dict(sorted(localization.items())),
+            "positive_contamination_contract_counts": dict(sorted(contamination.items())),
+            "final_disposition_counts": dict(sorted(dispositions.items())),
+        }
+    return result
+
+
+def _sensitivity_table(
+    traces: list[dict[str, Any]], thresholds: Iterable[float], metric: str
+) -> list[dict[str, Any]]:
+    values: list[float] = []
+    for trace in traces:
+        if trace.get("ground_truth", {}).get("expected_outcome") != "sermon":
+            continue
+        final = next(
+            (stage for stage in trace.get("stages", []) if stage.get("key") == "final"),
+            None,
+        )
+        value = final.get("measurements", {}).get(metric) if final else None
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    rows = []
+    for threshold in thresholds:
+        passed = sum(
+            value >= threshold if metric == "reviewed_sermon_coverage" else value <= threshold
+            for value in values
+        )
+        rows.append(
+            {
+                "threshold": threshold,
+                "evaluated": len(values),
+                "pass": passed,
+                "fail": len(values) - passed,
+            }
+        )
+    return rows
+
+
 def aggregate_diagnostic_traces(
     traces: list[dict[str, Any]],
     *,
@@ -1218,14 +1587,32 @@ def aggregate_diagnostic_traces(
     localization = Counter()
     contamination = Counter()
     existence = Counter()
+    overall = Counter()
+    regret = Counter()
+    contamination_breach = Counter()
+    boundary_patterns = Counter()
     manual_override_count = 0
+    joined_candidate_count = 0
+    traces_with_joined_candidates = 0
+    selected_joined_count = 0
+    rejected_join_attempts_persisted = 0
     for trace in traces:
         video_id = str(trace["video"]["youtube_video_id"])
         failure = (trace.get("earliest_observed_failure") or {}).get("stage") or "none"
         affected.setdefault(str(failure), []).append(video_id)
         expected_outcome = trace.get("ground_truth", {}).get("expected_outcome") or "unreviewed"
         fixture_outcomes[str(expected_outcome)] += 1
-        recovery[str(trace.get("recovery_status") or "unknown")] += 1
+        recovery[
+            str(trace.get("causal_path_status") or trace.get("recovery_status") or "unknown")
+        ] += 1
+        overall[_trace_overall_status(trace)] += 1
+        regret[
+            str(trace.get("candidate_regret", {}).get("classification") or "not_evaluated")
+        ] += 1
+        attribution = trace.get("contamination_attribution", {})
+        contamination_breach[str(attribution.get("earliest_breach_stage") or "none")] += 1
+        for pattern in attribution.get("final_boundary_error_patterns", []) or []:
+            boundary_patterns[str(pattern)] += 1
         contracts = trace.get("outcome_contracts", {})
         disposition = contracts.get("disposition", {}).get("status") or "unknown"
         dispositions[str(disposition)] += 1
@@ -1240,6 +1627,14 @@ def aggregate_diagnostic_traces(
         manual_override = bool(contracts.get("manual_override_applied"))
         manual_override_count += int(manual_override)
         by_key = {stage["key"]: stage for stage in trace.get("stages", [])}
+        join_evidence = trace.get("join_observability", {})
+        joined_here = int(join_evidence.get("joined_candidate_count") or 0)
+        joined_candidate_count += joined_here
+        traces_with_joined_candidates += int(joined_here > 0)
+        selected_joined_count += int(bool(join_evidence.get("selected_joined_candidate")))
+        rejected_join_attempts_persisted += int(
+            bool(join_evidence.get("rejected_join_attempts_persisted"))
+        )
 
         def failed(stage_key: str, contract: str = "contract") -> bool:
             stage = by_key.get(stage_key, {})
@@ -1273,7 +1668,7 @@ def aggregate_diagnostic_traces(
         for signature in run_signatures:
             signatures.setdefault(signature, []).append(video_id)
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "report_kind": "sermon_isolation_systemic_diagnostics",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trace_count": len(traces),
@@ -1282,11 +1677,43 @@ def aggregate_diagnostic_traces(
         "root_cause_hypothesis_counts": dict(sorted(causes.items())),
         "fixture_outcome_counts": dict(sorted(fixture_outcomes.items())),
         "recovery_status_counts": dict(sorted(recovery.items())),
+        "causal_path_status_counts": dict(sorted(recovery.items())),
+        "overall_outcome_counts": dict(sorted(overall.items())),
         "final_disposition_counts": dict(sorted(dispositions.items())),
         "existence_contract_counts": dict(sorted(existence.items())),
         "positive_localization_contract_counts": dict(sorted(localization.items())),
         "positive_contamination_contract_counts": dict(sorted(contamination.items())),
         "manual_override_count": manual_override_count,
+        "cohorts": {
+            "outcome_mode": _cohort_summary(traces, "outcome_mode"),
+            "evaluation_partition": _cohort_summary(traces, "evaluation_partition"),
+            "source_family_id": _cohort_summary(traces, "source_family_id"),
+            "transcript_source": _cohort_summary(traces, "transcript_source"),
+            "algorithm_version": _cohort_summary(traces, "algorithm_version"),
+        },
+        "unknown_evaluation_partition_count": sum(
+            trace.get("cohort", {}).get("evaluation_partition") == "unknown"
+            for trace in traces
+        ),
+        "threshold_sensitivity": {
+            "reviewed_sermon_coverage": _sensitivity_table(
+                traces, RECALL_SENSITIVITY_THRESHOLDS, "reviewed_sermon_coverage"
+            ),
+            "contamination_ratio": _sensitivity_table(
+                traces, CONTAMINATION_SENSITIVITY_THRESHOLDS, "contamination_ratio"
+            ),
+        },
+        "candidate_regret_classification_counts": dict(sorted(regret.items())),
+        "contamination_earliest_breach_counts": dict(sorted(contamination_breach.items())),
+        "final_boundary_error_pattern_counts": dict(sorted(boundary_patterns.items())),
+        "join_observability": {
+            "joined_candidate_count": joined_candidate_count,
+            "traces_with_joined_candidates": traces_with_joined_candidates,
+            "selected_joined_candidate_count": selected_joined_count,
+            "rejected_join_attempts_persisted_trace_count": rejected_join_attempts_persisted,
+            "rejected_join_attempts_available": bool(traces)
+            and rejected_join_attempts_persisted == len(traces),
+        },
         "failure_signature_counts": {
             key: len(value) for key, value in sorted(signatures.items())
         },
@@ -1308,6 +1735,19 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         f"- Traces: {report['trace_count']}",
         f"- Missing artifacts: {report['missing_count']}",
         f"- Manual overrides: {report['manual_override_count']}",
+        f"- Unknown evaluation partitions: {report.get('unknown_evaluation_partition_count', 0)}",
+        "",
+        "## Overall outcomes",
+        "",
+        "| Outcome | Count |",
+        "|---|---:|",
+    ]
+    for status, count in sorted(
+        report.get("overall_outcome_counts", {}).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {status} | {count} |")
+    lines.extend([
         "",
         "## Final outcomes",
         "",
@@ -1332,11 +1772,60 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
             f"{report['positive_contamination_contract_counts'].get('not_evaluated', 0)} |"
         ),
         "",
+        "## Cohorts",
+        "",
+        "| Dimension | Value | Traces | Outcomes |",
+        "|---|---|---:|---|",
+    ])
+    for dimension in ("outcome_mode", "evaluation_partition"):
+        for value, summary in report.get("cohorts", {}).get(dimension, {}).items():
+            outcomes = ", ".join(
+                f"{status}={count}"
+                for status, count in summary.get("overall_outcome_counts", {}).items()
+            )
+            lines.append(f"| {dimension} | {value} | {summary['trace_count']} | {outcomes} |")
+    lines.extend([
+        "",
+        "## Threshold sensitivity",
+        "",
+        "| Metric | Threshold | Pass | Fail |",
+        "|---|---:|---:|---:|",
+    ])
+    for metric, rows in report.get("threshold_sensitivity", {}).items():
+        for row in rows:
+            lines.append(
+                f"| {metric} | {row['threshold']:.0%} | {row['pass']} | {row['fail']} |"
+            )
+    join = report.get("join_observability", {})
+    lines.extend([
+        "",
+        "## Candidate and join observability",
+        "",
+        "| Measure | Count |",
+        "|---|---:|",
+    ])
+    for classification, count in report.get(
+        "candidate_regret_classification_counts", {}
+    ).items():
+        lines.append(f"| candidate regret: {classification} | {count} |")
+    lines.extend(
+        [
+            f"| joined candidates observed | {join.get('joined_candidate_count', 0)} |",
+            f"| traces with joined candidates | {join.get('traces_with_joined_candidates', 0)} |",
+            f"| joined candidates selected | {join.get('selected_joined_candidate_count', 0)} |",
+            "| rejected-attempt evidence persisted | "
+            f"{join.get('rejected_join_attempts_persisted_trace_count', 0)} |",
+        ]
+    )
+    lines.extend(
+        [
+        "",
         "## Recovery and masking",
         "",
         "| Status | Count |",
         "|---|---:|",
-    ]
+        ]
+    )
     for status, count in sorted(
         report["recovery_status_counts"].items(), key=lambda item: (-item[1], item[0])
     ):
@@ -1380,5 +1869,162 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
     lines.extend(["", "## Affected runs", ""])
     for stage, video_ids in report["affected_video_ids_by_observed_failure"].items():
         lines.append(f"- **{stage}**: {', '.join(video_ids)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def compare_systemic_reports(
+    before: dict[str, Any], after: dict[str, Any]
+) -> dict[str, Any]:
+    """Compare two persisted systemic reports without rerunning classification."""
+    before_traces = {
+        str(trace.get("video", {}).get("youtube_video_id")): trace
+        for trace in before.get("traces", [])
+        if trace.get("video", {}).get("youtube_video_id")
+    }
+    after_traces = {
+        str(trace.get("video", {}).get("youtube_video_id")): trace
+        for trace in after.get("traces", [])
+        if trace.get("video", {}).get("youtube_video_id")
+    }
+
+    def snapshot(trace: dict[str, Any]) -> dict[str, Any]:
+        final = next(
+            (stage for stage in trace.get("stages", []) if stage.get("key") == "final"),
+            {},
+        )
+        measurements = final.get("measurements", {})
+        failure = trace.get("earliest_observed_failure") or {}
+        return {
+            "overall_outcome": _trace_overall_status(trace),
+            "earliest_observed_failure": failure.get("stage"),
+            "reviewed_sermon_coverage": measurements.get("reviewed_sermon_coverage"),
+            "contamination_ratio": measurements.get("contamination_ratio"),
+        }
+
+    runs: list[dict[str, Any]] = []
+    transitions = Counter()
+    all_ids = sorted(set(before_traces) | set(after_traces))
+    for video_id in all_ids:
+        old = snapshot(before_traces[video_id]) if video_id in before_traces else None
+        new = snapshot(after_traces[video_id]) if video_id in after_traces else None
+        if old is None:
+            change = "added"
+        elif new is None:
+            change = "removed"
+        else:
+            old_failed = old["overall_outcome"] == "fail"
+            new_failed = new["overall_outcome"] == "fail"
+            if old_failed and not new_failed:
+                change = "fixed"
+            elif not old_failed and new_failed:
+                change = "regressed"
+            elif old == new:
+                change = "unchanged"
+            else:
+                change = "changed"
+        transitions[change] += 1
+        runs.append({"youtube_video_id": video_id, "change": change, "before": old, "after": new})
+
+    def signature_members(report: dict[str, Any]) -> dict[str, set[str]]:
+        return {
+            str(signature): {str(video_id) for video_id in video_ids}
+            for signature, video_ids in report.get(
+                "affected_video_ids_by_failure_signature", {}
+            ).items()
+        }
+
+    old_signatures = signature_members(before)
+    new_signatures = signature_members(after)
+    signature_changes = {}
+    for signature in sorted(set(old_signatures) | set(new_signatures)):
+        old_ids = old_signatures.get(signature, set())
+        new_ids = new_signatures.get(signature, set())
+        signature_changes[signature] = {
+            "before_count": len(old_ids),
+            "after_count": len(new_ids),
+            "resolved_video_ids": sorted(old_ids - new_ids),
+            "new_video_ids": sorted(new_ids - old_ids),
+        }
+    return {
+        "schema_version": 1,
+        "report_kind": "sermon_isolation_diagnostic_comparison",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "before": {
+            "generated_at": before.get("generated_at"),
+            "trace_count": before.get("trace_count", len(before_traces)),
+            "schema_version": before.get("schema_version"),
+        },
+        "after": {
+            "generated_at": after.get("generated_at"),
+            "trace_count": after.get("trace_count", len(after_traces)),
+            "schema_version": after.get("schema_version"),
+        },
+        "diagnostic_schema_changed": before.get("schema_version") != after.get("schema_version"),
+        "comparison_warning": (
+            "Diagnostic schemas differ; changed results may reflect contract interpretation "
+            "as well as artifact changes. Regenerate both reports with the same diagnostic "
+            "version for a controlled pipeline comparison."
+            if before.get("schema_version") != after.get("schema_version")
+            else None
+        ),
+        "change_counts": dict(sorted(transitions.items())),
+        "failure_signature_changes": signature_changes,
+        "runs": runs,
+    }
+
+
+def build_comparison_markdown(comparison: dict[str, Any]) -> str:
+    lines = [
+        "# Systemic Diagnostic Comparison",
+        "",
+        f"- Diagnostic schema changed: {comparison.get('diagnostic_schema_changed', False)}",
+        f"- Warning: {comparison.get('comparison_warning') or 'none'}",
+        "",
+        "## Run changes",
+        "",
+        "| Change | Count |",
+        "|---|---:|",
+    ]
+    for change, count in sorted(
+        comparison.get("change_counts", {}).items(), key=lambda item: (-item[1], item[0])
+    ):
+        lines.append(f"| {change} | {count} |")
+    lines.extend(
+        [
+            "",
+            "## Failure signatures",
+            "",
+            "| Signature | Before | After | Resolved | New |",
+            "|---|---:|---:|---|---|",
+        ]
+    )
+    for signature, change in comparison.get("failure_signature_changes", {}).items():
+        lines.append(
+            f"| {signature} | {change['before_count']} | {change['after_count']} | "
+            f"{', '.join(change['resolved_video_ids']) or '—'} | "
+            f"{', '.join(change['new_video_ids']) or '—'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Changed runs",
+            "",
+            "| Video | Change | Before | After |",
+            "|---|---|---|---|",
+        ]
+    )
+    for run in comparison.get("runs", []):
+        if run.get("change") == "unchanged":
+            continue
+        before = run.get("before") or {}
+        after = run.get("after") or {}
+        lines.append(
+            f"| {run['youtube_video_id']} | {run['change']} | "
+            f"{before.get('overall_outcome', '—')} / "
+            f"{before.get('earliest_observed_failure') or 'none'} | "
+            f"{after.get('overall_outcome', '—')} / "
+            f"{after.get('earliest_observed_failure') or 'none'} |"
+        )
     lines.append("")
     return "\n".join(lines)

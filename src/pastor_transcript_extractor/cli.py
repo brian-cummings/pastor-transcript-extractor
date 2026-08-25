@@ -193,9 +193,11 @@ from pastor_transcript_extractor.media_artifacts import (
 )
 from pastor_transcript_extractor.pipeline_diagnostics import (
     aggregate_diagnostic_traces,
+    build_comparison_markdown,
     build_diagnostic_markdown,
     build_diagnostic_trace,
     build_systemic_markdown,
+    compare_systemic_reports,
 )
 from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
@@ -733,7 +735,7 @@ def diagnose_pipeline(
         else resolve_video_artifact_paths(database, paths, video).root / "diagnostics"
     )
     root.mkdir(parents=True, exist_ok=True)
-    trace_path = root / "diagnostic-trace-v2.json"
+    trace_path = root / "diagnostic-trace-v3.json"
     report_path = root / "diagnostic-report.md"
     trace_path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
     report_path.write_text(build_diagnostic_markdown(trace), encoding="utf-8")
@@ -821,7 +823,7 @@ def diagnose_pipeline_system(
         traces.append(trace)
         per_video = video_root / video.youtube_video_id
         per_video.mkdir(parents=True, exist_ok=True)
-        (per_video / "diagnostic-trace-v2.json").write_text(
+        (per_video / "diagnostic-trace-v3.json").write_text(
             json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8"
         )
         (per_video / "diagnostic-report.md").write_text(
@@ -838,6 +840,52 @@ def diagnose_pipeline_system(
     console.print(
         f"Derived {len(traces)} trace(s); missing {len(missing)}. "
         "No extraction or classification artifacts were changed."
+    )
+
+
+@app.command(
+    "diagnose-compare",
+    help="Compare two existing systemic diagnostic reports without reclassifying.",
+)
+def compare_pipeline_diagnostics(
+    before: Path = typer.Option(..., "--before", help="Earlier system-diagnostics.json."),
+    after: Path = typer.Option(..., "--after", help="Later system-diagnostics.json."),
+    output_root: Path = typer.Option(
+        Path("evaluation/diagnostics/comparisons"),
+        help="Generated comparison root.",
+    ),
+) -> None:
+    reports: list[dict[str, Any]] = []
+    for label, path in (("before", before), ("after", after)):
+        resolved = path.expanduser().resolve()
+        try:
+            payload = json.loads(resolved.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise typer.BadParameter(f"Invalid {label} diagnostic report: {error}") from error
+        if not isinstance(payload, dict) or not isinstance(payload.get("traces"), list):
+            raise typer.BadParameter(
+                f"Invalid {label} diagnostic report: expected an object with traces."
+            )
+        reports.append(payload)
+    comparison = compare_systemic_reports(reports[0], reports[1])
+    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    output_dir = output_root.expanduser().resolve() / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "diagnostic-comparison.json"
+    markdown_path = output_dir / "diagnostic-comparison.md"
+    json_path.write_text(
+        json.dumps(comparison, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    markdown_path.write_text(
+        build_comparison_markdown(comparison), encoding="utf-8"
+    )
+    console.print(f"Wrote diagnostic comparison evidence to {json_path}")
+    console.print(f"Wrote diagnostic comparison view to {markdown_path}")
+    counts = comparison["change_counts"]
+    console.print(
+        "Compared existing traces: "
+        f"fixed={counts.get('fixed', 0)}, regressed={counts.get('regressed', 0)}, "
+        f"changed={counts.get('changed', 0)}, unchanged={counts.get('unchanged', 0)}."
     )
 
 

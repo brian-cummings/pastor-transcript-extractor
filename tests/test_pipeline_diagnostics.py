@@ -8,9 +8,11 @@ from pathlib import Path
 from pastor_transcript_extractor.fixture_validation import validate_fixture_payload
 from pastor_transcript_extractor.pipeline_diagnostics import (
     aggregate_diagnostic_traces,
+    build_comparison_markdown,
     build_diagnostic_markdown,
     build_diagnostic_trace,
     build_systemic_markdown,
+    compare_systemic_reports,
 )
 
 
@@ -114,6 +116,11 @@ class PipelineDiagnosticTests(unittest.TestCase):
             "allowed_interruptions": [],
             "ground_truth_version": 1,
             "reviewed_by": "Reviewer",
+            "selection_manifest": {
+                "evaluation_partition": "development",
+                "source_family_id": "youtube-test-family",
+                "selection_origin": "automatic",
+            },
         }
         path.write_text(json.dumps(payload), encoding="utf-8")
         return validate_fixture_payload(payload, path=path)
@@ -144,10 +151,13 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("fine", trace["earliest_observed_failure"]["stage"])
         self.assertEqual("fine_refinement", trace["root_cause_hypothesis"]["stage"])
         self.assertEqual(
-            "sermon-isolation-contracts-v2",
+            "sermon-isolation-contracts-v3",
             trace["contract_definition"]["version"],
         )
-        self.assertEqual(2, trace["schema_version"])
+        self.assertEqual(3, trace["schema_version"])
+        self.assertEqual("refinement_loss", trace["candidate_regret"]["classification"])
+        self.assertEqual("fail", trace["overall_outcome"]["status"])
+        self.assertEqual("development", trace["cohort"]["evaluation_partition"])
 
     def test_human_views_are_deterministic_projections_of_trace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -282,6 +292,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("candidates", trace["earliest_observed_failure"]["stage"])
         self.assertEqual("masked_by_manual_override", trace["recovery_status"])
         self.assertTrue(trace["outcome_contracts"]["manual_override_applied"])
+        self.assertEqual("pass_with_manual_override", trace["overall_outcome"]["status"])
         self.assertIn(
             "automatic_pre_override_final_not_persisted",
             {gap["code"] for gap in trace["diagnostic_gaps"]},
@@ -370,6 +381,104 @@ class PipelineDiagnosticTests(unittest.TestCase):
         markdown = build_systemic_markdown(systemic)
         self.assertIn("Observed contract violations", markdown)
         self.assertIn("Root-cause hypotheses", markdown)
+
+    def test_candidate_regret_distinguishes_discovery_and_ranking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["classification"]["retained_segment_indexes"] = [0, 1, 2]
+            candidates = proposed["classification"]["search"]["candidates"]
+            candidates[0].update({"start_seconds": 100.0, "end_seconds": 300.0})
+            candidates.append(
+                {
+                    "rank": 2,
+                    "source": "coarse_llm",
+                    "start_seconds": 0.0,
+                    "end_seconds": 300.0,
+                }
+            )
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+            self.assertEqual("ranking_loss", trace["candidate_regret"]["classification"])
+            self.assertAlmostEqual(
+                1 / 3,
+                trace["candidate_regret"]["selected_candidate_regret"],
+                places=5,
+            )
+
+            candidates.pop()
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+            self.assertEqual(
+                "discovery_omission", trace["candidate_regret"]["classification"]
+            )
+
+    def test_contamination_attribution_and_systemic_sensitivity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            fixture_path = root / "fixture-video.json"
+            payload = {
+                "video_id": "fixture-video",
+                "expected_outcome": "sermon",
+                "expected_spans": [{"start_seconds": 100.0, "end_seconds": 250.0}],
+                "allowed_interruptions": [],
+                "ground_truth_version": 1,
+                "reviewed_by": "Reviewer",
+            }
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            fixture = validate_fixture_payload(payload, path=fixture_path)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=fixture,
+            )
+
+        attribution = trace["contamination_attribution"]
+        self.assertEqual("selected", attribution["earliest_breach_stage"])
+        self.assertIn("end_overreach", attribution["final_boundary_error_patterns"])
+        systemic = aggregate_diagnostic_traces([trace])
+        self.assertEqual(3, systemic["schema_version"])
+        self.assertEqual(1, systemic["unknown_evaluation_partition_count"])
+        self.assertEqual(
+            [0, 0, 0, 1],
+            [
+                row["pass"]
+                for row in systemic["threshold_sensitivity"]["contamination_ratio"]
+            ],
+        )
+        self.assertIn("Threshold sensitivity", build_systemic_markdown(systemic))
+
+    def test_systemic_comparison_marks_fixed_and_signature_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+        before = aggregate_diagnostic_traces([trace])
+        fixed_trace = json.loads(json.dumps(trace))
+        fixed_trace["overall_outcome"]["status"] = "pass"
+        fixed_trace["earliest_observed_failure"] = None
+        fixed_trace["stages"][-1]["measurements"]["reviewed_sermon_coverage"] = 1.0
+        after = aggregate_diagnostic_traces([fixed_trace])
+        comparison = compare_systemic_reports(before, after)
+        self.assertEqual(1, comparison["change_counts"]["fixed"])
+        self.assertIn("fixture-video", build_comparison_markdown(comparison))
 
 
 if __name__ == "__main__":
