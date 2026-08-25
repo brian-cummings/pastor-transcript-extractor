@@ -1,0 +1,17 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 4648.0,
+      "start_seconds": 2315.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-08-25T00:06:38.143297+00:00",
+  "reviewed_by": "Brian Cummings",
+  "video_id": "1F4LKxGbqos"
+}
