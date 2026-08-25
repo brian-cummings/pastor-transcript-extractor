@@ -51,7 +51,10 @@ from pastor_transcript_extractor.sermon_policy import (
     publication_is_not_future,
     video_is_sermon_eligible,
 )
-from pastor_transcript_extractor.exporting import export_organization_review_markdown
+from pastor_transcript_extractor.exporting import (
+    export_organization_review_markdown,
+    export_profile_transcript_collection,
+)
 from pastor_transcript_extractor.evaluation import (
     allocate_evaluation_run_directory,
     build_failure_analysis,
@@ -3621,6 +3624,42 @@ def sync_reviewed_speaker_evidence_command(
     _print_reviewed_evidence_summary(evidence, result)
     if dry_run:
         console.print("Dry run complete; no reviewed evidence was synchronized.")
+
+
+@identity_app.command(
+    "export-profile",
+    help="Export the reviewed sermon transcript collection for a speaker profile.",
+)
+def export_profile_command(
+    profile_id: int = typer.Option(
+        ...,
+        "--profile-id",
+        help="Speaker profile id; redirects are resolved to the canonical profile.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None, help="Override app data directory."
+    ),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    try:
+        result = export_profile_transcript_collection(
+            database,
+            paths,
+            profile_id,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    if result.requested_profile_id != result.profile_id:
+        console.print(
+            f"Resolved speaker profile #{result.requested_profile_id} to canonical "
+            f"profile #{result.profile_id}."
+        )
+    console.print(f"Wrote profile transcript collection to {result.export_path}")
+    console.print(f"Wrote profile transcript manifest to {result.manifest_path}")
+    console.print(
+        f"Included {result.video_count} sermon(s); skipped {result.skipped_count}."
+    )
 
 
 @identity_app.command(

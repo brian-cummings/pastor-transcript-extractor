@@ -944,6 +944,19 @@ main table, so human-on-loop growth is visible without widening the table.
 Historical association files are not bulk-imported: only artifacts produced or
 reused by the current identity invocation can enter the ledger.
 
+Export the sermon transcript collection for a reviewed speaker profile
+with:
+
+```bash
+pte identity export-profile --profile-id PROFILE_ID --base-dir /path/to/app-data
+```
+
+Profile redirects resolve to the canonical profile. The command writes
+`transcripts.md` and a provenance-rich `transcripts.json` manifest beneath
+`exports/profiles/profile-PROFILE_ID/`. Membership is intentionally limited to
+effectively attached reviewed observations; provisional machine assignments do
+not enter the collection.
+
 When grounded attribution leaves a reviewed voice profile unnamed, run
 `pte identity review-profile-attribution --reviewer REVIEWER_ID`. The command
 selects the largest unnamed canonical profile (or accepts `--profile-id`), opens

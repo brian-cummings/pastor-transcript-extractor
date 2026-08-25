@@ -9,6 +9,7 @@ from typing import Any
 from pastor_transcript_extractor.config import AppPaths, build_pastor_paths
 from pastor_transcript_extractor.disposition import build_final_disposition
 from pastor_transcript_extractor.models import Video, VideoStatus
+from pastor_transcript_extractor.profile_analysis import resolve_profile_sermon_scope
 from pastor_transcript_extractor.storage import Database
 
 
@@ -21,6 +22,16 @@ class PastorReviewMarkdownResult:
 
 
 OrganizationReviewMarkdownResult = PastorReviewMarkdownResult
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileTranscriptCollectionResult:
+    export_path: Path
+    manifest_path: Path
+    requested_profile_id: int
+    profile_id: int
+    video_count: int
+    skipped_count: int
 
 
 def _sort_videos_for_review(videos: list[Video]) -> list[Video]:
@@ -84,6 +95,36 @@ def _build_organization_review_markdown(
         lines.extend(
             ["No extracted videos are available for this organization.", ""]
         )
+        return "\n".join(lines)
+    lines.extend(sections)
+    if lines[-1] != "":
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _build_profile_transcript_markdown(
+    profile_id: int,
+    profile_label: str,
+    generated_at: str,
+    video_count: int,
+    sections: list[str],
+) -> str:
+    lines = [
+        "---",
+        f"speaker_profile_id: {profile_id}",
+        f"speaker_profile_label: {profile_label}",
+        f"generated_at: {generated_at}",
+        f"video_count: {video_count}",
+        "selection_semantics: effective_reviewed_profile_membership",
+        "---",
+        "",
+        f"# {profile_label} Sermon Transcript Collection",
+        "",
+        "This collection contains sermons with observations effectively attached to this canonical speaker profile.",
+        "",
+    ]
+    if not sections:
+        lines.extend(["No extracted sermons are available for this profile.", ""])
         return "\n".join(lines)
     lines.extend(sections)
     if lines[-1] != "":
@@ -428,6 +469,77 @@ def export_organization_review_markdown(
     return OrganizationReviewMarkdownResult(
         export_path=export_path,
         manifest_path=manifest_path,
+        video_count=len(manifest_videos),
+        skipped_count=skipped_count,
+    )
+
+
+def export_profile_transcript_collection(
+    database: Database,
+    app_paths: AppPaths,
+    profile_id: int,
+) -> ProfileTranscriptCollectionResult:
+    scope = resolve_profile_sermon_scope(database, profile_id)
+    profile = database.get_speaker_profile(scope.profile_id)
+    assert profile is not None
+
+    export_root = app_paths.exports / "profiles" / f"profile-{scope.profile_id}"
+    export_root.mkdir(parents=True, exist_ok=True)
+    videos = _sort_videos_for_review(list(scope.videos))
+    sections, skipped_count, manifest_videos = _build_review_sections_for_videos(
+        database,
+        videos,
+    )
+    observation_ids_by_video: dict[int, list[int]] = {}
+    for observation_id in scope.observation_ids:
+        observation = database.get_speaker_observation(observation_id)
+        if observation is not None:
+            observation_ids_by_video.setdefault(observation.video_id, []).append(
+                observation.id
+            )
+    for manifest_video in manifest_videos:
+        video_id = int(manifest_video["video_id"])
+        manifest_video["profile_observation_ids"] = observation_ids_by_video.get(
+            video_id, []
+        )
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    profile_label = profile.display_label or profile.stable_key
+    export_path = export_root / "transcripts.md"
+    manifest_path = export_root / "transcripts.json"
+    export_path.write_text(
+        _build_profile_transcript_markdown(
+            profile_id=scope.profile_id,
+            profile_label=profile_label,
+            generated_at=generated_at,
+            video_count=len(manifest_videos),
+            sections=sections,
+        ),
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "requested_profile_id": scope.requested_profile_id,
+                "profile_id": scope.profile_id,
+                "profile_stable_key": profile.stable_key,
+                "profile_label": profile_label,
+                "selection_semantics": "effective_reviewed_profile_membership",
+                "generated_at": generated_at,
+                "video_count": len(manifest_videos),
+                "skipped_count": skipped_count,
+                "videos": manifest_videos,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return ProfileTranscriptCollectionResult(
+        export_path=export_path,
+        manifest_path=manifest_path,
+        requested_profile_id=scope.requested_profile_id,
+        profile_id=scope.profile_id,
         video_count=len(manifest_videos),
         skipped_count=skipped_count,
     )
