@@ -76,6 +76,7 @@ from pastor_transcript_extractor.fixture_correction import (
 )
 from pastor_transcript_extractor.fixture_validation import (
     FixtureValidationError,
+    ValidatedFixture,
     validate_fixture_directory,
     validate_fixture_payload,
 )
@@ -189,6 +190,12 @@ from pastor_transcript_extractor.media_artifacts import (
     repair_normalized_audio_provenance,
     resolve_normalized_audio_path,
     video_has_isolated_sermon,
+)
+from pastor_transcript_extractor.pipeline_diagnostics import (
+    aggregate_diagnostic_traces,
+    build_diagnostic_markdown,
+    build_diagnostic_trace,
+    build_systemic_markdown,
 )
 from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
@@ -652,6 +659,185 @@ def evaluate(
     console.print(
         f"Evaluated {aggregate['evaluated_fixture_count']}/{aggregate['fixture_count']} fixture(s); "
         f"missing artifacts {aggregate['missing_artifact_count']}."
+    )
+
+
+def _load_pipeline_diagnostic_fixture(
+    fixture_path: Path | None,
+    *,
+    youtube_video_id: str,
+) -> ValidatedFixture | None:
+    if fixture_path is None:
+        return None
+    resolved = fixture_path.expanduser().resolve()
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        fixture = validate_fixture_payload(payload, path=resolved)
+    except (OSError, json.JSONDecodeError, FixtureValidationError) as error:
+        raise typer.BadParameter(f"Invalid diagnostic fixture: {error}") from error
+    if fixture.video_id != youtube_video_id:
+        raise typer.BadParameter(
+            f"Fixture video id {fixture.video_id!r} does not match {youtube_video_id!r}."
+        )
+    return fixture
+
+
+@app.command(
+    "diagnose",
+    help="Build a read-only sermon-isolation trace and human diagnostic views.",
+)
+def diagnose_pipeline(
+    video_id: int = typer.Option(..., "--video-id", help="Database video id to diagnose."),
+    fixture: Path | None = typer.Option(
+        None,
+        "--fixture",
+        help="Optional reviewed fixture JSON for actual recall and contamination measurements.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Output directory; defaults to the video's immutable artifact namespace.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    video = database.get_video_by_id(video_id)
+    if video is None:
+        raise typer.BadParameter(f"Unknown video id: {video_id}")
+    extraction = database.get_latest_extraction_result_for_video(video.id)
+    if extraction is None or not extraction.proposed_json_path:
+        raise typer.BadParameter(f"Video #{video.id} has no proposed extraction artifact.")
+    proposed_path = Path(extraction.proposed_json_path)
+    try:
+        proposed = json.loads(proposed_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(f"Invalid proposed extraction artifact: {error}") from error
+    if not isinstance(proposed, dict):
+        raise typer.BadParameter("Proposed extraction artifact must be a JSON object.")
+    reviewed_fixture = _load_pipeline_diagnostic_fixture(
+        fixture,
+        youtube_video_id=video.youtube_video_id,
+    )
+    trace = build_diagnostic_trace(
+        proposed,
+        proposed_path=proposed_path,
+        youtube_video_id=video.youtube_video_id,
+        database_video_id=video.id,
+        fixture=reviewed_fixture,
+        media_duration_seconds=float(video.duration_seconds) if video.duration_seconds else None,
+    )
+    root = (
+        output_dir.expanduser().resolve()
+        if output_dir is not None
+        else resolve_video_artifact_paths(database, paths, video).root / "diagnostics"
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    trace_path = root / "diagnostic-trace-v1.json"
+    report_path = root / "diagnostic-report.md"
+    trace_path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
+    report_path.write_text(build_diagnostic_markdown(trace), encoding="utf-8")
+    console.print(f"Wrote canonical diagnostic trace to {trace_path}")
+    console.print(f"Wrote pipeline and timeline views to {report_path}")
+    observed = trace.get("earliest_observed_failure")
+    cause = trace.get("root_cause_hypothesis", {})
+    console.print(
+        "Earliest observed failure: "
+        f"{observed.get('stage') if isinstance(observed, dict) else 'none'}; "
+        f"likely cause: {cause.get('stage') or 'none'} "
+        f"({cause.get('confidence') or 'n/a'} confidence)."
+    )
+
+
+@app.command(
+    "diagnose-system",
+    help="Aggregate existing reviewed-fixture traces without reclassifying the corpus.",
+)
+def diagnose_pipeline_system(
+    fixture_dir: Path = typer.Option(
+        Path("evaluation/fixtures"),
+        help="Reviewed fixture directory to diagnose from existing artifacts.",
+    ),
+    output_root: Path = typer.Option(
+        Path("evaluation/diagnostics"),
+        help="Generated systemic diagnostic root.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
+    except FixtureValidationError as error:
+        raise typer.BadParameter(str(error)) from error
+    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    output_dir = output_root.expanduser().resolve() / run_id
+    video_root = output_dir / "videos"
+    traces: list[dict[str, Any]] = []
+    missing: list[dict[str, str]] = []
+    for reviewed_fixture in fixtures:
+        video = database.get_video_by_youtube_id(reviewed_fixture.video_id)
+        extraction = (
+            database.get_latest_extraction_result_for_video(video.id)
+            if video is not None
+            else None
+        )
+        if video is None or extraction is None or not extraction.proposed_json_path:
+            missing.append(
+                {
+                    "youtube_video_id": reviewed_fixture.video_id,
+                    "reason": "video_or_proposed_artifact_missing",
+                }
+            )
+            continue
+        proposed_path = Path(extraction.proposed_json_path)
+        try:
+            proposed = json.loads(proposed_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            missing.append(
+                {
+                    "youtube_video_id": reviewed_fixture.video_id,
+                    "reason": "proposed_artifact_invalid",
+                }
+            )
+            continue
+        if not isinstance(proposed, dict):
+            missing.append(
+                {
+                    "youtube_video_id": reviewed_fixture.video_id,
+                    "reason": "proposed_artifact_not_object",
+                }
+            )
+            continue
+        trace = build_diagnostic_trace(
+            proposed,
+            proposed_path=proposed_path,
+            youtube_video_id=video.youtube_video_id,
+            database_video_id=video.id,
+            fixture=reviewed_fixture,
+            media_duration_seconds=(
+                float(video.duration_seconds) if video.duration_seconds else None
+            ),
+        )
+        traces.append(trace)
+        per_video = video_root / video.youtube_video_id
+        per_video.mkdir(parents=True, exist_ok=True)
+        (per_video / "diagnostic-trace-v1.json").write_text(
+            json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        (per_video / "diagnostic-report.md").write_text(
+            build_diagnostic_markdown(trace), encoding="utf-8"
+        )
+    report = aggregate_diagnostic_traces(traces, missing=missing)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "system-diagnostics.json"
+    markdown_path = output_dir / "system-diagnostics.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    markdown_path.write_text(build_systemic_markdown(report), encoding="utf-8")
+    console.print(f"Wrote systemic diagnostic evidence to {json_path}")
+    console.print(f"Wrote systemic failure view to {markdown_path}")
+    console.print(
+        f"Derived {len(traces)} trace(s); missing {len(missing)}. "
+        "No extraction or classification artifacts were changed."
     )
 
 
