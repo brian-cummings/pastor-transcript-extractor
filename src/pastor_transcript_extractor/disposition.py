@@ -27,6 +27,7 @@ def build_final_disposition(
     guest_speaker_suspected: bool = False,
     ambiguous_speakers: bool = False,
     recording_verification: object = None,
+    identity_boundary_review: object = None,
 ) -> dict[str, Any]:
     """Derive the user-facing outcome without discarding diagnostic candidates."""
     classification_dict = classification if isinstance(classification, dict) else {}
@@ -47,8 +48,22 @@ def build_final_disposition(
     )
     verified_outcome = verification.get("predicted_outcome")
     verification_decision = verification.get("decision")
+    identity_review = (
+        identity_boundary_review
+        if isinstance(identity_boundary_review, dict)
+        else {}
+    )
+    identity_records = identity_review.get("records")
+    identity_records = identity_records if isinstance(identity_records, list) else []
+    identity_boundary_review_required = any(
+        isinstance(record, dict) and record.get("decision") == "review_required"
+        for record in identity_records
+    )
 
-    if ambiguous_speakers:
+    if identity_boundary_review_required:
+        status = REVIEW_REQUIRED
+        reasons = ["identity_boundary_review_required"]
+    elif ambiguous_speakers:
         status = REJECTED_AMBIGUOUS_SPEAKERS
         reasons = ["multiple_sustained_speakers_cannot_be_attributed_to_target_pastor"]
     elif verified_outcome == "no_sermon":
@@ -107,4 +122,5 @@ def build_final_disposition(
         "window_arbitration_reason": (
             arbitration.get("reason") if isinstance(arbitration, dict) else None
         ),
+        "identity_boundary_review_required": identity_boundary_review_required,
     }

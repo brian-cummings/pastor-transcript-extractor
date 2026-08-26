@@ -12,6 +12,9 @@ from pastor_transcript_extractor.caption_normalization import (
 )
 from pastor_transcript_extractor.config import AppPaths, build_pastor_paths
 from pastor_transcript_extractor.disposition import build_final_disposition
+from pastor_transcript_extractor.identity_boundary_review import (
+    apply_identity_boundary_review,
+)
 from pastor_transcript_extractor.models import Video, VideoStatus
 from pastor_transcript_extractor.profile_analysis import resolve_profile_sermon_scope
 from pastor_transcript_extractor.storage import Database
@@ -266,6 +269,24 @@ def _build_review_sections_for_videos(
 
         proposed_text = proposed_path.read_text(encoding="utf-8").rstrip()
         proposed_json = _load_json(proposed_json_path) if proposed_json_path is not None else None
+        if proposed_json is not None:
+            reviewed_json = apply_identity_boundary_review(proposed_json)
+            reviewed_disposition = build_final_disposition(
+                reviewed_json.get("classification"),
+                reviewed_json.get("sermon_window"),
+                guest_speaker_suspected=reviewed_json.get("guest_speaker_suspected") is True,
+                recording_verification=reviewed_json.get("recording_verification"),
+                identity_boundary_review=reviewed_json.get("identity_boundary_review"),
+            )
+            reviewed_json["final_disposition"] = reviewed_disposition
+            if isinstance(reviewed_json.get("classification"), dict):
+                reviewed_json["classification"]["final_disposition"] = reviewed_disposition
+            if reviewed_json != proposed_json and proposed_json_path is not None:
+                proposed_json_path.write_text(
+                    json.dumps(reviewed_json, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+            proposed_json = reviewed_json
         review_excerpt = _build_review_transcript_excerpt(
             proposed_json,
             proposed_text,
@@ -292,13 +313,6 @@ def _build_review_sections_for_videos(
             classification = dict(proposed_json["classification"])
         if proposed_json is not None and isinstance(proposed_json.get("final_disposition"), dict):
             final_disposition = dict(proposed_json["final_disposition"])
-        if proposed_json is not None and final_disposition is None:
-            final_disposition = build_final_disposition(
-                classification,
-                sermon_window,
-                guest_speaker_suspected=guest_speaker_suspected,
-                recording_verification=proposed_json.get("recording_verification"),
-            )
         published_text = video.published_at.date().isoformat() if video.published_at is not None else "undated"
         section_lines = [
             f"## {published_text} - {video.title}",

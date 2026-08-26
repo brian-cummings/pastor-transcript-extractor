@@ -13,6 +13,9 @@ from pastor_transcript_extractor.identity import (
     record_neutral_speaker_evidence,
     record_shadow_identity_assessment,
 )
+from pastor_transcript_extractor.identity_boundary_review import (
+    apply_identity_boundary_review,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.media_artifacts import (
     get_registered_normalized_media_artifact,
@@ -553,12 +556,14 @@ def reclassify_video(
         ),
     ):
         assert isinstance(existing, dict)
+        payload = apply_identity_boundary_review(payload)
         recording_verification = existing.get("recording_verification")
         disposition = build_final_disposition(
             existing,
             payload.get("sermon_window"),
             guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
             recording_verification=recording_verification,
+            identity_boundary_review=payload.get("identity_boundary_review"),
         )
         if payload.get("final_disposition") != disposition or existing.get("final_disposition") != disposition:
             payload["final_disposition"] = disposition
@@ -630,6 +635,8 @@ def reclassify_video(
         manual_override_present=override is not None,
     )
     payload["sermon_window"] = existing_window
+    payload = apply_identity_boundary_review(payload)
+    existing_window = payload["sermon_window"]
     if (
         override is None
         and isinstance(existing_window, dict)
@@ -645,6 +652,7 @@ def reclassify_video(
         classification,
         existing_window,
         guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+        identity_boundary_review=payload.get("identity_boundary_review"),
     )
     if (
         preliminary_disposition["status"] == REVIEW_REQUIRED
@@ -688,6 +696,7 @@ def reclassify_video(
         existing_window,
         guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
         recording_verification=recording_verification,
+        identity_boundary_review=payload.get("identity_boundary_review"),
     )
     classification["final_disposition"] = disposition
     payload["final_disposition"] = disposition
@@ -973,10 +982,19 @@ def extract_video(
         }
         for segment in persisted_segments
     ]
+    reviewed_payload = apply_identity_boundary_review(
+        {
+            "sermon_window": sermon_window,
+            "segments": serialized_segments,
+        }
+    )
+    sermon_window = reviewed_payload["sermon_window"]
+    identity_boundary_review = reviewed_payload["identity_boundary_review"]
     preliminary_disposition = build_final_disposition(
         classification,
         sermon_window,
         guest_speaker_suspected=guest_flags.suspected,
+        identity_boundary_review=identity_boundary_review,
     )
     if (
         preliminary_disposition["status"] == REVIEW_REQUIRED
@@ -1021,6 +1039,7 @@ def extract_video(
         sermon_window,
         guest_speaker_suspected=guest_flags.suspected,
         recording_verification=recording_verification,
+        identity_boundary_review=identity_boundary_review,
     )
     classification["final_disposition"] = final_disposition
 
@@ -1050,6 +1069,7 @@ def extract_video(
         "classification": classification,
         "recording_verification": recording_verification,
         "final_disposition": final_disposition,
+        "identity_boundary_review": identity_boundary_review,
         "guest_speaker_suspected": guest_flags.suspected,
         "guest_name_candidates": guest_flags.name_candidates,
         "guest_signal_reasons": guest_flags.reasons,

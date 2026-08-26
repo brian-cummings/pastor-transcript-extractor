@@ -201,6 +201,9 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     load_identity_boundary_feedback,
 )
 from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
+from pastor_transcript_extractor.identity_boundary_review import (
+    persist_association_boundary_evidence,
+)
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
@@ -7057,9 +7060,21 @@ def shadow_associate_speakers_command(
             backend=backend,
             policy=policy_spec.policy,
         )
-        span_selection_by_observation_id[observation.id] = (
-            qualified.selection
-        )
+        span_selection_by_observation_id[observation.id] = {
+            **qualified.selection,
+            "coherent_sermon_speaker_spans": [
+                {
+                    "start_seconds": spec.start_seconds,
+                    "end_seconds": spec.end_seconds,
+                    "speaker_key": (
+                        "sermon_speaker_candidate:"
+                        f"{observation.input_fingerprint}"
+                    ),
+                    "relationship": "coherent_sermon_speaker",
+                }
+                for spec in qualified.span_specs
+            ],
+        }
         return qualified.span_specs
 
     videos_by_id = {video.id: video for video in database.list_videos()}
@@ -7617,6 +7632,14 @@ def shadow_associate_speakers_command(
         )
         reused_associations += int(reusable_path is not None)
         written_reports.append(destination)
+        extraction = database.get_latest_extraction_result_for_video(
+            observation.video_id
+        )
+        if extraction is not None and extraction.proposed_json_path:
+            persist_association_boundary_evidence(
+                extraction.proposed_json_path,
+                report,
+            )
         outcome = str(report["outcome"])
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
         proposed_profile_id = report.get("proposed_profile_id")
