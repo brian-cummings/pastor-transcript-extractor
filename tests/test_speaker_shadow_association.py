@@ -619,6 +619,20 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         )
         self.assertFalse(routing.exhaustive)
         self.assertEqual(5, routing.total_routable_profiles)
+        funnel = routing.candidate_funnel
+        self.assertIsNotNone(funnel)
+        entries = {
+            item["profile_id"]: item
+            for item in funnel["retrieval_candidates"]
+        }
+        self.assertEqual(["source"], entries[1]["retrieval_sources"])
+        self.assertTrue(entries[1]["selected_for_comparison"])
+        self.assertEqual(1, entries[2]["acoustic_rank"])
+        self.assertTrue(entries[2]["passed_shortlist_cutoff"])
+        self.assertEqual(3, entries[4]["acoustic_rank"])
+        self.assertFalse(entries[4]["passed_shortlist_cutoff"])
+        self.assertFalse(entries[4]["selected_for_comparison"])
+        self.assertEqual([1, 2, 3], funnel["profiles_selected_for_comparison"])
 
     def test_multi_exemplar_unique_match_is_shadow_proposal_only(self) -> None:
         candidate = self._observation("candidate")

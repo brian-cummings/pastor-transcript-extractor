@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import asdict, dataclass, replace
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -20,9 +21,9 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v6"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v7"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
-    "speaker_shadow_association_input_v5"
+    "speaker_shadow_association_input_v6"
 )
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
@@ -72,6 +73,7 @@ class StagedAssociationRouting:
     shortlisted_profile_ids: tuple[int, ...]
     total_routable_profiles: int
     confirmation_priority_profile_ids: tuple[int, ...] = ()
+    candidate_funnel: Mapping[str, Any] | None = None
 
 
 def select_routed_association_profiles(
@@ -177,9 +179,17 @@ def select_staged_association_profiles(
         ]
         return max(similarities) if similarities else -1.0
 
+    similarity_by_profile_id = {
+        item[0].profile_id: profile_similarity(item)
+        for item in global_candidates
+    }
     global_candidates.sort(
         key=lambda item: (-profile_similarity(item), item[0].profile_id)
     )
+    acoustic_rank_by_profile_id = {
+        item[0].profile_id: rank
+        for rank, item in enumerate(global_candidates, start=1)
+    }
     shortlisted = global_candidates[:maximum_global_profiles]
     selected = sorted(
         (*priority, *shortlisted),
@@ -192,6 +202,81 @@ def select_staged_association_profiles(
         ),
     )
     exhaustive = len(selected) == len(routable)
+    selected_ids = {item[0].profile_id for item in selected}
+    routable_ids = set(routable_by_id)
+    candidate_funnel_entries = []
+    for readiness, exemplars in sorted(
+        profiles, key=lambda item: item[0].profile_id
+    ):
+        confirmation_match, source_match, name_match = priority_reason(
+            (readiness, exemplars)
+        )
+        profile_id = readiness.profile_id
+        matched_normalized_names = sorted(
+            names & set(readiness.normalized_names)
+        )
+        matching_source_exemplar_observation_ids = sorted(
+            exemplar.observation.id
+            for exemplar in exemplars
+            if source_id_by_video_id.get(exemplar.observation.video_id)
+            == candidate_source_id
+        )
+        globally_routable = (
+            readiness.shadow_ready
+            and "discovery_candidate_unconfirmed"
+            not in readiness.automatic_blockers
+        )
+        retrieval_sources = []
+        if confirmation_match:
+            retrieval_sources.append("pending_confirmation")
+        if source_match:
+            retrieval_sources.append("source")
+        if name_match:
+            retrieval_sources.append("name")
+        if profile_id in acoustic_rank_by_profile_id:
+            retrieval_sources.append("acoustic_global")
+        policy_exclusion_reasons = []
+        if profile_id not in routable_ids:
+            if "discovery_candidate_unconfirmed" in readiness.automatic_blockers:
+                policy_exclusion_reasons.append(
+                    "discovery_candidate_unconfirmed_without_priority_route"
+                )
+            if not globally_routable and not policy_exclusion_reasons:
+                policy_exclusion_reasons.append(
+                    "profile_not_globally_routable_without_local_route"
+                )
+        candidate_funnel_entries.append(
+            {
+                "profile_id": profile_id,
+                "retrieval_sources": retrieval_sources,
+                "source_match": source_match,
+                "matching_source_exemplar_observation_ids": (
+                    matching_source_exemplar_observation_ids
+                ),
+                "name_match": name_match,
+                "matched_normalized_names": matched_normalized_names,
+                "confirmation_priority": confirmation_match,
+                "routing_policy_eligible": profile_id in routable_ids,
+                "routing_policy_exclusion_reason_codes": (
+                    policy_exclusion_reasons
+                ),
+                "acoustic_similarity": similarity_by_profile_id.get(
+                    profile_id
+                ),
+                "acoustic_rank": acoustic_rank_by_profile_id.get(profile_id),
+                "passed_shortlist_cutoff": (
+                    profile_id in {item[0].profile_id for item in shortlisted}
+                    if profile_id in acoustic_rank_by_profile_id
+                    else None
+                ),
+                "selected_for_comparison": profile_id in selected_ids,
+            }
+        )
+    cutoff_score = (
+        similarity_by_profile_id[shortlisted[-1][0].profile_id]
+        if shortlisted
+        else None
+    )
     return StagedAssociationRouting(
         profiles=tuple(selected),
         exhaustive=exhaustive,
@@ -218,6 +303,18 @@ def select_staged_association_profiles(
                 & set(routable_by_id)
             )
         ),
+        candidate_funnel={
+            "version": "association_candidate_funnel_v1",
+            "retrieval_candidates": candidate_funnel_entries,
+            "acoustic_shortlist": {
+                "maximum_profiles": maximum_global_profiles,
+                "cutoff_score": cutoff_score,
+                "ranked_profile_ids": [
+                    item[0].profile_id for item in global_candidates
+                ],
+            },
+            "profiles_selected_for_comparison": sorted(selected_ids),
+        },
     )
 
 
@@ -798,6 +895,7 @@ def evaluate_shadow_association(
         "association_version": SHADOW_ASSOCIATION_VERSION,
         "input_fingerprint_version": SHADOW_ASSOCIATION_FINGERPRINT_VERSION,
         "artifact_kind": "speaker_profile_shadow_association",
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "shadow_mode": True,
         "registry_mutation_allowed": False,
         "automatic_assignment_allowed": False,

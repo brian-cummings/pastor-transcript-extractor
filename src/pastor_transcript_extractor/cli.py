@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass, replace
 from datetime import date
@@ -712,6 +713,10 @@ def _persisted_identity_outcome(
         if observation is not None
         else []
     )
+    profile_redirects = {
+        profile.id: database.resolve_speaker_profile_id(profile.id)
+        for profile in database.list_speaker_profiles()
+    }
     return build_identity_operational_outcome(
         content_disposition=content_disposition,
         extraction_result_id=extraction_result_id,
@@ -727,6 +732,7 @@ def _persisted_identity_outcome(
         effective_profile_ids=profile_ids,
         association_attempts=association_attempts,
         boundary_feedback=boundary_feedback,
+        profile_redirects=profile_redirects,
     )
 
 
@@ -942,6 +948,10 @@ def diagnose_pipeline_system(
         )
         for observation in observations_by_video_id.values()
     }
+    profile_redirects = {
+        profile.id: database.resolve_speaker_profile_id(profile.id)
+        for profile in database.list_speaker_profiles()
+    }
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     output_dir = output_root.expanduser().resolve() / run_id
     video_root = output_dir / "videos"
@@ -1016,6 +1026,7 @@ def diagnose_pipeline_system(
                 ),
                 association_attempts=identity_attempts.get(video.id, []),
                 boundary_feedback=boundary_feedback,
+                profile_redirects=profile_redirects,
             ),
         )
         traces.append(trace)
@@ -7375,6 +7386,42 @@ def shadow_associate_speakers_command(
         )
         if len(exemplars) >= minimum_same_exemplars:
             usable_profiles.append((profile, exemplars))
+    usable_profile_ids = {
+        profile.profile_id for profile, _exemplars in usable_profiles
+    }
+    eligible_exemplar_counts = Counter(
+        exemplar.profile_id for exemplar in eligible_exemplars
+    )
+    profile_readiness_funnel = {
+        "canonical_profile_ids": sorted(
+            profile.profile_id for profile in readiness
+        ),
+        "review_ready_profile_ids": sorted(
+            profile.profile_id for profile in readiness if profile.review_ready
+        ),
+        "comparison_eligible_profile_ids": sorted(usable_profile_ids),
+        "excluded_profiles": [
+            {
+                "profile_id": profile.profile_id,
+                "stage": (
+                    "profile_readiness"
+                    if not profile.review_ready
+                    else "acoustic_exemplar_availability"
+                ),
+                "reason_codes": (
+                    list(profile.shadow_blockers)
+                    if not profile.review_ready
+                    else ["fewer_than_required_eligible_acoustic_exemplars"]
+                ),
+                "eligible_exemplar_count": eligible_exemplar_counts.get(
+                    profile.profile_id, 0
+                ),
+                "required_exemplar_count": minimum_same_exemplars,
+            }
+            for profile in readiness
+            if profile.profile_id not in usable_profile_ids
+        ],
+    }
 
     requested_videos = []
     if youtube_video_id is not None:
@@ -7726,6 +7773,22 @@ def shadow_associate_speakers_command(
             "total_routable_profiles": routing.total_routable_profiles,
             "maximum_global_profiles": maximum_global_profiles,
             "retrieval_evidence_only": True,
+            "candidate_funnel": {
+                **dict(routing.candidate_funnel or {}),
+                **profile_readiness_funnel,
+                "candidate_routing_inputs": {
+                    "source_id": video.source_id,
+                    "explicit_normalized_names": sorted(
+                        explicit_candidate_names
+                    ),
+                    "title_byline_normalized_name": title_hint,
+                    "routing_normalized_names": sorted(routing_names),
+                },
+                "profiles_actually_compared": sorted(
+                    profile.profile_id
+                    for profile, _exemplars in candidate_profiles
+                ),
+            },
         }
         if routing.confirmation_priority_profile_ids:
             initial_routing_payload[
@@ -7828,6 +7891,23 @@ def shadow_associate_speakers_command(
                 "maximum_global_profiles": maximum_global_profiles,
                 "retrieval_evidence_only": False,
                 "initial_shortlist_result": "proposed_match",
+                "candidate_funnel": {
+                    **dict(routing.candidate_funnel or {}),
+                    **profile_readiness_funnel,
+                    "candidate_routing_inputs": {
+                        "source_id": video.source_id,
+                        "explicit_normalized_names": sorted(
+                            explicit_candidate_names
+                        ),
+                        "title_byline_normalized_name": title_hint,
+                        "routing_normalized_names": sorted(routing_names),
+                    },
+                    "profiles_actually_compared": sorted(
+                        profile.profile_id
+                        for profile, _exemplars in exhaustive_profiles
+                    ),
+                    "exhaustive_validation_after_shortlist": True,
+                },
             }
             if routing.confirmation_priority_profile_ids:
                 exhaustive_routing_payload[

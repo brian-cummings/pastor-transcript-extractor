@@ -1586,8 +1586,25 @@ def load_identity_association_attempts(
             outcome,
             proposed_profile_id,
         )
+        created_at = payload.get("created_at")
+        ordering_basis = "artifact_created_at"
+        if not isinstance(created_at, str):
+            try:
+                created_at = datetime.fromtimestamp(
+                    path.stat().st_mtime, tz=timezone.utc
+                ).isoformat()
+                ordering_basis = "filesystem_mtime_fallback"
+            except OSError:
+                created_at = ""
+                ordering_basis = "artifact_path_fallback"
+        routing = payload.get("routing")
+        routing = routing if isinstance(routing, dict) else {}
+        profiles = payload.get("profiles")
+        profiles = profiles if isinstance(profiles, list) else []
         grouped.setdefault(video_id, {})[key] = {
             "artifact_path": str(path),
+            "created_at": created_at,
+            "ordering_basis": ordering_basis,
             "observation_id": observation_id,
             "observation_fingerprint": candidate.get("input_fingerprint"),
             "outcome": outcome,
@@ -1598,10 +1615,228 @@ def load_identity_association_attempts(
             "association_version": payload.get("association_version"),
             "model_fingerprint": payload.get("model_fingerprint"),
             "result_sha256": result_sha256,
+            "candidate_funnel": routing.get("candidate_funnel"),
+            "compared_profiles": [
+                {
+                    "profile_id": profile.get("profile_id"),
+                    "meets_multi_exemplar_match": profile.get(
+                        "meets_multi_exemplar_match"
+                    ),
+                    "comparison_counts": profile.get("comparison_counts"),
+                }
+                for profile in profiles
+                if isinstance(profile, dict)
+                and isinstance(profile.get("profile_id"), int)
+            ],
         }
     return {
         video_id: list(attempts.values())
         for video_id, attempts in grouped.items()
+    }
+
+
+def _identity_candidate_funnel_projection(
+    attempt: dict[str, Any] | None,
+    *,
+    effective_profile_ids: list[int],
+    profile_redirects: dict[int, int],
+) -> dict[str, Any]:
+    """Locate reviewed identity in persisted routing evidence without inferring cause."""
+    if not effective_profile_ids:
+        return {"status": "not_applicable", "classification": "identity_unreviewed"}
+    if len(effective_profile_ids) != 1:
+        return {
+            "status": "not_evaluated",
+            "classification": "multiple_effective_profiles",
+            "effective_profile_ids": effective_profile_ids,
+        }
+    if attempt is None:
+        return {"status": "not_observed", "classification": "attempt_missing"}
+    funnel = attempt.get("candidate_funnel")
+    if not isinstance(funnel, dict):
+        return {
+            "status": "not_observed",
+            "classification": "candidate_funnel_not_persisted",
+        }
+
+    target = effective_profile_ids[0]
+
+    def resolved(profile_id: int) -> int:
+        return profile_redirects.get(profile_id, profile_id)
+
+    universe_ids = {
+        int(profile_id)
+        for profile_id in funnel.get("canonical_profile_ids", [])
+        if isinstance(profile_id, int)
+    }
+    matching_historical_ids = sorted(
+        profile_id for profile_id in universe_ids if resolved(profile_id) == target
+    )
+    exact_id_present = target in universe_ids
+    resolution = {
+        "effective_profile_id": target,
+        "historical_profile_ids": matching_historical_ids,
+        "exact_profile_id_present": exact_id_present,
+        "redirect_resolution_applied": bool(
+            matching_historical_ids and not exact_id_present
+        ),
+    }
+    if not matching_historical_ids:
+        return {
+            "status": "observed",
+            "observed_failure_location": "profile_universe",
+            "classification": "profile_redirect_resolution_issue",
+            "resolution": resolution,
+            "evidence": {
+                "historical_canonical_profile_ids": sorted(universe_ids),
+            },
+            "causal_hypotheses": [
+                "profile_was_created_after_attempt",
+                "historical_redirect_cannot_be_reconstructed",
+                "profile_universe_was_incomplete",
+            ],
+        }
+
+    excluded_by_id = {
+        item.get("profile_id"): item
+        for item in funnel.get("excluded_profiles", [])
+        if isinstance(item, dict) and isinstance(item.get("profile_id"), int)
+    }
+    eligible_ids = {
+        profile_id
+        for profile_id in funnel.get("comparison_eligible_profile_ids", [])
+        if isinstance(profile_id, int)
+    }
+    matching_eligible_ids = [
+        profile_id
+        for profile_id in matching_historical_ids
+        if profile_id in eligible_ids
+    ]
+    if not matching_eligible_ids:
+        exclusions = [
+            excluded_by_id[profile_id]
+            for profile_id in matching_historical_ids
+            if profile_id in excluded_by_id
+        ]
+        return {
+            "status": "observed",
+            "observed_failure_location": "eligibility",
+            "classification": "correct_profile_ineligible",
+            "resolution": resolution,
+            "evidence": {"profile_exclusions": exclusions},
+            "causal_hypotheses": [],
+        }
+
+    retrieval_by_id = {
+        item.get("profile_id"): item
+        for item in funnel.get("retrieval_candidates", [])
+        if isinstance(item, dict) and isinstance(item.get("profile_id"), int)
+    }
+    entries = [
+        retrieval_by_id[profile_id]
+        for profile_id in matching_eligible_ids
+        if profile_id in retrieval_by_id
+    ]
+    if not entries:
+        return {
+            "status": "observed",
+            "observed_failure_location": "retrieval",
+            "classification": "acoustic_retrieval_miss",
+            "resolution": resolution,
+            "evidence": {"retrieval_candidate_missing": True},
+            "causal_hypotheses": ["retrieval_instrumentation_incomplete"],
+        }
+    entry = sorted(
+        entries,
+        key=lambda item: (
+            not bool(item.get("selected_for_comparison")),
+            item.get("acoustic_rank") or 10**9,
+        ),
+    )[0]
+    source_outcomes = {
+        "name": "hit" if entry.get("name_match") else "miss",
+        "source": "hit" if entry.get("source_match") else "miss",
+        "acoustic": (
+            "not_applicable_priority_route"
+            if entry.get("acoustic_rank") is None
+            and entry.get("selected_for_comparison")
+            else "unavailable"
+            if entry.get("acoustic_rank") is None
+            else "within_cutoff"
+            if entry.get("passed_shortlist_cutoff")
+            else "below_cutoff"
+        ),
+    }
+    evidence = {
+        "retrieval_candidate": entry,
+        "retrieval_source_outcomes": source_outcomes,
+        "shortlist": funnel.get("acoustic_shortlist"),
+    }
+    if not entry.get("routing_policy_eligible"):
+        return {
+            "status": "observed",
+            "observed_failure_location": "readiness_policy_filter",
+            "classification": "filtered_by_readiness_policy_before_retrieval",
+            "resolution": resolution,
+            "evidence": evidence,
+            "causal_hypotheses": [],
+        }
+    if not entry.get("selected_for_comparison"):
+        if entry.get("acoustic_rank") is not None:
+            classification = "retrieved_below_shortlist_cutoff"
+        else:
+            classification = "acoustic_retrieval_miss"
+        hypotheses = []
+        if not entry.get("name_match"):
+            hypotheses.append("name_retrieval_route_absent")
+        if not entry.get("source_match"):
+            hypotheses.append("source_retrieval_route_absent")
+        return {
+            "status": "observed",
+            "observed_failure_location": "retrieval_miss",
+            "classification": classification,
+            "resolution": resolution,
+            "evidence": evidence,
+            "causal_hypotheses": hypotheses,
+        }
+
+    compared_ids = {
+        profile_id
+        for profile_id in funnel.get("profiles_actually_compared", [])
+        if isinstance(profile_id, int)
+    }
+    if not any(profile_id in compared_ids for profile_id in matching_historical_ids):
+        return {
+            "status": "observed",
+            "observed_failure_location": "comparison_dispatch",
+            "classification": "selected_profile_not_compared",
+            "resolution": resolution,
+            "evidence": evidence,
+            "causal_hypotheses": ["comparison_dispatch_or_artifact_gap"],
+        }
+    proposed_profile_id = attempt.get("proposed_profile_id")
+    if isinstance(proposed_profile_id, int):
+        correct = resolved(proposed_profile_id) == target
+        classification = (
+            "compared_and_proposed_correctly"
+            if correct
+            else "compared_and_proposed_incorrectly"
+        )
+    else:
+        classification = "compared_but_abstained"
+    return {
+        "status": "observed",
+        "observed_failure_location": (
+            None if classification == "compared_and_proposed_correctly" else "comparison"
+        ),
+        "classification": classification,
+        "resolution": resolution,
+        "evidence": {
+            **evidence,
+            "association_outcome": attempt.get("outcome"),
+            "proposed_profile_id": proposed_profile_id,
+        },
+        "causal_hypotheses": [],
     }
 
 
@@ -1613,6 +1848,7 @@ def build_identity_operational_outcome(
     effective_profile_ids: list[int] | None = None,
     association_attempts: list[dict[str, Any]] | None = None,
     boundary_feedback: list[dict[str, Any]] | None = None,
+    profile_redirects: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     """Project persisted identity progress without claiming speaker correctness."""
     observation = observation if isinstance(observation, dict) else None
@@ -1639,7 +1875,10 @@ def build_identity_operational_outcome(
     )
     latest_attempt = max(
         current_attempts,
-        key=lambda attempt: str(attempt.get("artifact_path") or ""),
+        key=lambda attempt: (
+            str(attempt.get("created_at") or ""),
+            str(attempt.get("artifact_path") or ""),
+        ),
         default=None,
     )
     latest_association_outcome = (
@@ -1681,9 +1920,21 @@ def build_identity_operational_outcome(
         "association_attempt_count": len(current_attempts),
         "latest_association_outcome": latest_association_outcome,
         "latest_association_attempt": latest_attempt,
+        "latest_attempt_ordering_basis": (
+            latest_attempt.get("ordering_basis")
+            if latest_attempt is not None
+            else None
+        ),
         "association_outcome_counts": dict(sorted(attempt_outcomes.items())),
         "association_attempts": current_attempts,
         "effective_profile_ids": profile_ids if observation_status == "current" else [],
+        "candidate_funnel_review": _identity_candidate_funnel_projection(
+            latest_attempt,
+            effective_profile_ids=(
+                profile_ids if observation_status == "current" else []
+            ),
+            profile_redirects=profile_redirects or {},
+        ),
         "boundary_advisory_count": len(boundary_feedback or []),
     }
 
@@ -2811,6 +3062,12 @@ def aggregate_diagnostic_traces(
     identity_observation_states = Counter()
     identity_association_outcomes = Counter()
     identity_latest_association_outcomes = Counter()
+    identity_latest_attempt_ordering_bases = Counter()
+    identity_funnel_classifications = Counter()
+    identity_funnel_failure_locations = Counter()
+    identity_funnel_hypotheses = Counter()
+    identity_funnel_acoustic_ranks = Counter()
+    identity_funnel_evaluation = Counter()
     identity_association_attempt_count = 0
     identity_association_attempt_trace_count = 0
     identity_profiled_trace_count = 0
@@ -2889,6 +3146,46 @@ def aggregate_diagnostic_traces(
             identity_latest_association_outcomes[
                 str(latest_association_outcome)
             ] += 1
+        ordering_basis = identity_outcome.get("latest_attempt_ordering_basis")
+        if ordering_basis:
+            identity_latest_attempt_ordering_bases[str(ordering_basis)] += 1
+        funnel_review = identity_outcome.get("candidate_funnel_review", {})
+        funnel_classification = funnel_review.get("classification")
+        if funnel_classification:
+            identity_funnel_classifications[str(funnel_classification)] += 1
+            if funnel_review.get("status") == "observed":
+                identity_funnel_evaluation["observed_reviewed_identity"] += 1
+            if funnel_classification not in {
+                "correct_profile_ineligible",
+                "profile_redirect_resolution_issue",
+            }:
+                identity_funnel_evaluation[
+                    "comparison_eligible_reviewed_identity"
+                ] += 1
+            if str(funnel_classification).startswith("compared_"):
+                identity_funnel_evaluation[
+                    "correct_profile_compared"
+                ] += 1
+            if funnel_classification == "retrieved_below_shortlist_cutoff":
+                identity_funnel_evaluation[
+                    "correct_profile_below_shortlist_cutoff"
+                ] += 1
+            retrieval_candidate = (
+                funnel_review.get("evidence", {}).get("retrieval_candidate")
+            )
+            if isinstance(retrieval_candidate, dict):
+                if retrieval_candidate.get("selected_for_comparison"):
+                    identity_funnel_evaluation[
+                        "correct_profile_selected_for_comparison"
+                    ] += 1
+                acoustic_rank = retrieval_candidate.get("acoustic_rank")
+                if isinstance(acoustic_rank, int):
+                    identity_funnel_acoustic_ranks[str(acoustic_rank)] += 1
+        funnel_location = funnel_review.get("observed_failure_location")
+        if funnel_location:
+            identity_funnel_failure_locations[str(funnel_location)] += 1
+        for hypothesis in funnel_review.get("causal_hypotheses", []) or []:
+            identity_funnel_hypotheses[str(hypothesis)] += 1
         for outcome, count in identity_outcome.get(
             "association_outcome_counts", {}
         ).items():
@@ -3141,6 +3438,36 @@ def aggregate_diagnostic_traces(
             "latest_association_outcome_counts": dict(
                 sorted(identity_latest_association_outcomes.items())
             ),
+            "latest_attempt_ordering_basis_counts": dict(
+                sorted(identity_latest_attempt_ordering_bases.items())
+            ),
+            "candidate_funnel": {
+                "reviewed_identity_classification_counts": dict(
+                    sorted(identity_funnel_classifications.items())
+                ),
+                "observed_failure_location_counts": dict(
+                    sorted(identity_funnel_failure_locations.items())
+                ),
+                "causal_hypothesis_counts": dict(
+                    sorted(identity_funnel_hypotheses.items())
+                ),
+                "retrospective_routing_evaluation_counts": dict(
+                    sorted(identity_funnel_evaluation.items())
+                ),
+                "correct_profile_acoustic_rank_counts": dict(
+                    sorted(
+                        identity_funnel_acoustic_ranks.items(),
+                        key=lambda item: int(item[0]),
+                    )
+                ),
+                "interpretation": (
+                    "Failure locations come from persisted routing decisions. "
+                    "Miss explanations remain causal hypotheses unless the "
+                    "funnel directly records the relevant exclusion or cutoff. "
+                    "Retrospective counts use later reviewed membership only as "
+                    "evaluation truth and are not production identity evidence."
+                ),
+            },
             "association_outcome_counts": dict(
                 sorted(identity_association_outcomes.items())
             ),
@@ -3408,6 +3735,80 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         key=lambda item: (-item[1], item[0]),
     ):
         lines.append(f"| {outcome} | {count} |")
+    candidate_funnel = identity_outcomes.get("candidate_funnel", {})
+    lines.extend(
+        [
+            "",
+            "### Reviewed identity candidate funnel",
+            "",
+            candidate_funnel.get(
+                "interpretation", "No candidate-funnel evidence reported."
+            ),
+            "",
+            "| Funnel classification | Reviewed identities |",
+            "|---|---:|",
+        ]
+    )
+    for classification, count in sorted(
+        candidate_funnel.get(
+            "reviewed_identity_classification_counts", {}
+        ).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {classification} | {count} |")
+    lines.extend(
+        [
+            "",
+            "| Observed failure location | Reviewed identities |",
+            "|---|---:|",
+        ]
+    )
+    for location, count in sorted(
+        candidate_funnel.get("observed_failure_location_counts", {}).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {location} | {count} |")
+    lines.extend(
+        [
+            "",
+            "| Retrospective routing measure | Reviewed identities |",
+            "|---|---:|",
+        ]
+    )
+    for measure, count in sorted(
+        candidate_funnel.get(
+            "retrospective_routing_evaluation_counts", {}
+        ).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {measure} | {count} |")
+    rank_counts = candidate_funnel.get(
+        "correct_profile_acoustic_rank_counts", {}
+    )
+    if rank_counts:
+        lines.extend(
+            [
+                "",
+                "| Correct-profile acoustic rank | Reviewed identities |",
+                "|---:|---:|",
+            ]
+        )
+        for rank, count in sorted(
+            rank_counts.items(), key=lambda item: int(item[0])
+        ):
+            lines.append(f"| {rank} | {count} |")
+    lines.extend(
+        [
+            "",
+            "| Latest-attempt ordering basis | Videos |",
+            "|---|---:|",
+        ]
+    )
+    for basis, count in sorted(
+        identity_outcomes.get("latest_attempt_ordering_basis_counts", {}).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {basis} | {count} |")
     identity_feedback = report.get("identity_boundary_feedback_summary", {})
     lines.extend(
         [

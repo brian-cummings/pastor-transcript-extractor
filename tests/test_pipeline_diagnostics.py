@@ -586,6 +586,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
             run.mkdir()
             payload = {
                 "artifact_kind": "speaker_profile_shadow_association",
+                "created_at": "2026-08-26T12:00:00+00:00",
                 "candidate": {
                     "video_id": 9,
                     "observation_id": 4,
@@ -593,6 +594,12 @@ class PipelineDiagnosticTests(unittest.TestCase):
                 },
                 "outcome": "no_match",
                 "proposed_profile_id": None,
+                "routing": {
+                    "candidate_funnel": {
+                        "version": "association_candidate_funnel_v1",
+                        "canonical_profile_ids": [3],
+                    }
+                },
             }
             (run / "association.json").write_text(
                 json.dumps(payload), encoding="utf-8"
@@ -602,6 +609,12 @@ class PipelineDiagnosticTests(unittest.TestCase):
             )
 
         self.assertEqual("no_match", attempts[9][0]["outcome"])
+        self.assertEqual(
+            "artifact_created_at", attempts[9][0]["ordering_basis"]
+        )
+        self.assertEqual(
+            [3], attempts[9][0]["candidate_funnel"]["canonical_profile_ids"]
+        )
         outcome = build_identity_operational_outcome(
             content_disposition="accepted_sermon",
             extraction_result_id=8,
@@ -639,6 +652,209 @@ class PipelineDiagnosticTests(unittest.TestCase):
             observation={"id": 4, "extraction_result_id": 8},
         )
         self.assertEqual("content_terminal_with_observation", terminal["state"])
+
+    def test_reviewed_identity_candidate_funnel_locates_retrieval_cutoff(self) -> None:
+        outcome = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+            effective_profile_ids=[7],
+            association_attempts=[
+                {
+                    "artifact_path": "run/association.json",
+                    "created_at": "2026-08-26T12:00:00+00:00",
+                    "ordering_basis": "artifact_created_at",
+                    "observation_id": 4,
+                    "outcome": "insufficient_evidence",
+                    "candidate_funnel": {
+                        "canonical_profile_ids": [7, 8],
+                        "comparison_eligible_profile_ids": [7, 8],
+                        "retrieval_candidates": [
+                            {
+                                "profile_id": 7,
+                                "name_match": False,
+                                "source_match": False,
+                                "routing_policy_eligible": True,
+                                "acoustic_similarity": 0.81,
+                                "acoustic_rank": 4,
+                                "passed_shortlist_cutoff": False,
+                                "selected_for_comparison": False,
+                            }
+                        ],
+                        "acoustic_shortlist": {
+                            "maximum_profiles": 3,
+                            "cutoff_score": 0.82,
+                        },
+                        "profiles_actually_compared": [8],
+                    },
+                }
+            ],
+        )
+
+        review = outcome["candidate_funnel_review"]
+        self.assertEqual("retrieval_miss", review["observed_failure_location"])
+        self.assertEqual(
+            "retrieved_below_shortlist_cutoff", review["classification"]
+        )
+        self.assertEqual(
+            {"name": "miss", "source": "miss", "acoustic": "below_cutoff"},
+            review["evidence"]["retrieval_source_outcomes"],
+        )
+        self.assertEqual(
+            ["name_retrieval_route_absent", "source_retrieval_route_absent"],
+            review["causal_hypotheses"],
+        )
+
+    def test_reviewed_identity_candidate_funnel_resolves_redirect_and_proposal(self) -> None:
+        attempt = {
+            "artifact_path": "run/association.json",
+            "created_at": "2026-08-26T12:00:00+00:00",
+            "ordering_basis": "artifact_created_at",
+            "observation_id": 4,
+            "outcome": "proposed_match",
+            "proposed_profile_id": 7,
+            "candidate_funnel": {
+                "canonical_profile_ids": [7],
+                "comparison_eligible_profile_ids": [7],
+                "retrieval_candidates": [
+                    {
+                        "profile_id": 7,
+                        "name_match": True,
+                        "source_match": False,
+                        "routing_policy_eligible": True,
+                        "acoustic_rank": None,
+                        "passed_shortlist_cutoff": None,
+                        "selected_for_comparison": True,
+                    }
+                ],
+                "profiles_actually_compared": [7],
+            },
+        }
+        outcome = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+            effective_profile_ids=[9],
+            association_attempts=[attempt],
+            profile_redirects={7: 9, 9: 9},
+        )
+
+        review = outcome["candidate_funnel_review"]
+        self.assertEqual("compared_and_proposed_correctly", review["classification"])
+        self.assertTrue(review["resolution"]["redirect_resolution_applied"])
+        self.assertIsNone(review["observed_failure_location"])
+
+    def test_reviewed_identity_candidate_funnel_preserves_membership_firewall(self) -> None:
+        base_funnel = {
+            "canonical_profile_ids": [7],
+            "comparison_eligible_profile_ids": [7],
+            "retrieval_candidates": [
+                {
+                    "profile_id": 7,
+                    "name_match": False,
+                    "source_match": True,
+                    "routing_policy_eligible": True,
+                    "acoustic_rank": None,
+                    "passed_shortlist_cutoff": None,
+                    "selected_for_comparison": True,
+                }
+            ],
+            "profiles_actually_compared": [7],
+        }
+        outcome = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+            effective_profile_ids=[7],
+            association_attempts=[
+                {
+                    "artifact_path": "run/association.json",
+                    "created_at": "2026-08-26T12:00:00+00:00",
+                    "observation_id": 4,
+                    "outcome": "insufficient_evidence",
+                    "proposed_profile_id": None,
+                    "candidate_funnel": base_funnel,
+                }
+            ],
+        )
+
+        self.assertEqual(
+            "compared_but_abstained",
+            outcome["candidate_funnel_review"]["classification"],
+        )
+        self.assertEqual([7], outcome["effective_profile_ids"])
+
+    def test_latest_identity_attempt_uses_persisted_creation_time(self) -> None:
+        outcome = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+            association_attempts=[
+                {
+                    "artifact_path": "z-older.json",
+                    "created_at": "2026-08-25T12:00:00+00:00",
+                    "ordering_basis": "artifact_created_at",
+                    "observation_id": 4,
+                    "outcome": "insufficient_evidence",
+                },
+                {
+                    "artifact_path": "a-newer.json",
+                    "created_at": "2026-08-26T12:00:00+00:00",
+                    "ordering_basis": "artifact_created_at",
+                    "observation_id": 4,
+                    "outcome": "no_match",
+                },
+            ],
+        )
+
+        self.assertEqual("no_match", outcome["latest_association_outcome"])
+        self.assertEqual(
+            "artifact_created_at", outcome["latest_attempt_ordering_basis"]
+        )
+
+    def test_reviewed_identity_candidate_funnel_observes_policy_filter(self) -> None:
+        outcome = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+            effective_profile_ids=[7],
+            association_attempts=[
+                {
+                    "artifact_path": "run/association.json",
+                    "created_at": "2026-08-26T12:00:00+00:00",
+                    "observation_id": 4,
+                    "outcome": "insufficient_evidence",
+                    "candidate_funnel": {
+                        "canonical_profile_ids": [7],
+                        "comparison_eligible_profile_ids": [7],
+                        "retrieval_candidates": [
+                            {
+                                "profile_id": 7,
+                                "name_match": False,
+                                "source_match": False,
+                                "routing_policy_eligible": False,
+                                "routing_policy_exclusion_reason_codes": [
+                                    "discovery_candidate_unconfirmed_without_priority_route"
+                                ],
+                                "acoustic_rank": None,
+                                "passed_shortlist_cutoff": None,
+                                "selected_for_comparison": False,
+                            }
+                        ],
+                        "profiles_actually_compared": [],
+                    },
+                }
+            ],
+        )
+
+        review = outcome["candidate_funnel_review"]
+        self.assertEqual(
+            "filtered_by_readiness_policy_before_retrieval",
+            review["classification"],
+        )
+        self.assertEqual(
+            "readiness_policy_filter", review["observed_failure_location"]
+        )
 
     def test_candidate_regret_distinguishes_discovery_and_ranking(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
