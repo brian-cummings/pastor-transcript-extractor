@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass, replace
 from datetime import date
@@ -329,6 +328,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     assess_profile_association_readiness,
     build_shadow_association_input_fingerprint,
     evaluate_shadow_association,
+    leave_one_out_profile_readiness,
     load_reusable_shadow_association,
     load_shadow_policy,
     plan_pending_discovery_confirmation_routes,
@@ -7301,9 +7301,24 @@ def shadow_associate_speakers_command(
         return qualified.span_specs
 
     videos_by_id = {video.id: video for video in database.list_videos()}
+    observations_by_id = {
+        observation.id: observation
+        for observation in database.list_speaker_observations()
+    }
     source_id_by_video_id = {
         video_id: video.source_id for video_id, video in videos_by_id.items()
     }
+    candidate_names_by_observation: dict[int, set[str]] = {}
+    for claim in database.list_speaker_name_claims():
+        if (
+            claim.observation_id is not None
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        ):
+            candidate_names_by_observation.setdefault(
+                claim.observation_id,
+                set(),
+            ).add(claim.normalized_name.strip())
     eligible_exemplars: list[ShadowExemplar] = []
     span_specs_by_observation_id: dict[int, tuple[SpanSpec, ...]] = {}
     review_ready_profiles = [
@@ -7386,42 +7401,59 @@ def shadow_associate_speakers_command(
         )
         if len(exemplars) >= minimum_same_exemplars:
             usable_profiles.append((profile, exemplars))
-    usable_profile_ids = {
-        profile.profile_id for profile, _exemplars in usable_profiles
-    }
-    eligible_exemplar_counts = Counter(
-        exemplar.profile_id for exemplar in eligible_exemplars
+    def profile_readiness_funnel_payload(
+        profile_readiness,
+        comparison_profiles,
+        *,
+        leave_one_out_observation_id: int | None = None,
+    ):
+        comparison_profile_ids = {
+            profile.profile_id for profile, _exemplars in comparison_profiles
+        }
+        return {
+            "canonical_profile_ids": sorted(
+                profile.profile_id for profile in profile_readiness
+            ),
+            "review_ready_profile_ids": sorted(
+                profile.profile_id
+                for profile in profile_readiness
+                if profile.review_ready
+            ),
+            "comparison_eligible_profile_ids": sorted(
+                comparison_profile_ids
+            ),
+            "leave_one_out_observation_id": leave_one_out_observation_id,
+            "excluded_profiles": [
+                {
+                    "profile_id": profile.profile_id,
+                    "stage": (
+                        "profile_readiness"
+                        if not profile.review_ready
+                        else "acoustic_exemplar_availability"
+                    ),
+                    "reason_codes": (
+                        list(profile.shadow_blockers)
+                        if not profile.review_ready
+                        else [
+                            "fewer_than_required_eligible_acoustic_exemplars"
+                        ]
+                    ),
+                    "eligible_exemplar_count": sum(
+                        exemplar.profile_id == profile.profile_id
+                        and exemplar.observation.id
+                        != leave_one_out_observation_id
+                        for exemplar in eligible_exemplars
+                    ),
+                    "required_exemplar_count": minimum_same_exemplars,
+                }
+                for profile in profile_readiness
+                if profile.profile_id not in comparison_profile_ids
+            ],
+        }
+
+    profile_readiness_funnel = profile_readiness_funnel_payload(
+        readiness, usable_profiles
     )
-    profile_readiness_funnel = {
-        "canonical_profile_ids": sorted(
-            profile.profile_id for profile in readiness
-        ),
-        "review_ready_profile_ids": sorted(
-            profile.profile_id for profile in readiness if profile.review_ready
-        ),
-        "comparison_eligible_profile_ids": sorted(usable_profile_ids),
-        "excluded_profiles": [
-            {
-                "profile_id": profile.profile_id,
-                "stage": (
-                    "profile_readiness"
-                    if not profile.review_ready
-                    else "acoustic_exemplar_availability"
-                ),
-                "reason_codes": (
-                    list(profile.shadow_blockers)
-                    if not profile.review_ready
-                    else ["fewer_than_required_eligible_acoustic_exemplars"]
-                ),
-                "eligible_exemplar_count": eligible_exemplar_counts.get(
-                    profile.profile_id, 0
-                ),
-                "required_exemplar_count": minimum_same_exemplars,
-            }
-            for profile in readiness
-            if profile.profile_id not in usable_profile_ids
-        ],
-    }
 
     requested_videos = []
     if youtube_video_id is not None:
@@ -7590,25 +7622,23 @@ def shadow_associate_speakers_command(
     exemplar_centroids: dict[int, tuple[float, ...]] = {}
     console.print(
         "Association preprocessing: building retrieval centroids for "
-        f"{sum(len(exemplars) for _profile, exemplars in usable_profiles)} "
-        "selected exemplar(s)."
+        f"{len(eligible_exemplars)} eligible exemplar(s)."
     )
-    for _profile, exemplars in usable_profiles:
-        for exemplar in exemplars:
-            if exemplar.observation.id in exemplar_centroids:
-                continue
-            exemplar_centroids[exemplar.observation.id] = (
-                build_embedding_centroid(
-                    observation=exemplar.observation,
-                    audio_path=exemplar.audio_path,
-                    span_specs=span_specs_by_observation_id[
-                        exemplar.observation.id
-                    ],
-                    span_cache=span_cache,
-                    embedding_cache=embedding_cache,
-                    backend=backend,
-                )
+    for exemplar in eligible_exemplars:
+        if exemplar.observation.id in exemplar_centroids:
+            continue
+        exemplar_centroids[exemplar.observation.id] = (
+            build_embedding_centroid(
+                observation=exemplar.observation,
+                audio_path=exemplar.audio_path,
+                span_specs=span_specs_by_observation_id[
+                    exemplar.observation.id
+                ],
+                span_cache=span_cache,
+                embedding_cache=embedding_cache,
+                backend=backend,
             )
+        )
     candidate_centroids: dict[int, tuple[float, ...]] = {}
     candidate_video_ids: dict[int, int] = {}
     console.print(
@@ -7685,18 +7715,6 @@ def shadow_associate_speakers_command(
         f"profile_candidate_routes="
         f"{sum(len(profile_ids) for profile_ids in confirmation_routes.values())}"
     )
-    candidate_names_by_observation: dict[int, set[str]] = {}
-    for claim in database.list_speaker_name_claims():
-        if (
-            claim.observation_id is not None
-            and claim.explicit_speaker_attribution
-            and claim.normalized_name.strip()
-        ):
-            candidate_names_by_observation.setdefault(
-                claim.observation_id,
-                set(),
-            ).add(claim.normalized_name.strip())
-
     def compare(
         candidate: SpeakerObservation,
         exemplar: SpeakerObservation,
@@ -7741,8 +7759,51 @@ def shadow_associate_speakers_command(
         routing_names = explicit_candidate_names | (
             {title_hint} if title_hint else set()
         )
+        effective_candidate_profile_ids = {
+            database.resolve_speaker_profile_id(profile_id)
+            for profile_id in database.list_effective_profile_ids_for_observation(
+                observation.id
+            )
+        }
+        leave_one_out_applied = bool(effective_candidate_profile_ids)
+        if leave_one_out_applied:
+            candidate_readiness = tuple(
+                leave_one_out_profile_readiness(
+                    profile,
+                    candidate=observation,
+                    observations_by_id=observations_by_id,
+                    source_id_by_video_id=source_id_by_video_id,
+                    normalized_names_by_observation_id=(
+                        candidate_names_by_observation
+                    ),
+                    minimum_members=minimum_profile_members,
+                )
+                for profile in readiness
+            )
+            candidate_usable_profiles = []
+            for profile in candidate_readiness:
+                if not profile.review_ready:
+                    continue
+                exemplars = select_profile_exemplars(
+                    profile,
+                    eligible_exemplars,
+                    videos_by_id=videos_by_id,
+                    maximum_exemplars=maximum_exemplars,
+                )
+                if len(exemplars) >= minimum_same_exemplars:
+                    candidate_usable_profiles.append((profile, exemplars))
+            candidate_profile_readiness_funnel = (
+                profile_readiness_funnel_payload(
+                    candidate_readiness,
+                    candidate_usable_profiles,
+                    leave_one_out_observation_id=observation.id,
+                )
+            )
+        else:
+            candidate_usable_profiles = usable_profiles
+            candidate_profile_readiness_funnel = profile_readiness_funnel
         legacy_routed_profiles = select_routed_association_profiles(
-            usable_profiles,
+            candidate_usable_profiles,
             candidate_source_id=video.source_id,
             candidate_normalized_names=sorted(routing_names),
             source_id_by_video_id=source_id_by_video_id,
@@ -7752,7 +7813,7 @@ def shadow_associate_speakers_command(
             confirmation_routes.get(observation.id, ())
         )
         routing = select_staged_association_profiles(
-            usable_profiles,
+            candidate_usable_profiles,
             candidate_source_id=video.source_id,
             candidate_normalized_names=sorted(routing_names),
             source_id_by_video_id=source_id_by_video_id,
@@ -7775,7 +7836,14 @@ def shadow_associate_speakers_command(
             "retrieval_evidence_only": True,
             "candidate_funnel": {
                 **dict(routing.candidate_funnel or {}),
-                **profile_readiness_funnel,
+                **candidate_profile_readiness_funnel,
+                "retrospective_evaluation": {
+                    "leave_one_out_applied": leave_one_out_applied,
+                    "hidden_effective_profile_ids": sorted(
+                        effective_candidate_profile_ids
+                    ),
+                    "membership_used_as_routing_evidence": False,
+                },
                 "candidate_routing_inputs": {
                     "source_id": video.source_id,
                     "explicit_normalized_names": sorted(
@@ -7869,7 +7937,7 @@ def shadow_associate_speakers_command(
         if report["outcome"] == "proposed_match" and not routing.exhaustive:
             proposed_profile_id = report.get("proposed_profile_id")
             exhaustive_profiles = (
-                usable_profiles
+                candidate_usable_profiles
                 if proposed_profile_id in pending_confirmation_profile_ids
                 else legacy_routed_profiles
             )
@@ -7893,7 +7961,14 @@ def shadow_associate_speakers_command(
                 "initial_shortlist_result": "proposed_match",
                 "candidate_funnel": {
                     **dict(routing.candidate_funnel or {}),
-                    **profile_readiness_funnel,
+                    **candidate_profile_readiness_funnel,
+                    "retrospective_evaluation": {
+                        "leave_one_out_applied": leave_one_out_applied,
+                        "hidden_effective_profile_ids": sorted(
+                            effective_candidate_profile_ids
+                        ),
+                        "membership_used_as_routing_evidence": False,
+                    },
                     "candidate_routing_inputs": {
                         "source_id": video.source_id,
                         "explicit_normalized_names": sorted(

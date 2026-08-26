@@ -1616,6 +1616,13 @@ def load_identity_association_attempts(
             "model_fingerprint": payload.get("model_fingerprint"),
             "result_sha256": result_sha256,
             "candidate_funnel": routing.get("candidate_funnel"),
+            "candidate_self_comparison": any(
+                comparison.get("exemplar_observation_id") == observation_id
+                for profile in profiles
+                if isinstance(profile, dict)
+                for comparison in profile.get("comparisons", [])
+                if isinstance(comparison, dict)
+            ),
             "compared_profiles": [
                 {
                     "profile_id": profile.get("profile_id"),
@@ -1657,6 +1664,24 @@ def _identity_candidate_funnel_projection(
         return {
             "status": "not_observed",
             "classification": "candidate_funnel_not_persisted",
+        }
+    retrospective = funnel.get("retrospective_evaluation")
+    if (
+        attempt.get("candidate_self_comparison")
+        or not isinstance(retrospective, dict)
+        or retrospective.get("leave_one_out_applied") is not True
+        or retrospective.get("membership_used_as_routing_evidence") is not False
+    ):
+        return {
+            "status": "not_evaluated",
+            "classification": "retrospective_membership_leakage",
+            "evidence": {
+                "candidate_self_comparison": bool(
+                    attempt.get("candidate_self_comparison")
+                ),
+                "retrospective_evaluation": retrospective,
+            },
+            "causal_hypotheses": [],
         }
 
     target = effective_profile_ids[0]
@@ -1765,6 +1790,9 @@ def _identity_candidate_funnel_projection(
             else "within_cutoff"
             if entry.get("passed_shortlist_cutoff")
             else "below_cutoff"
+        ),
+        "all_eligible_acoustic_rank": entry.get(
+            "all_eligible_acoustic_rank"
         ),
     }
     evidence = {
@@ -3153,32 +3181,42 @@ def aggregate_diagnostic_traces(
         funnel_classification = funnel_review.get("classification")
         if funnel_classification:
             identity_funnel_classifications[str(funnel_classification)] += 1
-            if funnel_review.get("status") == "observed":
+            reviewed_funnel = funnel_classification != "identity_unreviewed"
+            observed_reviewed_funnel = (
+                reviewed_funnel
+                and funnel_review.get("status") == "observed"
+            )
+            if observed_reviewed_funnel:
                 identity_funnel_evaluation["observed_reviewed_identity"] += 1
-            if funnel_classification not in {
+            if observed_reviewed_funnel and funnel_classification not in {
                 "correct_profile_ineligible",
                 "profile_redirect_resolution_issue",
             }:
                 identity_funnel_evaluation[
                     "comparison_eligible_reviewed_identity"
                 ] += 1
-            if str(funnel_classification).startswith("compared_"):
+            if reviewed_funnel and str(funnel_classification).startswith("compared_"):
                 identity_funnel_evaluation[
                     "correct_profile_compared"
                 ] += 1
-            if funnel_classification == "retrieved_below_shortlist_cutoff":
+            if (
+                reviewed_funnel
+                and funnel_classification == "retrieved_below_shortlist_cutoff"
+            ):
                 identity_funnel_evaluation[
                     "correct_profile_below_shortlist_cutoff"
                 ] += 1
             retrieval_candidate = (
                 funnel_review.get("evidence", {}).get("retrieval_candidate")
             )
-            if isinstance(retrieval_candidate, dict):
+            if reviewed_funnel and isinstance(retrieval_candidate, dict):
                 if retrieval_candidate.get("selected_for_comparison"):
                     identity_funnel_evaluation[
                         "correct_profile_selected_for_comparison"
                     ] += 1
-                acoustic_rank = retrieval_candidate.get("acoustic_rank")
+                acoustic_rank = retrieval_candidate.get(
+                    "all_eligible_acoustic_rank"
+                )
                 if isinstance(acoustic_rank, int):
                     identity_funnel_acoustic_ranks[str(acoustic_rank)] += 1
         funnel_location = funnel_review.get("observed_failure_location")

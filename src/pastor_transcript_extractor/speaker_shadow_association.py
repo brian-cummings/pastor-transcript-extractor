@@ -76,6 +76,115 @@ class StagedAssociationRouting:
     candidate_funnel: Mapping[str, Any] | None = None
 
 
+def leave_one_out_profile_readiness(
+    readiness: ProfileAssociationReadiness,
+    *,
+    candidate: SpeakerObservation,
+    observations_by_id: Mapping[int, SpeakerObservation],
+    source_id_by_video_id: Mapping[int, int],
+    normalized_names_by_observation_id: Mapping[int, Sequence[str]],
+    minimum_members: int = 3,
+) -> ProfileAssociationReadiness:
+    """Hide a reviewed candidate from profile inputs before retrospective routing."""
+    if candidate.id not in readiness.member_observation_ids:
+        return readiness
+    member_ids = tuple(
+        observation_id
+        for observation_id in readiness.member_observation_ids
+        if observation_id != candidate.id
+    )
+    member_observations = [
+        observations_by_id[observation_id]
+        for observation_id in member_ids
+        if observation_id in observations_by_id
+    ]
+    member_fingerprints = tuple(
+        sorted(
+            observation.input_fingerprint
+            for observation in member_observations
+        )
+    )
+    video_ids = {
+        observation.video_id for observation in member_observations
+    }
+    source_ids = {
+        source_id_by_video_id[video_id]
+        for video_id in video_ids
+        if video_id in source_id_by_video_id
+    }
+    normalized_names = tuple(
+        sorted(
+            {
+                name.strip()
+                for observation_id in member_ids
+                for name in normalized_names_by_observation_id.get(
+                    observation_id, ()
+                )
+                if name.strip()
+            }
+        )
+    )
+    recomputed_blockers = {
+        "fewer_than_three_profile_members",
+        "fewer_than_three_distinct_recordings",
+        "member_observation_missing",
+        "conflicting_explicit_attribution",
+    }
+    shadow_blockers = [
+        blocker
+        for blocker in readiness.shadow_blockers
+        if blocker not in recomputed_blockers
+    ]
+    if len(member_ids) < minimum_members:
+        shadow_blockers.append("fewer_than_three_profile_members")
+    if len(video_ids) < minimum_members:
+        shadow_blockers.append("fewer_than_three_distinct_recordings")
+    if len(member_observations) != len(member_ids):
+        shadow_blockers.append("member_observation_missing")
+    if len(normalized_names) > 1:
+        shadow_blockers.append("conflicting_explicit_attribution")
+    shadow_blockers = list(dict.fromkeys(shadow_blockers))
+
+    automatic_blockers = [
+        blocker
+        for blocker in readiness.automatic_blockers
+        if blocker not in recomputed_blockers
+    ]
+    automatic_blockers = list(
+        dict.fromkeys((*shadow_blockers, *automatic_blockers))
+    )
+    review_ready = (
+        len(member_ids) >= 2
+        and len(video_ids) >= 2
+        and not any(
+            blocker
+            not in {
+                "fewer_than_three_profile_members",
+                "fewer_than_three_distinct_recordings",
+            }
+            for blocker in shadow_blockers
+        )
+    )
+    return replace(
+        readiness,
+        member_observation_ids=member_ids,
+        member_fingerprints=member_fingerprints,
+        recording_count=len(video_ids),
+        source_count=len(source_ids),
+        normalized_names=normalized_names,
+        shadow_ready=not shadow_blockers,
+        automatic_profile_ready=not automatic_blockers,
+        shadow_blockers=tuple(shadow_blockers),
+        automatic_blockers=tuple(automatic_blockers),
+        review_ready=review_ready,
+        certified_exemplar_observation_ids=tuple(
+            observation_id
+            for observation_id in readiness.certified_exemplar_observation_ids
+            if observation_id != candidate.id
+        ),
+    )
+
+
 def select_routed_association_profiles(
     profiles: Sequence[
         tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
@@ -183,6 +292,23 @@ def select_staged_association_profiles(
         item[0].profile_id: profile_similarity(item)
         for item in global_candidates
     }
+    evaluation_similarity_by_profile_id = {
+        item[0].profile_id: profile_similarity(item)
+        for item in routable
+    }
+    evaluation_ranked_profile_ids = [
+        item[0].profile_id
+        for item in sorted(
+            routable,
+            key=lambda item: (-profile_similarity(item), item[0].profile_id),
+        )
+    ]
+    evaluation_rank_by_profile_id = {
+        profile_id: rank
+        for rank, profile_id in enumerate(
+            evaluation_ranked_profile_ids, start=1
+        )
+    }
     global_candidates.sort(
         key=lambda item: (-profile_similarity(item), item[0].profile_id)
     )
@@ -264,6 +390,12 @@ def select_staged_association_profiles(
                     profile_id
                 ),
                 "acoustic_rank": acoustic_rank_by_profile_id.get(profile_id),
+                "all_eligible_acoustic_similarity": (
+                    evaluation_similarity_by_profile_id.get(profile_id)
+                ),
+                "all_eligible_acoustic_rank": (
+                    evaluation_rank_by_profile_id.get(profile_id)
+                ),
                 "passed_shortlist_cutoff": (
                     profile_id in {item[0].profile_id for item in shortlisted}
                     if profile_id in acoustic_rank_by_profile_id
@@ -312,6 +444,9 @@ def select_staged_association_profiles(
                 "ranked_profile_ids": [
                     item[0].profile_id for item in global_candidates
                 ],
+                "all_eligible_ranked_profile_ids": (
+                    evaluation_ranked_profile_ids
+                ),
             },
             "profiles_selected_for_comparison": sorted(selected_ids),
         },
@@ -775,6 +910,8 @@ def evaluate_shadow_association(
     for readiness, exemplars in profiles:
         comparisons: list[dict[str, Any]] = []
         for exemplar in exemplars:
+            if exemplar.observation.id == candidate.id:
+                continue
             pair = tuple(sorted((candidate.id, exemplar.observation.id)))
             if pair in reviewed_differences:
                 comparisons.append(

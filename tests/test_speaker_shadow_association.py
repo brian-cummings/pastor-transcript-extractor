@@ -30,6 +30,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     assess_profile_association_readiness,
     build_shadow_association_input_fingerprint,
     evaluate_shadow_association,
+    leave_one_out_profile_readiness,
     load_reusable_shadow_association,
     load_shadow_policy,
     plan_pending_discovery_confirmation_routes,
@@ -633,6 +634,107 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         self.assertFalse(entries[4]["passed_shortlist_cutoff"])
         self.assertFalse(entries[4]["selected_for_comparison"])
         self.assertEqual([1, 2, 3], funnel["profiles_selected_for_comparison"])
+        self.assertEqual(4, entries[1]["all_eligible_acoustic_rank"])
+        self.assertEqual(1, entries[2]["all_eligible_acoustic_rank"])
+
+    def test_leave_one_out_readiness_hides_candidate_membership(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c")]
+        readiness = ProfileAssociationReadiness(
+            profile_id=7,
+            member_observation_ids=tuple(item.id for item in observations),
+            member_fingerprints=tuple(
+                item.input_fingerprint for item in observations
+            ),
+            recording_count=3,
+            source_count=1,
+            normalized_names=("candidate name", "pastor name"),
+            shadow_ready=True,
+            automatic_profile_ready=True,
+            shadow_blockers=(),
+            automatic_blockers=(),
+            review_ready=True,
+            certified_exemplar_observation_ids=tuple(
+                item.id for item in observations
+            ),
+        )
+
+        hidden = leave_one_out_profile_readiness(
+            readiness,
+            candidate=observations[0],
+            observations_by_id={item.id: item for item in observations},
+            source_id_by_video_id={item.video_id: self.source.id for item in observations},
+            normalized_names_by_observation_id={
+                observations[0].id: ("candidate name",),
+                observations[1].id: ("pastor name",),
+                observations[2].id: ("pastor name",),
+            },
+        )
+
+        self.assertNotIn(observations[0].id, hidden.member_observation_ids)
+        self.assertNotIn(
+            observations[0].id, hidden.certified_exemplar_observation_ids
+        )
+        self.assertEqual(("pastor name",), hidden.normalized_names)
+        self.assertEqual(2, hidden.recording_count)
+        self.assertTrue(hidden.review_ready)
+        self.assertFalse(hidden.shadow_ready)
+        self.assertIn(
+            "fewer_than_three_profile_members", hidden.shadow_blockers
+        )
+
+    def test_shadow_association_never_compares_candidate_to_itself(self) -> None:
+        candidate = self._observation("candidate-self")
+        others = [self._observation(key) for key in ("other-a", "other-b")]
+        readiness = ProfileAssociationReadiness(
+            profile_id=7,
+            member_observation_ids=tuple(
+                item.id for item in (candidate, *others)
+            ),
+            member_fingerprints=tuple(
+                item.input_fingerprint for item in (candidate, *others)
+            ),
+            recording_count=3,
+            source_count=1,
+            normalized_names=(),
+            shadow_ready=True,
+            automatic_profile_ready=True,
+            shadow_blockers=(),
+            automatic_blockers=(),
+            review_ready=True,
+        )
+        report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=(),
+            profiles=(
+                (
+                    readiness,
+                    tuple(
+                        ShadowExemplar(
+                            7,
+                            observation,
+                            Path(f"{observation.id}.wav"),
+                            f"audio-{observation.id}",
+                        )
+                        for observation in (candidate, *others)
+                    ),
+                ),
+            ),
+            compare=lambda *_args: {
+                "outcome": "same_speaker",
+                "reason": "test",
+            },
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+        )
+
+        comparisons = report["profiles"][0]["comparisons"]
+        self.assertEqual(
+            {item.id for item in others},
+            {item["exemplar_observation_id"] for item in comparisons},
+        )
+        self.assertEqual("proposed_match", report["outcome"])
 
     def test_multi_exemplar_unique_match_is_shadow_proposal_only(self) -> None:
         candidate = self._observation("candidate")

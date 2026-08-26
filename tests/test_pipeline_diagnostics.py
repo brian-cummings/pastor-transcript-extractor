@@ -596,6 +596,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
                 "proposed_profile_id": None,
                 "routing": {
                     "candidate_funnel": {
+                        "retrospective_evaluation": {
+                            "leave_one_out_applied": True,
+                            "membership_used_as_routing_evidence": False,
+                        },
                         "version": "association_candidate_funnel_v1",
                         "canonical_profile_ids": [3],
                     }
@@ -667,6 +671,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
                     "observation_id": 4,
                     "outcome": "insufficient_evidence",
                     "candidate_funnel": {
+                        "retrospective_evaluation": {
+                            "leave_one_out_applied": True,
+                            "membership_used_as_routing_evidence": False,
+                        },
                         "canonical_profile_ids": [7, 8],
                         "comparison_eligible_profile_ids": [7, 8],
                         "retrieval_candidates": [
@@ -697,7 +705,12 @@ class PipelineDiagnosticTests(unittest.TestCase):
             "retrieved_below_shortlist_cutoff", review["classification"]
         )
         self.assertEqual(
-            {"name": "miss", "source": "miss", "acoustic": "below_cutoff"},
+            {
+                "name": "miss",
+                "source": "miss",
+                "acoustic": "below_cutoff",
+                "all_eligible_acoustic_rank": None,
+            },
             review["evidence"]["retrieval_source_outcomes"],
         )
         self.assertEqual(
@@ -714,6 +727,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
             "outcome": "proposed_match",
             "proposed_profile_id": 7,
             "candidate_funnel": {
+                "retrospective_evaluation": {
+                    "leave_one_out_applied": True,
+                    "membership_used_as_routing_evidence": False,
+                },
                 "canonical_profile_ids": [7],
                 "comparison_eligible_profile_ids": [7],
                 "retrieval_candidates": [
@@ -746,6 +763,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
 
     def test_reviewed_identity_candidate_funnel_preserves_membership_firewall(self) -> None:
         base_funnel = {
+            "retrospective_evaluation": {
+                "leave_one_out_applied": True,
+                "membership_used_as_routing_evidence": False,
+            },
             "canonical_profile_ids": [7],
             "comparison_eligible_profile_ids": [7],
             "retrieval_candidates": [
@@ -825,6 +846,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
                     "observation_id": 4,
                     "outcome": "insufficient_evidence",
                     "candidate_funnel": {
+                        "retrospective_evaluation": {
+                            "leave_one_out_applied": True,
+                            "membership_used_as_routing_evidence": False,
+                        },
                         "canonical_profile_ids": [7],
                         "comparison_eligible_profile_ids": [7],
                         "retrieval_candidates": [
@@ -854,6 +879,35 @@ class PipelineDiagnosticTests(unittest.TestCase):
         )
         self.assertEqual(
             "readiness_policy_filter", review["observed_failure_location"]
+        )
+
+    def test_reviewed_identity_candidate_funnel_rejects_membership_leakage(self) -> None:
+        outcome = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+            effective_profile_ids=[7],
+            association_attempts=[
+                {
+                    "artifact_path": "run/association.json",
+                    "created_at": "2026-08-26T12:00:00+00:00",
+                    "observation_id": 4,
+                    "outcome": "proposed_match",
+                    "candidate_self_comparison": True,
+                    "candidate_funnel": {
+                        "retrospective_evaluation": {
+                            "leave_one_out_applied": True,
+                            "membership_used_as_routing_evidence": False,
+                        }
+                    },
+                }
+            ],
+        )
+
+        review = outcome["candidate_funnel_review"]
+        self.assertEqual("not_evaluated", review["status"])
+        self.assertEqual(
+            "retrospective_membership_leakage", review["classification"]
         )
 
     def test_candidate_regret_distinguishes_discovery_and_ranking(self) -> None:
