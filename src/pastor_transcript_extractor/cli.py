@@ -909,10 +909,24 @@ def compare_pipeline_diagnostics(
     console.print(f"Wrote diagnostic comparison evidence to {json_path}")
     console.print(f"Wrote diagnostic comparison view to {markdown_path}")
     counts = comparison["change_counts"]
+    ordered_changes = (
+        "fixed",
+        "improved",
+        "regressed",
+        "tradeoff",
+        "policy_changed",
+        "changed",
+        "unchanged",
+        "added",
+        "removed",
+    )
+    summary = ", ".join(
+        f"{change}={counts[change]}"
+        for change in ordered_changes
+        if change in counts
+    )
     console.print(
-        "Compared existing traces: "
-        f"fixed={counts.get('fixed', 0)}, regressed={counts.get('regressed', 0)}, "
-        f"changed={counts.get('changed', 0)}, unchanged={counts.get('unchanged', 0)}."
+        f"Compared {sum(counts.values())} existing trace(s): {summary}."
     )
 
 

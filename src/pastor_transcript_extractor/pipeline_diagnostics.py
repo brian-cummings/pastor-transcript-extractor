@@ -17,6 +17,7 @@ MAX_CONTAMINATION_RATIO = 0.10
 MATERIAL_COVERAGE_DELTA = 0.01
 MATERIAL_CONTAMINATION_DELTA = 0.01
 MATERIAL_BOUNDARY_SECONDS = 5.0
+COMPONENT_FINGERPRINT_VERSION = 2
 TIMELINE_WIDTH = 72
 
 
@@ -230,9 +231,23 @@ def _trace_component_fingerprints(trace: dict[str, Any]) -> dict[str, Any]:
 
     identity_events = []
     for raw in trace.get("identity_boundary_feedback", {}).get("events", []) or []:
-        event = dict(raw)
-        event.pop("representative_artifact_path", None)
-        event.pop("artifact_occurrence_count", None)
+        event = {
+            key: raw.get(key)
+            for key in (
+                "source",
+                "edge",
+                "evidence_window",
+                "flagged_span",
+                "window_fraction",
+                "relationship",
+                "decision",
+                "automatic_boundary_change_allowed",
+                "reason_codes",
+                "association_versions",
+                "model_fingerprints",
+                "causal_adjustment_persisted",
+            )
+        }
         identity_events.append(event)
     contracts = trace.get("outcome_contracts", {})
     components = {
@@ -263,7 +278,7 @@ def _trace_component_fingerprints(trace: dict[str, Any]) -> dict[str, Any]:
         "identity_feedback": identity_events,
     }
     return {
-        "version": 1,
+        "version": COMPONENT_FINGERPRINT_VERSION,
         "components": {
             key: _semantic_sha256(value) for key, value in components.items()
         },
@@ -3070,7 +3085,10 @@ def compare_systemic_reports(
         source = trace.get("source_artifact", {})
         identity = trace.get("identity_boundary_feedback", {})
         fingerprints = trace.get("component_fingerprints")
-        if not isinstance(fingerprints, dict):
+        if (
+            not isinstance(fingerprints, dict)
+            or fingerprints.get("version") != COMPONENT_FINGERPRINT_VERSION
+        ):
             fingerprints = _trace_component_fingerprints(trace)
         disposition_contract = contracts.get("disposition", {})
         disposition_status = disposition_contract.get("status")
@@ -3160,6 +3178,8 @@ def compare_systemic_reports(
                 continue
             target = improved if rank[new_status] > rank[old_status] else regressed
             target.append(f"contract:{dimension}")
+        if old.get("trace_schema_version") != new.get("trace_schema_version"):
+            return improved, regressed
         for stage in ("refinement", "arbitration"):
             old_regret = old.get("stage_regret", {}).get(stage)
             new_regret = new.get("stage_regret", {}).get(stage)

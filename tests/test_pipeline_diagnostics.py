@@ -914,6 +914,60 @@ class PipelineDiagnosticTests(unittest.TestCase):
         )
         self.assertIn("boundary_behavior_changed", run["change_reasons"])
 
+    def test_schema_upgrade_ignores_derived_regret_and_identity_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+        before_trace = json.loads(json.dumps(trace))
+        after_trace = json.loads(json.dumps(trace))
+        before_trace["schema_version"] = 5
+        before_trace["stage_regret"]["arbitration"]["classification"] = (
+            "minor_tradeoff"
+        )
+        raw_identity = {
+            "source": "speaker_profile_shadow_association",
+            "edge": "start",
+            "evidence_window": {
+                "start_seconds": 0.0,
+                "end_seconds": 300.0,
+            },
+            "relationship": "speaker_inconsistent_edge",
+            "decision": "boundary_advisory_only",
+            "reason_codes": ["distributed_clip_inconsistent"],
+            "causal_adjustment_persisted": False,
+        }
+        before_trace["identity_boundary_feedback"] = {
+            "events": [{**raw_identity, "observed_effect": "advisory_no_boundary_change"}]
+        }
+        after_trace["identity_boundary_feedback"] = {
+            "events": [
+                {
+                    **raw_identity,
+                    "observed_effect": "advisory_no_boundary_change",
+                    "identity_signal_unconsumed": True,
+                    "reviewed_same_edge_overreach_seconds": 100.0,
+                }
+            ]
+        }
+        before_trace.pop("component_fingerprints")
+        after_trace.pop("component_fingerprints")
+        comparison = compare_systemic_reports(
+            aggregate_diagnostic_traces([before_trace]),
+            aggregate_diagnostic_traces([after_trace]),
+        )
+
+        run = comparison["runs"][0]
+        self.assertEqual("unchanged", run["change"])
+        self.assertEqual(["diagnostic_schema_only"], run["change_reasons"])
+        self.assertEqual([], run["improved_components"])
+        self.assertEqual([], run["changed_artifact_components"])
+
 
 if __name__ == "__main__":
     unittest.main()
