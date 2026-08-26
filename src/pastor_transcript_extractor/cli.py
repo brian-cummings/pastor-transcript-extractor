@@ -767,7 +767,7 @@ def diagnose_pipeline(
 
 @app.command(
     "diagnose-system",
-    help="Aggregate existing reviewed-fixture traces without reclassifying the corpus.",
+    help="Diagnose all existing extraction outcomes without reclassifying the corpus.",
 )
 def diagnose_pipeline_system(
     fixture_dir: Path = typer.Option(
@@ -783,6 +783,14 @@ def diagnose_pipeline_system(
         "--identity-feedback-root",
         help="Existing identity shadow artifacts containing sermon-edge advisories.",
     ),
+    all_existing: bool = typer.Option(
+        True,
+        "--all-existing/--fixtures-only",
+        help=(
+            "Include every latest extraction artifact; matching fixtures add reviewed "
+            "quality evidence."
+        ),
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -790,33 +798,67 @@ def diagnose_pipeline_system(
         fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
     except FixtureValidationError as error:
         raise typer.BadParameter(str(error)) from error
-    fixture_database_video_ids = {
-        video.id
-        for reviewed_fixture in fixtures
-        if (video := database.get_video_by_youtube_id(reviewed_fixture.video_id))
-        is not None
-    }
+    fixtures_by_youtube_id = {fixture.video_id: fixture for fixture in fixtures}
+    videos = database.list_videos()
+    videos_by_id = {video.id: video for video in videos}
+    videos_by_youtube_id = {video.youtube_video_id: video for video in videos}
+    latest_extractions = {}
+    for extraction in database.list_extraction_results():
+        existing = latest_extractions.get(extraction.video_id)
+        if existing is None or extraction.id > existing.id:
+            latest_extractions[extraction.video_id] = extraction
+    missing: list[dict[str, str]] = []
+    targets: list[tuple[Any, Any, ValidatedFixture | None]] = []
+    if all_existing:
+        for video_id, extraction in latest_extractions.items():
+            video = videos_by_id.get(video_id)
+            if video is None:
+                continue
+            targets.append(
+                (
+                    video,
+                    extraction,
+                    fixtures_by_youtube_id.get(video.youtube_video_id),
+                )
+            )
+        targeted_youtube_ids = {video.youtube_video_id for video, _, _ in targets}
+        for fixture in fixtures:
+            if fixture.video_id not in targeted_youtube_ids:
+                missing.append(
+                    {
+                        "youtube_video_id": fixture.video_id,
+                        "reason": "reviewed_fixture_video_or_extraction_missing",
+                    }
+                )
+    else:
+        for fixture in fixtures:
+            video = videos_by_youtube_id.get(fixture.video_id)
+            extraction = latest_extractions.get(video.id) if video is not None else None
+            if video is None or extraction is None:
+                missing.append(
+                    {
+                        "youtube_video_id": fixture.video_id,
+                        "reason": "video_or_proposed_artifact_missing",
+                    }
+                )
+                continue
+            targets.append((video, extraction, fixture))
+    targets.sort(key=lambda item: item[0].youtube_video_id)
+    diagnostic_video_ids = {video.id for video, _, _ in targets}
     identity_feedback = load_identity_boundary_feedback(
         identity_feedback_root,
-        database_video_ids=fixture_database_video_ids,
+        database_video_ids=diagnostic_video_ids,
     )
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     output_dir = output_root.expanduser().resolve() / run_id
     video_root = output_dir / "videos"
     traces: list[dict[str, Any]] = []
-    missing: list[dict[str, str]] = []
-    for reviewed_fixture in fixtures:
-        video = database.get_video_by_youtube_id(reviewed_fixture.video_id)
-        extraction = (
-            database.get_latest_extraction_result_for_video(video.id)
-            if video is not None
-            else None
-        )
-        if video is None or extraction is None or not extraction.proposed_json_path:
+    for video, extraction, reviewed_fixture in targets:
+        if not extraction.proposed_json_path:
             missing.append(
                 {
-                    "youtube_video_id": reviewed_fixture.video_id,
-                    "reason": "video_or_proposed_artifact_missing",
+                    "youtube_video_id": video.youtube_video_id,
+                    "reason": "proposed_artifact_path_missing",
                 }
             )
             continue
@@ -826,7 +868,7 @@ def diagnose_pipeline_system(
         except (OSError, json.JSONDecodeError):
             missing.append(
                 {
-                    "youtube_video_id": reviewed_fixture.video_id,
+                    "youtube_video_id": video.youtube_video_id,
                     "reason": "proposed_artifact_invalid",
                 }
             )
@@ -834,7 +876,7 @@ def diagnose_pipeline_system(
         if not isinstance(proposed, dict):
             missing.append(
                 {
-                    "youtube_video_id": reviewed_fixture.video_id,
+                    "youtube_video_id": video.youtube_video_id,
                     "reason": "proposed_artifact_not_object",
                 }
             )
@@ -859,7 +901,36 @@ def diagnose_pipeline_system(
         (per_video / "diagnostic-report.md").write_text(
             build_diagnostic_markdown(trace), encoding="utf-8"
         )
-    report = aggregate_diagnostic_traces(traces, missing=missing)
+    status_counts: dict[str, int] = {}
+    without_extraction_status_counts: dict[str, int] = {}
+    for video in videos:
+        status = video.status.value
+        status_counts[status] = status_counts.get(status, 0) + 1
+        if video.id not in latest_extractions:
+            without_extraction_status_counts[status] = (
+                without_extraction_status_counts.get(status, 0) + 1
+            )
+    report = aggregate_diagnostic_traces(
+        traces,
+        missing=missing,
+        scope="all_existing" if all_existing else "reviewed_fixtures",
+        population_summary=(
+            {
+                "population_count": len(videos),
+                "database_video_count": len(videos),
+                "latest_extraction_count": len(latest_extractions),
+                "videos_without_extraction_count": len(videos)
+                - len(latest_extractions),
+                "video_status_counts": dict(sorted(status_counts.items())),
+                "videos_without_extraction_status_counts": dict(
+                    sorted(without_extraction_status_counts.items())
+                ),
+                "reviewed_fixture_count": len(fixtures),
+            }
+            if all_existing
+            else {"reviewed_fixture_count": len(fixtures)}
+        ),
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "system-diagnostics.json"
     markdown_path = output_dir / "system-diagnostics.md"
@@ -867,9 +938,12 @@ def diagnose_pipeline_system(
     markdown_path.write_text(build_systemic_markdown(report), encoding="utf-8")
     console.print(f"Wrote systemic diagnostic evidence to {json_path}")
     console.print(f"Wrote systemic failure view to {markdown_path}")
+    population = report["population"]
     console.print(
-        f"Derived {len(traces)} trace(s); missing {len(missing)}. "
-        "No extraction or classification artifacts were changed."
+        f"Derived {len(traces)} trace(s): "
+        f"reviewed={population['reviewed_trace_count']}, "
+        f"unreviewed={population['unreviewed_trace_count']}; "
+        f"missing={len(missing)}. No extraction or classification artifacts were changed."
     )
 
 

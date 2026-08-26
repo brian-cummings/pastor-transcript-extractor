@@ -11,6 +11,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_comparison_markdown,
     build_diagnostic_markdown,
     build_diagnostic_trace,
+    build_systemic_outcome_mermaid,
     build_systemic_markdown,
     compare_systemic_reports,
     load_identity_boundary_feedback,
@@ -485,6 +486,68 @@ class PipelineDiagnosticTests(unittest.TestCase):
         markdown = build_systemic_markdown(systemic)
         self.assertIn("Observed contract violations", markdown)
         self.assertIn("Root-cause hypotheses", markdown)
+
+    def test_all_existing_population_separates_reviewed_and_unreviewed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            reviewed_path, reviewed_proposed = self._write_proposed(root)
+            reviewed = build_diagnostic_trace(
+                reviewed_proposed,
+                proposed_path=reviewed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+            unreviewed_path = root / "unreviewed.json"
+            unreviewed_proposed = proposed_payload()
+            unreviewed_proposed["youtube_video_id"] = "production-video"
+            unreviewed_path.write_text(
+                json.dumps(unreviewed_proposed), encoding="utf-8"
+            )
+            unreviewed = build_diagnostic_trace(
+                unreviewed_proposed,
+                proposed_path=unreviewed_path,
+                youtube_video_id="production-video",
+            )
+
+        report = aggregate_diagnostic_traces(
+            [reviewed, unreviewed],
+            missing=[
+                {
+                    "youtube_video_id": "fixture-without-extraction",
+                    "reason": "reviewed_fixture_video_or_extraction_missing",
+                }
+            ],
+            scope="all_existing",
+            population_summary={
+                "population_count": 4,
+                "database_video_count": 4,
+                "latest_extraction_count": 2,
+                "videos_without_extraction_count": 2,
+                "videos_without_extraction_status_counts": {"failed": 2},
+            },
+        )
+        population = report["population"]
+        self.assertEqual("all_existing", population["scope"])
+        self.assertEqual(1, population["reviewed_trace_count"])
+        self.assertEqual(1, population["unreviewed_trace_count"])
+        self.assertEqual(0, population["extraction_artifact_missing_or_invalid_count"])
+        self.assertEqual(1, population["reviewed_fixture_without_trace_count"])
+        self.assertEqual(
+            {"accepted_sermon": 1},
+            report["unreviewed_final_disposition_counts"],
+        )
+        self.assertEqual(1, sum(report["positive_localization_contract_counts"].values()))
+        mermaid = build_systemic_outcome_mermaid(report)
+        self.assertIn("Database videos<br/>4", mermaid)
+        self.assertIn("No extraction record<br/>2", mermaid)
+        self.assertIn("Reviewed subset<br/>1", mermaid)
+        self.assertIn("Unreviewed subset<br/>1", mermaid)
+        self.assertIn("Reviewed fixture without trace<br/>1", mermaid)
+        self.assertIn("accepted sermon<br/>2", mermaid)
+        self.assertIn("failed<br/>2", mermaid)
+        markdown = build_systemic_markdown(report)
+        self.assertIn("## All-outcome map", markdown)
+        self.assertIn("## Operational dispositions", markdown)
 
     def test_candidate_regret_distinguishes_discovery_and_ranking(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

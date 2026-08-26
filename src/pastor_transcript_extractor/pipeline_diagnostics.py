@@ -2562,6 +2562,8 @@ def aggregate_diagnostic_traces(
     traces: list[dict[str, Any]],
     *,
     missing: list[dict[str, str]] | None = None,
+    scope: str = "reviewed_fixtures",
+    population_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     observed = Counter(
         (trace.get("earliest_observed_failure") or {}).get("stage") or "none"
@@ -2576,6 +2578,9 @@ def aggregate_diagnostic_traces(
     fixture_outcomes = Counter()
     recovery = Counter()
     dispositions = Counter()
+    reviewed_dispositions = Counter()
+    unreviewed_dispositions = Counter()
+    reviewed_overall = Counter()
     localization = Counter()
     contamination = Counter()
     existence = Counter()
@@ -2673,6 +2678,11 @@ def aggregate_diagnostic_traces(
             disposition_contract.get("value") or disposition_status
         )
         dispositions[disposition_value] += 1
+        if expected_outcome == "unreviewed":
+            unreviewed_dispositions[disposition_value] += 1
+        else:
+            reviewed_dispositions[disposition_value] += 1
+            reviewed_overall[_trace_overall_status(trace)] += 1
         existence[str(contracts.get("existence", {}).get("status") or "not_evaluated")] += 1
         if expected_outcome == "sermon":
             localization[
@@ -2750,12 +2760,39 @@ def aggregate_diagnostic_traces(
                 run_signatures.append("negative_false_acceptance_without_verifier_failure")
         for signature in run_signatures:
             signatures.setdefault(signature, []).append(video_id)
+    reviewed_trace_count = sum(
+        trace.get("ground_truth", {}).get("status") == "available"
+        for trace in traces
+    )
+    unreviewed_trace_count = len(traces) - reviewed_trace_count
+    missing_reason_counts = Counter(
+        str(item.get("reason") or "unknown") for item in (missing or [])
+    )
+    reviewed_fixture_without_trace_count = missing_reason_counts.get(
+        "reviewed_fixture_video_or_extraction_missing", 0
+    )
+    artifact_missing_count = (
+        len(missing or []) - reviewed_fixture_without_trace_count
+    )
+    population = {
+        "scope": scope,
+        "population_count": len(traces) + len(missing or []),
+        "diagnostic_trace_count": len(traces),
+        "reviewed_trace_count": reviewed_trace_count,
+        "unreviewed_trace_count": unreviewed_trace_count,
+        "missing_or_invalid_artifact_count": len(missing or []),
+        "extraction_artifact_missing_or_invalid_count": artifact_missing_count,
+        "reviewed_fixture_without_trace_count": reviewed_fixture_without_trace_count,
+        "missing_reason_counts": dict(sorted(missing_reason_counts.items())),
+        **(population_summary or {}),
+    }
     return {
         "schema_version": 6,
         "report_kind": "sermon_isolation_systemic_diagnostics",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trace_count": len(traces),
         "missing_count": len(missing or []),
+        "population": population,
         "observed_failure_counts": dict(sorted(observed.items())),
         "root_cause_hypothesis_counts": dict(sorted(causes.items())),
         "fixture_outcome_counts": dict(sorted(fixture_outcomes.items())),
@@ -2763,6 +2800,13 @@ def aggregate_diagnostic_traces(
         "causal_path_status_counts": dict(sorted(recovery.items())),
         "overall_outcome_counts": dict(sorted(overall.items())),
         "final_disposition_counts": dict(sorted(dispositions.items())),
+        "reviewed_final_disposition_counts": dict(
+            sorted(reviewed_dispositions.items())
+        ),
+        "unreviewed_final_disposition_counts": dict(
+            sorted(unreviewed_dispositions.items())
+        ),
+        "reviewed_overall_outcome_counts": dict(sorted(reviewed_overall.items())),
         "existence_contract_counts": dict(sorted(existence.items())),
         "positive_localization_contract_counts": dict(sorted(localization.items())),
         "positive_contamination_contract_counts": dict(sorted(contamination.items())),
@@ -2853,14 +2897,122 @@ def aggregate_diagnostic_traces(
     }
 
 
+def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
+    """Render the complete operational population and reviewed-quality subset."""
+    population = report.get("population", {})
+    trace_count = int(report.get("trace_count") or 0)
+    missing_count = int(report.get("missing_count") or 0)
+    database_count = population.get("database_video_count")
+    population_count = int(
+        population.get("population_count") or trace_count + missing_count
+    )
+    root_count = int(database_count) if isinstance(database_count, int) else population_count
+    extraction_count = int(
+        population.get("latest_extraction_count") or trace_count + missing_count
+    )
+    without_extraction = int(
+        population.get("videos_without_extraction_count")
+        or max(0, root_count - extraction_count)
+    )
+    reviewed_count = int(population.get("reviewed_trace_count") or 0)
+    unreviewed_count = int(population.get("unreviewed_trace_count") or 0)
+    artifact_missing_count = int(
+        population.get("extraction_artifact_missing_or_invalid_count")
+        if population.get("extraction_artifact_missing_or_invalid_count") is not None
+        else missing_count
+    )
+    reviewed_fixture_without_trace_count = int(
+        population.get("reviewed_fixture_without_trace_count") or 0
+    )
+    missing_nodes = "N,M,F" if reviewed_fixture_without_trace_count else "N,M"
+    lines = [
+        "flowchart TD",
+        f'  P["Database videos<br/>{root_count}"]',
+        f'  E["Latest extraction record<br/>{extraction_count}"]',
+        f'  N["No extraction record<br/>{without_extraction}"]',
+        "  P --> E",
+        "  P --> N",
+        f'  T["Diagnostic trace<br/>{trace_count}"]',
+        f'  M["Missing or invalid extraction artifact<br/>{artifact_missing_count}"]',
+        "  E --> T",
+        "  E --> M",
+        f'  R["Reviewed subset<br/>{reviewed_count}"]',
+        f'  U["Unreviewed subset<br/>{unreviewed_count}"]',
+        "  T --> R",
+        "  T --> U",
+    ]
+    if reviewed_fixture_without_trace_count:
+        lines.extend(
+            [
+                f'  F["Reviewed fixture without trace<br/>'
+                f'{reviewed_fixture_without_trace_count}"]',
+                "  P -. review coverage gap .-> F",
+            ]
+        )
+    for index, (status, count) in enumerate(
+        sorted(
+            population.get("videos_without_extraction_status_counts", {}).items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ):
+        label = str(status).replace('"', "'").replace("_", " ")
+        lines.append(f'  S{index}["{label}<br/>{count}"]')
+        lines.append(f"  N --> S{index}")
+    for index, (disposition, count) in enumerate(
+        sorted(
+            report.get("final_disposition_counts", {}).items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ):
+        label = str(disposition).replace('"', "'").replace("_", " ")
+        lines.append(f'  D{index}["{label}<br/>{count}"]')
+        lines.append(f"  T --> D{index}")
+    for index, (outcome, count) in enumerate(
+        sorted(
+            report.get("reviewed_overall_outcome_counts", {}).items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ):
+        label = str(outcome).replace('"', "'").replace("_", " ")
+        lines.append(f'  Q{index}["Reviewed: {label}<br/>{count}"]')
+        lines.append(f"  R --> Q{index}")
+    lines.extend(
+        [
+            "  classDef population fill:#e8eef8,stroke:#46658a,color:#172536",
+            "  classDef reviewed fill:#d9f2df,stroke:#26733a,color:#102915",
+            "  classDef missing fill:#f9e5c7,stroke:#a16413,color:#3b2408",
+            "  class P,E,T,U population",
+            "  class R reviewed",
+            f"  class {missing_nodes} missing",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def build_systemic_markdown(report: dict[str, Any]) -> str:
+    population = report.get("population", {})
     lines = [
         "# Systemic Pipeline Diagnostics",
         "",
+        f"- Scope: {population.get('scope', 'reviewed_fixtures')}",
+        f"- Database videos: {population.get('database_video_count', 'not reported')}",
+        f"- Latest extraction records: "
+        f"{population.get('latest_extraction_count', report['trace_count'])}",
         f"- Traces: {report['trace_count']}",
-        f"- Missing artifacts: {report['missing_count']}",
+        f"- Reviewed traces: {population.get('reviewed_trace_count', report['trace_count'])}",
+        f"- Unreviewed traces: {population.get('unreviewed_trace_count', 0)}",
+        f"- Missing or invalid extraction artifacts: "
+        f"{population.get('extraction_artifact_missing_or_invalid_count', report['missing_count'])}",
+        f"- Reviewed fixtures without a trace: "
+        f"{population.get('reviewed_fixture_without_trace_count', 0)}",
         f"- Manual overrides: {report['manual_override_count']}",
         f"- Unknown evaluation partitions: {report.get('unknown_evaluation_partition_count', 0)}",
+        "",
+        "## All-outcome map",
+        "",
+        "```mermaid",
+        build_systemic_outcome_mermaid(report),
+        "```",
         "",
         "## Overall outcomes",
         "",
@@ -2872,6 +3024,26 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         key=lambda item: (-item[1], item[0]),
     ):
         lines.append(f"| {status} | {count} |")
+    lines.extend(
+        [
+            "",
+            "## Operational dispositions",
+            "",
+            "| Disposition | All | Reviewed | Unreviewed |",
+            "|---|---:|---:|---:|",
+        ]
+    )
+    all_dispositions = report.get("final_disposition_counts", {})
+    reviewed_dispositions = report.get("reviewed_final_disposition_counts", {})
+    unreviewed_dispositions = report.get("unreviewed_final_disposition_counts", {})
+    for disposition in sorted(
+        set(all_dispositions) | set(reviewed_dispositions) | set(unreviewed_dispositions)
+    ):
+        lines.append(
+            f"| {disposition} | {all_dispositions.get(disposition, 0)} | "
+            f"{reviewed_dispositions.get(disposition, 0)} | "
+            f"{unreviewed_dispositions.get(disposition, 0)} |"
+        )
     lines.extend([
         "",
         "## Final outcomes",

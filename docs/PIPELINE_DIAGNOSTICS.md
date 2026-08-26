@@ -92,14 +92,22 @@ The command writes:
   --base-dir /path/to/data
 ```
 
-This derives traces only where a fixture and an existing proposed artifact are both
-available. It does not reclassify the corpus. The timestamped result contains per-video
-traces and reports plus `system-diagnostics.json` and `system-diagnostics.md`. Observed
-failure counts and root-cause hypothesis counts remain separate. The systemic report also
+By default, this derives a structural trace for every latest extraction artifact in the
+database. Matching fixtures enrich those traces with reviewed correctness evidence; runs
+without fixtures remain explicitly unreviewed and never receive recall, contamination, or
+root-cause correctness claims. Database videos without an extraction record are counted by
+processing status. Use `--fixtures-only` to reproduce the narrower reviewed-fixture scope.
+
+The command does not reclassify the corpus. The timestamped result contains per-video traces
+and reports plus `system-diagnostics.json` and `system-diagnostics.md`. The systemic Markdown
+starts with an all-outcome Mermaid map covering database videos, extraction availability,
+valid and missing artifacts, operational dispositions, and the reviewed/unreviewed split.
+Observed failure counts and root-cause hypothesis counts remain separate. The report also
 partitions automatic and manual-override outcomes, reports fixture evaluation partitions,
-shows recall and contamination threshold sensitivity, and summarizes candidate regret,
-refinement/arbitration regret, terminal causal stages, join evidence, and identity boundary
-feedback. Unknown fixture partitions remain visible rather than joining a named cohort.
+shows recall and contamination threshold sensitivity for reviewed positives, and summarizes
+candidate regret, refinement/arbitration regret, terminal causal stages, join evidence, and
+identity boundary feedback. Unknown fixture partitions remain visible rather than joining a
+named cohort.
 
 ## Compare two diagnostic runs
 
