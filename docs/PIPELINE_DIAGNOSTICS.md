@@ -56,6 +56,12 @@ speaker correctness claims. Stale observations are never credited to the current
 and content-terminal, not-attempted, and stale work remain distinct. Persisted association
 failures remain visible in the association-outcome branches.
 
+The primary pipeline always uses one mutually exclusive outcome per unique database video.
+For identity, the latest persisted association outcome for the current observation supplies
+that video's state unless effective reviewed profile membership supersedes it. Repeated
+association attempts and boundary advisories are processing-volume metrics shown outside the
+population flow; they are never added to unique-video outcome counts.
+
 Identity also connects back as a feedback edge. Persisted `speaker_inconsistent_edge`
 evidence is attached to the start or end boundary and compared with the later sermon window.
 Existing identity artifacts are advisories, so a later inward or outward movement is reported
@@ -110,7 +116,9 @@ and reports plus `system-diagnostics.json` and `system-diagnostics.md`. The syst
 starts with an all-outcome Mermaid map covering database videos, extraction availability,
 valid and missing artifacts, operational dispositions, the reviewed/unreviewed split, and
 the downstream identity outcome population. Identity branches show observation availability,
-association attempt outcomes, effective reviewed profile membership, and feedback advisories.
+the latest association outcome, effective reviewed profile membership, and the unique-video
+subset with feedback advisories. Repeated attempt and advisory event totals appear only in a
+separate processing-volume section.
 Observed failure counts and root-cause hypothesis counts remain separate. The report also
 partitions automatic and manual-override outcomes, reports fixture evaluation partitions,
 shows recall and contamination threshold sensitivity for reviewed positives, and summarizes

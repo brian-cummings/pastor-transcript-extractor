@@ -559,15 +559,24 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertIn("failed<br/>2", mermaid)
         self.assertIn("Identity operational outcomes<br/>2", mermaid)
         self.assertIn("profiled<br/>1", mermaid)
-        self.assertIn("Association attempts<br/>1", mermaid)
-        self.assertIn("Effective reviewed profile membership<br/>1 traces", mermaid)
+        self.assertNotIn("Association attempts<br/>", mermaid)
+        self.assertNotIn("Effective reviewed profile membership<br/>", mermaid)
         markdown = build_systemic_markdown(report)
         self.assertIn("## All-outcome map", markdown)
         self.assertIn("## Operational dispositions", markdown)
         self.assertIn("## Identity operational outcomes", markdown)
+        self.assertIn("### Sermon-to-identity transitions", markdown)
+        self.assertIn("Identity processing volume (not population counts)", markdown)
+        self.assertTrue(
+            report["identity_outcome_summary"]["state_counts_reconcile"]
+        )
         self.assertEqual(
             {"not_observed": 1, "profiled": 1},
             report["identity_outcome_summary"]["state_counts"],
+        )
+        self.assertEqual(
+            {"accepted_sermon": {"not_observed": 1, "profiled": 1}},
+            report["identity_outcome_summary"]["state_counts_by_disposition"],
         )
 
     def test_identity_attempt_loader_and_stale_observation_truth_boundary(self) -> None:
@@ -603,6 +612,33 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("stale_observation", outcome["state"])
         self.assertEqual([], outcome["effective_profile_ids"])
         self.assertEqual(0, outcome["association_attempt_count"])
+
+        current = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+            association_attempts=[
+                {
+                    "artifact_path": "run-a/association.json",
+                    "observation_id": 4,
+                    "outcome": "insufficient_evidence",
+                },
+                {
+                    "artifact_path": "run-b/association.json",
+                    "observation_id": 4,
+                    "outcome": "no_match",
+                },
+            ],
+        )
+        self.assertEqual("association_no_match", current["state"])
+        self.assertEqual("no_match", current["latest_association_outcome"])
+
+        terminal = build_identity_operational_outcome(
+            content_disposition="rejected_no_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 8},
+        )
+        self.assertEqual("content_terminal_with_observation", terminal["state"])
 
     def test_candidate_regret_distinguishes_discovery_and_ranking(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

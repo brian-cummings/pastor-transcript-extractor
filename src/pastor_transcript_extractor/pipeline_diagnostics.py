@@ -1637,18 +1637,33 @@ def build_identity_operational_outcome(
     attempt_outcomes = Counter(
         str(attempt.get("outcome") or "unknown") for attempt in current_attempts
     )
-    if observation_status == "current" and profile_ids:
+    latest_attempt = max(
+        current_attempts,
+        key=lambda attempt: str(attempt.get("artifact_path") or ""),
+        default=None,
+    )
+    latest_association_outcome = (
+        str(latest_attempt.get("outcome") or "unknown")
+        if latest_attempt is not None
+        else None
+    )
+    content_terminal = isinstance(
+        content_disposition, str
+    ) and content_disposition.startswith("rejected_")
+    if content_terminal and observation_status == "current":
+        state = "content_terminal_with_observation"
+    elif content_terminal and observation_status == "stale":
+        state = "content_terminal_with_stale_observation"
+    elif content_terminal:
+        state = "content_terminal"
+    elif observation_status == "current" and profile_ids:
         state = "profiled"
-    elif observation_status == "current" and current_attempts:
-        state = "evaluated_unprofiled"
+    elif observation_status == "current" and latest_association_outcome:
+        state = f"association_{latest_association_outcome}"
     elif observation_status == "current":
         state = "observation_available"
     elif observation_status == "stale":
         state = "stale_observation"
-    elif isinstance(content_disposition, str) and content_disposition.startswith(
-        "rejected_"
-    ):
-        state = "content_terminal"
     else:
         state = "not_attempted"
     return {
@@ -1664,6 +1679,8 @@ def build_identity_operational_outcome(
         "observation_extraction_result_id": observation_extraction_id,
         "current_extraction_result_id": extraction_result_id,
         "association_attempt_count": len(current_attempts),
+        "latest_association_outcome": latest_association_outcome,
+        "latest_association_attempt": latest_attempt,
         "association_outcome_counts": dict(sorted(attempt_outcomes.items())),
         "association_attempts": current_attempts,
         "effective_profile_ids": profile_ids if observation_status == "current" else [],
@@ -2539,6 +2556,8 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
             f"- Observation: {identity_outcome.get('observation_status', 'not_observed')}",
             "- Association attempts: "
             f"{identity_outcome.get('association_attempt_count', 0)}",
+            "- Latest association outcome: "
+            f"{identity_outcome.get('latest_association_outcome') or 'none'}",
             "- Association outcomes: `"
             + json.dumps(
                 identity_outcome.get("association_outcome_counts", {}),
@@ -2788,9 +2807,12 @@ def aggregate_diagnostic_traces(
     identity_effects = Counter()
     identity_edge_counts = Counter()
     identity_operational_states = Counter()
+    identity_states_by_disposition: dict[str, Counter[str]] = {}
     identity_observation_states = Counter()
     identity_association_outcomes = Counter()
+    identity_latest_association_outcomes = Counter()
     identity_association_attempt_count = 0
+    identity_association_attempt_trace_count = 0
     identity_profiled_trace_count = 0
     identity_effective_profile_membership_count = 0
     identity_event_count = 0
@@ -2857,9 +2879,16 @@ def aggregate_diagnostic_traces(
         identity_observation_states[
             str(identity_outcome.get("observation_status") or "not_observed")
         ] += 1
-        identity_association_attempt_count += int(
-            identity_outcome.get("association_attempt_count") or 0
+        attempt_count = int(identity_outcome.get("association_attempt_count") or 0)
+        identity_association_attempt_count += attempt_count
+        identity_association_attempt_trace_count += int(attempt_count > 0)
+        latest_association_outcome = identity_outcome.get(
+            "latest_association_outcome"
         )
+        if latest_association_outcome:
+            identity_latest_association_outcomes[
+                str(latest_association_outcome)
+            ] += 1
         for outcome, count in identity_outcome.get(
             "association_outcome_counts", {}
         ).items():
@@ -2889,6 +2918,10 @@ def aggregate_diagnostic_traces(
             disposition_contract.get("value") or disposition_status
         )
         dispositions[disposition_value] += 1
+        identity_state = str(identity_outcome.get("state") or "not_observed")
+        identity_states_by_disposition.setdefault(
+            disposition_value, Counter()
+        )[identity_state] += 1
         if expected_outcome == "unreviewed":
             unreviewed_dispositions[disposition_value] += 1
         else:
@@ -3087,12 +3120,27 @@ def aggregate_diagnostic_traces(
             ),
         },
         "identity_outcome_summary": {
+            "count_unit": "unique_videos",
             "trace_count": len(traces),
             "state_counts": dict(sorted(identity_operational_states.items())),
+            "state_counts_by_disposition": {
+                disposition: dict(sorted(counts.items()))
+                for disposition, counts in sorted(
+                    identity_states_by_disposition.items()
+                )
+            },
+            "state_counts_reconcile": sum(identity_operational_states.values())
+            == len(traces),
             "observation_status_counts": dict(
                 sorted(identity_observation_states.items())
             ),
             "association_attempt_count": identity_association_attempt_count,
+            "association_attempt_trace_count": (
+                identity_association_attempt_trace_count
+            ),
+            "latest_association_outcome_counts": dict(
+                sorted(identity_latest_association_outcomes.items())
+            ),
             "association_outcome_counts": dict(
                 sorted(identity_association_outcomes.items())
             ),
@@ -3101,8 +3149,9 @@ def aggregate_diagnostic_traces(
                 identity_effective_profile_membership_count
             ),
             "interpretation": (
-                "Operational coverage only; machine association outcomes are proposals, "
-                "while effective profile membership is reviewed identity evidence."
+                "Primary outcomes are mutually exclusive unique-video states. Machine "
+                "association outcomes are proposals, while effective profile membership "
+                "is reviewed identity evidence. Event volume is reported separately."
             ),
         },
         "join_observability": {
@@ -3226,39 +3275,15 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
         identity_nodes.append(node)
         lines.append(f'  {node}["{label}<br/>{count}"]')
         lines.append(f"  I --> {node}")
-    association_attempt_count = int(
-        identity_outcomes.get("association_attempt_count") or 0
+    advisory_trace_count = int(
+        report.get("identity_boundary_feedback_summary", {}).get("trace_count") or 0
     )
-    if association_attempt_count:
-        identity_nodes.append("IA")
-        lines.append(
-            f'  IA["Association attempts<br/>{association_attempt_count}"]'
-        )
-        lines.append("  I --> IA")
-        for index, (outcome, count) in enumerate(
-            sorted(
-                identity_outcomes.get("association_outcome_counts", {}).items(),
-                key=lambda item: (-item[1], item[0]),
-            )
-        ):
-            label = str(outcome).replace('"', "'").replace("_", " ")
-            node = f"IAO{index}"
-            identity_nodes.append(node)
-            lines.append(f'  {node}["{label}<br/>{count}"]')
-            lines.append(f"  IA --> {node}")
-    identity_nodes.append("IP")
-    lines.append(
-        f'  IP["Effective reviewed profile membership<br/>'
-        f'{identity_outcomes.get("profiled_trace_count", 0)} traces"]'
-    )
-    lines.append("  I --> IP")
-    advisory_count = int(
-        report.get("identity_boundary_feedback_summary", {}).get("event_count") or 0
-    )
-    if advisory_count:
+    if advisory_trace_count:
         identity_nodes.append("IB")
-        lines.append(f'  IB["Boundary advisories<br/>{advisory_count}"]')
-        lines.append("  I --> IB")
+        lines.append(
+            f'  IB["Boundary feedback observed<br/>{advisory_trace_count} videos"]'
+        )
+        lines.append("  I -. feedback subset .-> IB")
         lines.append("  IB -. feedback to sermon boundaries .-> T")
     lines.extend(
         [
@@ -3350,14 +3375,58 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            f"- Association attempts: "
-            f"{identity_outcomes.get('association_attempt_count', 0)}",
-            f"- Traces with effective reviewed profile membership: "
-            f"{identity_outcomes.get('profiled_trace_count', 0)}",
-            f"- Effective profile memberships: "
-            f"{identity_outcomes.get('effective_profile_membership_count', 0)}",
+            "### Sermon-to-identity transitions",
             "",
-            "| Association outcome | Attempts |",
+            "| Sermon disposition | Identity outcome | Unique videos |",
+            "|---|---|---:|",
+        ]
+    )
+    transition_rows = [
+        (disposition, state, count)
+        for disposition, state_counts in identity_outcomes.get(
+            "state_counts_by_disposition", {}
+        ).items()
+        for state, count in state_counts.items()
+    ]
+    for disposition, state, count in sorted(
+        transition_rows, key=lambda item: (item[0], -item[2], item[1])
+    ):
+        lines.append(f"| {disposition} | {state} | {count} |")
+    lines.extend(
+        [
+            "",
+            f"- Unique-video denominator: {identity_outcomes.get('trace_count', 0)}",
+            "- State counts reconcile: "
+            f"{identity_outcomes.get('state_counts_reconcile', False)}",
+            "",
+            "| Latest association outcome | Unique videos |",
+            "|---|---:|",
+        ]
+    )
+    for outcome, count in sorted(
+        identity_outcomes.get("latest_association_outcome_counts", {}).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {outcome} | {count} |")
+    identity_feedback = report.get("identity_boundary_feedback_summary", {})
+    lines.extend(
+        [
+            "",
+            "### Identity processing volume (not population counts)",
+            "",
+            "These counts measure repeated processing events and must not be added to the "
+            "unique-video pipeline branches.",
+            "",
+            f"- Videos with association attempts: "
+            f"{identity_outcomes.get('association_attempt_trace_count', 0)}",
+            f"- Persisted association attempt events: "
+            f"{identity_outcomes.get('association_attempt_count', 0)}",
+            f"- Videos with boundary feedback: "
+            f"{identity_feedback.get('trace_count', 0)}",
+            f"- Persisted boundary advisory events: "
+            f"{identity_feedback.get('event_count', 0)}",
+            "",
+            "| Historical association outcome | Attempt events |",
             "|---|---:|",
         ]
     )
