@@ -4971,6 +4971,7 @@ def shadow_discover_profiles_command(
             database,
             video.id,
             verification_cache=verification_cache,
+            allow_review_required=include_profiled,
             verify_media=False,
         )
         if (
@@ -5776,6 +5777,7 @@ def _prepare_actionable_review_audio(
             video.id,
             verification_cache=verification_cache,
             verify_media=True,
+            allow_review_required=include_profiled,
         )
         if (
             not eligibility.eligible
@@ -5948,6 +5950,7 @@ def run_identity_workflow_service(
     current_association_reports = shadow_associate_speakers_command(
         youtube_video_id=youtube_video_id,
         all_eligible=all_extractions,
+        include_profiled=False,
         limit=None,
         plan_only=plan_only,
         minimum_profile_members=3,
@@ -6842,6 +6845,7 @@ def coordinate_identity_command(
                 shadow_associate_speakers_command(
                     youtube_video_id=youtube_video_id,
                     all_eligible=False,
+                    include_profiled=False,
                     limit=None,
                     plan_only=False,
                     minimum_profile_members=3,
@@ -6963,6 +6967,14 @@ def shadow_associate_speakers_command(
         False,
         "--all-eligible",
         help="Evaluate every currently eligible unassigned sermon observation.",
+    ),
+    include_profiled: bool = typer.Option(
+        False,
+        "--include-profiled",
+        help=(
+            "Include already-profiled observations for boundary-evidence "
+            "regeneration; profile membership remains unchanged."
+        ),
     ),
     limit: int | None = typer.Option(
         None,
@@ -7277,8 +7289,11 @@ def shadow_associate_speakers_command(
                 ineligible_reasons.get(eligibility.reason_code, 0) + 1
             )
             continue
-        if database.list_effective_profile_ids_for_observation(
-            eligibility.observation.id
+        if (
+            not include_profiled
+            and database.list_effective_profile_ids_for_observation(
+                eligibility.observation.id
+            )
         ):
             ineligible_reasons["already_profiled"] = (
                 ineligible_reasons.get("already_profiled", 0) + 1

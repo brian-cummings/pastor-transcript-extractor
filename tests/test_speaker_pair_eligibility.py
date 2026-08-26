@@ -308,6 +308,24 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
         self.assertFalse(result.eligible)
         self.assertEqual("disposition_not_accepted", result.reason_code)
 
+    def test_review_required_recording_can_supply_boundary_review_evidence(self) -> None:
+        self.payload["final_disposition"] = {"status": "review_required"}
+        self._write_payload()
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_eligibility."
+            "get_verified_normalized_media_artifact",
+            return_value=self.media,
+        ):
+            result = assess_automatic_speaker_observation(
+                self.database,
+                self.video.id,
+                allow_review_required=True,
+            )
+
+        self.assertTrue(result.eligible)
+        self.assertEqual(self.observation.id, result.observation.id)
+
     def test_rejected_recording_is_excluded_even_with_valid_window(self) -> None:
         self.payload["final_disposition"] = {"status": "rejected_no_sermon"}
         self._write_payload()

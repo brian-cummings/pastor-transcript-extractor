@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 from typing import Callable, Sequence
 
-from pastor_transcript_extractor.disposition import ACCEPTED_SERMON
+from pastor_transcript_extractor.disposition import ACCEPTED_SERMON, REVIEW_REQUIRED
 from pastor_transcript_extractor.media_artifacts import (
     ArchivedMediaUnavailableError,
     MediaVerificationCache,
@@ -132,6 +132,7 @@ def assess_automatic_speaker_observation(
     *,
     verification_cache: MediaVerificationCache | None = None,
     verify_media: bool = True,
+    allow_review_required: bool = False,
 ) -> AutomaticSpeakerObservationEligibility:
     """Admit only an observation derived from the current accepted sermon window.
 
@@ -159,7 +160,9 @@ def assess_automatic_speaker_observation(
     status = disposition.get("status")
     if not isinstance(status, str):
         return AutomaticSpeakerObservationEligibility("disposition_missing_or_malformed")
-    if status != ACCEPTED_SERMON:
+    if status != ACCEPTED_SERMON and not (
+        allow_review_required and status == REVIEW_REQUIRED
+    ):
         return AutomaticSpeakerObservationEligibility("disposition_not_accepted")
 
     window = _valid_window(payload.get("sermon_window"))
