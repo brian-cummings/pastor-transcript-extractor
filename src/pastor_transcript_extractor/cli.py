@@ -196,8 +196,10 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_comparison_markdown,
     build_diagnostic_markdown,
     build_diagnostic_trace,
+    build_identity_operational_outcome,
     build_systemic_markdown,
     compare_systemic_reports,
+    load_identity_association_attempts,
     load_identity_boundary_feedback,
 )
 from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
@@ -688,6 +690,46 @@ def _load_pipeline_diagnostic_fixture(
     return fixture
 
 
+def _persisted_identity_outcome(
+    database: Any,
+    *,
+    video_id: int,
+    extraction_result_id: int,
+    content_disposition: str | None,
+    association_attempts: list[dict[str, Any]],
+    boundary_feedback: list[dict[str, Any]],
+) -> dict[str, Any]:
+    observation = database.get_latest_speaker_observation_for_video(video_id)
+    profile_ids = (
+        sorted(
+            {
+                database.resolve_speaker_profile_id(profile_id)
+                for profile_id in database.list_effective_profile_ids_for_observation(
+                    observation.id
+                )
+            }
+        )
+        if observation is not None
+        else []
+    )
+    return build_identity_operational_outcome(
+        content_disposition=content_disposition,
+        extraction_result_id=extraction_result_id,
+        observation=(
+            {
+                "id": observation.id,
+                "extraction_result_id": observation.extraction_result_id,
+                "input_fingerprint": observation.input_fingerprint,
+            }
+            if observation is not None
+            else None
+        ),
+        effective_profile_ids=profile_ids,
+        association_attempts=association_attempts,
+        boundary_feedback=boundary_feedback,
+    )
+
+
 @app.command(
     "diagnose",
     help="Build a read-only sermon-isolation trace and human diagnostic views.",
@@ -707,7 +749,10 @@ def diagnose_pipeline(
     identity_feedback_root: Path = typer.Option(
         Path("evaluation/speaker-associations/shadow-runs"),
         "--identity-feedback-root",
-        help="Existing identity shadow artifacts containing sermon-edge advisories.",
+        help=(
+            "Existing identity shadow artifacts containing association outcomes and "
+            "sermon-edge advisories."
+        ),
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
@@ -734,6 +779,21 @@ def diagnose_pipeline(
         identity_feedback_root,
         database_video_ids={video.id},
     )
+    identity_attempts = load_identity_association_attempts(
+        identity_feedback_root,
+        database_video_ids={video.id},
+    )
+    disposition = proposed.get("final_disposition")
+    disposition = disposition if isinstance(disposition, dict) else {}
+    identity_observation = database.get_latest_speaker_observation_for_video(video.id)
+    boundary_feedback = [
+        event
+        for event in identity_feedback.get(video.id, [])
+        if event.get("observation_id") in {
+            None,
+            identity_observation.id if identity_observation is not None else None,
+        }
+    ]
     trace = build_diagnostic_trace(
         proposed,
         proposed_path=proposed_path,
@@ -741,7 +801,17 @@ def diagnose_pipeline(
         database_video_id=video.id,
         fixture=reviewed_fixture,
         media_duration_seconds=float(video.duration_seconds) if video.duration_seconds else None,
-        identity_boundary_feedback=identity_feedback.get(video.id, []),
+        identity_boundary_feedback=boundary_feedback,
+        identity_outcome=_persisted_identity_outcome(
+            database,
+            video_id=video.id,
+            extraction_result_id=extraction.id,
+            content_disposition=(
+                str(disposition["status"]) if disposition.get("status") else None
+            ),
+            association_attempts=identity_attempts.get(video.id, []),
+            boundary_feedback=boundary_feedback,
+        ),
     )
     root = (
         output_dir.expanduser().resolve()
@@ -749,7 +819,7 @@ def diagnose_pipeline(
         else resolve_video_artifact_paths(database, paths, video).root / "diagnostics"
     )
     root.mkdir(parents=True, exist_ok=True)
-    trace_path = root / "diagnostic-trace-v6.json"
+    trace_path = root / "diagnostic-trace-v7.json"
     report_path = root / "diagnostic-report.md"
     trace_path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
     report_path.write_text(build_diagnostic_markdown(trace), encoding="utf-8")
@@ -781,7 +851,10 @@ def diagnose_pipeline_system(
     identity_feedback_root: Path = typer.Option(
         Path("evaluation/speaker-associations/shadow-runs"),
         "--identity-feedback-root",
-        help="Existing identity shadow artifacts containing sermon-edge advisories.",
+        help=(
+            "Existing identity shadow artifacts containing association outcomes and "
+            "sermon-edge advisories."
+        ),
     ),
     all_existing: bool = typer.Option(
         True,
@@ -849,6 +922,26 @@ def diagnose_pipeline_system(
         identity_feedback_root,
         database_video_ids=diagnostic_video_ids,
     )
+    identity_attempts = load_identity_association_attempts(
+        identity_feedback_root,
+        database_video_ids=diagnostic_video_ids,
+    )
+    observations_by_video_id = {}
+    for observation in database.list_speaker_observations():
+        existing = observations_by_video_id.get(observation.video_id)
+        if existing is None or observation.id > existing.id:
+            observations_by_video_id[observation.video_id] = observation
+    profile_ids_by_observation_id = {
+        observation.id: sorted(
+            {
+                database.resolve_speaker_profile_id(profile_id)
+                for profile_id in database.list_effective_profile_ids_for_observation(
+                    observation.id
+                )
+            }
+        )
+        for observation in observations_by_video_id.values()
+    }
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     output_dir = output_root.expanduser().resolve() / run_id
     video_root = output_dir / "videos"
@@ -881,6 +974,15 @@ def diagnose_pipeline_system(
                 }
             )
             continue
+        observation = observations_by_video_id.get(video.id)
+        boundary_feedback = [
+            event
+            for event in identity_feedback.get(video.id, [])
+            if event.get("observation_id")
+            in {None, observation.id if observation is not None else None}
+        ]
+        disposition = proposed.get("final_disposition")
+        disposition = disposition if isinstance(disposition, dict) else {}
         trace = build_diagnostic_trace(
             proposed,
             proposed_path=proposed_path,
@@ -890,12 +992,36 @@ def diagnose_pipeline_system(
             media_duration_seconds=(
                 float(video.duration_seconds) if video.duration_seconds else None
             ),
-            identity_boundary_feedback=identity_feedback.get(video.id, []),
+            identity_boundary_feedback=boundary_feedback,
+            identity_outcome=build_identity_operational_outcome(
+                content_disposition=(
+                    str(disposition["status"])
+                    if disposition.get("status")
+                    else None
+                ),
+                extraction_result_id=extraction.id,
+                observation=(
+                    {
+                        "id": observation.id,
+                        "extraction_result_id": observation.extraction_result_id,
+                        "input_fingerprint": observation.input_fingerprint,
+                    }
+                    if observation is not None
+                    else None
+                ),
+                effective_profile_ids=(
+                    profile_ids_by_observation_id.get(observation.id, [])
+                    if observation is not None
+                    else []
+                ),
+                association_attempts=identity_attempts.get(video.id, []),
+                boundary_feedback=boundary_feedback,
+            ),
         )
         traces.append(trace)
         per_video = video_root / video.youtube_video_id
         per_video.mkdir(parents=True, exist_ok=True)
-        (per_video / "diagnostic-trace-v6.json").write_text(
+        (per_video / "diagnostic-trace-v7.json").write_text(
             json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8"
         )
         (per_video / "diagnostic-report.md").write_text(

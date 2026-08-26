@@ -10,14 +10,14 @@ from typing import Any, Iterable
 from pastor_transcript_extractor.fixture_validation import ValidatedFixture
 
 
-TRACE_SCHEMA_VERSION = 6
+TRACE_SCHEMA_VERSION = 7
 CONTRACT_VERSION = "sermon-isolation-contracts-v6"
 REVIEWED_COVERAGE_THRESHOLD = 0.90
 MAX_CONTAMINATION_RATIO = 0.10
 MATERIAL_COVERAGE_DELTA = 0.01
 MATERIAL_CONTAMINATION_DELTA = 0.01
 MATERIAL_BOUNDARY_SECONDS = 5.0
-COMPONENT_FINGERPRINT_VERSION = 2
+COMPONENT_FINGERPRINT_VERSION = 3
 TIMELINE_WIDTH = 72
 
 
@@ -42,6 +42,11 @@ def diagnostic_contract_definition() -> dict[str, Any]:
             "arbitration",
             "verifier",
             "final",
+        ],
+        "downstream_identity_stage_order": [
+            "speaker_observation",
+            "shadow_association",
+            "profile_membership",
         ],
         "reviewed_sermon_coverage_threshold": REVIEWED_COVERAGE_THRESHOLD,
         "maximum_contamination_ratio": MAX_CONTAMINATION_RATIO,
@@ -100,6 +105,10 @@ def diagnostic_contract_definition() -> dict[str, Any]:
             "identity_boundary_feedback": (
                 "speaker-consistency evidence is a boundary advisory; causality is claimed only "
                 "when an artifact explicitly persists the resulting adjustment"
+            ),
+            "identity_outcome": (
+                "operational progress only; machine association is not speaker truth, and "
+                "effective reviewed profile membership is the confirmed identity evidence"
             ),
             "component_fingerprints": (
                 "semantic hashes of stage projections distinguish behavior changes from "
@@ -235,6 +244,7 @@ def _trace_component_fingerprints(trace: dict[str, Any]) -> dict[str, Any]:
             key: raw.get(key)
             for key in (
                 "source",
+                "observation_id",
                 "edge",
                 "evidence_window",
                 "flagged_span",
@@ -275,6 +285,7 @@ def _trace_component_fingerprints(trace: dict[str, Any]) -> dict[str, Any]:
             .get("decision", {})
             .get("disposition_status"),
         },
+        "identity_outcome": trace.get("identity_outcome", {}),
         "identity_feedback": identity_events,
     }
     return {
@@ -1426,6 +1437,7 @@ def load_identity_boundary_feedback(
         candidate = payload.get("candidate")
         candidate = candidate if isinstance(candidate, dict) else {}
         video_id = candidate.get("video_id")
+        observation_id = candidate.get("observation_id")
         if not isinstance(video_id, int):
             continue
         if database_video_ids is not None and video_id not in database_video_ids:
@@ -1462,6 +1474,7 @@ def load_identity_boundary_feedback(
                 )
             )
             key = (
+                observation_id,
                 edge,
                 evidence_window,
                 flagged_span,
@@ -1474,6 +1487,9 @@ def load_identity_boundary_feedback(
                 existing = {
                     "event_kind": "identity_boundary_feedback",
                     "source": "speaker_profile_shadow_association",
+                    "observation_id": (
+                        observation_id if isinstance(observation_id, int) else None
+                    ),
                     "edge": edge,
                     "evidence_window": (
                         {
@@ -1527,6 +1543,131 @@ def load_identity_boundary_feedback(
             ),
         )
         for video_id, events in grouped.items()
+    }
+
+
+def load_identity_association_attempts(
+    root: Path,
+    *,
+    database_video_ids: set[int] | None = None,
+) -> dict[int, list[dict[str, Any]]]:
+    """Load persisted shadow-association outcomes without running identity analysis."""
+    resolved = root.expanduser().resolve()
+    if not resolved.is_dir():
+        return {}
+    grouped: dict[int, dict[tuple[Any, ...], dict[str, Any]]] = {}
+    for path in sorted(resolved.rglob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict) or payload.get("artifact_kind") != (
+            "speaker_profile_shadow_association"
+        ):
+            continue
+        candidate = payload.get("candidate")
+        candidate = candidate if isinstance(candidate, dict) else {}
+        video_id = candidate.get("video_id")
+        observation_id = candidate.get("observation_id")
+        outcome = payload.get("outcome")
+        if (
+            not isinstance(video_id, int)
+            or not isinstance(observation_id, int)
+            or not isinstance(outcome, str)
+        ):
+            continue
+        if database_video_ids is not None and video_id not in database_video_ids:
+            continue
+        proposed_profile_id = payload.get("proposed_profile_id")
+        result_sha256 = payload.get("result_sha256")
+        key = (
+            observation_id,
+            result_sha256 if isinstance(result_sha256, str) else str(path),
+            outcome,
+            proposed_profile_id,
+        )
+        grouped.setdefault(video_id, {})[key] = {
+            "artifact_path": str(path),
+            "observation_id": observation_id,
+            "observation_fingerprint": candidate.get("input_fingerprint"),
+            "outcome": outcome,
+            "reason": payload.get("reason"),
+            "proposed_profile_id": (
+                proposed_profile_id if isinstance(proposed_profile_id, int) else None
+            ),
+            "association_version": payload.get("association_version"),
+            "model_fingerprint": payload.get("model_fingerprint"),
+            "result_sha256": result_sha256,
+        }
+    return {
+        video_id: list(attempts.values())
+        for video_id, attempts in grouped.items()
+    }
+
+
+def build_identity_operational_outcome(
+    *,
+    content_disposition: str | None,
+    extraction_result_id: int,
+    observation: dict[str, Any] | None = None,
+    effective_profile_ids: list[int] | None = None,
+    association_attempts: list[dict[str, Any]] | None = None,
+    boundary_feedback: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Project persisted identity progress without claiming speaker correctness."""
+    observation = observation if isinstance(observation, dict) else None
+    observation_id = observation.get("id") if observation else None
+    observation_extraction_id = (
+        observation.get("extraction_result_id") if observation else None
+    )
+    observation_status = (
+        "missing"
+        if observation is None
+        else "current"
+        if observation_extraction_id == extraction_result_id
+        else "stale"
+    )
+    current_attempts = [
+        attempt
+        for attempt in (association_attempts or [])
+        if observation_status == "current"
+        and attempt.get("observation_id") == observation_id
+    ]
+    profile_ids = sorted(set(effective_profile_ids or []))
+    attempt_outcomes = Counter(
+        str(attempt.get("outcome") or "unknown") for attempt in current_attempts
+    )
+    if observation_status == "current" and profile_ids:
+        state = "profiled"
+    elif observation_status == "current" and current_attempts:
+        state = "evaluated_unprofiled"
+    elif observation_status == "current":
+        state = "observation_available"
+    elif observation_status == "stale":
+        state = "stale_observation"
+    elif isinstance(content_disposition, str) and content_disposition.startswith(
+        "rejected_"
+    ):
+        state = "content_terminal"
+    else:
+        state = "not_attempted"
+    return {
+        "status": "available",
+        "state": state,
+        "interpretation": (
+            "Operational identity progress only; association proposals are not confirmed "
+            "speaker identity, and only effective profile membership is reviewed identity."
+        ),
+        "content_disposition": content_disposition or "unknown",
+        "observation_status": observation_status,
+        "observation_id": observation_id,
+        "observation_extraction_result_id": observation_extraction_id,
+        "current_extraction_result_id": extraction_result_id,
+        "association_attempt_count": len(current_attempts),
+        "association_outcome_counts": dict(sorted(attempt_outcomes.items())),
+        "association_attempts": current_attempts,
+        "effective_profile_ids": profile_ids if observation_status == "current" else [],
+        "boundary_advisory_count": len(boundary_feedback or []),
     }
 
 
@@ -1647,6 +1788,7 @@ def build_diagnostic_trace(
     fixture: ValidatedFixture | None = None,
     media_duration_seconds: float | None = None,
     identity_boundary_feedback: list[dict[str, Any]] | None = None,
+    identity_outcome: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     segments = [item for item in proposed.get("segments", []) if isinstance(item, dict)]
     classification = proposed.get("classification")
@@ -2060,6 +2202,12 @@ def build_diagnostic_trace(
         "candidate_regret": candidate_regret,
         "stage_regret": _stage_regret(stages, fixture),
         "contamination_attribution": _contamination_attribution(stages, fixture),
+        "identity_outcome": identity_outcome
+        or {
+            "status": "not_observed",
+            "state": "not_observed",
+            "interpretation": "Identity outcome evidence was not supplied.",
+        },
         "identity_boundary_feedback": identity_feedback,
         "join_observability": {
             "joined_candidate_count": sum(
@@ -2137,17 +2285,28 @@ def build_pipeline_mermaid(trace: dict[str, Any]) -> str:
         lines.append(
             f"  S{indexes['rule']} -. comparator .-> S{indexes['arbitration']}"
         )
+    identity_outcome = trace.get("identity_outcome", {})
+    identity_state = str(identity_outcome.get("state") or "not_observed")
+    identity_label = identity_state.replace("_", " ")
     identity = trace.get("identity_boundary_feedback", {})
     identity_event_count = int(identity.get("event_count") or 0)
-    if identity_event_count and "final" in indexes and "arbitration" in indexes:
+    if "final" in indexes:
         lines.extend(
             [
-                f'  I["Identity edge evidence<br/>{identity_event_count} advisories"]',
-                f"  S{indexes['final']} -. sermon window .-> I",
-                f"  I -. boundary advisory .-> S{indexes['arbitration']}",
+                f'  ID["Identity outcome<br/>{identity_label}"]',
+                f"  S{indexes['final']} --> ID",
             ]
         )
-        classes["unknown"].append("I")
+        classes["unknown"].append("ID")
+    if identity_event_count and "arbitration" in indexes:
+        lines.extend(
+            [
+                f'  IB["Identity edge evidence<br/>{identity_event_count} advisories"]',
+                "  ID --> IB",
+                f"  IB -. boundary advisory .-> S{indexes['arbitration']}",
+            ]
+        )
+        classes["unknown"].append("IB")
     lines.extend(
         [
             "  classDef pass fill:#d9f2df,stroke:#26733a,color:#102915",
@@ -2370,6 +2529,35 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
             f"{path.get('terminal_status', 'not_evaluated')} | "
             f"{path.get('likely_causal_stage') or 'none'} |"
         )
+    identity_outcome = trace.get("identity_outcome", {})
+    lines.extend(
+        [
+            "",
+            "## Identity operational outcome",
+            "",
+            f"- State: {identity_outcome.get('state', 'not_observed')}",
+            f"- Observation: {identity_outcome.get('observation_status', 'not_observed')}",
+            "- Association attempts: "
+            f"{identity_outcome.get('association_attempt_count', 0)}",
+            "- Association outcomes: `"
+            + json.dumps(
+                identity_outcome.get("association_outcome_counts", {}),
+                sort_keys=True,
+            )
+            + "`",
+            "- Effective reviewed profiles: "
+            + (
+                ", ".join(
+                    str(profile_id)
+                    for profile_id in identity_outcome.get(
+                        "effective_profile_ids", []
+                    )
+                )
+                or "none"
+            ),
+            f"- Interpretation: {identity_outcome.get('interpretation', 'not observed')}",
+        ]
+    )
     identity = trace.get("identity_boundary_feedback", {})
     lines.extend(
         [
@@ -2599,6 +2787,12 @@ def aggregate_diagnostic_traces(
     final_contamination_seconds = Counter()
     identity_effects = Counter()
     identity_edge_counts = Counter()
+    identity_operational_states = Counter()
+    identity_observation_states = Counter()
+    identity_association_outcomes = Counter()
+    identity_association_attempt_count = 0
+    identity_profiled_trace_count = 0
+    identity_effective_profile_membership_count = 0
     identity_event_count = 0
     identity_trace_count = 0
     identity_temporal_movement_count = 0
@@ -2656,6 +2850,23 @@ def aggregate_diagnostic_traces(
         for event in identity.get("events", []) or []:
             identity_effects[str(event.get("observed_effect") or "unknown")] += 1
             identity_edge_counts[str(event.get("edge") or "unknown")] += 1
+        identity_outcome = trace.get("identity_outcome", {})
+        identity_operational_states[
+            str(identity_outcome.get("state") or "not_observed")
+        ] += 1
+        identity_observation_states[
+            str(identity_outcome.get("observation_status") or "not_observed")
+        ] += 1
+        identity_association_attempt_count += int(
+            identity_outcome.get("association_attempt_count") or 0
+        )
+        for outcome, count in identity_outcome.get(
+            "association_outcome_counts", {}
+        ).items():
+            identity_association_outcomes[str(outcome)] += int(count)
+        profile_ids = identity_outcome.get("effective_profile_ids", []) or []
+        identity_profiled_trace_count += int(bool(profile_ids))
+        identity_effective_profile_membership_count += len(profile_ids)
         attribution = trace.get("contamination_attribution", {})
         contamination_breach[str(attribution.get("earliest_breach_stage") or "none")] += 1
         for pattern in attribution.get("final_boundary_error_patterns", []) or []:
@@ -2787,7 +2998,7 @@ def aggregate_diagnostic_traces(
         **(population_summary or {}),
     }
     return {
-        "schema_version": 6,
+        "schema_version": 7,
         "report_kind": "sermon_isolation_systemic_diagnostics",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trace_count": len(traces),
@@ -2873,6 +3084,25 @@ def aggregate_diagnostic_traces(
                 "causal events persisted"
                 if identity_causal_adjustment_count
                 else "temporal association only"
+            ),
+        },
+        "identity_outcome_summary": {
+            "trace_count": len(traces),
+            "state_counts": dict(sorted(identity_operational_states.items())),
+            "observation_status_counts": dict(
+                sorted(identity_observation_states.items())
+            ),
+            "association_attempt_count": identity_association_attempt_count,
+            "association_outcome_counts": dict(
+                sorted(identity_association_outcomes.items())
+            ),
+            "profiled_trace_count": identity_profiled_trace_count,
+            "effective_profile_membership_count": (
+                identity_effective_profile_membership_count
+            ),
+            "interpretation": (
+                "Operational coverage only; machine association outcomes are proposals, "
+                "while effective profile membership is reviewed identity evidence."
             ),
         },
         "join_observability": {
@@ -2976,13 +3206,69 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
         label = str(outcome).replace('"', "'").replace("_", " ")
         lines.append(f'  Q{index}["Reviewed: {label}<br/>{count}"]')
         lines.append(f"  R --> Q{index}")
+    identity_outcomes = report.get("identity_outcome_summary", {})
+    identity_nodes = ["I"]
+    lines.extend(
+        [
+            f'  I["Identity operational outcomes<br/>'
+            f'{identity_outcomes.get("trace_count", trace_count)}"]',
+            "  T --> I",
+        ]
+    )
+    for index, (state, count) in enumerate(
+        sorted(
+            identity_outcomes.get("state_counts", {}).items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ):
+        label = str(state).replace('"', "'").replace("_", " ")
+        node = f"IS{index}"
+        identity_nodes.append(node)
+        lines.append(f'  {node}["{label}<br/>{count}"]')
+        lines.append(f"  I --> {node}")
+    association_attempt_count = int(
+        identity_outcomes.get("association_attempt_count") or 0
+    )
+    if association_attempt_count:
+        identity_nodes.append("IA")
+        lines.append(
+            f'  IA["Association attempts<br/>{association_attempt_count}"]'
+        )
+        lines.append("  I --> IA")
+        for index, (outcome, count) in enumerate(
+            sorted(
+                identity_outcomes.get("association_outcome_counts", {}).items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ):
+            label = str(outcome).replace('"', "'").replace("_", " ")
+            node = f"IAO{index}"
+            identity_nodes.append(node)
+            lines.append(f'  {node}["{label}<br/>{count}"]')
+            lines.append(f"  IA --> {node}")
+    identity_nodes.append("IP")
+    lines.append(
+        f'  IP["Effective reviewed profile membership<br/>'
+        f'{identity_outcomes.get("profiled_trace_count", 0)} traces"]'
+    )
+    lines.append("  I --> IP")
+    advisory_count = int(
+        report.get("identity_boundary_feedback_summary", {}).get("event_count") or 0
+    )
+    if advisory_count:
+        identity_nodes.append("IB")
+        lines.append(f'  IB["Boundary advisories<br/>{advisory_count}"]')
+        lines.append("  I --> IB")
+        lines.append("  IB -. feedback to sermon boundaries .-> T")
     lines.extend(
         [
             "  classDef population fill:#e8eef8,stroke:#46658a,color:#172536",
             "  classDef reviewed fill:#d9f2df,stroke:#26733a,color:#102915",
+            "  classDef identity fill:#ece3fa,stroke:#6b4c91,color:#28183b",
             "  classDef missing fill:#f9e5c7,stroke:#a16413,color:#3b2408",
             "  class P,E,T,U population",
             "  class R reviewed",
+            f"  class {','.join(identity_nodes)} identity",
             f"  class {missing_nodes} missing",
         ]
     )
@@ -3044,6 +3330,42 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
             f"{reviewed_dispositions.get(disposition, 0)} | "
             f"{unreviewed_dispositions.get(disposition, 0)} |"
         )
+    identity_outcomes = report.get("identity_outcome_summary", {})
+    lines.extend(
+        [
+            "",
+            "## Identity operational outcomes",
+            "",
+            identity_outcomes.get("interpretation", "No identity outcomes reported."),
+            "",
+            "| State | Traces |",
+            "|---|---:|",
+        ]
+    )
+    for state, count in sorted(
+        identity_outcomes.get("state_counts", {}).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {state} | {count} |")
+    lines.extend(
+        [
+            "",
+            f"- Association attempts: "
+            f"{identity_outcomes.get('association_attempt_count', 0)}",
+            f"- Traces with effective reviewed profile membership: "
+            f"{identity_outcomes.get('profiled_trace_count', 0)}",
+            f"- Effective profile memberships: "
+            f"{identity_outcomes.get('effective_profile_membership_count', 0)}",
+            "",
+            "| Association outcome | Attempts |",
+            "|---|---:|",
+        ]
+    )
+    for outcome, count in sorted(
+        identity_outcomes.get("association_outcome_counts", {}).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {outcome} | {count} |")
     lines.extend([
         "",
         "## Final outcomes",

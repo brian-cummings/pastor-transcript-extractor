@@ -11,9 +11,11 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_comparison_markdown,
     build_diagnostic_markdown,
     build_diagnostic_trace,
+    build_identity_operational_outcome,
     build_systemic_outcome_mermaid,
     build_systemic_markdown,
     compare_systemic_reports,
+    load_identity_association_attempts,
     load_identity_boundary_feedback,
 )
 
@@ -156,7 +158,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
             "sermon-isolation-contracts-v6",
             trace["contract_definition"]["version"],
         )
-        self.assertEqual(6, trace["schema_version"])
+        self.assertEqual(7, trace["schema_version"])
         self.assertEqual("refinement_loss", trace["candidate_regret"]["classification"])
         self.assertEqual(
             "localization_regression",
@@ -507,6 +509,16 @@ class PipelineDiagnosticTests(unittest.TestCase):
                 unreviewed_proposed,
                 proposed_path=unreviewed_path,
                 youtube_video_id="production-video",
+                identity_outcome=build_identity_operational_outcome(
+                    content_disposition="accepted_sermon",
+                    extraction_result_id=12,
+                    observation={"id": 5, "extraction_result_id": 12},
+                    effective_profile_ids=[7],
+                    association_attempts=[
+                        {"observation_id": 5, "outcome": "proposed_match"}
+                    ],
+                    boundary_feedback=[{"edge": "start"}],
+                ),
             )
 
         report = aggregate_diagnostic_traces(
@@ -545,9 +557,52 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertIn("Reviewed fixture without trace<br/>1", mermaid)
         self.assertIn("accepted sermon<br/>2", mermaid)
         self.assertIn("failed<br/>2", mermaid)
+        self.assertIn("Identity operational outcomes<br/>2", mermaid)
+        self.assertIn("profiled<br/>1", mermaid)
+        self.assertIn("Association attempts<br/>1", mermaid)
+        self.assertIn("Effective reviewed profile membership<br/>1 traces", mermaid)
         markdown = build_systemic_markdown(report)
         self.assertIn("## All-outcome map", markdown)
         self.assertIn("## Operational dispositions", markdown)
+        self.assertIn("## Identity operational outcomes", markdown)
+        self.assertEqual(
+            {"not_observed": 1, "profiled": 1},
+            report["identity_outcome_summary"]["state_counts"],
+        )
+
+    def test_identity_attempt_loader_and_stale_observation_truth_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            run.mkdir()
+            payload = {
+                "artifact_kind": "speaker_profile_shadow_association",
+                "candidate": {
+                    "video_id": 9,
+                    "observation_id": 4,
+                    "input_fingerprint": "observation-4",
+                },
+                "outcome": "no_match",
+                "proposed_profile_id": None,
+            }
+            (run / "association.json").write_text(
+                json.dumps(payload), encoding="utf-8"
+            )
+            attempts = load_identity_association_attempts(
+                root, database_video_ids={9}
+            )
+
+        self.assertEqual("no_match", attempts[9][0]["outcome"])
+        outcome = build_identity_operational_outcome(
+            content_disposition="accepted_sermon",
+            extraction_result_id=8,
+            observation={"id": 4, "extraction_result_id": 7},
+            effective_profile_ids=[3],
+            association_attempts=attempts[9],
+        )
+        self.assertEqual("stale_observation", outcome["state"])
+        self.assertEqual([], outcome["effective_profile_ids"])
+        self.assertEqual(0, outcome["association_attempt_count"])
 
     def test_candidate_regret_distinguishes_discovery_and_ranking(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -683,7 +738,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
             ],
         )
         systemic = aggregate_diagnostic_traces([trace])
-        self.assertEqual(6, systemic["schema_version"])
+        self.assertEqual(7, systemic["schema_version"])
         self.assertEqual(1, systemic["unknown_evaluation_partition_count"])
         self.assertEqual(
             [0, 0, 0, 1],

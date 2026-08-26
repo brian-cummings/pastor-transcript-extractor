@@ -1,7 +1,7 @@
 # Pipeline diagnostics
 
 Pipeline diagnostics are a read-only observability layer over existing sermon-isolation
-artifacts. The canonical product is `diagnostic-trace-v6.json`; Markdown, Mermaid, and
+artifacts. The canonical product is `diagnostic-trace-v7.json`; Markdown, Mermaid, and
 systemic summaries are deterministic projections of that trace.
 
 ## Diagnostic model
@@ -49,12 +49,19 @@ attribution separately measures start overreach, end overreach, and internal con
 including their earliest material stage. Automatic and manual-override precision cohorts
 remain separate in the systemic evidence.
 
-Identity is connected as a feedback edge rather than another linear extraction stage.
-Persisted `speaker_inconsistent_edge` evidence is attached to the start or end boundary and
-compared with the later sermon window. Existing identity artifacts are advisories, so a
-later inward or outward movement is reported as temporal association only. A causal claim
-requires one persisted adjustment event containing the pre-adjustment boundary, speaker
-evidence, decision, and post-adjustment boundary.
+V7 continues from sermon disposition into operational identity outcomes: current speaker
+observation, shadow association attempt, unprofiled evaluation, and effective reviewed
+profile membership. Machine outcomes such as `proposed_match` remain proposals rather than
+speaker correctness claims. Stale observations are never credited to the current extraction,
+and content-terminal, not-attempted, and stale work remain distinct. Persisted association
+failures remain visible in the association-outcome branches.
+
+Identity also connects back as a feedback edge. Persisted `speaker_inconsistent_edge`
+evidence is attached to the start or end boundary and compared with the later sermon window.
+Existing identity artifacts are advisories, so a later inward or outward movement is reported
+as temporal association only. A causal claim requires one persisted adjustment event
+containing the pre-adjustment boundary, speaker evidence, decision, and post-adjustment
+boundary.
 
 When an advisory remains unchanged and reviewed truth shows material overreach on that same
 edge, the trace emits `identity_signal_unconsumed`. This is a diagnostic gap, not permission
@@ -78,7 +85,7 @@ video artifact namespace.
 
 The command writes:
 
-- `diagnostic-trace-v6.json`: durable machine-readable evidence, including a snapshot of
+- `diagnostic-trace-v7.json`: durable machine-readable evidence, including a snapshot of
   the versioned stage contract.
 - `diagnostic-report.md`: Mermaid pipeline loss map, static timeline overlay, stage
   transitions, coverage/contamination tradeoffs, and causal assessment.
@@ -101,13 +108,15 @@ processing status. Use `--fixtures-only` to reproduce the narrower reviewed-fixt
 The command does not reclassify the corpus. The timestamped result contains per-video traces
 and reports plus `system-diagnostics.json` and `system-diagnostics.md`. The systemic Markdown
 starts with an all-outcome Mermaid map covering database videos, extraction availability,
-valid and missing artifacts, operational dispositions, and the reviewed/unreviewed split.
+valid and missing artifacts, operational dispositions, the reviewed/unreviewed split, and
+the downstream identity outcome population. Identity branches show observation availability,
+association attempt outcomes, effective reviewed profile membership, and feedback advisories.
 Observed failure counts and root-cause hypothesis counts remain separate. The report also
 partitions automatic and manual-override outcomes, reports fixture evaluation partitions,
 shows recall and contamination threshold sensitivity for reviewed positives, and summarizes
-candidate regret, refinement/arbitration regret, terminal causal stages, join evidence, and
-identity boundary feedback. Unknown fixture partitions remain visible rather than joining a
-named cohort.
+candidate regret, refinement/arbitration regret, terminal causal stages, join evidence,
+identity outcomes, and identity boundary feedback. Unknown fixture partitions remain visible
+rather than joining a named cohort.
 
 ## Compare two diagnostic runs
 
