@@ -221,6 +221,9 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
             persisted = json.loads(path.read_text())
         self.assertIn("identity_boundary_evidence", persisted)
         self.assertEqual("review_required", persisted["identity_boundary_review"]["records"][0]["decision"])
+        self.assertEqual(
+            "review_required", persisted["final_disposition"]["status"]
+        )
 
     def test_approved_association_can_drive_automatic_production_trim(self) -> None:
         report = {
@@ -259,6 +262,9 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
         self.assertEqual(
             "auto_trim",
             persisted["identity_boundary_review"]["records"][0]["decision"],
+        )
+        self.assertEqual(
+            "accepted_sermon", persisted["final_disposition"]["status"]
         )
 
 

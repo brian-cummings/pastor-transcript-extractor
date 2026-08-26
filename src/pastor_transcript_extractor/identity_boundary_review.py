@@ -542,5 +542,21 @@ def persist_association_boundary_evidence(
         return False
     payload["identity_boundary_evidence"] = evidence
     payload = apply_identity_boundary_review(payload)
+    # Association evidence can arrive after extraction originally derived the
+    # disposition. Keep the effective disposition causally synchronized now,
+    # so a review-required edge cannot continue through identity as accepted.
+    from pastor_transcript_extractor.disposition import build_final_disposition
+
+    payload["final_disposition"] = build_final_disposition(
+        payload.get("classification"),
+        payload.get("sermon_window"),
+        guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
+        recording_verification=payload.get("recording_verification"),
+        identity_boundary_review=payload.get("identity_boundary_review"),
+    )
+    if isinstance(payload.get("classification"), dict):
+        payload["classification"]["final_disposition"] = payload[
+            "final_disposition"
+        ]
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return True

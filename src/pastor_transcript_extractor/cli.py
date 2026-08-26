@@ -206,6 +206,11 @@ from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
 from pastor_transcript_extractor.identity_boundary_review import (
     persist_association_boundary_evidence,
 )
+from pastor_transcript_extractor.identity_leverage import (
+    build_profile_leverage_snapshot,
+    compare_profile_leverage_snapshots,
+    profile_neighborhood_video_ids,
+)
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
@@ -7091,6 +7096,108 @@ def coordinate_identity_command(
 
 
 @identity_app.command(
+    "profile-leverage-snapshot",
+    help=(
+        "Persist an observed before/after profile-state experiment without "
+        "changing membership."
+    ),
+)
+def profile_leverage_snapshot_command(
+    profile_id: list[int] = typer.Option(
+        ...,
+        "--profile-id",
+        min=1,
+        help="Affected profile id; repeat for a duplicate-profile group.",
+    ),
+    decision_kind: str = typer.Option(
+        ...,
+        "--decision-kind",
+        help=(
+            "duplicate_profile_cleanup, readiness_promotion, "
+            "exemplar_media_fix, prospective_confirmation, or sermon_review."
+        ),
+    ),
+    baseline: Path | None = typer.Option(
+        None,
+        "--baseline",
+        help="Prior snapshot to compare after the decision and neighborhood replay.",
+    ),
+    profile_level_decisions: int = typer.Option(0, min=0),
+    sermon_level_reviews: int = typer.Option(0, min=0),
+    prospective_correct: int = typer.Option(0, min=0),
+    prospective_incorrect: int = typer.Option(0, min=0),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs"),
+        help="Existing shadow-association artifacts.",
+    ),
+    output_root: Path = typer.Option(
+        Path("evaluation/identity-leverage"),
+        help="Ignored profile-leverage experiment artifacts.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> Path:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    database = Database(paths.database, readonly=True)
+    try:
+        snapshot = build_profile_leverage_snapshot(
+            database,
+            association_root=association_root,
+            profile_ids=profile_id,
+            decision_kind=decision_kind,
+            profile_level_decisions=profile_level_decisions,
+            sermon_level_reviews=sermon_level_reviews,
+            prospective_correct=prospective_correct,
+            prospective_incorrect=prospective_incorrect,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    experiment_slug = (
+        decision_kind.replace("_", "-")
+        + "-profiles-"
+        + "-".join(str(value) for value in sorted(set(profile_id)))
+    )
+    destination_root = output_root.expanduser().resolve() / run_id / experiment_slug
+    destination_root.mkdir(parents=True, exist_ok=True)
+    snapshot_path = destination_root / "profile-leverage-snapshot.json"
+    snapshot_path.write_text(
+        json.dumps(snapshot, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    console.print(f"Wrote profile leverage snapshot to {snapshot_path}")
+    console.print(
+        "Affected neighborhood: "
+        f"{snapshot['state']['neighborhood_observation_count']} observation(s)."
+    )
+    if baseline is not None:
+        try:
+            before = json.loads(
+                baseline.expanduser().resolve().read_text(encoding="utf-8")
+            )
+            result = compare_profile_leverage_snapshots(before, snapshot)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+            raise typer.BadParameter(str(error)) from error
+        result_path = destination_root / "profile-leverage-result.json"
+        result_path.write_text(
+            json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        observed = result["observed"]
+        console.print(
+            "Observed leverage: "
+            f"resolved={observed['newly_resolved_sermon_count']} "
+            f"proposals_enabled={observed['downstream_proposals_enabled']} "
+            f"abstentions_eliminated={observed['abstentions_eliminated']} "
+            "exemplar_repairs="
+            f"{observed['unresolved_cases_repaired_through_exemplar_media_fixes']}"
+        )
+        console.print(f"Wrote observed leverage result to {result_path}")
+    return snapshot_path
+
+
+@identity_app.command(
     "shadow-associate-speakers",
     help="Propose multi-exemplar profile matches without changing registry membership.",
 )
@@ -7104,6 +7211,15 @@ def shadow_associate_speakers_command(
         False,
         "--all-eligible",
         help="Evaluate every currently eligible unassigned sermon observation.",
+    ),
+    neighborhood_profile_id: list[int] = typer.Option(
+        [],
+        "--neighborhood-profile-id",
+        min=1,
+        help=(
+            "Replay only observations with persisted direct routing, comparison, "
+            "proposal, or exemplar-exclusion evidence for this profile; repeatable."
+        ),
     ),
     include_profiled: bool = typer.Option(
         False,
@@ -7181,9 +7297,13 @@ def shadow_associate_speakers_command(
         help="Override app data directory.",
     ),
 ) -> tuple[Path, ...]:
-    if (youtube_video_id is None) == (not all_eligible):
+    selection_modes = sum(
+        (youtube_video_id is not None, all_eligible, bool(neighborhood_profile_id))
+    )
+    if selection_modes != 1:
         raise typer.BadParameter(
-            "Pass exactly one of --youtube-video-id or --all-eligible."
+            "Pass exactly one of --youtube-video-id, --all-eligible, or "
+            "--neighborhood-profile-id."
         )
     if minimum_same_exemplars > maximum_exemplars:
         raise typer.BadParameter(
@@ -7463,6 +7583,25 @@ def shadow_associate_speakers_command(
                 f"Unknown YouTube video ID: {youtube_video_id}"
             )
         requested_videos = [video]
+    elif neighborhood_profile_id:
+        try:
+            neighborhood_video_ids = profile_neighborhood_video_ids(
+                database,
+                association_root=output_root,
+                profile_ids=neighborhood_profile_id,
+            )
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        requested_videos = [
+            videos_by_id[video_id]
+            for video_id in neighborhood_video_ids
+            if video_id in videos_by_id
+        ]
+        if not requested_videos:
+            raise typer.BadParameter(
+                "No persisted affected neighborhood was found for the requested "
+                "profile id(s)."
+            )
     else:
         requested_videos = list(videos_by_id.values())
 

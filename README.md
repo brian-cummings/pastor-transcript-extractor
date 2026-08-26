@@ -824,6 +824,8 @@ reviewed different-speaker constraints block consolidation.
 - `pte identity review-next-speaker-pair --selection-objective automation-readiness`
 - `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`
 - `pte identity shadow-associate-speakers --all-eligible --plan-only`
+- `pte identity shadow-associate-speakers --neighborhood-profile-id <id>`
+- `pte identity profile-leverage-snapshot --profile-id <id> --decision-kind readiness_promotion`
 - `pte identity shadow-association-status --base-dir <app-data>`
 - `pte identity machine-assignment-status --base-dir <app-data>`
 - `pte identity rollback-machine-assignments --policy-fingerprint <sha256>`
@@ -847,6 +849,16 @@ two-recording seeds without a qualified frontier wait instead of consuming human
 review. The next discovery run consumes the approved pair judgment directly as
 a fingerprinted same/different constraint, allowing the answer to resolve or
 safely block the affected component before registry synchronization.
+
+Profile-state experiments use an explicit before/after ledger. Create a
+`profile-leverage-snapshot` before the human decision, replay only the affected
+persisted evidence neighborhood with `--neighborhood-profile-id`, then create a
+second snapshot with `--baseline` pointing at the first. The result reports
+observed newly resolved sermons, newly enabled proposals, eliminated
+abstentions, repaired exemplar exclusions, yield per human decision, and any
+prospective confirmations entered with `--prospective-correct` or
+`--prospective-incorrect`. It never substitutes the selector's predicted
+`observations_unlocked` value for observed yield and never changes membership.
 
 Automatic nomination also binds packet preparation to the selector's exact
 immutable observation fingerprints. The review command fails closed if either
