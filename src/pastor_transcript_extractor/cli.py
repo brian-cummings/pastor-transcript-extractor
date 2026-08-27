@@ -2904,6 +2904,15 @@ def analysis_evaluate_style(
         )
 
 
+def _association_admission_is_actionable(stage: str, reason_code: str) -> bool:
+    if stage != "metadata_eligibility":
+        return True
+    return reason_code in {
+        "diagnostic_spans_unavailable",
+        "registered_normalized_media_unavailable",
+    }
+
+
 @identity_app.command(
     "compare-speakers",
     help="Run a read-only, abstention-first acoustic comparison of two speaker observations.",
@@ -7729,7 +7738,6 @@ def shadow_associate_speakers_command(
         }
 
     admission_paths: set[Path] = set()
-
     def persist_admission(
         video,
         observation: SpeakerObservation | None,
@@ -7738,7 +7746,12 @@ def shadow_associate_speakers_command(
         reason_code: str,
         media_sha256: str | None = None,
     ) -> None:
-        if not unattempted_only or plan_only or observation is None:
+        if (
+            not unattempted_only
+            or plan_only
+            or observation is None
+            or not _association_admission_is_actionable(stage, reason_code)
+        ):
             return
         admission_paths.add(
             write_shadow_association_admission(

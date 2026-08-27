@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from pastor_transcript_extractor.cli import (
     ActionableReviewAudioPreparation,
     DISCOVERY_PROFILE_REASON,
+    _association_admission_is_actionable,
     _actionable_review_fingerprints,
     _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
@@ -28,6 +29,25 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 
 
 class IdentityRunTests(unittest.TestCase):
+    def test_association_admission_persistence_excludes_non_candidates(self) -> None:
+        self.assertFalse(
+            _association_admission_is_actionable(
+                "metadata_eligibility", "disposition_not_accepted"
+            )
+        )
+        self.assertTrue(
+            _association_admission_is_actionable(
+                "metadata_eligibility",
+                "registered_normalized_media_unavailable",
+            )
+        )
+        self.assertTrue(
+            _association_admission_is_actionable(
+                "transcript_span_selection",
+                "speech_grounded_spans_unavailable",
+            )
+        )
+
     def test_unattempted_association_batch_requires_all_eligible(self) -> None:
         result = CliRunner().invoke(
             app,
