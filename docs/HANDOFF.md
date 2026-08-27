@@ -547,6 +547,21 @@ pte identity shadow-associate-speakers \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
+Dispatch only current observations that have never produced a persisted
+association attempt:
+
+```bash
+pte identity shadow-associate-speakers \
+  --all-eligible \
+  --unattempted-only \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+This mode skips previously attempted observation IDs before media eligibility
+and comparison work. Repeating it with unchanged evidence writes no duplicate
+association artifacts; observations missing media or spans remain eligible for
+a later retry after those prerequisites are repaired.
+
 Execute the shadow matcher with `--all-eligible`, or use
 `--youtube-video-id VIDEO_ID` for one sermon. It compares an eligible,
 unassigned observation against up to three eligible exemplars per review-ready

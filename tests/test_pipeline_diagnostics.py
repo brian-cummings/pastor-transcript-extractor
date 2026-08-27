@@ -996,7 +996,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
             },
         ]
 
-        analysis = build_identity_automation_blocker_analysis(traces)
+        analysis = build_identity_automation_blocker_analysis(
+            traces,
+            association_eligibility_by_observation_id={1: "eligible"},
+        )
 
         blockers = {
             item["blocker_class"]: item
@@ -1013,6 +1016,41 @@ class PipelineDiagnosticTests(unittest.TestCase):
             blockers["comparison_ambiguous"]["human_necessity"][
                 "classification"
             ],
+        )
+
+    def test_identity_blockers_route_unavailable_association_prerequisite(self) -> None:
+        trace = {
+            "video": {"youtube_video_id": "missing-media"},
+            "identity_outcome": {
+                "content_disposition": "accepted_sermon",
+                "observation_status": "current",
+                "observation_id": 7,
+                "effective_profile_ids": [],
+                "latest_association_outcome": None,
+            },
+            "identity_boundary_feedback": {},
+        }
+
+        analysis = build_identity_automation_blocker_analysis(
+            [trace],
+            association_eligibility_by_observation_id={
+                7: "registered_normalized_media_unavailable"
+            },
+        )
+
+        blockers = {
+            item["blocker_class"]: item
+            for item in analysis["blocker_classes"]
+        }
+        prerequisite = blockers["association_prerequisite_unavailable"]
+        self.assertNotIn("association_not_attempted", blockers)
+        self.assertEqual(
+            ["registered_normalized_media_unavailable"],
+            prerequisite["blocking_condition_codes"],
+        )
+        self.assertEqual(
+            "not_inherently_required",
+            prerequisite["human_necessity"]["classification"],
         )
 
     def test_identity_blockers_keep_retrospective_failure_and_cause_separate(self) -> None:

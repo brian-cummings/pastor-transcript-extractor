@@ -134,6 +134,11 @@ possible memberships or proposals after a repair are explicitly contingent and a
 counted as unlocks. Retrieval failure locations remain observed evidence, while proposed
 explanations remain labeled causal hypotheses. Use `--speaker-evidence-root` when reviewed
 speaker-pair evidence is stored outside `evaluation/speaker-pairs`.
+For current observations with no association artifact, the projection performs
+a metadata-only eligibility check. Dispatchable observations remain
+`association_not_attempted`; missing media, diagnostic spans, or other
+prerequisites are reported separately as
+`association_prerequisite_unavailable` with their observed reason codes.
 
 ## Compare two diagnostic runs
 

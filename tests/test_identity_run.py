@@ -28,6 +28,24 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 
 
 class IdentityRunTests(unittest.TestCase):
+    def test_unattempted_association_batch_requires_all_eligible(self) -> None:
+        result = CliRunner().invoke(
+            app,
+            [
+                "identity",
+                "shadow-associate-speakers",
+                "--youtube-video-id",
+                "example",
+                "--unattempted-only",
+            ],
+        )
+
+        self.assertNotEqual(0, result.exit_code)
+        self.assertIn(
+            "--unattempted-only requires --all-eligible",
+            result.output,
+        )
+
     def test_confirmation_routing_uses_shared_discovery_profile_reason(self):
         self.assertEqual(
             SHARED_DISCOVERY_PROFILE_REASON,

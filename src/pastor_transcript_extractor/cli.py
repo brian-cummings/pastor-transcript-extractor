@@ -1082,6 +1082,33 @@ def diagnose_pipeline_system(
         }
         for observation in all_observations
     }
+    association_eligibility_by_observation_id: dict[int, str] = {}
+    for trace in traces:
+        identity_outcome = trace.get("identity_outcome")
+        identity_outcome = (
+            identity_outcome if isinstance(identity_outcome, dict) else {}
+        )
+        observation_id = identity_outcome.get("observation_id")
+        trace_video = trace.get("video")
+        trace_video = trace_video if isinstance(trace_video, dict) else {}
+        database_video_id = trace_video.get("database_video_id")
+        if not (
+            identity_outcome.get("content_disposition") == "accepted_sermon"
+            and identity_outcome.get("observation_status") == "current"
+            and isinstance(observation_id, int)
+            and not identity_outcome.get("effective_profile_ids")
+            and not identity_outcome.get("latest_association_outcome")
+            and isinstance(database_video_id, int)
+        ):
+            continue
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            database_video_id,
+            verify_media=False,
+        )
+        association_eligibility_by_observation_id[observation_id] = (
+            eligibility.reason_code
+        )
     identity_automation_blockers = build_identity_automation_blocker_analysis(
         traces,
         profile_readiness=[
@@ -1105,6 +1132,9 @@ def diagnose_pipeline_system(
             if relation.outcome == "same_speaker"
         ],
         observation_by_fingerprint=observation_by_fingerprint,
+        association_eligibility_by_observation_id=(
+            association_eligibility_by_observation_id
+        ),
         machine_assignments=machine_assignment_report(database)["assignments"],
     )
     report = aggregate_diagnostic_traces(
@@ -5975,7 +6005,6 @@ def _prepare_actionable_review_audio(
             video.id,
             verification_cache=verification_cache,
             verify_media=True,
-            allow_review_required=include_profiled,
         )
         if (
             not eligibility.eligible
@@ -6148,6 +6177,8 @@ def run_identity_workflow_service(
     current_association_reports = shadow_associate_speakers_command(
         youtube_video_id=youtube_video_id,
         all_eligible=all_extractions,
+        unattempted_only=False,
+        neighborhood_profile_id=[],
         include_profiled=False,
         limit=None,
         plan_only=plan_only,
@@ -7043,6 +7074,8 @@ def coordinate_identity_command(
                 shadow_associate_speakers_command(
                     youtube_video_id=youtube_video_id,
                     all_eligible=False,
+                    unattempted_only=False,
+                    neighborhood_profile_id=[],
                     include_profiled=False,
                     limit=None,
                     plan_only=False,
@@ -7268,6 +7301,14 @@ def shadow_associate_speakers_command(
         "--all-eligible",
         help="Evaluate every currently eligible unassigned sermon observation.",
     ),
+    unattempted_only: bool = typer.Option(
+        False,
+        "--unattempted-only",
+        help=(
+            "With --all-eligible, evaluate only current observations with no "
+            "persisted shadow-association attempt."
+        ),
+    ),
     neighborhood_profile_id: list[int] = typer.Option(
         [],
         "--neighborhood-profile-id",
@@ -7360,6 +7401,10 @@ def shadow_associate_speakers_command(
         raise typer.BadParameter(
             "Pass exactly one of --youtube-video-id, --all-eligible, or "
             "--neighborhood-profile-id."
+        )
+    if unattempted_only and not all_eligible:
+        raise typer.BadParameter(
+            "--unattempted-only requires --all-eligible."
         )
     if minimum_same_exemplars > maximum_exemplars:
         raise typer.BadParameter(
@@ -7661,6 +7706,21 @@ def shadow_associate_speakers_command(
     else:
         requested_videos = list(videos_by_id.values())
 
+    attempted_observation_ids: set[int] = set()
+    if unattempted_only:
+        persisted_attempts = load_identity_association_attempts(
+            output_root,
+            database_video_ids={video.id for video in requested_videos},
+        )
+        attempted_observation_ids = {
+            observation_id
+            for attempts in persisted_attempts.values()
+            for attempt in attempts
+            if isinstance(
+                observation_id := attempt.get("observation_id"), int
+            )
+        }
+
     candidates = []
     ineligible_reasons: dict[str, int] = {}
     console.print(
@@ -7679,6 +7739,21 @@ def shadow_associate_speakers_command(
                 f"eligible_so_far={len(candidates)} "
                 f"excluded_so_far={sum(ineligible_reasons.values())}"
             )
+        if unattempted_only:
+            latest_observation = (
+                database.get_latest_speaker_observation_for_video(video.id)
+            )
+            if (
+                latest_observation is not None
+                and latest_observation.id in attempted_observation_ids
+            ):
+                ineligible_reasons["association_already_attempted"] = (
+                    ineligible_reasons.get(
+                        "association_already_attempted", 0
+                    )
+                    + 1
+                )
+                continue
         eligibility = assess_automatic_speaker_observation(
             database,
             video.id,
@@ -7807,6 +7882,12 @@ def shadow_associate_speakers_command(
             "No review-ready profile has enough eligible acoustic exemplars."
         )
     if not candidates:
+        if unattempted_only:
+            console.print(
+                "No currently eligible unattempted observation remains; "
+                "no association artifacts were created."
+            )
+            return ()
         raise typer.BadParameter(
             "No eligible unassigned candidate observation was selected."
         )

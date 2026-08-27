@@ -2033,10 +2033,14 @@ def build_identity_automation_blocker_analysis(
     profile_readiness: Sequence[Mapping[str, Any]] = (),
     reviewed_same_pairs: Sequence[Sequence[str]] = (),
     observation_by_fingerprint: Mapping[str, Mapping[str, Any]] | None = None,
+    association_eligibility_by_observation_id: Mapping[int, str] | None = None,
     machine_assignments: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Join current identity stops to directly observable and contingent work."""
     observation_by_fingerprint = observation_by_fingerprint or {}
+    association_eligibility_by_observation_id = (
+        association_eligibility_by_observation_id or {}
+    )
     same_pairs = {
         frozenset(str(value) for value in pair)
         for pair in reviewed_same_pairs
@@ -2179,19 +2183,67 @@ def build_identity_automation_blocker_analysis(
             target["affected_observation_ids"].add(observation_id)
             target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
         elif unresolved and not outcome:
-            target = row(
-                "association_not_attempted",
-                observed_blocking_location="association_dispatch",
-                observable_next_operation={
-                    "operation": "run_shadow_association",
-                    "implementation_status": "implemented",
-                    "epistemic_status": "directly_observable_next_work",
-                },
-                human_necessity={
-                    "classification": "not_inherently_required",
-                    "basis": "No association attempt is persisted for a current observation.",
-                },
+            eligibility_reason = association_eligibility_by_observation_id.get(
+                observation_id
             )
+            if eligibility_reason is None:
+                target = row(
+                    "association_eligibility_not_observed",
+                    observed_blocking_location="association_eligibility",
+                    observable_next_operation={
+                        "operation": "inspect_association_eligibility",
+                        "implementation_status": "implemented",
+                        "epistemic_status": "directly_observable_next_work",
+                    },
+                    human_necessity={
+                        "classification": "not_established",
+                        "basis": (
+                            "No attempt is persisted, but current candidate "
+                            "eligibility was not supplied to this projection."
+                        ),
+                    },
+                    evidence_scope="incomplete_current_state",
+                )
+            elif eligibility_reason != "eligible":
+                target = row(
+                    "association_prerequisite_unavailable",
+                    observed_blocking_location="association_eligibility",
+                    observable_next_operation={
+                        "operation": "repair_association_prerequisite",
+                        "implementation_status": "partially_implemented",
+                        "epistemic_status": "directly_observable_next_work",
+                    },
+                    human_necessity={
+                        "classification": "not_inherently_required",
+                        "basis": (
+                            "A persisted media, observation, or span prerequisite "
+                            "is unavailable; identity judgment has not been reached."
+                        ),
+                    },
+                    potential_automation_opportunity={
+                        "operation": "route_prerequisite_specific_repair",
+                        "epistemic_status": "recommendation",
+                        "membership_guard_change_implied": False,
+                    },
+                )
+                target["blocking_condition_codes"].add(eligibility_reason)
+            else:
+                target = row(
+                    "association_not_attempted",
+                    observed_blocking_location="association_dispatch",
+                    observable_next_operation={
+                        "operation": "run_unattempted_shadow_associations",
+                        "implementation_status": "implemented",
+                        "epistemic_status": "directly_observable_next_work",
+                    },
+                    human_necessity={
+                        "classification": "not_inherently_required",
+                        "basis": (
+                            "No association attempt is persisted for a current "
+                            "metadata-eligible observation."
+                        ),
+                    },
+                )
             target["affected_observation_ids"].add(observation_id)
             target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
             target["directly_blocked_operation_youtube_video_ids"].add(
