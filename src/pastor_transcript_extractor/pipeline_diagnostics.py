@@ -230,6 +230,17 @@ def _semantic_sha256(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _artifact_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _trace_component_fingerprints(trace: dict[str, Any]) -> dict[str, Any]:
     """Hash behaviorally meaningful trace projections, not whole artifact bytes."""
     stages = {stage.get("key"): stage for stage in trace.get("stages", [])}
@@ -1642,6 +1653,68 @@ def load_identity_association_attempts(
     }
 
 
+def load_identity_association_admissions(
+    root: Path,
+    *,
+    database_video_ids: set[int] | None = None,
+) -> dict[int, dict[str, Any]]:
+    """Load the latest persisted pre-comparison admission per observation."""
+    resolved = root.expanduser().resolve()
+    if not resolved.is_dir():
+        return {}
+    latest: dict[int, dict[str, Any]] = {}
+    for path in sorted(resolved.rglob("admission-*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict) or payload.get("artifact_kind") != (
+            "speaker_profile_shadow_association_admission"
+        ):
+            continue
+        candidate = payload.get("candidate")
+        candidate = candidate if isinstance(candidate, dict) else {}
+        observation_id = candidate.get("observation_id")
+        video_id = candidate.get("video_id")
+        if not isinstance(observation_id, int) or not isinstance(video_id, int):
+            continue
+        if database_video_ids is not None and video_id not in database_video_ids:
+            continue
+        stable_input = payload.get("stable_input")
+        expected_input_fingerprint = payload.get("input_fingerprint")
+        expected_result_sha256 = payload.get("result_sha256")
+        unhashed = dict(payload)
+        unhashed.pop("result_sha256", None)
+        if (
+            not isinstance(stable_input, dict)
+            or not isinstance(expected_input_fingerprint, str)
+            or _artifact_json_sha256(stable_input) != expected_input_fingerprint
+            or not isinstance(expected_result_sha256, str)
+            or _artifact_json_sha256(unhashed) != expected_result_sha256
+        ):
+            continue
+        event = {
+            "artifact_path": str(path),
+            "created_at": payload.get("created_at"),
+            "observation_id": observation_id,
+            "observation_fingerprint": candidate.get("input_fingerprint"),
+            "video_id": video_id,
+            "stage": payload.get("stage"),
+            "reason_code": payload.get("reason_code"),
+            "evidence": payload.get("evidence"),
+            "input_fingerprint": expected_input_fingerprint,
+        }
+        existing = latest.get(observation_id)
+        if existing is None or (
+            str(event.get("created_at") or ""), str(path)
+        ) > (
+            str(existing.get("created_at") or ""),
+            str(existing.get("artifact_path") or ""),
+        ):
+            latest[observation_id] = event
+    return latest
+
+
 def _identity_candidate_funnel_projection(
     attempt: dict[str, Any] | None,
     *,
@@ -2034,12 +2107,18 @@ def build_identity_automation_blocker_analysis(
     reviewed_same_pairs: Sequence[Sequence[str]] = (),
     observation_by_fingerprint: Mapping[str, Mapping[str, Any]] | None = None,
     association_eligibility_by_observation_id: Mapping[int, str] | None = None,
+    association_admission_by_observation_id: Mapping[
+        int, Mapping[str, Any]
+    ] | None = None,
     machine_assignments: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Join current identity stops to directly observable and contingent work."""
     observation_by_fingerprint = observation_by_fingerprint or {}
     association_eligibility_by_observation_id = (
         association_eligibility_by_observation_id or {}
+    )
+    association_admission_by_observation_id = (
+        association_admission_by_observation_id or {}
     )
     same_pairs = {
         frozenset(str(value) for value in pair)
@@ -2183,10 +2262,62 @@ def build_identity_automation_blocker_analysis(
             target["affected_observation_ids"].add(observation_id)
             target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
         elif unresolved and not outcome:
+            admission = association_admission_by_observation_id.get(
+                observation_id
+            )
+            admission = admission if isinstance(admission, Mapping) else {}
             eligibility_reason = association_eligibility_by_observation_id.get(
                 observation_id
             )
-            if eligibility_reason is None:
+            admission_reason = admission.get("reason_code")
+            if isinstance(admission_reason, str) and admission_reason:
+                admission_stage = str(
+                    admission.get("stage") or "association_admission"
+                )
+                blocker_class = {
+                    "metadata_eligibility": (
+                        "association_admission_metadata_blocked"
+                    ),
+                    "verified_media_eligibility": (
+                        "association_admission_media_blocked"
+                    ),
+                    "transcript_span_selection": (
+                        "association_admission_transcript_spans_blocked"
+                    ),
+                    "activity_span_selection": (
+                        "association_admission_activity_spans_blocked"
+                    ),
+                    "membership_filter": (
+                        "association_admission_membership_filter"
+                    ),
+                    "observation_review_filter": (
+                        "association_admission_review_filter"
+                    ),
+                }.get(admission_stage, "association_admission_blocked")
+                target = row(
+                    blocker_class,
+                    observed_blocking_location=admission_stage,
+                    observable_next_operation={
+                        "operation": "repair_or_reassess_association_admission",
+                        "implementation_status": "partially_implemented",
+                        "epistemic_status": "directly_observable_next_work",
+                    },
+                    human_necessity={
+                        "classification": "not_inherently_required",
+                        "basis": (
+                            "A persisted strict-admission outcome stopped the "
+                            "candidate before identity comparison."
+                        ),
+                    },
+                    potential_automation_opportunity={
+                        "operation": "route_admission_reason_specific_repair",
+                        "epistemic_status": "recommendation",
+                        "membership_guard_change_implied": False,
+                    },
+                    evidence_scope="persisted_strict_admission",
+                )
+                target["blocking_condition_codes"].add(admission_reason)
+            elif eligibility_reason is None:
                 target = row(
                     "association_eligibility_not_observed",
                     observed_blocking_location="association_eligibility",

@@ -139,6 +139,9 @@ a metadata-only eligibility check. Dispatchable observations remain
 `association_not_attempted`; missing media, diagnostic spans, or other
 prerequisites are reported separately as
 `association_prerequisite_unavailable` with their observed reason codes.
+When the matcher has performed stricter verified-media, transcript-span, or
+activity-span admission, its persisted outcome takes precedence and is reported
+as a stage-specific `association_admission_*_blocked` class.
 
 ## Compare two diagnostic runs
 

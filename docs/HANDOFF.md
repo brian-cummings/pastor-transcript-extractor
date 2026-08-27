@@ -560,7 +560,10 @@ pte identity shadow-associate-speakers \
 This mode skips previously attempted observation IDs before media eligibility
 and comparison work. Repeating it with unchanged evidence writes no duplicate
 association artifacts; observations missing media or spans remain eligible for
-a later retry after those prerequisites are repaired.
+a later retry after those prerequisites are repaired. Strict-admission failures
+are persisted as content-addressed artifacts, so diagnostics retain the exact
+pre-comparison stage and reason instead of repeatedly reporting them as merely
+unattempted.
 
 Execute the shadow matcher with `--all-eligible`, or use
 `--youtube-video-id VIDEO_ID` for one sermon. It compares an eligible,

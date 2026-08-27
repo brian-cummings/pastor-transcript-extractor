@@ -1053,6 +1053,46 @@ class PipelineDiagnosticTests(unittest.TestCase):
             prerequisite["human_necessity"]["classification"],
         )
 
+    def test_identity_blockers_prefer_persisted_strict_admission(self) -> None:
+        trace = {
+            "video": {"youtube_video_id": "span-failure"},
+            "identity_outcome": {
+                "content_disposition": "accepted_sermon",
+                "observation_status": "current",
+                "observation_id": 9,
+                "effective_profile_ids": [],
+                "latest_association_outcome": None,
+            },
+            "identity_boundary_feedback": {},
+        }
+
+        analysis = build_identity_automation_blocker_analysis(
+            [trace],
+            association_eligibility_by_observation_id={9: "eligible"},
+            association_admission_by_observation_id={
+                9: {
+                    "stage": "activity_span_selection",
+                    "reason_code": "too_few_activity_qualified_spans",
+                }
+            },
+        )
+
+        blockers = {
+            item["blocker_class"]: item
+            for item in analysis["blocker_classes"]
+        }
+        admission = blockers[
+            "association_admission_activity_spans_blocked"
+        ]
+        self.assertNotIn("association_not_attempted", blockers)
+        self.assertEqual(
+            ["too_few_activity_qualified_spans"],
+            admission["blocking_condition_codes"],
+        )
+        self.assertEqual(
+            "persisted_strict_admission", admission["evidence_scope"]
+        )
+
     def test_identity_blockers_keep_retrospective_failure_and_cause_separate(self) -> None:
         trace = {
             "youtube_video_id": "reviewed-video",

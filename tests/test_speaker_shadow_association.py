@@ -8,6 +8,9 @@ from pathlib import Path
 
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
+from pastor_transcript_extractor.pipeline_diagnostics import (
+    load_identity_association_admissions,
+)
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     PairRelation,
     ReviewProvenance,
@@ -39,11 +42,39 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     select_staged_association_profiles,
     summarize_shadow_associations,
     write_shadow_association,
+    write_shadow_association_admission,
 )
 from pastor_transcript_extractor.storage import Database
 
 
 class SpeakerShadowAssociationTests(unittest.TestCase):
+    def test_admission_outcome_is_idempotent_and_diagnostically_loadable(self) -> None:
+        observation = self._observation("admission")
+        kwargs = {
+            "observation": observation,
+            "youtube_video_id": "video-admission",
+            "stage": "transcript_span_selection",
+            "reason_code": "speech_grounded_spans_unavailable",
+            "evidence": {"span_selection_version": "selection-v1"},
+        }
+
+        first = write_shadow_association_admission(self.root, **kwargs)
+        second = write_shadow_association_admission(self.root, **kwargs)
+        loaded = load_identity_association_admissions(
+            self.root,
+            database_video_ids={observation.video_id},
+        )
+
+        self.assertEqual(first, second)
+        self.assertEqual(
+            "speech_grounded_spans_unavailable",
+            loaded[observation.id]["reason_code"],
+        )
+        self.assertEqual(
+            "transcript_span_selection",
+            loaded[observation.id]["stage"],
+        )
+
     def test_candidate_edge_flag_is_promoted_to_report_diagnostics(self) -> None:
         candidate = self._observation("edge-flag")
         flag = {

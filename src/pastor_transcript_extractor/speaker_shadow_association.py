@@ -25,6 +25,9 @@ SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v7"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
     "speaker_shadow_association_input_v6"
 )
+SHADOW_ASSOCIATION_ADMISSION_VERSION = (
+    "speaker_shadow_association_admission_v1"
+)
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
 
@@ -1232,6 +1235,65 @@ def write_shadow_association(
         return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(encoded, encoding="utf-8")
+    return destination
+
+
+def write_shadow_association_admission(
+    output_root: Path,
+    *,
+    observation: SpeakerObservation,
+    youtube_video_id: str,
+    stage: str,
+    reason_code: str,
+    evidence: Mapping[str, Any] | None = None,
+) -> Path:
+    """Persist a fail-closed candidate-admission outcome idempotently."""
+    if not stage or not reason_code:
+        raise ValueError("association admission requires stage and reason code")
+    stable_input = {
+        "admission_version": SHADOW_ASSOCIATION_ADMISSION_VERSION,
+        "candidate": {
+            "video_id": observation.video_id,
+            "youtube_video_id": youtube_video_id,
+            "observation_id": observation.id,
+            "input_fingerprint": observation.input_fingerprint,
+            "extraction_result_id": observation.extraction_result_id,
+        },
+        "stage": stage,
+        "reason_code": reason_code,
+        "evidence": dict(evidence or {}),
+    }
+    input_fingerprint = _sha256_json(stable_input)
+    destination = (
+        output_root.expanduser().resolve()
+        / observation.input_fingerprint[:16]
+        / f"admission-{input_fingerprint}.json"
+    )
+    if destination.exists():
+        payload = json.loads(destination.read_text(encoding="utf-8"))
+        if (
+            not isinstance(payload, dict)
+            or payload.get("input_fingerprint") != input_fingerprint
+            or payload.get("stable_input") != stable_input
+        ):
+            raise ValueError(
+                f"association admission fingerprint collision: {destination}"
+            )
+        return destination
+    payload = {
+        "schema_version": 1,
+        "artifact_kind": "speaker_profile_shadow_association_admission",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "input_fingerprint": input_fingerprint,
+        "stable_input": stable_input,
+        **stable_input,
+    }
+    payload["result_sha256"] = _sha256_json(payload)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return destination
 
 

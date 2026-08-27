@@ -200,6 +200,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_identity_operational_outcome,
     build_systemic_markdown,
     compare_systemic_reports,
+    load_identity_association_admissions,
     load_identity_association_attempts,
     load_identity_boundary_feedback,
 )
@@ -343,6 +344,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     select_staged_association_profiles,
     summarize_shadow_associations,
     write_shadow_association,
+    write_shadow_association_admission,
 )
 from pastor_transcript_extractor.speaker_registry import (
     record_observation_difference,
@@ -943,6 +945,10 @@ def diagnose_pipeline_system(
         identity_feedback_root,
         database_video_ids=diagnostic_video_ids,
     )
+    identity_admissions = load_identity_association_admissions(
+        identity_feedback_root,
+        database_video_ids=diagnostic_video_ids,
+    )
     all_observations = database.list_speaker_observations()
     observations_by_video_id = {}
     for observation in all_observations:
@@ -1135,6 +1141,7 @@ def diagnose_pipeline_system(
         association_eligibility_by_observation_id=(
             association_eligibility_by_observation_id
         ),
+        association_admission_by_observation_id=identity_admissions,
         machine_assignments=machine_assignment_report(database)["assignments"],
     )
     report = aggregate_diagnostic_traces(
@@ -7721,6 +7728,38 @@ def shadow_associate_speakers_command(
             )
         }
 
+    admission_paths: set[Path] = set()
+
+    def persist_admission(
+        video,
+        observation: SpeakerObservation | None,
+        *,
+        stage: str,
+        reason_code: str,
+        media_sha256: str | None = None,
+    ) -> None:
+        if not unattempted_only or plan_only or observation is None:
+            return
+        admission_paths.add(
+            write_shadow_association_admission(
+                output_root,
+                observation=observation,
+                youtube_video_id=video.youtube_video_id,
+                stage=stage,
+                reason_code=reason_code,
+                evidence={
+                    "normalized_audio_sha256": media_sha256,
+                    "span_selection_version": (
+                        TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION
+                    ),
+                    "model_fingerprint": (
+                        backend.spec.fingerprint if backend is not None else None
+                    ),
+                    "policy_artifact_sha256": policy_spec.artifact_sha256,
+                },
+            )
+        )
+
     candidates = []
     ineligible_reasons: dict[str, int] = {}
     console.print(
@@ -7739,10 +7778,12 @@ def shadow_associate_speakers_command(
                 f"eligible_so_far={len(candidates)} "
                 f"excluded_so_far={sum(ineligible_reasons.values())}"
             )
+        latest_observation = (
+            database.get_latest_speaker_observation_for_video(video.id)
+            if unattempted_only
+            else None
+        )
         if unattempted_only:
-            latest_observation = (
-                database.get_latest_speaker_observation_for_video(video.id)
-            )
             if (
                 latest_observation is not None
                 and latest_observation.id in attempted_observation_ids
@@ -7758,10 +7799,17 @@ def shadow_associate_speakers_command(
             database,
             video.id,
             verification_cache=verification_cache,
+            verify_media=False,
         )
         if not eligibility.eligible or eligibility.observation is None:
             ineligible_reasons[eligibility.reason_code] = (
                 ineligible_reasons.get(eligibility.reason_code, 0) + 1
+            )
+            persist_admission(
+                video,
+                latest_observation,
+                stage="metadata_eligibility",
+                reason_code=eligibility.reason_code,
             )
             continue
         if (
@@ -7773,6 +7821,17 @@ def shadow_associate_speakers_command(
             ineligible_reasons["already_profiled"] = (
                 ineligible_reasons.get("already_profiled", 0) + 1
             )
+            persist_admission(
+                video,
+                eligibility.observation,
+                stage="membership_filter",
+                reason_code="already_profiled",
+                media_sha256=(
+                    eligibility.media_artifact.content_sha256
+                    if eligibility.media_artifact is not None
+                    else None
+                ),
+            )
             continue
         review_action = database.get_effective_observation_review_action(
             eligibility.observation.id
@@ -7780,6 +7839,17 @@ def shadow_associate_speakers_command(
         if review_action not in {None, "qualified_single_speaker"}:
             reason = f"reviewed_{review_action}"
             ineligible_reasons[reason] = ineligible_reasons.get(reason, 0) + 1
+            persist_admission(
+                video,
+                eligibility.observation,
+                stage="observation_review_filter",
+                reason_code=reason,
+                media_sha256=(
+                    eligibility.media_artifact.content_sha256
+                    if eligibility.media_artifact is not None
+                    else None
+                ),
+            )
             continue
         eligibility = assess_automatic_speaker_observation(
             database,
@@ -7791,6 +7861,12 @@ def shadow_associate_speakers_command(
             ineligible_reasons[eligibility.reason_code] = (
                 ineligible_reasons.get(eligibility.reason_code, 0) + 1
             )
+            persist_admission(
+                video,
+                latest_observation,
+                stage="verified_media_eligibility",
+                reason_code=eligibility.reason_code,
+            )
             continue
         if eligibility.media_artifact is None:
             ineligible_reasons["verified_normalized_media_unavailable"] = (
@@ -7799,6 +7875,12 @@ def shadow_associate_speakers_command(
                     0,
                 )
                 + 1
+            )
+            persist_admission(
+                video,
+                eligibility.observation,
+                stage="verified_media_eligibility",
+                reason_code="verified_normalized_media_unavailable",
             )
             continue
         audio_path = Path(eligibility.media_artifact.artifact_path)
@@ -7818,6 +7900,13 @@ def shadow_associate_speakers_command(
             ineligible_reasons[reason] = (
                 ineligible_reasons.get(reason, 0) + 1
             )
+            persist_admission(
+                video,
+                eligibility.observation,
+                stage="activity_span_selection",
+                reason_code=reason,
+                media_sha256=eligibility.media_artifact.content_sha256,
+            )
             continue
         if not span_specs:
             ineligible_reasons["speech_grounded_spans_unavailable"] = (
@@ -7825,6 +7914,13 @@ def shadow_associate_speakers_command(
                     "speech_grounded_spans_unavailable", 0
                 )
                 + 1
+            )
+            persist_admission(
+                video,
+                eligibility.observation,
+                stage="transcript_span_selection",
+                reason_code="speech_grounded_spans_unavailable",
+                media_sha256=eligibility.media_artifact.content_sha256,
             )
             continue
         span_specs_by_observation_id[eligibility.observation.id] = span_specs
@@ -7872,6 +7968,11 @@ def shadow_associate_speakers_command(
                 for reason, count in sorted(ineligible_reasons.items())
             )
         )
+    if admission_paths:
+        console.print(
+            "Persisted strict association admissions: "
+            f"excluded={len(admission_paths)}."
+        )
     if plan_only:
         console.print(
             "Plan only; no acoustic comparisons or association artifacts were created."
@@ -7884,8 +7985,8 @@ def shadow_associate_speakers_command(
     if not candidates:
         if unattempted_only:
             console.print(
-                "No currently eligible unattempted observation remains; "
-                "no association artifacts were created."
+                "No unattempted observation passed strict association admission; "
+                "no comparison artifacts were created."
             )
             return ()
         raise typer.BadParameter(
