@@ -126,6 +126,15 @@ candidate regret, refinement/arbitration regret, terminal causal stages, join ev
 identity outcomes, and identity boundary feedback. Unknown fixture partitions remain visible
 rather than joining a named cohort.
 
+The identity section also joins current observation stops, profile-readiness topology,
+reviewed leave-one-out candidate funnels, and machine-policy blocks into an additive
+automation-blocker view. It separates observed blockers from structurally derived next
+operations and engineering recommendations. Counts include only persisted current work;
+possible memberships or proposals after a repair are explicitly contingent and are not
+counted as unlocks. Retrieval failure locations remain observed evidence, while proposed
+explanations remain labeled causal hypotheses. Use `--speaker-evidence-root` when reviewed
+speaker-pair evidence is stored outside `evaluation/speaker-pairs`.
+
 ## Compare two diagnostic runs
 
 After deriving a new systemic report from updated existing artifacts, compare it with an

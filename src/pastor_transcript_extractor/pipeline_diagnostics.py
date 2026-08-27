@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping, Sequence
 
 from pastor_transcript_extractor.fixture_validation import ValidatedFixture
 
@@ -1967,6 +1967,594 @@ def build_identity_operational_outcome(
     }
 
 
+def _review_graph_reinforcement_opportunities(
+    member_fingerprints: Sequence[str],
+    same_pairs: set[frozenset[str]],
+    observation_by_fingerprint: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Find comparisons that would remove known graph bridges if confirmed same."""
+    members = tuple(sorted(set(member_fingerprints)))
+    member_set = set(members)
+    edges = {edge for edge in same_pairs if edge.issubset(member_set)}
+    adjacency = {fingerprint: set() for fingerprint in members}
+    for edge in edges:
+        left, right = tuple(edge)
+        adjacency[left].add(right)
+        adjacency[right].add(left)
+
+    opportunities: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for edge in sorted(tuple(sorted(value)) for value in edges):
+        left, right = edge
+        pending = [left]
+        visited: set[str] = set()
+        while pending:
+            current = pending.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            pending.extend(
+                neighbor
+                for neighbor in adjacency[current]
+                if tuple(sorted((current, neighbor))) != edge
+                and neighbor not in visited
+            )
+        if right in visited:
+            continue
+        other = member_set - visited
+        candidates = sorted(
+            tuple(sorted((candidate_a, candidate_b)))
+            for candidate_a in visited
+            for candidate_b in other
+            if frozenset((candidate_a, candidate_b)) not in edges
+        )
+        if candidates:
+            opportunities.setdefault(candidates[0], set()).add(edge)
+
+    return [
+        {
+            "operation": "compare_existing_profile_members",
+            "epistemic_status": "structurally_derived_opportunity",
+            "result_contingency": (
+                "A same-speaker result would add a redundant graph path; "
+                "the comparison outcome is not predicted."
+            ),
+            "observation_a": dict(observation_by_fingerprint.get(pair[0], {})),
+            "observation_b": dict(observation_by_fingerprint.get(pair[1], {})),
+            "fingerprints": list(pair),
+            "bridge_edges_addressed": [list(edge) for edge in sorted(bridges)],
+        }
+        for pair, bridges in sorted(opportunities.items())
+    ]
+
+
+def build_identity_automation_blocker_analysis(
+    traces: Sequence[Mapping[str, Any]],
+    *,
+    profile_readiness: Sequence[Mapping[str, Any]] = (),
+    reviewed_same_pairs: Sequence[Sequence[str]] = (),
+    observation_by_fingerprint: Mapping[str, Mapping[str, Any]] | None = None,
+    machine_assignments: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Join current identity stops to directly observable and contingent work."""
+    observation_by_fingerprint = observation_by_fingerprint or {}
+    same_pairs = {
+        frozenset(str(value) for value in pair)
+        for pair in reviewed_same_pairs
+        if len(pair) == 2
+    }
+    accepted_unresolved: dict[int, dict[str, Any]] = {}
+    proposals_by_profile: dict[int, set[int]] = {}
+    rows: dict[str, dict[str, Any]] = {}
+
+    def row(code: str, **metadata: Any) -> dict[str, Any]:
+        value = rows.setdefault(
+            code,
+            {
+                "blocker_class": code,
+                "observed_blocking_location": metadata.pop(
+                    "observed_blocking_location", "identity"
+                ),
+                "blocking_condition_codes": set(),
+                "causal_hypotheses": set(),
+                "affected_profile_ids": set(),
+                "affected_observation_ids": set(),
+                "accepted_unresolved_youtube_video_ids": set(),
+                "directly_blocked_operation_youtube_video_ids": set(),
+                "structurally_derived_operations": [],
+                "observable_next_operation": metadata.pop(
+                    "observable_next_operation", None
+                ),
+                "human_necessity": metadata.pop(
+                    "human_necessity",
+                    {
+                        "classification": "not_established",
+                        "basis": "No persisted evidence establishes inherent human necessity.",
+                    },
+                ),
+                "potential_automation_opportunity": metadata.pop(
+                    "potential_automation_opportunity", None
+                ),
+                "evidence_scope": metadata.pop("evidence_scope", "current_state"),
+            },
+        )
+        return value
+
+    for trace in traces:
+        identity = trace.get("identity_outcome")
+        identity = identity if isinstance(identity, Mapping) else {}
+        disposition = str(identity.get("content_disposition") or "unknown")
+        effective_profiles = {
+            value
+            for value in identity.get("effective_profile_ids", []) or []
+            if isinstance(value, int)
+        }
+        observation_id = identity.get("observation_id")
+        youtube_video_id = str(trace.get("youtube_video_id") or "")
+        unresolved = (
+            disposition == "accepted_sermon"
+            and identity.get("observation_status") == "current"
+            and isinstance(observation_id, int)
+            and not effective_profiles
+        )
+        if unresolved:
+            accepted_unresolved[observation_id] = {
+                "youtube_video_id": youtube_video_id,
+                "trace": trace,
+            }
+        latest = identity.get("latest_association_attempt")
+        latest = latest if isinstance(latest, Mapping) else {}
+        outcome = str(identity.get("latest_association_outcome") or "")
+        proposed_profile_id = latest.get("proposed_profile_id")
+        if unresolved and outcome == "proposed_match" and isinstance(
+            proposed_profile_id, int
+        ):
+            proposals_by_profile.setdefault(proposed_profile_id, set()).add(
+                observation_id
+            )
+            target = row(
+                "proposal_awaiting_human_confirmation",
+                observed_blocking_location="membership_firewall",
+                observable_next_operation={
+                    "operation": "prepare_blinded_proposal_confirmation",
+                    "implementation_status": "implemented",
+                    "epistemic_status": "directly_observable_next_work",
+                },
+                human_necessity={
+                    "classification": "required_by_current_membership_policy",
+                    "basis": (
+                        "A proposal is not evidence sufficient for profile membership."
+                    ),
+                },
+                potential_automation_opportunity={
+                    "operation": "automate_review_packet_routing_only",
+                    "epistemic_status": "recommendation",
+                    "membership_guard_change_implied": False,
+                },
+            )
+            target["affected_profile_ids"].add(proposed_profile_id)
+            target["affected_observation_ids"].add(observation_id)
+            target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
+            target["directly_blocked_operation_youtube_video_ids"].add(
+                youtube_video_id
+            )
+        elif unresolved and outcome in {"ambiguous", "ambiguous_match"}:
+            target = row(
+                "comparison_ambiguous",
+                observed_blocking_location="comparison",
+                observable_next_operation={
+                    "operation": "human_pair_review",
+                    "implementation_status": "implemented",
+                    "epistemic_status": "directly_observable_next_work",
+                },
+                human_necessity={
+                    "classification": "likely_required",
+                    "basis": "Persisted acoustic comparison is genuinely ambiguous.",
+                },
+            )
+            target["affected_observation_ids"].add(observation_id)
+            target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
+        elif unresolved and outcome in {"insufficient_evidence", "no_match"}:
+            target = row(
+                "comparison_without_membership_evidence",
+                observed_blocking_location="comparison",
+                observable_next_operation={
+                    "operation": "inspect_or_gather_additional_identity_evidence",
+                    "implementation_status": "partially_implemented",
+                    "epistemic_status": "recommendation",
+                },
+                human_necessity={
+                    "classification": "not_established",
+                    "basis": (
+                        "Abstention establishes insufficient membership evidence, "
+                        "not that only a human can resolve it."
+                    ),
+                },
+            )
+            target["affected_observation_ids"].add(observation_id)
+            target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
+        elif unresolved and not outcome:
+            target = row(
+                "association_not_attempted",
+                observed_blocking_location="association_dispatch",
+                observable_next_operation={
+                    "operation": "run_shadow_association",
+                    "implementation_status": "implemented",
+                    "epistemic_status": "directly_observable_next_work",
+                },
+                human_necessity={
+                    "classification": "not_inherently_required",
+                    "basis": "No association attempt is persisted for a current observation.",
+                },
+            )
+            target["affected_observation_ids"].add(observation_id)
+            target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
+            target["directly_blocked_operation_youtube_video_ids"].add(
+                youtube_video_id
+            )
+
+        funnel_review = identity.get("candidate_funnel_review")
+        funnel_review = (
+            funnel_review if isinstance(funnel_review, Mapping) else {}
+        )
+        funnel_classification = str(
+            funnel_review.get("classification") or ""
+        )
+        if (
+            funnel_review.get("status") == "observed"
+            and funnel_review.get("observed_failure_location")
+        ):
+            funnel_code = {
+                "correct_profile_ineligible": "retrospective_profile_ineligible",
+                "filtered_by_readiness_policy_before_retrieval": (
+                    "retrospective_readiness_policy_filter"
+                ),
+                "acoustic_retrieval_miss": "retrospective_retrieval_miss",
+                "retrieved_below_shortlist_cutoff": "retrospective_retrieval_miss",
+                "selected_profile_not_compared": "retrospective_selected_not_compared",
+                "compared_but_abstained": "retrospective_comparison_abstention",
+                "compared_and_proposed_incorrectly": (
+                    "retrospective_incorrect_proposal"
+                ),
+                "profile_redirect_resolution_issue": (
+                    "retrospective_profile_resolution_issue"
+                ),
+            }.get(funnel_classification)
+            exclusions = (
+                funnel_review.get("evidence", {}).get("profile_exclusions", [])
+                if isinstance(funnel_review.get("evidence"), Mapping)
+                else []
+            )
+            exclusion_reasons = {
+                str(reason)
+                for exclusion in exclusions or []
+                if isinstance(exclusion, Mapping)
+                for reason in exclusion.get("reason_codes", []) or []
+            }
+            if (
+                funnel_code == "retrospective_profile_ineligible"
+                and "fewer_than_required_eligible_acoustic_exemplars"
+                in exclusion_reasons
+            ):
+                funnel_code = "retrospective_acoustic_exemplar_unavailable"
+            if funnel_code:
+                target = row(
+                    funnel_code,
+                    observed_blocking_location=str(
+                        funnel_review.get("observed_failure_location")
+                    ),
+                    evidence_scope="retrospective_reviewed_identity",
+                    observable_next_operation={
+                        "operation": "investigate_persisted_funnel_failure",
+                        "implementation_status": "diagnostic_only",
+                        "epistemic_status": "recommendation",
+                    },
+                    human_necessity={
+                        "classification": (
+                            "likely_required"
+                            if funnel_code
+                            == "retrospective_comparison_abstention"
+                            and outcome in {"ambiguous", "ambiguous_match"}
+                            else "not_established"
+                        ),
+                        "basis": (
+                            "The failure location is observed retrospectively; "
+                            "its applicability to current unresolved sermons and "
+                            "the need for human judgment are not inferred."
+                        ),
+                    },
+                )
+                target["blocking_condition_codes"].add(
+                    funnel_classification
+                )
+                target["blocking_condition_codes"].update(exclusion_reasons)
+                target["causal_hypotheses"].update(
+                    str(value)
+                    for value in funnel_review.get("causal_hypotheses", []) or []
+                    if str(value)
+                )
+                if isinstance(observation_id, int):
+                    target["affected_observation_ids"].add(observation_id)
+                resolution = funnel_review.get("resolution")
+                resolution = resolution if isinstance(resolution, Mapping) else {}
+                target_profile_id = resolution.get("effective_profile_id")
+                if isinstance(target_profile_id, int):
+                    target["affected_profile_ids"].add(target_profile_id)
+
+        boundary = trace.get("identity_boundary_feedback")
+        boundary = boundary if isinstance(boundary, Mapping) else {}
+        if int(boundary.get("unconsumed_same_edge_signal_count") or 0) > 0:
+            target = row(
+                "unresolved_identity_boundary_feedback",
+                observed_blocking_location="identity_boundary_review",
+                observable_next_operation={
+                    "operation": "apply_or_adjudicate_identity_boundary_review",
+                    "implementation_status": "implemented",
+                    "epistemic_status": "directly_observable_next_work",
+                },
+                human_necessity={
+                    "classification": "case_dependent",
+                    "basis": (
+                        "Automatic guards may retain, trim, or require review; the "
+                        "persisted record determines the case."
+                    ),
+                },
+            )
+            if isinstance(observation_id, int):
+                target["affected_observation_ids"].add(observation_id)
+            if unresolved:
+                target["accepted_unresolved_youtube_video_ids"].add(
+                    youtube_video_id
+                )
+
+    profiles_by_name: dict[str, list[int]] = {}
+    profile_chains: list[dict[str, Any]] = []
+    for profile in profile_readiness:
+        profile_id = profile.get("profile_id")
+        if not isinstance(profile_id, int):
+            continue
+        names = [
+            str(value) for value in profile.get("normalized_names", []) or []
+            if str(value)
+        ]
+        if len(names) == 1:
+            profiles_by_name.setdefault(names[0], []).append(profile_id)
+        blockers = [
+            str(value) for value in profile.get("automatic_blockers", []) or []
+        ]
+        if not blockers:
+            continue
+        proposal_observation_ids = proposals_by_profile.get(profile_id, set())
+        proposal_video_ids = {
+            accepted_unresolved[value]["youtube_video_id"]
+            for value in proposal_observation_ids
+            if value in accepted_unresolved
+        }
+        structural_opportunities = (
+            _review_graph_reinforcement_opportunities(
+                profile.get("member_fingerprints", []) or [],
+                same_pairs,
+                observation_by_fingerprint,
+            )
+            if "reviewed_same_graph_contains_bridge" in blockers
+            else []
+        )
+        profile_chains.append(
+            {
+                "profile_id": profile_id,
+                "observed_blocker_chain": blockers,
+                "automatic_profile_ready": False,
+                "directly_blocked_proposal_observation_ids": sorted(
+                    proposal_observation_ids
+                ),
+                "directly_blocked_proposal_youtube_video_ids": sorted(
+                    proposal_video_ids
+                ),
+                "structurally_derived_next_operations": structural_opportunities,
+                "cascade_interpretation": (
+                    "Only current proposals are directly blocked. Further proposals "
+                    "or memberships are contingent and are not counted as unlocks."
+                ),
+            }
+        )
+        for blocker in blockers:
+            blocker_class = {
+                "fewer_than_three_profile_members": "insufficient_independent_exemplars",
+                "fewer_than_three_distinct_recordings": "insufficient_independent_exemplars",
+                "fewer_than_three_reviewed_members": "insufficient_independent_exemplars",
+                "reviewed_same_graph_contains_bridge": "review_graph_bridge",
+                "reviewed_same_graph_disconnected": "review_graph_disconnected",
+                "attribution_spans_multiple_profiles": "duplicate_profile_identity",
+                "discovery_candidate_unconfirmed": "provisional_profile_unconfirmed",
+                "internal_reviewed_difference": "reviewed_identity_conflict",
+                "conflicting_explicit_attribution": "reviewed_identity_conflict",
+                "conflicting_name_claim_review": "reviewed_identity_conflict",
+            }.get(blocker, "profile_readiness_policy")
+            target = row(
+                blocker_class,
+                observed_blocking_location="profile_readiness",
+                observable_next_operation={
+                    "operation": (
+                        "compare_existing_profile_members"
+                        if blocker_class == "review_graph_bridge"
+                        else "reconcile_profiles"
+                        if blocker_class == "duplicate_profile_identity"
+                        else "gather_or_repair_profile_evidence"
+                    ),
+                    "implementation_status": (
+                        "structurally_identifiable"
+                        if blocker_class == "review_graph_bridge"
+                        else "partially_implemented"
+                    ),
+                    "epistemic_status": "structurally_derived_opportunity",
+                },
+                human_necessity={
+                    "classification": (
+                        "required_before_conflict_resolution"
+                        if blocker_class == "reviewed_identity_conflict"
+                        else "not_established"
+                    ),
+                    "basis": (
+                        "The blocker is observed; the result of additional evidence "
+                        "or reconciliation is not known."
+                    ),
+                },
+                potential_automation_opportunity={
+                    "operation": (
+                        "nominate_reinforcement_comparison"
+                        if blocker_class == "review_graph_bridge"
+                        else "generate_reconciliation_or_evidence_repair_plan"
+                    ),
+                    "epistemic_status": "recommendation",
+                    "membership_guard_change_implied": False,
+                },
+            )
+            target["blocking_condition_codes"].add(blocker)
+            target["affected_profile_ids"].add(profile_id)
+            target["affected_observation_ids"].update(
+                value
+                for value in profile.get("member_observation_ids", []) or []
+                if isinstance(value, int)
+            )
+            target["accepted_unresolved_youtube_video_ids"].update(
+                proposal_video_ids
+            )
+            target["directly_blocked_operation_youtube_video_ids"].update(
+                proposal_video_ids
+            )
+            if blocker_class == "review_graph_bridge":
+                target["structurally_derived_operations"].extend(
+                    {**operation, "profile_id": profile_id}
+                    for operation in structural_opportunities
+                )
+
+    duplicate_groups = [
+        {"normalized_name": name, "profile_ids": sorted(profile_ids)}
+        for name, profile_ids in sorted(profiles_by_name.items())
+        if len(profile_ids) > 1
+    ]
+
+    machine_blocked = row(
+        "machine_policy_circuit_breaker_or_revocation",
+        observed_blocking_location="machine_assignment_policy",
+        observable_next_operation={
+            "operation": "review_contradiction_and_policy_provenance",
+            "implementation_status": "implemented_as_audit",
+            "epistemic_status": "directly_observable_next_work",
+        },
+        human_necessity={
+            "classification": "required_before_automatic_reenable",
+            "basis": "Persisted contradiction or revocation evidence trips fail-closed policy.",
+        },
+    )
+    for assignment in machine_assignments:
+        if assignment.get("state") not in {"blocked_policy", "revoked"}:
+            continue
+        profile_id = assignment.get("profile_id")
+        observation_id = assignment.get("observation_id")
+        if isinstance(profile_id, int):
+            machine_blocked["affected_profile_ids"].add(profile_id)
+        if isinstance(observation_id, int):
+            machine_blocked["affected_observation_ids"].add(observation_id)
+            unresolved_entry = accepted_unresolved.get(observation_id)
+            if unresolved_entry is not None:
+                machine_blocked[
+                    "accepted_unresolved_youtube_video_ids"
+                ].add(unresolved_entry["youtube_video_id"])
+        youtube_video_id = assignment.get("youtube_video_id")
+        if isinstance(youtube_video_id, str):
+            machine_blocked["directly_blocked_operation_youtube_video_ids"].add(
+                youtube_video_id
+            )
+    if not machine_blocked["affected_observation_ids"]:
+        rows.pop("machine_policy_circuit_breaker_or_revocation", None)
+
+    finalized_rows = []
+    for value in rows.values():
+        for key in (
+            "blocking_condition_codes",
+            "causal_hypotheses",
+            "affected_profile_ids",
+            "affected_observation_ids",
+            "accepted_unresolved_youtube_video_ids",
+            "directly_blocked_operation_youtube_video_ids",
+        ):
+            value[key] = sorted(value[key])
+        value["affected_profile_count"] = len(value["affected_profile_ids"])
+        value["affected_observation_count"] = len(
+            value["affected_observation_ids"]
+        )
+        value["accepted_unresolved_sermon_count"] = len(
+            value["accepted_unresolved_youtube_video_ids"]
+        )
+        value["directly_blocked_operation_count"] = len(
+            value["directly_blocked_operation_youtube_video_ids"]
+        )
+        value["structurally_derived_operation_count"] = len(
+            value["structurally_derived_operations"]
+        )
+        value["unlock_interpretation"] = (
+            "Direct counts include only persisted current work. Any cascade after "
+            "the next operation is contingent and is not counted."
+        )
+        finalized_rows.append(value)
+    finalized_rows.sort(
+        key=lambda value: (
+            -value["directly_blocked_operation_count"],
+            -value["accepted_unresolved_sermon_count"],
+            -value["structurally_derived_operation_count"],
+            value["blocker_class"],
+        )
+    )
+    investigation_priorities = [
+        {
+            "blocker_class": value["blocker_class"],
+            "directly_blocked_operation_count": value[
+                "directly_blocked_operation_count"
+            ],
+            "accepted_unresolved_sermon_count": value[
+                "accepted_unresolved_sermon_count"
+            ],
+            "structurally_derived_operation_count": value[
+                "structurally_derived_operation_count"
+            ],
+            "next_operation": value.get("observable_next_operation"),
+            "priority_basis": (
+                "Ordered by directly observed blocked work, then unresolved accepted "
+                "sermons; this is not an expected-yield score."
+            ),
+        }
+        for value in finalized_rows
+        if value["directly_blocked_operation_count"] > 0
+        or value["structurally_derived_operation_count"] > 0
+    ]
+    return {
+        "schema_version": 1,
+        "domain": "identity",
+        "epistemic_contract": {
+            "observed": "Persisted state or policy condition.",
+            "structural_inference": (
+                "A deterministic operation is identifiable, but its result is unknown."
+            ),
+            "recommendation": (
+                "An engineering experiment; safety and yield are not established."
+            ),
+            "speculative_cascades_counted": False,
+        },
+        "accepted_unresolved_sermon_count": len(accepted_unresolved),
+        "blocker_classes": finalized_rows,
+        "profile_blocker_chains": sorted(
+            profile_chains, key=lambda value: value["profile_id"]
+        ),
+        "duplicate_profile_groups": duplicate_groups,
+        "investigation_priorities": investigation_priorities,
+        "interpretation": (
+            "This section identifies where current automation stops and which next "
+            "operation is observable or structurally derivable. It does not relax "
+            "identity membership policy or predict contingent cascade yield."
+        ),
+    }
+
+
 def _identity_boundary_feedback_projection(
     events: list[dict[str, Any]],
     *,
@@ -3050,6 +3638,7 @@ def aggregate_diagnostic_traces(
     missing: list[dict[str, str]] | None = None,
     scope: str = "reviewed_fixtures",
     population_summary: dict[str, Any] | None = None,
+    identity_automation_blockers: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     observed = Counter(
         (trace.get("earliest_observed_failure") or {}).get("stage") or "none"
@@ -3519,6 +4108,16 @@ def aggregate_diagnostic_traces(
                 "is reviewed identity evidence. Event volume is reported separately."
             ),
         },
+        "automation_blocker_analysis": {
+            "schema_version": 1,
+            "domains": {
+                "identity": dict(identity_automation_blockers or {})
+            },
+            "interpretation": (
+                "Domain projections preserve observed conditions, structural "
+                "inferences, and recommendations as separate epistemic claims."
+            ),
+        },
         "join_observability": {
             "joined_candidate_count": joined_candidate_count,
             "traces_with_joined_candidates": traces_with_joined_candidates,
@@ -3847,6 +4446,107 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         key=lambda item: (-item[1], item[0]),
     ):
         lines.append(f"| {basis} | {count} |")
+    blocker_analysis = report.get("automation_blocker_analysis", {})
+    identity_blockers = (
+        blocker_analysis.get("domains", {}).get("identity", {})
+        if isinstance(blocker_analysis, dict)
+        else {}
+    )
+    lines.extend(
+        [
+            "",
+            "## Identity automation blockers and opportunity",
+            "",
+            identity_blockers.get(
+                "interpretation", "No identity automation-blocker analysis reported."
+            ),
+            "",
+            "Directly blocked work is counted separately from contingent cascade. "
+            "Rows must not be summed because one profile or sermon can have a chain "
+            "of blockers.",
+            "",
+            "| Blocker | Observed at | Conditions | Profiles | Observations | "
+            "Accepted unresolved | Direct work | Structural work | Human necessity | "
+            "Next operation | Causal hypotheses |",
+            "|---|---|---|---:|---:|---:|---:|---:|---|---|---|",
+        ]
+    )
+    for blocker in identity_blockers.get("blocker_classes", []) or []:
+        human = blocker.get("human_necessity") or {}
+        operation = blocker.get("observable_next_operation") or {}
+        lines.append(
+            f"| {blocker.get('blocker_class', 'unknown')} | "
+            f"{blocker.get('observed_blocking_location', 'unknown')} | "
+            f"{', '.join(blocker.get('blocking_condition_codes', [])) or 'none'} | "
+            f"{blocker.get('affected_profile_count', 0)} | "
+            f"{blocker.get('affected_observation_count', 0)} | "
+            f"{blocker.get('accepted_unresolved_sermon_count', 0)} | "
+            f"{blocker.get('directly_blocked_operation_count', 0)} | "
+            f"{blocker.get('structurally_derived_operation_count', 0)} | "
+            f"{human.get('classification', 'not_established')} | "
+            f"{operation.get('operation', 'none')} | "
+            f"{', '.join(blocker.get('causal_hypotheses', [])) or 'none'} |"
+        )
+    priorities = identity_blockers.get("investigation_priorities", []) or []
+    if priorities:
+        lines.extend(
+            [
+                "",
+                "### Evidence-backed investigation order",
+                "",
+                "This ordering uses directly observed blocked work, not predicted yield.",
+                "",
+                "| Blocker | Direct work | Structural work | Accepted unresolved | "
+                "Investigation |",
+                "|---|---:|---:|---:|---|",
+            ]
+        )
+        for priority in priorities:
+            operation = priority.get("next_operation") or {}
+            lines.append(
+                f"| {priority.get('blocker_class', 'unknown')} | "
+                f"{priority.get('directly_blocked_operation_count', 0)} | "
+                f"{priority.get('structurally_derived_operation_count', 0)} | "
+                f"{priority.get('accepted_unresolved_sermon_count', 0)} | "
+                f"{operation.get('operation', 'none')} |"
+            )
+    chains = [
+        chain
+        for chain in identity_blockers.get("profile_blocker_chains", []) or []
+        if chain.get("directly_blocked_proposal_observation_ids")
+        or chain.get("structurally_derived_next_operations")
+    ]
+    if chains:
+        lines.extend(
+            [
+                "",
+                "### Profile blocker chains with current work",
+                "",
+                "| Profile | Observed blocker chain | Direct proposals | Structural next work |",
+                "|---:|---|---:|---:|",
+            ]
+        )
+        for chain in chains:
+            structural_work = []
+            for operation in chain.get("structurally_derived_next_operations", []):
+                left = operation.get("observation_a", {})
+                right = operation.get("observation_b", {})
+                left_label = left.get("youtube_video_id") or left.get(
+                    "observation_id"
+                )
+                right_label = right.get("youtube_video_id") or right.get(
+                    "observation_id"
+                )
+                structural_work.append(
+                    f"compare {left_label or operation.get('fingerprints', ['?'])[0]} "
+                    f"to {right_label or operation.get('fingerprints', ['?', '?'])[1]}"
+                )
+            lines.append(
+                f"| {chain.get('profile_id')} | "
+                f"{', '.join(chain.get('observed_blocker_chain', [])) or 'none'} | "
+                f"{len(chain.get('directly_blocked_proposal_observation_ids', []))} | "
+                f"{'; '.join(structural_work) or 'none'} |"
+            )
     identity_feedback = report.get("identity_boundary_feedback_summary", {})
     lines.extend(
         [

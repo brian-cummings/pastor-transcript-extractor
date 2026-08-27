@@ -196,6 +196,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_comparison_markdown,
     build_diagnostic_markdown,
     build_diagnostic_trace,
+    build_identity_automation_blocker_analysis,
     build_identity_operational_outcome,
     build_systemic_markdown,
     compare_systemic_reports,
@@ -867,6 +868,11 @@ def diagnose_pipeline_system(
             "sermon-edge advisories."
         ),
     ),
+    speaker_evidence_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs"),
+        "--speaker-evidence-root",
+        help="Reviewed speaker evidence used to reconstruct current profile topology.",
+    ),
     all_existing: bool = typer.Option(
         True,
         "--all-existing/--fixtures-only",
@@ -937,8 +943,9 @@ def diagnose_pipeline_system(
         identity_feedback_root,
         database_video_ids=diagnostic_video_ids,
     )
+    all_observations = database.list_speaker_observations()
     observations_by_video_id = {}
-    for observation in database.list_speaker_observations():
+    for observation in all_observations:
         existing = observations_by_video_id.get(observation.video_id)
         if existing is None or observation.id > existing.id:
             observations_by_video_id[observation.video_id] = observation
@@ -1052,6 +1059,54 @@ def diagnose_pipeline_system(
             without_extraction_status_counts[status] = (
                 without_extraction_status_counts.get(status, 0) + 1
             )
+    try:
+        reviewed_speaker_evidence = load_reviewed_speaker_evidence(
+            speaker_evidence_root.expanduser().resolve()
+        )
+        profile_readiness = assess_profile_association_readiness(
+            database, reviewed_speaker_evidence
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(
+            f"Unable to build identity automation-blocker analysis: {error}"
+        ) from error
+    observation_by_fingerprint = {
+        observation.input_fingerprint: {
+            "observation_id": observation.id,
+            "database_video_id": observation.video_id,
+            "youtube_video_id": (
+                videos_by_id[observation.video_id].youtube_video_id
+                if observation.video_id in videos_by_id
+                else None
+            ),
+        }
+        for observation in all_observations
+    }
+    identity_automation_blockers = build_identity_automation_blocker_analysis(
+        traces,
+        profile_readiness=[
+            {
+                "profile_id": profile.profile_id,
+                "member_observation_ids": list(profile.member_observation_ids),
+                "member_fingerprints": list(profile.member_fingerprints),
+                "recording_count": profile.recording_count,
+                "normalized_names": list(profile.normalized_names),
+                "automatic_profile_ready": profile.automatic_profile_ready,
+                "automatic_blockers": list(profile.automatic_blockers),
+                "certified_exemplar_observation_ids": list(
+                    profile.certified_exemplar_observation_ids
+                ),
+            }
+            for profile in profile_readiness
+        ],
+        reviewed_same_pairs=[
+            sorted(relation.fingerprints)
+            for relation in reviewed_speaker_evidence.pair_relations.values()
+            if relation.outcome == "same_speaker"
+        ],
+        observation_by_fingerprint=observation_by_fingerprint,
+        machine_assignments=machine_assignment_report(database)["assignments"],
+    )
     report = aggregate_diagnostic_traces(
         traces,
         missing=missing,
@@ -1072,6 +1127,7 @@ def diagnose_pipeline_system(
             if all_existing
             else {"reviewed_fixture_count": len(fixtures)}
         ),
+        identity_automation_blockers=identity_automation_blockers,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "system-diagnostics.json"

@@ -11,6 +11,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_comparison_markdown,
     build_diagnostic_markdown,
     build_diagnostic_trace,
+    build_identity_automation_blocker_analysis,
     build_identity_operational_outcome,
     build_systemic_outcome_mermaid,
     build_systemic_markdown,
@@ -908,6 +909,164 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual("not_evaluated", review["status"])
         self.assertEqual(
             "retrospective_membership_leakage", review["classification"]
+        )
+
+    def test_identity_blockers_expose_bridge_chain_without_predicting_unlock(self) -> None:
+        trace = {
+            "youtube_video_id": "candidate-video",
+            "identity_outcome": {
+                "content_disposition": "accepted_sermon",
+                "observation_status": "current",
+                "observation_id": 4,
+                "effective_profile_ids": [],
+                "latest_association_outcome": "proposed_match",
+                "latest_association_attempt": {"proposed_profile_id": 136},
+            },
+            "identity_boundary_feedback": {},
+        }
+        analysis = build_identity_automation_blocker_analysis(
+            [trace],
+            profile_readiness=[{
+                "profile_id": 136,
+                "member_observation_ids": [1, 2, 3],
+                "member_fingerprints": ["a", "b", "c"],
+                "normalized_names": ["pastor example"],
+                "automatic_blockers": [
+                    "reviewed_same_graph_contains_bridge"
+                ],
+            }],
+            reviewed_same_pairs=[("a", "b"), ("b", "c")],
+            observation_by_fingerprint={
+                "a": {"observation_id": 1, "youtube_video_id": "video-a"},
+                "b": {"observation_id": 2, "youtube_video_id": "video-b"},
+                "c": {"observation_id": 3, "youtube_video_id": "video-c"},
+            },
+        )
+
+        blockers = {
+            item["blocker_class"]: item
+            for item in analysis["blocker_classes"]
+        }
+        bridge = blockers["review_graph_bridge"]
+        self.assertEqual(1, bridge["directly_blocked_operation_count"])
+        self.assertEqual(1, bridge["accepted_unresolved_sermon_count"])
+        self.assertEqual(1, bridge["structurally_derived_operation_count"])
+        self.assertEqual(
+            136, bridge["structurally_derived_operations"][0]["profile_id"]
+        )
+        chain = analysis["profile_blocker_chains"][0]
+        opportunity = chain["structurally_derived_next_operations"][0]
+        self.assertEqual(["a", "c"], opportunity["fingerprints"])
+        self.assertEqual(
+            "structurally_derived_opportunity",
+            opportunity["epistemic_status"],
+        )
+        self.assertFalse(
+            analysis["epistemic_contract"]["speculative_cascades_counted"]
+        )
+
+    def test_identity_blockers_separate_implementation_stop_from_ambiguity(self) -> None:
+        traces = [
+            {
+                "youtube_video_id": "not-attempted",
+                "identity_outcome": {
+                    "content_disposition": "accepted_sermon",
+                    "observation_status": "current",
+                    "observation_id": 1,
+                    "effective_profile_ids": [],
+                    "latest_association_outcome": None,
+                },
+                "identity_boundary_feedback": {},
+            },
+            {
+                "youtube_video_id": "ambiguous",
+                "identity_outcome": {
+                    "content_disposition": "accepted_sermon",
+                    "observation_status": "current",
+                    "observation_id": 2,
+                    "effective_profile_ids": [],
+                    "latest_association_outcome": "ambiguous",
+                    "latest_association_attempt": {},
+                },
+                "identity_boundary_feedback": {},
+            },
+        ]
+
+        analysis = build_identity_automation_blocker_analysis(traces)
+
+        blockers = {
+            item["blocker_class"]: item
+            for item in analysis["blocker_classes"]
+        }
+        self.assertEqual(
+            "not_inherently_required",
+            blockers["association_not_attempted"]["human_necessity"][
+                "classification"
+            ],
+        )
+        self.assertEqual(
+            "likely_required",
+            blockers["comparison_ambiguous"]["human_necessity"][
+                "classification"
+            ],
+        )
+
+    def test_identity_blockers_keep_retrospective_failure_and_cause_separate(self) -> None:
+        trace = {
+            "youtube_video_id": "reviewed-video",
+            "identity_outcome": {
+                "content_disposition": "accepted_sermon",
+                "observation_status": "current",
+                "observation_id": 8,
+                "effective_profile_ids": [7],
+                "latest_association_outcome": "insufficient_evidence",
+                "candidate_funnel_review": {
+                    "status": "observed",
+                    "observed_failure_location": "eligibility",
+                    "classification": "correct_profile_ineligible",
+                    "resolution": {"effective_profile_id": 7},
+                    "evidence": {
+                        "profile_exclusions": [{
+                            "profile_id": 7,
+                            "reason_codes": [
+                                "fewer_than_required_eligible_acoustic_exemplars"
+                            ],
+                        }],
+                    },
+                    "causal_hypotheses": ["exemplar_preparation_gap"],
+                },
+            },
+            "identity_boundary_feedback": {},
+        }
+
+        analysis = build_identity_automation_blocker_analysis([trace])
+
+        blockers = {
+            item["blocker_class"]: item
+            for item in analysis["blocker_classes"]
+        }
+        blocker = blockers["retrospective_acoustic_exemplar_unavailable"]
+        self.assertEqual("retrospective_reviewed_identity", blocker["evidence_scope"])
+        self.assertEqual([7], blocker["affected_profile_ids"])
+        self.assertEqual(["exemplar_preparation_gap"], blocker["causal_hypotheses"])
+        self.assertEqual(0, blocker["accepted_unresolved_sermon_count"])
+        self.assertEqual(0, blocker["directly_blocked_operation_count"])
+
+    def test_systemic_markdown_includes_additive_automation_blocker_section(self) -> None:
+        analysis = build_identity_automation_blocker_analysis([])
+        report = aggregate_diagnostic_traces(
+            [], identity_automation_blockers=analysis
+        )
+
+        markdown = build_systemic_markdown(report)
+
+        self.assertIn("## Identity automation blockers and opportunity", markdown)
+        self.assertFalse(
+            analysis["epistemic_contract"]["speculative_cascades_counted"]
+        )
+        self.assertEqual(
+            analysis,
+            report["automation_blocker_analysis"]["domains"]["identity"],
         )
 
     def test_candidate_regret_distinguishes_discovery_and_ranking(self) -> None:
