@@ -2089,7 +2089,13 @@ def build_identity_automation_blocker_analysis(
             if isinstance(value, int)
         }
         observation_id = identity.get("observation_id")
-        youtube_video_id = str(trace.get("youtube_video_id") or "")
+        video = trace.get("video")
+        video = video if isinstance(video, Mapping) else {}
+        youtube_video_id = str(
+            video.get("youtube_video_id")
+            or trace.get("youtube_video_id")
+            or ""
+        )
         unresolved = (
             disposition == "accepted_sermon"
             and identity.get("observation_status") == "current"

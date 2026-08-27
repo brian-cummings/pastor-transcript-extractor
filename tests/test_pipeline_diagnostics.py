@@ -913,7 +913,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
 
     def test_identity_blockers_expose_bridge_chain_without_predicting_unlock(self) -> None:
         trace = {
-            "youtube_video_id": "candidate-video",
+            "video": {"youtube_video_id": "candidate-video"},
             "identity_outcome": {
                 "content_disposition": "accepted_sermon",
                 "observation_status": "current",
@@ -950,6 +950,10 @@ class PipelineDiagnosticTests(unittest.TestCase):
         bridge = blockers["review_graph_bridge"]
         self.assertEqual(1, bridge["directly_blocked_operation_count"])
         self.assertEqual(1, bridge["accepted_unresolved_sermon_count"])
+        self.assertEqual(
+            ["candidate-video"],
+            bridge["accepted_unresolved_youtube_video_ids"],
+        )
         self.assertEqual(1, bridge["structurally_derived_operation_count"])
         self.assertEqual(
             136, bridge["structurally_derived_operations"][0]["profile_id"]
