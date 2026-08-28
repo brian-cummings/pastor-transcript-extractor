@@ -266,6 +266,45 @@ class SpeakerPairReviewTests(unittest.TestCase):
         self.assertEqual("audio_plus_visual", event["review_evidence_mode"])
         self.assertIsNone(submission.fixture_path)
 
+    def test_source_context_makes_review_identity_only(self):
+        draft = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+            metadata_a={
+                "title": "Opening Message",
+                "channel": "Example Church",
+                "source_url": "https://www.youtube.com/@example",
+            },
+            metadata_b={
+                "title": "Sunday Sermon",
+                "channel": "Another Church",
+            },
+        )
+
+        packet = draft.packet_path.read_text(encoding="utf-8")
+        self.assertEqual(
+            ReviewEvidenceMode.AUDIO_PLUS_VISUAL,
+            draft.payload["review_evidence_mode"],
+        )
+        self.assertFalse(draft.payload["blinding"]["packet_hides_video_ids"])
+        self.assertFalse(
+            draft.payload["blinding"]["packet_hides_titles_names_and_channels"]
+        )
+        self.assertIn("watch?v=video-a", packet)
+        self.assertIn("Opening Message", packet)
+        self.assertIn("Example Church", packet)
+        self.assertIn("https://www.youtube.com/@example", packet)
+        self.assertEqual(10, packet.count('class="source-link"'))
+        submission = self._submit(draft)
+        self.assertEqual("identity_only", submission.fixture_status)
+        self.assertIsNone(submission.fixture_path)
+
     def test_prepared_observation_is_reused_by_pair_review(self):
         prepared = prepare_review_observation(
             observation=self.observation_a,

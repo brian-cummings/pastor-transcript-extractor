@@ -3837,6 +3837,28 @@ def review_observation(
             webbrowser.open(packet.packet_path.resolve().as_uri())
 
 
+def _speaker_pair_video_metadata(database: Any, video: Any) -> dict[str, object]:
+    source_lookup = getattr(database, "get_source_by_id", None)
+    source = (
+        source_lookup(video.source_id)
+        if callable(source_lookup) and hasattr(video, "source_id")
+        else None
+    )
+    published_at = getattr(video, "published_at", None)
+    source_type = getattr(source, "source_type", None)
+    return {
+        "title": getattr(video, "title", None),
+        "channel": getattr(video, "channel_name", None),
+        "published_at": (
+            published_at.isoformat()
+            if hasattr(published_at, "isoformat")
+            else published_at
+        ),
+        "source_url": getattr(source, "url", None),
+        "source_type": getattr(source_type, "value", source_type),
+    }
+
+
 @identity_app.command(
     "review-speaker-pair",
     help="Prepare and adjudicate an exact-span speaker-pair review.",
@@ -3938,6 +3960,8 @@ def review_speaker_pair(
             span_cache=AudioSpanCache(cache_dir.expanduser().resolve()),
             evaluation_root=evaluation_root.expanduser().resolve(),
             selection_manifest=selection_manifest,
+            metadata_a=_speaker_pair_video_metadata(database, videos[0]),
+            metadata_b=_speaker_pair_video_metadata(database, videos[1]),
         )
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         raise typer.BadParameter(str(error)) from error

@@ -373,15 +373,35 @@ def create_review_draft(
     min_non_silent_fraction: float = DEFAULT_MIN_NON_SILENT_FRACTION,
     fallback_candidate_multiplier: int = 3,
     selection_manifest: dict[str, object] | None = None,
+    metadata_a: dict[str, object] | None = None,
+    metadata_b: dict[str, object] | None = None,
 ) -> ReviewDraft:
     if observation_a.input_fingerprint == observation_b.input_fingerprint:
         raise ValueError("a pair review requires two distinct observations")
+    has_source_metadata = any(
+        value is not None and str(value).strip()
+        for metadata in (metadata_a, metadata_b)
+        if metadata
+        for value in metadata.values()
+    )
     if min_qualified_spans is None:
         min_qualified_spans = span_count
     ordered_inputs = sorted(
         (
-            (observation_a.input_fingerprint, video_id_a, observation_a, audio_path_a),
-            (observation_b.input_fingerprint, video_id_b, observation_b, audio_path_b),
+            (
+                observation_a.input_fingerprint,
+                video_id_a,
+                observation_a,
+                audio_path_a,
+                metadata_a,
+            ),
+            (
+                observation_b.input_fingerprint,
+                video_id_b,
+                observation_b,
+                audio_path_b,
+                metadata_b,
+            ),
         ),
         key=lambda value: value[0],
     )
@@ -422,14 +442,23 @@ def create_review_draft(
     )
     if existing_draft is not None:
         return existing_draft
-    evidence_mode = _review_evidence_mode(selection_manifest)
+    evidence_mode = (
+        ReviewEvidenceMode.AUDIO_PLUS_VISUAL
+        if has_source_metadata
+        else _review_evidence_mode(selection_manifest)
+    )
     presentation_sources = ["source_a", "source_b"]
     rng = random.Random(pair_id)
     rng.shuffle(presentation_sources)
 
     observations: dict[str, Any] = {}
     presentation: dict[str, Any] = {}
-    for source_key, (video_id, observation, audio_path) in source_observations.items():
+    for source_key, (
+        video_id,
+        observation,
+        audio_path,
+        source_metadata,
+    ) in source_observations.items():
         try:
             prepared = prepare_review_observation(
                 observation=observation,
@@ -464,6 +493,14 @@ def create_review_draft(
             "clips": [_draft_clip(span) for span in spans],
             "clip_selection": clip_selection,
         }
+        if source_metadata:
+            normalized_metadata = {
+                str(key): value
+                for key, value in source_metadata.items()
+                if value is not None and str(value).strip()
+            }
+            if normalized_metadata:
+                observations[source_key]["source_metadata"] = normalized_metadata
 
     for label, source_key in zip(("A", "B"), presentation_sources):
         clips = list(observations[source_key]["clips"])
@@ -482,8 +519,9 @@ def create_review_draft(
         "blinding": {
             "packet_hides_video_ids": (
                 evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
+                and not has_source_metadata
             ),
-            "packet_hides_titles_names_and_channels": True,
+            "packet_hides_titles_names_and_channels": not has_source_metadata,
             "presentation_order_deterministic": True,
         },
         "observations": observations,
@@ -698,12 +736,38 @@ def _review_packet(draft: dict[str, Any]) -> str:
     for label in ("A", "B"):
         source_key = draft["presentation"][label]["source_key"]
         observation = draft["observations"][source_key]
+        source_metadata = observation.get("source_metadata", {})
+        metadata_rows = "".join(
+            f"<dt>{html.escape(str(key).replace('_', ' ').title())}</dt>"
+            f"<dd>{html.escape(str(value))}</dd>"
+            for key, value in source_metadata.items()
+            if value is not None and str(value).strip()
+        )
+        video_url = (
+            "https://www.youtube.com/watch?v="
+            f"{observation['youtube_video_id']}"
+        )
+        context = (
+            (
+                '<div class="source-context">'
+                f'<a target="_blank" rel="noopener noreferrer" '
+                f'href="{html.escape(video_url, quote=True)}">Open YouTube video</a>'
+                + (f"<dl>{metadata_rows}</dl>" if metadata_rows else "")
+                + "</div>"
+            )
+            if source_metadata
+            or evidence_mode == ReviewEvidenceMode.AUDIO_PLUS_VISUAL
+            else ""
+        )
         players: list[str] = []
         for index, clip_hash in enumerate(draft["presentation"][label]["clips"], start=1):
             clip = clips_by_hash[clip_hash]
             source = Path(clip["wav_path"]).expanduser().resolve().as_uri()
             video_link = ""
-            if evidence_mode == ReviewEvidenceMode.AUDIO_PLUS_VISUAL:
+            if (
+                evidence_mode == ReviewEvidenceMode.AUDIO_PLUS_VISUAL
+                or source_metadata
+            ):
                 start_seconds = max(0, int(float(clip["start_seconds"])))
                 video_url = (
                     "https://www.youtube.com/watch?v="
@@ -722,7 +786,8 @@ def _review_packet(draft: dict[str, Any]) -> str:
                 f"</audio>{video_link}</div></li>"
             )
         groups.append(
-            f'<section><h2>Observation {label}</h2><ol>{"".join(players)}</ol></section>'
+            f'<section><h2>Observation {label}</h2>{context}'
+            f'<ol>{"".join(players)}</ol></section>'
         )
     return f"""<!doctype html>
 <html lang="en">
@@ -736,13 +801,22 @@ def _review_packet(draft: dict[str, Any]) -> str:
     li {{ margin: .8rem 0; display: grid; grid-template-columns: 6rem 1fr; align-items: center; }}
     audio {{ width: 100%; }}
     .source-link {{ display: inline-block; margin-top: .35rem; }}
+    .source-context {{ margin-bottom: 1rem; }}
+    dl {{ display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; }}
+    dt {{ font-weight: 600; }}
+    dd {{ margin: 0; }}
     .warning {{ background: #fff4d6; border-left: 4px solid #b77900; padding: .8rem; }}
   </style>
 </head>
 <body>
   <h1>Speaker pair review</h1>
   <p class="warning">{(
-      "Judge only the voices in these clips. Names, titles, channels, and metadata are intentionally hidden."
+      "Judge the principal voices in the clips; source context is provided for review."
+      if any(
+          observation.get("source_metadata")
+          for observation in draft["observations"].values()
+      )
+      else "Judge only the voices in these clips. Names, titles, channels, and metadata are intentionally hidden."
       if evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
       else "Timestamp links are available for visual identity confirmation. Titles, names, and channels are not shown in this packet."
   )}</p>
@@ -909,7 +983,8 @@ def _record_activity_rejection(
     *,
     pair_id: str,
     source_observations: dict[
-        str, tuple[str, SpeakerObservation, Path]
+        str,
+        tuple[str, SpeakerObservation, Path, dict[str, object] | None],
     ],
     failed_source_key: str,
     error: InsufficientSpeechActivityError,
@@ -925,7 +1000,12 @@ def _record_activity_rejection(
                 "end_seconds": observation.end_seconds,
             },
         }
-        for source_key, (video_id, observation, _audio_path) in source_observations.items()
+        for source_key, (
+            video_id,
+            observation,
+            _audio_path,
+            _source_metadata,
+        ) in source_observations.items()
     }
     observations[failed_source_key]["clip_selection"] = error.summary
     stable = {
