@@ -103,6 +103,51 @@ def _profile_evidence(
     return bool(reasons), sorted(set(reasons))
 
 
+def _target_profile_automatic_ready(
+    report: Mapping[str, Any], proposed_profile_id: int | None
+) -> bool | None:
+    if proposed_profile_id is None:
+        return None
+    for raw in report.get("profiles", []) or []:
+        if not isinstance(raw, Mapping) or raw.get("profile_id") != proposed_profile_id:
+            continue
+        readiness = raw.get("profile_readiness")
+        if not isinstance(readiness, Mapping):
+            return None
+        value = readiness.get("automatic_profile_ready")
+        return value if isinstance(value, bool) else None
+    return None
+
+
+def _legacy_actionable_proposal_ids(state: Mapping[str, Any]) -> set[int]:
+    actionable: set[int] = set()
+    latest = state.get("latest_observations")
+    latest = latest if isinstance(latest, Mapping) else {}
+    for raw_id, raw_state in latest.items():
+        if not isinstance(raw_state, Mapping):
+            continue
+        try:
+            observation_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        ready = raw_state.get("target_profile_automatic_ready")
+        if not isinstance(ready, bool):
+            artifact_path = raw_state.get("association_artifact_path")
+            if isinstance(artifact_path, str):
+                try:
+                    report = json.loads(Path(artifact_path).read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    report = None
+                if isinstance(report, Mapping):
+                    proposed = report.get("proposed_profile_id")
+                    ready = _target_profile_automatic_ready(
+                        report, proposed if isinstance(proposed, int) else None
+                    )
+        if ready is True:
+            actionable.add(observation_id)
+    return actionable
+
+
 def build_profile_leverage_snapshot(
     database: Database,
     *,
@@ -161,13 +206,18 @@ def build_profile_leverage_snapshot(
         )
         outcome = str(report.get("outcome") or "unknown")
         proposed = report.get("proposed_profile_id")
+        proposed_profile_id = proposed if isinstance(proposed, int) else None
+        target_profile_automatic_ready = _target_profile_automatic_ready(
+            report, proposed_profile_id
+        )
         state = {
             "observation_id": observation_id,
             "database_video_id": video.id,
             "youtube_video_id": video.youtube_video_id,
             "effective_profile_ids": effective_ids,
             "association_outcome": outcome,
-            "proposed_profile_id": proposed if isinstance(proposed, int) else None,
+            "proposed_profile_id": proposed_profile_id,
+            "target_profile_automatic_ready": target_profile_automatic_ready,
             "association_artifact_path": report.get("artifact_path"),
             "neighborhood_reason_codes": reasons,
         }
@@ -184,6 +234,14 @@ def build_profile_leverage_snapshot(
         for key, state in latest_states.items()
         if state["association_outcome"] == "proposed_match"
         and state["proposed_profile_id"] in relevant_ids
+        and not state["effective_profile_ids"]
+    )
+    actionable_proposed = sorted(
+        int(key)
+        for key, state in latest_states.items()
+        if state["association_outcome"] == "proposed_match"
+        and state["proposed_profile_id"] in relevant_ids
+        and state["target_profile_automatic_ready"] is True
         and not state["effective_profile_ids"]
     )
     abstained = sorted(
@@ -217,6 +275,7 @@ def build_profile_leverage_snapshot(
             ),
             "resolved_observation_ids": resolved,
             "proposal_observation_ids": proposed,
+            "actionable_proposal_observation_ids": actionable_proposed,
             "abstention_observation_ids": abstained,
             "acoustic_exemplar_excluded_observation_ids": exemplar_excluded,
             "latest_observations": latest_states,
@@ -277,6 +336,18 @@ def compare_profile_leverage_snapshots(
     new_proposals = ids(after_state, "proposal_observation_ids") - ids(
         before_state, "proposal_observation_ids"
     )
+    before_actionable = (
+        ids(before_state, "actionable_proposal_observation_ids")
+        if "actionable_proposal_observation_ids" in before_state
+        else _legacy_actionable_proposal_ids(before_state)
+    )
+    after_actionable = (
+        ids(after_state, "actionable_proposal_observation_ids")
+        if "actionable_proposal_observation_ids" in after_state
+        else _legacy_actionable_proposal_ids(after_state)
+    )
+    proposals_made_actionable = after_actionable - before_actionable
+    enabled_proposals = new_proposals | proposals_made_actionable
     after_observations = {
         int(value)
         for value in (after_state.get("latest_observations") or {})
@@ -321,8 +392,13 @@ def compare_profile_leverage_snapshots(
         "observed": {
             "newly_resolved_observation_ids": sorted(newly_resolved),
             "newly_resolved_sermon_count": len(newly_resolved),
-            "downstream_proposal_observation_ids": sorted(new_proposals),
-            "downstream_proposals_enabled": len(new_proposals),
+            "downstream_proposal_observation_ids": sorted(enabled_proposals),
+            "downstream_proposals_enabled": len(enabled_proposals),
+            "new_proposal_observation_ids": sorted(new_proposals),
+            "proposals_made_actionable_observation_ids": sorted(
+                proposals_made_actionable
+            ),
+            "proposals_made_actionable": len(proposals_made_actionable),
             "abstention_observation_ids_eliminated": sorted(eliminated_abstentions),
             "abstentions_eliminated": len(eliminated_abstentions),
             "exemplar_exclusion_observation_ids_repaired": sorted(repaired_exemplars),

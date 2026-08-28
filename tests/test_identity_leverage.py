@@ -74,17 +74,27 @@ class IdentityLeverageTests(unittest.TestCase):
         outcome: str,
         proposed: int | None = None,
         exemplar_excluded: bool = False,
+        automatic_profile_ready: bool | None = None,
+        created_at: str = "2026-08-26T12:00:00+00:00",
+        suffix: str = "",
     ) -> None:
         payload = {
             "artifact_kind": "speaker_profile_shadow_association",
-            "created_at": "2026-08-26T12:00:00+00:00",
+            "created_at": created_at,
             "candidate": {
                 "observation_id": observation.id,
                 "video_id": observation.video_id,
             },
             "outcome": outcome,
             "proposed_profile_id": proposed,
-            "profiles": [{"profile_id": profile_id}],
+            "profiles": [{
+                "profile_id": profile_id,
+                **({
+                    "profile_readiness": {
+                        "automatic_profile_ready": automatic_profile_ready,
+                    }
+                } if automatic_profile_ready is not None else {}),
+            }],
             "routing": {
                 "candidate_funnel": {
                     "retrieval_candidates": [{
@@ -99,7 +109,7 @@ class IdentityLeverageTests(unittest.TestCase):
                 }
             },
         }
-        (self.associations / f"{observation.id}.json").write_text(
+        (self.associations / f"{observation.id}{suffix}.json").write_text(
             json.dumps(payload), encoding="utf-8"
         )
 
@@ -261,6 +271,52 @@ class IdentityLeverageTests(unittest.TestCase):
         self.assertEqual(
             1.0, result["observed"]["sermons_resolved_per_sermon_level_review"]
         )
+
+    def test_readiness_promotion_counts_existing_proposal_made_actionable(self) -> None:
+        target = create_anonymous_profile(
+            self.database,
+            reviewer="human",
+            reason="test",
+            review_event_key="profile-target",
+        )
+        observation = self._observation("candidate")
+        self._report(
+            observation,
+            profile_id=target.id,
+            outcome="proposed_match",
+            proposed=target.id,
+            automatic_profile_ready=False,
+            suffix="-blocked",
+        )
+        before = build_profile_leverage_snapshot(
+            self.database,
+            association_root=self.associations.parent,
+            profile_ids=[target.id],
+            decision_kind="readiness_promotion",
+        )
+        self._report(
+            observation,
+            profile_id=target.id,
+            outcome="proposed_match",
+            proposed=target.id,
+            automatic_profile_ready=True,
+            created_at="2026-08-26T12:01:00+00:00",
+            suffix="-ready",
+        )
+        after = build_profile_leverage_snapshot(
+            self.database,
+            association_root=self.associations.parent,
+            profile_ids=[target.id],
+            decision_kind="readiness_promotion",
+            profile_level_decisions=1,
+        )
+
+        result = compare_profile_leverage_snapshots(before, after)
+
+        self.assertEqual(0, result["observed"]["newly_resolved_sermon_count"])
+        self.assertEqual(1, result["observed"]["downstream_proposals_enabled"])
+        self.assertEqual(1, result["observed"]["proposals_made_actionable"])
+        self.assertEqual([], result["observed"]["new_proposal_observation_ids"])
 
 
 if __name__ == "__main__":
