@@ -1,0 +1,219 @@
+{
+  "approval_confirmed": true,
+  "clip_quality": {
+    "A": {
+      "clip_selection": {
+        "attempts": [
+          {
+            "accepted": true,
+            "end_seconds": 703.612,
+            "non_silent_fraction": 0.83,
+            "reason": "qualified",
+            "rms_dbfs": -23.23561018535743,
+            "start_seconds": 691.612,
+            "wav_sha256": "2524912cc224b76ab04a3e5716f137b9d158a40a7040ac9e087af391341a334e"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1507.026,
+            "non_silent_fraction": 0.895,
+            "reason": "qualified",
+            "rms_dbfs": -23.913257293820323,
+            "start_seconds": 1495.026,
+            "wav_sha256": "ca2b0db4a1384abeb905783e6b16e3f4974494a7b8cf6ec80808e1c88d63a2f8"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 2310.44,
+            "non_silent_fraction": 0.88,
+            "reason": "qualified",
+            "rms_dbfs": -22.217687669719453,
+            "start_seconds": 2298.44,
+            "wav_sha256": "63e711634ce29b99015f27404d4dbc0dc3f360203cc92068144d06af774ea476"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 3113.854,
+            "non_silent_fraction": 0.8125,
+            "reason": "qualified",
+            "rms_dbfs": -21.72473308868742,
+            "start_seconds": 3101.854,
+            "wav_sha256": "7248dd326e5ff2f225d2907c00fcc44dc004701645c373130cb55bea939af585"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 3917.268,
+            "non_silent_fraction": 0.7025,
+            "reason": "qualified",
+            "rms_dbfs": -24.555719472882956,
+            "start_seconds": 3905.268,
+            "wav_sha256": "fc698729cdcd8660682915fc6ba14c08c249b6f60d67a9172b35e2900551ca54"
+          }
+        ],
+        "candidate_clip_count": 17,
+        "minimum_clip_count": 5,
+        "policy_version": "speaker_pair_clip_activity_v3",
+        "prepared_clip_count": 5,
+        "qualified_clip_count": 5,
+        "recording_activity_profile": {
+          "frame_count": 178228,
+          "frame_duration_ms": 30.0,
+          "policy_version": "speaker_pair_clip_activity_v3",
+          "reference_dbfs": -19.840121761950204,
+          "reference_percentile": 0.9,
+          "silence_threshold_dbfs": -50.0,
+          "source_audio_sha256": "578b26e0b33774d069983c7c6e514344d00607d96c7a2a1090907f59297e02e0"
+        },
+        "requested_clip_count": 5,
+        "selection_outcome": "complete",
+        "thresholds": {
+          "min_non_silent_fraction": 0.4,
+          "min_rms_dbfs": -52.0
+        }
+      },
+      "clips": [
+        {
+          "non_silent_fraction": 0.83,
+          "rms_dbfs": -23.23561018535743,
+          "wav_sha256": "2524912cc224b76ab04a3e5716f137b9d158a40a7040ac9e087af391341a334e"
+        },
+        {
+          "non_silent_fraction": 0.895,
+          "rms_dbfs": -23.913257293820323,
+          "wav_sha256": "ca2b0db4a1384abeb905783e6b16e3f4974494a7b8cf6ec80808e1c88d63a2f8"
+        },
+        {
+          "non_silent_fraction": 0.88,
+          "rms_dbfs": -22.217687669719453,
+          "wav_sha256": "63e711634ce29b99015f27404d4dbc0dc3f360203cc92068144d06af774ea476"
+        },
+        {
+          "non_silent_fraction": 0.8125,
+          "rms_dbfs": -21.72473308868742,
+          "wav_sha256": "7248dd326e5ff2f225d2907c00fcc44dc004701645c373130cb55bea939af585"
+        },
+        {
+          "non_silent_fraction": 0.7025,
+          "rms_dbfs": -24.555719472882956,
+          "wav_sha256": "fc698729cdcd8660682915fc6ba14c08c249b6f60d67a9172b35e2900551ca54"
+        }
+      ]
+    },
+    "B": {
+      "clip_selection": {
+        "attempts": [
+          {
+            "accepted": true,
+            "end_seconds": 450.455,
+            "non_silent_fraction": 0.5925,
+            "reason": "qualified",
+            "rms_dbfs": -27.233911007970548,
+            "start_seconds": 438.455,
+            "wav_sha256": "c0169da4cbea935592dda89f2c1df28b30e583c7447f38c06e2e3e38d2956ae9"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 958.705,
+            "non_silent_fraction": 0.7475,
+            "reason": "qualified",
+            "rms_dbfs": -29.594200452113498,
+            "start_seconds": 946.705,
+            "wav_sha256": "991a705b17a36379a944790f049d9fa543b4756058e7dd5de8ce0dd0495b08e3"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1466.955,
+            "non_silent_fraction": 0.82,
+            "reason": "qualified",
+            "rms_dbfs": -19.981619448294715,
+            "start_seconds": 1454.955,
+            "wav_sha256": "90d0a33c065e4e7c882164f3e9c7e1625f5e58bf36b000cc3b98828ed1135889"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1975.205,
+            "non_silent_fraction": 0.635,
+            "reason": "qualified",
+            "rms_dbfs": -22.07124481875728,
+            "start_seconds": 1963.205,
+            "wav_sha256": "3669dcb717a636e7e9ab58b9d201a890ae815e0e03fe0142666339186a1f9583"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 2483.456,
+            "non_silent_fraction": 0.6125,
+            "reason": "qualified",
+            "rms_dbfs": -22.307182206155925,
+            "start_seconds": 2471.456,
+            "wav_sha256": "40ab6df0317bf0ec81796224e1abd6214bcd8bb3a17d19922f25c609c51f7c81"
+          }
+        ],
+        "candidate_clip_count": 17,
+        "minimum_clip_count": 5,
+        "policy_version": "speaker_pair_clip_activity_v3",
+        "prepared_clip_count": 5,
+        "qualified_clip_count": 5,
+        "recording_activity_profile": {
+          "frame_count": 104158,
+          "frame_duration_ms": 30.0,
+          "policy_version": "speaker_pair_clip_activity_v3",
+          "reference_dbfs": -19.141125659846463,
+          "reference_percentile": 0.9,
+          "silence_threshold_dbfs": -50.0,
+          "source_audio_sha256": "881f8c4c4a5b58c66c2b342c3911391a78cf8a444d86ad14e5eee431760cd4e8"
+        },
+        "requested_clip_count": 5,
+        "selection_outcome": "complete",
+        "thresholds": {
+          "min_non_silent_fraction": 0.4,
+          "min_rms_dbfs": -52.0
+        }
+      },
+      "clips": [
+        {
+          "non_silent_fraction": 0.5925,
+          "rms_dbfs": -27.233911007970548,
+          "wav_sha256": "c0169da4cbea935592dda89f2c1df28b30e583c7447f38c06e2e3e38d2956ae9"
+        },
+        {
+          "non_silent_fraction": 0.7475,
+          "rms_dbfs": -29.594200452113498,
+          "wav_sha256": "991a705b17a36379a944790f049d9fa543b4756058e7dd5de8ce0dd0495b08e3"
+        },
+        {
+          "non_silent_fraction": 0.82,
+          "rms_dbfs": -19.981619448294715,
+          "wav_sha256": "90d0a33c065e4e7c882164f3e9c7e1625f5e58bf36b000cc3b98828ed1135889"
+        },
+        {
+          "non_silent_fraction": 0.635,
+          "rms_dbfs": -22.07124481875728,
+          "wav_sha256": "3669dcb717a636e7e9ab58b9d201a890ae815e0e03fe0142666339186a1f9583"
+        },
+        {
+          "non_silent_fraction": 0.6125,
+          "rms_dbfs": -22.307182206155925,
+          "wav_sha256": "40ab6df0317bf0ec81796224e1abd6214bcd8bb3a17d19922f25c609c51f7c81"
+        }
+      ]
+    }
+  },
+  "draft_id": "9a7235635f0832e9f9f02ff495dd51ce9d80497489f5417034c1a03006c869a1",
+  "event_kind": "speaker_pair_human_review",
+  "fixture_eligible": false,
+  "identity_evidence_eligible": true,
+  "notes": "",
+  "pair_id": "pair-b66d18f728ced597",
+  "pair_judgment": "same_speaker",
+  "qualification": {
+    "A": "qualified_single_speaker",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "0b39f16cb0a38ed90c4b728a776e6a524d18a90792baafb542f9d4798829f739",
+  "review_evidence_mode": "audio_plus_visual",
+  "reviewed_at": "2026-08-28T00:47:04.643416+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v3"
+}
