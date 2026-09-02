@@ -27,12 +27,33 @@ from pastor_transcript_extractor.cli import (
     validate_source_families,
 )
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.speaker_shadow_association import (
     DISCOVERY_PROFILE_REASON as SHARED_DISCOVERY_PROFILE_REASON,
 )
 
 
 class IdentityRunTests(unittest.TestCase):
+    def test_shadow_profile_discovery_plan_runs_without_association_options(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            Database(Path(tempdir) / "app.db").initialize()
+
+            result = CliRunner().invoke(
+                app,
+                [
+                    "identity",
+                    "shadow-discover-profiles",
+                    "--plan-only",
+                    "--base-dir",
+                    tempdir,
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertIn("eligible_unassigned=0", result.output)
+
     def test_ready_association_review_is_tracked_as_prospective(self) -> None:
         context = _review_leverage_context(
             {

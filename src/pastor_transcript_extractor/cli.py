@@ -5241,7 +5241,6 @@ def shadow_discover_profiles_command(
             database,
             video.id,
             verification_cache=verification_cache,
-            allow_review_required=include_profiled,
             verify_media=False,
         )
         if (
