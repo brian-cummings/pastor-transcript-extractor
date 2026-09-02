@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from pastor_transcript_extractor.config import _detect_yt_dlp_js_runtime
 from pastor_transcript_extractor.media import (
+    AUDIO_NORMALIZATION_TIMEOUT_SECONDS,
     NoCaptionsAvailableError,
     VideoNotYetAvailableError,
     VideoUnavailableError,
@@ -16,6 +17,7 @@ from pastor_transcript_extractor.media import (
     YtDlpRateLimitError,
     _run_yt_dlp,
     download_source_audio,
+    normalize_audio,
 )
 
 
@@ -137,6 +139,46 @@ class YtDlpRuntimeDetectionTests(unittest.TestCase):
     def test_returns_none_when_no_supported_runtime_exists(self) -> None:
         with patch("pastor_transcript_extractor.config.shutil.which", return_value=None):
             self.assertIsNone(_detect_yt_dlp_js_runtime())
+
+
+class AudioNormalizationTests(unittest.TestCase):
+    def test_ffmpeg_cannot_read_terminal_input_and_has_a_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.webm"
+            output = root / "normalized.wav"
+            source.write_bytes(b"source")
+
+            def complete_normalization(*_args, **_kwargs):
+                output.write_bytes(b"normalized")
+                return subprocess.CompletedProcess(["ffmpeg"], 0)
+
+            with patch(
+                "pastor_transcript_extractor.media.subprocess.run",
+                side_effect=complete_normalization,
+            ) as run:
+                result = normalize_audio(source, output, "ffmpeg")
+
+        self.assertEqual(output, result)
+        command = run.call_args.args[0]
+        self.assertIn("-nostdin", command)
+        self.assertIn("-xerror", command)
+        self.assertIs(subprocess.DEVNULL, run.call_args.kwargs["stdin"])
+        self.assertEqual(
+            AUDIO_NORMALIZATION_TIMEOUT_SECONDS,
+            run.call_args.kwargs["timeout"],
+        )
+
+    def test_normalization_timeout_propagates_as_subprocess_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "pastor_transcript_extractor.media.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["ffmpeg"], 600),
+        ), self.assertRaises(subprocess.TimeoutExpired):
+            normalize_audio(
+                Path(tmp) / "source.webm",
+                Path(tmp) / "normalized.wav",
+                "ffmpeg",
+            )
 
 
 if __name__ == "__main__":

@@ -28,6 +28,9 @@ class YtDlpRateLimitError(YtDlpError):
     pass
 
 
+AUDIO_NORMALIZATION_TIMEOUT_SECONDS = 600
+
+
 def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) -> None:
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode == 0:
@@ -204,6 +207,8 @@ def normalize_audio(input_path: Path, output_path: Path, ffmpeg_bin: str) -> Pat
         "-hide_banner",
         "-loglevel",
         "error",
+        "-nostdin",
+        "-xerror",
         "-y",
         "-i",
         str(input_path),
@@ -214,7 +219,12 @@ def normalize_audio(input_path: Path, output_path: Path, ffmpeg_bin: str) -> Pat
         "-vn",
         str(output_path),
     ]
-    subprocess.run(command, check=True)
+    subprocess.run(
+        command,
+        check=True,
+        stdin=subprocess.DEVNULL,
+        timeout=AUDIO_NORMALIZATION_TIMEOUT_SECONDS,
+    )
     if not output_path.exists():
         raise FileNotFoundError(f"ffmpeg did not create normalized audio at {output_path}")
     return output_path
