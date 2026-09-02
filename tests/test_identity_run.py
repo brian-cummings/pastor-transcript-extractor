@@ -411,6 +411,7 @@ class IdentityRunTests(unittest.TestCase):
             Path("baseline.json"),
             leverage_snapshot.call_args_list[1].kwargs["baseline"],
         )
+        self.assertEqual(2, associate.call_count)
         self.assertFalse(associate.call_args.kwargs["plan_only"])
         self.assertTrue(associate.call_args.kwargs["all_eligible"])
         self.assertEqual(

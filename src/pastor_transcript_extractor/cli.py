@@ -6127,6 +6127,145 @@ def _prepare_actionable_review_audio(
     )
 
 
+def _repair_exemplars_and_retry_association(
+    *,
+    pending_exemplar_repairs: Sequence[Any],
+    current_association_reports: tuple[Path, ...],
+    youtube_video_id: str | None,
+    all_extractions: bool,
+    paths: AppPaths,
+    base_dir: Path | None,
+    state_cache: ExemplarPreparationStateCache,
+) -> tuple[Path, ...]:
+    profile_ids = tuple(
+        sorted({state.profile_id for state in pending_exemplar_repairs})
+    )
+    baseline: Path | None = None
+    try:
+        baseline = profile_leverage_snapshot_command(
+            profile_id=list(profile_ids),
+            decision_kind="exemplar_media_fix",
+            baseline=None,
+            profile_level_decisions=0,
+            sermon_level_reviews=0,
+            prospective_correct=0,
+            prospective_incorrect=0,
+            association_root=Path(
+                "evaluation/speaker-associations/shadow-runs"
+            ),
+            output_root=Path("evaluation/identity-leverage"),
+            base_dir=base_dir,
+        )
+    except (OSError, ValueError, typer.BadParameter) as error:
+        console.print(
+            "Exemplar repair leverage baseline was unavailable; repair "
+            f"will continue without impact measurement: {error}"
+        )
+    repair_video_ids = {state.video_id for state in pending_exemplar_repairs}
+    console.print(
+        "Exemplar repair: running existing canonical preparation for "
+        f"{len(repair_video_ids)} pending media blocker(s) across profile(s) "
+        + ", ".join(str(value) for value in profile_ids)
+        + "."
+    )
+    retry_association = False
+    try:
+        repair_result = prepare_canonical_audio(
+            Database(paths.database),
+            paths,
+            cache_root=Path("evaluation/speaker-pairs/cache"),
+            video_ids=repair_video_ids,
+            all_eligible=False,
+            dry_run=False,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        console.print(
+            "Exemplar repair deferred after a transient preparation "
+            f"failure: {type(error).__name__}: {error}"
+        )
+    else:
+        repair_items_by_video_id = {
+            item.video_id: item for item in repair_result.items
+        }
+        for state in pending_exemplar_repairs:
+            item = repair_items_by_video_id.get(state.video_id)
+            state_cache.record_repair_attempt(
+                state,
+                outcome=item.outcome if item is not None else "not_selected",
+                detail=(
+                    item.reason
+                    if item is not None
+                    else "no eligible repair input"
+                ),
+            )
+        retry_association = bool(repair_result.counts.get("prepared"))
+        console.print(
+            "Exemplar repair outcomes: "
+            + ", ".join(
+                f"{outcome}={count}"
+                for outcome, count in repair_result.counts.items()
+                if count
+            )
+        )
+    if retry_association:
+        console.print(
+            "Exemplar repair changed canonical inputs; retrying the existing "
+            "association pass once in this identity run."
+        )
+        retried_reports = shadow_associate_speakers_command(
+            youtube_video_id=youtube_video_id,
+            all_eligible=all_extractions,
+            unattempted_only=False,
+            neighborhood_profile_id=[],
+            include_profiled=False,
+            limit=None,
+            plan_only=False,
+            minimum_profile_members=3,
+            maximum_exemplars=3,
+            minimum_same_exemplars=2,
+            maximum_global_profiles=3,
+            model_path=Path(
+                "evaluation/speaker-pairs/models/"
+                "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+            ),
+            model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+            policy_path=Path(
+                "evaluation/speaker-pairs/policies/"
+                "campplus-development-candidate-v1.json"
+            ),
+            evaluation_root=Path("evaluation/speaker-pairs"),
+            cache_dir=Path("evaluation/speaker-pairs/cache"),
+            output_root=Path(
+                "evaluation/speaker-associations/shadow-runs"
+            ),
+            base_dir=base_dir,
+        )
+        if retried_reports:
+            current_association_reports = retried_reports
+    if baseline is not None:
+        try:
+            profile_leverage_snapshot_command(
+                profile_id=list(profile_ids),
+                decision_kind="exemplar_media_fix",
+                baseline=baseline,
+                profile_level_decisions=0,
+                sermon_level_reviews=0,
+                prospective_correct=0,
+                prospective_incorrect=0,
+                association_root=Path(
+                    "evaluation/speaker-associations/shadow-runs"
+                ),
+                output_root=Path("evaluation/identity-leverage"),
+                base_dir=base_dir,
+            )
+        except (OSError, ValueError, typer.BadParameter) as error:
+            console.print(
+                "Exemplar repair completed, but observed leverage could not "
+                f"be recorded: {error}"
+            )
+    return current_association_reports
+
+
 def run_identity_workflow_service(
     *,
     youtube_video_id: str | None,
@@ -6222,90 +6361,6 @@ def run_identity_workflow_service(
             f"unchanged={reconciliation.unchanged}."
         )
 
-    exemplar_state_cache = ExemplarPreparationStateCache(
-        Path("evaluation/speaker-pairs/cache").resolve()
-    )
-    pending_exemplar_repairs = (
-        tuple(
-            state
-            for state in exemplar_state_cache.pending_automatic_repairs()
-            if database_video_id is None or state.video_id == database_video_id
-        )
-        if not plan_only
-        else ()
-    )
-    exemplar_repair_profile_ids = tuple(
-        sorted({state.profile_id for state in pending_exemplar_repairs})
-    )
-    exemplar_repair_baseline: Path | None = None
-    if pending_exemplar_repairs:
-        try:
-            exemplar_repair_baseline = profile_leverage_snapshot_command(
-                profile_id=list(exemplar_repair_profile_ids),
-                decision_kind="exemplar_media_fix",
-                baseline=None,
-                profile_level_decisions=0,
-                sermon_level_reviews=0,
-                prospective_correct=0,
-                prospective_incorrect=0,
-                association_root=Path(
-                    "evaluation/speaker-associations/shadow-runs"
-                ),
-                output_root=Path("evaluation/identity-leverage"),
-                base_dir=base_dir,
-            )
-        except (OSError, ValueError, typer.BadParameter) as error:
-            console.print(
-                "Exemplar repair leverage baseline was unavailable; repair "
-                f"will continue without impact measurement: {error}"
-            )
-        repair_video_ids = {state.video_id for state in pending_exemplar_repairs}
-        console.print(
-            "Exemplar repair: running existing canonical preparation for "
-            f"{len(repair_video_ids)} pending media blocker(s) across profile(s) "
-            + ", ".join(str(value) for value in exemplar_repair_profile_ids)
-            + "."
-        )
-        try:
-            repair_result = prepare_canonical_audio(
-                Database(paths.database),
-                paths,
-                cache_root=Path("evaluation/speaker-pairs/cache"),
-                video_ids=repair_video_ids,
-                all_eligible=False,
-                dry_run=False,
-            )
-        except (OSError, RuntimeError, ValueError) as error:
-            console.print(
-                "Exemplar repair deferred after a transient preparation "
-                f"failure: {type(error).__name__}: {error}"
-            )
-        else:
-            repair_items_by_video_id = {
-                item.video_id: item for item in repair_result.items
-            }
-            for state in pending_exemplar_repairs:
-                item = repair_items_by_video_id.get(state.video_id)
-                exemplar_state_cache.record_repair_attempt(
-                    state,
-                    outcome=(
-                        item.outcome if item is not None else "not_selected"
-                    ),
-                    detail=(
-                        item.reason
-                        if item is not None
-                        else "no eligible repair input"
-                    ),
-                )
-            console.print(
-                "Exemplar repair outcomes: "
-                + ", ".join(
-                    f"{outcome}={count}"
-                    for outcome, count in repair_result.counts.items()
-                    if count
-                )
-            )
-
     current_association_reports = shadow_associate_speakers_command(
         youtube_video_id=youtube_video_id,
         all_eligible=all_extractions,
@@ -6332,27 +6387,28 @@ def run_identity_workflow_service(
         output_root=Path("evaluation/speaker-associations/shadow-runs"),
         base_dir=base_dir,
     )
-    if exemplar_repair_baseline is not None:
-        try:
-            profile_leverage_snapshot_command(
-                profile_id=list(exemplar_repair_profile_ids),
-                decision_kind="exemplar_media_fix",
-                baseline=exemplar_repair_baseline,
-                profile_level_decisions=0,
-                sermon_level_reviews=0,
-                prospective_correct=0,
-                prospective_incorrect=0,
-                association_root=Path(
-                    "evaluation/speaker-associations/shadow-runs"
-                ),
-                output_root=Path("evaluation/identity-leverage"),
-                base_dir=base_dir,
-            )
-        except (OSError, ValueError, typer.BadParameter) as error:
-            console.print(
-                "Exemplar repair completed, but observed leverage could not "
-                f"be recorded: {error}"
-            )
+    exemplar_state_cache = ExemplarPreparationStateCache(
+        Path("evaluation/speaker-pairs/cache").resolve()
+    )
+    pending_exemplar_repairs = (
+        tuple(
+            state
+            for state in exemplar_state_cache.pending_automatic_repairs()
+            if database_video_id is None or state.video_id == database_video_id
+        )
+        if not plan_only
+        else ()
+    )
+    if pending_exemplar_repairs:
+        current_association_reports = _repair_exemplars_and_retry_association(
+            pending_exemplar_repairs=pending_exemplar_repairs,
+            current_association_reports=current_association_reports,
+            youtube_video_id=youtube_video_id,
+            all_extractions=all_extractions,
+            paths=paths,
+            base_dir=base_dir,
+            state_cache=exemplar_state_cache,
+        )
 
     machine_policy = load_machine_assignment_policy(
         machine_assignment_policy_path

@@ -629,10 +629,12 @@ only in the ignored speaker-pair cache; they do not extend diagnostic truth or
 profile membership. Deterministic failures are not recomputed until one of those
 inputs changes, while transient runtime failures remain retryable.
 
-On a later `identity run`, a newly observed media blocker receives one bounded
-attempt through the existing canonical-audio preparation path. The affected
-profiles receive automatic before/after `exemplar_media_fix` leverage snapshots,
-and the normal association pass consumes any repaired exemplar immediately.
+Within the same `identity run`, a newly observed media blocker receives one
+bounded attempt through the existing canonical-audio preparation path. When
+canonical inputs change, the cache-backed association pass is retried once. The
+affected profiles receive automatic before/after `exemplar_media_fix` leverage
+snapshots, and the normal association policy consumes any repaired exemplar
+immediately.
 Missing extraction/span evidence is routed to extraction repair, and too-few
 activity-qualified spans are routed to human exemplar review; neither condition
 weakens acoustic thresholds or the independent multi-exemplar membership guard.
