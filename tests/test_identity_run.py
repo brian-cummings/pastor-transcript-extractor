@@ -12,13 +12,15 @@ from pastor_transcript_extractor.cli import (
     ActionableReviewAudioPreparation,
     DISCOVERY_PROFILE_REASON,
     _association_admission_is_actionable,
-    _association_review_leverage_context,
     _actionable_review_fingerprints,
     _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
     _load_actionable_review_prewarm,
+    _machine_safety_for_profiles,
     _prepare_actionable_review_audio,
     _replay_profile_association_neighborhood,
+    _review_leverage_context,
+    _review_leverage_human_counts,
     app,
     review_next_speaker_pair,
     run_identity_workflow_service,
@@ -32,7 +34,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 
 class IdentityRunTests(unittest.TestCase):
     def test_ready_association_review_is_tracked_as_prospective(self) -> None:
-        context = _association_review_leverage_context(
+        context = _review_leverage_context(
             {
                 "selection_objective": (
                     "shadow_association_prospective_confirmation"
@@ -41,17 +43,89 @@ class IdentityRunTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual((133, "prospective_confirmation"), context)
+        self.assertEqual(((133,), "prospective_confirmation"), context)
 
     def test_profile_readiness_review_is_tracked_as_profile_decision(self) -> None:
-        context = _association_review_leverage_context(
+        context = _review_leverage_context(
             {
                 "selection_objective": "shadow_association_confirmation",
                 "shadow_association_confirmation": {"profile_id": 119},
             }
         )
 
-        self.assertEqual((119, "readiness_promotion"), context)
+        self.assertEqual(((119,), "readiness_promotion"), context)
+
+    def test_duplicate_profile_review_tracks_whole_group(self) -> None:
+        context = _review_leverage_context(
+            {
+                "selection_objective": "attribution_reconciliation_bridge",
+                "profile_consolidation": {"profile_ids": [99, 60, 99]},
+            }
+        )
+
+        self.assertEqual(
+            ((60, 99), "duplicate_profile_cleanup"), context
+        )
+
+    def test_duplicate_profile_review_preserves_machine_circuit_context(
+        self,
+    ) -> None:
+        safety = _machine_safety_for_profiles(
+            {
+                "assignments": (
+                    {
+                        "profile_id": 60,
+                        "original_profile_id": 60,
+                        "state": "revoked",
+                        "policy_fingerprint": "policy-a",
+                    },
+                    {
+                        "profile_id": 99,
+                        "original_profile_id": 99,
+                        "state": "blocked_policy",
+                        "policy_fingerprint": "policy-a",
+                    },
+                    {
+                        "profile_id": 7,
+                        "original_profile_id": 7,
+                        "state": "active",
+                        "policy_fingerprint": "policy-b",
+                    },
+                ),
+                "tripped_policy_fingerprints": ("policy-a",),
+                "policy_trips": (
+                    {
+                        "profile_id": 60,
+                        "policy_fingerprint": "policy-a",
+                        "reason": "contradiction",
+                        "youtube_video_id": "video-a",
+                    },
+                ),
+            },
+            (60, 99),
+        )
+
+        self.assertEqual(
+            {"blocked_policy": 1, "revoked": 1},
+            safety["assignment_state_counts"],
+        )
+        self.assertEqual(["policy-a"], safety["tripped_policy_fingerprints"])
+        self.assertTrue(safety["circuit_breaker_preserved"])
+        self.assertFalse(safety["machine_policy_mutation_allowed"])
+
+    def test_duplicate_profile_review_counts_one_profile_decision(self) -> None:
+        self.assertEqual(
+            (1, 0, 0, 0),
+            _review_leverage_human_counts(
+                "duplicate_profile_cleanup", "same_speaker"
+            ),
+        )
+        self.assertEqual(
+            (0, 1, 1, 0),
+            _review_leverage_human_counts(
+                "prospective_confirmation", "same_speaker"
+            ),
+        )
 
     def test_automatic_impact_replay_uses_bounded_existing_workflow(self) -> None:
         with patch(
@@ -60,7 +134,7 @@ class IdentityRunTests(unittest.TestCase):
             return_value=(Path("result.json"),),
         ) as replay:
             result = _replay_profile_association_neighborhood(
-                133,
+                (133, 137),
                 evaluation_root=Path("pairs"),
                 cache_dir=Path("cache"),
                 association_root=Path("associations"),
@@ -68,7 +142,10 @@ class IdentityRunTests(unittest.TestCase):
             )
 
         self.assertEqual((Path("result.json"),), result)
-        self.assertEqual([133], replay.call_args.kwargs["neighborhood_profile_id"])
+        self.assertEqual(
+            [133, 137],
+            replay.call_args.kwargs["neighborhood_profile_id"],
+        )
         self.assertFalse(replay.call_args.kwargs["all_eligible"])
         self.assertFalse(replay.call_args.kwargs["unattempted_only"])
         self.assertEqual(3, replay.call_args.kwargs["minimum_profile_members"])

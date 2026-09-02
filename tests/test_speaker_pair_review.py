@@ -266,6 +266,40 @@ class SpeakerPairReviewTests(unittest.TestCase):
         self.assertEqual("audio_plus_visual", event["review_evidence_mode"])
         self.assertIsNone(submission.fixture_path)
 
+    def test_duplicate_profile_packet_exposes_safety_context(self):
+        draft = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=Path("audio-a.wav"),
+            audio_path_b=Path("audio-b.wav"),
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+            selection_manifest={
+                "selection_goal": "automation-readiness",
+                "selection_objective": "attribution_reconciliation_bridge",
+                "profile_consolidation": {
+                    "profile_ids": [60, 99],
+                    "shared_explicit_attributions": ["alex"],
+                    "machine_assignment_safety": {
+                        "assignment_state_counts": {
+                            "revoked": 2,
+                            "blocked_policy": 1,
+                        },
+                        "tripped_policy_fingerprints": ["policy-a"],
+                        "circuit_breaker_preserved": True,
+                    },
+                },
+            },
+        )
+
+        packet = draft.packet_path.read_text(encoding="utf-8")
+        self.assertIn("duplicate-profile consolidation", packet)
+        self.assertIn("affected profiles: 60, 99", packet)
+        self.assertIn("blocked_policy=1, revoked=2", packet)
+        self.assertIn("Existing circuit breakers are preserved", packet)
+
     def test_source_context_makes_review_identity_only(self):
         draft = create_review_draft(
             observation_a=self.observation_a,

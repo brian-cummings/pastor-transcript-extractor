@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v28"
+SELECTOR_VERSION = "speaker_pair_selector_v29"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -567,6 +567,7 @@ def select_next_speaker_pair(
             acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
             automatic_profile_ready_ids=automatic_profile_ready_ids,
             allow_exploratory=True,
+            required_objectives=None,
         )
         if goal == SelectionGoal.PROFILE_GROWTH
         else None
@@ -594,6 +595,22 @@ def select_next_speaker_pair(
             disfavored=disfavored,
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
+        ) or _select_profile_growth_pair(
+            pairs,
+            candidates=candidates,
+            history=history,
+            source_family_use=source_family_use,
+            observation_use=observation_use,
+            source_use=source_use,
+            disfavored=disfavored,
+            disfavored_sources=disfavored_sources,
+            condition_counts=condition_counts,
+            acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
+            allow_exploratory=False,
+            required_objectives=frozenset(
+                {"attribution_reconciliation_bridge"}
+            ),
         ) or _select_profile_reinforcement_pair(
             pairs,
             candidates=candidates,
@@ -618,6 +635,7 @@ def select_next_speaker_pair(
             acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
             automatic_profile_ready_ids=automatic_profile_ready_ids,
             allow_exploratory=False,
+            required_objectives=None,
         )
     if (
         goal in {
@@ -848,6 +866,63 @@ def select_next_speaker_pair(
         manifest["profile_growth_components"] = [
             sorted(component) for component in growth_components
         ]
+    if (
+        selection_objective == "attribution_reconciliation_bridge"
+        and growth_components is not None
+    ):
+        candidate_by_fingerprint = {
+            candidate.input_fingerprint: candidate
+            for candidate in candidates
+        }
+        component_profile_ids = [
+            frozenset(
+                profile_id
+                for fingerprint in component
+                for profile_id in candidate_by_fingerprint[
+                    fingerprint
+                ].reviewed_profile_ids
+            )
+            for component in growth_components
+        ]
+        profile_ids = sorted(
+            set().union(*component_profile_ids)
+            if component_profile_ids
+            else set()
+        )
+        component_attributions = [
+            frozenset(
+                attribution
+                for fingerprint in component
+                for attribution in candidate_by_fingerprint[
+                    fingerprint
+                ].explicit_attributions
+            )
+            for component in growth_components
+        ]
+        shared_attributions = sorted(
+            set.intersection(
+                *(set(values) for values in component_attributions)
+            )
+            if component_attributions
+            else set()
+        )
+        manifest["profile_consolidation"] = {
+            "profile_ids": profile_ids,
+            "shared_explicit_attributions": shared_attributions,
+            "role": "human_review_nomination_only",
+            "identity_evidence": False,
+            "known_cross_profile_difference": False,
+            "membership_firewall": "approved_pair_review_required",
+        }
+    if selection_objective == "profile_reinforcement":
+        manifest["profile_reinforcement"] = {
+            "profile_ids": sorted(
+                observation_a.reviewed_profile_ids
+                & observation_b.reviewed_profile_ids
+            ),
+            "role": "human_review_nomination_only",
+            "identity_evidence": False,
+        }
     if selection_objective == "configured_profile_bootstrap":
         manifest["configured_profile_bootstrap"] = {
             "profile_id": observation_a.configured_profile_bootstrap_id,
@@ -1316,6 +1391,7 @@ def _select_profile_growth_pair(
     ],
     automatic_profile_ready_ids: frozenset[int],
     allow_exploratory: bool,
+    required_objectives: frozenset[str] | None,
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -1510,6 +1586,11 @@ def _select_profile_growth_pair(
                 & anchored_attributions
                 else "profile_growth_seed"
             )
+        if (
+            required_objectives is not None
+            and objective not in required_objectives
+        ):
+            continue
         selected_pair = (
             observation_a,
             observation_b,

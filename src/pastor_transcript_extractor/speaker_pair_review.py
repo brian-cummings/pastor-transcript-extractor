@@ -739,6 +739,16 @@ def _review_packet(draft: dict[str, Any]) -> str:
         if isinstance(selection_manifest, dict)
         else None
     )
+    consolidation_context = (
+        selection_manifest.get("profile_consolidation")
+        if isinstance(selection_manifest, dict)
+        else None
+    )
+    reinforcement_context = (
+        selection_manifest.get("profile_reinforcement")
+        if isinstance(selection_manifest, dict)
+        else None
+    )
     review_context = ""
     if isinstance(association_context, dict):
         objective = str(selection_manifest.get("selection_objective", ""))
@@ -758,6 +768,49 @@ def _review_packet(draft: dict[str, Any]) -> str:
             f"comparisons: {html.escape(str(comparison_count))}. "
             "This nomination is not profile membership until you approve "
             "the identity judgment.</p>"
+        )
+    elif isinstance(consolidation_context, dict):
+        profile_ids = consolidation_context.get("profile_ids", ())
+        attributions = consolidation_context.get(
+            "shared_explicit_attributions", ()
+        )
+        machine_safety = consolidation_context.get(
+            "machine_assignment_safety", {}
+        )
+        assignment_states = (
+            machine_safety.get("assignment_state_counts", {})
+            if isinstance(machine_safety, dict)
+            else {}
+        )
+        assignment_summary = ", ".join(
+            f"{state}={count}"
+            for state, count in sorted(assignment_states.items())
+        ) or "none"
+        tripped_count = len(
+            machine_safety.get("tripped_policy_fingerprints", ())
+            if isinstance(machine_safety, dict)
+            else ()
+        )
+        review_context = (
+            '<p class="review-context"><strong>Review purpose:</strong> '
+            "duplicate-profile consolidation; affected profiles: "
+            f"{html.escape(', '.join(str(value) for value in profile_ids))}; "
+            "shared attribution evidence: "
+            f"{html.escape(', '.join(str(value) for value in attributions))}. "
+            "Machine-assignment history: "
+            f"{html.escape(assignment_summary)}; tripped policies: "
+            f"{tripped_count}. Existing circuit breakers are preserved. "
+            "The profiles remain separate unless you approve a same-speaker "
+            "judgment; a different-speaker judgment becomes a merge guard.</p>"
+        )
+    elif isinstance(reinforcement_context, dict):
+        profile_ids = reinforcement_context.get("profile_ids", ())
+        review_context = (
+            '<p class="review-context"><strong>Review purpose:</strong> '
+            "profile evidence reinforcement; affected profile: "
+            f"{html.escape(', '.join(str(value) for value in profile_ids))}. "
+            "The review strengthens or contradicts the existing evidence "
+            "graph; no machine threshold is relaxed.</p>"
         )
     for label in ("A", "B"):
         source_key = draft["presentation"][label]["source_key"]

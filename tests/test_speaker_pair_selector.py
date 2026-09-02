@@ -822,6 +822,35 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             selected.manifest["selection_objective"],
         )
 
+    def test_automation_readiness_prioritizes_duplicate_profile_decision(
+        self,
+    ) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate("duplicate-a", name="alex", profile_ids=frozenset((60,))),
+                candidate("duplicate-b", name="alex", profile_ids=frozenset((99,))),
+                candidate("reinforce-a", profile_ids=frozenset((7,))),
+                candidate("reinforce-b", profile_ids=frozenset((7,))),
+                candidate("reinforce-c", profile_ids=frozenset((7,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+        )
+
+        self.assertEqual(
+            "attribution_reconciliation_bridge",
+            selected.manifest["selection_objective"],
+        )
+        consolidation = selected.manifest["profile_consolidation"]
+        self.assertEqual([60, 99], consolidation["profile_ids"])
+        self.assertEqual(
+            ["alex"], consolidation["shared_explicit_attributions"]
+        )
+        self.assertEqual(
+            "approved_pair_review_required",
+            consolidation["membership_firewall"],
+        )
+
     def test_automation_readiness_prioritizes_association_confirmation(
         self,
     ) -> None:

@@ -830,13 +830,18 @@ reviewed different-speaker constraints block consolidation.
 - `pte identity machine-assignment-status --base-dir <app-data>`
 - `pte identity rollback-machine-assignments --policy-fingerprint <sha256>`
 
-`automation-readiness` reuses the normal blinded pair-review packet. It first
+`automation-readiness` reuses the normal contextual pair-review packet. It first
 selects an exact candidate-to-profile edge from a current multi-exemplar shadow
 association proposal when available, then an immediate near-same edge that can
 complete a blocked component, then
 a staged bottleneck edge from a strong two-ambiguity bundle, then a decisive
-unresolved overlap edge. It finally falls back to reviewed-profile reinforcement
-and positive-evidence profile growth. Profile growth first requires either an
+unresolved overlap edge. It next prioritizes attribution-backed cross-profile
+bridges, then falls back to reviewed-profile reinforcement and positive-evidence
+profile growth. Cross-profile bridges remain nomination-only until a human
+same-speaker review; a different-speaker review becomes a durable merge guard.
+The packet exposes affected profile IDs and existing machine revocation or
+circuit-breaker context, and profile consolidation never changes machine policy.
+Profile growth first requires either an
 explicit attribution shared across reviewed components or an exact,
 provenance-bound cached same-speaker acoustic ranking. When those signals are
 exhausted, its human-review-only exploratory tier may nominate an unreviewed
@@ -850,7 +855,12 @@ review. The next discovery run consumes the approved pair judgment directly as
 a fingerprinted same/different constraint, allowing the answer to resolve or
 safely block the affected component before registry synchronization.
 
-Profile-state experiments use an explicit before/after ledger. Create a
+Profile-state experiments use an explicit before/after ledger. The
+`automation-readiness` review command automatically creates the baseline for
+association confirmation, profile reinforcement, and duplicate-profile cleanup,
+replays only the affected persisted profile neighborhood after approved binary
+identity evidence, and writes the observed result. The standalone recovery flow
+is to create a
 `profile-leverage-snapshot` before the human decision, replay only the affected
 persisted evidence neighborhood with `--neighborhood-profile-id`, then create a
 second snapshot with `--baseline` pointing at the first. The result reports
@@ -1042,8 +1052,9 @@ pte identity run --all \
 
 Active provisional assignments remain outside reviewed profile membership and
 cannot become acoustic exemplars. Automatic-ready profile proposals no longer
-consume general profile reinforcement capacity, but active, awaiting, and
-policy-blocked machine proposals remain eligible for prioritized blinded human
+consume general profile reinforcement capacity, but they remain eligible for a
+separate prospective-confirmation lane. Active, awaiting, and policy-blocked
+machine proposals remain eligible for prioritized contextual human
 validation. Operators can inspect them with `machine-assignment-status`, then
 run `review-next-speaker-pair --selection-objective automation-readiness` to
 review the next exact candidate/exemplar edge. Reviewed membership is projected

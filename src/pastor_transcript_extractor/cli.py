@@ -7337,36 +7337,145 @@ def profile_leverage_snapshot_command(
     return snapshot_path
 
 
-def _association_review_leverage_context(
+def _review_leverage_context(
     manifest: Mapping[str, Any],
-) -> tuple[int, str] | None:
+) -> tuple[tuple[int, ...], str] | None:
     objective = manifest.get("selection_objective")
-    if objective not in {
+    if objective in {
         "shadow_association_confirmation",
         "shadow_association_prospective_confirmation",
         "machine_assignment_validation",
     }:
-        return None
-    association = manifest.get("shadow_association_confirmation")
-    if not isinstance(association, Mapping):
-        return None
-    profile_id = association.get("profile_id")
-    if not isinstance(profile_id, int):
-        return None
-    decision_kind = (
-        "prospective_confirmation"
-        if objective
-        in {
-            "shadow_association_prospective_confirmation",
-            "machine_assignment_validation",
+        association = manifest.get("shadow_association_confirmation")
+        if not isinstance(association, Mapping):
+            return None
+        profile_id = association.get("profile_id")
+        if not isinstance(profile_id, int):
+            return None
+        decision_kind = (
+            "prospective_confirmation"
+            if objective
+            in {
+                "shadow_association_prospective_confirmation",
+                "machine_assignment_validation",
+            }
+            else "readiness_promotion"
+        )
+        return (profile_id,), decision_kind
+    if objective == "attribution_reconciliation_bridge":
+        consolidation = manifest.get("profile_consolidation")
+        profile_ids = (
+            consolidation.get("profile_ids")
+            if isinstance(consolidation, Mapping)
+            else None
+        )
+        if (
+            not isinstance(profile_ids, list)
+            or len(profile_ids) < 2
+            or not all(isinstance(value, int) and value > 0 for value in profile_ids)
+        ):
+            return None
+        return tuple(sorted(set(profile_ids))), "duplicate_profile_cleanup"
+    if objective == "profile_reinforcement":
+        reinforcement = manifest.get("profile_reinforcement")
+        profile_ids = (
+            reinforcement.get("profile_ids")
+            if isinstance(reinforcement, Mapping)
+            else None
+        )
+        if (
+            not isinstance(profile_ids, list)
+            or len(profile_ids) != 1
+            or not isinstance(profile_ids[0], int)
+        ):
+            return None
+        return (profile_ids[0],), "readiness_promotion"
+    return None
+
+
+def _machine_safety_for_profiles(
+    report: Mapping[str, Any],
+    profile_ids: Sequence[int],
+) -> dict[str, Any]:
+    requested = set(profile_ids)
+    assignments = [
+        assignment
+        for assignment in report.get("assignments", ())
+        if isinstance(assignment, Mapping)
+        and (
+            assignment.get("profile_id") in requested
+            or assignment.get("original_profile_id") in requested
+        )
+    ]
+    state_counts: dict[str, int] = {}
+    for assignment in assignments:
+        state = str(assignment.get("state") or "unknown")
+        state_counts[state] = state_counts.get(state, 0) + 1
+    policy_fingerprints = sorted(
+        {
+            str(assignment["policy_fingerprint"])
+            for assignment in assignments
+            if assignment.get("policy_fingerprint")
         }
-        else "readiness_promotion"
     )
-    return profile_id, decision_kind
+    tripped = sorted(
+        set(policy_fingerprints)
+        & {
+            str(value)
+            for value in report.get("tripped_policy_fingerprints", ())
+        }
+    )
+    policy_trips = [
+        {
+            "profile_id": trip.get("profile_id"),
+            "youtube_video_id": trip.get("youtube_video_id"),
+            "reason": trip.get("reason"),
+            "policy_fingerprint": trip.get("policy_fingerprint"),
+        }
+        for trip in report.get("policy_trips", ())
+        if isinstance(trip, Mapping)
+        and (
+            trip.get("profile_id") in requested
+            or trip.get("policy_fingerprint") in tripped
+        )
+    ]
+    return {
+        "assignment_state_counts": dict(sorted(state_counts.items())),
+        "policy_fingerprints": policy_fingerprints,
+        "tripped_policy_fingerprints": tripped,
+        "policy_trips": policy_trips,
+        "machine_policy_mutation_allowed": False,
+        "circuit_breaker_preserved": True,
+    }
+
+
+def _review_leverage_human_counts(
+    decision_kind: str,
+    pair_judgment: object,
+) -> tuple[int, int, int, int]:
+    profile_level_decisions = int(
+        decision_kind
+        in {"readiness_promotion", "duplicate_profile_cleanup"}
+    )
+    sermon_level_reviews = int(decision_kind == "prospective_confirmation")
+    prospective_correct = int(
+        decision_kind == "prospective_confirmation"
+        and pair_judgment == PairJudgment.SAME_SPEAKER
+    )
+    prospective_incorrect = int(
+        decision_kind == "prospective_confirmation"
+        and pair_judgment == PairJudgment.DIFFERENT_SPEAKER
+    )
+    return (
+        profile_level_decisions,
+        sermon_level_reviews,
+        prospective_correct,
+        prospective_incorrect,
+    )
 
 
 def _replay_profile_association_neighborhood(
-    profile_id: int,
+    profile_ids: Sequence[int],
     *,
     evaluation_root: Path,
     cache_dir: Path,
@@ -7374,11 +7483,14 @@ def _replay_profile_association_neighborhood(
     base_dir: Path | None,
 ) -> tuple[Path, ...]:
     """Run the existing bounded association workflow after identity review."""
+    requested_profile_ids = sorted(set(profile_ids))
+    if not requested_profile_ids:
+        raise ValueError("profile neighborhood replay requires a profile id")
     return shadow_associate_speakers_command(
         youtube_video_id=None,
         all_eligible=False,
         unattempted_only=False,
-        neighborhood_profile_id=[profile_id],
+        neighborhood_profile_id=requested_profile_ids,
         include_profiled=False,
         limit=None,
         plan_only=False,
@@ -9155,6 +9267,7 @@ def review_next_speaker_pair(
                 )
         association_confirmation_pairs = ()
         unmatched_association_fingerprints = frozenset()
+        machine_report: Mapping[str, Any] | None = None
         if selection_objective in {
             SelectionGoal.PROFILE_GROWTH,
             SelectionGoal.AUTOMATION_READINESS,
@@ -9482,17 +9595,31 @@ def review_next_speaker_pair(
         f"({selection.observation_a.video_id}, {selection.observation_b.video_id}); "
         f"reasons={','.join(selection.manifest['reason_codes'])}"
     )
+    consolidation = selection.manifest.get("profile_consolidation")
+    if isinstance(consolidation, dict) and machine_report is not None:
+        consolidation_profile_ids = consolidation.get("profile_ids")
+        if isinstance(consolidation_profile_ids, list):
+            consolidation["machine_assignment_safety"] = (
+                _machine_safety_for_profiles(
+                    machine_report,
+                    [
+                        value
+                        for value in consolidation_profile_ids
+                        if isinstance(value, int)
+                    ],
+                )
+            )
     leverage_context = (
-        _association_review_leverage_context(selection.manifest)
+        _review_leverage_context(selection.manifest)
         if not prepare_only
         else None
     )
     leverage_baseline: Path | None = None
     if leverage_context is not None:
-        profile_id, decision_kind = leverage_context
+        profile_ids, decision_kind = leverage_context
         try:
             leverage_baseline = profile_leverage_snapshot_command(
-                profile_id=[profile_id],
+                profile_id=list(profile_ids),
                 decision_kind=decision_kind,
                 baseline=None,
                 profile_level_decisions=0,
@@ -9504,7 +9631,7 @@ def review_next_speaker_pair(
                 base_dir=base_dir,
             )
             selection.manifest["automatic_impact_tracking"] = {
-                "profile_id": profile_id,
+                "profile_ids": list(profile_ids),
                 "decision_kind": decision_kind,
                 "baseline_path": str(leverage_baseline),
                 "bounded_neighborhood_replay": True,
@@ -9545,34 +9672,43 @@ def review_next_speaker_pair(
                 "produce approved binary identity evidence."
             )
             return
-        profile_id, decision_kind = leverage_context
+        profile_ids, decision_kind = leverage_context
         console.print(
-            "Approved identity evidence recorded; replaying only profile "
-            f"{profile_id}'s affected association neighborhood."
+            "Approved identity evidence recorded; replaying only the affected "
+            "association neighborhood for profile(s) "
+            + ", ".join(str(value) for value in profile_ids)
+            + "."
         )
-        _replay_profile_association_neighborhood(
-            profile_id,
-            evaluation_root=evaluation_root,
-            cache_dir=cache_dir,
-            association_root=association_root,
-            base_dir=base_dir,
-        )
-        prospective_correct = int(
-            decision_kind == "prospective_confirmation"
-            and event.get("pair_judgment") == PairJudgment.SAME_SPEAKER
-        )
-        prospective_incorrect = int(
-            decision_kind == "prospective_confirmation"
-            and event.get("pair_judgment") == PairJudgment.DIFFERENT_SPEAKER
+        try:
+            _replay_profile_association_neighborhood(
+                profile_ids,
+                evaluation_root=evaluation_root,
+                cache_dir=cache_dir,
+                association_root=association_root,
+                base_dir=base_dir,
+            )
+        except typer.BadParameter as replay_error:
+            if "No persisted affected neighborhood" not in str(replay_error):
+                raise
+            console.print(
+                "No persisted association neighborhood exists for these "
+                "profiles; recording an observed zero-neighborhood result."
+            )
+        (
+            profile_level_decisions,
+            sermon_level_reviews,
+            prospective_correct,
+            prospective_incorrect,
+        ) = _review_leverage_human_counts(
+            decision_kind,
+            event.get("pair_judgment"),
         )
         profile_leverage_snapshot_command(
-            profile_id=[profile_id],
+            profile_id=list(profile_ids),
             decision_kind=decision_kind,
             baseline=leverage_baseline,
-            profile_level_decisions=int(decision_kind == "readiness_promotion"),
-            sermon_level_reviews=int(
-                decision_kind == "prospective_confirmation"
-            ),
+            profile_level_decisions=profile_level_decisions,
+            sermon_level_reviews=sermon_level_reviews,
             prospective_correct=prospective_correct,
             prospective_incorrect=prospective_incorrect,
             association_root=association_root,
@@ -9586,8 +9722,12 @@ def review_next_speaker_pair(
         )
         console.print(
             "Retry the bounded replay with: pte identity "
-            "shadow-associate-speakers --neighborhood-profile-id "
-            f"{leverage_context[0]} --base-dir {paths.root}"
+            "shadow-associate-speakers "
+            + " ".join(
+                "--neighborhood-profile-id " + str(profile_id)
+                for profile_id in leverage_context[0]
+            )
+            + f" --base-dir {paths.root}"
         )
 
 
