@@ -619,6 +619,24 @@ contract. Accepted observations without enough meaningful sermon-labeled text
 are recorded as an explicit blocker. Use `--allow-gaps` only when collecting a
 baseline report.
 
+Profile exemplar preparation is observable inside the normal `identity run`.
+For every reviewed member considered as an acoustic exemplar, the run records
+the exact production stage—observation consistency, extraction lookup, media
+registration/verification, transcript span selection, activity qualification,
+or eligible completion—against a fingerprint of the observation, extraction,
+media, model, policy, and span-selection version. These operational records live
+only in the ignored speaker-pair cache; they do not extend diagnostic truth or
+profile membership. Deterministic failures are not recomputed until one of those
+inputs changes, while transient runtime failures remain retryable.
+
+On a later `identity run`, a newly observed media blocker receives one bounded
+attempt through the existing canonical-audio preparation path. The affected
+profiles receive automatic before/after `exemplar_media_fix` leverage snapshots,
+and the normal association pass consumes any repaired exemplar immediately.
+Missing extraction/span evidence is routed to extraction repair, and too-few
+activity-qualified spans are routed to human exemplar review; neither condition
+weakens acoustic thresholds or the independent multi-exemplar membership guard.
+
 Current transcript-grounded sampling oversamples up to fifteen distributed
 sermon-speech candidates, measures speech activity relative to the recording,
 and embeds five qualified clips. Distribution remains primary. Only when those

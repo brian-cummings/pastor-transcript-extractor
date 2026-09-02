@@ -213,6 +213,9 @@ from pastor_transcript_extractor.identity_leverage import (
     compare_profile_leverage_snapshots,
     profile_neighborhood_video_ids,
 )
+from pastor_transcript_extractor.identity_exemplar_preparation import (
+    ExemplarPreparationStateCache,
+)
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
@@ -6219,6 +6222,90 @@ def run_identity_workflow_service(
             f"unchanged={reconciliation.unchanged}."
         )
 
+    exemplar_state_cache = ExemplarPreparationStateCache(
+        Path("evaluation/speaker-pairs/cache").resolve()
+    )
+    pending_exemplar_repairs = (
+        tuple(
+            state
+            for state in exemplar_state_cache.pending_automatic_repairs()
+            if database_video_id is None or state.video_id == database_video_id
+        )
+        if not plan_only
+        else ()
+    )
+    exemplar_repair_profile_ids = tuple(
+        sorted({state.profile_id for state in pending_exemplar_repairs})
+    )
+    exemplar_repair_baseline: Path | None = None
+    if pending_exemplar_repairs:
+        try:
+            exemplar_repair_baseline = profile_leverage_snapshot_command(
+                profile_id=list(exemplar_repair_profile_ids),
+                decision_kind="exemplar_media_fix",
+                baseline=None,
+                profile_level_decisions=0,
+                sermon_level_reviews=0,
+                prospective_correct=0,
+                prospective_incorrect=0,
+                association_root=Path(
+                    "evaluation/speaker-associations/shadow-runs"
+                ),
+                output_root=Path("evaluation/identity-leverage"),
+                base_dir=base_dir,
+            )
+        except (OSError, ValueError, typer.BadParameter) as error:
+            console.print(
+                "Exemplar repair leverage baseline was unavailable; repair "
+                f"will continue without impact measurement: {error}"
+            )
+        repair_video_ids = {state.video_id for state in pending_exemplar_repairs}
+        console.print(
+            "Exemplar repair: running existing canonical preparation for "
+            f"{len(repair_video_ids)} pending media blocker(s) across profile(s) "
+            + ", ".join(str(value) for value in exemplar_repair_profile_ids)
+            + "."
+        )
+        try:
+            repair_result = prepare_canonical_audio(
+                Database(paths.database),
+                paths,
+                cache_root=Path("evaluation/speaker-pairs/cache"),
+                video_ids=repair_video_ids,
+                all_eligible=False,
+                dry_run=False,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            console.print(
+                "Exemplar repair deferred after a transient preparation "
+                f"failure: {type(error).__name__}: {error}"
+            )
+        else:
+            repair_items_by_video_id = {
+                item.video_id: item for item in repair_result.items
+            }
+            for state in pending_exemplar_repairs:
+                item = repair_items_by_video_id.get(state.video_id)
+                exemplar_state_cache.record_repair_attempt(
+                    state,
+                    outcome=(
+                        item.outcome if item is not None else "not_selected"
+                    ),
+                    detail=(
+                        item.reason
+                        if item is not None
+                        else "no eligible repair input"
+                    ),
+                )
+            console.print(
+                "Exemplar repair outcomes: "
+                + ", ".join(
+                    f"{outcome}={count}"
+                    for outcome, count in repair_result.counts.items()
+                    if count
+                )
+            )
+
     current_association_reports = shadow_associate_speakers_command(
         youtube_video_id=youtube_video_id,
         all_eligible=all_extractions,
@@ -6245,6 +6332,27 @@ def run_identity_workflow_service(
         output_root=Path("evaluation/speaker-associations/shadow-runs"),
         base_dir=base_dir,
     )
+    if exemplar_repair_baseline is not None:
+        try:
+            profile_leverage_snapshot_command(
+                profile_id=list(exemplar_repair_profile_ids),
+                decision_kind="exemplar_media_fix",
+                baseline=exemplar_repair_baseline,
+                profile_level_decisions=0,
+                sermon_level_reviews=0,
+                prospective_correct=0,
+                prospective_incorrect=0,
+                association_root=Path(
+                    "evaluation/speaker-associations/shadow-runs"
+                ),
+                output_root=Path("evaluation/identity-leverage"),
+                base_dir=base_dir,
+            )
+        except (OSError, ValueError, typer.BadParameter) as error:
+            console.print(
+                "Exemplar repair completed, but observed leverage could not "
+                f"be recorded: {error}"
+            )
 
     machine_policy = load_machine_assignment_policy(
         machine_assignment_policy_path
@@ -7296,6 +7404,14 @@ def profile_leverage_snapshot_command(
         + "-".join(str(value) for value in sorted(set(profile_id)))
     )
     destination_root = output_root.expanduser().resolve() / run_id / experiment_slug
+    suffix = 1
+    while destination_root.exists():
+        destination_root = (
+            output_root.expanduser().resolve()
+            / f"{run_id}-{suffix:02d}"
+            / experiment_slug
+        )
+        suffix += 1
     destination_root.mkdir(parents=True, exist_ok=True)
     snapshot_path = destination_root / "profile-leverage-snapshot.json"
     snapshot_path.write_text(
@@ -7511,6 +7627,67 @@ def _replay_profile_association_neighborhood(
         output_root=association_root,
         base_dir=base_dir,
     )
+
+
+def _path_state(path_value: str | None) -> dict[str, Any]:
+    if not path_value:
+        return {"path": path_value, "exists": False}
+    path = Path(path_value).expanduser().resolve()
+    try:
+        stat = path.stat()
+    except OSError:
+        return {"path": str(path), "exists": False}
+    return {
+        "path": str(path),
+        "exists": True,
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def _exemplar_preparation_evidence(
+    database: Database,
+    *,
+    profile_id: int,
+    observation: SpeakerObservation,
+    media_artifact: Any | None,
+    model_fingerprint: str | None,
+    policy_artifact_sha256: str,
+) -> dict[str, Any]:
+    extraction = database.get_latest_extraction_result_for_video(
+        observation.video_id
+    )
+    return {
+        "profile_id": profile_id,
+        "observation_id": observation.id,
+        "observation_fingerprint": observation.input_fingerprint,
+        "observation_extraction_result_id": observation.extraction_result_id,
+        "effective_review_action": (
+            database.get_effective_observation_review_action(observation.id)
+        ),
+        "latest_extraction": (
+            {
+                "id": extraction.id,
+                "version": extraction.version,
+                "json": _path_state(extraction.proposed_json_path),
+            }
+            if extraction is not None
+            else None
+        ),
+        "media": (
+            {
+                "id": media_artifact.id,
+                "input_fingerprint": media_artifact.input_fingerprint,
+                "content_sha256": media_artifact.content_sha256,
+                "artifact": _path_state(media_artifact.artifact_path),
+            }
+            if media_artifact is not None
+            else None
+        ),
+        "span_selection_version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+        "model_fingerprint": model_fingerprint,
+        "policy_artifact_sha256": policy_artifact_sha256,
+    }
 
 
 @identity_app.command(
@@ -7769,6 +7946,48 @@ def shadow_associate_speakers_command(
             ).add(claim.normalized_name.strip())
     eligible_exemplars: list[ShadowExemplar] = []
     span_specs_by_observation_id: dict[int, tuple[SpanSpec, ...]] = {}
+    exemplar_state_cache = ExemplarPreparationStateCache(cache_root)
+    exemplar_preparation_counts: dict[str, int] = {}
+    exemplar_preparation_by_profile: dict[int, dict[str, int]] = {}
+
+    def count_exemplar_preparation(profile_id: int, key: str) -> None:
+        exemplar_preparation_counts[key] = (
+            exemplar_preparation_counts.get(key, 0) + 1
+        )
+        profile_counts = exemplar_preparation_by_profile.setdefault(
+            profile_id, {}
+        )
+        profile_counts[key] = profile_counts.get(key, 0) + 1
+
+    def record_exemplar_preparation(
+        *,
+        profile_id: int,
+        observation: SpeakerObservation,
+        evidence_payload: Mapping[str, Any],
+        stage: str,
+        outcome: str,
+        reason_code: str,
+    ) -> None:
+        count_exemplar_preparation(
+            profile_id,
+            "eligible" if outcome == "eligible" else f"{stage}:{reason_code}"
+        )
+        if plan_only:
+            return
+        video = videos_by_id.get(observation.video_id)
+        if video is None:
+            return
+        exemplar_state_cache.record(
+            profile_id=profile_id,
+            observation_id=observation.id,
+            observation_fingerprint=observation.input_fingerprint,
+            video_id=observation.video_id,
+            youtube_video_id=video.youtube_video_id,
+            evidence=evidence_payload,
+            stage=stage,
+            outcome=outcome,
+            reason_code=reason_code,
+        )
     review_ready_profiles = [
         profile for profile in readiness if profile.review_ready
     ]
@@ -7802,6 +8021,64 @@ def shadow_associate_speakers_command(
                 database,
                 observation.video_id,
                 verification_cache=verification_cache,
+                verify_media=False,
+            )
+            evidence_payload = _exemplar_preparation_evidence(
+                database,
+                profile_id=profile.profile_id,
+                observation=observation,
+                media_artifact=eligibility.media_artifact,
+                model_fingerprint=(
+                    backend.spec.fingerprint if backend is not None else None
+                ),
+                policy_artifact_sha256=policy_spec.artifact_sha256,
+            )
+            evidence_fingerprint = exemplar_state_cache.evidence_fingerprint(
+                evidence_payload
+            )
+            unchanged = (
+                exemplar_state_cache.unchanged_deterministic_failure(
+                    profile_id=profile.profile_id,
+                    observation_fingerprint=observation.input_fingerprint,
+                    evidence_fingerprint=evidence_fingerprint,
+                )
+                if not plan_only
+                else None
+            )
+            if unchanged is not None:
+                count_exemplar_preparation(
+                    profile.profile_id,
+                    f"cached:{unchanged.stage}:{unchanged.reason_code}"
+                )
+                continue
+            if (
+                not eligibility.eligible
+                or eligibility.observation is None
+                or eligibility.media_artifact is None
+                or eligibility.observation.id != observation.id
+            ):
+                stage = (
+                    "extraction_lookup"
+                    if eligibility.reason_code.startswith("extraction_")
+                    else "media_registration"
+                    if "media" in eligibility.reason_code
+                    or "audio" in eligibility.reason_code
+                    else "observation_consistency"
+                )
+                record_exemplar_preparation(
+                    profile_id=profile.profile_id,
+                    observation=observation,
+                    evidence_payload=evidence_payload,
+                    stage=stage,
+                    outcome="blocked",
+                    reason_code=eligibility.reason_code,
+                )
+                continue
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                observation.video_id,
+                verification_cache=verification_cache,
+                verify_media=True,
             )
             if (
                 not eligibility.eligible
@@ -7809,6 +8086,14 @@ def shadow_associate_speakers_command(
                 or eligibility.media_artifact is None
                 or eligibility.observation.id != observation.id
             ):
+                record_exemplar_preparation(
+                    profile_id=profile.profile_id,
+                    observation=observation,
+                    evidence_payload=evidence_payload,
+                    stage="media_verification",
+                    outcome="blocked",
+                    reason_code=eligibility.reason_code,
+                )
                 continue
             audio_path = Path(eligibility.media_artifact.artifact_path)
             span_cache.remember_verified_source(
@@ -7822,9 +8107,28 @@ def shadow_associate_speakers_command(
                     audio_path,
                     eligibility.media_artifact.content_sha256,
                 )
-            except (OSError, RuntimeError, ValueError):
+            except (OSError, RuntimeError, ValueError) as error:
+                reason_code = (
+                    str(error) or "activity_qualified_spans_unavailable"
+                )
+                record_exemplar_preparation(
+                    profile_id=profile.profile_id,
+                    observation=observation,
+                    evidence_payload=evidence_payload,
+                    stage="activity_span_selection",
+                    outcome="blocked",
+                    reason_code=reason_code,
+                )
                 continue
             if not span_specs:
+                record_exemplar_preparation(
+                    profile_id=profile.profile_id,
+                    observation=observation,
+                    evidence_payload=evidence_payload,
+                    stage="transcript_span_selection",
+                    outcome="blocked",
+                    reason_code="speech_grounded_spans_unavailable",
+                )
                 continue
             span_specs_by_observation_id[observation.id] = span_specs
             eligible_exemplars.append(
@@ -7834,6 +8138,35 @@ def shadow_associate_speakers_command(
                     audio_path=audio_path,
                     audio_sha256=eligibility.media_artifact.content_sha256,
                     span_specs=span_specs,
+                )
+            )
+            record_exemplar_preparation(
+                profile_id=profile.profile_id,
+                observation=observation,
+                evidence_payload=evidence_payload,
+                stage="complete",
+                outcome="eligible",
+                reason_code="eligible_exemplar",
+            )
+
+    if exemplar_preparation_counts:
+        console.print(
+            "Exemplar preparation: "
+            + ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(
+                    exemplar_preparation_counts.items()
+                )
+            )
+        )
+        for profile_id, counts in sorted(
+            exemplar_preparation_by_profile.items()
+        ):
+            console.print(
+                f"Profile {profile_id} exemplar funnel: "
+                + ", ".join(
+                    f"{reason}={count}"
+                    for reason, count in sorted(counts.items())
                 )
             )
 
@@ -8203,13 +8536,20 @@ def shadow_associate_speakers_command(
         )
         return ()
     if not usable_profiles:
+        if all_eligible:
+            console.print(
+                "No review-ready profile currently has enough eligible "
+                "acoustic exemplars; blocker states were preserved and no "
+                "comparison artifacts were created."
+            )
+            return ()
         raise typer.BadParameter(
             "No review-ready profile has enough eligible acoustic exemplars."
         )
     if not candidates:
-        if unattempted_only:
+        if all_eligible:
             console.print(
-                "No unattempted observation passed strict association admission; "
+                "No candidate observation passed strict association admission; "
                 "no comparison artifacts were created."
             )
             return ()

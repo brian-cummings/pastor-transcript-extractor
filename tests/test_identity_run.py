@@ -34,6 +34,15 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 
 
 class IdentityRunTests(unittest.TestCase):
+    def setUp(self) -> None:
+        pending_repairs = patch(
+            "pastor_transcript_extractor.cli."
+            "ExemplarPreparationStateCache.pending_automatic_repairs",
+            return_value=(),
+        )
+        self.pending_repairs = pending_repairs.start()
+        self.addCleanup(pending_repairs.stop)
+
     def test_shadow_profile_discovery_plan_runs_without_association_options(
         self,
     ) -> None:
@@ -261,6 +270,15 @@ class IdentityRunTests(unittest.TestCase):
     def test_all_run_chains_backfill_association_confirmation_and_discovery(
         self,
     ) -> None:
+        pending_state = SimpleNamespace(
+            profile_id=107,
+            video_id=21,
+            observation_id=11,
+            observation_fingerprint="observation-a",
+            evidence_fingerprint="evidence-a",
+            repair_action="prepare_canonical_audio",
+        )
+        self.pending_repairs.return_value = (pending_state,)
         with tempfile.TemporaryDirectory() as tempdir:
             database_path = Path(tempdir) / "app.db"
             database_path.touch()
@@ -291,6 +309,28 @@ class IdentityRunTests(unittest.TestCase):
                 patch(
                     "pastor_transcript_extractor.cli.identity_backfill"
                 ) as backfill,
+                patch(
+                    "pastor_transcript_extractor.cli."
+                    "profile_leverage_snapshot_command",
+                    side_effect=(Path("baseline.json"), Path("after.json")),
+                ) as leverage_snapshot,
+                patch(
+                    "pastor_transcript_extractor.cli.prepare_canonical_audio",
+                    return_value=SimpleNamespace(
+                        items=(
+                            SimpleNamespace(
+                                video_id=21,
+                                outcome="prepared",
+                                reason="canonical clips prepared",
+                            ),
+                        ),
+                        counts={"prepared": 1},
+                    ),
+                ) as prepare_canonical,
+                patch(
+                    "pastor_transcript_extractor.cli."
+                    "ExemplarPreparationStateCache.record_repair_attempt"
+                ) as record_repair,
                 patch(
                     "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
                 ) as associate,
@@ -357,6 +397,20 @@ class IdentityRunTests(unittest.TestCase):
         )
         load_evidence.assert_called_once()
         sync_evidence.assert_called_once()
+        prepare_canonical.assert_called_once()
+        record_repair.assert_called_once_with(
+            pending_state,
+            outcome="prepared",
+            detail="canonical clips prepared",
+        )
+        self.assertEqual(2, leverage_snapshot.call_count)
+        self.assertEqual(
+            [107], leverage_snapshot.call_args_list[0].kwargs["profile_id"]
+        )
+        self.assertEqual(
+            Path("baseline.json"),
+            leverage_snapshot.call_args_list[1].kwargs["baseline"],
+        )
         self.assertFalse(associate.call_args.kwargs["plan_only"])
         self.assertTrue(associate.call_args.kwargs["all_eligible"])
         self.assertEqual(
