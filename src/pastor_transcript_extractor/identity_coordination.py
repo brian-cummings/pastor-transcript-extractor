@@ -26,7 +26,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 
 IDENTITY_COORDINATION_VERSION = "identity_coordination_shadow_v2"
 ASSOCIATION_CONFIRMATION_CACHE_VERSION = (
-    "association_confirmation_nomination_cache_v1"
+    "association_confirmation_nomination_cache_v2"
 )
 SUPPORTED_DISCOVERY_VERSIONS = frozenset(
     {
@@ -707,8 +707,7 @@ def load_shadow_association_confirmation_pairs(
         if cached is not None:
             return cached
 
-    nominations: dict[frozenset[str], AssociationConfirmationPair] = {}
-    outcomes_by_fingerprint: dict[str, set[str]] = {}
+    latest_by_fingerprint: dict[str, tuple[tuple[int, str], Path, dict[str, Any]]] = {}
     for index, report_path in enumerate(ordered_paths, start=1):
         payload = _load_verified_association_report(report_path)
         if progress_callback is not None:
@@ -733,22 +732,40 @@ def load_shadow_association_confirmation_pairs(
                 "shadow association artifact uses an unsupported contract"
             )
         candidate = payload.get("candidate")
-        profile_id = payload.get("proposed_profile_id")
-        outcome = payload.get("outcome")
-        if isinstance(candidate, Mapping) and isinstance(outcome, str):
-            fingerprint = candidate.get("input_fingerprint")
-            if isinstance(fingerprint, str) and fingerprint:
-                outcomes_by_fingerprint.setdefault(fingerprint, set()).add(
-                    outcome
-                )
-        if (
-            outcome != "proposed_match"
-            or not isinstance(candidate, Mapping)
-            or not isinstance(profile_id, int)
-        ):
+        if not isinstance(candidate, Mapping):
             continue
         candidate_fingerprint = candidate.get("input_fingerprint")
         if not isinstance(candidate_fingerprint, str) or not candidate_fingerprint:
+            continue
+        order_key = (report_path.stat().st_mtime_ns, str(report_path))
+        existing = latest_by_fingerprint.get(candidate_fingerprint)
+        if existing is None or order_key > existing[0]:
+            latest_by_fingerprint[candidate_fingerprint] = (
+                order_key,
+                report_path,
+                payload,
+            )
+
+    nominations: dict[frozenset[str], AssociationConfirmationPair] = {}
+    outcomes_by_fingerprint: dict[str, set[str]] = {}
+    for candidate_fingerprint, (_, report_path, payload) in sorted(
+        latest_by_fingerprint.items()
+    ):
+        profile_id = payload.get("proposed_profile_id")
+        outcome = payload.get("outcome")
+        if isinstance(outcome, str):
+            outcomes_by_fingerprint[candidate_fingerprint] = {outcome}
+        if (
+            outcome != "proposed_match"
+            or not isinstance(profile_id, int)
+        ):
+            continue
+        quality_flags = payload.get("sermon_window_quality_flags", ())
+        if isinstance(quality_flags, list) and any(
+            isinstance(flag, Mapping)
+            and flag.get("flag") == "speaker_inconsistent_edge"
+            for flag in quality_flags
+        ):
             continue
         profile_results = payload.get("profiles")
         if not isinstance(profile_results, list):

@@ -12,11 +12,13 @@ from pastor_transcript_extractor.cli import (
     ActionableReviewAudioPreparation,
     DISCOVERY_PROFILE_REASON,
     _association_admission_is_actionable,
+    _association_review_leverage_context,
     _actionable_review_fingerprints,
     _archive_normalized_after_identity,
     _held_out_speaker_fixture_fingerprints,
     _load_actionable_review_prewarm,
     _prepare_actionable_review_audio,
+    _replay_profile_association_neighborhood,
     app,
     review_next_speaker_pair,
     run_identity_workflow_service,
@@ -29,6 +31,49 @@ from pastor_transcript_extractor.speaker_shadow_association import (
 
 
 class IdentityRunTests(unittest.TestCase):
+    def test_ready_association_review_is_tracked_as_prospective(self) -> None:
+        context = _association_review_leverage_context(
+            {
+                "selection_objective": (
+                    "shadow_association_prospective_confirmation"
+                ),
+                "shadow_association_confirmation": {"profile_id": 133},
+            }
+        )
+
+        self.assertEqual((133, "prospective_confirmation"), context)
+
+    def test_profile_readiness_review_is_tracked_as_profile_decision(self) -> None:
+        context = _association_review_leverage_context(
+            {
+                "selection_objective": "shadow_association_confirmation",
+                "shadow_association_confirmation": {"profile_id": 119},
+            }
+        )
+
+        self.assertEqual((119, "readiness_promotion"), context)
+
+    def test_automatic_impact_replay_uses_bounded_existing_workflow(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.cli."
+            "shadow_associate_speakers_command",
+            return_value=(Path("result.json"),),
+        ) as replay:
+            result = _replay_profile_association_neighborhood(
+                133,
+                evaluation_root=Path("pairs"),
+                cache_dir=Path("cache"),
+                association_root=Path("associations"),
+                base_dir=Path("data"),
+            )
+
+        self.assertEqual((Path("result.json"),), result)
+        self.assertEqual([133], replay.call_args.kwargs["neighborhood_profile_id"])
+        self.assertFalse(replay.call_args.kwargs["all_eligible"])
+        self.assertFalse(replay.call_args.kwargs["unattempted_only"])
+        self.assertEqual(3, replay.call_args.kwargs["minimum_profile_members"])
+        self.assertEqual(2, replay.call_args.kwargs["minimum_same_exemplars"])
+
     def test_association_admission_persistence_excludes_non_candidates(self) -> None:
         self.assertFalse(
             _association_admission_is_actionable(
@@ -286,6 +331,8 @@ class IdentityRunTests(unittest.TestCase):
             (
                 "candidate",
                 "shared",
+                "ready-candidate",
+                "ready-exemplar",
                 "frontier",
                 "acoustic-a",
                 "acoustic-b",

@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v27"
+SELECTOR_VERSION = "speaker_pair_selector_v28"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -537,6 +537,7 @@ def select_next_speaker_pair(
             disfavored=disfavored,
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
+            allow_ready_profile_confirmations=False,
         )
         or _select_nearest_unassociated_neighbor_pair(
             pairs,
@@ -583,6 +584,7 @@ def select_next_speaker_pair(
             disfavored=disfavored,
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
+            allow_ready_profile_confirmations=True,
         ) or _select_discovery_resolution_pair(
             pairs,
             discovery_resolution_by_pair=discovery_resolution_by_pair,
@@ -804,6 +806,7 @@ def select_next_speaker_pair(
         selection_objective
         in {
             "shadow_association_confirmation",
+            "shadow_association_prospective_confirmation",
             "machine_assignment_validation",
         }
         and selected_association is not None
@@ -831,7 +834,13 @@ def select_next_speaker_pair(
             "machine_assignment_reviewable": (
                 selected_association.machine_assignment_reviewable
             ),
-            "durable_evidence_source": "approved_blinded_pair_review_only",
+            "target_profile_automatic_ready": (
+                selected_association.profile_id
+                in automatic_profile_ready_ids
+            ),
+            "durable_evidence_source": (
+                "approved_contextual_pair_review_only"
+            ),
         }
     if anchor_component is not None:
         manifest["anchor_component_fingerprints"] = sorted(anchor_component)
@@ -1082,6 +1091,7 @@ def _select_association_confirmation_pair(
     disfavored: Mapping[str, int],
     disfavored_sources: Mapping[str, int],
     condition_counts: Mapping[str, int],
+    allow_ready_profile_confirmations: bool,
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -1124,6 +1134,7 @@ def _select_association_confirmation_pair(
             or nomination.profile_id not in exemplar.reviewed_profile_ids
             or (
                 nomination.profile_id in automatic_profile_ready_ids
+                and not allow_ready_profile_confirmations
                 and not (
                     nomination.provisional_assignment_active
                     or nomination.machine_assignment_reviewable
@@ -1144,7 +1155,9 @@ def _select_association_confirmation_pair(
                 item[1].provisional_assignment_active
                 or item[1].machine_assignment_reviewable
             )
-            else 1,
+            else 1
+            if item[1].profile_id not in automatic_profile_ready_ids
+            else 2,
             -item[1].same_comparison_count,
             -item[1].same_boundary_margin,
             _rank_pair(
@@ -1172,6 +1185,8 @@ def _select_association_confirmation_pair(
                 selected_nomination.provisional_assignment_active
                 or selected_nomination.machine_assignment_reviewable
             )
+            else "shadow_association_prospective_confirmation"
+            if selected_nomination.profile_id in automatic_profile_ready_ids
             else "shadow_association_confirmation"
         ),
         (

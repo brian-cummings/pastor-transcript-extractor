@@ -855,25 +855,30 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual("review_nomination_only", provenance["role"])
         self.assertFalse(provenance["identity_evidence"])
 
-    def test_association_confirmation_skips_automatic_ready_profile(
+    def test_association_confirmation_routes_ready_profile_for_prospective_review(
         self,
     ) -> None:
-        with self.assertRaisesRegex(
-            ValueError,
-            "no actionable automation-readiness pair remains",
-        ):
-            select_next_speaker_pair(
-                [
-                    candidate("candidate"),
-                    candidate("ready", profile_ids=frozenset((7,))),
-                ],
-                PairSelectionHistory(),
-                selection_goal="automation-readiness",
-                association_confirmation_pairs=(
-                    self._association_nomination("candidate", "ready"),
-                ),
-                automatic_profile_ready_ids=frozenset((7,)),
-            )
+        selected = select_next_speaker_pair(
+            [
+                candidate("candidate"),
+                candidate("ready", profile_ids=frozenset((7,))),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            association_confirmation_pairs=(
+                self._association_nomination("candidate", "ready"),
+            ),
+            automatic_profile_ready_ids=frozenset((7,)),
+        )
+
+        self.assertEqual(
+            "shadow_association_prospective_confirmation",
+            selected.manifest["selection_objective"],
+        )
+        self.assertTrue(
+            selected.manifest["shadow_association_confirmation"]
+            ["target_profile_automatic_ready"]
+        )
 
     def test_ready_active_assignment_is_prioritized_for_validation(
         self,

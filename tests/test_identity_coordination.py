@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -630,6 +631,66 @@ class IdentityCoordinationTests(unittest.TestCase):
         self.assertAlmostEqual(0.08, nominations[0].same_boundary_margin)
         self.assertEqual([(1, 1, path.resolve())], progress)
         self.assertEqual(nominations, cached_nominations)
+
+    def test_association_loader_uses_latest_boundary_state(self) -> None:
+        clean = self._association_payload()
+        flagged = self._association_payload()
+        flagged["sermon_window_quality_flags"] = [
+            {"flag": "speaker_inconsistent_edge", "edge": "start"}
+        ]
+        flagged["result_sha256"] = _sha256(
+            {
+                key: value
+                for key, value in flagged.items()
+                if key != "result_sha256"
+            }
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            clean_path = root / "older.json"
+            flagged_path = root / "newer.json"
+            clean_path.write_text(json.dumps(clean), encoding="utf-8")
+            flagged_path.write_text(json.dumps(flagged), encoding="utf-8")
+            clean_path.touch()
+            flagged_path.touch()
+            clean_path.chmod(0o600)
+            # Explicit nanosecond mtimes make the historical ordering stable.
+            os.utime(clean_path, ns=(1_000_000_000, 1_000_000_000))
+            os.utime(flagged_path, ns=(2_000_000_000, 2_000_000_000))
+
+            nominations = load_shadow_association_confirmation_pairs(
+                (clean_path, flagged_path)
+            )
+
+        self.assertEqual((), nominations)
+
+    def test_association_loader_accepts_latest_clean_boundary_state(self) -> None:
+        flagged = self._association_payload()
+        flagged["sermon_window_quality_flags"] = [
+            {"flag": "speaker_inconsistent_edge", "edge": "end"}
+        ]
+        flagged["result_sha256"] = _sha256(
+            {
+                key: value
+                for key, value in flagged.items()
+                if key != "result_sha256"
+            }
+        )
+        clean = self._association_payload()
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            flagged_path = root / "older.json"
+            clean_path = root / "newer.json"
+            flagged_path.write_text(json.dumps(flagged), encoding="utf-8")
+            clean_path.write_text(json.dumps(clean), encoding="utf-8")
+            os.utime(flagged_path, ns=(1_000_000_000, 1_000_000_000))
+            os.utime(clean_path, ns=(2_000_000_000, 2_000_000_000))
+
+            nominations = load_shadow_association_confirmation_pairs(
+                (flagged_path, clean_path)
+            )
+
+        self.assertEqual(2, len(nominations))
 
     def test_unmatched_association_loader_excludes_any_proposed_candidate(
         self,

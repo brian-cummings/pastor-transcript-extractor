@@ -249,6 +249,7 @@ from pastor_transcript_extractor.speaker_pair_review import (
     ObservationQualification,
     PairJudgment,
     ReviewEvidenceMode,
+    ReviewSubmission,
     STANDARD_VARIATION_TAGS,
     audit_review_selection_artifacts,
     create_observation_review_packet,
@@ -3883,7 +3884,7 @@ def review_speaker_pair(
     selection_manifest_json: str | None = typer.Option(None, hidden=True),
     observation_fingerprint_a: str | None = typer.Option(None, hidden=True),
     observation_fingerprint_b: str | None = typer.Option(None, hidden=True),
-) -> None:
+) -> ReviewSubmission | None:
     paths = build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
@@ -3978,7 +3979,7 @@ def review_speaker_pair(
         webbrowser.open(draft.packet_path.resolve().as_uri())
     if prepare_only:
         console.print("Draft preserved; rerun without --prepare-only to adjudicate it.")
-        return
+        return None
 
     _normalize_review_terminal_input()
 
@@ -4080,6 +4081,7 @@ def review_speaker_pair(
         paths,
         evaluation_root.expanduser().resolve(),
     )
+    return submission
 
 
 def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
@@ -5957,19 +5959,23 @@ def _actionable_review_fingerprints(
     """Order observations by current human-review nomination value."""
     ordered: list[str] = []
     if association_reports:
-        for nomination in load_shadow_association_confirmation_pairs(
+        nominations = load_shadow_association_confirmation_pairs(
             association_reports,
             progress_callback=association_progress_callback,
             cache_path=association_cache_path,
-        ):
-            if nomination.profile_id in automatic_profile_ready_ids:
-                continue
-            ordered.extend(
-                (
-                    nomination.candidate_fingerprint,
-                    nomination.exemplar_fingerprint,
+        )
+        for ready in (False, True):
+            for nomination in nominations:
+                if (
+                    nomination.profile_id in automatic_profile_ready_ids
+                ) != ready:
+                    continue
+                ordered.extend(
+                    (
+                        nomination.candidate_fingerprint,
+                        nomination.exemplar_fingerprint,
+                    )
                 )
-            )
     if discovery_report is not None:
         for nomination in load_discovery_resolution_pairs(discovery_report):
             ordered.extend(
@@ -7329,6 +7335,71 @@ def profile_leverage_snapshot_command(
         )
         console.print(f"Wrote observed leverage result to {result_path}")
     return snapshot_path
+
+
+def _association_review_leverage_context(
+    manifest: Mapping[str, Any],
+) -> tuple[int, str] | None:
+    objective = manifest.get("selection_objective")
+    if objective not in {
+        "shadow_association_confirmation",
+        "shadow_association_prospective_confirmation",
+        "machine_assignment_validation",
+    }:
+        return None
+    association = manifest.get("shadow_association_confirmation")
+    if not isinstance(association, Mapping):
+        return None
+    profile_id = association.get("profile_id")
+    if not isinstance(profile_id, int):
+        return None
+    decision_kind = (
+        "prospective_confirmation"
+        if objective
+        in {
+            "shadow_association_prospective_confirmation",
+            "machine_assignment_validation",
+        }
+        else "readiness_promotion"
+    )
+    return profile_id, decision_kind
+
+
+def _replay_profile_association_neighborhood(
+    profile_id: int,
+    *,
+    evaluation_root: Path,
+    cache_dir: Path,
+    association_root: Path,
+    base_dir: Path | None,
+) -> tuple[Path, ...]:
+    """Run the existing bounded association workflow after identity review."""
+    return shadow_associate_speakers_command(
+        youtube_video_id=None,
+        all_eligible=False,
+        unattempted_only=False,
+        neighborhood_profile_id=[profile_id],
+        include_profiled=False,
+        limit=None,
+        plan_only=False,
+        minimum_profile_members=3,
+        maximum_exemplars=3,
+        minimum_same_exemplars=2,
+        maximum_global_profiles=3,
+        model_path=Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+        policy_path=Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        ),
+        evaluation_root=evaluation_root,
+        cache_dir=cache_dir,
+        output_root=association_root,
+        base_dir=base_dir,
+    )
 
 
 @identity_app.command(
@@ -8949,7 +9020,7 @@ def review_next_speaker_pair(
     association_root: Path = typer.Option(
         Path("evaluation/speaker-associations/shadow-runs"),
         help=(
-            "Shadow-association artifacts used for blinded profile-match "
+            "Shadow-association artifacts used for contextual profile-match "
             "confirmation nominations."
         ),
     ),
@@ -9411,7 +9482,39 @@ def review_next_speaker_pair(
         f"({selection.observation_a.video_id}, {selection.observation_b.video_id}); "
         f"reasons={','.join(selection.manifest['reason_codes'])}"
     )
-    review_speaker_pair(
+    leverage_context = (
+        _association_review_leverage_context(selection.manifest)
+        if not prepare_only
+        else None
+    )
+    leverage_baseline: Path | None = None
+    if leverage_context is not None:
+        profile_id, decision_kind = leverage_context
+        try:
+            leverage_baseline = profile_leverage_snapshot_command(
+                profile_id=[profile_id],
+                decision_kind=decision_kind,
+                baseline=None,
+                profile_level_decisions=0,
+                sermon_level_reviews=0,
+                prospective_correct=0,
+                prospective_incorrect=0,
+                association_root=association_root,
+                output_root=Path("evaluation/identity-leverage"),
+                base_dir=base_dir,
+            )
+            selection.manifest["automatic_impact_tracking"] = {
+                "profile_id": profile_id,
+                "decision_kind": decision_kind,
+                "baseline_path": str(leverage_baseline),
+                "bounded_neighborhood_replay": True,
+            }
+        except (OSError, ValueError, typer.BadParameter) as error:
+            console.print(
+                "Automatic impact baseline was unavailable; review may "
+                f"continue without leverage measurement: {error}"
+            )
+    submission = review_speaker_pair(
         video_a=selection.observation_a.video_id,
         video_b=selection.observation_b.video_id,
         reviewer=reviewer,
@@ -9428,6 +9531,64 @@ def review_next_speaker_pair(
             selection.observation_b.input_fingerprint
         ),
     )
+    if (
+        submission is None
+        or leverage_context is None
+        or leverage_baseline is None
+    ):
+        return
+    try:
+        event = json.loads(submission.event_path.read_text(encoding="utf-8"))
+        if event.get("identity_evidence_eligible") is not True:
+            console.print(
+                "Automatic neighborhood replay skipped: the review did not "
+                "produce approved binary identity evidence."
+            )
+            return
+        profile_id, decision_kind = leverage_context
+        console.print(
+            "Approved identity evidence recorded; replaying only profile "
+            f"{profile_id}'s affected association neighborhood."
+        )
+        _replay_profile_association_neighborhood(
+            profile_id,
+            evaluation_root=evaluation_root,
+            cache_dir=cache_dir,
+            association_root=association_root,
+            base_dir=base_dir,
+        )
+        prospective_correct = int(
+            decision_kind == "prospective_confirmation"
+            and event.get("pair_judgment") == PairJudgment.SAME_SPEAKER
+        )
+        prospective_incorrect = int(
+            decision_kind == "prospective_confirmation"
+            and event.get("pair_judgment") == PairJudgment.DIFFERENT_SPEAKER
+        )
+        profile_leverage_snapshot_command(
+            profile_id=[profile_id],
+            decision_kind=decision_kind,
+            baseline=leverage_baseline,
+            profile_level_decisions=int(decision_kind == "readiness_promotion"),
+            sermon_level_reviews=int(
+                decision_kind == "prospective_confirmation"
+            ),
+            prospective_correct=prospective_correct,
+            prospective_incorrect=prospective_incorrect,
+            association_root=association_root,
+            output_root=Path("evaluation/identity-leverage"),
+            base_dir=base_dir,
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError, typer.BadParameter) as error:
+        console.print(
+            "Review evidence is safely persisted, but automatic neighborhood "
+            f"impact tracking did not complete: {error}"
+        )
+        console.print(
+            "Retry the bounded replay with: pte identity "
+            "shadow-associate-speakers --neighborhood-profile-id "
+            f"{leverage_context[0]} --base-dir {paths.root}"
+        )
 
 
 @media_app.command(

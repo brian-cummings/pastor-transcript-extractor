@@ -733,6 +733,32 @@ def _review_packet(draft: dict[str, Any]) -> str:
         if evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
         else "Audio-plus-visual speaker identity review"
     )
+    selection_manifest = draft.get("selection_manifest")
+    association_context = (
+        selection_manifest.get("shadow_association_confirmation")
+        if isinstance(selection_manifest, dict)
+        else None
+    )
+    review_context = ""
+    if isinstance(association_context, dict):
+        objective = str(selection_manifest.get("selection_objective", ""))
+        purpose = {
+            "shadow_association_confirmation": "profile readiness",
+            "shadow_association_prospective_confirmation": (
+                "prospective association confirmation"
+            ),
+            "machine_assignment_validation": "machine assignment validation",
+        }.get(objective, "association confirmation")
+        profile_id = association_context.get("profile_id")
+        comparison_count = association_context.get("same_comparison_count")
+        review_context = (
+            '<p class="review-context"><strong>Review purpose:</strong> '
+            f"{html.escape(purpose)}; target profile "
+            f"{html.escape(str(profile_id))}; supporting same-speaker "
+            f"comparisons: {html.escape(str(comparison_count))}. "
+            "This nomination is not profile membership until you approve "
+            "the identity judgment.</p>"
+        )
     for label in ("A", "B"):
         source_key = draft["presentation"][label]["source_key"]
         observation = draft["observations"][source_key]
@@ -806,6 +832,7 @@ def _review_packet(draft: dict[str, Any]) -> str:
     dt {{ font-weight: 600; }}
     dd {{ margin: 0; }}
     .warning {{ background: #fff4d6; border-left: 4px solid #b77900; padding: .8rem; }}
+    .review-context {{ background: #eef6ff; border-left: 4px solid #2563eb; padding: .8rem; }}
   </style>
 </head>
 <body>
@@ -820,6 +847,7 @@ def _review_packet(draft: dict[str, Any]) -> str:
       if evidence_mode == ReviewEvidenceMode.AUDIO_ONLY
       else "Timestamp links are available for visual identity confirmation. Titles, names, and channels are not shown in this packet."
   )}</p>
+  {review_context}
   <p>First decide whether every clip in each observation contains one consistent principal speaker. Compare A and B only if both observations qualify.</p>
   {''.join(groups)}
 </body>
