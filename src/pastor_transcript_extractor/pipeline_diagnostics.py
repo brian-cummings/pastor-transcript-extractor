@@ -2150,6 +2150,8 @@ def build_identity_automation_blocker_analysis(
         int, Mapping[str, Any]
     ] | None = None,
     machine_assignments: Sequence[Mapping[str, Any]] = (),
+    tripped_machine_policy_fingerprints: Sequence[str] = (),
+    profile_redirects: Mapping[int, int] | None = None,
 ) -> dict[str, Any]:
     """Join current identity stops to directly observable and contingent work."""
     observation_by_fingerprint = observation_by_fingerprint or {}
@@ -2159,6 +2161,56 @@ def build_identity_automation_blocker_analysis(
     association_admission_by_observation_id = (
         association_admission_by_observation_id or {}
     )
+    profile_redirects = profile_redirects or {}
+    tripped_machine_policies = set(tripped_machine_policy_fingerprints)
+    readiness_by_profile = {
+        int(profile["profile_id"]): profile
+        for profile in profile_readiness
+        if isinstance(profile.get("profile_id"), int)
+    }
+    assignments_by_observation_profile: dict[
+        tuple[int, int], list[Mapping[str, Any]]
+    ] = {}
+    for assignment in machine_assignments:
+        observation_id = assignment.get("observation_id")
+        profile_id = assignment.get("profile_id")
+        if isinstance(observation_id, int) and isinstance(profile_id, int):
+            assignments_by_observation_profile.setdefault(
+                (observation_id, profile_id), []
+            ).append(assignment)
+    automation_video_ids: dict[str, set[str]] = {}
+    automation_details: list[dict[str, Any]] = []
+    reviewed_membership_video_ids: set[str] = set()
+
+    def record_automation_state(
+        state: str,
+        *,
+        youtube_video_id: str,
+        observation_id: int,
+        proposed_profile_id: int,
+        canonical_profile_id: int,
+        assignment: Mapping[str, Any] | None,
+        reason_codes: Sequence[str] = (),
+    ) -> None:
+        automation_video_ids.setdefault(state, set()).add(youtube_video_id)
+        automation_details.append(
+            {
+                "state": state,
+                "youtube_video_id": youtube_video_id,
+                "observation_id": observation_id,
+                "proposed_profile_id": proposed_profile_id,
+                "canonical_profile_id": canonical_profile_id,
+                "machine_assignment_state": (
+                    assignment.get("state") if assignment is not None else None
+                ),
+                "machine_evidence_id": (
+                    assignment.get("machine_evidence_id")
+                    if assignment is not None
+                    else None
+                ),
+                "reason_codes": sorted(set(reason_codes)),
+            }
+        )
     same_pairs = {
         frozenset(str(value) for value in pair)
         for pair in reviewed_same_pairs
@@ -2218,6 +2270,8 @@ def build_identity_automation_blocker_analysis(
             or trace.get("youtube_video_id")
             or ""
         )
+        if effective_profiles and youtube_video_id:
+            reviewed_membership_video_ids.add(youtube_video_id)
         unresolved = (
             disposition == "accepted_sermon"
             and identity.get("observation_status") == "current"
@@ -2236,35 +2290,169 @@ def build_identity_automation_blocker_analysis(
         if unresolved and outcome == "proposed_match" and isinstance(
             proposed_profile_id, int
         ):
-            proposals_by_profile.setdefault(proposed_profile_id, set()).add(
+            canonical_profile_id = int(
+                profile_redirects.get(proposed_profile_id, proposed_profile_id)
+            )
+            proposals_by_profile.setdefault(canonical_profile_id, set()).add(
                 observation_id
             )
-            target = row(
-                "proposal_awaiting_human_confirmation",
-                observed_blocking_location="membership_firewall",
-                observable_next_operation={
-                    "operation": "prepare_blinded_proposal_confirmation",
-                    "implementation_status": "implemented",
-                    "epistemic_status": "directly_observable_next_work",
-                },
-                human_necessity={
-                    "classification": "required_by_current_membership_policy",
-                    "basis": (
-                        "A proposal is not evidence sufficient for profile membership."
+            readiness = readiness_by_profile.get(canonical_profile_id, {})
+            profile_ready = readiness.get("automatic_profile_ready") is True
+            readiness_blockers = [
+                str(value)
+                for value in readiness.get("automatic_blockers", []) or []
+            ]
+            result_sha256 = latest.get("result_sha256")
+            association_assignments = assignments_by_observation_profile.get(
+                (observation_id, canonical_profile_id), []
+            )
+            matching_assignments = [
+                assignment
+                for assignment in association_assignments
+                if isinstance(result_sha256, str)
+                and assignment.get("association_result_sha256") == result_sha256
+            ]
+            assignment = max(
+                matching_assignments,
+                key=lambda value: (
+                    str(
+                        value.get("event_created_at")
+                        or value.get("evidence_created_at")
+                        or ""
                     ),
-                },
-                potential_automation_opportunity={
-                    "operation": "automate_review_packet_routing_only",
-                    "epistemic_status": "recommendation",
-                    "membership_guard_change_implied": False,
-                },
+                    int(value.get("machine_evidence_id") or 0),
+                ),
+                default=None,
             )
-            target["affected_profile_ids"].add(proposed_profile_id)
-            target["affected_observation_ids"].add(observation_id)
-            target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
-            target["directly_blocked_operation_youtube_video_ids"].add(
-                youtube_video_id
+            assignment_state = str(
+                assignment.get("state") if assignment is not None else ""
             )
+            assignment_policy = (
+                str(assignment.get("policy_fingerprint") or "")
+                if assignment is not None
+                else ""
+            )
+            policy_tripped = bool(
+                assignment_policy
+                and assignment_policy in tripped_machine_policies
+            )
+            redirected = canonical_profile_id != proposed_profile_id
+            if redirected:
+                automation_state = "stale_proposal_excluded"
+                automation_reasons = ["profile_redirected_since_association"]
+            elif assignment_state == "active" and not policy_tripped and profile_ready:
+                automation_state = "active_provisional_assignment"
+                automation_reasons = ["current_reversible_machine_assignment"]
+            elif (
+                assignment_state == "awaiting_activation"
+                and not policy_tripped
+                and profile_ready
+            ):
+                automation_state = "eligible_unapplied_assignment"
+                automation_reasons = ["machine_evidence_awaiting_activation"]
+            elif assignment_state == "blocked_policy" or policy_tripped:
+                automation_state = "proposal_blocked_policy_or_circuit"
+                automation_reasons = [
+                    str(
+                        assignment.get("reason")
+                        if assignment is not None
+                        else "policy_circuit_breaker_tripped"
+                    )
+                ]
+            elif assignment_state == "revoked":
+                automation_state = "stale_or_revoked_assignment_excluded"
+                automation_reasons = [
+                    str(assignment.get("reason") or "assignment_revoked")
+                ]
+            elif not profile_ready:
+                automation_state = "proposal_blocked_profile_readiness"
+                automation_reasons = readiness_blockers or [
+                    "profile_not_automatic_ready"
+                ]
+            elif association_assignments:
+                automation_state = "stale_or_revoked_assignment_excluded"
+                automation_reasons = [
+                    "machine_assignment_does_not_match_latest_proposal"
+                ]
+            else:
+                automation_state = "assignment_evidence_missing_or_noncurrent"
+                automation_reasons = [
+                    "current_proposal_has_no_matching_machine_evidence"
+                ]
+            record_automation_state(
+                automation_state,
+                youtube_video_id=youtube_video_id,
+                observation_id=observation_id,
+                proposed_profile_id=proposed_profile_id,
+                canonical_profile_id=canonical_profile_id,
+                assignment=assignment,
+                reason_codes=automation_reasons,
+            )
+            blocker_metadata = {
+                "eligible_unapplied_assignment": (
+                    "machine_assignment_activation",
+                    "activate_eligible_machine_assignments",
+                    "not_required_for_reversible_activation",
+                ),
+                "proposal_blocked_profile_readiness": (
+                    "profile_readiness",
+                    "repair_target_profile_automatic_readiness",
+                    "not_inherently_required",
+                ),
+                "proposal_blocked_policy_or_circuit": (
+                    "machine_assignment_policy",
+                    "review_policy_trip_and_reconcile_assignments",
+                    "required_before_automatic_reenable",
+                ),
+                "assignment_evidence_missing_or_noncurrent": (
+                    "machine_assignment_evidence",
+                    "rerun_machine_assignment_planning",
+                    "not_inherently_required",
+                ),
+                "stale_proposal_excluded": (
+                    "current_artifact_validation",
+                    "rerun_current_shadow_association",
+                    "not_inherently_required",
+                ),
+                "stale_or_revoked_assignment_excluded": (
+                    "machine_assignment_reconciliation",
+                    "rerun_current_machine_assignment_planning",
+                    "not_inherently_required",
+                ),
+            }.get(automation_state)
+            if blocker_metadata is not None:
+                location, operation, human_classification = blocker_metadata
+                target = row(
+                    automation_state,
+                    observed_blocking_location=location,
+                    observable_next_operation={
+                        "operation": operation,
+                        "implementation_status": "implemented_or_available",
+                        "epistemic_status": "directly_observable_next_work",
+                    },
+                    human_necessity={
+                        "classification": human_classification,
+                        "basis": (
+                            "The operational automation state is derived from current "
+                            "production assignment evidence; reviewed membership remains "
+                            "separate."
+                        ),
+                    },
+                    evidence_scope="current_machine_assignment_projection",
+                )
+                target["blocking_condition_codes"].update(automation_reasons)
+                target["affected_profile_ids"].add(canonical_profile_id)
+                target["affected_observation_ids"].add(observation_id)
+                target["accepted_unresolved_youtube_video_ids"].add(
+                    youtube_video_id
+                )
+                if automation_state not in {
+                    "stale_proposal_excluded",
+                    "stale_or_revoked_assignment_excluded",
+                }:
+                    target[
+                        "directly_blocked_operation_youtube_video_ids"
+                    ].add(youtube_video_id)
         elif unresolved and outcome in {"ambiguous", "ambiguous_match"}:
             target = row(
                 "comparison_ambiguous",
@@ -2739,41 +2927,6 @@ def build_identity_automation_blocker_analysis(
         if len(profile_ids) > 1
     ]
 
-    machine_blocked = row(
-        "machine_policy_circuit_breaker_or_revocation",
-        observed_blocking_location="machine_assignment_policy",
-        observable_next_operation={
-            "operation": "review_contradiction_and_policy_provenance",
-            "implementation_status": "implemented_as_audit",
-            "epistemic_status": "directly_observable_next_work",
-        },
-        human_necessity={
-            "classification": "required_before_automatic_reenable",
-            "basis": "Persisted contradiction or revocation evidence trips fail-closed policy.",
-        },
-    )
-    for assignment in machine_assignments:
-        if assignment.get("state") not in {"blocked_policy", "revoked"}:
-            continue
-        profile_id = assignment.get("profile_id")
-        observation_id = assignment.get("observation_id")
-        if isinstance(profile_id, int):
-            machine_blocked["affected_profile_ids"].add(profile_id)
-        if isinstance(observation_id, int):
-            machine_blocked["affected_observation_ids"].add(observation_id)
-            unresolved_entry = accepted_unresolved.get(observation_id)
-            if unresolved_entry is not None:
-                machine_blocked[
-                    "accepted_unresolved_youtube_video_ids"
-                ].add(unresolved_entry["youtube_video_id"])
-        youtube_video_id = assignment.get("youtube_video_id")
-        if isinstance(youtube_video_id, str):
-            machine_blocked["directly_blocked_operation_youtube_video_ids"].add(
-                youtube_video_id
-            )
-    if not machine_blocked["affected_observation_ids"]:
-        rows.pop("machine_policy_circuit_breaker_or_revocation", None)
-
     finalized_rows = []
     for value in rows.values():
         for key in (
@@ -2833,6 +2986,33 @@ def build_identity_automation_blocker_analysis(
         if value["directly_blocked_operation_count"] > 0
         or value["structurally_derived_operation_count"] > 0
     ]
+    automation_state_names = (
+        "active_provisional_assignment",
+        "eligible_unapplied_assignment",
+        "proposal_blocked_profile_readiness",
+        "proposal_blocked_policy_or_circuit",
+        "proposal_genuinely_requires_human_review",
+        "assignment_evidence_missing_or_noncurrent",
+        "stale_proposal_excluded",
+        "stale_or_revoked_assignment_excluded",
+    )
+    automation_state_counts = {
+        state: len(automation_video_ids.get(state, set()))
+        for state in automation_state_names
+    }
+    current_proposal_video_ids = set().union(
+        *(automation_video_ids.get(state, set()) for state in automation_state_names)
+    )
+    reviews_avoided_video_ids = (
+        automation_video_ids.get("active_provisional_assignment", set())
+        | automation_video_ids.get("eligible_unapplied_assignment", set())
+    )
+    stale_excluded_video_ids = (
+        automation_video_ids.get("stale_proposal_excluded", set())
+        | automation_video_ids.get(
+            "stale_or_revoked_assignment_excluded", set()
+        )
+    )
     return {
         "schema_version": 1,
         "domain": "identity",
@@ -2847,6 +3027,64 @@ def build_identity_automation_blocker_analysis(
             "speculative_cascades_counted": False,
         },
         "accepted_unresolved_sermon_count": len(accepted_unresolved),
+        "operational_association_summary": {
+            "count_unit": "unique_current_videos",
+            "reviewed_profile_membership_count": len(
+                reviewed_membership_video_ids
+            ),
+            "current_proposal_count": len(current_proposal_video_ids),
+            "state_counts": automation_state_counts,
+            "state_counts_reconcile": sum(automation_state_counts.values())
+            == len(current_proposal_video_ids),
+            "active_provisional_assignment_count": automation_state_counts[
+                "active_provisional_assignment"
+            ],
+            "eligible_unapplied_assignment_count": automation_state_counts[
+                "eligible_unapplied_assignment"
+            ],
+            "proposal_blocked_profile_readiness_count": automation_state_counts[
+                "proposal_blocked_profile_readiness"
+            ],
+            "proposal_blocked_policy_or_circuit_count": automation_state_counts[
+                "proposal_blocked_policy_or_circuit"
+            ],
+            "proposal_genuinely_requires_human_review_count": (
+                automation_state_counts[
+                    "proposal_genuinely_requires_human_review"
+                ]
+            ),
+            "assignment_evidence_missing_or_noncurrent_count": (
+                automation_state_counts[
+                    "assignment_evidence_missing_or_noncurrent"
+                ]
+            ),
+            "stale_proposal_or_assignment_excluded_count": len(
+                stale_excluded_video_ids
+            ),
+            "human_reviews_avoided_by_current_automation_count": len(
+                reviews_avoided_video_ids
+            ),
+            "details": sorted(
+                automation_details,
+                key=lambda value: (
+                    value["state"],
+                    value["youtube_video_id"],
+                    value["observation_id"],
+                ),
+            ),
+            "interpretation": (
+                "Operational association is separate from reviewed membership. "
+                "Active assignments are reversible; eligible unapplied assignments "
+                "need activation, not sermon-level identity review."
+            ),
+            "remaining_ambiguities": [
+                (
+                    "A current automatic-ready proposal without matching machine "
+                    "evidence cannot be assigned to a specific production planning "
+                    "gate because skipped-plan reasons are not persisted per artifact."
+                )
+            ],
+        },
         "blocker_classes": finalized_rows,
         "profile_blocker_chains": sorted(
             profile_chains, key=lambda value: value["profile_id"]
@@ -4527,6 +4765,7 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
         lines.append(f"  R --> Q{index}")
     identity_outcomes = report.get("identity_outcome_summary", {})
     identity_nodes = ["I"]
+    proposed_match_node: str | None = None
     lines.extend(
         [
             f'  I["Identity operational outcomes<br/>'
@@ -4542,9 +4781,41 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
     ):
         label = str(state).replace('"', "'").replace("_", " ")
         node = f"IS{index}"
+        if state == "association_proposed_match":
+            proposed_match_node = node
         identity_nodes.append(node)
         lines.append(f'  {node}["{label}<br/>{count}"]')
         lines.append(f"  I --> {node}")
+    blocker_analysis = report.get("automation_blocker_analysis", {})
+    identity_blockers = (
+        blocker_analysis.get("domains", {}).get("identity", {})
+        if isinstance(blocker_analysis, dict)
+        else {}
+    )
+    automation = identity_blockers.get("operational_association_summary", {})
+    automation_nodes: list[str] = []
+    current_proposal_count = int(automation.get("current_proposal_count") or 0)
+    if current_proposal_count:
+        automation_nodes.append("OA")
+        lines.append(
+            f'  OA["Operational automation<br/>{current_proposal_count} current proposals"]'
+        )
+        lines.append(
+            f"  {proposed_match_node or 'I'} --> OA"
+        )
+        for index, (state, count) in enumerate(
+            sorted(
+                automation.get("state_counts", {}).items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ):
+            if not count:
+                continue
+            label = str(state).replace('"', "'").replace("_", " ")
+            node = f"OAS{index}"
+            automation_nodes.append(node)
+            lines.append(f'  {node}["{label}<br/>{count}"]')
+            lines.append(f"  OA --> {node}")
     advisory_trace_count = int(
         report.get("identity_boundary_feedback_summary", {}).get("trace_count") or 0
     )
@@ -4560,10 +4831,16 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
             "  classDef population fill:#e8eef8,stroke:#46658a,color:#172536",
             "  classDef reviewed fill:#d9f2df,stroke:#26733a,color:#102915",
             "  classDef identity fill:#ece3fa,stroke:#6b4c91,color:#28183b",
+            "  classDef automation fill:#dceef8,stroke:#26718c,color:#102934",
             "  classDef missing fill:#f9e5c7,stroke:#a16413,color:#3b2408",
             "  class P,E,T,U population",
             "  class R reviewed",
             f"  class {','.join(identity_nodes)} identity",
+            *(
+                [f"  class {','.join(automation_nodes)} automation"]
+                if automation_nodes
+                else []
+            ),
             f"  class {missing_nodes} missing",
         ]
     )
@@ -4758,6 +5035,54 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         if isinstance(blocker_analysis, dict)
         else {}
     )
+    operational = identity_blockers.get(
+        "operational_association_summary", {}
+    )
+    lines.extend(
+        [
+            "",
+            "## Identity operational automation",
+            "",
+            operational.get(
+                "interpretation",
+                "No operational machine-assignment projection reported.",
+            ),
+            "",
+            f"- Reviewed profile membership: "
+            f"{operational.get('reviewed_profile_membership_count', 0)}",
+            f"- Current proposals: {operational.get('current_proposal_count', 0)}",
+            f"- Active provisional assignments: "
+            f"{operational.get('active_provisional_assignment_count', 0)}",
+            f"- Eligible unapplied assignments: "
+            f"{operational.get('eligible_unapplied_assignment_count', 0)}",
+            f"- Blocked by profile readiness: "
+            f"{operational.get('proposal_blocked_profile_readiness_count', 0)}",
+            f"- Blocked by policy or circuit state: "
+            f"{operational.get('proposal_blocked_policy_or_circuit_count', 0)}",
+            f"- Genuinely requiring sermon-level human review: "
+            f"{operational.get('proposal_genuinely_requires_human_review_count', 0)}",
+            f"- Missing or noncurrent assignment evidence: "
+            f"{operational.get('assignment_evidence_missing_or_noncurrent_count', 0)}",
+            f"- Stale proposals or assignments excluded: "
+            f"{operational.get('stale_proposal_or_assignment_excluded_count', 0)}",
+            f"- Human reviews avoided by active/eligible automation: "
+            f"{operational.get('human_reviews_avoided_by_current_automation_count', 0)}",
+            f"- State counts reconcile: "
+            f"{operational.get('state_counts_reconcile', False)}",
+            "",
+            "| Operational state | Unique current videos |",
+            "|---|---:|",
+        ]
+    )
+    for state, count in sorted(
+        operational.get("state_counts", {}).items(),
+        key=lambda item: (-item[1], item[0]),
+    ):
+        lines.append(f"| {state} | {count} |")
+    ambiguities = operational.get("remaining_ambiguities", []) or []
+    if ambiguities:
+        lines.extend(["", "Remaining reconstruction ambiguity:", ""])
+        lines.extend(f"- {value}" for value in ambiguities)
     lines.extend(
         [
             "",

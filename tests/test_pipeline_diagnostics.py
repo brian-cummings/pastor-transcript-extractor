@@ -106,6 +106,31 @@ def proposed_payload() -> dict[str, object]:
 
 
 class PipelineDiagnosticTests(unittest.TestCase):
+    def _identity_proposal_trace(
+        self,
+        video_id: str,
+        observation_id: int,
+        profile_id: int,
+        *,
+        result_sha256: str = "current-result",
+        effective_profile_ids: list[int] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "video": {"youtube_video_id": video_id},
+            "identity_outcome": {
+                "content_disposition": "accepted_sermon",
+                "observation_status": "current",
+                "observation_id": observation_id,
+                "effective_profile_ids": effective_profile_ids or [],
+                "latest_association_outcome": "proposed_match",
+                "latest_association_attempt": {
+                    "proposed_profile_id": profile_id,
+                    "result_sha256": result_sha256,
+                },
+            },
+            "identity_boundary_feedback": {},
+        }
+
     def _write_proposed(self, root: Path) -> tuple[Path, dict[str, object]]:
         payload = proposed_payload()
         path = root / "proposed.json"
@@ -910,6 +935,185 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             "retrospective_membership_leakage", review["classification"]
         )
+
+    def test_identity_automation_separates_reviewed_active_and_eligible(self) -> None:
+        traces = [
+            self._identity_proposal_trace("active", 10, 100),
+            self._identity_proposal_trace("eligible", 11, 101),
+            self._identity_proposal_trace(
+                "reviewed", 12, 102, effective_profile_ids=[102]
+            ),
+        ]
+        assignments = [
+            {
+                "machine_evidence_id": 1,
+                "observation_id": 10,
+                "profile_id": 100,
+                "state": "active",
+                "policy_fingerprint": "policy-current",
+                "association_result_sha256": "current-result",
+            },
+            {
+                "machine_evidence_id": 2,
+                "observation_id": 11,
+                "profile_id": 101,
+                "state": "awaiting_activation",
+                "policy_fingerprint": "policy-current",
+                "association_result_sha256": "current-result",
+            },
+        ]
+
+        analysis = build_identity_automation_blocker_analysis(
+            traces,
+            profile_readiness=[
+                {"profile_id": 100, "automatic_profile_ready": True},
+                {"profile_id": 101, "automatic_profile_ready": True},
+                {"profile_id": 102, "automatic_profile_ready": True},
+            ],
+            machine_assignments=assignments,
+        )
+
+        operational = analysis["operational_association_summary"]
+        self.assertEqual(1, operational["reviewed_profile_membership_count"])
+        self.assertEqual(2, operational["current_proposal_count"])
+        self.assertEqual(1, operational["active_provisional_assignment_count"])
+        self.assertEqual(1, operational["eligible_unapplied_assignment_count"])
+        self.assertEqual(
+            2, operational["human_reviews_avoided_by_current_automation_count"]
+        )
+        self.assertTrue(operational["state_counts_reconcile"])
+        blockers = {
+            item["blocker_class"]: item for item in analysis["blocker_classes"]
+        }
+        self.assertNotIn("proposal_awaiting_human_confirmation", blockers)
+        self.assertNotIn("active_provisional_assignment", blockers)
+        self.assertEqual(
+            "not_required_for_reversible_activation",
+            blockers["eligible_unapplied_assignment"]["human_necessity"][
+                "classification"
+            ],
+        )
+        report = aggregate_diagnostic_traces(
+            traces, identity_automation_blockers=analysis
+        )
+        mermaid = build_systemic_outcome_mermaid(report)
+        markdown = build_systemic_markdown(report)
+        self.assertIn("Operational automation<br/>2 current proposals", mermaid)
+        self.assertIn("active provisional assignment<br/>1", mermaid)
+        self.assertIn("## Identity operational automation", markdown)
+        self.assertIn("- Active provisional assignments: 1", markdown)
+
+    def test_identity_automation_routes_observed_assignment_blocks(self) -> None:
+        traces = [
+            self._identity_proposal_trace("profile-blocked", 20, 200),
+            self._identity_proposal_trace("policy-blocked", 21, 201),
+            self._identity_proposal_trace("missing-evidence", 22, 202),
+        ]
+        analysis = build_identity_automation_blocker_analysis(
+            traces,
+            profile_readiness=[
+                {
+                    "profile_id": 200,
+                    "automatic_profile_ready": False,
+                    "automatic_blockers": ["discovery_candidate_unconfirmed"],
+                },
+                {"profile_id": 201, "automatic_profile_ready": True},
+                {"profile_id": 202, "automatic_profile_ready": True},
+            ],
+            machine_assignments=[
+                {
+                    "machine_evidence_id": 3,
+                    "observation_id": 21,
+                    "profile_id": 201,
+                    "state": "active",
+                    "policy_fingerprint": "tripped-policy",
+                    "association_result_sha256": "current-result",
+                }
+            ],
+            tripped_machine_policy_fingerprints=["tripped-policy"],
+        )
+
+        operational = analysis["operational_association_summary"]
+        self.assertEqual(1, operational["proposal_blocked_profile_readiness_count"])
+        self.assertEqual(1, operational["proposal_blocked_policy_or_circuit_count"])
+        self.assertEqual(
+            1, operational["assignment_evidence_missing_or_noncurrent_count"]
+        )
+        blockers = {
+            item["blocker_class"]: item for item in analysis["blocker_classes"]
+        }
+        self.assertEqual(
+            "repair_target_profile_automatic_readiness",
+            blockers["proposal_blocked_profile_readiness"][
+                "observable_next_operation"
+            ]["operation"],
+        )
+        self.assertEqual(
+            "review_policy_trip_and_reconcile_assignments",
+            blockers["proposal_blocked_policy_or_circuit"][
+                "observable_next_operation"
+            ]["operation"],
+        )
+
+    def test_identity_automation_excludes_stale_and_revoked_deterministically(self) -> None:
+        traces = [
+            self._identity_proposal_trace("stale", 30, 300),
+            self._identity_proposal_trace("revoked", 31, 301),
+        ]
+        # Evaluation-only truth must not influence runtime assignment policy.
+        traces[0]["fixture_truth"] = {"expected_speaker_profile_id": 999}
+        assignments = [
+            {
+                "machine_evidence_id": 4,
+                "observation_id": 30,
+                "profile_id": 300,
+                "state": "active",
+                "policy_fingerprint": "policy-current",
+                "association_result_sha256": "superseded-result",
+            },
+            {
+                "machine_evidence_id": 5,
+                "observation_id": 31,
+                "profile_id": 301,
+                "state": "revoked",
+                "reason": "reconciled_stale_proposal",
+                "policy_fingerprint": "policy-current",
+                "association_result_sha256": "current-result",
+            },
+            {
+                "machine_evidence_id": 6,
+                "observation_id": 999,
+                "profile_id": 999,
+                "state": "blocked_policy",
+                "reason": "historical_policy_trip",
+                "policy_fingerprint": "old-policy",
+                "association_result_sha256": "old-result",
+            },
+        ]
+        arguments = {
+            "profile_readiness": [
+                {"profile_id": 300, "automatic_profile_ready": True},
+                {"profile_id": 301, "automatic_profile_ready": True},
+            ],
+            "machine_assignments": assignments,
+        }
+
+        first = build_identity_automation_blocker_analysis(traces, **arguments)
+        second = build_identity_automation_blocker_analysis(traces, **arguments)
+
+        self.assertEqual(first, second)
+        operational = first["operational_association_summary"]
+        self.assertEqual(2, operational["current_proposal_count"])
+        self.assertEqual(
+            2, operational["stale_proposal_or_assignment_excluded_count"]
+        )
+        self.assertEqual(0, operational["active_provisional_assignment_count"])
+        stale = next(
+            item
+            for item in first["blocker_classes"]
+            if item["blocker_class"] == "stale_or_revoked_assignment_excluded"
+        )
+        self.assertEqual(0, stale["directly_blocked_operation_count"])
 
     def test_identity_blockers_expose_bridge_chain_without_predicting_unlock(self) -> None:
         trace = {

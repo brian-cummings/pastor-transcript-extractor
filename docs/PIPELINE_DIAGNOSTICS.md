@@ -51,10 +51,12 @@ remain separate in the systemic evidence.
 
 V7 continues from sermon disposition into operational identity outcomes: current speaker
 observation, shadow association attempt, unprofiled evaluation, and effective reviewed
-profile membership. Machine outcomes such as `proposed_match` remain proposals rather than
-speaker correctness claims. Stale observations are never credited to the current extraction,
-and content-terminal, not-attempted, and stale work remain distinct. Persisted association
-failures remain visible in the association-outcome branches.
+profile membership. A `proposed_match` remains a proposal unless current machine-assignment
+evidence gives it a separate operational state. An active provisional assignment is a
+reversible operational association, never reviewed or durable profile membership. Stale
+observations are never credited to the current extraction, and content-terminal,
+not-attempted, and stale work remain distinct. Persisted association failures remain visible
+in the association-outcome branches.
 
 The primary pipeline always uses one mutually exclusive outcome per unique database video.
 For identity, the latest persisted association outcome for the current observation supplies
@@ -142,6 +144,15 @@ prerequisites are reported separately as
 When the matcher has performed stricter verified-media, transcript-span, or
 activity-span admission, its persisted outcome takes precedence and is reported
 as a stage-specific `association_admission_*_blocked` class.
+
+The operational-association subsection classifies each current proposal into one
+mutually exclusive, unique-video state: active provisional assignment, eligible but
+unapplied assignment, profile-readiness block, policy/circuit block, explicit human-review
+requirement, missing/noncurrent assignment evidence, or stale/revoked exclusion. Active and
+eligible assignments count as avoided sermon-level reviews; they do not increase reviewed
+membership. Historical assignment events remain processing volume rather than actionable
+backlog. If the current projection cannot recover a production planner's per-artifact skip
+reason, the report labels that ambiguity instead of inferring human necessity.
 
 ## Compare two diagnostic runs
 

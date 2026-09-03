@@ -1120,6 +1120,7 @@ def diagnose_pipeline_system(
         association_eligibility_by_observation_id[observation_id] = (
             eligibility.reason_code
         )
+    current_machine_assignment_report = machine_assignment_report(database)
     identity_automation_blockers = build_identity_automation_blocker_analysis(
         traces,
         profile_readiness=[
@@ -1147,7 +1148,13 @@ def diagnose_pipeline_system(
             association_eligibility_by_observation_id
         ),
         association_admission_by_observation_id=identity_admissions,
-        machine_assignments=machine_assignment_report(database)["assignments"],
+        machine_assignments=current_machine_assignment_report["assignments"],
+        tripped_machine_policy_fingerprints=(
+            current_machine_assignment_report[
+                "tripped_policy_fingerprints"
+            ]
+        ),
+        profile_redirects=profile_redirects,
     )
     report = aggregate_diagnostic_traces(
         traces,
