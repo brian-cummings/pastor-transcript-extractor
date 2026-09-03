@@ -6,8 +6,12 @@ import json
 import re
 from typing import Any, Mapping, Sequence
 
+from pastor_transcript_extractor.models import TranscriptSegmentLabel
+from pastor_transcript_extractor.segmentation import SegmentDraft
+from pastor_transcript_extractor.sermon_detection import detect_sermon_window
 
-POLICY_VERSION = "identity_boundary_review_v1"
+
+POLICY_VERSION = "identity_boundary_review_v2"
 DEFAULT_MAX_TRIM_SECONDS = 300.0
 DEFAULT_MAX_TRIM_FRACTION = 0.20
 DEFAULT_MIN_REMAINING_SECONDS = 600.0
@@ -412,8 +416,117 @@ def apply_identity_boundary_review(payload: Mapping[str, Any]) -> dict[str, Any]
     return result
 
 
+def _segment_drafts(
+    segments: Sequence[Mapping[str, Any]],
+) -> list[SegmentDraft]:
+    drafts: list[SegmentDraft] = []
+    for segment in segments:
+        try:
+            label = TranscriptSegmentLabel(str(segment.get("label", "unknown")))
+        except ValueError:
+            label = TranscriptSegmentLabel.UNKNOWN
+        drafts.append(
+            SegmentDraft(
+                start_seconds=_number(segment.get("start_seconds")),
+                end_seconds=_number(segment.get("end_seconds")),
+                text=str(segment.get("text", "")),
+                speaker_hint=(
+                    str(segment["speaker_hint"])
+                    if isinstance(segment.get("speaker_hint"), str)
+                    else None
+                ),
+                label=label,
+                confidence=_number(segment.get("confidence")),
+            )
+        )
+    return drafts
+
+
+def _identity_guided_transition(
+    *,
+    edge: str,
+    flagged_span: Mapping[str, Any],
+    sermon_spans: Sequence[Mapping[str, Any]],
+    segments: Sequence[Mapping[str, Any]],
+    sermon_window: Mapping[str, Any],
+) -> tuple[float, list[Mapping[str, Any]], list[Mapping[str, Any]]] | None:
+    current_start = _number(sermon_window.get("start_seconds"))
+    current_end = _number(sermon_window.get("end_seconds"))
+    if current_start is None or current_end is None or current_end <= current_start:
+        return None
+    guide_starts = [
+        float(span["start_seconds"])
+        for span in sermon_spans
+        if current_start <= float(span["start_seconds"]) < current_end
+    ]
+    guide_ends = [
+        float(span["end_seconds"])
+        for span in sermon_spans
+        if current_start < float(span["end_seconds"]) <= current_end
+    ]
+    if len(guide_starts) < 3 or len(guide_ends) < 3:
+        return None
+    guide_start = min(guide_starts)
+    guide_end = max(guide_ends)
+    rerun = detect_sermon_window(
+        _segment_drafts(segments),
+        required_guide_start_seconds=guide_start,
+        required_guide_end_seconds=guide_end,
+    )
+    proposed = rerun.start_seconds if edge == "start" else rerun.end_seconds
+    if proposed is None:
+        return None
+    flagged_start = float(flagged_span["start_seconds"])
+    flagged_end = float(flagged_span["end_seconds"])
+    if edge == "start":
+        if not current_start < proposed <= guide_start:
+            return None
+        if flagged_end > proposed + 1.0:
+            return None
+        removed = _segments_in_range(segments, current_start, proposed)
+        retained = _segments_in_range(
+            segments,
+            proposed,
+            min(current_end, proposed + 120.0),
+        )
+    else:
+        if not guide_end <= proposed < current_end:
+            return None
+        if flagged_start < proposed - 1.0:
+            return None
+        removed = _segments_in_range(segments, proposed, current_end)
+        retained = _segments_in_range(
+            segments,
+            max(current_start, proposed - 120.0),
+            proposed,
+        )
+    removed_labels = {str(segment.get("label", "unknown")) for segment in removed}
+    retained_labels = {str(segment.get("label", "unknown")) for segment in retained}
+    removed_has_transition_content = bool(
+        removed_labels
+        & {
+            TranscriptSegmentLabel.ANNOUNCEMENTS.value,
+            TranscriptSegmentLabel.MUSIC.value,
+            TranscriptSegmentLabel.OTHER.value,
+            TranscriptSegmentLabel.PRAYER.value,
+        }
+    )
+    retained_has_sermon_content = bool(
+        retained_labels
+        & {
+            TranscriptSegmentLabel.SERMON.value,
+            TranscriptSegmentLabel.READING.value,
+        }
+    )
+    if not removed_has_transition_content or not retained_has_sermon_content:
+        return None
+    return float(proposed), removed, retained
+
+
 def identity_boundary_evidence_from_association(
-    report: Mapping[str, Any], segments: Sequence[Mapping[str, Any]]
+    report: Mapping[str, Any],
+    segments: Sequence[Mapping[str, Any]],
+    sermon_window: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Adapt a production association artifact into boundary-policy evidence."""
     flags = report.get("sermon_window_quality_flags")
@@ -427,6 +540,7 @@ def identity_boundary_evidence_from_association(
     )
     candidate_selection = candidate_selection if isinstance(candidate_selection, Mapping) else {}
     sermon_spans = _spans(candidate_selection.get("coherent_sermon_speaker_spans"))
+    current_window = sermon_window if isinstance(sermon_window, Mapping) else {}
     edges: list[dict[str, Any]] = []
     for flag in flags:
         if not isinstance(flag, Mapping) or flag.get("flag") != "speaker_inconsistent_edge":
@@ -435,45 +549,28 @@ def identity_boundary_evidence_from_association(
         flagged_span = _span(flag)
         if edge not in {"start", "end"} or flagged_span is None:
             continue
-        if edge == "start":
-            candidates = sorted(
-                value for segment in segments
-                if (value := _number(segment.get("start_seconds"))) is not None
-                and value >= float(flagged_span["end_seconds"]) - 1.0
-            )
-            boundary = candidates[0] if candidates else None
-            before_segments = _segments_in_range(
-                segments, float(flagged_span["start_seconds"]), boundary or float(flagged_span["end_seconds"])
-            )
-            after_segments = _segments_in_range(segments, boundary or 0.0, (boundary or 0.0) + 30.0)
-        else:
-            candidates = sorted(
-                value for segment in segments
-                if (value := _number(segment.get("end_seconds"))) is not None
-                and value <= float(flagged_span["start_seconds"]) + 1.0
-            )
-            boundary = candidates[-1] if candidates else None
-            before_segments = _segments_in_range(segments, (boundary or 0.0) - 30.0, boundary or 0.0)
-            after_segments = _segments_in_range(
-                segments, boundary or float(flagged_span["start_seconds"]), float(flagged_span["end_seconds"])
-            )
         reason_codes = [
             str(reason) for reason in flag.get("reason_codes", [])
             if isinstance(reason, str)
         ]
-        removed_segments = before_segments if edge == "start" else after_segments
+        guided = _identity_guided_transition(
+            edge=str(edge),
+            flagged_span=flagged_span,
+            sermon_spans=sermon_spans,
+            segments=segments,
+            sermon_window=current_window,
+        )
+        if guided is None:
+            continue
+        boundary, removed_segments, retained_segments = guided
         removed_text = _text(removed_segments)
-        coherent_fallback = {
-            "distributed_clip_inconsistent",
-            "coherent_replacement_found",
-        }.issubset(reason_codes)
         edges.append({
             "edge": edge,
             "edge_speaker_spans": [flagged_span],
             "materially_inconsistent": "distributed_clip_inconsistent" in reason_codes,
             "coherent_transition_detected": (
                 flag.get("coherent_transition_detected") is True
-                or (coherent_fallback and boundary is not None)
+                or bool(retained_segments)
             ),
             "removes_coherent_exposition": (
                 flag.get("removes_coherent_exposition")
@@ -495,17 +592,30 @@ def identity_boundary_evidence_from_association(
             "transcript_transition_evidence": (
                 {
                     "boundary_seconds": boundary,
-                    "transition_kind": "timestamped_segment_boundary_at_identity_transition",
-                    "before_text_sha256": hashlib.sha256(_text(before_segments).encode()).hexdigest(),
-                    "after_text_sha256": hashlib.sha256(_text(after_segments).encode()).hexdigest(),
-                    "reason_codes": reason_codes,
+                    "transition_kind": "identity_guided_sermon_window_redetection",
+                    "confidence": "structural",
+                    "before_text_sha256": hashlib.sha256(
+                        (
+                            _text(removed_segments)
+                            if edge == "start"
+                            else _text(retained_segments)
+                        ).encode()
+                    ).hexdigest(),
+                    "after_text_sha256": hashlib.sha256(
+                        (
+                            _text(retained_segments)
+                            if edge == "start"
+                            else _text(removed_segments)
+                        ).encode()
+                    ).hexdigest(),
+                    "reason_codes": [
+                        *reason_codes,
+                        "outermost_coherent_clips_used_as_guides",
+                        "sermon_window_redetected_with_identity_guides",
+                    ],
                 }
-                if boundary is not None
-                else None
             ),
         })
-    if not edges:
-        return None
     return {
         "schema_version": 1,
         "association_version": report.get("association_version"),
@@ -534,13 +644,27 @@ def persist_association_boundary_evidence(
         return False
     if not isinstance(payload, dict) or not isinstance(payload.get("segments"), list):
         return False
+    prior_evidence = payload.get("identity_boundary_evidence")
+    prior_review = payload.get("identity_boundary_review")
+    if (
+        isinstance(prior_evidence, Mapping)
+        and prior_evidence.get("source_artifact_sha256")
+        == report.get("result_sha256")
+        and isinstance(prior_review, Mapping)
+        and prior_review.get("policy_version") == POLICY_VERSION
+    ):
+        return True
     evidence = identity_boundary_evidence_from_association(
         report,
         [segment for segment in payload["segments"] if isinstance(segment, Mapping)],
+        payload.get("sermon_window")
+        if isinstance(payload.get("sermon_window"), Mapping)
+        else None,
     )
     if evidence is None:
-        return False
-    payload["identity_boundary_evidence"] = evidence
+        payload.pop("identity_boundary_evidence", None)
+    else:
+        payload["identity_boundary_evidence"] = evidence
     payload = apply_identity_boundary_review(payload)
     # Association evidence can arrive after extraction originally derived the
     # disposition. Keep the effective disposition causally synchronized now,

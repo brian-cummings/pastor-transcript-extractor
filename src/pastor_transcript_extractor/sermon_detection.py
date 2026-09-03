@@ -342,7 +342,20 @@ def detect_sermon_window(
     *,
     transcript_source: TranscriptSourceKind | None = None,
     minimum_duration_seconds: float | None = None,
+    required_guide_start_seconds: float | None = None,
+    required_guide_end_seconds: float | None = None,
 ) -> SermonWindowResult:
+    guided = (
+        required_guide_start_seconds is not None
+        or required_guide_end_seconds is not None
+    )
+    method = "rule_based_v1_identity_guided" if guided else "rule_based_v1"
+    if (
+        required_guide_start_seconds is not None
+        and required_guide_end_seconds is not None
+        and required_guide_end_seconds <= required_guide_start_seconds
+    ):
+        raise ValueError("sermon identity guide interval is invalid")
     resolved_minimum = (
         minimum_sermon_duration_seconds()
         if minimum_duration_seconds is None
@@ -356,7 +369,7 @@ def detect_sermon_window(
             end_seconds=None,
             confidence=0.05,
             reasons=["no sermon window detected: transcript has no timestamped segments"],
-            method="rule_based_v1",
+            method=method,
             included_segment_indexes=[],
             excluded_segment_indexes=[],
             suspicious_boundary=False,
@@ -376,7 +389,7 @@ def detect_sermon_window(
             end_seconds=None,
             confidence=0.05,
             reasons=["no sermon window detected: no sermon-like segment run met the score threshold"],
-            method="rule_based_v1",
+            method=method,
             included_segment_indexes=[],
             excluded_segment_indexes=[segment.index for segment in timed],
             suspicious_boundary=False,
@@ -410,14 +423,26 @@ def detect_sermon_window(
     def run_duration(run: list[_TimedSegment]) -> float:
         return run[-1].end_seconds - run[0].start_seconds
 
-    valid_runs = [run for run in merged_runs if run_duration(run) >= resolved_minimum]
+    valid_runs = [
+        run
+        for run in merged_runs
+        if run_duration(run) >= resolved_minimum
+        and (
+            required_guide_start_seconds is None
+            or run[0].start_seconds <= required_guide_start_seconds <= run[-1].end_seconds
+        )
+        and (
+            required_guide_end_seconds is None
+            or run[0].start_seconds <= required_guide_end_seconds <= run[-1].end_seconds
+        )
+    ]
     if not valid_runs:
         return SermonWindowResult(
             start_seconds=None,
             end_seconds=None,
             confidence=0.15,
             reasons=[f"no sermon window detected: no sermon-like segment run reached the {minimum_label} minimum"],
-            method="rule_based_v1",
+            method=method,
             included_segment_indexes=[],
             excluded_segment_indexes=[segment.index for segment in timed],
             suspicious_boundary=False,
@@ -479,7 +504,7 @@ def detect_sermon_window(
         end_seconds=trimmed_run[-1].end_seconds,
         confidence=round(confidence, 2),
         reasons=reasons,
-        method="rule_based_v1",
+        method=method,
         included_segment_indexes=included,
         excluded_segment_indexes=excluded,
         suspicious_boundary=bool(suspicious_boundary_reasons),

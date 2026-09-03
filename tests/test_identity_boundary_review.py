@@ -206,7 +206,7 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
             result.records[0]["input_fingerprint"],
         )
 
-    def test_association_adapter_persists_review_evidence(self) -> None:
+    def test_clip_reselection_without_structural_transition_takes_no_action(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "proposed.json"
             path.write_text(json.dumps({"sermon_window": {"start_seconds": 0.0, "end_seconds": 1800.0}, "segments": segments()}))
@@ -220,9 +220,12 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
             self.assertTrue(persist_association_boundary_evidence(path, report))
             persisted = json.loads(path.read_text())
         self.assertIn("identity_boundary_evidence", persisted)
-        self.assertEqual("review_required", persisted["identity_boundary_review"]["records"][0]["decision"])
         self.assertEqual(
-            "review_required", persisted["final_disposition"]["status"]
+            "no_action",
+            persisted["identity_boundary_review"]["records"][0]["decision"],
+        )
+        self.assertEqual(
+            "accepted_sermon", persisted["final_disposition"]["status"]
         )
 
     def test_approved_association_can_drive_automatic_production_trim(self) -> None:
@@ -251,20 +254,120 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "proposed.json"
+            transcript = segments()
+            transcript[0]["label"] = "announcements"
+            transcript[0]["text"] = "Welcome and here are this week's announcements"
             path.write_text(json.dumps({
                 "sermon_window": {"start_seconds": 0.0, "end_seconds": 1800.0},
-                "segments": segments(),
+                "segments": transcript,
             }))
             self.assertTrue(persist_association_boundary_evidence(path, report))
             persisted = json.loads(path.read_text())
+            self.assertTrue(persist_association_boundary_evidence(path, report))
+            replayed = json.loads(path.read_text())
 
         self.assertEqual(60.0, persisted["sermon_window"]["start_seconds"])
+        self.assertEqual(persisted, replayed)
         self.assertEqual(
             "auto_trim",
             persisted["identity_boundary_review"]["records"][0]["decision"],
         )
         self.assertEqual(
             "accepted_sermon", persisted["final_disposition"]["status"]
+        )
+
+    def test_current_clean_association_clears_stale_boundary_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "proposed.json"
+            path.write_text(json.dumps({
+                "classification": {"confidence_tier": "high"},
+                "sermon_window": {
+                    "start_seconds": 0.0,
+                    "end_seconds": 1800.0,
+                    "source": "detected",
+                },
+                "segments": segments(),
+                "identity_boundary_evidence": evidence("start", 120.0),
+                "identity_boundary_review": {
+                    "records": [{"decision": "review_required"}],
+                },
+                "final_disposition": {
+                    "status": "review_required",
+                    "reason_codes": ["identity_boundary_review_required"],
+                },
+            }))
+            report = {
+                "association_version": "association-v7",
+                "model_fingerprint": "model",
+                "result_sha256": "clean-artifact",
+                "sermon_window_quality_flags": [],
+            }
+
+            self.assertTrue(persist_association_boundary_evidence(path, report))
+            persisted = json.loads(path.read_text())
+
+        self.assertEqual(
+            [],
+            persisted["identity_boundary_evidence"]["edges"],
+        )
+        self.assertEqual(
+            "clean-artifact",
+            persisted["identity_boundary_evidence"]["source_artifact_sha256"],
+        )
+        self.assertTrue(all(
+            record["decision"] == "no_action"
+            for record in persisted["identity_boundary_review"]["records"]
+        ))
+        self.assertEqual(
+            "accepted_sermon",
+            persisted["final_disposition"]["status"],
+        )
+
+    def test_guided_redetection_can_trim_a_structural_closing_edge(self) -> None:
+        report = {
+            "association_version": "association-v7",
+            "model_fingerprint": "model",
+            "result_sha256": "closing-artifact",
+            "policy": {"automatic_use_allowed": True},
+            "span_selection": {
+                "candidate_selection": {
+                    "coherent_sermon_speaker_spans": evidence("end", 1680.0)[
+                        "sermon_speaker_spans"
+                    ]
+                }
+            },
+            "sermon_window_quality_flags": [{
+                "flag": "speaker_inconsistent_edge",
+                "edge": "end",
+                "start_seconds": 1740.0,
+                "end_seconds": 1800.0,
+                "reason_codes": [
+                    "distributed_clip_inconsistent",
+                    "coherent_replacement_found",
+                ],
+            }],
+        }
+        transcript = segments()
+        for segment in transcript[-2:]:
+            segment["label"] = "announcements"
+            segment["text"] = "Closing announcements for the congregation"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "proposed.json"
+            path.write_text(json.dumps({
+                "sermon_window": {
+                    "start_seconds": 0.0,
+                    "end_seconds": 1800.0,
+                },
+                "segments": transcript,
+            }))
+
+            self.assertTrue(persist_association_boundary_evidence(path, report))
+            persisted = json.loads(path.read_text())
+
+        self.assertEqual(1680.0, persisted["sermon_window"]["end_seconds"])
+        self.assertEqual(
+            "auto_trim",
+            persisted["identity_boundary_review"]["records"][1]["decision"],
         )
 
 
