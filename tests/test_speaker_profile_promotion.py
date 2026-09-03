@@ -21,6 +21,7 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
     write_shadow_profile_discovery,
 )
 from pastor_transcript_extractor.speaker_profile_promotion import (
+    CandidateConfirmationPlan,
     apply_candidate_confirmations,
     apply_discovery_promotions,
     plan_candidate_confirmations,
@@ -219,6 +220,19 @@ class SpeakerProfilePromotionTests(unittest.TestCase):
             [association_path],
         )
         self.assertEqual(1, len(confirmation_plan.candidates))
+        duplicate_recording_plan = CandidateConfirmationPlan(
+            candidates=(
+                confirmation_plan.candidates[0],
+                confirmation_plan.candidates[0],
+            ),
+            skipped=(),
+            ignored_counts={},
+        )
+        with self.assertRaisesRegex(ValueError, "same recording more than once"):
+            apply_candidate_confirmations(
+                self.database,
+                duplicate_recording_plan,
+            )
         apply_candidate_confirmations(self.database, confirmation_plan)
 
         confirmed = assess_profile_association_readiness(
@@ -232,6 +246,41 @@ class SpeakerProfilePromotionTests(unittest.TestCase):
             self.database.list_effective_profile_ids_for_observation(
                 candidate.id
             ),
+        )
+
+        replacement_extraction = self.database.add_extraction_result(
+            video_id=candidate.video_id,
+            version=2,
+            proposed_text_path="d-v2.md",
+            proposed_json_path="d-v2.json",
+        )
+        replacement = self.database.add_speaker_observation(
+            video_id=candidate.video_id,
+            extraction_result_id=replacement_extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=110.0,
+            end_seconds=990.0,
+            artifact_path="d-v2.speaker.json",
+            content_sha256="content-d-v2",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="d-v2",
+        )
+        self.assertEqual(
+            replacement,
+            self.database.get_latest_speaker_observation_for_video(
+                candidate.video_id
+            ),
+        )
+        stale_plan = plan_candidate_confirmations(
+            self.database,
+            [association_path],
+        )
+        self.assertEqual((), stale_plan.candidates)
+        self.assertEqual(1, len(stale_plan.skipped))
+        self.assertIn(
+            "not the current observation for its recording",
+            stale_plan.skipped[0]["reason"],
         )
 
     def test_tampered_discovery_artifact_is_rejected(self) -> None:

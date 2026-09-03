@@ -172,6 +172,7 @@ def plan_candidate_confirmations(
     skipped: list[dict[str, Any]] = []
     ignored_counts: dict[str, int] = {}
     seen_observations: set[int] = set()
+    seen_recordings: set[int] = set()
     for raw_path in sorted(
         (path.expanduser().resolve() for path in report_paths),
         key=str,
@@ -205,7 +206,11 @@ def plan_candidate_confirmations(
         if candidate.observation_id in seen_observations:
             _increment(ignored_counts, "duplicate_candidate_observation")
             continue
+        if candidate.video_id in seen_recordings:
+            _increment(ignored_counts, "duplicate_candidate_recording")
+            continue
         seen_observations.add(candidate.observation_id)
+        seen_recordings.add(candidate.video_id)
         candidates.append(candidate)
     return CandidateConfirmationPlan(
         candidates=tuple(candidates),
@@ -218,6 +223,27 @@ def apply_candidate_confirmations(
     database: Database,
     plan: CandidateConfirmationPlan,
 ) -> tuple[int, ...]:
+    seen_recordings: set[int] = set()
+    for candidate in plan.candidates:
+        if candidate.video_id in seen_recordings:
+            raise ValueError(
+                "confirmation plan contains the same recording more than once"
+            )
+        current_observation = (
+            database.get_latest_speaker_observation_for_video(candidate.video_id)
+        )
+        if (
+            current_observation is None
+            or current_observation.id != candidate.observation_id
+            or current_observation.input_fingerprint
+            != candidate.observation_fingerprint
+        ):
+            raise ValueError(
+                "confirmation candidate is no longer the current observation "
+                "for its recording"
+            )
+        seen_recordings.add(candidate.video_id)
+
     event_ids: list[int] = []
     for candidate in plan.candidates:
         event_key = _sha256(
@@ -394,6 +420,15 @@ def _validate_confirmation(
         or observation.video_id != video_id
     ):
         raise ValueError("association candidate no longer matches the registry")
+    current_observation = database.get_latest_speaker_observation_for_video(video_id)
+    if (
+        current_observation is None
+        or current_observation.id != observation_id
+        or current_observation.input_fingerprint != fingerprint
+    ):
+        raise ValueError(
+            "association candidate is not the current observation for its recording"
+        )
     memberships = database.list_effective_profile_ids_for_observation(
         observation_id
     )
