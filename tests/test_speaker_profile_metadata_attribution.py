@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -505,6 +506,85 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         self.assertEqual(1, run.insufficient_evidence)
         self.assertEqual(0, run.conflicting_evidence)
         self.assertEqual((), run.results[0].conflicting_names)
+
+    def test_distinct_numbered_titles_do_not_collapse_into_one_name(self) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id IN (?, ?)",
+                (
+                    "Hot Topics #1 Final Judgment Part 5c",
+                    self.observations[0].video_id,
+                    self.observations[1].video_id,
+                ),
+            )
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id = ?",
+                (
+                    "Hot Topics #1 Final Judgment Part 4",
+                    self.observations[2].video_id,
+                ),
+            )
+        client = FakeMetadataClient(
+            {
+                "decision": "conflicting_evidence",
+                "proposed_name": "",
+                "reason_codes": ["multiple_candidate_names"],
+                "evidence": [],
+                "conflicting_names": [
+                    "Hot Topics #1 Final Judgment Part 5c",
+                    "Hot Topics #1 Final Judgment Part 4",
+                ],
+            }
+        )
+
+        run = run_profile_metadata_attribution(
+            self.database,
+            self.root / "numbered-title-collision",
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(0, run.proposed)
+        self.assertEqual(1, run.insufficient_evidence)
+
+    def test_cached_numbered_title_proposal_is_rejected_on_load(self) -> None:
+        result = {
+            "decision": "propose_name",
+            "routing": "human_confirmation_available",
+            "proposed_name": "Hot Topics #1 Final Judgment Part 4",
+            "normalized_name": "hot topics final judgment part",
+            "reason_codes": ["repeated_name_across_recordings"],
+            "evidence": [],
+            "conflicting_names": [],
+            "supporting_recording_count": 3,
+        }
+        result_sha256 = hashlib.sha256(
+            json.dumps(
+                result,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        root = self.root / "cached-numbered-title"
+        path = root / "profile-140" / "input.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "version": "profile_metadata_attribution_v4",
+                    "profile_id": 140,
+                    "membership_fingerprint": "membership",
+                    "input_fingerprint": "input",
+                    "result": result,
+                    "result_sha256": result_sha256,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertEqual({}, load_profile_metadata_attributions(root))
 
     def test_existing_explicit_claim_removes_profile_from_model_queue(self) -> None:
         observation = self.observations[0]

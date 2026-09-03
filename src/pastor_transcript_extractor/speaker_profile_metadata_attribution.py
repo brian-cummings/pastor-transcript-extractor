@@ -581,7 +581,10 @@ def _validate_response(
     normalized_conflicts = {
         normalize_person_name(name): name.strip()
         for name in raw_conflicts
-        if _valid_person_name(normalize_person_name(name))
+        if _valid_person_name(normalize_person_name(name), raw_name=name)
+    }
+    distinct_conflict_displays = {
+        _proposal_display_name(name).casefold() for name in raw_conflicts
     }
     conflict_evidence, conflict_support = _ground_name_evidence(
         candidate,
@@ -592,6 +595,7 @@ def _validate_response(
     }
     if (
         decision == "conflicting_evidence"
+        and len(distinct_conflict_displays) == 1
         and len(normalized_conflicts) == 1
         and len(supported_conflicts) == 1
     ):
@@ -643,7 +647,7 @@ def _validate_response(
         )
         supporting_recordings = support.get(normalized_name, set())
         if (
-            not _valid_person_name(normalized_name)
+            not _valid_person_name(normalized_name, raw_name=proposed_name)
             or len(supporting_recordings) < 2
         ):
             raise ValueError("proposed name lacks independent metadata support")
@@ -835,10 +839,18 @@ def _compact_text(value: str) -> str:
     return " ".join(value.split())[:PROFILE_METADATA_TEXT_LIMIT]
 
 
-def _valid_person_name(normalized_name: str) -> bool:
+def _valid_person_name(
+    normalized_name: str,
+    *,
+    raw_name: str | None = None,
+) -> bool:
     tokens = normalized_name.split()
     return (
         2 <= len(tokens) <= 5
+        and (
+            raw_name is None
+            or not any(character.isdigit() for character in raw_name)
+        )
         and normalized_name not in _PLACEHOLDER_NAMES
         and not any(token in _NON_PERSON_NAME_TOKENS for token in tokens)
     )
@@ -891,6 +903,15 @@ def _load_artifact(
             if isinstance(result.get("proposed_name"), str)
             else None
         )
+        if (
+            result.get("decision") == "propose_name"
+            and proposed_display_name is not None
+            and not _valid_person_name(
+                normalize_person_name(proposed_display_name),
+                raw_name=proposed_display_name,
+            )
+        ):
+            return None
         return ProfileMetadataAttribution(
             profile_id=int(payload["profile_id"]),
             membership_fingerprint=str(payload["membership_fingerprint"]),
