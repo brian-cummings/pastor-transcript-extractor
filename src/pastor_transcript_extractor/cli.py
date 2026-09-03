@@ -304,6 +304,7 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     get_profile_attribution_candidate,
     load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
+    list_proposed_profile_attribution_candidates,
     list_unnamed_profile_attribution_candidates,
     record_profile_attribution_deferral,
     write_profile_attribution_packet,
@@ -4601,6 +4602,11 @@ def review_profile_attribution_command(
         None,
         help="Exact canonical profile; default selects the largest unnamed profile.",
     ),
+    all_proposals: bool = typer.Option(
+        False,
+        "--all-proposals",
+        help="Review every current non-deferred metadata name proposal.",
+    ),
     representative_videos: int = typer.Option(
         6,
         min=1,
@@ -4620,6 +4626,10 @@ def review_profile_attribution_command(
         help="Override app data directory.",
     ),
 ) -> None:
+    if all_proposals and profile_id is not None:
+        raise typer.BadParameter(
+            "--all-proposals cannot be combined with --profile-id"
+        )
     paths = build_paths(base_dir, remember=True)
     database = get_database(base_dir)
     deferral_root = paths.logs / "profile-attribution-reviews" / "deferrals"
@@ -4634,21 +4644,37 @@ def review_profile_attribution_command(
     try:
         if profile_id is None:
             deferred = load_profile_attribution_deferrals(deferral_root)
-            candidates = tuple(
-                candidate
-                for candidate in list_unnamed_profile_attribution_candidates(
+            candidate_source = (
+                list_proposed_profile_attribution_candidates(
                     database,
                     representative_limit=representative_videos,
                     clip_timestamps=clip_timestamps,
                     metadata_attributions=metadata_attributions,
                 )
+                if all_proposals
+                else list_unnamed_profile_attribution_candidates(
+                    database,
+                    representative_limit=representative_videos,
+                    clip_timestamps=clip_timestamps,
+                    metadata_attributions=metadata_attributions,
+                )
+            )
+            candidates = tuple(
+                candidate
+                for candidate in candidate_source
                 if candidate.membership_fingerprint not in deferred
             )
             if not candidates:
-                console.print(
-                    "No non-deferred unnamed profile has reviewable backing "
-                    "videos. Pass --profile-id to revisit a deferred profile."
-                )
+                if all_proposals:
+                    console.print(
+                        "No current non-deferred metadata name proposal "
+                        "requires review."
+                    )
+                else:
+                    console.print(
+                        "No non-deferred unnamed profile has reviewable backing "
+                        "videos. Pass --profile-id to revisit a deferred profile."
+                    )
                 return
         else:
             candidates = (
@@ -4663,6 +4689,7 @@ def review_profile_attribution_command(
     except (OSError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
 
+    approved_count = deferred_count = cancelled_count = 0
     for queue_index, candidate in enumerate(candidates, start=1):
         console.print(
             f"Selected profile {candidate.profile_id}: "
@@ -4734,6 +4761,7 @@ def review_profile_attribution_command(
                 "Attribution deferred for this exact profile membership; "
                 f"event={deferral_path}"
             )
+            deferred_count += 1
             if profile_id is not None:
                 return
             continue
@@ -4755,9 +4783,12 @@ def review_profile_attribution_command(
         ).strip()
         if not typer.confirm(
             f"Attach {name!r} to profile {candidate.profile_id}?",
-            default=False,
+            default=all_proposals and bool(suggested_name),
         ):
             console.print("Attribution cancelled; no registry mutation occurred.")
+            cancelled_count += 1
+            if all_proposals:
+                continue
             return
         try:
             result = apply_reviewed_profile_attribution(
@@ -4780,9 +4811,18 @@ def review_profile_attribution_command(
             console.print(
                 f"Linked configured pastor: {result.linked_pastor_slug}"
             )
-        return
+        approved_count += 1
+        if not all_proposals:
+            return
 
-    console.print("All currently reviewable unnamed profiles were deferred.")
+    if all_proposals:
+        console.print(
+            "Metadata proposal review complete: "
+            f"approved={approved_count} deferred={deferred_count} "
+            f"cancelled={cancelled_count}."
+        )
+    else:
+        console.print("All currently reviewable unnamed profiles were deferred.")
 
 
 @identity_app.command(

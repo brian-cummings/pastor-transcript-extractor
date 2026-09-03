@@ -108,6 +108,29 @@ def list_unnamed_profile_attribution_candidates(
     )
 
 
+def list_proposed_profile_attribution_candidates(
+    database: Database,
+    *,
+    representative_limit: int = 6,
+    clip_timestamps: Mapping[str, int] | None = None,
+    metadata_attributions: Mapping[
+        str, ProfileMetadataAttribution
+    ] | None = None,
+) -> tuple[ProfileAttributionCandidate, ...]:
+    return tuple(
+        candidate
+        for candidate in list_unnamed_profile_attribution_candidates(
+            database,
+            representative_limit=representative_limit,
+            clip_timestamps=clip_timestamps,
+            metadata_attributions=metadata_attributions,
+        )
+        if candidate.metadata_attribution is not None
+        and candidate.metadata_attribution.decision == "propose_name"
+        and bool(candidate.metadata_attribution.proposed_name)
+    )
+
+
 def get_profile_attribution_candidate(
     database: Database,
     profile_id: int,

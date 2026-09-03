@@ -5,13 +5,18 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from typer.testing import CliRunner
+
+from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_profile_attribution import (
     apply_reviewed_profile_attribution,
     load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
+    list_proposed_profile_attribution_candidates,
     list_unnamed_profile_attribution_candidates,
     record_profile_attribution_deferral,
     write_profile_attribution_packet,
@@ -31,9 +36,9 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
-        paths = build_paths(self.root / "app")
-        ensure_directories(paths)
-        self.database = Database(paths.database)
+        self.paths = build_paths(self.root / "app")
+        ensure_directories(self.paths)
+        self.database = Database(self.paths.database)
         self.database.initialize()
         source = self.database.add_source(
             "https://www.youtube.com/@attribution",
@@ -201,9 +206,84 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
         )
 
         self.assertEqual(proposal, candidate.metadata_attribution)
+        self.assertEqual(
+            (candidate,),
+            list_proposed_profile_attribution_candidates(
+                self.database,
+                metadata_attributions={
+                    initial.membership_fingerprint: proposal
+                },
+            ),
+        )
         self.assertIn(
             "Metadata proposal:</strong> Curt DeWitt",
             packet_path.read_text(encoding="utf-8"),
+        )
+
+    def test_all_proposals_cli_reviews_and_applies_every_proposal(self) -> None:
+        initial = list_unnamed_profile_attribution_candidates(self.database)[0]
+        proposal = ProfileMetadataAttribution(
+            profile_id=self.profile.id,
+            membership_fingerprint=initial.membership_fingerprint,
+            input_fingerprint="metadata-input",
+            decision="propose_name",
+            routing="human_confirmation_available",
+            proposed_name="Curt DeWitt",
+            normalized_name="curt dewitt",
+            reason_codes=("repeated_name_across_recordings",),
+            evidence=(
+                ProfileMetadataEvidence(
+                    "video-1",
+                    "video.title",
+                    "Curt DeWitt",
+                ),
+            ),
+            conflicting_names=(),
+            supporting_recording_count=2,
+            artifact_path=self.root / "metadata.json",
+            cache_hit=True,
+        )
+        timestamps = {
+            observation.input_fingerprint: int(observation.start_seconds)
+            for observation in self.observations
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.cli."
+                "load_profile_metadata_attributions",
+                return_value={initial.membership_fingerprint: proposal},
+            ),
+            patch(
+                "pastor_transcript_extractor.cli."
+                "load_profile_attribution_clip_timestamps",
+                return_value=timestamps,
+            ),
+        ):
+            result = CliRunner().invoke(
+                app,
+                [
+                    "identity",
+                    "review-profile-attribution",
+                    "--all-proposals",
+                    "--reviewer",
+                    "Brian Cummings",
+                    "--no-open-packet",
+                    "--base-dir",
+                    str(self.paths.root),
+                ],
+                input="\n\n\n\n",
+            )
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertIn(
+            "Metadata proposal review complete: approved=1 deferred=0 "
+            "cancelled=0.",
+            result.output,
+        )
+        self.assertEqual(
+            (),
+            list_unnamed_profile_attribution_candidates(self.database),
         )
 
     def test_reviewed_name_claim_links_unique_configured_pastor(self) -> None:

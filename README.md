@@ -1011,6 +1011,14 @@ attaches an append-only manual attribution claim. An exact unique configured
 pastor-name match links its placeholder identity to the voice profile; unmatched
 names remain attributed but unlinked, and existing links are never merged from
 name similarity alone.
+Review every current metadata-backed name proposal in one session with:
+
+```bash
+pte identity review-profile-attribution --all-proposals --reviewer REVIEWER_ID --base-dir /path/to/app-data
+```
+
+The batch continues after approvals, corrections, deferrals, and cancellations;
+only an approved name becomes reviewed registry evidence.
 
 Rerun only metadata consolidation—without acoustic association or discovery—with:
 
