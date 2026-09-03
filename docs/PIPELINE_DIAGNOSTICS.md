@@ -113,14 +113,27 @@ without fixtures remain explicitly unreviewed and never receive recall, contamin
 root-cause correctness claims. Database videos without an extraction record are counted by
 processing status. Use `--fixtures-only` to reproduce the narrower reviewed-fixture scope.
 
-The command does not reclassify the corpus. The timestamped result contains per-video traces
-and reports plus `system-diagnostics.json` and `system-diagnostics.md`. The systemic Markdown
-starts with an all-outcome Mermaid map covering database videos, extraction availability,
-valid and missing artifacts, operational dispositions, the reviewed/unreviewed split, and
-the downstream identity outcome population. Identity branches show observation availability,
-the latest association outcome, effective reviewed profile membership, and the unique-video
-subset with feedback advisories. Repeated attempt and advisory event totals appear only in a
-separate processing-volume section.
+The command does not reclassify the corpus. By default, the timestamped result contains a
+compact `system-diagnostics.json` and `system-diagnostics.md`. The JSON retains a small
+comparison-ready projection for each video, so `diagnose-compare` continues to work without
+embedding the complete trace evidence. Use `--verbose` only when complete traces and
+per-video JSON/Markdown reports are needed. A single-video `diagnose` run is usually the
+more efficient drill-down path.
+
+```bash
+pte diagnose-system \
+  --verbose \
+  --fixture-dir evaluation/fixtures \
+  --output-root evaluation/diagnostics \
+  --base-dir /path/to/data
+```
+
+The systemic Markdown starts with a proportional Mermaid Sankey showing unique videos
+progressing from database coverage through extraction availability, sermon disposition,
+identity outcome, and eligible provisional-assignment state. Reviewed-fixture quality and
+identity feedback are overlays rather than mutually exclusive population stages, so they
+remain in separate tables instead of being added to the Sankey. Repeated attempt and
+advisory event totals likewise appear only in the processing-volume section.
 Observed failure counts and root-cause hypothesis counts remain separate. The report also
 partitions automatic and manual-override outcomes, reports fixture evaluation partitions,
 shows recall and contamination threshold sensitivity for reviewed positives, and summarizes
@@ -148,7 +161,10 @@ as a stage-specific `association_admission_*_blocked` class.
 The operational-association subsection classifies each current proposal into one
 mutually exclusive, unique-video state: active provisional assignment, eligible but
 unapplied assignment, profile-readiness block, policy/circuit block, explicit human-review
-requirement, missing/noncurrent assignment evidence, or stale/revoked exclusion. Active and
+requirement, missing/noncurrent assignment evidence, stale assignment, or revoked assignment.
+For stale evidence, the detail rows retain the superseded evidence ID, assignment state,
+old/new result hashes, timestamps, and artifact paths. The summary separately counts active
+database assignments requiring reconciliation. Active and
 eligible assignments count as avoided sermon-level reviews; they do not increase reviewed
 membership. Historical assignment events remain processing volume rather than actionable
 backlog. If the current projection cannot recover a production planner's per-artifact skip

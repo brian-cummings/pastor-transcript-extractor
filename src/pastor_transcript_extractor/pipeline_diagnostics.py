@@ -2189,6 +2189,7 @@ def build_identity_automation_blocker_analysis(
         observation_id: int,
         proposed_profile_id: int,
         canonical_profile_id: int,
+        proposal: Mapping[str, Any],
         assignment: Mapping[str, Any] | None,
         reason_codes: Sequence[str] = (),
     ) -> None:
@@ -2207,6 +2208,38 @@ def build_identity_automation_blocker_analysis(
                     assignment.get("machine_evidence_id")
                     if assignment is not None
                     else None
+                ),
+                "machine_assignment_reason": (
+                    assignment.get("reason") if assignment is not None else None
+                ),
+                "latest_proposal_artifact_path": proposal.get("artifact_path"),
+                "latest_proposal_created_at": proposal.get("created_at"),
+                "latest_proposal_result_sha256": proposal.get("result_sha256"),
+                "assignment_artifact_path": (
+                    assignment.get("association_artifact_path")
+                    if assignment is not None
+                    else None
+                ),
+                "assignment_evidence_created_at": (
+                    assignment.get("evidence_created_at")
+                    if assignment is not None
+                    else None
+                ),
+                "assignment_event_created_at": (
+                    assignment.get("event_created_at")
+                    if assignment is not None
+                    else None
+                ),
+                "assignment_result_sha256": (
+                    assignment.get("association_result_sha256")
+                    if assignment is not None
+                    else None
+                ),
+                "assignment_matches_latest_proposal": bool(
+                    assignment is not None
+                    and isinstance(proposal.get("result_sha256"), str)
+                    and assignment.get("association_result_sha256")
+                    == proposal.get("result_sha256")
                 ),
                 "reason_codes": sorted(set(reason_codes)),
             }
@@ -2324,6 +2357,18 @@ def build_identity_automation_blocker_analysis(
                 ),
                 default=None,
             )
+            latest_association_assignment = max(
+                association_assignments,
+                key=lambda value: (
+                    str(
+                        value.get("event_created_at")
+                        or value.get("evidence_created_at")
+                        or ""
+                    ),
+                    int(value.get("machine_evidence_id") or 0),
+                ),
+                default=None,
+            )
             assignment_state = str(
                 assignment.get("state") if assignment is not None else ""
             )
@@ -2360,7 +2405,7 @@ def build_identity_automation_blocker_analysis(
                     )
                 ]
             elif assignment_state == "revoked":
-                automation_state = "stale_or_revoked_assignment_excluded"
+                automation_state = "revoked_assignment_excluded"
                 automation_reasons = [
                     str(assignment.get("reason") or "assignment_revoked")
                 ]
@@ -2370,10 +2415,11 @@ def build_identity_automation_blocker_analysis(
                     "profile_not_automatic_ready"
                 ]
             elif association_assignments:
-                automation_state = "stale_or_revoked_assignment_excluded"
+                automation_state = "stale_assignment_excluded"
                 automation_reasons = [
                     "machine_assignment_does_not_match_latest_proposal"
                 ]
+                assignment = latest_association_assignment
             else:
                 automation_state = "assignment_evidence_missing_or_noncurrent"
                 automation_reasons = [
@@ -2385,6 +2431,7 @@ def build_identity_automation_blocker_analysis(
                 observation_id=observation_id,
                 proposed_profile_id=proposed_profile_id,
                 canonical_profile_id=canonical_profile_id,
+                proposal=latest,
                 assignment=assignment,
                 reason_codes=automation_reasons,
             )
@@ -2414,9 +2461,14 @@ def build_identity_automation_blocker_analysis(
                     "rerun_current_shadow_association",
                     "not_inherently_required",
                 ),
-                "stale_or_revoked_assignment_excluded": (
+                "stale_assignment_excluded": (
                     "machine_assignment_reconciliation",
-                    "rerun_current_machine_assignment_planning",
+                    "reconcile_then_rerun_current_machine_assignment_planning",
+                    "not_inherently_required",
+                ),
+                "revoked_assignment_excluded": (
+                    "machine_assignment_reconciliation",
+                    "rerun_current_machine_assignment_planning_if_still_eligible",
                     "not_inherently_required",
                 ),
             }.get(automation_state)
@@ -2448,7 +2500,8 @@ def build_identity_automation_blocker_analysis(
                 )
                 if automation_state not in {
                     "stale_proposal_excluded",
-                    "stale_or_revoked_assignment_excluded",
+                    "stale_assignment_excluded",
+                    "revoked_assignment_excluded",
                 }:
                     target[
                         "directly_blocked_operation_youtube_video_ids"
@@ -2994,7 +3047,8 @@ def build_identity_automation_blocker_analysis(
         "proposal_genuinely_requires_human_review",
         "assignment_evidence_missing_or_noncurrent",
         "stale_proposal_excluded",
-        "stale_or_revoked_assignment_excluded",
+        "stale_assignment_excluded",
+        "revoked_assignment_excluded",
     )
     automation_state_counts = {
         state: len(automation_video_ids.get(state, set()))
@@ -3009,10 +3063,15 @@ def build_identity_automation_blocker_analysis(
     )
     stale_excluded_video_ids = (
         automation_video_ids.get("stale_proposal_excluded", set())
-        | automation_video_ids.get(
-            "stale_or_revoked_assignment_excluded", set()
-        )
+        | automation_video_ids.get("stale_assignment_excluded", set())
+        | automation_video_ids.get("revoked_assignment_excluded", set())
     )
+    stale_active_video_ids = {
+        detail["youtube_video_id"]
+        for detail in automation_details
+        if detail["state"] == "stale_assignment_excluded"
+        and detail["machine_assignment_state"] == "active"
+    }
     return {
         "schema_version": 1,
         "domain": "identity",
@@ -3060,6 +3119,15 @@ def build_identity_automation_blocker_analysis(
             ),
             "stale_proposal_or_assignment_excluded_count": len(
                 stale_excluded_video_ids
+            ),
+            "stale_assignment_excluded_count": automation_state_counts[
+                "stale_assignment_excluded"
+            ],
+            "revoked_assignment_excluded_count": automation_state_counts[
+                "revoked_assignment_excluded"
+            ],
+            "active_assignment_reconciliation_required_count": len(
+                stale_active_video_ids
             ),
             "human_reviews_avoided_by_current_automation_count": len(
                 reviews_avoided_video_ids
@@ -4176,6 +4244,92 @@ def _sensitivity_table(
     return rows
 
 
+def compact_diagnostic_trace(trace: Mapping[str, Any]) -> dict[str, Any]:
+    """Project only the per-video evidence needed by systemic comparison."""
+    final = next(
+        (
+            stage
+            for stage in trace.get("stages", [])
+            if isinstance(stage, Mapping) and stage.get("key") == "final"
+        ),
+        {},
+    )
+    final_measurements = final.get("measurements", {})
+    identity_feedback = trace.get("identity_boundary_feedback", {})
+    identity_feedback = (
+        identity_feedback if isinstance(identity_feedback, Mapping) else {}
+    )
+    stage_regret = trace.get("stage_regret", {})
+    stage_regret = stage_regret if isinstance(stage_regret, Mapping) else {}
+    fingerprints = trace.get("component_fingerprints")
+    if (
+        not isinstance(fingerprints, dict)
+        or fingerprints.get("version") != COMPONENT_FINGERPRINT_VERSION
+    ):
+        fingerprints = _trace_component_fingerprints(dict(trace))
+
+    return {
+        "trace_detail_level": "compact_comparison",
+        "schema_version": trace.get("schema_version"),
+        "contract_version": trace.get("contract_version"),
+        "video": {
+            "youtube_video_id": trace.get("video", {}).get(
+                "youtube_video_id"
+            )
+        },
+        "ground_truth": {
+            key: trace.get("ground_truth", {}).get(key)
+            for key in ("status", "expected_outcome")
+        },
+        "overall_outcome": trace.get("overall_outcome", {}),
+        "earliest_observed_failure": trace.get(
+            "earliest_observed_failure"
+        ),
+        "outcome_contracts": trace.get("outcome_contracts", {}),
+        "contract_paths": trace.get("contract_paths", {}),
+        "stages": [
+            {
+                "key": "final",
+                "measurements": {
+                    key: final_measurements.get(key)
+                    for key in (
+                        "reviewed_sermon_coverage",
+                        "contamination_ratio",
+                    )
+                },
+            }
+        ],
+        "stage_regret": {
+            stage: {
+                "classification": (
+                    stage_regret.get(stage, {}).get("classification")
+                    if isinstance(stage_regret.get(stage), Mapping)
+                    else None
+                )
+            }
+            for stage in ("refinement", "arbitration")
+        },
+        "identity_boundary_feedback": {
+            key: identity_feedback.get(key)
+            for key in (
+                "event_count",
+                "temporal_boundary_movement_count",
+                "causal_adjustment_count",
+            )
+        },
+        "source_artifact": {
+            key: trace.get("source_artifact", {}).get(key)
+            for key in ("sha256", "algorithm_version")
+        },
+        "cohort": {
+            "algorithm_version": trace.get("cohort", {}).get(
+                "algorithm_version"
+            )
+        },
+        "component_fingerprints": fingerprints,
+    }
+
+
 def aggregate_diagnostic_traces(
     traces: list[dict[str, Any]],
     *,
@@ -4685,7 +4839,7 @@ def aggregate_diagnostic_traces(
 
 
 def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
-    """Render the complete operational population and reviewed-quality subset."""
+    """Render mutually exclusive video outcomes as a proportional progression."""
     population = report.get("population", {})
     trace_count = int(report.get("trace_count") or 0)
     missing_count = int(report.get("missing_count") or 0)
@@ -4701,91 +4855,56 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
         population.get("videos_without_extraction_count")
         or max(0, root_count - extraction_count)
     )
-    reviewed_count = int(population.get("reviewed_trace_count") or 0)
-    unreviewed_count = int(population.get("unreviewed_trace_count") or 0)
     artifact_missing_count = int(
         population.get("extraction_artifact_missing_or_invalid_count")
         if population.get("extraction_artifact_missing_or_invalid_count") is not None
         else missing_count
     )
-    reviewed_fixture_without_trace_count = int(
-        population.get("reviewed_fixture_without_trace_count") or 0
-    )
-    missing_nodes = "N,M,F" if reviewed_fixture_without_trace_count else "N,M"
-    lines = [
-        "flowchart TD",
-        f'  P["Database videos<br/>{root_count}"]',
-        f'  E["Latest extraction record<br/>{extraction_count}"]',
-        f'  N["No extraction record<br/>{without_extraction}"]',
-        "  P --> E",
-        "  P --> N",
-        f'  T["Diagnostic trace<br/>{trace_count}"]',
-        f'  M["Missing or invalid extraction artifact<br/>{artifact_missing_count}"]',
-        "  E --> T",
-        "  E --> M",
-        f'  R["Reviewed subset<br/>{reviewed_count}"]',
-        f'  U["Unreviewed subset<br/>{unreviewed_count}"]',
-        "  T --> R",
-        "  T --> U",
-    ]
-    if reviewed_fixture_without_trace_count:
-        lines.extend(
-            [
-                f'  F["Reviewed fixture without trace<br/>'
-                f'{reviewed_fixture_without_trace_count}"]',
-                "  P -. review coverage gap .-> F",
-            ]
+    lines = ["sankey-beta"]
+
+    def label(value: Any) -> str:
+        return (
+            str(value)
+            .replace('"', "'")
+            .replace(",", " -")
+            .replace("_", " ")
         )
-    for index, (status, count) in enumerate(
-        sorted(
-            population.get("videos_without_extraction_status_counts", {}).items(),
-            key=lambda item: (-item[1], item[0]),
+
+    def flow(source: str, target: str, count: Any) -> None:
+        numeric_count = int(count or 0)
+        if numeric_count > 0:
+            lines.append(f"{source},{target},{numeric_count}")
+
+    if isinstance(database_count, int):
+        flow("Database videos", "Latest extraction record", extraction_count)
+        flow("Database videos", "No extraction record", without_extraction)
+        flow("Latest extraction record", "Diagnostic trace", trace_count)
+        flow(
+            "Latest extraction record",
+            "Missing or invalid extraction artifact",
+            artifact_missing_count,
         )
-    ):
-        label = str(status).replace('"', "'").replace("_", " ")
-        lines.append(f'  S{index}["{label}<br/>{count}"]')
-        lines.append(f"  N --> S{index}")
-    for index, (disposition, count) in enumerate(
-        sorted(
-            report.get("final_disposition_counts", {}).items(),
-            key=lambda item: (-item[1], item[0]),
+        for status, count in sorted(
+            population.get("videos_without_extraction_status_counts", {}).items()
+        ):
+            flow(
+                "No extraction record",
+                f"Video status: {label(status)}",
+                count,
+            )
+    else:
+        flow("Target videos", "Diagnostic trace", trace_count)
+        flow("Target videos", "Missing diagnostic trace", missing_count)
+
+    disposition_counts = report.get("final_disposition_counts", {})
+    for disposition, count in sorted(disposition_counts.items()):
+        flow(
+            "Diagnostic trace",
+            f"Sermon: {label(disposition)}",
+            count,
         )
-    ):
-        label = str(disposition).replace('"', "'").replace("_", " ")
-        lines.append(f'  D{index}["{label}<br/>{count}"]')
-        lines.append(f"  T --> D{index}")
-    for index, (outcome, count) in enumerate(
-        sorted(
-            report.get("reviewed_overall_outcome_counts", {}).items(),
-            key=lambda item: (-item[1], item[0]),
-        )
-    ):
-        label = str(outcome).replace('"', "'").replace("_", " ")
-        lines.append(f'  Q{index}["Reviewed: {label}<br/>{count}"]')
-        lines.append(f"  R --> Q{index}")
+
     identity_outcomes = report.get("identity_outcome_summary", {})
-    identity_nodes = ["I"]
-    proposed_match_node: str | None = None
-    lines.extend(
-        [
-            f'  I["Identity operational outcomes<br/>'
-            f'{identity_outcomes.get("trace_count", trace_count)}"]',
-            "  T --> I",
-        ]
-    )
-    for index, (state, count) in enumerate(
-        sorted(
-            identity_outcomes.get("state_counts", {}).items(),
-            key=lambda item: (-item[1], item[0]),
-        )
-    ):
-        label = str(state).replace('"', "'").replace("_", " ")
-        node = f"IS{index}"
-        if state == "association_proposed_match":
-            proposed_match_node = node
-        identity_nodes.append(node)
-        lines.append(f'  {node}["{label}<br/>{count}"]')
-        lines.append(f"  I --> {node}")
     blocker_analysis = report.get("automation_blocker_analysis", {})
     identity_blockers = (
         blocker_analysis.get("domains", {}).get("identity", {})
@@ -4793,57 +4912,26 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
         else {}
     )
     automation = identity_blockers.get("operational_association_summary", {})
-    automation_nodes: list[str] = []
     current_proposal_count = int(automation.get("current_proposal_count") or 0)
-    if current_proposal_count:
-        automation_nodes.append("OA")
-        lines.append(
-            f'  OA["Operational automation<br/>{current_proposal_count} current proposals"]'
+    for disposition, states in sorted(
+        identity_outcomes.get("state_counts_by_disposition", {}).items()
+    ):
+        for state, count in sorted(states.items()):
+            if (
+                disposition == "accepted_sermon"
+                and state == "association_proposed_match"
+                and current_proposal_count
+            ):
+                target = "Current accepted unprofiled proposals"
+            else:
+                target = f"Identity: {label(state)}"
+            flow(f"Sermon: {label(disposition)}", target, count)
+    for state, count in sorted(automation.get("state_counts", {}).items()):
+        flow(
+            "Current accepted unprofiled proposals",
+            f"Automation: {label(state)}",
+            count,
         )
-        lines.append(
-            f"  {proposed_match_node or 'I'} --> OA"
-        )
-        for index, (state, count) in enumerate(
-            sorted(
-                automation.get("state_counts", {}).items(),
-                key=lambda item: (-item[1], item[0]),
-            )
-        ):
-            if not count:
-                continue
-            label = str(state).replace('"', "'").replace("_", " ")
-            node = f"OAS{index}"
-            automation_nodes.append(node)
-            lines.append(f'  {node}["{label}<br/>{count}"]')
-            lines.append(f"  OA --> {node}")
-    advisory_trace_count = int(
-        report.get("identity_boundary_feedback_summary", {}).get("trace_count") or 0
-    )
-    if advisory_trace_count:
-        identity_nodes.append("IB")
-        lines.append(
-            f'  IB["Boundary feedback observed<br/>{advisory_trace_count} videos"]'
-        )
-        lines.append("  I -. feedback subset .-> IB")
-        lines.append("  IB -. feedback to sermon boundaries .-> T")
-    lines.extend(
-        [
-            "  classDef population fill:#e8eef8,stroke:#46658a,color:#172536",
-            "  classDef reviewed fill:#d9f2df,stroke:#26733a,color:#102915",
-            "  classDef identity fill:#ece3fa,stroke:#6b4c91,color:#28183b",
-            "  classDef automation fill:#dceef8,stroke:#26718c,color:#102934",
-            "  classDef missing fill:#f9e5c7,stroke:#a16413,color:#3b2408",
-            "  class P,E,T,U population",
-            "  class R reviewed",
-            f"  class {','.join(identity_nodes)} identity",
-            *(
-                [f"  class {','.join(automation_nodes)} automation"]
-                if automation_nodes
-                else []
-            ),
-            f"  class {missing_nodes} missing",
-        ]
-    )
     return "\n".join(lines)
 
 
@@ -4867,6 +4955,13 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         f"- Unknown evaluation partitions: {report.get('unknown_evaluation_partition_count', 0)}",
         "",
         "## All-outcome map",
+        "",
+        (
+            "Band width represents unique videos progressing from database coverage "
+            "through extraction, sermon disposition, identity outcome, and—where "
+            "eligible—provisional assignment state. Reviewed-fixture quality is an "
+            "overlay rather than another population stage, so it remains in the tables."
+        ),
         "",
         "```mermaid",
         build_systemic_outcome_mermaid(report),
@@ -5050,7 +5145,8 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
             "",
             f"- Reviewed profile membership: "
             f"{operational.get('reviewed_profile_membership_count', 0)}",
-            f"- Current proposals: {operational.get('current_proposal_count', 0)}",
+            f"- Current accepted-sermon, unprofiled proposals: "
+            f"{operational.get('current_proposal_count', 0)}",
             f"- Active provisional assignments: "
             f"{operational.get('active_provisional_assignment_count', 0)}",
             f"- Eligible unapplied assignments: "
@@ -5065,6 +5161,12 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
             f"{operational.get('assignment_evidence_missing_or_noncurrent_count', 0)}",
             f"- Stale proposals or assignments excluded: "
             f"{operational.get('stale_proposal_or_assignment_excluded_count', 0)}",
+            f"- Stale assignments excluded: "
+            f"{operational.get('stale_assignment_excluded_count', 0)}",
+            f"- Revoked assignments excluded: "
+            f"{operational.get('revoked_assignment_excluded_count', 0)}",
+            f"- Active database assignments requiring reconciliation: "
+            f"{operational.get('active_assignment_reconciliation_required_count', 0)}",
             f"- Human reviews avoided by active/eligible automation: "
             f"{operational.get('human_reviews_avoided_by_current_automation_count', 0)}",
             f"- State counts reconcile: "
@@ -5079,6 +5181,47 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         key=lambda item: (-item[1], item[0]),
     ):
         lines.append(f"| {state} | {count} |")
+    freshness_exceptions = [
+        detail
+        for detail in operational.get("details", []) or []
+        if detail.get("state")
+        in {
+            "stale_assignment_excluded",
+            "revoked_assignment_excluded",
+            "assignment_evidence_missing_or_noncurrent",
+        }
+    ]
+    if freshness_exceptions:
+        lines.extend(
+            [
+                "",
+                "### Assignment freshness exceptions",
+                "",
+                "These rows explain current proposal-to-assignment mismatches; full "
+                "artifact paths remain in the JSON evidence.",
+                "",
+                "| Video | Profile | Diagnostic state | Assignment state | Evidence | "
+                "Assignment created | Latest proposal created | Result hashes |",
+                "|---|---:|---|---|---:|---|---|---|",
+            ]
+        )
+        for detail in freshness_exceptions:
+            assignment_hash = str(
+                detail.get("assignment_result_sha256") or "missing"
+            )[:12]
+            proposal_hash = str(
+                detail.get("latest_proposal_result_sha256") or "missing"
+            )[:12]
+            lines.append(
+                f"| {detail.get('youtube_video_id', 'unknown')} | "
+                f"{detail.get('canonical_profile_id', '—')} | "
+                f"{detail.get('state', 'unknown')} | "
+                f"{detail.get('machine_assignment_state') or 'none'} | "
+                f"{detail.get('machine_evidence_id') or '—'} | "
+                f"{detail.get('assignment_evidence_created_at') or '—'} | "
+                f"{detail.get('latest_proposal_created_at') or '—'} | "
+                f"{assignment_hash} → {proposal_hash} |"
+            )
     ambiguities = operational.get("remaining_ambiguities", []) or []
     if ambiguities:
         lines.extend(["", "Remaining reconstruction ambiguity:", ""])

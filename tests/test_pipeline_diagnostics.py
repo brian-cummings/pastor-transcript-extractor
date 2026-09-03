@@ -15,6 +15,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_identity_operational_outcome,
     build_systemic_outcome_mermaid,
     build_systemic_markdown,
+    compact_diagnostic_trace,
     compare_systemic_reports,
     load_identity_association_attempts,
     load_identity_boundary_feedback,
@@ -215,6 +216,27 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertIn("Fine refinement", report)
         self.assertIn("-33.3%", report)
         self.assertNotIn("-->| |", report)
+
+    def test_compact_trace_preserves_comparison_without_full_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                fixture=self._fixture(root),
+            )
+
+        compact = compact_diagnostic_trace(trace)
+        self.assertEqual("compact_comparison", compact["trace_detail_level"])
+        self.assertNotIn("candidate_regret", compact)
+        self.assertNotIn("join_observability", compact)
+        self.assertLess(len(json.dumps(compact)), len(json.dumps(trace)))
+        before = aggregate_diagnostic_traces([trace])
+        after = {**before, "traces": [compact]}
+        comparison = compare_systemic_reports(before, after)
+        self.assertEqual({"unchanged": 1}, comparison["change_counts"])
 
     def test_unreviewed_trace_does_not_claim_sermon_recall(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -576,17 +598,14 @@ class PipelineDiagnosticTests(unittest.TestCase):
         )
         self.assertEqual(1, sum(report["positive_localization_contract_counts"].values()))
         mermaid = build_systemic_outcome_mermaid(report)
-        self.assertIn("Database videos<br/>4", mermaid)
-        self.assertIn("No extraction record<br/>2", mermaid)
-        self.assertIn("Reviewed subset<br/>1", mermaid)
-        self.assertIn("Unreviewed subset<br/>1", mermaid)
-        self.assertIn("Reviewed fixture without trace<br/>1", mermaid)
-        self.assertIn("accepted sermon<br/>2", mermaid)
-        self.assertIn("failed<br/>2", mermaid)
-        self.assertIn("Identity operational outcomes<br/>2", mermaid)
-        self.assertIn("profiled<br/>1", mermaid)
-        self.assertNotIn("Association attempts<br/>", mermaid)
-        self.assertNotIn("Effective reviewed profile membership<br/>", mermaid)
+        self.assertTrue(mermaid.startswith("sankey-beta"))
+        self.assertIn("Database videos,Latest extraction record,2", mermaid)
+        self.assertIn("Database videos,No extraction record,2", mermaid)
+        self.assertIn("No extraction record,Video status: failed,2", mermaid)
+        self.assertIn("Diagnostic trace,Sermon: accepted sermon,2", mermaid)
+        self.assertIn("Sermon: accepted sermon,Identity: profiled,1", mermaid)
+        self.assertNotIn("Reviewed subset", mermaid)
+        self.assertNotIn("Association attempts", mermaid)
         markdown = build_systemic_markdown(report)
         self.assertIn("## All-outcome map", markdown)
         self.assertIn("## Operational dispositions", markdown)
@@ -998,8 +1017,11 @@ class PipelineDiagnosticTests(unittest.TestCase):
         )
         mermaid = build_systemic_outcome_mermaid(report)
         markdown = build_systemic_markdown(report)
-        self.assertIn("Operational automation<br/>2 current proposals", mermaid)
-        self.assertIn("active provisional assignment<br/>1", mermaid)
+        self.assertIn(
+            "Current accepted unprofiled proposals,"
+            "Automation: active provisional assignment,1",
+            mermaid,
+        )
         self.assertIn("## Identity operational automation", markdown)
         self.assertIn("- Active provisional assignments: 1", markdown)
 
@@ -1107,13 +1129,39 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             2, operational["stale_proposal_or_assignment_excluded_count"]
         )
+        self.assertEqual(1, operational["stale_assignment_excluded_count"])
+        self.assertEqual(1, operational["revoked_assignment_excluded_count"])
+        self.assertEqual(
+            1, operational["active_assignment_reconciliation_required_count"]
+        )
         self.assertEqual(0, operational["active_provisional_assignment_count"])
         stale = next(
             item
             for item in first["blocker_classes"]
-            if item["blocker_class"] == "stale_or_revoked_assignment_excluded"
+            if item["blocker_class"] == "stale_assignment_excluded"
         )
         self.assertEqual(0, stale["directly_blocked_operation_count"])
+        stale_detail = next(
+            item
+            for item in operational["details"]
+            if item["state"] == "stale_assignment_excluded"
+        )
+        self.assertEqual(4, stale_detail["machine_evidence_id"])
+        self.assertEqual(
+            "superseded-result", stale_detail["assignment_result_sha256"]
+        )
+        self.assertEqual(
+            "current-result", stale_detail["latest_proposal_result_sha256"]
+        )
+        self.assertFalse(stale_detail["assignment_matches_latest_proposal"])
+        markdown = build_systemic_markdown(
+            aggregate_diagnostic_traces(
+                traces, identity_automation_blockers=first
+            )
+        )
+        self.assertIn("### Assignment freshness exceptions", markdown)
+        self.assertIn("stale_assignment_excluded", markdown)
+        self.assertIn("superseded-r → current-resu", markdown)
 
     def test_identity_blockers_expose_bridge_chain_without_predicting_unlock(self) -> None:
         trace = {
