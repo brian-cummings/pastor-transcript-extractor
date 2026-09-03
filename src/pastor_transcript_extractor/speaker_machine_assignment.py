@@ -168,7 +168,9 @@ def plan_machine_assignments(
         for event in latest_events.values()
         if event["action"] == "activate"
     }
-    tripped = set(_tripped_policy_fingerprints(evidence_rows, events))
+    tripped = set(
+        _tripped_policy_fingerprints(database, evidence_rows, events)
+    )
     tripped_provenance = _tripped_assignment_provenance(
         database,
         evidence_rows=evidence_rows,
@@ -792,7 +794,9 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
     evidence_rows = database.list_speaker_machine_evidence()
     events = database.list_speaker_machine_assignment_events()
     latest_events = _latest_events_by_evidence(events)
-    tripped_policies = set(_tripped_policy_fingerprints(evidence_rows, events))
+    tripped_policies = set(
+        _tripped_policy_fingerprints(database, evidence_rows, events)
+    )
     tripped_provenance = _tripped_assignment_provenance(
         database,
         evidence_rows=evidence_rows,
@@ -1261,16 +1265,41 @@ def _latest_events_by_evidence(
 
 
 def _tripped_policy_fingerprints(
+    database: Database,
     evidence_rows: Sequence[Mapping[str, object]],
     events: Sequence[Mapping[str, object]],
 ) -> frozenset[str]:
     evidence_by_id = {int(row["id"]): row for row in evidence_rows}
-    return frozenset(
-        str(evidence_by_id[int(event["machine_evidence_id"])]["policy_fingerprint"])
-        for event in events
-        if str(event["reason"]).startswith("contradiction:")
-        and int(event["machine_evidence_id"]) in evidence_by_id
-    )
+    tripped: set[str] = set()
+    for event in events:
+        if not str(event["reason"]).startswith("contradiction:"):
+            continue
+        evidence = evidence_by_id.get(int(event["machine_evidence_id"]))
+        if evidence is None:
+            continue
+        try:
+            profile_id = database.resolve_speaker_profile_id(
+                int(evidence["profile_id"])
+            )
+        except ValueError:
+            profile_id = None
+        disposition = (
+            _reviewed_evidence_disposition(
+                database,
+                evidence=evidence,
+                profile_id=profile_id,
+            )
+            if profile_id is not None
+            else None
+        )
+        # A later reviewed merge or correction may affirmatively resolve the
+        # candidate to the canonical profile originally proposed.  That is
+        # strong enough to heal this historical trip; missing or conflicting
+        # current evidence remains fail-closed.
+        if disposition is not None and disposition[0] == "confirm":
+            continue
+        tripped.add(str(evidence["policy_fingerprint"]))
+    return frozenset(tripped)
 
 
 def _tripped_assignment_provenance(
@@ -1283,9 +1312,6 @@ def _tripped_assignment_provenance(
     tripped: set[tuple[str, str]] = set()
     for evidence in evidence_rows:
         event = latest.get(int(evidence["id"]))
-        event_contradiction = event is not None and str(
-            event["reason"]
-        ).startswith("contradiction:")
         try:
             profile_id = database.resolve_speaker_profile_id(
                 int(evidence["profile_id"])
@@ -1300,6 +1326,11 @@ def _tripped_assignment_provenance(
         reviewed_contradiction = (
             disposition is not None
             and disposition[1].startswith("contradiction:")
+        )
+        event_contradiction = (
+            event is not None
+            and str(event["reason"]).startswith("contradiction:")
+            and not (disposition is not None and disposition[0] == "confirm")
         )
         if not event_contradiction and not reviewed_contradiction:
             continue

@@ -31,6 +31,7 @@ from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
     create_anonymous_profile,
     record_observation_difference,
+    record_profile_redirect,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
@@ -500,6 +501,52 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
             activate_canary=True,
         )
         self.assertEqual(1, successor_result.activation_blocked)
+
+    def test_reviewed_profile_merge_heals_historical_policy_trip(self) -> None:
+        contradicted = self._observation("contradicted-before-merge")
+        apply_machine_assignment_plan(
+            self.database,
+            self._plan((contradicted,), self.canary_policy),
+            activate_canary=False,
+        )
+        duplicate = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="duplicate profile",
+            review_event_key="duplicate-profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=duplicate.id,
+            observation_id=contradicted.id,
+            reviewer="reviewer",
+            reason="initial reviewed destination",
+            review_event_key="contradicted-destination",
+        )
+        result = reconcile_machine_assignments(self.database)
+        self.assertEqual(1, result.revoked)
+        self.assertEqual(1, len(result.tripped_policy_fingerprints))
+
+        record_profile_redirect(
+            self.database,
+            from_profile_id=duplicate.id,
+            to_profile_id=self.profile.id,
+            reviewer="reviewer",
+            reason="reviewed duplicate-profile merge",
+            review_event_key="merge-duplicate-profile",
+        )
+        successor = self._observation("successor-after-merge")
+        plan = self._plan((successor,), self.canary_policy)
+
+        self.assertEqual(1, len(plan.candidates))
+        self.assertEqual((), tuple(plan.tripped_policy_fingerprints))
+        activated = apply_machine_assignment_plan(
+            self.database,
+            plan,
+            activate_canary=True,
+        )
+        self.assertEqual(1, activated.assignments_activated)
+        self.assertEqual(0, activated.activation_blocked)
 
     def test_manual_policy_rollback_is_append_only(self) -> None:
         candidate = self._observation("candidate")
