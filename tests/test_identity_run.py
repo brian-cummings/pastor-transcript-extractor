@@ -14,6 +14,7 @@ from pastor_transcript_extractor.cli import (
     _association_admission_is_actionable,
     _actionable_review_fingerprints,
     _archive_normalized_after_identity,
+    _exemplar_preparation_initial_blocker,
     _held_out_speaker_fixture_fingerprints,
     _load_actionable_review_prewarm,
     _machine_safety_for_profiles,
@@ -62,6 +63,20 @@ class IdentityRunTests(unittest.TestCase):
 
         self.assertEqual(0, result.exit_code, result.output)
         self.assertIn("eligible_unassigned=0", result.output)
+
+    def test_superseded_profile_member_has_observed_blocker(self) -> None:
+        self.assertEqual(
+            (
+                "observation_currency",
+                "profile_member_observation_superseded",
+            ),
+            _exemplar_preparation_initial_blocker(
+                profile_observation_id=93,
+                assessment_eligible=True,
+                assessed_observation_id=194,
+                assessment_reason_code="eligible",
+            ),
+        )
 
     def test_ready_association_review_is_tracked_as_prospective(self) -> None:
         context = _review_leverage_context(

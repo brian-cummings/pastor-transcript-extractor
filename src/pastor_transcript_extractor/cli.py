@@ -7706,6 +7706,7 @@ def _exemplar_preparation_evidence(
     *,
     profile_id: int,
     observation: SpeakerObservation,
+    assessed_observation: SpeakerObservation | None,
     media_artifact: Any | None,
     model_fingerprint: str | None,
     policy_artifact_sha256: str,
@@ -7718,6 +7719,19 @@ def _exemplar_preparation_evidence(
         "observation_id": observation.id,
         "observation_fingerprint": observation.input_fingerprint,
         "observation_extraction_result_id": observation.extraction_result_id,
+        "assessed_observation": (
+            {
+                "id": assessed_observation.id,
+                "input_fingerprint": assessed_observation.input_fingerprint,
+                "extraction_result_id": assessed_observation.extraction_result_id,
+            }
+            if assessed_observation is not None
+            else None
+        ),
+        "profile_member_is_current_automatic_observation": (
+            assessed_observation is not None
+            and assessed_observation.id == observation.id
+        ),
         "effective_review_action": (
             database.get_effective_observation_review_action(observation.id)
         ),
@@ -7744,6 +7758,33 @@ def _exemplar_preparation_evidence(
         "model_fingerprint": model_fingerprint,
         "policy_artifact_sha256": policy_artifact_sha256,
     }
+
+
+def _exemplar_preparation_initial_blocker(
+    *,
+    profile_observation_id: int,
+    assessment_eligible: bool,
+    assessed_observation_id: int | None,
+    assessment_reason_code: str,
+) -> tuple[str, str]:
+    if (
+        assessment_eligible
+        and assessed_observation_id is not None
+        and assessed_observation_id != profile_observation_id
+    ):
+        return (
+            "observation_currency",
+            "profile_member_observation_superseded",
+        )
+    stage = (
+        "extraction_lookup"
+        if assessment_reason_code.startswith("extraction_")
+        else "media_registration"
+        if "media" in assessment_reason_code
+        or "audio" in assessment_reason_code
+        else "observation_consistency"
+    )
+    return stage, assessment_reason_code
 
 
 @identity_app.command(
@@ -8083,6 +8124,7 @@ def shadow_associate_speakers_command(
                 database,
                 profile_id=profile.profile_id,
                 observation=observation,
+                assessed_observation=eligibility.observation,
                 media_artifact=eligibility.media_artifact,
                 model_fingerprint=(
                     backend.spec.fingerprint if backend is not None else None
@@ -8113,13 +8155,15 @@ def shadow_associate_speakers_command(
                 or eligibility.media_artifact is None
                 or eligibility.observation.id != observation.id
             ):
-                stage = (
-                    "extraction_lookup"
-                    if eligibility.reason_code.startswith("extraction_")
-                    else "media_registration"
-                    if "media" in eligibility.reason_code
-                    or "audio" in eligibility.reason_code
-                    else "observation_consistency"
+                stage, reason_code = _exemplar_preparation_initial_blocker(
+                    profile_observation_id=observation.id,
+                    assessment_eligible=eligibility.eligible,
+                    assessed_observation_id=(
+                        eligibility.observation.id
+                        if eligibility.observation is not None
+                        else None
+                    ),
+                    assessment_reason_code=eligibility.reason_code,
                 )
                 record_exemplar_preparation(
                     profile_id=profile.profile_id,
@@ -8127,7 +8171,7 @@ def shadow_associate_speakers_command(
                     evidence_payload=evidence_payload,
                     stage=stage,
                     outcome="blocked",
-                    reason_code=eligibility.reason_code,
+                    reason_code=reason_code,
                 )
                 continue
             eligibility = assess_automatic_speaker_observation(

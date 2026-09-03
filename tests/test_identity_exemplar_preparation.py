@@ -112,6 +112,19 @@ class ExemplarPreparationStateTests(unittest.TestCase):
             ),
         )
 
+    def test_superseded_profile_member_requires_identity_review(self):
+        self.assertEqual(
+            (
+                "human_review_required",
+                "review_profile_evidence",
+                False,
+            ),
+            exemplar_failure_policy(
+                "observation_currency",
+                "profile_member_observation_superseded",
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

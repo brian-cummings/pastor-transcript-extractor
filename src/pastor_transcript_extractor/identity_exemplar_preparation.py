@@ -43,7 +43,11 @@ def exemplar_failure_policy(
         "speech_grounded_spans_unavailable",
     }:
         return "human_review_required", "review_exemplar_spans", False
-    if stage in {"observation_consistency", "profile_membership"}:
+    if stage in {
+        "observation_consistency",
+        "observation_currency",
+        "profile_membership",
+    }:
         return "human_review_required", "review_profile_evidence", False
     return "each_run", None, True
 
