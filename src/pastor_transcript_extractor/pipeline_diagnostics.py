@@ -1612,6 +1612,40 @@ def load_identity_association_attempts(
         routing = routing if isinstance(routing, dict) else {}
         profiles = payload.get("profiles")
         profiles = profiles if isinstance(profiles, list) else []
+        comparisons = [
+            comparison
+            for profile in profiles
+            if isinstance(profile, dict)
+            for comparison in profile.get("comparisons", [])
+            if isinstance(comparison, dict)
+        ]
+        comparison_reason_counts: dict[str, int] = {}
+        for comparison in comparisons:
+            reason = comparison.get("reason")
+            if isinstance(reason, str) and reason:
+                comparison_reason_counts[reason] = (
+                    comparison_reason_counts.get(reason, 0) + 1
+                )
+        candidate_consistency: dict[str, Any] = {"status": "not_observed"}
+        if comparisons:
+            first = comparisons[0]
+            metrics = first.get("metrics")
+            metrics = metrics if isinstance(metrics, Mapping) else {}
+            within = metrics.get("within_a")
+            within = within if isinstance(within, Mapping) else {}
+            policy = first.get("policy")
+            policy = policy if isinstance(policy, Mapping) else {}
+            median = _number(within.get("median"))
+            minimum = _number(policy.get("min_within_median"))
+            if median is not None and minimum is not None:
+                candidate_consistency = {
+                    "status": (
+                        "inconsistent" if median < minimum else "coherent"
+                    ),
+                    "within_observation_median": median,
+                    "minimum_within_observation_median": minimum,
+                    "evidence_source": "candidate_side_pair_metrics",
+                }
         grouped.setdefault(video_id, {})[key] = {
             "artifact_path": str(path),
             "created_at": created_at,
@@ -1627,6 +1661,11 @@ def load_identity_association_attempts(
             "model_fingerprint": payload.get("model_fingerprint"),
             "result_sha256": result_sha256,
             "candidate_funnel": routing.get("candidate_funnel"),
+            "comparison_evidence_summary": {
+                "comparison_count": len(comparisons),
+                "reason_counts": dict(sorted(comparison_reason_counts.items())),
+                "candidate_consistency": candidate_consistency,
+            },
             "candidate_self_comparison": any(
                 comparison.get("exemplar_observation_id") == observation_id
                 for profile in profiles
@@ -2242,12 +2281,58 @@ def build_identity_automation_blocker_analysis(
             )
             target["affected_observation_ids"].add(observation_id)
             target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
-        elif unresolved and outcome in {"insufficient_evidence", "no_match"}:
+        elif unresolved and outcome == "insufficient_evidence" and (
+            isinstance(latest.get("comparison_evidence_summary"), Mapping)
+            and isinstance(
+                latest["comparison_evidence_summary"].get(
+                    "candidate_consistency"
+                ),
+                Mapping,
+            )
+            and latest["comparison_evidence_summary"][
+                "candidate_consistency"
+            ].get("status")
+            == "inconsistent"
+        ):
             target = row(
-                "comparison_without_membership_evidence",
+                "candidate_observation_acoustically_inconsistent",
+                observed_blocking_location="observation_consistency",
+                observable_next_operation={
+                    "operation": "repair_or_review_candidate_span_coherence",
+                    "implementation_status": "partially_implemented",
+                    "epistemic_status": "directly_observable_next_work",
+                },
+                human_necessity={
+                    "classification": "not_inherently_required",
+                    "basis": (
+                        "Persisted candidate-side metrics fail the existing "
+                        "within-observation coherence guard before identity "
+                        "membership can be established."
+                    ),
+                },
+                potential_automation_opportunity={
+                    "operation": "bounded_candidate_span_coherence_repair",
+                    "epistemic_status": "recommendation",
+                    "membership_guard_change_implied": False,
+                },
+                evidence_scope="persisted_candidate_side_pair_metrics",
+            )
+            target["blocking_condition_codes"].add(
+                "candidate_within_observation_inconsistent"
+            )
+            target["affected_observation_ids"].add(observation_id)
+            target["accepted_unresolved_youtube_video_ids"].add(
+                youtube_video_id
+            )
+            target["directly_blocked_operation_youtube_video_ids"].add(
+                youtube_video_id
+            )
+        elif unresolved and outcome == "insufficient_evidence":
+            target = row(
+                "cross_profile_comparison_inconclusive",
                 observed_blocking_location="comparison",
                 observable_next_operation={
-                    "operation": "inspect_or_gather_additional_identity_evidence",
+                    "operation": "sample_ranked_inconclusive_candidates",
                     "implementation_status": "partially_implemented",
                     "epistemic_status": "recommendation",
                 },
@@ -2258,6 +2343,38 @@ def build_identity_automation_blocker_analysis(
                         "not that only a human can resolve it."
                     ),
                 },
+            )
+            target["affected_observation_ids"].add(observation_id)
+            target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)
+            reason_counts = latest.get("comparison_evidence_summary", {}).get(
+                "reason_counts", {}
+            )
+            if isinstance(reason_counts, Mapping):
+                target["blocking_condition_codes"].update(
+                    str(reason)
+                    for reason, count in reason_counts.items()
+                    if isinstance(count, int) and count > 0
+                )
+        elif unresolved and outcome == "no_match":
+            target = row(
+                "all_compared_profiles_different",
+                observed_blocking_location="comparison",
+                observable_next_operation={
+                    "operation": "route_to_profile_discovery_or_new_evidence",
+                    "implementation_status": "partially_implemented",
+                    "epistemic_status": "recommendation",
+                },
+                human_necessity={
+                    "classification": "not_established",
+                    "basis": (
+                        "Persisted evidence rejects the compared profiles but "
+                        "does not establish whether an unrepresented profile exists."
+                    ),
+                },
+                evidence_scope="persisted_profile_comparisons",
+            )
+            target["blocking_condition_codes"].add(
+                "multiple_different_speaker_results_for_every_profile"
             )
             target["affected_observation_ids"].add(observation_id)
             target["accepted_unresolved_youtube_video_ids"].add(youtube_video_id)

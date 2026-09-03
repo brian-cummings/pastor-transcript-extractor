@@ -1093,6 +1093,90 @@ class PipelineDiagnosticTests(unittest.TestCase):
             "persisted_strict_admission", admission["evidence_scope"]
         )
 
+    def test_identity_blockers_isolate_candidate_consistency_failure(self) -> None:
+        trace = {
+            "video": {"youtube_video_id": "inconsistent-candidate"},
+            "identity_outcome": {
+                "content_disposition": "accepted_sermon",
+                "observation_status": "current",
+                "observation_id": 19,
+                "effective_profile_ids": [],
+                "latest_association_outcome": "insufficient_evidence",
+                "latest_association_attempt": {
+                    "comparison_evidence_summary": {
+                        "candidate_consistency": {
+                            "status": "inconsistent",
+                            "within_observation_median": 0.41,
+                            "minimum_within_observation_median": 0.7,
+                        },
+                        "reason_counts": {
+                            "within_observation_inconsistent": 9,
+                        },
+                    }
+                },
+            },
+            "identity_boundary_feedback": {},
+        }
+
+        analysis = build_identity_automation_blocker_analysis([trace])
+        blockers = {
+            item["blocker_class"]: item
+            for item in analysis["blocker_classes"]
+        }
+
+        blocker = blockers[
+            "candidate_observation_acoustically_inconsistent"
+        ]
+        self.assertEqual(1, blocker["accepted_unresolved_sermon_count"])
+        self.assertEqual(1, blocker["directly_blocked_operation_count"])
+        self.assertEqual(
+            ["candidate_within_observation_inconsistent"],
+            blocker["blocking_condition_codes"],
+        )
+        self.assertNotIn("cross_profile_comparison_inconclusive", blockers)
+
+    def test_identity_blockers_separate_inconclusive_and_different(self) -> None:
+        def trace(video: str, observation_id: int, outcome: str):
+            return {
+                "video": {"youtube_video_id": video},
+                "identity_outcome": {
+                    "content_disposition": "accepted_sermon",
+                    "observation_status": "current",
+                    "observation_id": observation_id,
+                    "effective_profile_ids": [],
+                    "latest_association_outcome": outcome,
+                    "latest_association_attempt": {
+                        "comparison_evidence_summary": {
+                            "candidate_consistency": {"status": "coherent"},
+                            "reason_counts": {"ambiguous_similarity": 3},
+                        }
+                    },
+                },
+                "identity_boundary_feedback": {},
+            }
+
+        analysis = build_identity_automation_blocker_analysis(
+            [trace("ambiguous", 20, "insufficient_evidence"),
+             trace("different", 21, "no_match")]
+        )
+        blockers = {
+            item["blocker_class"]: item
+            for item in analysis["blocker_classes"]
+        }
+
+        self.assertEqual(
+            1,
+            blockers["cross_profile_comparison_inconclusive"][
+                "accepted_unresolved_sermon_count"
+            ],
+        )
+        self.assertEqual(
+            1,
+            blockers["all_compared_profiles_different"][
+                "accepted_unresolved_sermon_count"
+            ],
+        )
+
     def test_identity_blockers_keep_retrospective_failure_and_cause_separate(self) -> None:
         trace = {
             "youtube_video_id": "reviewed-video",
