@@ -199,6 +199,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_identity_automation_blocker_analysis,
     build_identity_operational_outcome,
     build_systemic_markdown,
+    compact_diagnostic_trace,
     compare_systemic_reports,
     load_identity_association_admissions,
     load_identity_association_attempts,
@@ -888,6 +889,14 @@ def diagnose_pipeline_system(
             "quality evidence."
         ),
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help=(
+            "Embed complete traces and write per-video diagnostic files. The default "
+            "systemic JSON keeps only comparison-ready trace projections."
+        ),
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -1053,14 +1062,15 @@ def diagnose_pipeline_system(
             ),
         )
         traces.append(trace)
-        per_video = video_root / video.youtube_video_id
-        per_video.mkdir(parents=True, exist_ok=True)
-        (per_video / "diagnostic-trace-v7.json").write_text(
-            json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8"
-        )
-        (per_video / "diagnostic-report.md").write_text(
-            build_diagnostic_markdown(trace), encoding="utf-8"
-        )
+        if verbose:
+            per_video = video_root / video.youtube_video_id
+            per_video.mkdir(parents=True, exist_ok=True)
+            (per_video / "diagnostic-trace-v7.json").write_text(
+                json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            (per_video / "diagnostic-report.md").write_text(
+                build_diagnostic_markdown(trace), encoding="utf-8"
+            )
     status_counts: dict[str, int] = {}
     without_extraction_status_counts: dict[str, int] = {}
     for video in videos:
@@ -1181,7 +1191,19 @@ def diagnose_pipeline_system(
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "system-diagnostics.json"
     markdown_path = output_dir / "system-diagnostics.md"
-    json_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    persisted_report = {
+        **report,
+        "trace_detail_level": "full" if verbose else "compact_comparison",
+        "traces": (
+            traces
+            if verbose
+            else [compact_diagnostic_trace(trace) for trace in traces]
+        ),
+    }
+    json_path.write_text(
+        json.dumps(persisted_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
     markdown_path.write_text(build_systemic_markdown(report), encoding="utf-8")
     console.print(f"Wrote systemic diagnostic evidence to {json_path}")
     console.print(f"Wrote systemic failure view to {markdown_path}")
@@ -1190,7 +1212,9 @@ def diagnose_pipeline_system(
         f"Derived {len(traces)} trace(s): "
         f"reviewed={population['reviewed_trace_count']}, "
         f"unreviewed={population['unreviewed_trace_count']}; "
-        f"missing={len(missing)}. No extraction or classification artifacts were changed."
+        f"missing={len(missing)}; "
+        f"trace_detail={'full' if verbose else 'compact'}. "
+        "No extraction or classification artifacts were changed."
     )
 
 
@@ -14047,6 +14071,9 @@ def run_workflow_service(
         _ensure_and_archive_run_media(
             database, paths, video_ids=video_ids, allow_download=False
         )
+        if run_identity:
+            console.print("Resume checkpoint: starting the requested identity workflow.")
+            _run_post_content_identity(base_dir)
         if not skip_review:
             console.print("Resume checkpoint: refreshing review exports.")
             pastor_slugs = {
@@ -14070,10 +14097,7 @@ def run_workflow_service(
                 )
         else:
             console.print("Resume checkpoint: review export skipped by --skip-review.")
-        if run_identity:
-            console.print("Resume checkpoint: starting the requested identity workflow.")
-            _run_post_content_identity(base_dir)
-        else:
+        if not run_identity:
             console.print("Resume complete; identity was not requested.")
         return
 
@@ -14228,6 +14252,8 @@ def run_workflow_service(
             paths,
             video_ids=failed_video_ids,
         )
+        if run_identity:
+            _run_post_content_identity(base_dir)
         if not skip_review:
             pastor_slugs = {
                 pastor_record.slug
@@ -14246,8 +14272,6 @@ def run_workflow_service(
                     event_callback=lambda message: console.print(message, markup=False),
                 )
                 _print_review_batch(reviews)
-        if run_identity:
-            _run_post_content_identity(base_dir)
         return
 
     if selected_source_ids:
@@ -14317,6 +14341,8 @@ def run_workflow_service(
             paths,
             video_ids=selected_video_ids,
         )
+        if run_identity:
+            _run_post_content_identity(base_dir)
         if not skip_review:
             pastor_slugs = {
                 pastor_record.slug
@@ -14338,8 +14364,6 @@ def run_workflow_service(
                     ),
                 )
                 _print_review_batch(reviews)
-        if run_identity:
-            _run_post_content_identity(base_dir)
         return
 
     if all_sources:
@@ -14398,6 +14422,8 @@ def run_workflow_service(
         )
         console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
         _ensure_and_archive_run_media(database, paths, video_ids=selected_video_ids)
+        if run_identity:
+            _run_post_content_identity(base_dir)
         if not skip_review:
             pastor_slugs = {
                 pastor_record.slug
@@ -14420,8 +14446,6 @@ def run_workflow_service(
                     ),
                 )
                 _print_review_batch(reviews)
-        if run_identity:
-            _run_post_content_identity(base_dir)
         return
 
     if url is None:
@@ -14476,6 +14500,8 @@ def run_workflow_service(
         paths,
         video_ids=selected_video_ids,
     )
+    if run_identity:
+        _run_post_content_identity(base_dir)
     if not skip_review:
         reviews = prepare_review_exports(
             database,
@@ -14486,8 +14512,6 @@ def run_workflow_service(
             event_callback=lambda message: console.print(message, markup=False),
         )
         _print_review_batch(reviews)
-    if run_identity:
-        _run_post_content_identity(base_dir)
 
 
 def _run_post_content_identity(base_dir: Path | None) -> None:
@@ -14500,7 +14524,7 @@ def _run_post_content_identity(base_dir: Path | None) -> None:
         all_extractions=True,
         plan_only=False,
         skip_discovery=False,
-        apply_automatic=False,
+        apply_automatic=True,
         apply_confirmations=False,
         apply_promotions=False,
         base_dir=base_dir,
@@ -14649,8 +14673,8 @@ def run(
         "--identity",
         "--run-identity",
         help=(
-            "After content processing, run the corpus identity workflow so "
-            "new shadow associations and review nominations are available."
+            "After content processing, run the guarded automatic identity "
+            "workflow and synchronize boundary feedback before review export."
         ),
     ),
     stage_audio_only: bool = typer.Option(

@@ -26,6 +26,7 @@ from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_disco
 from pastor_transcript_extractor.cli import (
     _ensure_and_archive_run_media,
     _recover_stale_transcribing_videos,
+    _run_post_content_identity,
     _should_transcribe_video,
     app,
     discover_sources_service,
@@ -2063,6 +2064,112 @@ class CliTests(unittest.TestCase):
                 self.assertEqual({enabled_video.id}, kwargs["video_ids"])
             self.assertIn("skipping 1 disabled source", result.output)
 
+    def test_run_identity_refreshes_boundaries_before_review_export(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor.id,
+            )
+            video = database.add_video(
+                source.id,
+                pastor.id,
+                "identity-video",
+                "Identity video",
+                "https://www.youtube.com/watch?v=identity-video",
+            )
+            calls: list[str] = []
+            identity_complete = False
+
+            def apply_identity(_base_dir):
+                nonlocal identity_complete
+                calls.append("identity")
+                identity_complete = True
+
+            def export_review(*args, **kwargs):
+                self.assertTrue(identity_complete)
+                calls.append("review")
+                return SimpleNamespace()
+
+            with patch(
+                "pastor_transcript_extractor.cli.discover_sources_service",
+                return_value=SimpleNamespace(
+                    selected_video_ids_by_source={source.id: (video.id,)}
+                ),
+            ), patch(
+                "pastor_transcript_extractor.cli.fetch_captions_service"
+            ), patch(
+                "pastor_transcript_extractor.cli.transcribe_videos_service"
+            ), patch(
+                "pastor_transcript_extractor.cli.extract_batch",
+                return_value=ExtractionBatchResult(1, 0, 0),
+            ), patch(
+                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                side_effect=lambda *args, **kwargs: calls.append("media"),
+            ), patch(
+                "pastor_transcript_extractor.cli._run_post_content_identity",
+                side_effect=apply_identity,
+            ), patch(
+                "pastor_transcript_extractor.cli.prepare_review_exports",
+                side_effect=export_review,
+            ), patch(
+                "pastor_transcript_extractor.cli._print_review_batch"
+            ):
+                result = runner.invoke(
+                    app,
+                    [
+                        "run",
+                        "--all",
+                        "--identity",
+                        "--base-dir",
+                        str(base_dir),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual(["media", "identity", "review"], calls)
+
+    def test_skip_review_does_not_skip_integrated_identity(self) -> None:
+        database = SimpleNamespace(
+            list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            list_sources=lambda: [SimpleNamespace(id=1)],
+        )
+        with patch(
+            "pastor_transcript_extractor.cli.get_database", return_value=database
+        ), patch(
+            "pastor_transcript_extractor.cli.discover_sources_service",
+            return_value=SimpleNamespace(selected_video_ids_by_source={1: (11,)}),
+        ), patch(
+            "pastor_transcript_extractor.cli.fetch_captions_service"
+        ), patch(
+            "pastor_transcript_extractor.cli.transcribe_videos_service"
+        ), patch(
+            "pastor_transcript_extractor.cli.build_paths",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "pastor_transcript_extractor.cli.extract_batch",
+            return_value=ExtractionBatchResult(1, 0, 0),
+        ), patch(
+            "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+        ), patch(
+            "pastor_transcript_extractor.cli._run_post_content_identity"
+        ) as identity, patch(
+            "pastor_transcript_extractor.cli.prepare_review_exports"
+        ) as review:
+            run_workflow_service(
+                all_sources=True,
+                run_identity=True,
+                skip_review=True,
+            )
+
+        identity.assert_called_once_with(None)
+        review.assert_not_called()
+
     def test_run_multiple_source_ids_scopes_every_downstream_stage(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -2212,6 +2319,16 @@ class CliTests(unittest.TestCase):
         self.assertEqual(0, result.exit_code, msg=result.output)
         self.assertTrue(workflow.call_args.kwargs["run_identity"])
 
+    def test_integrated_identity_uses_conservative_automatic_policy(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.cli.run_identity_workflow_service"
+        ) as identity:
+            _run_post_content_identity(Path("data"))
+
+        self.assertTrue(identity.call_args.kwargs["apply_automatic"])
+        self.assertFalse(identity.call_args.kwargs["plan_only"])
+        self.assertTrue(identity.call_args.kwargs["all_extractions"])
+
     def test_run_audio_stage_options_are_forwarded(self) -> None:
         with patch("pastor_transcript_extractor.cli.run_workflow_service") as workflow:
             result = CliRunner().invoke(
@@ -2315,6 +2432,48 @@ class CliTests(unittest.TestCase):
         self.assertFalse(transcribe.call_args.kwargs["allow_network"])
         self.assertEqual({11, 12}, transcribe.call_args.kwargs["video_ids"])
         self.assertFalse(media.call_args.kwargs["allow_download"])
+
+    def test_resume_stage_runs_identity_before_review_export(self) -> None:
+        video = SimpleNamespace(id=11, pastor_id=7)
+        pastor = SimpleNamespace(id=7, slug="sample-church")
+        database = SimpleNamespace(
+            get_video_by_id=lambda video_id: video if video_id == 11 else None,
+            get_pastor_by_id=lambda pastor_id: pastor if pastor_id == 7 else None,
+        )
+        calls: list[str] = []
+        with patch(
+            "pastor_transcript_extractor.cli.get_database", return_value=database
+        ), patch(
+            "pastor_transcript_extractor.cli.build_paths",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
+            return_value={11},
+        ), patch(
+            "pastor_transcript_extractor.cli.transcribe_videos_service"
+        ), patch(
+            "pastor_transcript_extractor.cli.extract_batch",
+            return_value=ExtractionBatchResult(1, 0, 0),
+        ), patch(
+            "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+            side_effect=lambda *args, **kwargs: calls.append("media"),
+        ), patch(
+            "pastor_transcript_extractor.cli._run_post_content_identity",
+            side_effect=lambda *args, **kwargs: calls.append("identity"),
+        ), patch(
+            "pastor_transcript_extractor.cli.prepare_review_exports",
+            side_effect=lambda *args, **kwargs: (
+                calls.append("review") or SimpleNamespace()
+            ),
+        ), patch(
+            "pastor_transcript_extractor.cli._print_review_batch"
+        ):
+            run_workflow_service(
+                resume_stage=Path("stage.json"),
+                run_identity=True,
+            )
+
+        self.assertEqual(["media", "identity", "review"], calls)
 
     def test_acquire_captions_requires_resume_stage(self) -> None:
         with self.assertRaisesRegex(
