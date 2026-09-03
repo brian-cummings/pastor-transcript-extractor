@@ -55,7 +55,7 @@ TRANSCRIPT_SPAN_RMS_MARGIN_DB = 3.0
 TRANSCRIPT_SPAN_MAX_CONSISTENCY_REPLACEMENTS = 2
 TRANSCRIPT_SPAN_EDGE_WINDOW_FRACTION = 0.10
 ACTIVITY_QUALIFIED_SELECTION_CACHE_VERSION = (
-    "activity_qualified_span_selection_cache_v1"
+    "activity_qualified_span_selection_cache_v2"
 )
 
 
@@ -763,6 +763,22 @@ def refine_activity_qualified_spans(
         key=lambda item: item[0],
     )
     refined_metrics = metrics_for(refined)
+    if not coherent(refined_metrics):
+        selection.update(
+            {
+                "consistency_fallback_found_coherent_subset": False,
+                "consistency_fallback_rejected_after_verification": True,
+                "consistency_fallback_subsets_evaluated": evaluated_subset_count,
+                "consistency_fallback_pairwise_similarities": len(
+                    pairwise_similarity_cache
+                ),
+            }
+        )
+        return ActivityQualifiedSpans(
+            spans=selected,
+            qualified_spans=qualified,
+            selection=selection,
+        )
     original_hashes = {span.wav_sha256 for span in selected}
     refined_hashes = {span.wav_sha256 for span in refined}
     observation_start = float(
@@ -2542,7 +2558,12 @@ def _finite_number(value: object) -> float | None:
 def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right) or not left:
         raise ValueError("centroids must have equal non-zero dimensions")
-    return sum(a * b for a, b in zip(left, right))
+    dot = sum(a * b for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    if left_norm == 0 or right_norm == 0:
+        raise ValueError("zero-norm embedding")
+    return dot / (left_norm * right_norm)
 
 
 def _span_evidence(span: CachedSpan) -> dict[str, Any]:

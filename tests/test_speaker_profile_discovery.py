@@ -1061,6 +1061,50 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
             ]
         )
 
+    def test_consistency_fallback_normalizes_non_unit_embeddings(self) -> None:
+        observation = self._signature(
+            "non-unit-mixed",
+            (1.0, 0.0),
+        ).candidate.observation
+        specs = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in range(120, 820, 100)
+        )
+        prepared = prepare_activity_qualified_spans(
+            observation=observation,
+            audio_path=Path("non-unit-mixed.wav"),
+            span_cache=FakeActivitySpanCache(
+                {spec.start_seconds: -40.0 for spec in specs},
+                {spec.start_seconds: 0.8 for spec in specs},
+            ),
+            candidate_specs=specs,
+        )
+        embeddings = {
+            spec.start_seconds: (
+                (10.0, 0.0)
+                if index < 4
+                else (5.0, 8.660254037844386)
+            )
+            for index, spec in enumerate(specs)
+        }
+
+        refined = refine_activity_qualified_spans(
+            prepared,
+            embedding_cache=FakeEmbeddingCache(embeddings),
+            backend=object(),
+            policy=self._policy().policy,
+        )
+
+        self.assertEqual(prepared.spans, refined.spans)
+        self.assertTrue(
+            refined.selection["consistency_fallback_attempted"]
+        )
+        self.assertFalse(
+            refined.selection[
+                "consistency_fallback_found_coherent_subset"
+            ]
+        )
+
     def test_consistency_fallback_caches_pairwise_work_across_subsets(self) -> None:
         observation = self._signature("bounded", (1.0, 0.0)).candidate.observation
         specs = tuple(
