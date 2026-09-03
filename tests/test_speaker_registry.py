@@ -14,6 +14,7 @@ from pastor_transcript_extractor.speaker_registry import (
     create_anonymous_profile,
     create_profile,
     neutral_claim_payloads,
+    normalize_person_name,
     persist_neutral_speaker_evidence,
     project_target_attribution_outcomes,
     record_name_claim_review,
@@ -67,6 +68,17 @@ class SpeakerRegistryTests(unittest.TestCase):
             proposed_text_path=str(video_paths.extracted / "proposed.md"),
             proposed_json_path=str(proposed_path),
         )
+
+    def test_person_name_normalization_removes_common_honorifics(self) -> None:
+        for value in (
+            "Pastor Jane Smith",
+            "Doctor Jane Smith",
+            "Dr. Jane Smith",
+            "Rev. Dr. Jane Smith",
+            "Bishop Jane Smith",
+            "Professor Jane Smith",
+        ):
+            self.assertEqual("jane smith", normalize_person_name(value))
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()

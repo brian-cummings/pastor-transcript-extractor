@@ -1028,6 +1028,9 @@ membership, metadata, prompt version, model, or model digest changes. Name
 support is grounded deterministically against the original fields across
 distinct recordings; the model does not need to reproduce punctuation or the
 supporting excerpt verbatim.
+Displayed identity proposals omit a leading `Pastor`; other honorifics remain
+visible, while common variants such as `Doctor`/`Dr.` and `Reverend`/`Rev.` are
+removed from the normalized identity used for matching.
 
 Run the complete identity layer independently with the same scope convention as
 top-level `pte run`:

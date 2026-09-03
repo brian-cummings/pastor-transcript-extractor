@@ -36,7 +36,29 @@ OBSERVATION_REVIEW_ACTIONS = frozenset(
     }
 )
 
-_HONORIFICS = {"pastor", "elder", "dr", "pr"}
+_HONORIFICS = {
+    "bishop",
+    "br",
+    "brother",
+    "doctor",
+    "dr",
+    "elder",
+    "father",
+    "fr",
+    "miss",
+    "mr",
+    "mrs",
+    "ms",
+    "pastor",
+    "pr",
+    "prof",
+    "professor",
+    "rabbi",
+    "rev",
+    "reverend",
+    "sister",
+    "sr",
+}
 _OUTCOME_ORDER = (
     "explicit_guest_attribution",
     "explicit_target_attribution",

@@ -601,7 +601,9 @@ def _validate_response(
             return {
                 "decision": "propose_name",
                 "routing": "human_confirmation_available",
-                "proposed_name": normalized_conflicts[normalized],
+                "proposed_name": _proposal_display_name(
+                    normalized_conflicts[normalized]
+                ),
                 "normalized_name": normalized,
                 "reason_codes": [
                     "consistent_speaker_credit",
@@ -647,7 +649,7 @@ def _validate_response(
             raise ValueError("proposed name lacks independent metadata support")
         routing = "human_confirmation_available"
         normalized: str | None = normalized_name
-        proposal: str | None = proposed_name.strip()
+        proposal: str | None = _proposal_display_name(proposed_name)
         raw_reasons = [
             "consistent_speaker_credit",
             "repeated_name_across_recordings",
@@ -842,6 +844,18 @@ def _valid_person_name(normalized_name: str) -> bool:
     )
 
 
+def _proposal_display_name(value: str) -> str:
+    stripped = value.strip()
+    without_pastor = re.sub(
+        r"^pastor\b[\s,.:;\-–—]*",
+        "",
+        stripped,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip()
+    return without_pastor or stripped
+
+
 def _load_artifact(
     path: Path,
     *,
@@ -872,19 +886,22 @@ def _load_artifact(
             for item in result.get("evidence", ())
             if isinstance(item, Mapping)
         )
+        proposed_display_name = (
+            _proposal_display_name(str(result["proposed_name"]))
+            if isinstance(result.get("proposed_name"), str)
+            else None
+        )
         return ProfileMetadataAttribution(
             profile_id=int(payload["profile_id"]),
             membership_fingerprint=str(payload["membership_fingerprint"]),
             input_fingerprint=str(payload["input_fingerprint"]),
             decision=str(result["decision"]),
             routing=str(result["routing"]),
-            proposed_name=(
-                str(result["proposed_name"])
-                if isinstance(result.get("proposed_name"), str)
-                else None
-            ),
+            proposed_name=proposed_display_name,
             normalized_name=(
-                str(result["normalized_name"])
+                normalize_person_name(proposed_display_name)
+                if proposed_display_name is not None
+                else str(result["normalized_name"])
                 if isinstance(result.get("normalized_name"), str)
                 else None
             ),

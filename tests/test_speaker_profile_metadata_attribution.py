@@ -132,7 +132,7 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         client = FakeMetadataClient(
             {
                 "decision": "propose_name",
-                "proposed_name": "Curt DeWitt",
+                "proposed_name": "Pastor Curt DeWitt",
                 "reason_codes": [
                     "consistent_speaker_credit",
                     "repeated_name_across_recordings",
@@ -249,6 +249,40 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         self.assertEqual(1, replay.cache_hits)
         self.assertEqual(0, replay.model_calls)
         self.assertEqual(1, client.calls)
+
+    def test_non_pastor_honorific_is_preserved(self) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id IN (?, ?)",
+                (
+                    "Message by Doctor Curt DeWitt",
+                    self.observations[0].video_id,
+                    self.observations[1].video_id,
+                ),
+            )
+        client = FakeMetadataClient(
+            {
+                "decision": "propose_name",
+                "proposed_name": "Doctor Curt DeWitt",
+                "reason_codes": ["consistent_speaker_credit"],
+                "evidence": [],
+                "conflicting_names": [],
+            }
+        )
+
+        run = run_profile_metadata_attribution(
+            self.database,
+            self.root / "doctor-honorific",
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(1, run.proposed)
+        self.assertEqual(
+            "Doctor Curt DeWitt",
+            run.results[0].proposed_name,
+        )
+        self.assertEqual("curt dewitt", run.results[0].normalized_name)
 
     def test_name_is_grounded_despite_nonverbatim_excerpt_and_middle_initial(
         self,
