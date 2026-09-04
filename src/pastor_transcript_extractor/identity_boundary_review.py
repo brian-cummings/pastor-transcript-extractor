@@ -12,6 +12,7 @@ from pastor_transcript_extractor.sermon_detection import detect_sermon_window
 
 
 POLICY_VERSION = "identity_boundary_review_v2"
+SYNCHRONIZATION_VERSION = "identity_boundary_sync_v1"
 DEFAULT_MAX_TRIM_SECONDS = 300.0
 DEFAULT_MAX_TRIM_FRACTION = 0.20
 DEFAULT_MIN_REMAINING_SECONDS = 600.0
@@ -55,6 +56,40 @@ def _number(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+def _stable_fingerprint(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
+    ).hexdigest()
+
+
+def _window_fingerprint(window: Mapping[str, Any]) -> str:
+    return _stable_fingerprint({
+        key: window.get(key)
+        for key in (
+            "start_seconds",
+            "end_seconds",
+            "source",
+            "method",
+            "included_segment_indexes",
+            "excluded_segment_indexes",
+        )
+    })
+
+
+def _segments_fingerprint(segments: Sequence[Mapping[str, Any]]) -> str:
+    return _stable_fingerprint([
+        {
+            key: segment.get(key)
+            for key in ("start_seconds", "end_seconds", "text", "label", "speaker_hint")
+        }
+        for segment in segments
+    ])
+
+
+def _evidence_fingerprint(evidence: Mapping[str, Any] | None) -> str:
+    return _stable_fingerprint(evidence if isinstance(evidence, Mapping) else None)
 
 
 def _span(raw: object) -> dict[str, Any] | None:
@@ -399,12 +434,33 @@ def apply_identity_boundary_review(payload: Mapping[str, Any]) -> dict[str, Any]
     segments = result.get("segments")
     if not isinstance(window, Mapping) or not isinstance(segments, Sequence):
         return result
+    typed_segments = [segment for segment in segments if isinstance(segment, Mapping)]
+    evidence = (
+        result.get("identity_boundary_evidence")
+        if isinstance(result.get("identity_boundary_evidence"), Mapping)
+        else None
+    )
     prior = result.get("identity_boundary_review")
+    if isinstance(prior, Mapping):
+        synchronization = prior.get("synchronization")
+        if (
+            prior.get("policy_version") == POLICY_VERSION
+            and isinstance(synchronization, Mapping)
+            and synchronization.get("version") == SYNCHRONIZATION_VERSION
+            and synchronization.get("output_window_fingerprint")
+            == _window_fingerprint(window)
+            and synchronization.get("segments_fingerprint")
+            == _segments_fingerprint(typed_segments)
+            and synchronization.get("evidence_fingerprint")
+            == _evidence_fingerprint(evidence)
+        ):
+            return result
     prior_records = prior.get("records", ()) if isinstance(prior, Mapping) else ()
+    input_window_fingerprint = _window_fingerprint(window)
     reviewed = review_identity_boundaries(
         window,
-        [segment for segment in segments if isinstance(segment, Mapping)],
-        result.get("identity_boundary_evidence") if isinstance(result.get("identity_boundary_evidence"), Mapping) else None,
+        typed_segments,
+        evidence,
         existing_records=prior_records if isinstance(prior_records, Sequence) else (),
     )
     result["sermon_window"] = reviewed.sermon_window
@@ -412,6 +468,13 @@ def apply_identity_boundary_review(payload: Mapping[str, Any]) -> dict[str, Any]
         "schema_version": 1,
         "policy_version": POLICY_VERSION,
         "records": reviewed.records,
+        "synchronization": {
+            "version": SYNCHRONIZATION_VERSION,
+            "input_window_fingerprint": input_window_fingerprint,
+            "output_window_fingerprint": _window_fingerprint(reviewed.sermon_window),
+            "segments_fingerprint": _segments_fingerprint(typed_segments),
+            "evidence_fingerprint": _evidence_fingerprint(evidence),
+        },
     }
     return result
 
@@ -454,6 +517,12 @@ def _identity_guided_transition(
     current_end = _number(sermon_window.get("end_seconds"))
     if current_start is None or current_end is None or current_end <= current_start:
         return None
+    flagged_start = float(flagged_span["start_seconds"])
+    flagged_end = float(flagged_span["end_seconds"])
+    if edge == "start" and flagged_end <= current_start + 1.0:
+        return None
+    if edge == "end" and flagged_start >= current_end - 1.0:
+        return None
     guide_starts = [
         float(span["start_seconds"])
         for span in sermon_spans
@@ -476,8 +545,6 @@ def _identity_guided_transition(
     proposed = rerun.start_seconds if edge == "start" else rerun.end_seconds
     if proposed is None:
         return None
-    flagged_start = float(flagged_span["start_seconds"])
-    flagged_end = float(flagged_span["end_seconds"])
     if edge == "start":
         if not current_start < proposed <= guide_start:
             return None
@@ -644,6 +711,11 @@ def persist_association_boundary_evidence(
         return False
     if not isinstance(payload, dict) or not isinstance(payload.get("segments"), list):
         return False
+    current_window = (
+        payload.get("sermon_window")
+        if isinstance(payload.get("sermon_window"), Mapping)
+        else {}
+    )
     prior_evidence = payload.get("identity_boundary_evidence")
     prior_review = payload.get("identity_boundary_review")
     if (
@@ -652,6 +724,17 @@ def persist_association_boundary_evidence(
         == report.get("result_sha256")
         and isinstance(prior_review, Mapping)
         and prior_review.get("policy_version") == POLICY_VERSION
+        and isinstance(prior_review.get("synchronization"), Mapping)
+        and prior_review["synchronization"].get("version")
+        == SYNCHRONIZATION_VERSION
+        and prior_review["synchronization"].get("output_window_fingerprint")
+        == _window_fingerprint(current_window)
+        and prior_review["synchronization"].get("segments_fingerprint")
+        == _segments_fingerprint([
+            segment for segment in payload["segments"] if isinstance(segment, Mapping)
+        ])
+        and prior_review["synchronization"].get("evidence_fingerprint")
+        == _evidence_fingerprint(prior_evidence)
     ):
         return True
     evidence = identity_boundary_evidence_from_association(

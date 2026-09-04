@@ -622,6 +622,146 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertAlmostEqual(0.84, arbitration["rule_retention_of_adaptive"])
         self.assertEqual(160.0, arbitration["clipped_adaptive_seconds"])
 
+    def test_arbitration_can_select_one_rule_edge_with_structural_evidence(self) -> None:
+        drafts = [
+            SegmentDraft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "special music from the praise team" if index < 10 else "sermon application",
+                None,
+                TranscriptSegmentLabel.MUSIC if index < 10 else TranscriptSegmentLabel.SERMON,
+                0.8,
+            )
+            for index in range(60)
+        ]
+        window = {
+            "start_seconds": 300.0,
+            "end_seconds": 1500.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(10, 50)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v5", "fixture", "fixture", "high", list(range(60)), [], [], [], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(12)),
+                    "boundary_recovery": {
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=False
+        )
+
+        self.assertEqual("adaptive_selected", arbitration["decision"])
+        self.assertEqual(300.0, window["start_seconds"])
+        self.assertEqual(1800.0, window["end_seconds"])
+        self.assertEqual(
+            "rule_edge_selected", arbitration["edge_decisions"][0]["decision"]
+        )
+        self.assertEqual(
+            "adaptive_retained", arbitration["edge_decisions"][1]["decision"]
+        )
+
+    def test_edge_arbitration_recall_guard_preserves_exposition(self) -> None:
+        drafts = [
+            draft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "special music then turn in your Bibles to chapter 3"
+                if index < 10
+                else "sermon application",
+            )
+            for index in range(60)
+        ]
+        window = {
+            "start_seconds": 300.0,
+            "end_seconds": 1500.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(10, 50)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v5", "fixture", "fixture", "high", list(range(60)), [], [], [], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(12)),
+                    "boundary_recovery": {
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=True
+        )
+
+        self.assertEqual(0.0, window["start_seconds"])
+        self.assertFalse(
+            arbitration["edge_decisions"][0]["evidence"]["recall_guard_passed"]
+        )
+
+    def test_arbitration_trims_explicit_post_sermon_program_only(self) -> None:
+        drafts = [
+            SegmentDraft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "as we close, our closing hymn" if index == 50 else
+                "closing music" if index > 50 else "sermon application",
+                None,
+                TranscriptSegmentLabel.MUSIC if index >= 50 else TranscriptSegmentLabel.SERMON,
+                0.8,
+            )
+            for index in range(60)
+        ]
+        window = {
+            "start_seconds": 300.0,
+            "end_seconds": 1500.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(10, 50)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v5", "fixture", "fixture", "high", list(range(60)), [], [], [], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(12)),
+                    "boundary_recovery": {
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=False
+        )
+
+        self.assertEqual(1500.0, window["end_seconds"])
+        self.assertEqual(
+            "rule_edge_selected", arbitration["edge_decisions"][1]["decision"]
+        )
+
     def test_refinement_safety_restores_catastrophic_late_anchor_trim(self) -> None:
         retained, evidence = _apply_refinement_retention_safety(
             set(range(90, 100)),
@@ -992,6 +1132,14 @@ class HybridClassificationTests(unittest.TestCase):
                             {"start_seconds": 600.0, "end_seconds": 1200.0, "text": "Turn in your Bibles to Romans", "label": "sermon"},
                             {"start_seconds": 1200.0, "end_seconds": 1800.0, "text": "The passage teaches us about grace", "label": "sermon"},
                         ],
+                        "identity_boundary_evidence": {
+                            "source_artifact_sha256": "stale-association",
+                            "edges": [{"edge": "start", "proposed_boundary": 900.0}],
+                        },
+                        "identity_boundary_review": {
+                            "policy_version": "identity_boundary_review_v2",
+                            "records": [{"decision": "review_required"}],
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -1018,6 +1166,17 @@ class HybridClassificationTests(unittest.TestCase):
             self.assertEqual("hybrid_llm", updated["sermon_window"]["source"])
             self.assertEqual("adaptive_llm_v5", updated["classification"]["method"])
             self.assertEqual("accepted_sermon", updated["final_disposition"]["status"])
+            self.assertNotIn("identity_boundary_evidence", updated)
+            self.assertTrue(all(
+                record["decision"] == "no_action"
+                for record in updated["identity_boundary_review"]["records"]
+            ))
+            self.assertEqual(
+                updated["sermon_window"]["start_seconds"],
+                updated["identity_boundary_review"]["records"][0][
+                    "boundary_before_review"
+                ]["start_seconds"],
+            )
             self.assertEqual(
                 updated["final_disposition"],
                 updated["classification"]["final_disposition"],

@@ -184,6 +184,32 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
         self.assertEqual("association-v7", record["speaker_association_version"])
         self.assertEqual({"start_seconds": 0.0, "end_seconds": 1800.0}, record["boundary_before_review"])
 
+    def test_changed_window_invalidates_only_deterministic_boundary_review(self) -> None:
+        payload = {
+            "sermon_window": {"start_seconds": 0.0, "end_seconds": 1800.0},
+            "segments": segments(),
+            "identity_boundary_evidence": evidence("start", 120.0),
+        }
+        once = apply_identity_boundary_review(payload)
+        once["sermon_window"] = {
+            **once["sermon_window"],
+            "start_seconds": 300.0,
+        }
+
+        refreshed = apply_identity_boundary_review(once)
+
+        self.assertEqual(300.0, refreshed["sermon_window"]["start_seconds"])
+        self.assertEqual(
+            300.0,
+            refreshed["identity_boundary_review"]["records"][0][
+                "boundary_before_review"
+            ]["start_seconds"],
+        )
+        self.assertEqual(
+            "review_required",
+            refreshed["identity_boundary_review"]["records"][0]["decision"],
+        )
+
     def test_fixture_fields_do_not_enter_runtime_policy_record(self) -> None:
         value = evidence("start", 120.0)
         baseline = review_identity_boundaries(
@@ -265,9 +291,24 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
             persisted = json.loads(path.read_text())
             self.assertTrue(persist_association_boundary_evidence(path, report))
             replayed = json.loads(path.read_text())
+            self.assertEqual(persisted, replayed)
+
+            replayed["sermon_window"]["end_seconds"] = 1740.0
+            path.write_text(json.dumps(replayed))
+            self.assertTrue(persist_association_boundary_evidence(path, report))
+            resynchronized = json.loads(path.read_text())
 
         self.assertEqual(60.0, persisted["sermon_window"]["start_seconds"])
-        self.assertEqual(persisted, replayed)
+        self.assertEqual(60.0, resynchronized["sermon_window"]["start_seconds"])
+        self.assertEqual(1740.0, resynchronized["sermon_window"]["end_seconds"])
+        self.assertNotEqual(
+            persisted["identity_boundary_review"]["synchronization"][
+                "output_window_fingerprint"
+            ],
+            resynchronized["identity_boundary_review"]["synchronization"][
+                "output_window_fingerprint"
+            ],
+        )
         self.assertEqual(
             "auto_trim",
             persisted["identity_boundary_review"]["records"][0]["decision"],

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -350,6 +351,127 @@ def _window_alternative(window: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_STRUCTURAL_START = re.compile(
+    r"\b(?:sermon|message) (?:title|text)\b|\b(?:open|turn) (?:with me )?(?:in|to )?(?:your )?bibles?\b",
+    re.IGNORECASE,
+)
+_STRUCTURAL_END = re.compile(
+    r"\b(?:as we close|closing (?:song|hymn)|invite you to sing|we (?:will )?end|time for questions|any questions)\b",
+    re.IGNORECASE,
+)
+_SERVICE_CONTENT = re.compile(
+    r"\b(?:children(?:'s)? (?:story|corner)|special music|praise team|ordination|announcements?|closing (?:song|hymn))\b",
+    re.IGNORECASE,
+)
+_SERMON_EXPOSITION = re.compile(
+    r"\b(?:verse|chapter) \d+\b|\b(?:scripture|the (?:passage|text)|jesus|paul) (?:says|teaches|means)\b",
+    re.IGNORECASE,
+)
+
+
+def _edge_trim_evidence(
+    drafts: list[SegmentDraft],
+    adaptive_indexes: set[int],
+    *,
+    edge: str,
+    boundary: float,
+) -> dict[str, Any]:
+    removed = [
+        drafts[index]
+        for index in sorted(adaptive_indexes)
+        if drafts[index].start_seconds is not None
+        and drafts[index].end_seconds is not None
+        and (
+            drafts[index].end_seconds <= boundary
+            if edge == "start"
+            else drafts[index].start_seconds >= boundary
+        )
+    ]
+    text = " ".join(draft.text for draft in removed)
+    service_labels = {"announcements", "music", "other"}
+    service_count = sum(draft.label.value in service_labels for draft in removed)
+    exposition_count = sum(
+        bool(_SERMON_EXPOSITION.search(draft.text) or _STRUCTURAL_START.search(draft.text))
+        for draft in removed
+    )
+    structural_transition = bool(
+        (_SERVICE_CONTENT if edge == "start" else _STRUCTURAL_END).search(text)
+    )
+    strong_service_content = bool(_SERVICE_CONTENT.search(text)) or (
+        bool(removed) and service_count / len(removed) >= 0.6
+    )
+    return {
+        "removed_segment_count": len(removed),
+        "service_segment_count": service_count,
+        "sermon_exposition_segment_count": exposition_count,
+        "structural_transition": structural_transition,
+        "strong_service_content": strong_service_content,
+        "recall_guard_passed": exposition_count == 0,
+    }
+
+
+def _compose_recall_guarded_edges(
+    window: dict[str, Any],
+    drafts: list[SegmentDraft],
+    hybrid: HybridSermonResult,
+    rule_alternative: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Use an inward rule edge only when removed content is independently non-sermon."""
+    decisions: list[dict[str, Any]] = []
+    adaptive_indexes = set(hybrid.retained_segment_indexes)
+    if window.get("source") != "hybrid_llm" or not adaptive_indexes:
+        return decisions
+    for edge in ("start", "end"):
+        rule_boundary = rule_alternative.get(f"{edge}_seconds")
+        adaptive_boundary = window.get(f"{edge}_seconds")
+        inward = (
+            isinstance(rule_boundary, (int, float))
+            and isinstance(adaptive_boundary, (int, float))
+            and (rule_boundary > adaptive_boundary if edge == "start" else rule_boundary < adaptive_boundary)
+        )
+        if not inward:
+            decisions.append({"edge": edge, "decision": "adaptive_retained", "reason": "rule_edge_not_inward"})
+            continue
+        evidence = _edge_trim_evidence(
+            drafts, adaptive_indexes, edge=edge, boundary=float(rule_boundary)
+        )
+        choose_rule = (
+            evidence["recall_guard_passed"]
+            and evidence["strong_service_content"]
+            and evidence["structural_transition"]
+        )
+        if choose_rule:
+            window[f"{edge}_seconds"] = float(rule_boundary)
+        decisions.append({
+            "edge": edge,
+            "decision": "rule_edge_selected" if choose_rule else "adaptive_retained",
+            "reason": (
+                "independent_structural_service_transition_without_exposition"
+                if choose_rule
+                else "recall_guard_or_structural_evidence_insufficient"
+            ),
+            "rule_boundary_seconds": rule_boundary,
+            "adaptive_boundary_seconds": adaptive_boundary,
+            "evidence": evidence,
+        })
+    if any(item["decision"] == "rule_edge_selected" for item in decisions):
+        start = float(window["start_seconds"])
+        end = float(window["end_seconds"])
+        included = [
+            index for index in sorted(adaptive_indexes)
+            if drafts[index].start_seconds is not None
+            and drafts[index].end_seconds is not None
+            and drafts[index].end_seconds > start
+            and drafts[index].start_seconds < end
+        ]
+        window["included_segment_indexes"] = included
+        window["excluded_segment_indexes"] = [
+            index for index in range(len(drafts)) if index not in set(included)
+        ]
+        window["method"] = f"{hybrid.method}+recall_guarded_edge_arbitration_v1"
+    return decisions
+
+
 def _arbitrate_hybrid_window(
     window: dict[str, Any],
     drafts: list[SegmentDraft],
@@ -477,6 +599,9 @@ def _arbitrate_hybrid_window(
     ) or (substantial_disagreement and adaptive_stronger)
     if choose_adaptive:
         _promote_hybrid_window(window, drafts, hybrid)
+        edge_decisions = _compose_recall_guarded_edges(
+            window, drafts, hybrid, rule_alternative
+        )
         decision = "adaptive_selected"
         reason = (
             "coherent_refined_evidence_stronger_than_short_rule_window"
@@ -485,6 +610,7 @@ def _arbitrate_hybrid_window(
         )
         rejected = rule_alternative
     else:
+        edge_decisions = []
         decision = "review_required" if substantial_disagreement else "rule_retained"
         reason = (
             "substantial_boundary_disagreement_without_stronger_refined_evidence"
@@ -493,7 +619,7 @@ def _arbitrate_hybrid_window(
         )
         rejected = adaptive_alternative
     arbitration = {
-        "schema_version": 2,
+        "schema_version": 3,
         "decision": decision,
         "reason": reason,
         "substantial_disagreement": substantial_disagreement,
@@ -507,6 +633,8 @@ def _arbitrate_hybrid_window(
         "recording_verifier_role": "sermon_existence_only",
         "recording_sermon_confirmed": recording_sermon_confirmed,
         "rejected_alternative": rejected,
+        "edge_decisions": edge_decisions,
+        "selected_window": _window_alternative(window),
     }
     window["arbitration"] = arbitration
     return arbitration
@@ -556,6 +684,7 @@ def reclassify_video(
         ),
     ):
         assert isinstance(existing, dict)
+        stored_payload = json.dumps(payload, sort_keys=True, default=str)
         payload = apply_identity_boundary_review(payload)
         recording_verification = existing.get("recording_verification")
         disposition = build_final_disposition(
@@ -565,7 +694,12 @@ def reclassify_video(
             recording_verification=recording_verification,
             identity_boundary_review=payload.get("identity_boundary_review"),
         )
-        if payload.get("final_disposition") != disposition or existing.get("final_disposition") != disposition:
+        payload_changed = json.dumps(payload, sort_keys=True, default=str) != stored_payload
+        if (
+            payload_changed
+            or payload.get("final_disposition") != disposition
+            or existing.get("final_disposition") != disposition
+        ):
             payload["final_disposition"] = disposition
             existing["final_disposition"] = disposition
             proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -635,8 +769,11 @@ def reclassify_video(
         manual_override_present=override is not None,
     )
     payload["sermon_window"] = existing_window
-    payload = apply_identity_boundary_review(payload)
-    existing_window = payload["sermon_window"]
+    # A forced classifier pass creates a new automatic envelope. Identity
+    # evidence was derived from the previous envelope and must not be replayed
+    # until the identity stage has synchronized it to this one.
+    payload.pop("identity_boundary_evidence", None)
+    payload.pop("identity_boundary_review", None)
     if (
         override is None
         and isinstance(existing_window, dict)
@@ -648,6 +785,8 @@ def reclassify_video(
             hybrid,
             recording_sermon_confirmed=False,
         )
+    payload = apply_identity_boundary_review(payload)
+    existing_window = payload["sermon_window"]
     preliminary_disposition = build_final_disposition(
         classification,
         existing_window,
@@ -682,14 +821,10 @@ def reclassify_video(
     )
     classification["recording_verification"] = recording_verification
     payload["recording_verification"] = recording_verification
-    if override is None and hybrid.retained_segment_indexes:
-        classification["window_arbitration"] = _arbitrate_hybrid_window(
-            existing_window,
-            drafts,
-            hybrid,
-            recording_sermon_confirmed=(
-                recording_verification.get("predicted_outcome") == "sermon"
-            ),
+    arbitration = classification.get("window_arbitration")
+    if isinstance(arbitration, dict):
+        arbitration["recording_sermon_confirmed"] = (
+            recording_verification.get("predicted_outcome") == "sermon"
         )
     disposition = build_final_disposition(
         classification,
