@@ -13,6 +13,7 @@ from pastor_transcript_extractor.caption_normalization import (
     normalize_caption_fragments,
 )
 from pastor_transcript_extractor.extraction import (
+    WINDOW_ARBITRATION_POLICY_VERSION,
     _arbitrate_hybrid_window,
     _baseline_window_payload,
     _classification_is_current,
@@ -45,6 +46,7 @@ from pastor_transcript_extractor.sermon_classification import (
     _joined_candidate,
     _long_recording_edge_expansion,
     _refine_retained_boundaries,
+    _rule_supported_structural_precision,
     build_transcript_blocks,
     classify_sermon_content,
     classify_sermon_content_adaptive,
@@ -666,7 +668,8 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual(300.0, window["start_seconds"])
         self.assertEqual(1800.0, window["end_seconds"])
         self.assertEqual(
-            "rule_edge_selected", arbitration["edge_decisions"][0]["decision"]
+            "internal_transition_selected",
+            arbitration["edge_decisions"][0]["decision"],
         )
         self.assertEqual(
             "adaptive_retained", arbitration["edge_decisions"][1]["decision"]
@@ -759,7 +762,8 @@ class HybridClassificationTests(unittest.TestCase):
 
         self.assertEqual(1500.0, window["end_seconds"])
         self.assertEqual(
-            "rule_edge_selected", arbitration["edge_decisions"][1]["decision"]
+            "internal_transition_selected",
+            arbitration["edge_decisions"][1]["decision"],
         )
 
     def test_refinement_safety_restores_catastrophic_late_anchor_trim(self) -> None:
@@ -776,6 +780,74 @@ class HybridClassificationTests(unittest.TestCase):
             "catastrophic_trim_without_independent_boundary_evidence",
             evidence["reason"],
         )
+
+    def test_rule_direction_supports_internal_title_and_closing_boundaries(self) -> None:
+        drafts = [
+            draft(0.0, 300.0, "extended community discussion"),
+            draft(300.0, 600.0, "Our title today is Grace"),
+            draft(600.0, 1200.0, "The passage teaches saving grace"),
+            SegmentDraft(
+                1200.0,
+                1500.0,
+                "As we close, our closing hymn",
+                None,
+                TranscriptSegmentLabel.MUSIC,
+                0.8,
+            ),
+        ]
+        rule = SermonWindowResult(
+            300.0, 1200.0, 0.9, [], "rule_based_v1", [1, 2], [0, 3], False, []
+        )
+
+        retained, decisions = _rule_supported_structural_precision(
+            drafts, set(range(4)), rule
+        )
+
+        self.assertEqual({1, 2}, retained)
+        self.assertEqual(["start", "end"], [item["edge"] for item in decisions])
+
+    def test_rule_outward_start_prevents_mid_sermon_title_trim(self) -> None:
+        drafts = [
+            draft(0.0, 600.0, "sermon introduction"),
+            draft(600.0, 900.0, "Our title today is Grace"),
+            draft(900.0, 1500.0, "The passage teaches saving grace"),
+        ]
+        rule = SermonWindowResult(
+            -60.0, 1500.0, 0.9, [], "rule_based_v1", [0, 1, 2], [], False, []
+        )
+
+        retained, decisions = _rule_supported_structural_precision(
+            drafts, set(range(3)), rule
+        )
+
+        self.assertEqual(set(range(3)), retained)
+        self.assertEqual([], decisions)
+
+    def test_rescue_candidate_can_use_service_transitions_without_rule_overlap(self) -> None:
+        drafts = [
+            SegmentDraft(
+                0.0, 120.0, "[MUSIC PLAYING]", None,
+                TranscriptSegmentLabel.MUSIC, 0.8,
+            ),
+            draft(120.0, 900.0, "The passage teaches saving grace"),
+            SegmentDraft(
+                900.0, 960.0, "We pray in Jesus' name. Amen.", None,
+                TranscriptSegmentLabel.PRAYER, 0.8,
+            ),
+        ]
+        rule = SermonWindowResult(
+            None, None, 0.15, [], "rule_based_v1", [], [0, 1, 2], True, []
+        )
+
+        retained, decisions = _rule_supported_structural_precision(
+            drafts,
+            set(range(3)),
+            rule,
+            allow_unbaselined_transition=True,
+        )
+
+        self.assertEqual({1}, retained)
+        self.assertEqual(["start", "end"], [item["edge"] for item in decisions])
 
     def test_refinement_safety_allows_trim_with_objective_separator(self) -> None:
         proposed_indexes = set(range(90, 100))
@@ -1057,6 +1129,7 @@ class HybridClassificationTests(unittest.TestCase):
             "prompt_version": "v1",
             "confidence_policy_version": CONFIDENCE_POLICY_VERSION,
             "recording_verifier_policy_version": RECORDING_VERIFIER_POLICY_VERSION,
+            "window_arbitration_policy_version": WINDOW_ARBITRATION_POLICY_VERSION,
             "recording_verification": {
                 "source": "not_required",
                 "decision": None,
@@ -1067,6 +1140,13 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertFalse(_classification_is_current(classification, model="fixture:4b", prompt_version="v2"))
         classification["confidence_policy_version"] = "hard_rule_overlap_v1"
         self.assertFalse(_classification_is_current(classification, model="fixture:4b", prompt_version="v1"))
+        classification["confidence_policy_version"] = CONFIDENCE_POLICY_VERSION
+        classification["window_arbitration_policy_version"] = "old-edge-policy"
+        self.assertFalse(
+            _classification_is_current(
+                classification, model="fixture:4b", prompt_version="v1"
+            )
+        )
 
     def test_adaptive_confidence_treats_rule_overlap_as_a_soft_penalty(self) -> None:
         self.assertEqual(

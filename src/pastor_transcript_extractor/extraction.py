@@ -42,6 +42,9 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.storage import Database
 
 
+WINDOW_ARBITRATION_POLICY_VERSION = "recall_guarded_internal_edges_v2"
+
+
 @dataclass(frozen=True, slots=True)
 class ExtractionRunResult:
     extraction_result: ExtractionResult
@@ -133,6 +136,7 @@ def _classify_with_fallback(
         "excluded_segment_indexes": detected_window.excluded_segment_indexes,
         "uncertain_block_ids": [],
         "warnings": list(detected_window.suspicious_boundary_reasons),
+        "window_arbitration_policy_version": WINDOW_ARBITRATION_POLICY_VERSION,
         "blocks": [],
         "classifications": [],
         "search": {
@@ -179,7 +183,9 @@ def _classify_with_fallback(
         classification["confidence_tier"] = "low"
         classification["warnings"].append(f"local LLM classification failed: {error}")
         return classification, None
-    return hybrid_result.to_dict(), hybrid_result
+    result = hybrid_result.to_dict()
+    result["window_arbitration_policy_version"] = WINDOW_ARBITRATION_POLICY_VERSION
+    return result, hybrid_result
 
 
 def _classification_is_current(
@@ -198,6 +204,8 @@ def _classification_is_current(
         and classification.get("model") == model
         and classification.get("prompt_version") == prompt_version
         and classification.get("confidence_policy_version") == CONFIDENCE_POLICY_VERSION
+        and classification.get("window_arbitration_policy_version")
+        == WINDOW_ARBITRATION_POLICY_VERSION
         and classification.get("recording_verifier_policy_version")
         == RECORDING_VERIFIER_POLICY_VERSION
     )
@@ -352,11 +360,15 @@ def _window_alternative(window: dict[str, Any]) -> dict[str, Any]:
 
 
 _STRUCTURAL_START = re.compile(
-    r"\b(?:sermon|message) (?:title|text)\b|\b(?:open|turn) (?:with me )?(?:in|to )?(?:your )?bibles?\b",
+    r"\b(?:our |today(?:'s)? )?(?:sermon|message|title) (?:title|text|today|is|entitled)\b|"
+    r"\bour title (?:for )?today\b|"
+    r"\ba message (?:that )?(?:i(?:'ve| have) )?entitled\b|"
+    r"\b(?:open|turn) (?:with me )?(?:in|to )?(?:your )?bibles?\b",
     re.IGNORECASE,
 )
 _STRUCTURAL_END = re.compile(
-    r"\b(?:as we close|closing (?:song|hymn)|invite you to sing|we (?:will )?end|time for questions|any questions)\b",
+    r"\b(?:as we (?:sing|close)|closing (?:song|hymn)|invite you to sing|"
+    r"we (?:will )?end|time for questions|any questions|praise team can come)\b",
     re.IGNORECASE,
 )
 _SERVICE_CONTENT = re.compile(
@@ -367,6 +379,173 @@ _SERMON_EXPOSITION = re.compile(
     r"\b(?:verse|chapter) \d+\b|\b(?:scripture|the (?:passage|text)|jesus|paul) (?:says|teaches|means)\b",
     re.IGNORECASE,
 )
+_MUSIC_TRANSITION = re.compile(
+    r"(?:♪|\[(?:music|singing)[^]]*\])|\b(?:closing (?:song|hymn)|praise team|"
+    r"as we sing|invite you to sing)\b",
+    re.IGNORECASE,
+)
+_PRAYER_TRANSITION = re.compile(
+    r"\b(?:let us|let's|shall we|would you) pray\b|"
+    r"\b(?:loving|heavenly|gracious) father\b|\bheads are bowed\b|"
+    r"\bin jesus(?:'|’) name(?:,)? (?:we )?pray\b",
+    re.IGNORECASE,
+)
+
+
+def _timed_drafts(
+    drafts: list[SegmentDraft], adaptive_indexes: set[int]
+) -> list[tuple[int, SegmentDraft]]:
+    return sorted(
+        (
+            (index, drafts[index])
+            for index in adaptive_indexes
+            if drafts[index].start_seconds is not None
+            and drafts[index].end_seconds is not None
+            and drafts[index].end_seconds > drafts[index].start_seconds
+        ),
+        key=lambda item: (float(item[1].start_seconds), float(item[1].end_seconds)),
+    )
+
+
+def _interval_coverage(
+    items: list[tuple[int, SegmentDraft]],
+    start: float,
+    end: float,
+    predicate: Any,
+) -> float:
+    intervals = sorted(
+        (
+            max(start, float(draft.start_seconds)),
+            min(end, float(draft.end_seconds)),
+        )
+        for _, draft in items
+        if float(draft.end_seconds) > start
+        and float(draft.start_seconds) < end
+        and predicate(draft)
+    )
+    covered = 0.0
+    cursor: float | None = None
+    for left, right in intervals:
+        if right <= left:
+            continue
+        if cursor is None or left > cursor:
+            covered += right - left
+            cursor = right
+        elif right > cursor:
+            covered += right - cursor
+            cursor = right
+    return covered
+
+
+def _music_like(draft: SegmentDraft) -> bool:
+    return bool(_MUSIC_TRANSITION.search(draft.text)) or draft.label.value == "music"
+
+
+def _prayer_like(draft: SegmentDraft) -> bool:
+    return bool(_PRAYER_TRANSITION.search(draft.text)) or draft.label.value == "prayer"
+
+
+def _sermon_like(draft: SegmentDraft) -> bool:
+    return (
+        draft.label.value in {"sermon", "reading"}
+        and not _music_like(draft)
+        and not _prayer_like(draft)
+    ) or bool(_SERMON_EXPOSITION.search(draft.text))
+
+
+def _find_internal_edge_transition(
+    drafts: list[SegmentDraft],
+    adaptive_indexes: set[int],
+    *,
+    edge: str,
+    adaptive_start: float,
+    adaptive_end: float,
+) -> dict[str, Any] | None:
+    """Find a boundary-local transition without using reviewed fixture truth."""
+    duration = adaptive_end - adaptive_start
+    if duration < 600.0:
+        return None
+    items = _timed_drafts(drafts, adaptive_indexes)
+    candidates: list[dict[str, Any]] = []
+    for _, draft in items:
+        boundary = float(draft.start_seconds)
+        if edge == "start":
+            if not adaptive_start + 15.0 <= boundary <= adaptive_start + duration * 0.45:
+                continue
+            explicit = bool(_STRUCTURAL_START.search(draft.text))
+            if not explicit and not _sermon_like(draft):
+                continue
+            prior_service = _interval_coverage(
+                items,
+                max(adaptive_start, boundary - 90.0),
+                boundary,
+                lambda item: _music_like(item)
+                or _prayer_like(item)
+                or item.label.value in {"announcements", "other"},
+            )
+            following_sermon = _interval_coverage(
+                items,
+                boundary,
+                min(adaptive_end, boundary + 150.0),
+                _sermon_like,
+            )
+            following_service = _interval_coverage(
+                items,
+                boundary,
+                min(adaptive_end, boundary + 120.0),
+                lambda item: _music_like(item)
+                or _prayer_like(item)
+                or item.label.value in {"announcements", "other"},
+            )
+            transition = (
+                prior_service >= 20.0
+                and following_sermon >= 60.0
+                and following_service <= 15.0
+            )
+            if not explicit and not transition:
+                continue
+            score = 100 if explicit else 85
+            kind = "explicit_sermon_anchor" if explicit else "service_to_sermon_transition"
+            evidence = {
+                "prior_service_seconds": round(prior_service, 3),
+                "following_sermon_seconds": round(following_sermon, 3),
+                "following_service_seconds": round(following_service, 3),
+            }
+        else:
+            if not adaptive_start + duration * 0.55 <= boundary <= adaptive_end - 15.0:
+                continue
+            explicit = bool(_STRUCTURAL_END.search(draft.text))
+            music = bool(_MUSIC_TRANSITION.search(draft.text))
+            prior_sermon = _interval_coverage(
+                items,
+                max(adaptive_start, boundary - 150.0),
+                boundary,
+                _sermon_like,
+            )
+            if prior_sermon < 60.0 or not (explicit or music):
+                continue
+            score = 100 if explicit else 80
+            kind = (
+                "explicit_closing_handoff"
+                if explicit
+                else "sustained_music_transition"
+            )
+            evidence = {"prior_sermon_seconds": round(prior_sermon, 3)}
+        candidates.append({
+            "boundary_seconds": boundary,
+            "score": score,
+            "transition_kind": kind,
+            **evidence,
+        })
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            -int(candidate["score"]),
+            float(candidate["boundary_seconds"]),
+        ),
+    )[0]
 
 
 def _edge_trim_evidence(
@@ -421,6 +600,8 @@ def _compose_recall_guarded_edges(
     adaptive_indexes = set(hybrid.retained_segment_indexes)
     if window.get("source") != "hybrid_llm" or not adaptive_indexes:
         return decisions
+    adaptive_start = float(window["start_seconds"])
+    adaptive_end = float(window["end_seconds"])
     for edge in ("start", "end"):
         rule_boundary = rule_alternative.get(f"{edge}_seconds")
         adaptive_boundary = window.get(f"{edge}_seconds")
@@ -429,8 +610,40 @@ def _compose_recall_guarded_edges(
             and isinstance(adaptive_boundary, (int, float))
             and (rule_boundary > adaptive_boundary if edge == "start" else rule_boundary < adaptive_boundary)
         )
+        internal = _find_internal_edge_transition(
+            drafts,
+            adaptive_indexes,
+            edge=edge,
+            adaptive_start=adaptive_start,
+            adaptive_end=adaptive_end,
+        )
+        if inward and internal is not None:
+            internal_boundary = float(internal["boundary_seconds"])
+            moves_inward = (
+                internal_boundary > adaptive_boundary
+                if edge == "start"
+                else internal_boundary < adaptive_boundary
+            )
+            if moves_inward:
+                window[f"{edge}_seconds"] = internal_boundary
+                decisions.append({
+                    "edge": edge,
+                    "decision": "internal_transition_selected",
+                    "reason": "boundary_local_structural_transition",
+                    "rule_boundary_seconds": rule_boundary,
+                    "adaptive_boundary_seconds": adaptive_boundary,
+                    "selected_boundary_seconds": internal_boundary,
+                    "evidence": internal,
+                })
+                continue
         if not inward:
-            decisions.append({"edge": edge, "decision": "adaptive_retained", "reason": "rule_edge_not_inward"})
+            decisions.append({
+                "edge": edge,
+                "decision": "adaptive_retained",
+                "reason": "rule_edge_not_inward_and_no_internal_transition",
+                "rule_boundary_seconds": rule_boundary,
+                "adaptive_boundary_seconds": adaptive_boundary,
+            })
             continue
         evidence = _edge_trim_evidence(
             drafts, adaptive_indexes, edge=edge, boundary=float(rule_boundary)
@@ -454,7 +667,10 @@ def _compose_recall_guarded_edges(
             "adaptive_boundary_seconds": adaptive_boundary,
             "evidence": evidence,
         })
-    if any(item["decision"] == "rule_edge_selected" for item in decisions):
+    if any(
+        item["decision"] in {"rule_edge_selected", "internal_transition_selected"}
+        for item in decisions
+    ):
         start = float(window["start_seconds"])
         end = float(window["end_seconds"])
         included = [
@@ -468,7 +684,7 @@ def _compose_recall_guarded_edges(
         window["excluded_segment_indexes"] = [
             index for index in range(len(drafts)) if index not in set(included)
         ]
-        window["method"] = f"{hybrid.method}+recall_guarded_edge_arbitration_v1"
+        window["method"] = f"{hybrid.method}+{WINDOW_ARBITRATION_POLICY_VERSION}"
     return decisions
 
 
@@ -618,6 +834,39 @@ def _arbitrate_hybrid_window(
             else "low_confidence_adaptive_window_not_promoted"
         )
         rejected = adaptive_alternative
+    selected_start = window.get("start_seconds")
+    selected_end = window.get("end_seconds")
+    selected_duration = (
+        float(selected_end) - float(selected_start)
+        if isinstance(selected_start, (int, float))
+        and isinstance(selected_end, (int, float))
+        else 0.0
+    )
+    unresolved_edges: list[dict[str, Any]] = []
+    for edge_decision in edge_decisions:
+        if edge_decision.get("decision") != "adaptive_retained":
+            continue
+        rule_boundary = edge_decision.get("rule_boundary_seconds")
+        adaptive_boundary = edge_decision.get("adaptive_boundary_seconds")
+        if not isinstance(rule_boundary, (int, float)) or not isinstance(
+            adaptive_boundary, (int, float)
+        ):
+            continue
+        disagreement = abs(float(rule_boundary) - float(adaptive_boundary))
+        evidence = edge_decision.get("evidence")
+        adaptive_has_recall_support = (
+            isinstance(evidence, dict)
+            and int(evidence.get("sermon_exposition_segment_count") or 0) >= 3
+        )
+        if (
+            disagreement >= max(180.0, selected_duration * 0.08)
+            and not adaptive_has_recall_support
+        ):
+            unresolved_edges.append({
+                "edge": edge_decision.get("edge"),
+                "disagreement_seconds": round(disagreement, 3),
+                "reason": "material_edge_disagreement_without_boundary_local_resolution",
+            })
     arbitration = {
         "schema_version": 3,
         "decision": decision,
@@ -634,6 +883,8 @@ def _arbitrate_hybrid_window(
         "recording_sermon_confirmed": recording_sermon_confirmed,
         "rejected_alternative": rejected,
         "edge_decisions": edge_decisions,
+        "unresolved_material_edge_disagreement": bool(unresolved_edges),
+        "unresolved_edges": unresolved_edges,
         "selected_window": _window_alternative(window),
     }
     window["arbitration"] = arbitration
@@ -762,6 +1013,9 @@ def reclassify_video(
         manual_override_present=override is not None,
     )
     classification = hybrid.to_dict()
+    classification["window_arbitration_policy_version"] = (
+        WINDOW_ARBITRATION_POLICY_VERSION
+    )
     payload["classification"] = classification
 
     existing_window = _baseline_window_payload(

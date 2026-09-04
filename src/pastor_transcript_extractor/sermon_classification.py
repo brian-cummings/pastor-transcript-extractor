@@ -5,6 +5,7 @@ from enum import StrEnum
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from pastor_transcript_extractor.caption_normalization import (
@@ -19,7 +20,7 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v2"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
-FINE_COMPONENT_VERSION = "objective-noise-components+continuity-probe-v2"
+FINE_COMPONENT_VERSION = "objective-noise-components+structural-edges-v3"
 SEARCH_ALGORITHM_VERSION = "adaptive_llm_v5"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
 MAX_PRE_ANCHOR_RECOVERY_SECONDS = 180.0
@@ -414,7 +415,77 @@ _SERMON_SEED_CUES = (
     "turn in your bibles",
     "open your bibles",
     "today's message",
+    "message that i've entitled",
+    "message i have entitled",
 )
+
+_EXPLICIT_CLOSING_TRANSITION = re.compile(
+    r"\b(?:as we (?:sing|close)|closing (?:song|hymn)|invite you to sing|"
+    r"time for questions|any questions|praise team can come)\b",
+    re.IGNORECASE,
+)
+_STRUCTURAL_SERVICE_TRANSITION = re.compile(
+    r"(?:♪|\[(?:music|singing)[^]]*\])|\b(?:special music|praise team|"
+    r"announcements?|open (?:our|your) hymnals?|song number \d+|"
+    r"in jesus(?:'|’) name(?:,)? (?:we )?pray|amen\.?$)\b",
+    re.IGNORECASE,
+)
+
+
+def _draft_interval_coverage(
+    drafts: list[SegmentDraft], start: float, end: float, labels: set[str]
+) -> float:
+    intervals = sorted(
+        (max(start, float(draft.start_seconds)), min(end, float(draft.end_seconds)))
+        for draft in drafts
+        if draft.start_seconds is not None
+        and draft.end_seconds is not None
+        and draft.end_seconds > start
+        and draft.start_seconds < end
+        and draft.label.value in labels
+        and not _STRUCTURAL_SERVICE_TRANSITION.search(draft.text)
+    )
+    coverage = 0.0
+    cursor: float | None = None
+    for left, right in intervals:
+        if right <= left:
+            continue
+        if cursor is None or left > cursor:
+            coverage += right - left
+            cursor = right
+        elif right > cursor:
+            coverage += right - cursor
+            cursor = right
+    return coverage
+
+
+def _service_interval_coverage(
+    drafts: list[SegmentDraft], start: float, end: float
+) -> float:
+    intervals = sorted(
+        (max(start, float(draft.start_seconds)), min(end, float(draft.end_seconds)))
+        for draft in drafts
+        if draft.start_seconds is not None
+        and draft.end_seconds is not None
+        and draft.end_seconds > start
+        and draft.start_seconds < end
+        and (
+            draft.label.value in {"music", "prayer", "announcements"}
+            or bool(_STRUCTURAL_SERVICE_TRANSITION.search(draft.text))
+        )
+    )
+    coverage = 0.0
+    cursor: float | None = None
+    for left, right in intervals:
+        if right <= left:
+            continue
+        if cursor is None or left > cursor:
+            coverage += right - left
+            cursor = right
+        elif right > cursor:
+            coverage += right - cursor
+            cursor = right
+    return coverage
 
 
 def _candidate_strength(
@@ -699,6 +770,199 @@ def _refine_retained_boundaries(
             }
 
     return refined, reasons, start_refinement
+
+
+def _rule_supported_structural_precision(
+    drafts: list[SegmentDraft],
+    retained: set[int],
+    rule_window: SermonWindowResult,
+    *,
+    allow_unbaselined_transition: bool = False,
+) -> tuple[set[int], list[dict[str, Any]]]:
+    """Trim only explicit internal transitions supported by rule direction."""
+    timed = [
+        (index, drafts[index])
+        for index in sorted(retained)
+        if drafts[index].start_seconds is not None
+        and drafts[index].end_seconds is not None
+    ]
+    if not timed:
+        return retained, []
+    start = min(float(draft.start_seconds) for _, draft in timed)
+    end = max(float(draft.end_seconds) for _, draft in timed)
+    duration = end - start
+    if duration < 600.0:
+        return retained, []
+    refined = set(retained)
+    decisions: list[dict[str, Any]] = []
+    seed = _explicit_sermon_seed_seconds(drafts, retained)
+    if (
+        seed is not None
+        and rule_window.start_seconds is not None
+        and rule_window.start_seconds > start
+        and start + 15.0 <= seed <= start + duration * 0.45
+    ):
+        refined = {
+            index
+            for index in refined
+            if drafts[index].end_seconds is None or drafts[index].end_seconds > seed
+        }
+        decisions.append({
+            "edge": "start",
+            "decision": "explicit_sermon_anchor_selected",
+            "boundary_seconds": round(float(seed), 3),
+            "rule_direction": "inward",
+        })
+        start = float(seed)
+    rule_supports_inward_start = (
+        rule_window.start_seconds is not None and rule_window.start_seconds > start
+    )
+    if not any(item.get("edge") == "start" for item in decisions) and (
+        rule_supports_inward_start or allow_unbaselined_transition
+    ):
+        transition_candidates: list[tuple[float, float]] = []
+        for _, draft in timed:
+            boundary = float(draft.start_seconds)
+            if not start + 15.0 <= boundary <= start + duration * 0.45:
+                continue
+            prior_service = _service_interval_coverage(
+                drafts, max(start, boundary - 120.0), boundary
+            )
+            following_sermon = _draft_interval_coverage(
+                drafts,
+                boundary,
+                min(end, boundary + 120.0),
+                {"sermon", "reading"},
+            )
+            if prior_service >= 10.0 and following_sermon >= 60.0:
+                transition_candidates.append((boundary, prior_service))
+        if transition_candidates:
+            eligible_transitions = (
+                [
+                    item
+                    for item in transition_candidates
+                    if rule_window.start_seconds is not None
+                    and item[0] <= rule_window.start_seconds
+                ]
+                if rule_supports_inward_start
+                else transition_candidates
+            )
+            pool = eligible_transitions or transition_candidates
+            boundary, prior_service = max(
+                pool, key=lambda item: (item[1], -item[0])
+            )
+            refined = {
+                index
+                for index in refined
+                if drafts[index].end_seconds is None
+                or drafts[index].end_seconds > boundary
+            }
+            decisions.append({
+                "edge": "start",
+                "decision": "service_to_sermon_transition_selected",
+                "boundary_seconds": round(boundary, 3),
+                "prior_service_seconds": round(prior_service, 3),
+                "rule_direction": (
+                    "inward" if rule_supports_inward_start else "unavailable"
+                ),
+            })
+            start = boundary
+    if (
+        not any(item.get("edge") == "start" for item in decisions)
+        and rule_window.start_seconds is not None
+        and start < rule_window.start_seconds < end
+        and (rule_window.start_seconds - start) / duration <= 0.15
+    ):
+        boundary = float(rule_window.start_seconds)
+        refined = {
+            index
+            for index in refined
+            if drafts[index].end_seconds is None or drafts[index].end_seconds > boundary
+        }
+        decisions.append({
+            "edge": "start",
+            "decision": "bounded_rule_edge_selected",
+            "boundary_seconds": round(boundary, 3),
+            "trim_fraction": round((boundary - start) / duration, 6),
+        })
+        start = boundary
+    closing_candidates: list[tuple[float, int, str, float]] = []
+    for _, draft in timed:
+        boundary = float(draft.start_seconds)
+        if not start + (end - start) * 0.55 <= boundary <= end - 15.0:
+            continue
+        explicit = bool(
+            _EXPLICIT_CLOSING_TRANSITION.search(draft.text)
+            or re.search(r"\bsong number \d+\b", draft.text, re.IGNORECASE)
+        )
+        service_after = _service_interval_coverage(
+            drafts, boundary, min(end, boundary + 120.0)
+        )
+        late_service_transition = (
+            boundary >= start + (end - start) * 0.70
+            and draft.label.value in {"music", "prayer"}
+            and service_after >= 10.0
+        )
+        if explicit or late_service_transition:
+            closing_candidates.append((
+                boundary,
+                100 if explicit else 90 if draft.label.value == "prayer" else 80,
+                (
+                    "explicit_closing_transition"
+                    if explicit
+                    else "late_service_transition"
+                ),
+                service_after,
+            ))
+    if (
+        closing_candidates
+        and (
+            (
+                rule_window.end_seconds is not None
+                and rule_window.end_seconds < end
+            )
+            or allow_unbaselined_transition
+        )
+    ):
+        boundary, _, transition_kind, service_after = sorted(
+            closing_candidates, key=lambda item: (-item[1], item[0])
+        )[0]
+        refined = {
+            index
+            for index in refined
+            if drafts[index].start_seconds is None
+            or drafts[index].start_seconds < boundary
+        }
+        decisions.append({
+            "edge": "end",
+            "decision": "explicit_closing_transition_selected",
+            "boundary_seconds": round(boundary, 3),
+            "transition_kind": transition_kind,
+            "following_service_seconds": round(service_after, 3),
+            "rule_direction": (
+                "inward"
+                if rule_window.end_seconds is not None
+                and rule_window.end_seconds < end
+                else "unavailable"
+            ),
+        })
+    remaining = [
+        drafts[index]
+        for index in refined
+        if drafts[index].start_seconds is not None
+        and drafts[index].end_seconds is not None
+    ]
+    if not remaining or (
+        max(float(draft.end_seconds) for draft in remaining)
+        - min(float(draft.start_seconds) for draft in remaining)
+        < 600.0
+    ):
+        return retained, [{
+            "decision": "rejected",
+            "reason": "minimum_remaining_sermon_not_satisfied",
+            "proposed_edges": decisions,
+        }]
+    return refined, decisions
 
 
 def _apply_refinement_retention_safety(
@@ -1304,7 +1568,27 @@ def classify_sermon_content_adaptive(
         refinement_reasons.append(
             "rejected boundary trim that removed most coherent fine-supported content"
         )
+    selected_score = selected_candidate.get("score_components")
+    selected_score = selected_score if isinstance(selected_score, dict) else {}
+    retained, structural_precision = _rule_supported_structural_precision(
+        drafts,
+        retained,
+        rule_window,
+        allow_unbaselined_transition=(
+            selected_candidate.get("source") == "coarse_likelihood_rescue"
+            and (
+                bool(selected_score.get("matched_sermon_cues"))
+                or float(selected_score.get("sermon_specific_support_ratio", 0.0))
+                >= 0.9
+            )
+        ),
+    )
+    if any(item.get("edge") for item in structural_precision):
+        refinement_reasons.append(
+            "applied rule-direction-supported explicit structural boundary precision"
+        )
     boundary_recovery["refinement_safety"] = refinement_safety
+    boundary_recovery["structural_precision"] = structural_precision
     retained_timed = [
         drafts[index]
         for index in retained

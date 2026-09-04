@@ -111,6 +111,30 @@ class FinalDispositionTests(unittest.TestCase):
             result["reason_codes"],
         )
 
+    def test_recording_verifier_cannot_resolve_material_edge_disagreement(self) -> None:
+        result = build_final_disposition(
+            {"confidence_tier": "high", "retained_segment_indexes": [1, 2, 3]},
+            {
+                "start_seconds": 600.0,
+                "end_seconds": 1800.0,
+                "source": "hybrid_llm",
+                "arbitration": {
+                    "decision": "adaptive_selected",
+                    "unresolved_material_edge_disagreement": True,
+                },
+            },
+            recording_verification={
+                "decision": "worship_service_sermon",
+                "predicted_outcome": "sermon",
+            },
+        )
+
+        self.assertEqual("review_required", result["status"])
+        self.assertEqual(
+            ["material_edge_disagreement_requires_boundary_review"],
+            result["reason_codes"],
+        )
+
     def test_recording_verifier_rejects_program_without_erasing_candidate(self) -> None:
         result = build_final_disposition(
             {"confidence_tier": "medium", "retained_segment_indexes": [1, 2]},

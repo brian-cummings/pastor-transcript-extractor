@@ -43,6 +43,10 @@ def build_final_disposition(
     arbitration_review_required = (
         isinstance(arbitration, dict) and arbitration.get("decision") == "review_required"
     )
+    unresolved_edge_disagreement = (
+        isinstance(arbitration, dict)
+        and arbitration.get("unresolved_material_edge_disagreement") is True
+    )
     verification = (
         recording_verification if isinstance(recording_verification, dict) else {}
     )
@@ -84,6 +88,9 @@ def build_final_disposition(
     elif arbitration_review_required:
         status = REVIEW_REQUIRED
         reasons = ["substantial_window_disagreement_requires_boundary_review"]
+    elif unresolved_edge_disagreement:
+        status = REVIEW_REQUIRED
+        reasons = ["material_edge_disagreement_requires_boundary_review"]
     elif verified_outcome == "sermon" and has_window:
         status = ACCEPTED_SERMON
         reasons = ["recording_verifier_confirmed_worship_service_sermon"]
@@ -105,7 +112,7 @@ def build_final_disposition(
 
     return {
         "schema_version": 1,
-        "policy_version": "final_disposition_v1",
+        "policy_version": "final_disposition_v2",
         "status": status,
         "reason_codes": reasons,
         "confidence_tier": confidence,
@@ -122,5 +129,6 @@ def build_final_disposition(
         "window_arbitration_reason": (
             arbitration.get("reason") if isinstance(arbitration, dict) else None
         ),
+        "unresolved_material_edge_disagreement": unresolved_edge_disagreement,
         "identity_boundary_review_required": identity_boundary_review_required,
     }
