@@ -13,7 +13,9 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_diagnostic_trace,
     build_identity_automation_blocker_analysis,
     build_identity_operational_outcome,
+    build_systemic_disposition_mermaid,
     build_systemic_outcome_mermaid,
+    build_systemic_progression_summary,
     build_systemic_markdown,
     compact_diagnostic_trace,
     compare_systemic_reports,
@@ -599,15 +601,30 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual(1, sum(report["positive_localization_contract_counts"].values()))
         mermaid = build_systemic_outcome_mermaid(report)
         self.assertTrue(mermaid.startswith("sankey-beta"))
-        self.assertIn("Database videos,Latest extraction record,2", mermaid)
-        self.assertIn("Database videos,No extraction record,2", mermaid)
-        self.assertIn("No extraction record,Video status: failed,2", mermaid)
-        self.assertIn("Diagnostic trace,Sermon: accepted sermon,2", mermaid)
-        self.assertIn("Sermon: accepted sermon,Identity: profiled,1", mermaid)
-        self.assertNotIn("Reviewed subset", mermaid)
-        self.assertNotIn("Association attempts", mermaid)
+        self.assertIn("Database videos,Extraction available,2", mermaid)
+        self.assertIn("Database videos,Stopped before extraction,2", mermaid)
+        self.assertIn("Extraction available,Diagnosable extraction,2", mermaid)
+        self.assertIn("Diagnosable extraction,Sermon decision complete,2", mermaid)
+        self.assertIn("Sermon decision complete,Accepted sermon,2", mermaid)
+        self.assertNotIn("Video status: failed", mermaid)
+        self.assertNotIn("association proposed match", mermaid)
+        progression = build_systemic_progression_summary(report)
+        self.assertEqual(2, progression["accepted_sermon_count"])
+        self.assertEqual(1, progression["reviewed_membership_count"])
+        self.assertEqual(
+            progression["accepted_sermon_count"],
+            progression["reviewed_membership_count"]
+            + progression["active_assignment_count"]
+            + progression["eligible_assignment_count"]
+            + progression["identity_work_remaining_count"],
+        )
+        disposition = build_systemic_disposition_mermaid(report)
+        self.assertTrue(disposition.startswith("pie showData"))
+        self.assertIn('"accepted sermon" : 2', disposition)
         markdown = build_systemic_markdown(report)
-        self.assertIn("## All-outcome map", markdown)
+        self.assertIn("## Pipeline progression", markdown)
+        self.assertIn("### Progression checkpoints", markdown)
+        self.assertIn("## Sermon disposition distribution", markdown)
         self.assertIn("## Operational dispositions", markdown)
         self.assertIn("## Identity operational outcomes", markdown)
         self.assertIn("### Sermon-to-identity transitions", markdown)
@@ -1015,13 +1032,7 @@ class PipelineDiagnosticTests(unittest.TestCase):
         report = aggregate_diagnostic_traces(
             traces, identity_automation_blockers=analysis
         )
-        mermaid = build_systemic_outcome_mermaid(report)
         markdown = build_systemic_markdown(report)
-        self.assertIn(
-            "Current accepted unprofiled proposals,"
-            "Automation: active provisional assignment,1",
-            mermaid,
-        )
         self.assertIn("## Identity operational automation", markdown)
         self.assertIn("- Active provisional assignments: 1", markdown)
 

@@ -199,6 +199,7 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_identity_automation_blocker_analysis,
     build_identity_operational_outcome,
     build_systemic_markdown,
+    build_systemic_progression_summary,
     compact_diagnostic_trace,
     compare_systemic_reports,
     load_identity_association_admissions,
@@ -1187,6 +1188,9 @@ def diagnose_pipeline_system(
             else {"reviewed_fixture_count": len(fixtures)}
         ),
         identity_automation_blockers=identity_automation_blockers,
+    )
+    report["pipeline_progression_summary"] = (
+        build_systemic_progression_summary(report)
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "system-diagnostics.json"

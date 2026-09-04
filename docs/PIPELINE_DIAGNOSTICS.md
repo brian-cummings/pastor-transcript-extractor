@@ -128,12 +128,14 @@ pte diagnose-system \
   --base-dir /path/to/data
 ```
 
-The systemic Markdown starts with a proportional Mermaid Sankey showing unique videos
-progressing from database coverage through extraction availability, sermon disposition,
-identity outcome, and eligible provisional-assignment state. Reviewed-fixture quality and
-identity feedback are overlays rather than mutually exclusive population stages, so they
-remain in separate tables instead of being added to the Sankey. Repeated attempt and
-advisory event totals likewise appear only in the processing-volume section.
+The systemic Markdown starts with a high-level Mermaid Sankey showing unique videos moving
+through extraction availability, diagnosable artifacts, completed sermon decisions, accepted
+sermons, and identity resolution. Each gate exposes the videos that stopped or exited there,
+and a checkpoint table states the counts directly. Final sermon dispositions use a separate
+pie chart because they are parallel outcomes rather than sequential stages. Detailed identity
+states, reviewed-fixture quality, and identity feedback remain in later tables instead of
+overloading the Sankey. Repeated attempt and advisory event totals likewise appear only in
+the processing-volume section.
 Observed failure counts and root-cause hypothesis counts remain separate. The report also
 partitions automatic and manual-override outcomes, reports fixture evaluation partitions,
 shows recall and contamination threshold sensitivity for reviewed positives, and summarizes

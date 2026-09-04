@@ -4838,8 +4838,8 @@ def aggregate_diagnostic_traces(
     }
 
 
-def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
-    """Render mutually exclusive video outcomes as a proportional progression."""
+def build_systemic_progression_summary(report: Mapping[str, Any]) -> dict[str, int]:
+    """Collapse detailed outcomes into mutually exclusive progression checkpoints."""
     population = report.get("population", {})
     trace_count = int(report.get("trace_count") or 0)
     missing_count = int(report.get("missing_count") or 0)
@@ -4860,15 +4860,70 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
         if population.get("extraction_artifact_missing_or_invalid_count") is not None
         else missing_count
     )
-    lines = ["sankey-beta"]
+    dispositions = report.get("final_disposition_counts", {})
+    accepted_count = int(dispositions.get("accepted_sermon") or 0)
+    review_required_count = int(dispositions.get("review_required") or 0)
+    terminal_non_sermon_count = sum(
+        int(count)
+        for disposition, count in dispositions.items()
+        if str(disposition).startswith("rejected_")
+    )
+    other_disposition_count = max(
+        0,
+        trace_count
+        - accepted_count
+        - review_required_count
+        - terminal_non_sermon_count,
+    )
+    terminal_decision_count = accepted_count + terminal_non_sermon_count
+    identity = report.get("identity_outcome_summary", {})
+    accepted_identity = identity.get("state_counts_by_disposition", {}).get(
+        "accepted_sermon", {}
+    )
+    reviewed_membership_count = int(accepted_identity.get("profiled") or 0)
+    blocker_analysis = report.get("automation_blocker_analysis", {})
+    identity_blockers = (
+        blocker_analysis.get("domains", {}).get("identity", {})
+        if isinstance(blocker_analysis, Mapping)
+        else {}
+    )
+    automation = identity_blockers.get("operational_association_summary", {})
+    active_assignment_count = int(
+        automation.get("active_provisional_assignment_count") or 0
+    )
+    eligible_assignment_count = int(
+        automation.get("eligible_unapplied_assignment_count") or 0
+    )
+    identity_work_remaining_count = max(
+        0,
+        accepted_count
+        - reviewed_membership_count
+        - active_assignment_count
+        - eligible_assignment_count,
+    )
+    return {
+        "population_count": root_count,
+        "extraction_count": extraction_count,
+        "without_extraction_count": without_extraction,
+        "trace_count": trace_count,
+        "artifact_missing_count": artifact_missing_count,
+        "terminal_decision_count": terminal_decision_count,
+        "review_required_count": review_required_count,
+        "other_disposition_count": other_disposition_count,
+        "accepted_sermon_count": accepted_count,
+        "terminal_non_sermon_count": terminal_non_sermon_count,
+        "reviewed_membership_count": reviewed_membership_count,
+        "active_assignment_count": active_assignment_count,
+        "eligible_assignment_count": eligible_assignment_count,
+        "identity_work_remaining_count": identity_work_remaining_count,
+    }
 
-    def label(value: Any) -> str:
-        return (
-            str(value)
-            .replace('"', "'")
-            .replace(",", " -")
-            .replace("_", " ")
-        )
+
+def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
+    """Render high-level progression while keeping detailed outcomes separate."""
+    summary = build_systemic_progression_summary(report)
+    database_count = report.get("population", {}).get("database_video_count")
+    lines = ["sankey-beta"]
 
     def flow(source: str, target: str, count: Any) -> None:
         numeric_count = int(count or 0)
@@ -4876,67 +4931,93 @@ def build_systemic_outcome_mermaid(report: dict[str, Any]) -> str:
             lines.append(f"{source},{target},{numeric_count}")
 
     if isinstance(database_count, int):
-        flow("Database videos", "Latest extraction record", extraction_count)
-        flow("Database videos", "No extraction record", without_extraction)
-        flow("Latest extraction record", "Diagnostic trace", trace_count)
         flow(
-            "Latest extraction record",
-            "Missing or invalid extraction artifact",
-            artifact_missing_count,
+            "Database videos",
+            "Extraction available",
+            summary["extraction_count"],
         )
-        for status, count in sorted(
-            population.get("videos_without_extraction_status_counts", {}).items()
-        ):
-            flow(
-                "No extraction record",
-                f"Video status: {label(status)}",
-                count,
-            )
+        flow(
+            "Database videos",
+            "Stopped before extraction",
+            summary["without_extraction_count"],
+        )
     else:
-        flow("Target videos", "Diagnostic trace", trace_count)
-        flow("Target videos", "Missing diagnostic trace", missing_count)
-
-    disposition_counts = report.get("final_disposition_counts", {})
-    for disposition, count in sorted(disposition_counts.items()):
+        flow("Target videos", "Extraction available", summary["extraction_count"])
         flow(
-            "Diagnostic trace",
-            f"Sermon: {label(disposition)}",
-            count,
+            "Target videos",
+            "Stopped before extraction",
+            summary["without_extraction_count"],
         )
-
-    identity_outcomes = report.get("identity_outcome_summary", {})
-    blocker_analysis = report.get("automation_blocker_analysis", {})
-    identity_blockers = (
-        blocker_analysis.get("domains", {}).get("identity", {})
-        if isinstance(blocker_analysis, dict)
-        else {}
+    flow("Extraction available", "Diagnosable extraction", summary["trace_count"])
+    flow(
+        "Extraction available",
+        "Stopped at invalid artifact",
+        summary["artifact_missing_count"],
     )
-    automation = identity_blockers.get("operational_association_summary", {})
-    current_proposal_count = int(automation.get("current_proposal_count") or 0)
-    for disposition, states in sorted(
-        identity_outcomes.get("state_counts_by_disposition", {}).items()
+    flow(
+        "Diagnosable extraction",
+        "Sermon decision complete",
+        summary["terminal_decision_count"],
+    )
+    flow(
+        "Diagnosable extraction",
+        "Stopped at sermon review",
+        summary["review_required_count"],
+    )
+    flow(
+        "Diagnosable extraction",
+        "Unclassified disposition",
+        summary["other_disposition_count"],
+    )
+    flow(
+        "Sermon decision complete",
+        "Accepted sermon",
+        summary["accepted_sermon_count"],
+    )
+    flow(
+        "Sermon decision complete",
+        "Terminal non-sermon exit",
+        summary["terminal_non_sermon_count"],
+    )
+    flow(
+        "Accepted sermon",
+        "Reviewed identity membership",
+        summary["reviewed_membership_count"],
+    )
+    flow(
+        "Accepted sermon",
+        "Active provisional assignment",
+        summary["active_assignment_count"],
+    )
+    flow(
+        "Accepted sermon",
+        "Automatic assignment ready",
+        summary["eligible_assignment_count"],
+    )
+    flow(
+        "Accepted sermon",
+        "Identity work remaining",
+        summary["identity_work_remaining_count"],
+    )
+    return "\n".join(lines)
+
+
+def build_systemic_disposition_mermaid(report: Mapping[str, Any]) -> str:
+    """Render final sermon dispositions independently from pipeline progress."""
+    lines = ["pie showData", "    title Final sermon dispositions"]
+    for disposition, count in sorted(
+        report.get("final_disposition_counts", {}).items(),
+        key=lambda item: (-int(item[1]), str(item[0])),
     ):
-        for state, count in sorted(states.items()):
-            if (
-                disposition == "accepted_sermon"
-                and state == "association_proposed_match"
-                and current_proposal_count
-            ):
-                target = "Current accepted unprofiled proposals"
-            else:
-                target = f"Identity: {label(state)}"
-            flow(f"Sermon: {label(disposition)}", target, count)
-    for state, count in sorted(automation.get("state_counts", {}).items()):
-        flow(
-            "Current accepted unprofiled proposals",
-            f"Automation: {label(state)}",
-            count,
-        )
+        label = str(disposition).replace('"', "'").replace("_", " ")
+        if int(count or 0) > 0:
+            lines.append(f'    "{label}" : {int(count)}')
     return "\n".join(lines)
 
 
 def build_systemic_markdown(report: dict[str, Any]) -> str:
     population = report.get("population", {})
+    progression = build_systemic_progression_summary(report)
     lines = [
         "# Systemic Pipeline Diagnostics",
         "",
@@ -4954,17 +5035,45 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
         f"- Manual overrides: {report['manual_override_count']}",
         f"- Unknown evaluation partitions: {report.get('unknown_evaluation_partition_count', 0)}",
         "",
-        "## All-outcome map",
+        "## Pipeline progression",
         "",
         (
-            "Band width represents unique videos progressing from database coverage "
-            "through extraction, sermon disposition, identity outcome, and—where "
-            "eligible—provisional assignment state. Reviewed-fixture quality is an "
-            "overlay rather than another population stage, so it remains in the tables."
+            "Band width represents unique videos moving through high-level gates. "
+            "Stops and legitimate terminal exits are labeled separately; detailed "
+            "dispositions and identity causes follow below."
         ),
         "",
         "```mermaid",
         build_systemic_outcome_mermaid(report),
+        "```",
+        "",
+        "### Progression checkpoints",
+        "",
+        "Counts are unique videos. Each row has its own stage denominator, so stop "
+        "rows should not be summed.",
+        "",
+        "| Stage | Continued or completed | Did not continue / exited | Meaning |",
+        "|---|---:|---:|---|",
+        f"| Extraction availability | {progression['extraction_count']} | "
+        f"{progression['without_extraction_count']} | Stopped before extraction |",
+        f"| Extraction artifact validity | {progression['trace_count']} | "
+        f"{progression['artifact_missing_count']} | Missing or invalid artifact |",
+        f"| Sermon decision | {progression['terminal_decision_count']} | "
+        f"{progression['review_required_count'] + progression['other_disposition_count']} | "
+        "Review required or unclassified |",
+        f"| Accepted-sermon path | {progression['accepted_sermon_count']} | "
+        f"{progression['terminal_non_sermon_count']} | Legitimate terminal non-sermon exit |",
+        f"| Identity resolution or automatic readiness | "
+        f"{progression['reviewed_membership_count'] + progression['active_assignment_count'] + progression['eligible_assignment_count']} | "
+        f"{progression['identity_work_remaining_count']} | Accepted sermons with identity work remaining |",
+        "",
+        "## Sermon disposition distribution",
+        "",
+        "This chart is separate from progression because dispositions are mutually "
+        "exclusive outcomes, not sequential pipeline stages.",
+        "",
+        "```mermaid",
+        build_systemic_disposition_mermaid(report),
         "```",
         "",
         "## Overall outcomes",
