@@ -20,7 +20,7 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 CONFIDENCE_POLICY_VERSION = "semantic_primary_rule_guard_v3"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
-FINE_COMPONENT_VERSION = "objective-service-guards+structural-edges-v5"
+FINE_COMPONENT_VERSION = "objective-service-guards+structural-edges-v7"
 SEARCH_ALGORITHM_VERSION = "adaptive_llm_v7"
 POSITION_PRIOR_VERSION = "service-position-prior-v2"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
@@ -422,6 +422,7 @@ _SERMON_SEED_CUES = (
 
 _EXPLICIT_CLOSING_TRANSITION = re.compile(
     r"\b(?:as we (?:sing|close)|closing (?:song|hymn)|invite you to sing|"
+    r"closing (?:word of )?prayer|close (?:with|in) (?:a )?prayer|"
     r"time for questions|any questions|praise team can come)\b",
     re.IGNORECASE,
 )
@@ -429,6 +430,11 @@ _STRUCTURAL_SERVICE_TRANSITION = re.compile(
     r"(?:♪|\[(?:music|singing)[^]]*\])|\b(?:special music|praise team|"
     r"announcements?|open (?:our|your) hymnals?|song number \d+|"
     r"in jesus(?:'|’) name(?:,)? (?:we )?pray|amen\.?$)\b",
+    re.IGNORECASE,
+)
+_OBJECTIVE_NONPRAYER_SERVICE_TRANSITION = re.compile(
+    r"(?:♪|\[(?:music|singing)[^]]*\])|\b(?:special music|praise team|"
+    r"announcements?|open (?:our|your) hymnals?|song number \d+)\b",
     re.IGNORECASE,
 )
 
@@ -473,6 +479,36 @@ def _service_interval_coverage(
         and (
             draft.label.value in {"music", "prayer", "announcements"}
             or bool(_STRUCTURAL_SERVICE_TRANSITION.search(draft.text))
+        )
+    )
+    coverage = 0.0
+    cursor: float | None = None
+    for left, right in intervals:
+        if right <= left:
+            continue
+        if cursor is None or left > cursor:
+            coverage += right - left
+            cursor = right
+        elif right > cursor:
+            coverage += right - cursor
+            cursor = right
+    return coverage
+
+
+def _objective_nonprayer_service_interval_coverage(
+    drafts: list[SegmentDraft], start: float, end: float
+) -> float:
+    """Measure service material safe enough to create a boundary without a baseline."""
+    intervals = sorted(
+        (max(start, float(draft.start_seconds)), min(end, float(draft.end_seconds)))
+        for draft in drafts
+        if draft.start_seconds is not None
+        and draft.end_seconds is not None
+        and draft.end_seconds > start
+        and draft.start_seconds < end
+        and (
+            draft.label.value in {"music", "announcements"}
+            or bool(_OBJECTIVE_NONPRAYER_SERVICE_TRANSITION.search(draft.text))
         )
     )
     coverage = 0.0
@@ -834,7 +870,7 @@ def _objective_service_guard(
     )
     music_started = re.search(r"\b(?:special music|going to sing)\b", prior_text)
     music_finished = re.search(
-        r"\b(?:thank you[^.]{0,80}(?:song|music)|scripture reading)\b",
+        r"\bthank you[^.]{0,80}(?:song|music)\b",
         following_text,
     )
     if music_started and music_finished:
@@ -992,8 +1028,13 @@ def _rule_supported_structural_precision(
             boundary = float(draft.start_seconds)
             if not start + 15.0 <= boundary <= start + duration * 0.45:
                 continue
-            prior_service = _service_interval_coverage(
-                drafts, max(start, boundary - 120.0), boundary
+            coverage_start = max(start, boundary - 120.0)
+            prior_service = (
+                _service_interval_coverage(drafts, coverage_start, boundary)
+                if rule_supports_inward_start
+                else _objective_nonprayer_service_interval_coverage(
+                    drafts, coverage_start, boundary
+                )
             )
             following_sermon = _draft_interval_coverage(
                 drafts,
@@ -1001,7 +1042,7 @@ def _rule_supported_structural_precision(
                 min(end, boundary + 120.0),
                 {"sermon", "reading"},
             )
-            minimum_prior_service = 10.0 if rule_supports_inward_start else 45.0
+            minimum_prior_service = 10.0 if rule_supports_inward_start else 30.0
             if prior_service >= minimum_prior_service and following_sermon >= 60.0:
                 transition_candidates.append((boundary, prior_service))
         if transition_candidates:
@@ -1068,7 +1109,12 @@ def _rule_supported_structural_precision(
         )
         late_service_transition = (
             boundary >= start + (end - start) * 0.70
-            and draft.label.value in {"music", "prayer"}
+            # A generic prayer segment is not an objective closing boundary:
+            # it may be an integrated prayer or keyword-labeling error. Actual
+            # closing prayers need an explicit closing cue; music is independently
+            # recognizable service structure.
+            and draft.label.value == "music"
+            and bool(_OBJECTIVE_NONPRAYER_SERVICE_TRANSITION.search(draft.text))
             and service_after >= 10.0
         )
         if explicit or late_service_transition:

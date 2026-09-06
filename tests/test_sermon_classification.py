@@ -1105,8 +1105,61 @@ class HybridClassificationTests(unittest.TestCase):
             allow_unbaselined_transition=True,
         )
 
-        self.assertEqual({1}, retained)
-        self.assertEqual(["start", "end"], [item["edge"] for item in decisions])
+        self.assertEqual({1, 2}, retained)
+        self.assertEqual(["start"], [item["edge"] for item in decisions])
+
+    def test_unbaselined_transition_does_not_trim_sermon_testimony_labeled_prayer(self) -> None:
+        drafts = [
+            draft(0.0, 700.0, "Sustained biblical exposition"),
+            SegmentDraft(
+                700.0,
+                720.0,
+                "People were praying all over the world for me.",
+                None,
+                TranscriptSegmentLabel.PRAYER,
+                0.8,
+            ),
+            draft(720.0, 1000.0, "This is our moment to make a difference for God."),
+        ]
+        rule = SermonWindowResult(
+            None, None, 0.15, [], "rule_based_v1", [], [0, 1, 2], True, []
+        )
+
+        retained, decisions = _rule_supported_structural_precision(
+            drafts,
+            set(range(3)),
+            rule,
+            allow_unbaselined_transition=True,
+        )
+
+        self.assertEqual(set(range(3)), retained)
+        self.assertEqual([], decisions)
+
+    def test_unbaselined_transition_accepts_explicit_closing_prayer_cue(self) -> None:
+        drafts = [
+            draft(0.0, 700.0, "Sustained biblical exposition. That's all I had."),
+            SegmentDraft(
+                700.0,
+                760.0,
+                "Let's have a closing word of prayer. Heavenly Father, thank you.",
+                None,
+                TranscriptSegmentLabel.PRAYER,
+                0.8,
+            ),
+        ]
+        rule = SermonWindowResult(
+            None, None, 0.15, [], "rule_based_v1", [], [0, 1], True, []
+        )
+
+        retained, decisions = _rule_supported_structural_precision(
+            drafts,
+            set(range(2)),
+            rule,
+            allow_unbaselined_transition=True,
+        )
+
+        self.assertEqual({0}, retained)
+        self.assertEqual("explicit_closing_transition", decisions[0]["transition_kind"])
 
     def test_unbaselined_transition_does_not_trim_at_brief_mid_sermon_prayer(self) -> None:
         drafts = [
@@ -1532,6 +1585,24 @@ class HybridClassificationTests(unittest.TestCase):
 
         self.assertEqual(ContentLabel.MUSIC, label)
         self.assertEqual("explicit_music_continuation", guard_reason)
+
+    def test_music_continuation_requires_acknowledgment_not_only_later_reading(self) -> None:
+        drafts = [
+            draft(0.0, 90.0, "Earlier we heard special music."),
+            draft(90.0, 160.0, "God remains faithful through every trial."),
+            draft(160.0, 250.0, "Our scripture reading is from Peter."),
+        ]
+        block = TranscriptBlock(1, [1], 90.0, 160.0, drafts[1].text)
+
+        label, guard_reason = _guard_fine_classification(
+            block,
+            drafts,
+            ContentLabel.SERMON,
+            "biblical_exposition",
+        )
+
+        self.assertEqual(ContentLabel.SERMON, label)
+        self.assertIsNone(guard_reason)
 
     def test_targetless_reclassify_updates_only_existing_extraction_artifacts_and_reuses_result(
         self,
