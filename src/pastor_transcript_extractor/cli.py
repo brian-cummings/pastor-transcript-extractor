@@ -44,6 +44,7 @@ from pastor_transcript_extractor.config import (
     ensure_directories,
 )
 from pastor_transcript_extractor.discovery import extract_discovered_videos, sort_discovered_videos_by_recency
+from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
@@ -13655,6 +13656,14 @@ def apply_fixture_correction(
 def reclassify(
     video_id: int | None = typer.Option(None, "--video-id", help="Reclassify one database video id."),
     source_id: int | None = typer.Option(None, "--source-id", help="Reclassify extracted videos from one source id."),
+    review_required: bool = typer.Option(
+        False,
+        "--review-required",
+        help=(
+            "Reclassify videos whose latest extraction has a persisted "
+            "review_required final disposition."
+        ),
+    ),
     all_videos: bool = typer.Option(
         False,
         "--all",
@@ -13690,12 +13699,14 @@ def reclassify(
             video_id is not None,
             source_id is not None,
             fixture_dir is not None,
+            review_required,
             all_videos,
         )
     )
     if selector_count != 1:
         raise typer.BadParameter(
-            "Pass exactly one of --video-id, --source-id, --fixture-dir, or --all."
+            "Pass exactly one of --video-id, --source-id, --fixture-dir, "
+            "--review-required, or --all."
         )
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -13704,6 +13715,46 @@ def reclassify(
         videos = [video] if video is not None else []
     elif source_id is not None:
         videos = database.list_videos_by_source_id(source_id)
+    elif review_required:
+        videos = []
+        invalid_disposition_artifacts = 0
+        for video in database.list_videos():
+            extraction = database.get_latest_extraction_result_for_video(video.id)
+            proposed_path = (
+                getattr(extraction, "proposed_json_path", None)
+                if extraction is not None
+                else None
+            )
+            if not isinstance(proposed_path, str) or not proposed_path.strip():
+                continue
+            try:
+                payload = json.loads(Path(proposed_path).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                invalid_disposition_artifacts += 1
+                continue
+            disposition = (
+                payload.get("final_disposition")
+                if isinstance(payload, dict)
+                else None
+            )
+            if (
+                isinstance(disposition, dict)
+                and disposition.get("status") == REVIEW_REQUIRED
+            ):
+                videos.append(video)
+        videos.sort(key=lambda video: video.id)
+        console.print(
+            f"Discovered {len(videos)} video(s) with a review_required "
+            "final disposition."
+        )
+        if invalid_disposition_artifacts:
+            console.print(
+                f"Skipped {invalid_disposition_artifacts} invalid proposed "
+                "artifact(s) while selecting review-required videos."
+            )
+        if not videos:
+            console.print("No review-required videos remain to reclassify.")
+            return
     elif all_videos:
         videos = database.list_videos()
         console.print(f"Discovered {len(videos)} video(s) in the corpus.")
@@ -13762,7 +13813,7 @@ def reclassify(
             minimum_seconds=minimum_duration,
         ):
             skipped += 1
-            if all_videos:
+            if all_videos or review_required:
                 console.print(
                     f"Skipping video #{video.id}: video is below the configured "
                     "sermon minimum or is a future event."
@@ -13771,12 +13822,14 @@ def reclassify(
         extraction = database.get_latest_extraction_result_for_video(video.id)
         if extraction is None:
             skipped += 1
-            if all_videos:
+            if all_videos or review_required:
                 console.print(
                     f"Skipping video #{video.id}: no reusable extraction segments."
                 )
             continue
-        if all_videos and not _has_reusable_extraction_segments(extraction):
+        if (all_videos or review_required) and not _has_reusable_extraction_segments(
+            extraction
+        ):
             skipped += 1
             console.print(
                 f"Skipping video #{video.id}: no reusable extraction segments."
