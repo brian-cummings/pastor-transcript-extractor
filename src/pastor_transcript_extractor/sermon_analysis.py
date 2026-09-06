@@ -30,6 +30,20 @@ class AnalysisOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedSermonAnalysis:
+    """The exact identified-sermon input used for readiness and analysis."""
+
+    extraction_result_id: int
+    source_path: Path
+    segments: tuple[SermonSegment, ...]
+    sermon_start_seconds: float
+    duration_seconds: float
+    source_content_sha256: str
+    input_fingerprint: str
+    bible_provenance: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
 class SermonSegment:
     index: int
     start_seconds: float | None
@@ -521,12 +535,13 @@ def detect_scripture_references_in_texts(texts: list[str]) -> list[dict[str, obj
     ]
 
 
-def analyze_sermon(
+def prepare_sermon_analysis(
     database: Database,
     video: Video,
     *,
     analyzer_version: str = ANALYZER_VERSION,
-) -> AnalysisOutcome:
+) -> PreparedSermonAnalysis:
+    """Resolve and fingerprint current source material without running detectors."""
     if not analyzer_version.strip():
         raise ValueError("Analyzer version must not be blank")
     extraction = database.get_latest_extraction_result_for_video(video.id)
@@ -554,6 +569,31 @@ def analyze_sermon(
             separators=(",", ":"),
         ).encode("utf-8")
     )
+    return PreparedSermonAnalysis(
+        extraction_result_id=extraction.id,
+        source_path=source_path,
+        segments=tuple(segments),
+        sermon_start_seconds=sermon_start_seconds,
+        duration_seconds=duration_seconds,
+        source_content_sha256=source_content_sha256,
+        input_fingerprint=input_fingerprint,
+        bible_provenance=bible_provenance,
+    )
+
+
+def analyze_sermon(
+    database: Database,
+    video: Video,
+    *,
+    analyzer_version: str = ANALYZER_VERSION,
+) -> AnalysisOutcome:
+    prepared = prepare_sermon_analysis(
+        database, video, analyzer_version=analyzer_version
+    )
+    segments = list(prepared.segments)
+    sermon_start_seconds = prepared.sermon_start_seconds
+    duration_seconds = prepared.duration_seconds
+    bible_provenance = prepared.bible_provenance
 
     references = _reference_evidence(segments)
     explicit_references = [
@@ -736,13 +776,13 @@ def analyze_sermon(
 
     run, created = database.add_sermon_analysis_run(
         video_id=video.id,
-        extraction_result_id=extraction.id,
+        extraction_result_id=prepared.extraction_result_id,
         analyzer_key=ANALYZER_KEY,
         analyzer_version=analyzer_version,
         source_kind="extraction_proposed_json",
-        source_path=str(source_path),
-        source_content_sha256=source_content_sha256,
-        input_fingerprint=input_fingerprint,
+        source_path=str(prepared.source_path),
+        source_content_sha256=prepared.source_content_sha256,
+        input_fingerprint=prepared.input_fingerprint,
         measurements=measurements,
         evidence=evidence_rows,
     )

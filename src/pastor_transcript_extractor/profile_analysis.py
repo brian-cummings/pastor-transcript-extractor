@@ -9,9 +9,9 @@ import math
 
 from pastor_transcript_extractor.models import SpeakerProfileAnalysisRun, Video
 from pastor_transcript_extractor.sermon_analysis import (
-    ANALYZER_KEY as SERMON_ANALYZER_KEY,
     ANALYZER_VERSION as SERMON_ANALYZER_VERSION,
     OLD_TESTAMENT_BOOKS,
+    prepare_sermon_analysis,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -103,6 +103,46 @@ def _sha256(value: object) -> str:
     ).hexdigest()
 
 
+def profile_membership_fingerprint(
+    database: Database, scope: ProfileSermonScope
+) -> str:
+    """Fingerprint exact effective membership, including extraction observations."""
+    observations = [
+        database.get_speaker_observation(observation_id)
+        for observation_id in scope.observation_ids
+    ]
+    return _sha256(
+        [
+            {
+                "extraction_result_id": observation.extraction_result_id,
+                "observation_id": observation.id,
+                "video_id": observation.video_id,
+            }
+            for observation in observations
+            if observation is not None
+        ]
+    )
+
+
+def profile_analysis_input_fingerprint(
+    *,
+    profile_id: int,
+    membership_fingerprint: str,
+    sermon_analysis_run_ids: list[int] | tuple[int, ...],
+    analyzer_version: str = PROFILE_ANALYZER_VERSION,
+) -> str:
+    return _sha256(
+        {
+            "analyzer_key": PROFILE_ANALYZER_KEY,
+            "analyzer_version": analyzer_version,
+            "membership_fingerprint": membership_fingerprint,
+            "profile_id": profile_id,
+            "schema_version": PROFILE_ANALYSIS_SCHEMA_VERSION,
+            "sermon_analysis_run_ids": sorted(sermon_analysis_run_ids),
+        }
+    )
+
+
 def resolve_profile_sermon_scope(
     database: Database, profile_id: int
 ) -> ProfileSermonScope:
@@ -167,20 +207,7 @@ def build_profile_scripture_analysis(
         raise ValueError("Profile analyzer version must not be blank")
     scope = resolve_profile_sermon_scope(database, profile_id)
 
-    observations = [
-        database.get_speaker_observation(observation_id)
-        for observation_id in scope.observation_ids
-    ]
-    membership_payload = [
-        {
-            "extraction_result_id": observation.extraction_result_id,
-            "observation_id": observation.id,
-            "video_id": observation.video_id,
-        }
-        for observation in observations
-        if observation is not None
-    ]
-    membership_fingerprint = _sha256(membership_payload)
+    membership_fingerprint = profile_membership_fingerprint(database, scope)
 
     sermon_inputs = []
     analyzed_videos: list[Video] = []
@@ -215,10 +242,14 @@ def build_profile_scripture_analysis(
     sermon_aligned_span_words: Counter[int] = Counter()
 
     for video in scope.videos:
-        run = database.get_latest_sermon_analysis_run(
-            video.id,
-            SERMON_ANALYZER_KEY,
-            analyzer_version=sermon_analyzer_version,
+        try:
+            prepared = prepare_sermon_analysis(
+                database, video, analyzer_version=sermon_analyzer_version
+            )
+        except ValueError:
+            continue
+        run = database.get_sermon_analysis_run_by_fingerprint(
+            prepared.input_fingerprint
         )
         if run is None:
             continue
@@ -715,15 +746,11 @@ def build_profile_scripture_analysis(
         (key, json.dumps(value, sort_keys=True), unit) for key, value, unit in values
     ]
 
-    input_fingerprint = _sha256(
-        {
-            "analyzer_key": PROFILE_ANALYZER_KEY,
-            "analyzer_version": analyzer_version,
-            "membership_fingerprint": membership_fingerprint,
-            "profile_id": scope.profile_id,
-            "schema_version": PROFILE_ANALYSIS_SCHEMA_VERSION,
-            "sermon_analysis_run_ids": sorted(run_id for run_id, _ in sermon_inputs),
-        }
+    input_fingerprint = profile_analysis_input_fingerprint(
+        profile_id=scope.profile_id,
+        membership_fingerprint=membership_fingerprint,
+        sermon_analysis_run_ids=[run_id for run_id, _ in sermon_inputs],
+        analyzer_version=analyzer_version,
     )
     run, created = database.add_speaker_profile_analysis_run(
         profile_id=scope.profile_id,
