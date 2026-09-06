@@ -1108,6 +1108,33 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual({1}, retained)
         self.assertEqual(["start", "end"], [item["edge"] for item in decisions])
 
+    def test_unbaselined_transition_does_not_trim_at_brief_mid_sermon_prayer(self) -> None:
+        drafts = [
+            draft(0.0, 300.0, "Sustained biblical exposition"),
+            SegmentDraft(
+                300.0,
+                312.0,
+                "In Jesus' name we pray. Amen.",
+                None,
+                TranscriptSegmentLabel.PRAYER,
+                0.8,
+            ),
+            draft(312.0, 1000.0, "The sermon continues with biblical exposition"),
+        ]
+        rule = SermonWindowResult(
+            None, None, 0.15, [], "rule_based_v1", [], [0, 1, 2], True, []
+        )
+
+        retained, decisions = _rule_supported_structural_precision(
+            drafts,
+            set(range(3)),
+            rule,
+            allow_unbaselined_transition=True,
+        )
+
+        self.assertEqual(set(range(3)), retained)
+        self.assertEqual([], decisions)
+
     def test_refinement_safety_allows_trim_with_objective_separator(self) -> None:
         proposed_indexes = set(range(90, 100))
         retained, evidence = _apply_refinement_retention_safety(
@@ -1467,6 +1494,44 @@ class HybridClassificationTests(unittest.TestCase):
 
         self.assertEqual(ContentLabel.MUSIC, label)
         self.assertEqual("explicit_special_music", guard_reason)
+
+    def test_fine_reason_conflict_cannot_create_boundary_without_objective_evidence(self) -> None:
+        drafts = [
+            draft(
+                0.0,
+                90.0,
+                "The commission is to teach; the Holy Spirit brings conversion.",
+            )
+        ]
+        block = TranscriptBlock(0, [0], 0.0, 90.0, drafts[0].text)
+
+        label, guard_reason = _guard_fine_classification(
+            block,
+            drafts,
+            ContentLabel.SERMON,
+            "speaker_handoff",
+        )
+
+        self.assertEqual(ContentLabel.SERMON, label)
+        self.assertIsNone(guard_reason)
+
+    def test_objective_guard_excludes_unmarked_lyrics_bracketed_by_music_transitions(self) -> None:
+        drafts = [
+            draft(0.0, 90.0, "Our special music will now sing God on the Mountain."),
+            draft(90.0, 160.0, "The God of the day is still God in the night."),
+            draft(160.0, 250.0, "Thank you for that song. Scripture reading today is Peter."),
+        ]
+        block = TranscriptBlock(1, [1], 90.0, 160.0, drafts[1].text)
+
+        label, guard_reason = _guard_fine_classification(
+            block,
+            drafts,
+            ContentLabel.SERMON,
+            "biblical_exposition",
+        )
+
+        self.assertEqual(ContentLabel.MUSIC, label)
+        self.assertEqual("explicit_music_continuation", guard_reason)
 
     def test_targetless_reclassify_updates_only_existing_extraction_artifacts_and_reuses_result(
         self,

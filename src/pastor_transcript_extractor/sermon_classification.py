@@ -20,7 +20,7 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 CONFIDENCE_POLICY_VERSION = "semantic_primary_rule_guard_v3"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
-FINE_COMPONENT_VERSION = "objective-service-guards+structural-edges-v4"
+FINE_COMPONENT_VERSION = "objective-service-guards+structural-edges-v5"
 SEARCH_ALGORITHM_VERSION = "adaptive_llm_v7"
 POSITION_PRIOR_VERSION = "service-position-prior-v2"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
@@ -796,16 +796,6 @@ def _strong_pre_anchor_negative(block: TranscriptBlock, drafts: list[SegmentDraf
     return None
 
 
-_FINE_NEGATIVE_REASON_LABELS = {
-    "music_or_lyrics": ContentLabel.MUSIC,
-    "logistics_or_welcome": ContentLabel.ANNOUNCEMENTS,
-    "speaker_handoff": ContentLabel.SPEAKER_INTRODUCTION,
-    "service_closing": ContentLabel.CLOSING_SERVICE,
-    "service_prayer": ContentLabel.SERVICE_PRAYER,
-    "service_reading": ContentLabel.SERVICE_READING,
-}
-
-
 def _objective_service_guard(
     block: TranscriptBlock, drafts: list[SegmentDraft]
 ) -> tuple[ContentLabel, str] | None:
@@ -830,6 +820,25 @@ def _objective_service_guard(
     for label, reason, pattern in guarded_patterns:
         if re.search(pattern, text):
             return label, reason
+    prior_text = " ".join(
+        draft.text.casefold()
+        for draft in drafts
+        if draft.end_seconds is not None
+        and block.start_seconds - 180.0 < draft.end_seconds <= block.start_seconds
+    )
+    following_text = " ".join(
+        draft.text.casefold()
+        for draft in drafts
+        if draft.start_seconds is not None
+        and block.end_seconds <= draft.start_seconds < block.end_seconds + 120.0
+    )
+    music_started = re.search(r"\b(?:special music|going to sing)\b", prior_text)
+    music_finished = re.search(
+        r"\b(?:thank you[^.]{0,80}(?:song|music)|scripture reading)\b",
+        following_text,
+    )
+    if music_started and music_finished:
+        return ContentLabel.MUSIC, "explicit_music_continuation"
     return None
 
 
@@ -844,9 +853,10 @@ def _guard_fine_classification(
         guarded_label, guard_reason = objective
         if guarded_label != label:
             return guarded_label, guard_reason
-    reason_label = _FINE_NEGATIVE_REASON_LABELS.get(reason)
-    if label in RETAINED_LABELS and reason_label is not None:
-        return reason_label, f"reason_label_conflict:{reason}"
+    # The label is the model's semantic judgment; the reason code is supporting
+    # metadata and can be internally inconsistent.  A contradictory reason alone
+    # must not manufacture a sermon boundary.  Only independently recognizable
+    # objective service content above may override a retained label.
     return label, None
 
 
@@ -991,7 +1001,8 @@ def _rule_supported_structural_precision(
                 min(end, boundary + 120.0),
                 {"sermon", "reading"},
             )
-            if prior_service >= 10.0 and following_sermon >= 60.0:
+            minimum_prior_service = 10.0 if rule_supports_inward_start else 45.0
+            if prior_service >= minimum_prior_service and following_sermon >= 60.0:
                 transition_candidates.append((boundary, prior_service))
         if transition_candidates:
             eligible_transitions = (
@@ -1849,7 +1860,7 @@ def classify_sermon_content_adaptive(
         warnings.append("adaptive LLM and rule-based sermon windows disagree substantially")
     if fine_guard_adjustments:
         warnings.append(
-            "localized deterministic guards corrected contradictory fine service labels"
+            "localized objective guards excluded explicit service content"
         )
     if uncertain_ids:
         warnings.append("one or more refined blocks require boundary review")
@@ -1932,7 +1943,11 @@ def classify_sermon_content_adaptive(
         {
             "code": "localized_service_guards",
             "adjustments": fine_guard_adjustments,
-            "effect": "excluded_high_precision_service_content",
+            "effect": (
+                "excluded_high_precision_service_content"
+                if fine_guard_adjustments
+                else "no_effect"
+            ),
         },
         {
             "code": "uncertain_blocks",
