@@ -20,6 +20,9 @@ from pastor_transcript_extractor.extraction import (
     _classify_with_fallback,
     reclassify_video,
 )
+from pastor_transcript_extractor.identity_boundary_review import (
+    apply_identity_boundary_review,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import TranscriptSegmentLabel
 from pastor_transcript_extractor.recording_verifier import (
@@ -1886,6 +1889,7 @@ class HybridClassificationTests(unittest.TestCase):
                 record["decision"] == "no_action"
                 for record in updated["identity_boundary_review"]["records"]
             ))
+            self.assertEqual(updated, apply_identity_boundary_review(updated))
             self.assertEqual(
                 updated["sermon_window"]["start_seconds"],
                 updated["identity_boundary_review"]["records"][0][

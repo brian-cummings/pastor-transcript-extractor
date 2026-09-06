@@ -44,6 +44,9 @@ from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import SourceType, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.extraction import extract_video
 from pastor_transcript_extractor.exporting import export_pastor_review_markdown
+from pastor_transcript_extractor.identity_boundary_review import (
+    apply_identity_boundary_review,
+)
 from pastor_transcript_extractor.sources import detect_source_type
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.sermon_detection import detect_guest_speaker_flags, detect_sermon_window
@@ -4365,6 +4368,10 @@ class ExtractionTests(unittest.TestCase):
             self.assertTrue(identity_assessment.shadow_mode)
             proposed_markdown = result.proposed_text_path.read_text(encoding="utf-8")
             proposed_json = json.loads(result.proposed_json_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                proposed_json,
+                apply_identity_boundary_review(proposed_json),
+            )
             self.assertEqual("local_asr", proposed_json["transcript_source"])
             self.assertIn("sermon_window", proposed_json)
             self.assertFalse(proposed_json["guest_speaker_suspected"])

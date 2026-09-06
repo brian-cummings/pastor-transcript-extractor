@@ -1243,13 +1243,10 @@ def reclassify_video(
             hybrid,
             recording_sermon_confirmed=False,
         )
-    payload = apply_identity_boundary_review(payload)
-    existing_window = payload["sermon_window"]
     preliminary_disposition = build_final_disposition(
         classification,
         existing_window,
         guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
-        identity_boundary_review=payload.get("identity_boundary_review"),
     )
     if (
         preliminary_disposition["status"] == REVIEW_REQUIRED
@@ -1291,6 +1288,12 @@ def reclassify_video(
                 _recording_single_sustained_message(recording_verification)
             ),
         )
+    # Observation-derived acoustic boundaries are downstream feedback on the
+    # final semantic/rule/verifier arbitration result. Synchronizing earlier
+    # would fingerprint and review an intermediate window that this pass can
+    # subsequently replace.
+    payload = apply_identity_boundary_review(payload)
+    existing_window = payload["sermon_window"]
     disposition = build_final_disposition(
         classification,
         existing_window,
@@ -1583,19 +1586,10 @@ def extract_video(
         }
         for segment in persisted_segments
     ]
-    reviewed_payload = apply_identity_boundary_review(
-        {
-            "sermon_window": sermon_window,
-            "segments": serialized_segments,
-        }
-    )
-    sermon_window = reviewed_payload["sermon_window"]
-    identity_boundary_review = reviewed_payload["identity_boundary_review"]
     preliminary_disposition = build_final_disposition(
         classification,
         sermon_window,
         guest_speaker_suspected=guest_flags.suspected,
-        identity_boundary_review=identity_boundary_review,
     )
     if (
         preliminary_disposition["status"] == REVIEW_REQUIRED
@@ -1638,6 +1632,15 @@ def extract_video(
                 _recording_single_sustained_message(recording_verification)
             ),
         )
+    reviewed_payload = apply_identity_boundary_review(
+        {
+            "sermon_window": sermon_window,
+            "segments": serialized_segments,
+            "classification": classification,
+        }
+    )
+    sermon_window = reviewed_payload["sermon_window"]
+    identity_boundary_review = reviewed_payload["identity_boundary_review"]
     final_disposition = build_final_disposition(
         classification,
         sermon_window,

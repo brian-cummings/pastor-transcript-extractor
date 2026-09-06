@@ -12,7 +12,7 @@ from pastor_transcript_extractor.sermon_detection import detect_sermon_window
 
 
 POLICY_VERSION = "identity_boundary_review_v3"
-SYNCHRONIZATION_VERSION = "identity_boundary_sync_v2"
+SYNCHRONIZATION_VERSION = "identity_boundary_sync_v3"
 DEFAULT_MAX_TRIM_SECONDS = 300.0
 DEFAULT_MAX_TRIM_FRACTION = 0.20
 DEFAULT_MIN_REMAINING_SECONDS = 600.0
@@ -1166,4 +1166,13 @@ def persist_association_boundary_evidence(
             "final_disposition"
         ]
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    # The classification is also persisted as a standalone cache/artifact.
+    # Keep its effective disposition synchronized with the observation-driven
+    # boundary result so downstream readers cannot see two different outcomes.
+    classification_path = path.with_name("llm-classification-v1.json")
+    if classification_path.exists() and isinstance(payload.get("classification"), dict):
+        classification_path.write_text(
+            json.dumps(payload["classification"], indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
     return True

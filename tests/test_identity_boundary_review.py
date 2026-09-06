@@ -424,6 +424,41 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
             refreshed["identity_boundary_review"]["records"][0]["decision"],
         )
 
+    def test_changed_arbitration_invalidates_boundary_review_synchronization(self) -> None:
+        classification = self.automatic_classification()
+        classification["window_arbitration"] = {
+            "policy_version": "verified_semantic_continuity_v5",
+            "reason": "semantic_candidate_selected",
+            "selected_window": {"start_seconds": 300.0, "end_seconds": 1500.0},
+        }
+        payload = {
+            "sermon_window": {
+                "start_seconds": 300.0,
+                "end_seconds": 1500.0,
+                "source": "hybrid_llm",
+            },
+            "segments": segments(),
+            "classification": classification,
+        }
+        once = apply_identity_boundary_review(payload)
+        original_fingerprint = once["identity_boundary_review"]["synchronization"][
+            "classification_fingerprint"
+        ]
+
+        once["classification"]["window_arbitration"] = {
+            **once["classification"]["window_arbitration"],
+            "reason": "verified_semantic_continuity_selected",
+        }
+        refreshed = apply_identity_boundary_review(once)
+
+        self.assertNotEqual(
+            original_fingerprint,
+            refreshed["identity_boundary_review"]["synchronization"][
+                "classification_fingerprint"
+            ],
+        )
+        self.assertEqual(refreshed, apply_identity_boundary_review(refreshed))
+
     def test_fixture_fields_do_not_enter_runtime_policy_record(self) -> None:
         value = evidence("start", 120.0)
         baseline = review_identity_boundaries(
@@ -629,6 +664,37 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
         self.assertEqual(
             "accepted_sermon",
             persisted["final_disposition"]["status"],
+        )
+
+    def test_association_feedback_updates_standalone_classification_disposition(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "proposed.json"
+            classification_path = Path(tmp) / "llm-classification-v1.json"
+            classification = {"confidence_tier": "high"}
+            path.write_text(json.dumps({
+                "classification": classification,
+                "sermon_window": {
+                    "start_seconds": 0.0,
+                    "end_seconds": 1800.0,
+                    "source": "detected",
+                },
+                "segments": segments(),
+            }))
+            classification_path.write_text(json.dumps(classification))
+            report = {
+                "association_version": "association-v7",
+                "model_fingerprint": "model",
+                "result_sha256": "clean-artifact",
+                "sermon_window_quality_flags": [],
+            }
+
+            self.assertTrue(persist_association_boundary_evidence(path, report))
+            persisted = json.loads(path.read_text())
+            standalone = json.loads(classification_path.read_text())
+
+        self.assertEqual(
+            persisted["classification"]["final_disposition"],
+            standalone["final_disposition"],
         )
 
     def test_guided_redetection_can_trim_a_structural_closing_edge(self) -> None:
