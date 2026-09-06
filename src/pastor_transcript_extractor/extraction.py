@@ -42,7 +42,7 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.storage import Database
 
 
-WINDOW_ARBITRATION_POLICY_VERSION = "recall_guarded_internal_edges_v2"
+WINDOW_ARBITRATION_POLICY_VERSION = "recall_guarded_internal_edges_v3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -625,15 +625,40 @@ def _compose_recall_guarded_edges(
                 else internal_boundary < adaptive_boundary
             )
             if moves_inward:
-                window[f"{edge}_seconds"] = internal_boundary
+                trim_evidence = _edge_trim_evidence(
+                    drafts,
+                    adaptive_indexes,
+                    edge=edge,
+                    boundary=internal_boundary,
+                )
+                select_internal = (
+                    trim_evidence["recall_guard_passed"]
+                    and trim_evidence["strong_service_content"]
+                    and trim_evidence["structural_transition"]
+                )
+                if select_internal:
+                    window[f"{edge}_seconds"] = internal_boundary
                 decisions.append({
                     "edge": edge,
-                    "decision": "internal_transition_selected",
-                    "reason": "boundary_local_structural_transition",
+                    "decision": (
+                        "internal_transition_selected"
+                        if select_internal
+                        else "adaptive_retained"
+                    ),
+                    "reason": (
+                        "boundary_local_structural_transition_without_sermon_loss"
+                        if select_internal
+                        else "internal_transition_rejected_by_recall_guard"
+                    ),
                     "rule_boundary_seconds": rule_boundary,
                     "adaptive_boundary_seconds": adaptive_boundary,
-                    "selected_boundary_seconds": internal_boundary,
-                    "evidence": internal,
+                    "selected_boundary_seconds": (
+                        internal_boundary if select_internal else adaptive_boundary
+                    ),
+                    "rejected_boundary_seconds": (
+                        None if select_internal else internal_boundary
+                    ),
+                    "evidence": {**internal, **trim_evidence},
                 })
                 continue
         if not inward:

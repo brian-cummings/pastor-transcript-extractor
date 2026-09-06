@@ -11,8 +11,8 @@ from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import detect_sermon_window
 
 
-POLICY_VERSION = "identity_boundary_review_v2"
-SYNCHRONIZATION_VERSION = "identity_boundary_sync_v1"
+POLICY_VERSION = "identity_boundary_review_v3"
+SYNCHRONIZATION_VERSION = "identity_boundary_sync_v2"
 DEFAULT_MAX_TRIM_SECONDS = 300.0
 DEFAULT_MAX_TRIM_FRACTION = 0.20
 DEFAULT_MIN_REMAINING_SECONDS = 600.0
@@ -90,6 +90,20 @@ def _segments_fingerprint(segments: Sequence[Mapping[str, Any]]) -> str:
 
 def _evidence_fingerprint(evidence: Mapping[str, Any] | None) -> str:
     return _stable_fingerprint(evidence if isinstance(evidence, Mapping) else None)
+
+
+def _classification_fingerprint(classification: Mapping[str, Any] | None) -> str:
+    if not isinstance(classification, Mapping):
+        return _stable_fingerprint(None)
+    search = classification.get("search")
+    return _stable_fingerprint({
+        "method": classification.get("method"),
+        "confidence_tier": classification.get("confidence_tier"),
+        "retained_segment_indexes": classification.get("retained_segment_indexes"),
+        "warnings": classification.get("warnings"),
+        "search": search if isinstance(search, Mapping) else None,
+        "window_arbitration": classification.get("window_arbitration"),
+    })
 
 
 def _span(raw: object) -> dict[str, Any] | None:
@@ -195,6 +209,342 @@ def _distributed_and_coherent(
     return midpoints[0] <= start + duration * 0.35 and midpoints[-1] >= start + duration * 0.65
 
 
+def _trusted_acoustic_core(
+    evidence: Mapping[str, Any],
+    segments: Sequence[Mapping[str, Any]],
+    window: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Return an immutable minimum interval, never a sermon-existence decision."""
+    reasons: list[str] = []
+    start = _number(window.get("start_seconds"))
+    end = _number(window.get("end_seconds"))
+    spans = _spans(evidence.get("sermon_speaker_spans"))
+    local_consistency = evidence.get("local_acoustic_consistency")
+    locally_verified = (
+        isinstance(local_consistency, Mapping)
+        and local_consistency.get("passed") is True
+    )
+    association_approved = evidence.get("automatic_use_allowed") is True
+    if not association_approved and not locally_verified:
+        reasons.append("voice_consistency_not_approved_or_locally_verified")
+    if start is None or end is None or end <= start:
+        reasons.append("current_sermon_window_invalid")
+    elif not _distributed_and_coherent(spans, start, end):
+        reasons.append("coherent_distributed_sermon_speaker_not_established")
+    transcript_starts = [
+        value
+        for segment in segments
+        if (value := _number(segment.get("start_seconds"))) is not None
+    ]
+    transcript_ends = [
+        value
+        for segment in segments
+        if (value := _number(segment.get("end_seconds"))) is not None
+    ]
+    if not transcript_starts or not transcript_ends:
+        reasons.append("timestamped_transcript_unavailable")
+    if reasons:
+        return None, reasons
+    core_start = min(float(span["start_seconds"]) for span in spans)
+    core_end = max(float(span["end_seconds"]) for span in spans)
+    if core_end <= core_start:
+        return None, ["acoustic_core_interval_invalid"]
+    if core_start < min(transcript_starts) - 1.0 or core_end > max(transcript_ends) + 1.0:
+        return None, ["acoustic_core_outside_timestamped_transcript"]
+    return {
+        "start_seconds": core_start,
+        "end_seconds": core_end,
+        "speaker_key": str(spans[0].get("speaker_key")),
+        "span_count": len(spans),
+        "immutable_speaker_evidence_spans": spans,
+        "association_version": evidence.get("association_version"),
+        "speaker_model_version": (
+            evidence.get("model_fingerprint") or evidence.get("model_version")
+        ),
+        "source_artifact_sha256": evidence.get("source_artifact_sha256"),
+        "automatic_use_basis": (
+            "verified_within_recording_voice_consistency"
+            if locally_verified
+            else "approved_speaker_association_policy"
+        ),
+        "local_acoustic_consistency": (
+            dict(local_consistency)
+            if isinstance(local_consistency, Mapping)
+            else None
+        ),
+        "role": "minimum_sermon_window_not_existence_proof",
+    }, []
+
+
+def _local_acoustic_consistency(
+    candidate_selection: Mapping[str, Any],
+) -> dict[str, Any]:
+    fallback_used = candidate_selection.get("consistency_fallback_used") is True
+    metric_source = "refined_consistency" if fallback_used else "distributed_consistency"
+    metrics = candidate_selection.get(metric_source)
+    pairwise = (
+        metrics.get("pairwise_similarity")
+        if isinstance(metrics, Mapping)
+        else None
+    )
+    observed_median = (
+        _number(pairwise.get("median")) if isinstance(pairwise, Mapping) else None
+    )
+    observed_p10 = (
+        _number(pairwise.get("p10")) if isinstance(pairwise, Mapping) else None
+    )
+    minimum_median = _number(
+        candidate_selection.get("consistency_minimum_pairwise_median")
+    )
+    minimum_p10 = _number(
+        candidate_selection.get("consistency_minimum_pairwise_p10")
+    )
+    selected_span_count = candidate_selection.get("selected_span_count")
+    passed = (
+        isinstance(selected_span_count, int)
+        and selected_span_count >= 3
+        and observed_median is not None
+        and observed_p10 is not None
+        and minimum_median is not None
+        and minimum_p10 is not None
+        and observed_median >= minimum_median
+        and observed_p10 >= minimum_p10
+        and (
+            not fallback_used
+            or candidate_selection.get("consistency_fallback_found_coherent_subset")
+            is True
+        )
+    )
+    return {
+        "passed": passed,
+        "metric_source": metric_source,
+        "fallback_used": fallback_used,
+        "selected_span_count": selected_span_count,
+        "observed_pairwise_median": observed_median,
+        "observed_pairwise_p10": observed_p10,
+        "minimum_pairwise_median": minimum_median,
+        "minimum_pairwise_p10": minimum_p10,
+        "selection_version": candidate_selection.get("version"),
+        "identity_assignment_authorized": False,
+    }
+
+
+def _selected_adaptive_candidate(
+    classification: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    search = classification.get("search")
+    if not isinstance(search, Mapping):
+        return {}
+    candidates = search.get("candidates")
+    if not isinstance(candidates, Sequence) or isinstance(candidates, (str, bytes)):
+        return {}
+    selected_rank = search.get("selected_rank")
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if isinstance(candidate, Mapping)
+            and candidate.get("rank") == selected_rank
+        ),
+        {},
+    )
+
+
+def _acoustic_core_rescue(
+    window: Mapping[str, Any],
+    segments: Sequence[Mapping[str, Any]],
+    evidence: Mapping[str, Any],
+    classification: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    """Expand only to an independent automatic envelope containing the voice core."""
+    result = dict(window)
+    core, core_reasons = _trusted_acoustic_core(evidence, segments, result)
+    base = {
+        "schema_version": 1,
+        "policy_version": POLICY_VERSION,
+        "decision": NO_ACTION,
+        "reason_codes": core_reasons,
+        "recording_verifier_role": "sermon_existence_only",
+        "manual_override_used_as_evidence": False,
+        "protected_acoustic_core": core,
+        "boundary_before_rescue": {
+            "start_seconds": _number(result.get("start_seconds")),
+            "end_seconds": _number(result.get("end_seconds")),
+        },
+    }
+    if core is None:
+        if not base["reason_codes"]:
+            base["reason_codes"] = ["trusted_acoustic_core_unavailable"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, None
+    if result.get("source") == "override":
+        base["reason_codes"] = ["manual_override_is_authoritative"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    if not isinstance(classification, Mapping):
+        base["reason_codes"] = ["automatic_candidate_envelope_unavailable"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    final_disposition = classification.get("final_disposition")
+    if (
+        isinstance(final_disposition, Mapping)
+        and final_disposition.get("status")
+        in {"rejected_no_sermon", "rejected_ambiguous_speakers"}
+    ):
+        base["reason_codes"] = ["sermon_existence_or_speaker_program_rejected"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    search = classification.get("search")
+    if isinstance(search, Mapping) and search.get("manual_override_present") is True:
+        base["reason_codes"] = ["manual_override_contaminated_candidate_evidence"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    if (
+        not isinstance(search, Mapping)
+        or search.get("rule_baseline_source") != "recomputed_rules"
+    ):
+        base["reason_codes"] = ["independent_rule_baseline_not_established"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    if classification.get("confidence_tier") == "low":
+        base["reason_codes"] = ["adaptive_candidate_confidence_low"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    warnings = classification.get("warnings")
+    warning_text = " ".join(
+        str(item) for item in warnings
+        if isinstance(warnings, Sequence) and not isinstance(warnings, (str, bytes))
+    )
+    if "candidate center" in warning_text or "no timestamped" in warning_text:
+        base["reason_codes"] = ["adaptive_candidate_cohesion_failed"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    selected = _selected_adaptive_candidate(classification)
+    fine_support = selected.get("fine_support_block_ids")
+    if not isinstance(fine_support, Sequence) or isinstance(fine_support, (str, bytes)) or len(fine_support) < 3:
+        base["reason_codes"] = ["adaptive_candidate_semantic_support_insufficient"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    score_components = selected.get("score_components")
+    cohesion_ratio = (
+        _number(score_components.get("cohesion_ratio"))
+        if isinstance(score_components, Mapping)
+        else None
+    )
+    sermon_support_count = (
+        score_components.get("sermon_specific_support_count")
+        if isinstance(score_components, Mapping)
+        else None
+    )
+    if (
+        cohesion_ratio is None
+        or cohesion_ratio < 0.75
+        or not isinstance(sermon_support_count, int)
+        or sermon_support_count < 2
+    ):
+        base["reason_codes"] = [
+            "adaptive_candidate_semantic_cohesion_insufficient"
+        ]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    retained = classification.get("retained_segment_indexes")
+    retained_values = (
+        retained
+        if isinstance(retained, Sequence) and not isinstance(retained, (str, bytes))
+        else ()
+    )
+    indexes = sorted({
+        int(index) for index in retained_values
+        if isinstance(index, int)
+        and 0 <= index < len(segments)
+    })
+    timed = [
+        segments[index]
+        for index in indexes
+        if _number(segments[index].get("start_seconds")) is not None
+        and _number(segments[index].get("end_seconds")) is not None
+    ]
+    if len(timed) < 3:
+        base["reason_codes"] = ["adaptive_candidate_timestamp_support_insufficient"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    candidate_start = min(float(segment["start_seconds"]) for segment in timed)
+    candidate_end = max(float(segment["end_seconds"]) for segment in timed)
+    candidate = {
+        "source": "persisted_automatic_fine_envelope",
+        "start_seconds": candidate_start,
+        "end_seconds": candidate_end,
+        "included_segment_count": len(indexes),
+        "included_segment_indexes_sha256": _stable_fingerprint(indexes),
+        "selected_rank": (
+            search.get("selected_rank") if isinstance(search, Mapping) else None
+        ),
+        "fine_support_block_ids": list(fine_support),
+        "semantic_cohesion": {
+            "cohesion_ratio": cohesion_ratio,
+            "sermon_specific_support_count": sermon_support_count,
+        },
+    }
+    base["candidate_alternative"] = candidate
+    if candidate_start > float(core["start_seconds"]) + 1.0 or candidate_end < float(core["end_seconds"]) - 1.0:
+        base["reason_codes"] = ["adaptive_candidate_excludes_acoustic_core"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    current_start = float(result["start_seconds"])
+    current_end = float(result["end_seconds"])
+    expand_start = candidate_start < current_start - 1.0
+    expand_end = candidate_end > current_end + 1.0
+    arbitration = classification.get("window_arbitration")
+    edge_decisions = (
+        arbitration.get("edge_decisions")
+        if isinstance(arbitration, Mapping)
+        else None
+    )
+    clipped_edges = {
+        str(item.get("edge"))
+        for item in edge_decisions or ()
+        if isinstance(item, Mapping)
+        and item.get("decision") in {"internal_transition_selected", "rule_edge_selected"}
+    }
+    if not ((expand_start and "start" in clipped_edges) or (expand_end and "end" in clipped_edges)):
+        base["reason_codes"] = ["no_deterministically_clipped_adaptive_edge_to_rescue"]
+        base["boundary_after_rescue"] = dict(base["boundary_before_rescue"])
+        return result, base, core
+    next_start = candidate_start if expand_start and "start" in clipped_edges else current_start
+    next_end = candidate_end if expand_end and "end" in clipped_edges else current_end
+    result["start_seconds"] = next_start
+    result["end_seconds"] = next_end
+    result.setdefault("original_source", result.get("source"))
+    result["source"] = "identity_acoustic_core_rescue"
+    result["identity_boundary_policy_version"] = POLICY_VERSION
+    included = [
+        index
+        for index, segment in enumerate(segments)
+        if (_number(segment.get("end_seconds")) or 0.0) > next_start
+        and (_number(segment.get("start_seconds")) or 0.0) < next_end
+    ]
+    result["included_segment_indexes"] = included
+    result["excluded_segment_indexes"] = [
+        index for index in range(len(segments)) if index not in set(included)
+    ]
+    base["decision"] = "auto_expand"
+    base["reason_codes"] = [
+        "trusted_acoustic_core_protected",
+        "independent_fine_envelope_restored_over_weaker_deterministic_edge",
+    ]
+    base["rescued_edges"] = [
+        edge
+        for edge, rescued in (("start", next_start < current_start), ("end", next_end > current_end))
+        if rescued
+    ]
+    base["rejected_alternative"] = dict(base["boundary_before_rescue"])
+    base["boundary_after_rescue"] = {
+        "start_seconds": next_start,
+        "end_seconds": next_end,
+    }
+    return result, base, core
+
+
 def _coherent_edge_transition(evidence: Mapping[str, Any], edge_spans: list[dict[str, Any]]) -> bool:
     speaker_keys = {
         str(span.get("speaker_key")) for span in edge_spans if span.get("speaker_key")
@@ -266,6 +616,7 @@ def review_identity_boundaries(
     segments: Sequence[Mapping[str, Any]],
     identity_evidence: Mapping[str, Any] | None,
     *,
+    protected_acoustic_core: Mapping[str, Any] | None = None,
     existing_records: Sequence[Mapping[str, Any]] = (),
     max_trim_seconds: float = DEFAULT_MAX_TRIM_SECONDS,
     max_trim_fraction: float = DEFAULT_MAX_TRIM_FRACTION,
@@ -353,6 +704,23 @@ def review_identity_boundaries(
             )
             if not inward:
                 reasons.append("outward_or_stationary_identity_adjustment_forbidden")
+            core_boundary = (
+                _number(protected_acoustic_core.get("start_seconds"))
+                if edge == "start" and isinstance(protected_acoustic_core, Mapping)
+                else _number(protected_acoustic_core.get("end_seconds"))
+                if isinstance(protected_acoustic_core, Mapping)
+                else None
+            )
+            if (
+                proposed is not None
+                and core_boundary is not None
+                and (
+                    proposed > core_boundary + 1.0
+                    if edge == "start"
+                    else proposed < core_boundary - 1.0
+                )
+            ):
+                reasons.append("proposed_trim_would_cut_protected_acoustic_core")
 
             proposed_value = proposed if proposed is not None else current
             trim_start = original_start if edge == "start" else proposed_value
@@ -440,6 +808,11 @@ def apply_identity_boundary_review(payload: Mapping[str, Any]) -> dict[str, Any]
         if isinstance(result.get("identity_boundary_evidence"), Mapping)
         else None
     )
+    classification = (
+        result.get("classification")
+        if isinstance(result.get("classification"), Mapping)
+        else None
+    )
     prior = result.get("identity_boundary_review")
     if isinstance(prior, Mapping):
         synchronization = prior.get("synchronization")
@@ -453,14 +826,23 @@ def apply_identity_boundary_review(payload: Mapping[str, Any]) -> dict[str, Any]
             == _segments_fingerprint(typed_segments)
             and synchronization.get("evidence_fingerprint")
             == _evidence_fingerprint(evidence)
+            and synchronization.get("classification_fingerprint")
+            == _classification_fingerprint(classification)
         ):
             return result
     prior_records = prior.get("records", ()) if isinstance(prior, Mapping) else ()
     input_window_fingerprint = _window_fingerprint(window)
-    reviewed = review_identity_boundaries(
+    rescued_window, acoustic_core_rescue, protected_core = _acoustic_core_rescue(
         window,
         typed_segments,
+        evidence if isinstance(evidence, Mapping) else {},
+        classification,
+    )
+    reviewed = review_identity_boundaries(
+        rescued_window,
+        typed_segments,
         evidence,
+        protected_acoustic_core=protected_core,
         existing_records=prior_records if isinstance(prior_records, Sequence) else (),
     )
     result["sermon_window"] = reviewed.sermon_window
@@ -468,12 +850,16 @@ def apply_identity_boundary_review(payload: Mapping[str, Any]) -> dict[str, Any]
         "schema_version": 1,
         "policy_version": POLICY_VERSION,
         "records": reviewed.records,
+        "acoustic_core_rescue": acoustic_core_rescue,
         "synchronization": {
             "version": SYNCHRONIZATION_VERSION,
             "input_window_fingerprint": input_window_fingerprint,
             "output_window_fingerprint": _window_fingerprint(reviewed.sermon_window),
             "segments_fingerprint": _segments_fingerprint(typed_segments),
             "evidence_fingerprint": _evidence_fingerprint(evidence),
+            "classification_fingerprint": _classification_fingerprint(
+                classification
+            ),
         },
     }
     return result
@@ -597,8 +983,11 @@ def identity_boundary_evidence_from_association(
 ) -> dict[str, Any] | None:
     """Adapt a production association artifact into boundary-policy evidence."""
     flags = report.get("sermon_window_quality_flags")
-    if not isinstance(flags, Sequence) or isinstance(flags, (str, bytes)):
-        return None
+    flags = (
+        flags
+        if isinstance(flags, Sequence) and not isinstance(flags, (str, bytes))
+        else ()
+    )
     span_selection = report.get("span_selection")
     candidate_selection = (
         span_selection.get("candidate_selection")
@@ -607,6 +996,8 @@ def identity_boundary_evidence_from_association(
     )
     candidate_selection = candidate_selection if isinstance(candidate_selection, Mapping) else {}
     sermon_spans = _spans(candidate_selection.get("coherent_sermon_speaker_spans"))
+    if not sermon_spans and "sermon_window_quality_flags" not in report:
+        return None
     current_window = sermon_window if isinstance(sermon_window, Mapping) else {}
     edges: list[dict[str, Any]] = []
     for flag in flags:
@@ -694,6 +1085,9 @@ def identity_boundary_evidence_from_association(
         ),
         "source_artifact_sha256": report.get("result_sha256"),
         "sermon_speaker_spans": sermon_spans,
+        "local_acoustic_consistency": _local_acoustic_consistency(
+            candidate_selection
+        ),
         "edges": edges,
     }
 
@@ -735,6 +1129,12 @@ def persist_association_boundary_evidence(
         ])
         and prior_review["synchronization"].get("evidence_fingerprint")
         == _evidence_fingerprint(prior_evidence)
+        and prior_review["synchronization"].get("classification_fingerprint")
+        == _classification_fingerprint(
+            payload.get("classification")
+            if isinstance(payload.get("classification"), Mapping)
+            else None
+        )
     ):
         return True
     evidence = identity_boundary_evidence_from_association(

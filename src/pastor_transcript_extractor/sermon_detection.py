@@ -462,6 +462,36 @@ def detect_sermon_window(
 
     best_run = max(valid_runs, key=lambda run: (run_strength(run), run_duration(run), -run[0].start_seconds))
     trimmed_run, trim_reasons = _trim_run_boundaries(best_run, resolved_minimum)
+    if (
+        required_guide_start_seconds is not None
+        and trimmed_run[0].start_seconds > required_guide_start_seconds
+    ):
+        protected_start = next(
+            (
+                position
+                for position, segment in enumerate(best_run)
+                if segment.start_seconds <= required_guide_start_seconds <= segment.end_seconds
+            ),
+            None,
+        )
+        if protected_start is not None:
+            trimmed_run = best_run[protected_start:]
+            trim_reasons.append("protected identity guide start from deterministic trimming")
+    if (
+        required_guide_end_seconds is not None
+        and trimmed_run[-1].end_seconds < required_guide_end_seconds
+    ):
+        protected_end = next(
+            (
+                position
+                for position, segment in reversed(list(enumerate(best_run)))
+                if segment.start_seconds <= required_guide_end_seconds <= segment.end_seconds
+            ),
+            None,
+        )
+        if protected_end is not None:
+            trimmed_run = best_run[: protected_end + 1]
+            trim_reasons.append("protected identity guide end from deterministic trimming")
     opening = _opening_segments(timed)
     first_strong_start_seconds = _first_strong_sermon_start_seconds(opening)
     if (

@@ -417,6 +417,27 @@ class SermonDetectionTests(unittest.TestCase):
         self.assertEqual(1800.0, result.end_seconds)
         self.assertIn("trimmed trailing prayer, music, or closing segments from the detected window", result.reasons)
 
+    def test_identity_guide_cannot_be_removed_by_boundary_trimming(self) -> None:
+        drafts = [
+            SegmentDraft(0.0, 900.0, "Turn in your Bibles to Psalm chapter 56.", None, TranscriptSegmentLabel.READING, 0.7),
+            SegmentDraft(900.0, 1800.0, "The word of God teaches faithful hope.", None, TranscriptSegmentLabel.SERMON, 0.55),
+            SegmentDraft(1800.0, 1920.0, "Thank you so much for being here tonight.", None, TranscriptSegmentLabel.SERMON, 0.7),
+            SegmentDraft(1920.0, 2040.0, "All right, and break.", None, TranscriptSegmentLabel.SERMON, 0.75),
+        ]
+
+        result = detect_sermon_window(
+            drafts,
+            required_guide_start_seconds=300.0,
+            required_guide_end_seconds=1980.0,
+        )
+
+        self.assertEqual(0.0, result.start_seconds)
+        self.assertEqual(2040.0, result.end_seconds)
+        self.assertIn(
+            "protected identity guide end from deterministic trimming",
+            result.reasons,
+        )
+
     def test_detect_sermon_window_gates_weak_caption_opening(self) -> None:
         drafts = [
             SegmentDraft(0.0, 30.0, "Still the miracle that", None, TranscriptSegmentLabel.SERMON, 0.75),

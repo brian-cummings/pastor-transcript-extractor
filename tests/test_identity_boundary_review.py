@@ -63,6 +63,35 @@ def evidence(edge: str, proposed: float) -> dict[str, object]:
 
 
 class IdentityBoundaryReviewTests(unittest.TestCase):
+    @staticmethod
+    def automatic_classification() -> dict[str, object]:
+        return {
+            "method": "adaptive_llm_v5",
+            "confidence_tier": "high",
+            "retained_segment_indexes": list(range(30)),
+            "warnings": [],
+            "search": {
+                "manual_override_present": False,
+                "rule_baseline_source": "recomputed_rules",
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": [1, 2, 3, 4],
+                    "score_components": {
+                        "cohesion_ratio": 0.95,
+                        "sermon_specific_support_count": 4,
+                    },
+                }],
+            },
+            "window_arbitration": {
+                "decision": "adaptive_selected",
+                "edge_decisions": [
+                    {"edge": "start", "decision": "internal_transition_selected"},
+                    {"edge": "end", "decision": "internal_transition_selected"},
+                ],
+            },
+        }
+
     def test_different_introductory_speaker_is_trimmed(self) -> None:
         result = review_identity_boundaries(
             {"start_seconds": 0.0, "end_seconds": 1800.0, "source": "detected"},
@@ -184,6 +213,191 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
         self.assertEqual("association-v7", record["speaker_association_version"])
         self.assertEqual({"start_seconds": 0.0, "end_seconds": 1800.0}, record["boundary_before_review"])
 
+    def test_acoustic_core_restores_independent_fine_envelope(self) -> None:
+        value = evidence("start", 120.0)
+        value["edges"] = []
+        value["sermon_speaker_spans"] = [
+            {"start_seconds": 420.0, "end_seconds": 432.0, "speaker_key": "sermon"},
+            {"start_seconds": 900.0, "end_seconds": 912.0, "speaker_key": "sermon"},
+            {"start_seconds": 1380.0, "end_seconds": 1392.0, "speaker_key": "sermon"},
+        ]
+        payload = {
+            "sermon_window": {
+                "start_seconds": 300.0,
+                "end_seconds": 1500.0,
+                "source": "hybrid_llm",
+            },
+            "segments": segments(),
+            "classification": self.automatic_classification(),
+            "identity_boundary_evidence": value,
+        }
+
+        once = apply_identity_boundary_review(payload)
+        twice = apply_identity_boundary_review(once)
+
+        self.assertEqual(0.0, once["sermon_window"]["start_seconds"])
+        self.assertEqual(1800.0, once["sermon_window"]["end_seconds"])
+        rescue = once["identity_boundary_review"]["acoustic_core_rescue"]
+        self.assertEqual("auto_expand", rescue["decision"])
+        self.assertEqual(["start", "end"], rescue["rescued_edges"])
+        self.assertFalse(rescue["manual_override_used_as_evidence"])
+        self.assertEqual(once, twice)
+
+    def test_acoustic_core_does_not_override_manual_window(self) -> None:
+        value = evidence("start", 120.0)
+        value["edges"] = []
+        payload = {
+            "sermon_window": {
+                "start_seconds": 0.0,
+                "end_seconds": 1800.0,
+                "source": "override",
+            },
+            "segments": segments(),
+            "classification": self.automatic_classification(),
+            "identity_boundary_evidence": value,
+        }
+
+        result = apply_identity_boundary_review(payload)
+
+        rescue = result["identity_boundary_review"]["acoustic_core_rescue"]
+        self.assertEqual("no_action", rescue["decision"])
+        self.assertEqual(["manual_override_is_authoritative"], rescue["reason_codes"])
+
+    def test_unapproved_voice_evidence_cannot_expand_window(self) -> None:
+        value = evidence("start", 120.0)
+        value["automatic_use_allowed"] = False
+        value["edges"] = []
+        payload = {
+            "sermon_window": {
+                "start_seconds": 0.0,
+                "end_seconds": 1800.0,
+                "source": "hybrid_llm",
+            },
+            "segments": segments(),
+            "classification": self.automatic_classification(),
+            "identity_boundary_evidence": value,
+        }
+
+        result = apply_identity_boundary_review(payload)
+
+        rescue = result["identity_boundary_review"]["acoustic_core_rescue"]
+        self.assertEqual("no_action", rescue["decision"])
+        self.assertIn(
+            "voice_consistency_not_approved_or_locally_verified",
+            rescue["reason_codes"],
+        )
+
+    def test_locally_verified_voice_core_does_not_require_identity_assignment_approval(self) -> None:
+        value = evidence("start", 120.0)
+        value["automatic_use_allowed"] = False
+        value["edges"] = []
+        value["sermon_speaker_spans"] = [
+            {"start_seconds": 420.0, "end_seconds": 432.0, "speaker_key": "sermon"},
+            {"start_seconds": 900.0, "end_seconds": 912.0, "speaker_key": "sermon"},
+            {"start_seconds": 1380.0, "end_seconds": 1392.0, "speaker_key": "sermon"},
+        ]
+        value["local_acoustic_consistency"] = {
+            "passed": True,
+            "identity_assignment_authorized": False,
+        }
+        result = apply_identity_boundary_review({
+            "sermon_window": {
+                "start_seconds": 300.0,
+                "end_seconds": 1500.0,
+                "source": "hybrid_llm",
+            },
+            "segments": segments(),
+            "classification": self.automatic_classification(),
+            "identity_boundary_evidence": value,
+        })
+
+        rescue = result["identity_boundary_review"]["acoustic_core_rescue"]
+        self.assertEqual("auto_expand", rescue["decision"])
+        self.assertEqual(
+            "verified_within_recording_voice_consistency",
+            rescue["protected_acoustic_core"]["automatic_use_basis"],
+        )
+        self.assertFalse(
+            rescue["protected_acoustic_core"]["local_acoustic_consistency"]
+            ["identity_assignment_authorized"]
+        )
+
+    def test_acoustic_core_cannot_rescue_an_incohesive_candidate(self) -> None:
+        value = evidence("start", 120.0)
+        value["edges"] = []
+        value["sermon_speaker_spans"] = [
+            {"start_seconds": 420.0, "end_seconds": 432.0, "speaker_key": "sermon"},
+            {"start_seconds": 900.0, "end_seconds": 912.0, "speaker_key": "sermon"},
+            {"start_seconds": 1380.0, "end_seconds": 1392.0, "speaker_key": "sermon"},
+        ]
+        classification = self.automatic_classification()
+        classification["search"]["candidates"][0]["score_components"][  # type: ignore[index]
+            "cohesion_ratio"
+        ] = 0.4
+        result = apply_identity_boundary_review({
+            "sermon_window": {
+                "start_seconds": 300.0,
+                "end_seconds": 1500.0,
+                "source": "hybrid_llm",
+            },
+            "segments": segments(),
+            "classification": classification,
+            "identity_boundary_evidence": value,
+        })
+
+        self.assertEqual(300.0, result["sermon_window"]["start_seconds"])
+        self.assertEqual(
+            ["adaptive_candidate_semantic_cohesion_insufficient"],
+            result["identity_boundary_review"]["acoustic_core_rescue"]
+            ["reason_codes"],
+        )
+
+    def test_voice_core_cannot_reverse_a_no_sermon_disposition(self) -> None:
+        value = evidence("start", 120.0)
+        value["edges"] = []
+        value["sermon_speaker_spans"] = [
+            {"start_seconds": 420.0, "end_seconds": 432.0, "speaker_key": "sermon"},
+            {"start_seconds": 900.0, "end_seconds": 912.0, "speaker_key": "sermon"},
+            {"start_seconds": 1380.0, "end_seconds": 1392.0, "speaker_key": "sermon"},
+        ]
+        classification = self.automatic_classification()
+        classification["final_disposition"] = {"status": "rejected_no_sermon"}
+        result = apply_identity_boundary_review({
+            "sermon_window": {
+                "start_seconds": 300.0,
+                "end_seconds": 1500.0,
+                "source": "hybrid_llm",
+            },
+            "segments": segments(),
+            "classification": classification,
+            "identity_boundary_evidence": value,
+        })
+
+        self.assertEqual(300.0, result["sermon_window"]["start_seconds"])
+        self.assertEqual(
+            ["sermon_existence_or_speaker_program_rejected"],
+            result["identity_boundary_review"]["acoustic_core_rescue"]
+            ["reason_codes"],
+        )
+
+    def test_identity_trim_cannot_cut_protected_acoustic_core(self) -> None:
+        value = evidence("start", 1000.0)
+        result = review_identity_boundaries(
+            {"start_seconds": 0.0, "end_seconds": 1800.0},
+            segments(),
+            value,
+            protected_acoustic_core={
+                "start_seconds": 120.0,
+                "end_seconds": 1512.0,
+            },
+        )
+
+        self.assertEqual(0.0, result.sermon_window["start_seconds"])
+        self.assertIn(
+            "proposed_trim_would_cut_protected_acoustic_core",
+            result.records[0]["reason_codes"],
+        )
+
     def test_changed_window_invalidates_only_deterministic_boundary_review(self) -> None:
         payload = {
             "sermon_window": {"start_seconds": 0.0, "end_seconds": 1800.0},
@@ -252,6 +466,59 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
         )
         self.assertEqual(
             "accepted_sermon", persisted["final_disposition"]["status"]
+        )
+
+    def test_coherent_voice_core_persists_without_edge_quality_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "proposed.json"
+            path.write_text(json.dumps({
+                "sermon_window": {
+                    "start_seconds": 0.0,
+                    "end_seconds": 1800.0,
+                    "source": "hybrid_llm",
+                },
+                "segments": segments(),
+                "classification": self.automatic_classification(),
+            }))
+            report = {
+                "association_version": "association-v7",
+                "model_fingerprint": "model",
+                "result_sha256": "voice-core-artifact",
+                "policy": {"automatic_use_allowed": False},
+                "span_selection": {
+                    "candidate_selection": {
+                        "coherent_sermon_speaker_spans": evidence(
+                            "start", 120.0
+                        )["sermon_speaker_spans"],
+                        "selected_span_count": 3,
+                        "consistency_fallback_used": False,
+                        "consistency_minimum_pairwise_median": 0.7,
+                        "consistency_minimum_pairwise_p10": 0.6,
+                        "distributed_consistency": {
+                            "pairwise_similarity": {
+                                "median": 0.81,
+                                "p10": 0.72,
+                            }
+                        },
+                    }
+                },
+            }
+
+            self.assertTrue(persist_association_boundary_evidence(path, report))
+            persisted = json.loads(path.read_text())
+
+        self.assertEqual(
+            3,
+            len(persisted["identity_boundary_evidence"]["sermon_speaker_spans"]),
+        )
+        self.assertEqual(
+            "minimum_sermon_window_not_existence_proof",
+            persisted["identity_boundary_review"]["acoustic_core_rescue"]
+            ["protected_acoustic_core"]["role"],
+        )
+        self.assertTrue(
+            persisted["identity_boundary_evidence"]
+            ["local_acoustic_consistency"]["passed"]
         )
 
     def test_approved_association_can_drive_automatic_production_trim(self) -> None:
