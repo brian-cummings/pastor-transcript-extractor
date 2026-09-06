@@ -299,6 +299,12 @@ def _trace_component_fingerprints(trace: dict[str, Any]) -> dict[str, Any]:
         "identity_outcome": trace.get("identity_outcome", {}),
         "identity_feedback": identity_events,
     }
+    acoustic_core_rescue = trace.get("identity_acoustic_core_rescue")
+    if (
+        isinstance(acoustic_core_rescue, Mapping)
+        and acoustic_core_rescue.get("status") == "observed"
+    ):
+        components["identity_acoustic_core_rescue"] = acoustic_core_rescue
     return {
         "version": COMPONENT_FINGERPRINT_VERSION,
         "components": {
@@ -3275,6 +3281,217 @@ def _identity_boundary_feedback_projection(
     }
 
 
+def _identity_acoustic_core_rescue_projection(
+    proposed: Mapping[str, Any],
+    *,
+    manual_override: bool,
+    expected: list[Range] | None,
+    allowed_interruptions: list[Range] | None,
+) -> dict[str, Any]:
+    """Project persisted rescue evidence without reconstructing causality."""
+    review = proposed.get("identity_boundary_review")
+    review = review if isinstance(review, Mapping) else {}
+    raw = review.get("acoustic_core_rescue")
+    if not isinstance(raw, Mapping):
+        return {
+            "status": "not_observed",
+            "causal_auto_expand": False,
+            "automatic_outward_rescue": False,
+            "manual_override": manual_override,
+            "automatic_acoustic_evidence_credited": False,
+            "interpretation": "No persisted acoustic-core rescue decision was present.",
+        }
+
+    before_payload = raw.get("boundary_before_rescue")
+    before_payload = before_payload if isinstance(before_payload, Mapping) else {}
+    after_payload = raw.get("boundary_after_rescue")
+    after_payload = after_payload if isinstance(after_payload, Mapping) else {}
+    before = _range(
+        before_payload.get("start_seconds"), before_payload.get("end_seconds")
+    )
+    after = _range(
+        after_payload.get("start_seconds"), after_payload.get("end_seconds")
+    )
+    boundary_changed = bool(
+        before is not None
+        and after is not None
+        and (
+            abs(before[0] - after[0]) >= 0.001
+            or abs(before[1] - after[1]) >= 0.001
+        )
+    )
+    outward_edges: list[str] = []
+    if before is not None and after is not None:
+        if after[0] < before[0] - 0.001:
+            outward_edges.append("start")
+        if after[1] > before[1] + 0.001:
+            outward_edges.append("end")
+    decision = str(raw.get("decision") or "unknown")
+    persisted_manual_evidence = raw.get("manual_override_used_as_evidence") is True
+    causal_auto_expand = bool(
+        decision == "auto_expand"
+        and boundary_changed
+        and not manual_override
+        and not persisted_manual_evidence
+    )
+    automatic_outward_rescue = bool(causal_auto_expand and outward_edges)
+    core = raw.get("protected_acoustic_core")
+    core = (
+        {
+            key: core.get(key)
+            for key in (
+                "start_seconds",
+                "end_seconds",
+                "speaker_key",
+                "span_count",
+                "association_version",
+                "speaker_model_version",
+                "source_artifact_sha256",
+                "automatic_use_basis",
+                "local_acoustic_consistency",
+                "role",
+            )
+        }
+        if isinstance(core, Mapping)
+        else None
+    )
+    basis = str(core.get("automatic_use_basis") or "unknown") if core else None
+    automatic_evidence_credited = bool(
+        core is not None
+        and basis
+        in {
+            "verified_within_recording_voice_consistency",
+            "approved_speaker_association_policy",
+        }
+        and not manual_override
+        and not persisted_manual_evidence
+    )
+    quality: dict[str, Any] = {
+        "status": "not_evaluated",
+        "reason": (
+            "reviewed_positive_fixture_unavailable"
+            if expected is None
+            else "rescue_not_causal"
+        ),
+        "attribution": "not_credited",
+    }
+    if causal_auto_expand and before is not None and after is not None and expected is not None:
+        before_metrics = _stage_measurements(
+            [before], [before], expected, allowed_interruptions
+        )
+        after_metrics = _stage_measurements(
+            [after], [before], expected, allowed_interruptions
+        )
+        before_coverage = before_metrics.get("reviewed_sermon_coverage")
+        after_coverage = after_metrics.get("reviewed_sermon_coverage")
+        before_contamination = before_metrics.get("contamination_ratio")
+        after_contamination = after_metrics.get("contamination_ratio")
+        quality = {
+            "status": "evaluated",
+            "coverage_before": before_coverage,
+            "coverage_after": after_coverage,
+            "coverage_delta": (
+                round(after_coverage - before_coverage, 6)
+                if isinstance(before_coverage, (int, float))
+                and isinstance(after_coverage, (int, float))
+                else None
+            ),
+            "contamination_before": before_contamination,
+            "contamination_after": after_contamination,
+            "contamination_delta": (
+                round(after_contamination - before_contamination, 6)
+                if isinstance(before_contamination, (int, float))
+                and isinstance(after_contamination, (int, float))
+                else None
+            ),
+            "attribution": "causal_persisted_rescue",
+            "measurement_semantics": (
+                "Reviewed fixture truth evaluates the persisted before/after rescue "
+                "windows; it is not runtime identity evidence."
+            ),
+        }
+    disposition = proposed.get("final_disposition")
+    disposition = disposition if isinstance(disposition, Mapping) else {}
+    return {
+        "status": "observed",
+        "schema_version": raw.get("schema_version"),
+        "policy_version": raw.get("policy_version") or review.get("policy_version"),
+        "decision": decision,
+        "reason_codes": sorted(
+            str(value)
+            for value in raw.get("reason_codes", []) or []
+            if isinstance(value, str)
+        ),
+        "trusted_acoustic_core": core,
+        "trusted_acoustic_core_present": core is not None,
+        "automatic_use_basis": basis,
+        "locally_verified_within_recording_consistency": bool(
+            automatic_evidence_credited
+            and basis == "verified_within_recording_voice_consistency"
+        ),
+        "identity_policy_approved": bool(
+            automatic_evidence_credited
+            and basis == "approved_speaker_association_policy"
+        ),
+        "identity_assignment_authorized": bool(
+            core
+            and isinstance(core.get("local_acoustic_consistency"), Mapping)
+            and core["local_acoustic_consistency"].get(
+                "identity_assignment_authorized"
+            )
+            is True
+        ),
+        "manual_override": manual_override,
+        "manual_override_used_as_evidence": persisted_manual_evidence,
+        "automatic_acoustic_evidence_credited": automatic_evidence_credited,
+        "pre_rescue_window": (
+            {"start_seconds": before[0], "end_seconds": before[1]}
+            if before is not None
+            else None
+        ),
+        "post_rescue_window": (
+            {"start_seconds": after[0], "end_seconds": after[1]}
+            if after is not None
+            else None
+        ),
+        "boundary_changed": boundary_changed,
+        "causal_auto_expand": causal_auto_expand,
+        "automatic_outward_rescue": automatic_outward_rescue,
+        "rescued_edges": outward_edges if automatic_outward_rescue else [],
+        "outward_expansion_seconds": {
+            "start": (
+                round(max(0.0, before[0] - after[0]), 3)
+                if before is not None and after is not None
+                else 0.0
+            ),
+            "end": (
+                round(max(0.0, after[1] - before[1]), 3)
+                if before is not None and after is not None
+                else 0.0
+            ),
+        },
+        "rejected_deterministic_alternative": (
+            dict(raw["rejected_alternative"])
+            if isinstance(raw.get("rejected_alternative"), Mapping)
+            else None
+        ),
+        "reviewed_quality_impact": quality,
+        "final_disposition": disposition.get("status"),
+        "review_required_after_rescue": bool(
+            causal_auto_expand and disposition.get("status") == "review_required"
+        ),
+        "causal_basis": (
+            "persisted_auto_expand_with_changed_before_after_boundaries"
+            if causal_auto_expand
+            else "not_credited"
+        ),
+        "interpretation": (
+            "Causality requires the persisted auto_expand decision and changed "
+            "before/after boundaries; timestamps are not used as causal evidence."
+        ),
+    }
+
+
 def build_diagnostic_trace(
     proposed: dict[str, Any],
     *,
@@ -3619,6 +3836,12 @@ def build_diagnostic_trace(
         expected=expected,
         allowed_interruptions=allowed_interruptions,
     )
+    acoustic_core_rescue = _identity_acoustic_core_rescue_projection(
+        proposed,
+        manual_override=manual_override,
+        expected=expected,
+        allowed_interruptions=allowed_interruptions,
+    )
     if (
         identity_feedback["temporal_boundary_movement_count"]
         and not identity_feedback["causal_adjustment_count"]
@@ -3705,6 +3928,7 @@ def build_diagnostic_trace(
             "interpretation": "Identity outcome evidence was not supplied.",
         },
         "identity_boundary_feedback": identity_feedback,
+        "identity_acoustic_core_rescue": acoustic_core_rescue,
         "join_observability": {
             "joined_candidate_count": sum(
                 candidate.get("source") == "joined_coarse_llm" for candidate in candidates
@@ -4078,6 +4302,56 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
             f"{event.get('observed_effect', 'unknown')} "
             f"(attribution: {quality.get('attribution', 'advisory_only')})"
         )
+    rescue = trace.get("identity_acoustic_core_rescue", {})
+    rescue_quality = rescue.get("reviewed_quality_impact", {})
+    lines.extend(
+        [
+            "",
+            "## Identity acoustic-core rescue",
+            "",
+            f"- Status: {rescue.get('status', 'not_observed')}",
+            f"- Decision: {rescue.get('decision', 'none')}",
+            f"- Persisted causal auto-expand: "
+            f"{rescue.get('causal_auto_expand', False)}",
+            f"- Automatic outward rescue: "
+            f"{rescue.get('automatic_outward_rescue', False)}",
+            "- Rescued edges: "
+            + (", ".join(rescue.get("rescued_edges", [])) or "none"),
+            f"- Trusted acoustic core: "
+            f"{rescue.get('trusted_acoustic_core_present', False)}",
+            f"- Automatic evidence basis: "
+            f"{rescue.get('automatic_use_basis') or 'none'}",
+            f"- Locally verified within recording: "
+            f"{rescue.get('locally_verified_within_recording_consistency', False)}",
+            f"- Identity-policy approved: "
+            f"{rescue.get('identity_policy_approved', False)}",
+            f"- Identity assignment authorized: "
+            f"{rescue.get('identity_assignment_authorized', False)}",
+            f"- Manual override: {rescue.get('manual_override', False)}",
+            f"- Automatic acoustic evidence credited: "
+            f"{rescue.get('automatic_acoustic_evidence_credited', False)}",
+            "- Pre-rescue window: `"
+            + json.dumps(rescue.get("pre_rescue_window"), sort_keys=True)
+            + "`",
+            "- Post-rescue window: `"
+            + json.dumps(rescue.get("post_rescue_window"), sort_keys=True)
+            + "`",
+            "- Rejected deterministic alternative: `"
+            + json.dumps(
+                rescue.get("rejected_deterministic_alternative"), sort_keys=True
+            )
+            + "`",
+            "- No-action/rejection reasons: "
+            + (", ".join(rescue.get("reason_codes", [])) or "none"),
+            f"- Reviewed recall delta: "
+            f"{rescue_quality.get('coverage_delta', 'not evaluated')}",
+            f"- Reviewed contamination delta: "
+            f"{rescue_quality.get('contamination_delta', 'not evaluated')}",
+            f"- Review required after rescue: "
+            f"{rescue.get('review_required_after_rescue', False)}",
+            f"- Interpretation: {rescue.get('interpretation', 'not observed')}",
+        ]
+    )
     lines.extend(
         [
             "",
@@ -4317,6 +4591,9 @@ def compact_diagnostic_trace(trace: Mapping[str, Any]) -> dict[str, Any]:
                 "causal_adjustment_count",
             )
         },
+        "identity_acoustic_core_rescue": trace.get(
+            "identity_acoustic_core_rescue", {"status": "not_observed"}
+        ),
         "source_artifact": {
             key: trace.get("source_artifact", {}).get(key)
             for key in ("sha256", "algorithm_version")
@@ -4392,6 +4669,24 @@ def aggregate_diagnostic_traces(
     identity_temporal_movement_count = 0
     identity_causal_adjustment_count = 0
     identity_unconsumed_signal_count = 0
+    acoustic_rescue_observed_count = 0
+    acoustic_trusted_core_count = 0
+    acoustic_automatic_evidence_core_count = 0
+    acoustic_causal_auto_expand_count = 0
+    acoustic_automatic_rescue_count = 0
+    acoustic_manual_override_count = 0
+    acoustic_manual_override_credited_count = 0
+    acoustic_persisted_manual_evidence_count = 0
+    acoustic_review_required_after_rescue_count = 0
+    acoustic_rescue_edges = Counter()
+    acoustic_decisions = Counter()
+    acoustic_basis_counts = Counter()
+    acoustic_no_action_reasons = Counter()
+    acoustic_coverage_directions = Counter()
+    acoustic_contamination_directions = Counter()
+    acoustic_coverage_deltas: list[float] = []
+    acoustic_contamination_deltas: list[float] = []
+    acoustic_rescue_details: list[dict[str, Any]] = []
     manual_override_count = 0
     joined_candidate_count = 0
     traces_with_joined_candidates = 0
@@ -4444,6 +4739,82 @@ def aggregate_diagnostic_traces(
         for event in identity.get("events", []) or []:
             identity_effects[str(event.get("observed_effect") or "unknown")] += 1
             identity_edge_counts[str(event.get("edge") or "unknown")] += 1
+        acoustic_rescue = trace.get("identity_acoustic_core_rescue", {})
+        if acoustic_rescue.get("status") == "observed":
+            acoustic_rescue_observed_count += 1
+            acoustic_decisions[
+                str(acoustic_rescue.get("decision") or "unknown")
+            ] += 1
+            trusted_core = bool(
+                acoustic_rescue.get("trusted_acoustic_core_present")
+            )
+            automatic_evidence = bool(
+                acoustic_rescue.get("automatic_acoustic_evidence_credited")
+            )
+            automatic_rescue = bool(
+                acoustic_rescue.get("automatic_outward_rescue")
+            )
+            causal_auto_expand = bool(
+                acoustic_rescue.get("causal_auto_expand")
+            )
+            manual_rescue = bool(acoustic_rescue.get("manual_override"))
+            acoustic_trusted_core_count += int(trusted_core)
+            acoustic_automatic_evidence_core_count += int(automatic_evidence)
+            acoustic_causal_auto_expand_count += int(causal_auto_expand)
+            acoustic_automatic_rescue_count += int(automatic_rescue)
+            acoustic_manual_override_count += int(manual_rescue)
+            acoustic_manual_override_credited_count += int(
+                manual_rescue and automatic_evidence
+            )
+            acoustic_persisted_manual_evidence_count += int(
+                acoustic_rescue.get("manual_override_used_as_evidence") is True
+            )
+            acoustic_review_required_after_rescue_count += int(
+                acoustic_rescue.get("review_required_after_rescue") is True
+            )
+            if automatic_evidence:
+                acoustic_basis_counts[
+                    str(acoustic_rescue.get("automatic_use_basis") or "unknown")
+                ] += 1
+            if causal_auto_expand:
+                for edge in acoustic_rescue.get("rescued_edges", []) or []:
+                    acoustic_rescue_edges[str(edge)] += 1
+            else:
+                for reason in acoustic_rescue.get("reason_codes", []) or []:
+                    acoustic_no_action_reasons[str(reason)] += 1
+            quality = acoustic_rescue.get("reviewed_quality_impact", {})
+            if quality.get("status") == "evaluated":
+                for metric, values, directions in (
+                    (
+                        "coverage_delta",
+                        acoustic_coverage_deltas,
+                        acoustic_coverage_directions,
+                    ),
+                    (
+                        "contamination_delta",
+                        acoustic_contamination_deltas,
+                        acoustic_contamination_directions,
+                    ),
+                ):
+                    delta = quality.get(metric)
+                    if not isinstance(delta, (int, float)):
+                        continue
+                    values.append(float(delta))
+                    direction = (
+                        "increased"
+                        if delta > 0
+                        else "decreased"
+                        if delta < 0
+                        else "unchanged"
+                    )
+                    directions[direction] += 1
+            if causal_auto_expand or manual_rescue:
+                acoustic_rescue_details.append(
+                    {
+                        "youtube_video_id": video_id,
+                        **dict(acoustic_rescue),
+                    }
+                )
         identity_outcome = trace.get("identity_outcome", {})
         identity_operational_states[
             str(identity_outcome.get("state") or "not_observed")
@@ -4739,6 +5110,84 @@ def aggregate_diagnostic_traces(
                 "causal events persisted"
                 if identity_causal_adjustment_count
                 else "temporal association only"
+            ),
+        },
+        "identity_acoustic_core_rescue_summary": {
+            "schema_version": 1,
+            "count_unit": "unique_videos",
+            "observed_decision_count": acoustic_rescue_observed_count,
+            "decision_counts": dict(sorted(acoustic_decisions.items())),
+            "trusted_acoustic_core_count": acoustic_trusted_core_count,
+            "automatic_acoustic_evidence_core_count": (
+                acoustic_automatic_evidence_core_count
+            ),
+            "automatic_use_basis_counts": dict(
+                sorted(acoustic_basis_counts.items())
+            ),
+            "locally_verified_within_recording_count": acoustic_basis_counts.get(
+                "verified_within_recording_voice_consistency", 0
+            ),
+            "identity_policy_approved_count": acoustic_basis_counts.get(
+                "approved_speaker_association_policy", 0
+            ),
+            "causal_auto_expand_count": acoustic_causal_auto_expand_count,
+            "automatic_outward_rescue_count": acoustic_automatic_rescue_count,
+            "rescued_edge_counts": dict(sorted(acoustic_rescue_edges.items())),
+            "no_action_or_rejection_reason_counts": dict(
+                sorted(acoustic_no_action_reasons.items())
+            ),
+            "review_required_after_rescue_count": (
+                acoustic_review_required_after_rescue_count
+            ),
+            "pipeline_manual_override_count": manual_override_count,
+            "manual_override_decision_count": acoustic_manual_override_count,
+            "manual_override_automatic_evidence_credited_count": (
+                acoustic_manual_override_credited_count
+            ),
+            "persisted_manual_override_evidence_attempt_count": (
+                acoustic_persisted_manual_evidence_count
+            ),
+            "manual_override_credit_invariant_passed": (
+                acoustic_manual_override_credited_count == 0
+                and acoustic_persisted_manual_evidence_count == 0
+            ),
+            "reviewed_quality_evaluated_count": len(acoustic_coverage_deltas),
+            "reviewed_coverage_change_counts": dict(
+                sorted(acoustic_coverage_directions.items())
+            ),
+            "reviewed_contamination_change_counts": dict(
+                sorted(acoustic_contamination_directions.items())
+            ),
+            "mean_reviewed_coverage_delta": (
+                round(
+                    sum(acoustic_coverage_deltas)
+                    / len(acoustic_coverage_deltas),
+                    6,
+                )
+                if acoustic_coverage_deltas
+                else None
+            ),
+            "mean_reviewed_contamination_delta": (
+                round(
+                    sum(acoustic_contamination_deltas)
+                    / len(acoustic_contamination_deltas),
+                    6,
+                )
+                if acoustic_contamination_deltas
+                else None
+            ),
+            "details": sorted(
+                acoustic_rescue_details,
+                key=lambda item: str(item.get("youtube_video_id") or ""),
+            ),
+            "causal_contract": (
+                "A rescue is causal only when the persisted decision is auto_expand, "
+                "the persisted before/after boundaries differ, and the result is not "
+                "a manual override. Timestamps never establish rescue causality."
+            ),
+            "quality_measurement_semantics": (
+                "Recall and contamination deltas use reviewed fixture truth only for "
+                "evaluation and never as runtime acoustic evidence."
             ),
         },
         "identity_outcome_summary": {
@@ -5547,6 +5996,122 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
             lines.append(f"| {stage_key} regret | {classification} | {count} |")
     for cause, count in report.get("terminal_failure_causal_counts", {}).items():
         lines.append(f"| terminal cause | {cause} | {count} |")
+    acoustic_rescue = report.get("identity_acoustic_core_rescue_summary", {})
+    lines.extend(
+        [
+            "",
+            "## Identity acoustic-core rescue",
+            "",
+            acoustic_rescue.get(
+                "causal_contract",
+                "No persisted acoustic-core rescue projection was reported.",
+            ),
+            "",
+            f"- Persisted rescue decisions: "
+            f"{acoustic_rescue.get('observed_decision_count', 0)}",
+            f"- Trusted acoustic cores: "
+            f"{acoustic_rescue.get('trusted_acoustic_core_count', 0)}",
+            f"- Cores credited as automatic acoustic evidence: "
+            f"{acoustic_rescue.get('automatic_acoustic_evidence_core_count', 0)}",
+            f"- Causal auto-expands: "
+            f"{acoustic_rescue.get('causal_auto_expand_count', 0)}",
+            f"- Automatic outward rescues: "
+            f"{acoustic_rescue.get('automatic_outward_rescue_count', 0)}",
+            f"- Rescued start edges: "
+            f"{acoustic_rescue.get('rescued_edge_counts', {}).get('start', 0)}",
+            f"- Rescued end edges: "
+            f"{acoustic_rescue.get('rescued_edge_counts', {}).get('end', 0)}",
+            f"- Locally verified within-recording cores: "
+            f"{acoustic_rescue.get('locally_verified_within_recording_count', 0)}",
+            f"- Identity-policy-approved cores: "
+            f"{acoustic_rescue.get('identity_policy_approved_count', 0)}",
+            f"- Review-required outcomes remaining after rescue: "
+            f"{acoustic_rescue.get('review_required_after_rescue_count', 0)}",
+            f"- Pipeline manual overrides: "
+            f"{acoustic_rescue.get('pipeline_manual_override_count', 0)}",
+            f"- Manual overrides with persisted rescue decisions: "
+            f"{acoustic_rescue.get('manual_override_decision_count', 0)}",
+            f"- Manual overrides credited as automatic evidence: "
+            f"{acoustic_rescue.get('manual_override_automatic_evidence_credited_count', 0)}",
+            f"- Persisted attempts to use manual overrides as acoustic evidence: "
+            f"{acoustic_rescue.get('persisted_manual_override_evidence_attempt_count', 0)}",
+            f"- Manual-override credit invariant passed: "
+            f"{acoustic_rescue.get('manual_override_credit_invariant_passed', True)}",
+            "",
+            "| Decision | Unique videos |",
+            "|---|---:|",
+        ]
+    )
+    for decision, count in acoustic_rescue.get("decision_counts", {}).items():
+        lines.append(f"| {decision} | {count} |")
+    lines.extend(
+        [
+            "",
+            "### No-action and rejection reasons",
+            "",
+            "Reason rows are non-additive because one persisted decision may carry "
+            "multiple codes.",
+            "",
+            "| Reason code | Unique videos |",
+            "|---|---:|",
+        ]
+    )
+    for reason, count in acoustic_rescue.get(
+        "no_action_or_rejection_reason_counts", {}
+    ).items():
+        lines.append(f"| {reason} | {count} |")
+    lines.extend(
+        [
+            "",
+            "### Reviewed rescue impact",
+            "",
+            acoustic_rescue.get("quality_measurement_semantics", "Not evaluated."),
+            "",
+            f"- Evaluated rescues: "
+            f"{acoustic_rescue.get('reviewed_quality_evaluated_count', 0)}",
+            f"- Mean recall change: "
+            f"{acoustic_rescue.get('mean_reviewed_coverage_delta')}",
+            f"- Mean contamination change: "
+            f"{acoustic_rescue.get('mean_reviewed_contamination_delta')}",
+            "- Recall directions: `"
+            + json.dumps(
+                acoustic_rescue.get("reviewed_coverage_change_counts", {}),
+                sort_keys=True,
+            )
+            + "`",
+            "- Contamination directions: `"
+            + json.dumps(
+                acoustic_rescue.get("reviewed_contamination_change_counts", {}),
+                sort_keys=True,
+            )
+            + "`",
+        ]
+    )
+    rescue_details = acoustic_rescue.get("details", []) or []
+    if rescue_details:
+        lines.extend(
+            [
+                "",
+                "### Rescue and manual-override details",
+                "",
+                "| Video | Decision | Edges | Before | After | Rejected deterministic "
+                "alternative | Recall Δ | Contamination Δ | Final disposition |",
+                "|---|---|---|---|---|---|---:|---:|---|",
+            ]
+        )
+        for detail in rescue_details:
+            quality = detail.get("reviewed_quality_impact", {})
+            lines.append(
+                f"| {detail.get('youtube_video_id', 'unknown')} | "
+                f"{detail.get('decision', 'unknown')} | "
+                f"{', '.join(detail.get('rescued_edges', [])) or 'none'} | "
+                f"`{json.dumps(detail.get('pre_rescue_window'), sort_keys=True)}` | "
+                f"`{json.dumps(detail.get('post_rescue_window'), sort_keys=True)}` | "
+                f"`{json.dumps(detail.get('rejected_deterministic_alternative'), sort_keys=True)}` | "
+                f"{quality.get('coverage_delta', '—')} | "
+                f"{quality.get('contamination_delta', '—')} | "
+                f"{detail.get('final_disposition') or 'unknown'} |"
+            )
     identity = report.get("identity_boundary_feedback_summary", {})
     lines.extend(
         [
@@ -5832,7 +6397,10 @@ def compare_systemic_reports(
             reasons.append("verifier_changed")
         if "final_disposition" in changed_components:
             reasons.append("disposition_policy_changed")
-        if "identity_feedback" in changed_components:
+        if {
+            "identity_feedback",
+            "identity_acoustic_core_rescue",
+        } & set(changed_components):
             reasons.append("identity_evidence_changed")
         if old.get("algorithm_version") != new.get("algorithm_version"):
             reasons.append("algorithm_changed")

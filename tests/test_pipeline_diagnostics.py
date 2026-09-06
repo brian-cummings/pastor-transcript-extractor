@@ -1780,6 +1780,239 @@ class PipelineDiagnosticTests(unittest.TestCase):
         )
         self.assertIn("Identity boundary feedback", build_systemic_markdown(systemic))
 
+    def test_acoustic_core_rescue_projection_preserves_causal_firewall(self) -> None:
+        def rescue_record(
+            *,
+            decision: str,
+            basis: str,
+            before: tuple[float, float],
+            after: tuple[float, float],
+            reasons: list[str],
+        ) -> dict[str, object]:
+            return {
+                "schema_version": 1,
+                "policy_version": "identity_boundary_review_v3",
+                "decision": decision,
+                "reason_codes": reasons,
+                "manual_override_used_as_evidence": False,
+                "protected_acoustic_core": {
+                    "start_seconds": 100.0,
+                    "end_seconds": 200.0,
+                    "speaker_key": "sermon",
+                    "span_count": 3,
+                    "automatic_use_basis": basis,
+                    "local_acoustic_consistency": {
+                        "passed": True,
+                        "identity_assignment_authorized": False,
+                    },
+                    "role": "minimum_sermon_window_not_existence_proof",
+                    "immutable_speaker_evidence_spans": [
+                        {"start_seconds": 100.0, "end_seconds": 110.0}
+                    ],
+                },
+                "boundary_before_rescue": {
+                    "start_seconds": before[0],
+                    "end_seconds": before[1],
+                },
+                "boundary_after_rescue": {
+                    "start_seconds": after[0],
+                    "end_seconds": after[1],
+                },
+                "rescued_edges": ["start", "end"],
+                "rejected_alternative": {
+                    "start_seconds": before[0],
+                    "end_seconds": before[1],
+                },
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            causal_payload = proposed_payload()
+            causal_payload["sermon_window"] = {
+                "start_seconds": 0.0,
+                "end_seconds": 300.0,
+                "source": "identity_acoustic_core_rescue",
+            }
+            causal_payload["final_disposition"] = {
+                "status": "review_required",
+                "reason_codes": ["rescue_retains_review_requirement"],
+            }
+            causal_payload["identity_boundary_review"] = {
+                "policy_version": "identity_boundary_review_v3",
+                "acoustic_core_rescue": rescue_record(
+                    decision="auto_expand",
+                    basis="verified_within_recording_voice_consistency",
+                    before=(100.0, 250.0),
+                    after=(0.0, 300.0),
+                    reasons=["trusted_acoustic_core_protected"],
+                ),
+            }
+            causal_path = root / "causal.json"
+            causal_path.write_text(json.dumps(causal_payload), encoding="utf-8")
+            causal = build_diagnostic_trace(
+                causal_payload,
+                proposed_path=causal_path,
+                youtube_video_id="causal-rescue",
+                fixture=fixture,
+            )
+
+            no_action_payload = proposed_payload()
+            no_action_payload["identity_boundary_review"] = {
+                "policy_version": "identity_boundary_review_v3",
+                "acoustic_core_rescue": rescue_record(
+                    decision="no_action",
+                    basis="approved_speaker_association_policy",
+                    before=(100.0, 300.0),
+                    after=(100.0, 300.0),
+                    reasons=["no_deterministically_clipped_adaptive_edge_to_rescue"],
+                ),
+            }
+            no_action_path = root / "no-action.json"
+            no_action_path.write_text(
+                json.dumps(no_action_payload), encoding="utf-8"
+            )
+            no_action = build_diagnostic_trace(
+                no_action_payload,
+                proposed_path=no_action_path,
+                youtube_video_id="no-action",
+            )
+
+            manual_payload = proposed_payload()
+            manual_payload["sermon_window"] = {
+                "start_seconds": 0.0,
+                "end_seconds": 300.0,
+                "source": "override",
+            }
+            manual_payload["identity_boundary_review"] = {
+                "policy_version": "identity_boundary_review_v3",
+                "acoustic_core_rescue": rescue_record(
+                    decision="auto_expand",
+                    basis="approved_speaker_association_policy",
+                    before=(100.0, 300.0),
+                    after=(0.0, 300.0),
+                    reasons=["malformed_manual_rescue_record"],
+                ),
+            }
+            manual_path = root / "manual.json"
+            manual_path.write_text(json.dumps(manual_payload), encoding="utf-8")
+            manual = build_diagnostic_trace(
+                manual_payload,
+                proposed_path=manual_path,
+                youtube_video_id="manual-override",
+            )
+
+        projection = causal["identity_acoustic_core_rescue"]
+        self.assertTrue(projection["causal_auto_expand"])
+        self.assertTrue(projection["automatic_outward_rescue"])
+        self.assertEqual(["start", "end"], projection["rescued_edges"])
+        self.assertTrue(projection["locally_verified_within_recording_consistency"])
+        self.assertFalse(projection["identity_policy_approved"])
+        self.assertFalse(projection["identity_assignment_authorized"])
+        self.assertEqual(
+            {"start_seconds": 100.0, "end_seconds": 250.0},
+            projection["rejected_deterministic_alternative"],
+        )
+        self.assertAlmostEqual(
+            0.5,
+            projection["reviewed_quality_impact"]["coverage_delta"],
+        )
+        self.assertEqual(
+            0.0,
+            projection["reviewed_quality_impact"]["contamination_delta"],
+        )
+        self.assertTrue(projection["review_required_after_rescue"])
+        self.assertNotIn(
+            "immutable_speaker_evidence_spans",
+            projection["trusted_acoustic_core"],
+        )
+
+        manual_projection = manual["identity_acoustic_core_rescue"]
+        self.assertFalse(manual_projection["causal_auto_expand"])
+        self.assertFalse(manual_projection["automatic_acoustic_evidence_credited"])
+
+        systemic = aggregate_diagnostic_traces([causal, no_action, manual])
+        summary = systemic["identity_acoustic_core_rescue_summary"]
+        self.assertEqual(3, summary["observed_decision_count"])
+        self.assertEqual(1, summary["automatic_outward_rescue_count"])
+        self.assertEqual({"end": 1, "start": 1}, summary["rescued_edge_counts"])
+        self.assertEqual(1, summary["locally_verified_within_recording_count"])
+        self.assertEqual(1, summary["identity_policy_approved_count"])
+        self.assertEqual(1, summary["review_required_after_rescue_count"])
+        self.assertEqual(1, summary["pipeline_manual_override_count"])
+        self.assertEqual(1, summary["manual_override_decision_count"])
+        self.assertEqual(
+            0, summary["manual_override_automatic_evidence_credited_count"]
+        )
+        self.assertEqual(
+            0, summary["persisted_manual_override_evidence_attempt_count"]
+        )
+        self.assertTrue(summary["manual_override_credit_invariant_passed"])
+        self.assertEqual(
+            1,
+            summary["no_action_or_rejection_reason_counts"][
+                "no_deterministically_clipped_adaptive_edge_to_rescue"
+            ],
+        )
+        self.assertIn(
+            "identity_acoustic_core_rescue",
+            causal["component_fingerprints"]["components"],
+        )
+        self.assertEqual(
+            projection,
+            compact_diagnostic_trace(causal)["identity_acoustic_core_rescue"],
+        )
+        before_trace = json.loads(json.dumps(causal))
+        before_trace["identity_acoustic_core_rescue"] = {"status": "not_observed"}
+        before_trace["component_fingerprints"]["components"].pop(
+            "identity_acoustic_core_rescue"
+        )
+        comparison = compare_systemic_reports(
+            {"traces": [before_trace]}, {"traces": [causal]}
+        )
+        self.assertIn(
+            "identity_evidence_changed",
+            comparison["runs"][0]["change_reasons"],
+        )
+        markdown = build_systemic_markdown(systemic)
+        self.assertIn("## Identity acoustic-core rescue", markdown)
+        self.assertIn("causal-rescue", markdown)
+
+    def test_acoustic_core_rescue_does_not_infer_causality_from_timestamps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["identity_boundary_review"] = {
+                "policy_version": "identity_boundary_review_v3",
+                "created_at": "2026-09-05T12:00:00+00:00",
+                "acoustic_core_rescue": {
+                    "schema_version": 1,
+                    "decision": "auto_expand",
+                    "created_at": "2026-09-05T12:00:01+00:00",
+                    "reason_codes": ["trusted_acoustic_core_protected"],
+                    "manual_override_used_as_evidence": False,
+                    "boundary_before_rescue": {
+                        "start_seconds": 100.0,
+                        "end_seconds": 300.0,
+                    },
+                    "boundary_after_rescue": {
+                        "start_seconds": 100.0,
+                        "end_seconds": 300.0,
+                    },
+                },
+            }
+            proposed_path.write_text(json.dumps(proposed), encoding="utf-8")
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="unchanged-rescue",
+            )
+
+        rescue = trace["identity_acoustic_core_rescue"]
+        self.assertFalse(rescue["boundary_changed"])
+        self.assertFalse(rescue["causal_auto_expand"])
+        self.assertEqual("not_credited", rescue["causal_basis"])
+
     def test_identity_signal_unconsumed_requires_same_edge_overreach(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

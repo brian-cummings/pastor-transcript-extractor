@@ -76,6 +76,15 @@ edge, the trace emits `identity_signal_unconsumed`. This is a diagnostic gap, no
 to trim automatically: it means the pipeline did not persist whether the signal was ignored,
 accepted, rejected, or routed to review.
 
+Persisted `identity_boundary_review.acoustic_core_rescue` evidence has a separate diagnostic
+projection. It reports trusted core provenance, locally verified within-recording consistency
+versus identity-policy approval, no-action reasons, automatic outward start/end rescues, and
+the persisted before/after and rejected deterministic windows. Rescue causality is credited
+only for `decision=auto_expand` with different persisted boundaries. Reviewed recall and
+contamination deltas evaluate that exact persisted movement when fixture truth is available;
+they never enter runtime policy. Manual overrides are reported separately and cannot be
+credited as automatic acoustic evidence.
+
 ## Single-run diagnosis
 
 This command reads the latest existing `proposed.json` and does not rerun extraction or
@@ -201,6 +210,7 @@ immediately before a manual override. Each affected trace declares these limitat
 the instrumentation required to resolve them. That keeps missing evidence visible instead
 of silently turning it into a causal claim.
 
-Identity artifacts currently persist edge inconsistency advisories but not the adjustment
-event that consumed them. Diagnostics therefore surface the evidence and any later boundary
-movement while explicitly withholding causal attribution.
+Historical edge inconsistency advisories still may not persist the adjustment event that
+consumed them. Diagnostics surface those advisories and any later movement while withholding
+causal attribution. In contrast, an acoustic-core rescue with its own persisted decision and
+changed before/after boundaries can be reported causally without relying on timestamps.
