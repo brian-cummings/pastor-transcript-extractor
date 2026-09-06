@@ -719,6 +719,175 @@ class HybridClassificationTests(unittest.TestCase):
             arbitration["edge_decisions"][0]["evidence"]["recall_guard_passed"]
         )
 
+    def test_substantial_disagreement_allows_one_bounded_precision_nudge(self) -> None:
+        drafts = [
+            SegmentDraft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "brief congregational response"
+                if index == 4
+                else "sermon application",
+                None,
+                TranscriptSegmentLabel.PRAYER
+                if index == 4
+                else TranscriptSegmentLabel.SERMON,
+                0.8,
+            )
+            for index in range(120)
+        ]
+        window = {
+            "start_seconds": 900.0,
+            "end_seconds": 2700.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(30, 90)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v5",
+            "fixture",
+            "fixture",
+            "high",
+            list(range(120)),
+            [],
+            [],
+            [],
+            [],
+            [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(12)),
+                    "boundary_recovery": {
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=False
+        )
+
+        self.assertTrue(arbitration["substantial_disagreement"])
+        self.assertEqual(150.0, window["start_seconds"])
+        self.assertEqual(3600.0, window["end_seconds"])
+        start = arbitration["edge_decisions"][0]
+        self.assertEqual("internal_transition_selected", start["decision"])
+        self.assertEqual(
+            "bounded_precision_nudge_without_exposition_loss",
+            start["reason"],
+        )
+        self.assertTrue(start["evidence"]["bounded_precision_nudge"])
+        self.assertEqual(180.0, start["evidence"]["bounded_precision_nudge_limit_seconds"])
+
+    def test_bounded_precision_nudge_rejects_removed_exposition(self) -> None:
+        drafts = [
+            draft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "Our message title is Hope"
+                if index == 4
+                else "Paul teaches from chapter 3"
+                if index == 2
+                else "sermon application",
+            )
+            for index in range(120)
+        ]
+        window = {
+            "start_seconds": 900.0,
+            "end_seconds": 2700.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(30, 90)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v5", "fixture", "fixture", "high",
+            list(range(120)), [], [], [], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(12)),
+                    "boundary_recovery": {
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=False
+        )
+
+        self.assertEqual(0.0, window["start_seconds"])
+        self.assertEqual(
+            "adaptive_retained",
+            arbitration["edge_decisions"][0]["decision"],
+        )
+
+    def test_bounded_precision_nudge_cannot_exceed_recall_budget(self) -> None:
+        drafts = [
+            SegmentDraft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "brief congregational response"
+                if index == 6
+                else "sermon application",
+                None,
+                TranscriptSegmentLabel.PRAYER
+                if index == 6
+                else TranscriptSegmentLabel.SERMON,
+                0.8,
+            )
+            for index in range(120)
+        ]
+        window = {
+            "start_seconds": 900.0,
+            "end_seconds": 2700.0,
+            "confidence": 0.9,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(30, 90)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v5", "fixture", "fixture", "high",
+            list(range(120)), [], [], [], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(12)),
+                    "boundary_recovery": {
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=False
+        )
+
+        self.assertEqual(0.0, window["start_seconds"])
+        self.assertEqual(
+            "adaptive_retained",
+            arbitration["edge_decisions"][0]["decision"],
+        )
+        self.assertEqual(
+            180.0,
+            arbitration["edge_decisions"][0]["evidence"]
+            ["bounded_precision_nudge_limit_seconds"],
+        )
+
     def test_arbitration_trims_explicit_post_sermon_program_only(self) -> None:
         drafts = [
             SegmentDraft(

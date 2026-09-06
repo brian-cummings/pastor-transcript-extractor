@@ -42,7 +42,9 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.storage import Database
 
 
-WINDOW_ARBITRATION_POLICY_VERSION = "recall_guarded_internal_edges_v3"
+WINDOW_ARBITRATION_POLICY_VERSION = "recall_guarded_internal_edges_v4"
+MAX_BOUNDED_PRECISION_NUDGE_FRACTION = 0.05
+MAX_BOUNDED_PRECISION_NUDGE_SECONDS = 180.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -594,6 +596,8 @@ def _compose_recall_guarded_edges(
     drafts: list[SegmentDraft],
     hybrid: HybridSermonResult,
     rule_alternative: dict[str, Any],
+    *,
+    allow_bounded_precision_nudge: bool = False,
 ) -> list[dict[str, Any]]:
     """Use an inward rule edge only when removed content is independently non-sermon."""
     decisions: list[dict[str, Any]] = []
@@ -602,6 +606,61 @@ def _compose_recall_guarded_edges(
         return decisions
     adaptive_start = float(window["start_seconds"])
     adaptive_end = float(window["end_seconds"])
+    adaptive_duration = adaptive_end - adaptive_start
+    nudge_limit = min(
+        MAX_BOUNDED_PRECISION_NUDGE_SECONDS,
+        adaptive_duration * MAX_BOUNDED_PRECISION_NUDGE_FRACTION,
+    )
+    bounded_candidates: list[tuple[int, float, str]] = []
+    if allow_bounded_precision_nudge and nudge_limit > 0.0:
+        for candidate_edge in ("start", "end"):
+            rule_boundary = rule_alternative.get(f"{candidate_edge}_seconds")
+            adaptive_boundary = window.get(f"{candidate_edge}_seconds")
+            inward = (
+                isinstance(rule_boundary, (int, float))
+                and isinstance(adaptive_boundary, (int, float))
+                and (
+                    rule_boundary > adaptive_boundary
+                    if candidate_edge == "start"
+                    else rule_boundary < adaptive_boundary
+                )
+            )
+            if not inward:
+                continue
+            internal = _find_internal_edge_transition(
+                drafts,
+                adaptive_indexes,
+                edge=candidate_edge,
+                adaptive_start=adaptive_start,
+                adaptive_end=adaptive_end,
+            )
+            if internal is None:
+                continue
+            internal_boundary = float(internal["boundary_seconds"])
+            trim_seconds = abs(internal_boundary - float(adaptive_boundary))
+            evidence = _edge_trim_evidence(
+                drafts,
+                adaptive_indexes,
+                edge=candidate_edge,
+                boundary=internal_boundary,
+            )
+            if (
+                trim_seconds <= nudge_limit
+                and evidence["recall_guard_passed"]
+                and internal.get("transition_kind")
+                in {
+                    "explicit_sermon_anchor",
+                    "service_to_sermon_transition",
+                    "explicit_closing_handoff",
+                    "sustained_music_transition",
+                }
+            ):
+                bounded_candidates.append(
+                    (int(internal.get("score") or 0), -trim_seconds, candidate_edge)
+                )
+    bounded_nudge_edge = (
+        max(bounded_candidates)[2] if bounded_candidates else None
+    )
     for edge in ("start", "end"):
         rule_boundary = rule_alternative.get(f"{edge}_seconds")
         adaptive_boundary = window.get(f"{edge}_seconds")
@@ -636,6 +695,10 @@ def _compose_recall_guarded_edges(
                     and trim_evidence["strong_service_content"]
                     and trim_evidence["structural_transition"]
                 )
+                bounded_precision_nudge = (
+                    not select_internal and edge == bounded_nudge_edge
+                )
+                select_internal = select_internal or bounded_precision_nudge
                 if select_internal:
                     window[f"{edge}_seconds"] = internal_boundary
                 decisions.append({
@@ -647,7 +710,9 @@ def _compose_recall_guarded_edges(
                     ),
                     "reason": (
                         "boundary_local_structural_transition_without_sermon_loss"
-                        if select_internal
+                        if select_internal and not bounded_precision_nudge
+                        else "bounded_precision_nudge_without_exposition_loss"
+                        if bounded_precision_nudge
                         else "internal_transition_rejected_by_recall_guard"
                     ),
                     "rule_boundary_seconds": rule_boundary,
@@ -658,7 +723,17 @@ def _compose_recall_guarded_edges(
                     "rejected_boundary_seconds": (
                         None if select_internal else internal_boundary
                     ),
-                    "evidence": {**internal, **trim_evidence},
+                    "evidence": {
+                        **internal,
+                        **trim_evidence,
+                        "bounded_precision_nudge": bounded_precision_nudge,
+                        "bounded_precision_nudge_limit_seconds": round(
+                            nudge_limit, 3
+                        ),
+                        "bounded_precision_nudge_fraction": (
+                            MAX_BOUNDED_PRECISION_NUDGE_FRACTION
+                        ),
+                    },
                 })
                 continue
         if not inward:
@@ -841,7 +916,11 @@ def _arbitrate_hybrid_window(
     if choose_adaptive:
         _promote_hybrid_window(window, drafts, hybrid)
         edge_decisions = _compose_recall_guarded_edges(
-            window, drafts, hybrid, rule_alternative
+            window,
+            drafts,
+            hybrid,
+            rule_alternative,
+            allow_bounded_precision_nudge=substantial_disagreement,
         )
         decision = "adaptive_selected"
         reason = (
