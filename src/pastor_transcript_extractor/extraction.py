@@ -42,7 +42,7 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.storage import Database
 
 
-WINDOW_ARBITRATION_POLICY_VERSION = "verified_semantic_continuity_v5"
+WINDOW_ARBITRATION_POLICY_VERSION = "verified_semantic_continuity_v6"
 MAX_BOUNDED_PRECISION_NUDGE_FRACTION = 0.05
 MAX_BOUNDED_PRECISION_NUDGE_SECONDS = 180.0
 
@@ -934,6 +934,11 @@ def _arbitrate_hybrid_window(
         if isinstance(recovery, dict)
         else []
     )
+    objective_segment_precision = (
+        recovery.get("objective_segment_precision") or []
+        if isinstance(recovery, dict)
+        else []
+    )
     discarded_components = (
         recovery.get("discarded_component_block_ids") or []
         if isinstance(recovery, dict)
@@ -1054,9 +1059,23 @@ def _arbitrate_hybrid_window(
             isinstance(evidence, dict)
             and int(evidence.get("sermon_exposition_segment_count") or 0) >= 3
         )
+        adaptive_has_objective_boundary = any(
+            isinstance(item, dict)
+            and item.get("edge") == edge_decision.get("edge")
+            and item.get("decision") == "retained_pre_transition_segments"
+            and isinstance(item.get("boundary_seconds"), (int, float))
+            and abs(float(item["boundary_seconds"]) - float(adaptive_boundary))
+            <= 1.0
+            for item in objective_segment_precision
+        )
+        if adaptive_has_objective_boundary:
+            edge_decision["resolution"] = (
+                "adaptive_boundary_has_objective_segment_transition"
+            )
         if (
             disagreement >= max(180.0, selected_duration * 0.08)
             and not adaptive_has_recall_support
+            and not adaptive_has_objective_boundary
         ):
             unresolved_edges.append({
                 "edge": edge_decision.get("edge"),

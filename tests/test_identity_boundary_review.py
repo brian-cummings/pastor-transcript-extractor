@@ -427,7 +427,7 @@ class IdentityBoundaryReviewTests(unittest.TestCase):
     def test_changed_arbitration_invalidates_boundary_review_synchronization(self) -> None:
         classification = self.automatic_classification()
         classification["window_arbitration"] = {
-            "policy_version": "verified_semantic_continuity_v5",
+            "policy_version": "verified_semantic_continuity_v6",
             "reason": "semantic_candidate_selected",
             "selected_window": {"start_seconds": 300.0, "end_seconds": 1500.0},
         }

@@ -724,6 +724,69 @@ class HybridClassificationTests(unittest.TestCase):
             arbitration["reason"],
         )
 
+    def test_exact_objective_candidate_edge_resolves_rule_boundary_disagreement(self) -> None:
+        drafts = [
+            SegmentDraft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "semantic message content",
+                None,
+                TranscriptSegmentLabel.UNKNOWN,
+                0.55,
+            )
+            for index in range(100)
+        ]
+        window = {
+            "start_seconds": 900.0,
+            "end_seconds": 1800.0,
+            "confidence": 0.95,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(30, 60)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v7", "fixture", "fixture", "high",
+            list(range(30, 90)), list(range(30)) + list(range(90, 100)), [], [], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(20)),
+                    "boundary_recovery": {
+                        "anchored_component_block_ids": list(range(20)),
+                        "discarded_component_block_ids": [[1, 2], [47, 48]],
+                        "objective_separator_block_ids": [],
+                        "objective_segment_precision": [{
+                            "edge": "end",
+                            "boundary_seconds": 2700.0,
+                            "decision": "retained_pre_transition_segments",
+                            "guard_reason": "explicit_closing_hymn",
+                        }],
+                        "start": {"status": "semantic_transition"},
+                        "end": {"status": "semantic_transition"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=True,
+            recording_single_sustained_message=True,
+        )
+
+        self.assertFalse(arbitration["unresolved_material_edge_disagreement"])
+        end_edge = next(
+            item for item in arbitration["edge_decisions"] if item["edge"] == "end"
+        )
+        self.assertEqual(
+            "adaptive_boundary_has_objective_segment_transition",
+            end_edge["resolution"],
+        )
+
     def test_post_verifier_pass_clears_only_persisted_eligible_subset_disagreement(self) -> None:
         drafts = [draft(0.0, 600.0, "sermon exposition")]
         window = {
