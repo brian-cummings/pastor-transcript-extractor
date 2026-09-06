@@ -14,8 +14,8 @@ from pastor_transcript_extractor.sermon_classification import recording_structur
 from pastor_transcript_extractor.storage import Database
 
 
-PROMPT_VERSION = "recording-sermon-verifier-v5"
-POLICY_VERSION = "recording-sermon-verifier-policy-v7"
+PROMPT_VERSION = "recording-sermon-verifier-v6"
+POLICY_VERSION = "recording-sermon-verifier-policy-v8"
 ARTIFACT_SCHEMA_VERSION = 1
 DECISIONS = (
     "worship_service_sermon",
@@ -75,6 +75,24 @@ def verifier_schema() -> dict[str, Any]:
             },
         },
         "required": ["decision", "confidence", "reason_codes"],
+        "additionalProperties": False,
+    }
+
+
+def continuity_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "continuity": {
+                "type": "string",
+                "enum": [
+                    "single_sustained_message",
+                    "not_single_sustained_message",
+                    "unclear",
+                ],
+            }
+        },
+        "required": ["continuity"],
         "additionalProperties": False,
     }
 
@@ -200,6 +218,18 @@ When a service-structure prior and later-service samples are supplied, inspect t
 An explicit Bible Class or Sabbath School title is religious education, even when one teacher gives a long monologue, unless the evidence clearly contains a separate worship-service sermon. A sermon-like title or introduction is never sufficient by itself. WORSHIP_SERVICE_SERMON requires both single_sustained_message and independent sermon-specific evidence: sustained_biblical_exposition or sermon_application_or_exhortation.
 Actively check for contradictions before accepting: curriculum or facilitated instruction; ceremonies or extended religious speeches; translation or regular alternation between speakers; and programs containing several speakers without one principal sermon. Include every supported negative or contradictory reason code. If positive and contradictory evidence are both plausible, choose UNCLEAR rather than worship_service_sermon.
 Do not infer that a recording lacks a sermon merely because its opening, closing, or service context contains several speakers. MULTI_SPEAKER_OR_STUDENT_PROGRAM requires evidence that the sampled candidate itself is divided into short messages or regular alternation and has no principal sustained sermon. When one long candidate remains sermon-like but speaker attribution is uncertain, choose UNCLEAR; this verifier decides sermon existence, not pastor identity.
+
+{case.evidence_packet}"""
+
+
+def continuity_prompt(case: RecordingVerifierCase) -> str:
+    return f"""Determine only whether the selected candidate contains one principal sustained message.
+
+SINGLE_SUSTAINED_MESSAGE means one speaker or one principal message develops a coherent theme across the candidate. Brief readings, prayers, congregational responses, illustrations, and quotations do not break continuity.
+NOT_SINGLE_SUSTAINED_MESSAGE means the candidate is actually a sequence of separate short talks, a facilitated group discussion, regular alternating speakers, or disconnected service elements without one principal message.
+UNCLEAR means the excerpts do not establish either conclusion.
+
+Do not decide whether the theology is correct and do not use the title or recording position as proof. Return only the required JSON.
 
 {case.evidence_packet}"""
 
@@ -431,6 +461,7 @@ def verify_recording(
 ) -> dict[str, Any]:
     evidence_packet = build_evidence_packet(title, proposed)
     title_decision = title_program_decision(title)
+    continuity_follow_up: dict[str, Any] | None = None
     if title_decision is not None:
         decision = title_decision
         confidence = "high"
@@ -456,7 +487,8 @@ def verify_recording(
             evidence_packet=evidence_packet,
         )
         try:
-            response, cache_hit = RecordingVerifierCache(cache_dir).generate(
+            cache = RecordingVerifierCache(cache_dir)
+            response, primary_cache_hit = cache.generate(
                 client,
                 model_digest=model_digest,
                 prompt=verifier_prompt(case),
@@ -466,13 +498,55 @@ def verify_recording(
             confidence = response.content.get("confidence")
             reason_codes = response.content.get("reason_codes")
             validate_verdict(response.content)
+            effective_content = dict(response.content)
             model_verdict = {
                 "decision": decision,
                 "confidence": confidence,
                 "reason_codes": list(reason_codes),
             }
+            should_confirm_continuity = (
+                decision == "worship_service_sermon"
+                and "single_sustained_message" not in reason_codes
+                and bool(SERMON_SPECIFIC_REASON_CODES & set(reason_codes))
+                and not bool(CONTRADICTORY_REASON_CODES & set(reason_codes))
+            )
+            follow_up_cache_hit = True
+            if should_confirm_continuity:
+                try:
+                    follow_up, follow_up_cache_hit = cache.generate(
+                        client,
+                        model_digest=model_digest,
+                        prompt=continuity_prompt(case),
+                        schema=continuity_schema(),
+                    )
+                    continuity = follow_up.content.get("continuity")
+                    if continuity not in {
+                        "single_sustained_message",
+                        "not_single_sustained_message",
+                        "unclear",
+                    }:
+                        raise ValueError("continuity follow-up returned an unsupported decision")
+                    continuity_follow_up = {
+                        "decision": continuity,
+                        "cache_hit": follow_up_cache_hit,
+                        "raw_response": follow_up.raw_content,
+                        "error": None,
+                    }
+                    if continuity == "single_sustained_message":
+                        effective_content["reason_codes"] = [
+                            *reason_codes,
+                            "single_sustained_message",
+                        ]
+                except Exception as follow_up_error:
+                    continuity_follow_up = {
+                        "decision": "unclear",
+                        "cache_hit": False,
+                        "raw_response": None,
+                        "error": f"{type(follow_up_error).__name__}: {follow_up_error}",
+                    }
+                    follow_up_cache_hit = False
             policy = _apply_acceptance_policy(
-                response.content, proposed=proposed, title=title
+                effective_content, proposed=proposed, title=title
             )
             decision = policy["decision"]
             confidence = policy["confidence"]
@@ -481,6 +555,7 @@ def verify_recording(
             contradictory_reason_codes = policy["contradictory_reason_codes"]
             policy_reason_codes = policy["policy_reason_codes"]
             source = "llm_recording_verifier"
+            cache_hit = primary_cache_hit and follow_up_cache_hit
             raw_response = response.raw_content
             error = None
         except Exception as caught:
@@ -523,6 +598,7 @@ def verify_recording(
         "confidence": confidence,
         "reason_codes": reason_codes,
         "model_verdict": model_verdict,
+        "continuity_follow_up": continuity_follow_up,
         "sermon_specific_reason_codes": sermon_specific_reason_codes,
         "contradictory_reason_codes": contradictory_reason_codes,
         "policy_reason_codes": policy_reason_codes,

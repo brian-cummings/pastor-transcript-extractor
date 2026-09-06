@@ -17,12 +17,12 @@ from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v2"
+CONFIDENCE_POLICY_VERSION = "semantic_primary_rule_guard_v3"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
-FINE_COMPONENT_VERSION = "objective-noise-components+structural-edges-v3"
-SEARCH_ALGORITHM_VERSION = "adaptive_llm_v6"
-POSITION_PRIOR_VERSION = "service-position-prior-v1"
+FINE_COMPONENT_VERSION = "objective-service-guards+structural-edges-v4"
+SEARCH_ALGORITHM_VERSION = "adaptive_llm_v7"
+POSITION_PRIOR_VERSION = "service-position-prior-v2"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
 MAX_PRE_ANCHOR_RECOVERY_SECONDS = 180.0
 
@@ -796,6 +796,60 @@ def _strong_pre_anchor_negative(block: TranscriptBlock, drafts: list[SegmentDraf
     return None
 
 
+_FINE_NEGATIVE_REASON_LABELS = {
+    "music_or_lyrics": ContentLabel.MUSIC,
+    "logistics_or_welcome": ContentLabel.ANNOUNCEMENTS,
+    "speaker_handoff": ContentLabel.SPEAKER_INTRODUCTION,
+    "service_closing": ContentLabel.CLOSING_SERVICE,
+    "service_prayer": ContentLabel.SERVICE_PRAYER,
+    "service_reading": ContentLabel.SERVICE_READING,
+}
+
+
+def _objective_service_guard(
+    block: TranscriptBlock, drafts: list[SegmentDraft]
+) -> tuple[ContentLabel, str] | None:
+    """Recognize only high-precision service material that cannot be sermon continuity."""
+    if _noise_ratio(block, drafts) >= 0.35:
+        return ContentLabel.MUSIC, "objective_music_marker"
+    text = " ".join(drafts[index].text.casefold() for index in block.segment_indexes)
+    guarded_patterns = (
+        (ContentLabel.CLOSING_SERVICE, "explicit_closing_hymn", r"\bclosing hymn\b"),
+        (ContentLabel.MUSIC, "explicit_special_music", r"\b(?:special music|going to sing)\b"),
+        (
+            ContentLabel.ANNOUNCEMENTS,
+            "explicit_offering",
+            r"\b(?:today(?:'s)? offering|lamb(?:'s)? offering|offering is for)\b",
+        ),
+        (
+            ContentLabel.ANNOUNCEMENTS,
+            "explicit_children_story",
+            r"\b(?:children(?:'s)? story|children(?:'s)? corner)\b",
+        ),
+    )
+    for label, reason, pattern in guarded_patterns:
+        if re.search(pattern, text):
+            return label, reason
+    return None
+
+
+def _guard_fine_classification(
+    block: TranscriptBlock,
+    drafts: list[SegmentDraft],
+    label: ContentLabel,
+    reason: str,
+) -> tuple[ContentLabel, str | None]:
+    objective = _objective_service_guard(block, drafts)
+    if objective is not None:
+        guarded_label, guard_reason = objective
+        if guarded_label != label:
+            return guarded_label, guard_reason
+    reason_label = _FINE_NEGATIVE_REASON_LABELS.get(reason)
+    if label in RETAINED_LABELS and reason_label is not None:
+        return reason_label, f"reason_label_conflict:{reason}"
+    return label, None
+
+
 def _refine_retained_boundaries(
     drafts: list[SegmentDraft],
     fine_blocks: list[TranscriptBlock],
@@ -1152,7 +1206,7 @@ def _central_consistency_warnings(
 
 def _adaptive_confidence_tier(
     *,
-    agreement: float,
+    agreement: float | None,
     retained: bool,
     uncertain: bool,
     consistency_failed: bool,
@@ -1161,7 +1215,9 @@ def _adaptive_confidence_tier(
         return "low"
     if uncertain:
         return "medium"
-    return "medium" if agreement < 0.5 else "high"
+    # Rule overlap is corroboration when present, not a prerequisite for semantic
+    # confidence. Localized structural guards handle deterministic contradictions.
+    return "high"
 
 
 def _long_recording_edge_expansion(
@@ -1494,6 +1550,7 @@ def classify_sermon_content_adaptive(
     ]
     inspected_positions = set(initial_positions)
     fine_audit_by_position: dict[int, BlockClassification] = {}
+    fine_guard_adjustments: list[dict[str, Any]] = []
     retained: set[int] = set()
     uncertain_ids: list[int] = []
     rule_indexes = set(rule_window.included_segment_indexes)
@@ -1503,7 +1560,10 @@ def classify_sermon_content_adaptive(
             return
         block = all_fine_blocks[position]
         if progress is not None:
-            progress("fine", len(fine_audit_by_position) + 1, len(all_fine_blocks))
+            # Report the actual recording block, not the ordinal number of this
+            # inference call. Boundary probes may move backward after the initial
+            # candidate scan, so call ordinals misleadingly looked like block 1.
+            progress("fine", position + 1, len(all_fine_blocks))
         previous = all_fine_blocks[position - 1] if position else None
         following = all_fine_blocks[position + 1] if position + 1 < len(all_fine_blocks) else None
         prompt = _prompt(block, previous, following)
@@ -1519,6 +1579,20 @@ def classify_sermon_content_adaptive(
         reason = response.content.get("reason_code")
         if not isinstance(reason, str):
             raise ValueError("Local LLM did not return a reason code")
+        guarded_label, guard_reason = _guard_fine_classification(
+            block, drafts, label, reason
+        )
+        if guard_reason is not None:
+            fine_guard_adjustments.append(
+                {
+                    "block_id": block.block_id,
+                    "model_label": label.value,
+                    "effective_label": guarded_label.value,
+                    "reason_code": reason,
+                    "guard_reason": guard_reason,
+                }
+            )
+        label = guarded_label
         fine_audit_by_position[position] = BlockClassification(
             block.block_id, label, f"fine:{reason}", response.raw_content
         )
@@ -1613,11 +1687,12 @@ def classify_sermon_content_adaptive(
                 block = all_fine_blocks[adjacent]
                 classification = fine_audit_by_position[adjacent]
                 probed_block_ids.append(block.block_id)
-                if _noise_ratio(block, drafts) >= 0.45:
+                objective_guard = _objective_service_guard(block, drafts)
+                if objective_guard is not None:
                     retained.difference_update(block.segment_indexes)
                     stopping_block_id = block.block_id
-                    stopping_label = "objective_noise"
-                    status = "objective_noise"
+                    stopping_label = objective_guard[1]
+                    status = "objective_service_boundary"
                     break
                 if classification.label not in RETAINED_LABELS:
                     stopping_block_id = block.block_id
@@ -1702,12 +1777,8 @@ def classify_sermon_content_adaptive(
         retained,
         rule_window,
         allow_unbaselined_transition=(
-            selected_candidate.get("source") == "coarse_likelihood_rescue"
-            and (
-                bool(selected_score.get("matched_sermon_cues"))
-                or float(selected_score.get("sermon_specific_support_ratio", 0.0))
-                >= 0.9
-            )
+            bool(selected_score.get("matched_sermon_cues"))
+            or float(selected_score.get("sermon_specific_support_ratio", 0.0)) >= 0.75
         ),
     )
     if any(item.get("edge") for item in structural_precision):
@@ -1768,10 +1839,18 @@ def classify_sermon_content_adaptive(
     selected_candidate["boundary_recovery"] = boundary_recovery
 
     all_timed = {index for block in build_transcript_blocks(drafts) for index in block.segment_indexes}
-    agreement = len(retained & rule_indexes) / max(len(retained | rule_indexes), 1)
+    agreement = (
+        len(retained & rule_indexes) / max(len(retained | rule_indexes), 1)
+        if rule_indexes
+        else None
+    )
     warnings: list[str] = []
-    if agreement < 0.5:
+    if agreement is not None and agreement < 0.5:
         warnings.append("adaptive LLM and rule-based sermon windows disagree substantially")
+    if fine_guard_adjustments:
+        warnings.append(
+            "localized deterministic guards corrected contradictory fine service labels"
+        )
     if uncertain_ids:
         warnings.append("one or more refined blocks require boundary review")
     if boundary_probe_required:
@@ -1784,14 +1863,21 @@ def classify_sermon_content_adaptive(
     consistency_warnings = _central_consistency_warnings(
         drafts, retained, fine_blocks, fine_audit, coarse_blocks, phases
     )
-    if (
+    hard_consistency_failure = any(
+        "fine labels do not show sustained exposition" in warning
+        or "candidate has no timestamped" in warning
+        for warning in consistency_warnings
+    )
+    edge_to_edge_without_cue = (
         boundary_recovery["start"].get("status") == "recording_edge"
         and boundary_recovery["end"].get("status") == "recording_edge"
         and not selected_candidate["score_components"].get("matched_sermon_cues")
-    ):
+    )
+    if edge_to_edge_without_cue:
         consistency_warnings.append(
             "candidate spans both recording edges without an explicit sermon boundary cue"
         )
+        hard_consistency_failure = True
     warnings.extend(consistency_warnings)
     post_refinement_rescue_reasons: list[str] = []
     if consistency_warnings:
@@ -1824,15 +1910,29 @@ def classify_sermon_content_adaptive(
             or boundary_probe_required
             or long_edge_expansion is not None
         ),
-        consistency_failed=bool(consistency_warnings),
+        consistency_failed=hard_consistency_failure,
     )
     confidence_reasons = [
         {
             "code": "rule_llm_agreement",
-            "value": round(agreement, 6),
+            "value": round(agreement, 6) if agreement is not None else None,
+            "rule_evidence_state": "supports_or_compares" if agreement is not None else "abstains",
             "strong_support_threshold": 0.8,
             "soft_penalty_threshold": 0.5,
-            "effect": "small_positive" if agreement >= 0.8 else "downgrades_high_to_medium" if agreement < 0.5 else "neutral",
+            "effect": (
+                "no_effect"
+                if agreement is None
+                else "small_positive"
+                if agreement >= 0.8
+                else "advisory_only"
+                if agreement < 0.5
+                else "neutral"
+            ),
+        },
+        {
+            "code": "localized_service_guards",
+            "adjustments": fine_guard_adjustments,
+            "effect": "excluded_high_precision_service_content",
         },
         {
             "code": "uncertain_blocks",
@@ -1860,7 +1960,9 @@ def classify_sermon_content_adaptive(
         {
             "code": "central_consistency",
             "warnings": list(consistency_warnings),
-            "effect": "forces_low" if consistency_warnings else "passed",
+            "effect": "forces_low" if hard_consistency_failure else (
+                "advisory_only" if consistency_warnings else "passed"
+            ),
         },
         {
             "code": "confidence_decision",

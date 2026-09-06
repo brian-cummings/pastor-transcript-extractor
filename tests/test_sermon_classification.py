@@ -44,6 +44,7 @@ from pastor_transcript_extractor.sermon_classification import (
     _adaptive_confidence_tier,
     _apply_refinement_retention_safety,
     _coarse_candidate_ranges,
+    _guard_fine_classification,
     _joined_candidate,
     _long_recording_edge_expansion,
     _refine_retained_boundaries,
@@ -583,12 +584,62 @@ class HybridClassificationTests(unittest.TestCase):
 
         self.assertEqual("adaptive_selected", arbitration["decision"])
         self.assertEqual(
-            "coherent_refined_evidence_stronger_than_short_rule_window",
+            "deterministic_rule_disagreement_is_advisory",
             arbitration["reason"],
         )
         self.assertEqual("detected", arbitration["rejected_alternative"]["source"])
         self.assertEqual("hybrid_llm", rule_window["source"])
         self.assertEqual("sermon_existence_only", arbitration["recording_verifier_role"])
+
+    def test_rule_window_absence_abstains_and_does_not_block_semantic_window(self) -> None:
+        drafts = [draft(index * 30.0, (index + 1) * 30.0, "sermon") for index in range(40)]
+        window = {
+            "start_seconds": None,
+            "end_seconds": None,
+            "confidence": 0.15,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": [],
+            "excluded_segment_indexes": list(range(40)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            SEARCH_ALGORITHM_VERSION,
+            "fixture",
+            "fixture",
+            "medium",
+            list(range(5, 35)),
+            list(range(5)) + list(range(35, 40)),
+            [],
+            [],
+            [],
+            [],
+            search={
+                "selected_rank": 1,
+                "candidates": [
+                    {
+                        "rank": 1,
+                        "fine_support_block_ids": list(range(10)),
+                        "boundary_recovery": {
+                            "start": {"status": "semantic_transition"},
+                            "end": {"status": "semantic_transition"},
+                        },
+                    }
+                ],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window, drafts, hybrid, recording_sermon_confirmed=True
+        )
+
+        self.assertEqual("abstains", arbitration["rule_evidence_state"])
+        self.assertEqual(0.0, arbitration["rule_evidence_score"])
+        self.assertEqual("adaptive_selected", arbitration["decision"])
+        self.assertEqual(
+            "deterministic_rules_abstained_semantic_window_selected",
+            arbitration["reason"],
+        )
 
     def test_recording_edge_refinement_still_beats_thirty_percent_rule_shape(self) -> None:
         drafts = [draft(index * 30.0, (index + 1) * 30.0, "sermon") for index in range(100)]
@@ -1127,8 +1178,17 @@ class HybridClassificationTests(unittest.TestCase):
 
         self.assertEqual(list(range(6, 12)), result["retained_segment_indexes"])
         recovery = result["search"]["candidates"][0]["boundary_recovery"]
-        self.assertEqual([4, 5], recovery["objective_separator_block_ids"])
+        self.assertEqual([], recovery["objective_separator_block_ids"])
         self.assertIn([0, 1, 2, 3], recovery["discarded_component_block_ids"])
+        guard_evidence = next(
+            item
+            for item in result["confidence_reasons"]
+            if item["code"] == "localized_service_guards"
+        )
+        self.assertEqual(
+            [4, 5],
+            [item["block_id"] for item in guard_evidence["adjustments"]],
+        )
 
     def test_adaptive_search_anchors_to_candidate_overlapping_fine_component(self) -> None:
         texts = ["administration" for _ in range(16)]
@@ -1356,9 +1416,18 @@ class HybridClassificationTests(unittest.TestCase):
             )
         )
 
-    def test_adaptive_confidence_treats_rule_overlap_as_a_soft_penalty(self) -> None:
+    def test_adaptive_confidence_treats_rule_overlap_as_corroboration_only(self) -> None:
         self.assertEqual(
-            "medium",
+            "high",
+            _adaptive_confidence_tier(
+                agreement=None,
+                retained=True,
+                uncertain=False,
+                consistency_failed=False,
+            ),
+        )
+        self.assertEqual(
+            "high",
             _adaptive_confidence_tier(
                 agreement=0.0,
                 retained=True,
@@ -1384,6 +1453,20 @@ class HybridClassificationTests(unittest.TestCase):
                 consistency_failed=True,
             ),
         )
+
+    def test_fine_reason_conflict_excludes_service_content(self) -> None:
+        drafts = [draft(0.0, 90.0, "And now we have special music")]
+        block = TranscriptBlock(0, [0], 0.0, 90.0, drafts[0].text)
+
+        label, guard_reason = _guard_fine_classification(
+            block,
+            drafts,
+            ContentLabel.SERMON,
+            "music_or_lyrics",
+        )
+
+        self.assertEqual(ContentLabel.MUSIC, label)
+        self.assertEqual("explicit_special_music", guard_reason)
 
     def test_targetless_reclassify_updates_only_existing_extraction_artifacts_and_reuses_result(
         self,

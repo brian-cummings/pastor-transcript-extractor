@@ -833,14 +833,21 @@ def _arbitrate_hybrid_window(
         for edge in ("start", "end")
     ] if isinstance(recovery, dict) else []
     consistency_failed = any(
-        "candidate center" in warning or "candidate has no timestamped" in warning
+        "fine labels do not show sustained exposition" in warning
+        or "candidate has no timestamped" in warning
         for warning in hybrid.warnings
     )
     adaptive_score = (
         (2.0 if fine_support_count >= 3 else 0.5 if fine_support_count else 0.0)
         + (1.0 if not hybrid.uncertain_block_ids else 0.0)
         + sum(
-            0.5 if status in {"semantic_transition", "objective_noise"} else 0.15
+            0.5
+            if status in {
+                "semantic_transition",
+                "objective_noise",
+                "objective_service_boundary",
+            }
+            else 0.15
             if status == "recording_edge"
             else 0.0
             for status in boundary_statuses
@@ -848,13 +855,21 @@ def _arbitrate_hybrid_window(
         - (1.0 if consistency_failed else 0.0)
     )
     rule_confidence = window.get("confidence")
+    rule_evidence_state = (
+        "abstains"
+        if not rule_indexes
+        else "supports"
+        if overlap >= 0.5
+        else "advisory_disagreement"
+    )
     rule_score = (
         max(0.0, min(float(rule_confidence), 1.0)) * 2.0
-        if isinstance(rule_confidence, (int, float))
+        if rule_indexes and isinstance(rule_confidence, (int, float))
         else 0.0
     )
-    rule_score += 0.75 if window.get("suspicious_boundary") is not True else 0.0
-    rule_score += 0.25 if window.get("source") == "detected" else 0.0
+    if rule_indexes:
+        rule_score += 0.75 if window.get("suspicious_boundary") is not True else 0.0
+        rule_score += 0.25 if window.get("source") == "detected" else 0.0
     rule_duration = (
         float(window["end_seconds"]) - float(window["start_seconds"])
         if isinstance(window.get("start_seconds"), (int, float))
@@ -912,9 +927,9 @@ def _arbitrate_hybrid_window(
     adaptive_stronger = (
         adaptive_score > rule_score + 0.25 or coherent_supported_extension
     )
-    choose_adaptive = (
-        not substantial_disagreement and hybrid.confidence_tier != "low"
-    ) or (substantial_disagreement and adaptive_stronger)
+    choose_adaptive = hybrid.confidence_tier != "low" or (
+        substantial_disagreement and adaptive_stronger
+    )
     if choose_adaptive:
         _promote_hybrid_window(window, drafts, hybrid)
         edge_decisions = _compose_recall_guarded_edges(
@@ -927,7 +942,11 @@ def _arbitrate_hybrid_window(
         decision = "adaptive_selected"
         reason = (
             "coherent_refined_evidence_stronger_than_short_rule_window"
+            if coherent_supported_extension
+            else "deterministic_rule_disagreement_is_advisory"
             if substantial_disagreement
+            else "deterministic_rules_abstained_semantic_window_selected"
+            if rule_evidence_state == "abstains"
             else "rule_and_adaptive_windows_are_compatible"
         )
         rejected = rule_alternative
@@ -985,6 +1004,7 @@ def _arbitrate_hybrid_window(
         "coherent_supported_extension": coherent_supported_extension,
         "adaptive_evidence_score": round(adaptive_score, 3),
         "rule_evidence_score": round(rule_score, 3),
+        "rule_evidence_state": rule_evidence_state,
         "recording_verifier_role": "sermon_existence_only",
         "recording_sermon_confirmed": recording_sermon_confirmed,
         "rejected_alternative": rejected,

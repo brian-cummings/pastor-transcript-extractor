@@ -48,6 +48,7 @@ class FakeVerifierClient:
         decision: str,
         confidence: str = "high",
         reason_codes: list[str] | None = None,
+        continuity: str = "single_sustained_message",
     ) -> None:
         self.decision = decision
         self.confidence = confidence
@@ -55,13 +56,17 @@ class FakeVerifierClient:
             "single_sustained_message",
             "sustained_biblical_exposition",
         ]
+        self.continuity = continuity
         self.calls = 0
 
     def generate_json(
         self, prompt: str, schema: dict[str, object]
     ) -> LocalLlmResponse:
-        del prompt, schema
+        del prompt
         self.calls += 1
+        if "continuity" in schema.get("properties", {}):
+            content = {"continuity": self.continuity}
+            return LocalLlmResponse(content, str(content), self.model)
         content = {
             "decision": self.decision,
             "confidence": self.confidence,
@@ -149,7 +154,7 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
             validate_partition_access("held_out", confirm_frozen_policy=False)
         validate_partition_access("held_out", confirm_frozen_policy=True)
 
-    def test_missing_sustained_reason_is_policy_review_not_invalid_inference(self) -> None:
+    def test_missing_sustained_reason_uses_focused_continuity_follow_up(self) -> None:
         client = FakeVerifierClient(
             "worship_service_sermon",
             reason_codes=["sustained_biblical_exposition"],
@@ -170,22 +175,44 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
                 cache_dir=Path(tmp),
             )
 
-        self.assertEqual("unclear", result["decision"])
-        self.assertEqual("medium", result["confidence"])
-        self.assertIsNone(result["predicted_outcome"])
+        self.assertEqual("worship_service_sermon", result["decision"])
+        self.assertEqual("high", result["confidence"])
+        self.assertEqual("sermon", result["predicted_outcome"])
         self.assertIsNone(result["error"])
         self.assertIsNotNone(result["raw_response"])
         self.assertEqual(
             "worship_service_sermon",
             result["model_verdict"]["decision"],
         )
+        self.assertEqual(
+            "single_sustained_message",
+            result["continuity_follow_up"]["decision"],
+        )
+        self.assertTrue(cached_result["cache_hit"])
+        self.assertIsNotNone(cached_result["raw_response"])
+        self.assertEqual(2, client.calls)
+
+    def test_negative_continuity_follow_up_preserves_review(self) -> None:
+        client = FakeVerifierClient(
+            "worship_service_sermon",
+            reason_codes=["sustained_biblical_exposition"],
+            continuity="not_single_sustained_message",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = verify_recording(
+                title="Worship Service",
+                proposed={"youtube_video_id": "multiple", **proposed()},
+                client=client,
+                model_digest="digest",
+                cache_dir=Path(tmp),
+            )
+
+        self.assertEqual("unclear", result["decision"])
+        self.assertIsNone(result["predicted_outcome"])
         self.assertIn(
             "missing_single_sustained_message_evidence",
             result["policy_reason_codes"],
         )
-        self.assertTrue(cached_result["cache_hit"])
-        self.assertIsNotNone(cached_result["raw_response"])
-        self.assertEqual(1, client.calls)
 
     def test_early_candidate_cannot_terminally_reject_combined_service(self) -> None:
         payload = proposed()
@@ -280,8 +307,8 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
 
         self.assertEqual("sermon", result["predicted_outcome"])
         self.assertEqual("llm_recording_verifier", result["source"])
-        self.assertEqual("recording-sermon-verifier-v5", result["prompt_version"])
-        self.assertEqual("recording-sermon-verifier-policy-v7", result["policy_version"])
+        self.assertEqual("recording-sermon-verifier-v6", result["prompt_version"])
+        self.assertEqual("recording-sermon-verifier-policy-v8", result["policy_version"])
         self.assertEqual(
             ["sustained_biblical_exposition"],
             result["sermon_specific_reason_codes"],
