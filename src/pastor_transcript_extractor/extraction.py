@@ -42,7 +42,7 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.storage import Database
 
 
-WINDOW_ARBITRATION_POLICY_VERSION = "recall_guarded_internal_edges_v4"
+WINDOW_ARBITRATION_POLICY_VERSION = "verified_semantic_continuity_v5"
 MAX_BOUNDED_PRECISION_NUDGE_FRACTION = 0.05
 MAX_BOUNDED_PRECISION_NUDGE_SECONDS = 180.0
 
@@ -324,6 +324,17 @@ def _not_required_recording_verification(reason: str) -> dict[str, Any]:
         "raw_response": None,
         "error": None,
     }
+
+
+def _recording_single_sustained_message(verification: object) -> bool:
+    if not isinstance(verification, dict):
+        return False
+    reasons = verification.get("reason_codes")
+    return (
+        verification.get("predicted_outcome") == "sermon"
+        and isinstance(reasons, list)
+        and "single_sustained_message" in reasons
+    )
 
 
 def _promote_hybrid_window(
@@ -796,6 +807,7 @@ def _arbitrate_hybrid_window(
     hybrid: HybridSermonResult,
     *,
     recording_sermon_confirmed: bool,
+    recording_single_sustained_message: bool = False,
 ) -> dict[str, Any]:
     """Compare boundary evidence; recording verification never supplies boundaries."""
     if window.get("source") == "override" or not hybrid.retained_segment_indexes:
@@ -808,6 +820,32 @@ def _arbitrate_hybrid_window(
     if window.get("source") == "hybrid_llm" and isinstance(window.get("arbitration"), dict):
         arbitration = dict(window["arbitration"])
         arbitration["recording_sermon_confirmed"] = recording_sermon_confirmed
+        arbitration["recording_single_sustained_message"] = (
+            recording_single_sustained_message
+        )
+        continuity_resolves_subset = (
+            recording_sermon_confirmed
+            and recording_single_sustained_message
+            and hybrid.confidence_tier == "high"
+            and arbitration.get("rule_is_strict_subset") is True
+            and arbitration.get("unresolved_material_edge_disagreement") is True
+            and arbitration.get("semantic_strict_subset_continuity_eligible") is True
+        )
+        if continuity_resolves_subset:
+            previous_edges = list(arbitration.get("unresolved_edges") or [])
+            arbitration["unresolved_material_edge_disagreement"] = False
+            arbitration["unresolved_edges"] = []
+            arbitration["reason"] = (
+                "verified_single_sustained_message_resolved_strict_subset_rule_disagreement"
+            )
+            arbitration["recording_verifier_role"] = (
+                "sermon_existence_and_continuity_resolution"
+            )
+            arbitration["continuity_resolution"] = {
+                "decision": "resolved",
+                "basis": "high_confidence_semantic_window_and_verified_single_sustained_message",
+                "resolved_edges": previous_edges,
+            }
         window["arbitration"] = arbitration
         return arbitration
     rule_indexes = {
@@ -910,8 +948,33 @@ def _arbitrate_hybrid_window(
         and not discarded_components
         and any(status == "recording_edge" for status in boundary_statuses)
     )
+    semantic_strict_subset_continuity_eligible = (
+        hybrid.confidence_tier == "high"
+        and rule_is_strict_subset
+        and rule_retention_of_adaptive < 0.9
+        and clipped_adaptive_seconds >= 60.0
+        and fine_support_count >= 3
+        and not objective_separators
+        and not discarded_components
+    )
+    verified_continuity_strict_subset = (
+        recording_sermon_confirmed
+        and recording_single_sustained_message
+        and semantic_strict_subset_continuity_eligible
+    )
+    verified_sermon_only_edge_coverage = (
+        recording_sermon_confirmed
+        and recording_single_sustained_message
+        and not rule_indexes
+        and fine_support_count >= 3
+        and not hybrid.uncertain_block_ids
+        and not consistency_failed
+        and boundary_statuses == ["recording_edge", "recording_edge"]
+    )
     substantial_disagreement = bool(rule_indexes) and (
-        overlap < 0.5 or coherent_supported_extension
+        overlap < 0.5
+        or coherent_supported_extension
+        or verified_continuity_strict_subset
     )
     rule_alternative = _window_alternative(window)
     adaptive_alternative = {
@@ -925,10 +988,14 @@ def _arbitrate_hybrid_window(
         "boundary_recovery": recovery,
     }
     adaptive_stronger = (
-        adaptive_score > rule_score + 0.25 or coherent_supported_extension
+        adaptive_score > rule_score + 0.25
+        or coherent_supported_extension
+        or verified_continuity_strict_subset
     )
-    choose_adaptive = hybrid.confidence_tier != "low" or (
-        substantial_disagreement and adaptive_stronger
+    choose_adaptive = (
+        hybrid.confidence_tier != "low"
+        or verified_sermon_only_edge_coverage
+        or (substantial_disagreement and adaptive_stronger)
     )
     if choose_adaptive:
         _promote_hybrid_window(window, drafts, hybrid)
@@ -941,7 +1008,11 @@ def _arbitrate_hybrid_window(
         )
         decision = "adaptive_selected"
         reason = (
-            "coherent_refined_evidence_stronger_than_short_rule_window"
+            "verified_single_sustained_message_resolved_sermon_only_edge_coverage"
+            if verified_sermon_only_edge_coverage
+            else "verified_single_sustained_message_resolved_strict_subset_rule_disagreement"
+            if verified_continuity_strict_subset
+            else "coherent_refined_evidence_stronger_than_short_rule_window"
             if coherent_supported_extension
             else "deterministic_rule_disagreement_is_advisory"
             if substantial_disagreement
@@ -1002,11 +1073,17 @@ def _arbitrate_hybrid_window(
         "rule_retention_of_adaptive": round(rule_retention_of_adaptive, 6),
         "clipped_adaptive_seconds": round(clipped_adaptive_seconds, 3),
         "coherent_supported_extension": coherent_supported_extension,
+        "semantic_strict_subset_continuity_eligible": (
+            semantic_strict_subset_continuity_eligible
+        ),
+        "verified_continuity_strict_subset": verified_continuity_strict_subset,
+        "verified_sermon_only_edge_coverage": verified_sermon_only_edge_coverage,
         "adaptive_evidence_score": round(adaptive_score, 3),
         "rule_evidence_score": round(rule_score, 3),
         "rule_evidence_state": rule_evidence_state,
         "recording_verifier_role": "sermon_existence_only",
         "recording_sermon_confirmed": recording_sermon_confirmed,
+        "recording_single_sustained_message": recording_single_sustained_message,
         "rejected_alternative": rejected,
         "edge_decisions": edge_decisions,
         "unresolved_material_edge_disagreement": bool(unresolved_edges),
@@ -1202,10 +1279,17 @@ def reclassify_video(
     )
     classification["recording_verification"] = recording_verification
     payload["recording_verification"] = recording_verification
-    arbitration = classification.get("window_arbitration")
-    if isinstance(arbitration, dict):
-        arbitration["recording_sermon_confirmed"] = (
-            recording_verification.get("predicted_outcome") == "sermon"
+    if override is None and hybrid.retained_segment_indexes:
+        classification["window_arbitration"] = _arbitrate_hybrid_window(
+            existing_window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=(
+                recording_verification.get("predicted_outcome") == "sermon"
+            ),
+            recording_single_sustained_message=(
+                _recording_single_sustained_message(recording_verification)
+            ),
         )
     disposition = build_final_disposition(
         classification,
@@ -1549,6 +1633,9 @@ def extract_video(
             hybrid_result,
             recording_sermon_confirmed=(
                 recording_verification.get("predicted_outcome") == "sermon"
+            ),
+            recording_single_sustained_message=(
+                _recording_single_sustained_message(recording_verification)
             ),
         )
     final_disposition = build_final_disposition(

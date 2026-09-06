@@ -47,6 +47,7 @@ from pastor_transcript_extractor.sermon_classification import (
     _guard_fine_classification,
     _joined_candidate,
     _long_recording_edge_expansion,
+    _objective_transition_prefix_indexes,
     _refine_retained_boundaries,
     _rule_supported_structural_precision,
     build_transcript_blocks,
@@ -675,6 +676,150 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual("adaptive_selected", arbitration["decision"])
         self.assertTrue(arbitration["substantial_disagreement"])
 
+    def test_verified_continuity_resolves_strict_subset_rule_disagreement(self) -> None:
+        drafts = [draft(index * 30.0, (index + 1) * 30.0, "sermon exposition") for index in range(100)]
+        window = {
+            "start_seconds": 900.0,
+            "end_seconds": 1800.0,
+            "confidence": 0.95,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": list(range(30, 60)),
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v7", "fixture", "fixture", "high",
+            list(range(20, 90)), list(range(20)) + list(range(90, 100)), [], [], [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(20)),
+                    "boundary_recovery": {
+                        "anchored_component_block_ids": list(range(20)),
+                        "discarded_component_block_ids": [],
+                        "objective_separator_block_ids": [],
+                        "start": {"status": "semantic_transition"},
+                        "end": {"status": "semantic_transition"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=True,
+            recording_single_sustained_message=True,
+        )
+
+        self.assertEqual("adaptive_selected", arbitration["decision"])
+        self.assertTrue(arbitration["verified_continuity_strict_subset"])
+        self.assertEqual(
+            "verified_single_sustained_message_resolved_strict_subset_rule_disagreement",
+            arbitration["reason"],
+        )
+
+    def test_post_verifier_pass_clears_only_persisted_eligible_subset_disagreement(self) -> None:
+        drafts = [draft(0.0, 600.0, "sermon exposition")]
+        window = {
+            "source": "hybrid_llm",
+            "arbitration": {
+                "decision": "adaptive_selected",
+                "rule_is_strict_subset": True,
+                "semantic_strict_subset_continuity_eligible": True,
+                "unresolved_material_edge_disagreement": True,
+                "unresolved_edges": [{"edge": "end", "disagreement_seconds": 600.0}],
+            },
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v7", "fixture", "fixture", "high", [0], [], [], [], [], []
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=True,
+            recording_single_sustained_message=True,
+        )
+
+        self.assertFalse(arbitration["unresolved_material_edge_disagreement"])
+        self.assertEqual([], arbitration["unresolved_edges"])
+        self.assertEqual("resolved", arbitration["continuity_resolution"]["decision"])
+
+    def test_post_verifier_pass_preserves_subset_disagreement_with_objective_blocker(self) -> None:
+        drafts = [draft(0.0, 600.0, "sermon exposition")]
+        window = {
+            "source": "hybrid_llm",
+            "arbitration": {
+                "decision": "adaptive_selected",
+                "rule_is_strict_subset": True,
+                "semantic_strict_subset_continuity_eligible": False,
+                "unresolved_material_edge_disagreement": True,
+                "unresolved_edges": [{"edge": "end", "reason": "objective_separator"}],
+            },
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v7", "fixture", "fixture", "high", [0], [], [], [], [], []
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=True,
+            recording_single_sustained_message=True,
+        )
+
+        self.assertTrue(arbitration["unresolved_material_edge_disagreement"])
+        self.assertNotIn("continuity_resolution", arbitration)
+
+    def test_verified_continuity_promotes_sermon_only_recording_edge_candidate(self) -> None:
+        drafts = [draft(index * 30.0, (index + 1) * 30.0, "sermon exposition") for index in range(40)]
+        window = {
+            "start_seconds": None,
+            "end_seconds": None,
+            "confidence": 0.15,
+            "method": "rule_based_v1",
+            "source": "detected",
+            "included_segment_indexes": [],
+            "suspicious_boundary": False,
+        }
+        hybrid = HybridSermonResult(
+            "adaptive_llm_v7", "fixture", "fixture", "low",
+            list(range(40)), [], [],
+            ["candidate spans both recording edges without an explicit sermon boundary cue"],
+            [], [],
+            search={
+                "selected_rank": 1,
+                "candidates": [{
+                    "rank": 1,
+                    "fine_support_block_ids": list(range(10)),
+                    "boundary_recovery": {
+                        "anchored_component_block_ids": list(range(10)),
+                        "discarded_component_block_ids": [],
+                        "objective_separator_block_ids": [],
+                        "start": {"status": "recording_edge"},
+                        "end": {"status": "recording_edge"},
+                    },
+                }],
+            },
+        )
+
+        arbitration = _arbitrate_hybrid_window(
+            window,
+            drafts,
+            hybrid,
+            recording_sermon_confirmed=True,
+            recording_single_sustained_message=True,
+        )
+
+        self.assertEqual("adaptive_selected", arbitration["decision"])
+        self.assertTrue(arbitration["verified_sermon_only_edge_coverage"])
+        self.assertEqual("hybrid_llm", window["source"])
+
     def test_low_confidence_rule_subset_cannot_clip_supported_recording_edge(self) -> None:
         drafts = [draft(index * 2.0, (index + 1) * 2.0, "sermon") for index in range(500)]
         window = {
@@ -1270,6 +1415,46 @@ class HybridClassificationTests(unittest.TestCase):
             [item["block_id"] for item in guard_evidence["adjustments"]],
         )
 
+    def test_adaptive_search_clips_mixed_closing_block_at_segment_boundary(self) -> None:
+        drafts = [
+            (
+                draft(index * 30.0, (index + 1) * 30.0, "sustained biblical exposition")
+                if index < 20
+                else SegmentDraft(
+                    index * 30.0,
+                    (index + 1) * 30.0,
+                    (
+                        "Please stand for our closing hymn."
+                        if index == 20
+                        else "[music]"
+                    ),
+                    None,
+                    TranscriptSegmentLabel.MUSIC,
+                    0.8,
+                )
+            )
+            for index in range(30)
+        ]
+        rule = SermonWindowResult(
+            0.0, 600.0, 0.9, [], "rule_based_v1",
+            list(range(20)), list(range(20, 30)), False, [],
+        )
+
+        result = classify_sermon_content_adaptive(
+            drafts,
+            rule,
+            AllSermonLlmClient(),
+            prompt_version="segment-precision-v1",
+        ).to_dict()
+
+        self.assertEqual(list(range(20)), result["retained_segment_indexes"])
+        recovery = result["search"]["candidates"][0]["boundary_recovery"]
+        self.assertEqual(
+            "retained_pre_transition_segments",
+            recovery["objective_segment_precision"][0]["decision"],
+        )
+        self.assertEqual(600.0, recovery["objective_segment_precision"][0]["boundary_seconds"])
+
     def test_adaptive_search_anchors_to_candidate_overlapping_fine_component(self) -> None:
         texts = ["administration" for _ in range(16)]
         texts[5] = "SUSTAINED disconnected teaching"
@@ -1585,6 +1770,29 @@ class HybridClassificationTests(unittest.TestCase):
 
         self.assertEqual(ContentLabel.MUSIC, label)
         self.assertEqual("explicit_music_continuation", guard_reason)
+
+    def test_objective_transition_retains_segments_before_cue_in_mixed_block(self) -> None:
+        drafts = [
+            draft(0.0, 30.0, "The sermon conclusion continues."),
+            draft(30.0, 60.0, "That is my message for today."),
+            SegmentDraft(
+                60.0,
+                90.0,
+                "Please stand for our closing hymn.",
+                None,
+                TranscriptSegmentLabel.MUSIC,
+                0.8,
+            ),
+        ]
+        block = TranscriptBlock(0, [0, 1, 2], 0.0, 90.0, " ".join(item.text for item in drafts))
+
+        retained = _objective_transition_prefix_indexes(
+            block,
+            drafts,
+            "explicit_closing_hymn",
+        )
+
+        self.assertEqual({0, 1}, retained)
 
     def test_music_continuation_requires_acknowledgment_not_only_later_reading(self) -> None:
         drafts = [

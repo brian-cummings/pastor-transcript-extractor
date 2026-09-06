@@ -20,7 +20,7 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 CONFIDENCE_POLICY_VERSION = "semantic_primary_rule_guard_v3"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
-FINE_COMPONENT_VERSION = "objective-service-guards+structural-edges-v7"
+FINE_COMPONENT_VERSION = "objective-service-guards+segment-precision-v8"
 SEARCH_ALGORITHM_VERSION = "adaptive_llm_v7"
 POSITION_PRIOR_VERSION = "service-position-prior-v2"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
@@ -894,6 +894,29 @@ def _guard_fine_classification(
     # must not manufacture a sermon boundary.  Only independently recognizable
     # objective service content above may override a retained label.
     return label, None
+
+
+def _objective_transition_prefix_indexes(
+    block: TranscriptBlock,
+    drafts: list[SegmentDraft],
+    guard_reason: str,
+) -> set[int]:
+    """Retain the part of a mixed block before an objective service transition."""
+    patterns = {
+        "explicit_closing_hymn": r"\bclosing hymn\b",
+        "explicit_special_music": r"\b(?:special music|going to sing)\b",
+        "explicit_offering": r"\b(?:today(?:'s)? offering|lamb(?:'s)? offering|offering is for)\b",
+        "explicit_children_story": r"\b(?:children(?:'s)? story|children(?:'s)? corner)\b",
+    }
+    pattern = patterns.get(guard_reason)
+    if pattern is None:
+        return set()
+    prefix: set[int] = set()
+    for index in block.segment_indexes:
+        if re.search(pattern, drafts[index].text, re.IGNORECASE):
+            return prefix
+        prefix.add(index)
+    return set()
 
 
 def _refine_retained_boundaries(
@@ -1791,6 +1814,41 @@ def classify_sermon_content_adaptive(
     ]
     retained.intersection_update(anchored_indexes)
 
+    objective_segment_precision: list[dict[str, Any]] = []
+    if anchored_component:
+        adjacent_end_position = anchored_component[-1] + 1
+        if adjacent_end_position < len(all_fine_blocks):
+            adjacent_block = all_fine_blocks[adjacent_end_position]
+            adjustment = next(
+                (
+                    item
+                    for item in fine_guard_adjustments
+                    if item["block_id"] == adjacent_block.block_id
+                ),
+                None,
+            )
+            if adjustment is not None:
+                recovered_prefix = _objective_transition_prefix_indexes(
+                    adjacent_block,
+                    drafts,
+                    str(adjustment["guard_reason"]),
+                )
+                if recovered_prefix:
+                    retained.update(recovered_prefix)
+                    recovered_end = max(
+                        float(drafts[index].end_seconds)
+                        for index in recovered_prefix
+                        if drafts[index].end_seconds is not None
+                    )
+                    objective_segment_precision.append({
+                        "edge": "end",
+                        "block_id": adjacent_block.block_id,
+                        "guard_reason": adjustment["guard_reason"],
+                        "boundary_seconds": round(recovered_end, 3),
+                        "recovered_segment_count": len(recovered_prefix),
+                        "decision": "retained_pre_transition_segments",
+                    })
+
     boundary_recovery: dict[str, Any] = {
         "algorithm_version": "fine-continuity-probe-v1",
         "mode": "active",
@@ -1801,6 +1859,7 @@ def classify_sermon_content_adaptive(
         "objective_separator_block_ids": [
             all_fine_blocks[position].block_id for position in sorted(separator_positions)
         ],
+        "objective_segment_precision": objective_segment_precision,
     }
     boundary_probe_required = False
     boundary_recovery.update(probe_outcomes)
