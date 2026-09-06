@@ -10,11 +10,12 @@ from typing import Any
 
 from pastor_transcript_extractor.caption_normalization import normalize_caption_text
 from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmResponse
+from pastor_transcript_extractor.sermon_classification import recording_structure_prior
 from pastor_transcript_extractor.storage import Database
 
 
-PROMPT_VERSION = "recording-sermon-verifier-v4"
-POLICY_VERSION = "recording-sermon-verifier-policy-v6"
+PROMPT_VERSION = "recording-sermon-verifier-v5"
+POLICY_VERSION = "recording-sermon-verifier-policy-v7"
 ARTIFACT_SCHEMA_VERSION = 1
 DECISIONS = (
     "worship_service_sermon",
@@ -142,15 +143,47 @@ def build_evidence_packet(title: str, proposed: dict[str, Any]) -> str:
     candidate_open = _excerpt(segments, center_seconds=start + 75.0)
     candidate_middle = _excerpt(segments, center_seconds=midpoint)
     candidate_end = _excerpt(segments, center_seconds=near_end)
-    return "\n\n".join(
-        (
+    parts = [
             f"RECORDING TITLE:\n{title}",
             f"RECORDING OPENING (around 00:00-02:30):\n{recording_open}",
             f"CANDIDATE OPENING (around {start:.0f}s):\n{candidate_open}",
             f"CANDIDATE MIDDLE (around {midpoint:.0f}s):\n{candidate_middle}",
             f"CANDIDATE END (around {end:.0f}s):\n{candidate_end}",
-        )
+    ]
+    structure = recording_structure_prior(title)
+    preferred_start = structure.get("preferred_region_start_fraction")
+    recording_end = max(
+        (
+            float(segment["end_seconds"])
+            for segment in segments
+            if isinstance(segment.get("end_seconds"), (int, float))
+        ),
+        default=0.0,
     )
+    if isinstance(preferred_start, (int, float)) and recording_end > 0:
+        sample_fractions = (
+            (0.62, 0.78)
+            if structure["kind"] == "worship_service"
+            else (0.68, 0.78, 0.88)
+        )
+        parts.append(
+            "SERVICE STRUCTURE SEARCH PRIOR:\n"
+            f"kind={structure['kind']}; expected sermon region begins around "
+            f"{float(preferred_start):.0%} of the recording. This is an inspection prior, "
+            "not evidence that a sermon exists."
+        )
+        for fraction in sample_fractions:
+            center = recording_end * fraction
+            parts.append(
+                f"LATER SERVICE PHASE (around {fraction:.0%} / {center:.0f}s):\n"
+                + _excerpt(
+                    segments,
+                    center_seconds=center,
+                    radius_seconds=60.0,
+                    max_chars=1400,
+                )
+            )
+    return "\n\n".join(parts)
 
 
 def verifier_prompt(case: RecordingVerifierCase) -> str:
@@ -163,6 +196,7 @@ NON_SERMON_EVENT means a concert, graduation, technical test, announcements-only
 UNCLEAR means the supplied evidence cannot reliably distinguish these outcomes.
 
 The title is useful context but may be stale or misleading. Give transcript structure priority. Do not call rhetorical questions, quoted dialogue, or brief congregational responses multiple speakers. Return only the required JSON.
+When a service-structure prior and later-service samples are supplied, inspect those samples before deciding that the recording has no sermon. Position only directs inspection; it cannot establish sermon content.
 An explicit Bible Class or Sabbath School title is religious education, even when one teacher gives a long monologue, unless the evidence clearly contains a separate worship-service sermon. A sermon-like title or introduction is never sufficient by itself. WORSHIP_SERVICE_SERMON requires both single_sustained_message and independent sermon-specific evidence: sustained_biblical_exposition or sermon_application_or_exhortation.
 Actively check for contradictions before accepting: curriculum or facilitated instruction; ceremonies or extended religious speeches; translation or regular alternation between speakers; and programs containing several speakers without one principal sermon. Include every supported negative or contradictory reason code. If positive and contradictory evidence are both plausible, choose UNCLEAR rather than worship_service_sermon.
 Do not infer that a recording lacks a sermon merely because its opening, closing, or service context contains several speakers. MULTI_SPEAKER_OR_STUDENT_PROGRAM requires evidence that the sampled candidate itself is divided into short messages or regular alternation and has no principal sustained sermon. When one long candidate remains sermon-like but speaker attribution is uncertain, choose UNCLEAR; this verifier decides sermon existence, not pastor identity.
@@ -255,7 +289,10 @@ def _has_coherent_principal_candidate(proposed: dict[str, Any] | None) -> bool:
 
 
 def _apply_acceptance_policy(
-    content: dict[str, Any], *, proposed: dict[str, Any] | None = None
+    content: dict[str, Any],
+    *,
+    proposed: dict[str, Any] | None = None,
+    title: str | None = None,
 ) -> dict[str, Any]:
     """Require two-factor sermon evidence and preserve the model's raw verdict."""
     decision = str(content["decision"])
@@ -284,6 +321,37 @@ def _apply_acceptance_policy(
         )
         decision = "unclear"
         confidence = "medium"
+    if proposed is not None and title:
+        structure = recording_structure_prior(title)
+        preferred_start = structure.get("preferred_region_start_fraction")
+        segments = proposed.get("segments")
+        recording_end = max(
+            (
+                float(segment["end_seconds"])
+                for segment in segments or []
+                if isinstance(segment, dict)
+                and isinstance(segment.get("end_seconds"), (int, float))
+            ),
+            default=0.0,
+        )
+        try:
+            _, selected_end = _selected_candidate(proposed)
+        except ValueError:
+            selected_end = 0.0
+        terminal_rejection = decision in {
+            "religious_education_or_bible_class",
+            "multi_speaker_or_student_program",
+            "non_sermon_event",
+        }
+        if (
+            terminal_rejection
+            and isinstance(preferred_start, (int, float))
+            and recording_end > 0
+            and selected_end < recording_end * float(preferred_start)
+        ):
+            policy_reasons.append("selected_candidate_precedes_expected_late_sermon_region")
+            decision = "unclear"
+            confidence = "medium" if confidence == "high" else "low"
     return {
         "decision": decision,
         "confidence": confidence,
@@ -403,7 +471,9 @@ def verify_recording(
                 "confidence": confidence,
                 "reason_codes": list(reason_codes),
             }
-            policy = _apply_acceptance_policy(response.content, proposed=proposed)
+            policy = _apply_acceptance_policy(
+                response.content, proposed=proposed, title=title
+            )
             decision = policy["decision"]
             confidence = policy["confidence"]
             reason_codes = policy["reason_codes"]

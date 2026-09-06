@@ -35,6 +35,7 @@ from pastor_transcript_extractor.sermon_classification import (
     ContentLabel,
     FINE_COMPONENT_VERSION,
     LONG_EDGE_EXPANSION_SECONDS,
+    SEARCH_ALGORITHM_VERSION,
     HybridSermonResult,
     RawInferenceCache,
     TranscriptBlock,
@@ -50,6 +51,7 @@ from pastor_transcript_extractor.sermon_classification import (
     build_transcript_blocks,
     classify_sermon_content,
     classify_sermon_content_adaptive,
+    recording_structure_prior,
 )
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
@@ -502,6 +504,43 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual(1200.0, long_early["duration_score"])
         self.assertGreater(coherent_late["total_score"], long_early["total_score"])
         self.assertEqual(1.0, coherent_late["independent_rule_coverage"])
+
+    def test_service_position_prior_prefers_late_semantically_equal_candidate(self) -> None:
+        blocks = [
+            TranscriptBlock(index, [index], index * 300.0, (index + 1) * 300.0, "exposition")
+            for index in range(12)
+        ]
+        audit = [
+            BlockClassification(index, ContentLabel.SERMON, "coarse:biblical_exposition", "{}")
+            for index in range(12)
+        ]
+        prior = recording_structure_prior("Weekly Worship Service")
+
+        early = _candidate_score_components(
+            (600.0, 1200.0),
+            blocks,
+            audit=audit,
+            recording_duration_seconds=3600.0,
+            position_prior=prior,
+        )
+        late = _candidate_score_components(
+            (2100.0, 2700.0),
+            blocks,
+            audit=audit,
+            recording_duration_seconds=3600.0,
+            position_prior=prior,
+        )
+
+        self.assertEqual("worship_service", late["recording_structure"])
+        self.assertEqual(0.0, early["position_prior_bonus"])
+        self.assertGreater(late["total_score"], early["total_score"])
+
+    def test_combined_program_targets_final_quarter_as_search_prior(self) -> None:
+        prior = recording_structure_prior("Sabbath School & Church Service")
+
+        self.assertEqual("combined_sabbath_school_and_church", prior["kind"])
+        self.assertEqual(0.75, prior["preferred_region_start_fraction"])
+        self.assertEqual("search_and_ranking_only", prior["evidence_role"])
 
     def test_short_rule_window_cannot_replace_stronger_coherent_refinement(self) -> None:
         drafts = [draft(index * 30.0, (index + 1) * 30.0, "sermon") for index in range(100)]
@@ -1277,7 +1316,7 @@ class HybridClassificationTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(result)
-        self.assertEqual("adaptive_llm_v5", classification["method"])
+        self.assertEqual(SEARCH_ALGORITHM_VERSION, classification["method"])
         self.assertEqual(1, classification["search"]["selected_rank"])
         candidate = classification["search"]["candidates"][0]
         self.assertEqual(candidate["score"], candidate["score_components"]["total_score"])
@@ -1290,7 +1329,7 @@ class HybridClassificationTests(unittest.TestCase):
 
     def test_classification_cache_key_includes_model_and_prompt(self) -> None:
         classification = {
-            "method": "adaptive_llm_v5",
+            "method": SEARCH_ALGORITHM_VERSION,
             "block_builder_version": BLOCK_BUILDER_VERSION,
             "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
             "fine_component_version": FINE_COMPONENT_VERSION,
@@ -1413,7 +1452,7 @@ class HybridClassificationTests(unittest.TestCase):
             updated = json.loads(proposed_path.read_text(encoding="utf-8"))
             self.assertEqual([1, 2], updated["classification"]["retained_segment_indexes"])
             self.assertEqual("hybrid_llm", updated["sermon_window"]["source"])
-            self.assertEqual("adaptive_llm_v5", updated["classification"]["method"])
+            self.assertEqual(SEARCH_ALGORITHM_VERSION, updated["classification"]["method"])
             self.assertEqual("accepted_sermon", updated["final_disposition"]["status"])
             self.assertNotIn("identity_boundary_evidence", updated)
             self.assertTrue(all(

@@ -21,7 +21,8 @@ CONFIDENCE_POLICY_VERSION = "soft_rule_overlap_v2"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
 FINE_COMPONENT_VERSION = "objective-noise-components+structural-edges-v3"
-SEARCH_ALGORITHM_VERSION = "adaptive_llm_v5"
+SEARCH_ALGORITHM_VERSION = "adaptive_llm_v6"
+POSITION_PRIOR_VERSION = "service-position-prior-v1"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
 MAX_PRE_ANCHOR_RECOVERY_SECONDS = 180.0
 
@@ -494,12 +495,65 @@ def _candidate_strength(
     return float(_candidate_score_components(candidate, blocks)["total_score"])
 
 
+def recording_structure_prior(video_title: str | None) -> dict[str, Any]:
+    """Return a soft, title-derived prior for where a service sermon is likely to occur.
+
+    Position affects candidate discovery and ranking only.  It is never evidence that
+    a candidate is a sermon and therefore cannot make a candidate acceptable by itself.
+    """
+    normalized = " ".join((video_title or "").casefold().replace("’", "'").split())
+    combined = "sabbath school" in normalized and any(
+        marker in normalized
+        for marker in ("church", "worship", "divine service", "divine worship")
+    )
+    if combined:
+        return {
+            "version": POSITION_PRIOR_VERSION,
+            "kind": "combined_sabbath_school_and_church",
+            "preferred_region_start_fraction": 0.75,
+            "preferred_region_end_fraction": 0.98,
+            "comparison_region_start_fraction": 0.75,
+            "maximum_bonus": 1600.0,
+            "evidence_role": "search_and_ranking_only",
+        }
+    service_markers = (
+        "church service",
+        "worship service",
+        "divine service",
+        "divine worship",
+        "sabbath service",
+        "morning worship",
+        "evening worship",
+    )
+    if any(marker in normalized for marker in service_markers):
+        return {
+            "version": POSITION_PRIOR_VERSION,
+            "kind": "worship_service",
+            "preferred_region_start_fraction": 0.50,
+            "preferred_region_end_fraction": 0.95,
+            "comparison_region_start_fraction": 0.50,
+            "maximum_bonus": 900.0,
+            "evidence_role": "search_and_ranking_only",
+        }
+    return {
+        "version": POSITION_PRIOR_VERSION,
+        "kind": "unknown_or_sermon_only",
+        "preferred_region_start_fraction": None,
+        "preferred_region_end_fraction": None,
+        "comparison_region_start_fraction": None,
+        "maximum_bonus": 0.0,
+        "evidence_role": "none",
+    }
+
+
 def _candidate_score_components(
     candidate: tuple[float, float],
     blocks: list[TranscriptBlock],
     *,
     audit: list[BlockClassification] | None = None,
     rule_window: SermonWindowResult | None = None,
+    recording_duration_seconds: float | None = None,
+    position_prior: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     start, end = candidate
     supporting_positions = [
@@ -559,6 +613,34 @@ def _candidate_score_components(
             rule_window.end_seconds - rule_window.start_seconds
         )
         rule_bonus = rule_coverage * max(0.0, min(rule_window.confidence, 1.0)) * 1200.0
+    candidate_start_fraction = None
+    candidate_end_fraction = None
+    preferred_region_coverage = 0.0
+    position_prior_bonus = 0.0
+    prior_start = position_prior.get("preferred_region_start_fraction") if position_prior else None
+    prior_end = position_prior.get("preferred_region_end_fraction") if position_prior else None
+    maximum_bonus = position_prior.get("maximum_bonus", 0.0) if position_prior else 0.0
+    if (
+        isinstance(recording_duration_seconds, (int, float))
+        and recording_duration_seconds > 0
+        and isinstance(prior_start, (int, float))
+        and isinstance(prior_end, (int, float))
+    ):
+        candidate_start_fraction = max(0.0, min(1.0, start / recording_duration_seconds))
+        candidate_end_fraction = max(0.0, min(1.0, end / recording_duration_seconds))
+        preferred_start = recording_duration_seconds * float(prior_start)
+        preferred_end = recording_duration_seconds * float(prior_end)
+        preferred_overlap = max(0.0, min(end, preferred_end) - max(start, preferred_start))
+        preferred_region_coverage = preferred_overlap / max(duration, 1.0)
+        # Reward overlap plus a start near the expected service phase.  Keeping this
+        # separate from semantic evidence makes the soft prior inspectable.
+        start_alignment = max(
+            0.0,
+            min(1.0, (candidate_start_fraction - max(0.0, float(prior_start) - 0.20)) / 0.20),
+        )
+        position_prior_bonus = float(maximum_bonus) * (
+            0.65 * preferred_region_coverage + 0.35 * start_alignment
+        )
     return {
         "duration_seconds": round(duration, 3),
         "duration_score": round(duration_score, 3),
@@ -572,8 +654,22 @@ def _candidate_score_components(
         "independent_rule_overlap_seconds": round(rule_overlap_seconds, 3),
         "independent_rule_coverage": round(rule_coverage, 6),
         "independent_rule_bonus": round(rule_bonus, 3),
+        "recording_structure": position_prior.get("kind") if position_prior else None,
+        "candidate_start_fraction": (
+            round(candidate_start_fraction, 6) if candidate_start_fraction is not None else None
+        ),
+        "candidate_end_fraction": (
+            round(candidate_end_fraction, 6) if candidate_end_fraction is not None else None
+        ),
+        "preferred_region_coverage": round(preferred_region_coverage, 6),
+        "position_prior_bonus": round(position_prior_bonus, 3),
         "total_score": round(
-            duration_score + cue_bonus + semantic_bonus + cohesion_bonus + rule_bonus,
+            duration_score
+            + cue_bonus
+            + semantic_bonus
+            + cohesion_bonus
+            + rule_bonus
+            + position_prior_bonus,
             3,
         ),
     }
@@ -595,6 +691,8 @@ def _joined_candidate(
     blocks: list[TranscriptBlock],
     audit: list[BlockClassification],
     rule_window: SermonWindowResult | None = None,
+    recording_duration_seconds: float | None = None,
+    position_prior: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     left_end = float(left["end_seconds"])
     right_start = float(right["start_seconds"])
@@ -619,7 +717,12 @@ def _joined_candidate(
     if not continuity_cues:
         return None
     score_components = _candidate_score_components(
-        (start, end), blocks, audit=audit, rule_window=rule_window
+        (start, end),
+        blocks,
+        audit=audit,
+        rule_window=rule_window,
+        recording_duration_seconds=recording_duration_seconds,
+        position_prior=position_prior,
     )
     reasons = sorted({reason for _, reason in gap_evidence})
     score_components["join_gap_duration_seconds"] = round(gap_duration, 3)
@@ -1106,6 +1209,7 @@ def classify_sermon_content_adaptive(
     rule_baseline_source: str = "recomputed_rules",
     rule_baseline_algorithm_version: str | None = None,
     manual_override_present: bool = False,
+    video_title: str | None = None,
 ) -> HybridSermonResult:
     if rule_window.method == "manual_override_v1" or rule_baseline_source == "manual_override":
         raise ValueError(
@@ -1114,6 +1218,8 @@ def classify_sermon_content_adaptive(
     coarse_blocks = build_transcript_blocks(drafts, target_seconds=300.0, max_chars=9000)
     if not coarse_blocks:
         raise ValueError("LLM classification requires timestamped transcript segments")
+    recording_duration_seconds = max(block.end_seconds for block in coarse_blocks)
+    position_prior = recording_structure_prior(video_title)
     transcript_identity = json.dumps(
         [(draft.start_seconds, draft.end_seconds, draft.text) for draft in drafts],
         separators=(",", ":"),
@@ -1165,6 +1271,8 @@ def classify_sermon_content_adaptive(
             coarse_blocks,
             audit=coarse_audit,
             rule_window=rule_window,
+            recording_duration_seconds=recording_duration_seconds,
+            position_prior=position_prior,
         )
         for candidate in primary_candidates
     ]
@@ -1188,6 +1296,15 @@ def classify_sermon_content_adaptive(
             and any(candidate[0] > top_range[1] for candidate in primary_candidates)
         ):
             rescue_reasons.append("disjoint_later_candidate_requires_comparison")
+        comparison_start = position_prior.get("comparison_region_start_fraction")
+        if (
+            isinstance(comparison_start, (int, float))
+            and not any(
+                candidate[1] >= recording_duration_seconds * float(comparison_start)
+                for candidate in primary_candidates
+            )
+        ):
+            rescue_reasons.append("expected_late_service_region_requires_comparison")
         if (
             rule_window.start_seconds is not None
             and rule_window.end_seconds is not None
@@ -1259,6 +1376,7 @@ def classify_sermon_content_adaptive(
             else "not_triggered"
         ),
         "selected_mode": selected_discovery_mode,
+        "recording_structure": position_prior,
     }
     ranked_candidates: list[dict[str, Any]] = []
     for start, end in coarse_candidates:
@@ -1271,6 +1389,8 @@ def classify_sermon_content_adaptive(
             coarse_blocks,
             audit=scoring_audit,
             rule_window=rule_window,
+            recording_duration_seconds=recording_duration_seconds,
+            position_prior=position_prior,
         )
         supporting_blocks = [
             block.block_id for block in coarse_blocks if _overlaps(block, start, end)
@@ -1297,7 +1417,13 @@ def classify_sermon_content_adaptive(
         for left, right in zip(chronological_candidates, chronological_candidates[1:], strict=False)
         if (
             joined := _joined_candidate(
-                left, right, coarse_blocks, coarse_audit, rule_window
+                left,
+                right,
+                coarse_blocks,
+                coarse_audit,
+                rule_window,
+                recording_duration_seconds,
+                position_prior,
             )
         )
         is not None
@@ -1340,6 +1466,7 @@ def classify_sermon_content_adaptive(
             "rule_baseline_algorithm_version": rule_baseline_algorithm_version or rule_window.method,
             "manual_override_present": manual_override_present,
             "discovery": discovery,
+            "recording_structure": position_prior,
         }
         return HybridSermonResult(
             SEARCH_ALGORITHM_VERSION, client.model, prompt_version, "low", [],
@@ -1756,6 +1883,7 @@ def classify_sermon_content_adaptive(
         "rule_baseline_algorithm_version": rule_baseline_algorithm_version or rule_window.method,
         "manual_override_present": manual_override_present,
         "discovery": discovery,
+        "recording_structure": position_prior,
     }
     return HybridSermonResult(
         SEARCH_ALGORITHM_VERSION, client.model, prompt_version, confidence,

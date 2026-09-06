@@ -80,6 +80,15 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
         self.assertIn("CANDIDATE MIDDLE (around 300s)", packet)
         self.assertIn("CANDIDATE END (around 450s)", packet)
 
+    def test_combined_service_packet_samples_the_final_quarter(self) -> None:
+        packet = build_evidence_packet(
+            "Sabbath School & Church Service", proposed()
+        )
+
+        self.assertIn("kind=combined_sabbath_school_and_church", packet)
+        self.assertIn("LATER SERVICE PHASE (around 78%", packet)
+        self.assertIn("LATER SERVICE PHASE (around 88%", packet)
+
     def test_prompt_distinguishes_one_sermon_from_program_structure(self) -> None:
         case = RecordingVerifierCase(
             "video",
@@ -178,6 +187,31 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
         self.assertIsNotNone(cached_result["raw_response"])
         self.assertEqual(1, client.calls)
 
+    def test_early_candidate_cannot_terminally_reject_combined_service(self) -> None:
+        payload = proposed()
+        payload["classification"]["search"]["candidates"][0].update(
+            {"start_seconds": 0.0, "end_seconds": 120.0}
+        )
+        client = FakeVerifierClient(
+            "religious_education_or_bible_class",
+            reason_codes=["lesson_or_curriculum_structure"],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = verify_recording(
+                title="Sabbath School & Church Service",
+                proposed={"youtube_video_id": "combined", **payload},
+                client=client,
+                model_digest="digest",
+                cache_dir=Path(tmp),
+            )
+
+        self.assertEqual("unclear", result["decision"])
+        self.assertIsNone(result["predicted_outcome"])
+        self.assertIn(
+            "selected_candidate_precedes_expected_late_sermon_region",
+            result["policy_reason_codes"],
+        )
+
     def test_diagnostic_records_accuracy_and_reuses_cache(self) -> None:
         case = RecordingVerifierCase(
             "video",
@@ -246,8 +280,8 @@ class RecordingVerifierDiagnosticTests(unittest.TestCase):
 
         self.assertEqual("sermon", result["predicted_outcome"])
         self.assertEqual("llm_recording_verifier", result["source"])
-        self.assertEqual("recording-sermon-verifier-v4", result["prompt_version"])
-        self.assertEqual("recording-sermon-verifier-policy-v6", result["policy_version"])
+        self.assertEqual("recording-sermon-verifier-v5", result["prompt_version"])
+        self.assertEqual("recording-sermon-verifier-policy-v7", result["policy_version"])
         self.assertEqual(
             ["sustained_biblical_exposition"],
             result["sermon_specific_reason_codes"],

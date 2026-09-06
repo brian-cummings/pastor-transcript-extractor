@@ -829,6 +829,7 @@ def diagnose_pipeline(
         database_video_id=video.id,
         fixture=reviewed_fixture,
         media_duration_seconds=float(video.duration_seconds) if video.duration_seconds else None,
+        video_title=video.title,
         identity_boundary_feedback=boundary_feedback,
         identity_outcome=_persisted_identity_outcome(
             database,
@@ -853,6 +854,28 @@ def diagnose_pipeline(
     report_path.write_text(build_diagnostic_markdown(trace), encoding="utf-8")
     console.print(f"Wrote canonical diagnostic trace to {trace_path}")
     console.print(f"Wrote pipeline and timeline views to {report_path}")
+    operational = trace.get("operational_status", {})
+    operational = operational if isinstance(operational, dict) else {}
+    blocker = operational.get("blocker")
+    blocker_label = (
+        f"{blocker.get('stage')} / {blocker.get('code')}"
+        if isinstance(blocker, dict)
+        else "none"
+    )
+    window = operational.get("effective_window")
+    window_label = (
+        f"{float(window['start_seconds']):.0f}s–{float(window['end_seconds']):.0f}s"
+        if isinstance(window, dict)
+        and isinstance(window.get("start_seconds"), (int, float))
+        and isinstance(window.get("end_seconds"), (int, float))
+        else "none"
+    )
+    console.print(
+        f"Current disposition: {operational.get('disposition', 'unknown')}; "
+        f"effective window: {window_label}; operational blocker: {blocker_label}."
+    )
+    if trace.get("ground_truth", {}).get("status") != "available":
+        console.print("Measured correctness: unavailable without reviewed ground truth.")
     observed = trace.get("earliest_observed_failure")
     cause = trace.get("root_cause_hypothesis", {})
     console.print(
@@ -1042,6 +1065,7 @@ def diagnose_pipeline_system(
             media_duration_seconds=(
                 float(video.duration_seconds) if video.duration_seconds else None
             ),
+            video_title=video.title,
             identity_boundary_feedback=boundary_feedback,
             identity_outcome=build_identity_operational_outcome(
                 content_disposition=(

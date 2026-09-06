@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from pastor_transcript_extractor.fixture_validation import ValidatedFixture
+from pastor_transcript_extractor.sermon_classification import (
+    SEARCH_ALGORITHM_VERSION,
+    recording_structure_prior,
+)
 
 
 TRACE_SCHEMA_VERSION = 7
@@ -3502,6 +3506,7 @@ def build_diagnostic_trace(
     media_duration_seconds: float | None = None,
     identity_boundary_feedback: list[dict[str, Any]] | None = None,
     identity_outcome: dict[str, Any] | None = None,
+    video_title: str | None = None,
 ) -> dict[str, Any]:
     segments = [item for item in proposed.get("segments", []) if isinstance(item, dict)]
     classification = proposed.get("classification")
@@ -3806,6 +3811,97 @@ def build_diagnostic_trace(
         manual_override=manual_override,
     )
     overall_outcome = _overall_outcome(outcome_contracts)
+    disposition_status = str(disposition.get("status") or "unknown")
+    disposition_reasons = [
+        str(reason) for reason in disposition.get("reason_codes", [])
+    ] if isinstance(disposition.get("reason_codes"), list) else []
+    verification_decision = verification.get("decision") or verification.get(
+        "predicted_outcome"
+    )
+    if disposition_status == "review_required":
+        blocker = {
+            "stage": "final",
+            "code": disposition_reasons[0] if disposition_reasons else "review_required",
+            "message": "Human review is required before this extraction can proceed.",
+        }
+    elif disposition_status in {"rejected_no_sermon", "rejected"}:
+        blocker = {
+            "stage": "verifier",
+            "code": str(verification_decision or "recording_rejected"),
+            "message": "The recording verifier produced a terminal rejection.",
+        }
+    elif disposition_status in {"accepted", "accepted_sermon", "approved"}:
+        blocker = None
+    else:
+        blocker = {
+            "stage": "final",
+            "code": "unknown_disposition",
+            "message": "No recognized terminal disposition is persisted.",
+        }
+    structural_advisories: list[dict[str, Any]] = []
+    structure = search.get("recording_structure")
+    structure = (
+        structure
+        if isinstance(structure, dict)
+        else recording_structure_prior(video_title)
+    )
+    if search.get("algorithm_version") not in {
+        SEARCH_ALGORITHM_VERSION,
+        "rule_based_v1",
+    }:
+        structural_advisories.append(
+            {
+                "code": "classification_algorithm_outdated",
+                "persisted_algorithm_version": search.get("algorithm_version"),
+                "current_algorithm_version": SEARCH_ALGORITHM_VERSION,
+                "message": "Reclassify this video to apply the current search policy.",
+            }
+        )
+    preferred_fraction = structure.get("preferred_region_start_fraction")
+    selected_end = selected.get("end_seconds") if selected else None
+    recording_duration = media_duration_seconds or max(
+        (right for _, right in transcript_ranges), default=0.0
+    )
+    if (
+        isinstance(preferred_fraction, (int, float))
+        and isinstance(selected_end, (int, float))
+        and recording_duration > 0
+        and float(selected_end) < recording_duration * float(preferred_fraction)
+    ):
+        structural_advisories.append(
+            {
+                "code": "selected_candidate_precedes_expected_late_sermon_region",
+                "recording_structure": structure.get("kind"),
+                "preferred_region_start_seconds": round(
+                    recording_duration * float(preferred_fraction), 3
+                ),
+                "selected_candidate_end_seconds": round(float(selected_end), 3),
+                "message": (
+                    "The selected candidate ends before the title-derived late-service "
+                    "search region; inspect or reclassify with the current algorithm."
+                ),
+            }
+        )
+    operational_status = {
+        "disposition": disposition_status,
+        "reason_codes": disposition_reasons,
+        "effective_window": (
+            {
+                "start_seconds": final_range[0],
+                "end_seconds": final_range[1],
+            }
+            if final_range is not None
+            else None
+        ),
+        "verifier_decision": verification_decision,
+        "blocker": blocker,
+        "correctness_measurement": (
+            "reviewed_ground_truth"
+            if fixture is not None
+            else "unavailable_without_reviewed_ground_truth"
+        ),
+        "structural_advisories": structural_advisories,
+    }
     contract_paths = _contract_paths(stages, outcome_contracts)
     any_breach = any(
         path.get("earliest_breach_stage") is not None
@@ -3893,6 +3989,7 @@ def build_diagnostic_trace(
         "video": {
             "database_video_id": database_video_id,
             "youtube_video_id": youtube_video_id,
+            "title": video_title,
         },
         "source_artifact": {
             "proposed_path": str(proposed_path),
@@ -3917,6 +4014,7 @@ def build_diagnostic_trace(
         ),
         "cohort": cohort,
         "overall_outcome": overall_outcome,
+        "operational_status": operational_status,
         "contract_paths": contract_paths,
         "candidate_regret": candidate_regret,
         "stage_regret": _stage_regret(stages, fixture),
@@ -4089,12 +4187,36 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
         ground_truth.get("status") == "available"
         and ground_truth.get("expected_outcome") == "sermon"
     )
+    operational = trace.get("operational_status", {})
+    operational = operational if isinstance(operational, dict) else {}
+    blocker = operational.get("blocker")
+    blocker = blocker if isinstance(blocker, dict) else None
+    effective_window = operational.get("effective_window")
+    effective_window = effective_window if isinstance(effective_window, dict) else None
+    window_label = (
+        f"{float(effective_window['start_seconds']):.0f}s–"
+        f"{float(effective_window['end_seconds']):.0f}s"
+        if effective_window
+        and isinstance(effective_window.get("start_seconds"), (int, float))
+        and isinstance(effective_window.get("end_seconds"), (int, float))
+        else "none"
+    )
     lines = [
         f"# Pipeline Diagnostic: {video_id}",
         "",
         f"- Trace schema: {trace['schema_version']}",
         f"- Contract version: {trace['contract_version']}",
         f"- Measurement mode: {'reviewed ground truth' if has_truth else 'structural only'}",
+        f"- Current disposition: {operational.get('disposition', 'unknown')}",
+        f"- Effective window: {window_label}",
+        "- Operational blocker: "
+        + (
+            f"{blocker.get('stage')} / {blocker.get('code')}"
+            if blocker
+            else "none"
+        ),
+        "- Measured correctness: "
+        + ("available" if has_truth else "unavailable without reviewed ground truth"),
         f"- Earliest observed failure: {observed['stage'] if observed else 'none'}",
         f"- Likely causal stage: {cause.get('stage') or 'none'}",
         f"- Causal confidence: {cause.get('confidence') or 'n/a'}",
@@ -4103,12 +4225,24 @@ def build_diagnostic_markdown(trace: dict[str, Any]) -> str:
         f"{trace.get('causal_path_status', trace.get('recovery_status', 'unknown'))}",
         f"- Cohort: {trace.get('cohort', {}).get('outcome_mode', 'unknown')} / "
         f"{trace.get('cohort', {}).get('evaluation_partition', 'unknown')}",
-        "",
-        "## Outcome contracts",
-        "",
-        "| Dimension | Status | Observed | Threshold |",
-        "|---|---|---:|---:|",
     ]
+    advisories = operational.get("structural_advisories")
+    if isinstance(advisories, list) and advisories:
+        lines.extend(["", "## Structural advisories", ""])
+        lines.extend(
+            f"- `{item.get('code')}`: {item.get('message')}"
+            for item in advisories
+            if isinstance(item, dict)
+        )
+    lines.extend(
+        [
+            "",
+            "## Outcome contracts",
+            "",
+            "| Dimension | Status | Observed | Threshold |",
+            "|---|---|---:|---:|",
+        ]
+    )
     for dimension in (
         "existence",
         "localization",

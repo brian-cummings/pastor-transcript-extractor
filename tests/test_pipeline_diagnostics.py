@@ -219,6 +219,41 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertIn("-33.3%", report)
         self.assertNotIn("-->| |", report)
 
+    def test_unreviewed_trace_reports_operational_blocker_and_late_region_advisory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proposed_path, proposed = self._write_proposed(root)
+            proposed["final_disposition"] = {
+                "status": "review_required",
+                "reason_codes": ["material_boundary_disagreement"],
+            }
+            proposed["classification"]["search"]["recording_structure"] = {
+                "kind": "worship_service",
+                "preferred_region_start_fraction": 0.5,
+            }
+            trace = build_diagnostic_trace(
+                proposed,
+                proposed_path=proposed_path,
+                youtube_video_id="fixture-video",
+                video_title="Weekly Worship Service",
+                media_duration_seconds=1000.0,
+            )
+
+        operational = trace["operational_status"]
+        self.assertEqual("review_required", operational["disposition"])
+        self.assertEqual("material_boundary_disagreement", operational["blocker"]["code"])
+        self.assertIn(
+            "selected_candidate_precedes_expected_late_sermon_region",
+            {
+                advisory["code"]
+                for advisory in operational["structural_advisories"]
+            },
+        )
+        report = build_diagnostic_markdown(trace)
+        self.assertIn("Current disposition: review_required", report)
+        self.assertIn("Measured correctness: unavailable without reviewed ground truth", report)
+        self.assertIn("Operational blocker: final / material_boundary_disagreement", report)
+
     def test_compact_trace_preserves_comparison_without_full_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

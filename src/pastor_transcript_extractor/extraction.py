@@ -127,6 +127,7 @@ def _classify_with_fallback(
     cache_dir: Path | None = None,
     context_size: int = 4096,
     progress: Any | None = None,
+    video_title: str | None = None,
 ) -> tuple[dict[str, Any], HybridSermonResult | None]:
     classification: dict[str, Any] = {
         "schema_version": 1,
@@ -177,6 +178,7 @@ def _classify_with_fallback(
             rule_baseline_source="recomputed_rules",
             rule_baseline_algorithm_version=detected_window.method,
             manual_override_present=False,
+            video_title=video_title,
         )
     except Exception as error:
         if classifier == "llm":
@@ -1115,6 +1117,7 @@ def reclassify_video(
         rule_baseline_source="recomputed_rules",
         rule_baseline_algorithm_version=recomputed_window.method,
         manual_override_present=override is not None,
+        video_title=video.title,
     )
     classification = hybrid.to_dict()
     classification["window_arbitration_policy_version"] = (
@@ -1443,6 +1446,7 @@ def extract_video(
         cache_dir=video_paths.extracted / "inference-cache",
         context_size=context_size,
         progress=progress,
+        video_title=video.title,
     )
     override_path = video_paths.review / "window_override.json"
     override, override_error = _load_window_override(override_path)
