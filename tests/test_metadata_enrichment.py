@@ -301,6 +301,65 @@ class MetadataEnrichmentTests(unittest.TestCase):
         self.assertIn("no network requests or writes", normalized_output)
         self.assertEqual(1, self.database.counts_by_table()["metadata_artifacts"])
 
+    def test_analyze_all_anonymous_profiles_plan_only_avoids_ollama(self) -> None:
+        runner = CliRunner()
+        with patch(
+            "pastor_transcript_extractor.cli.build_llm_config"
+        ) as build_llm:
+            result = runner.invoke(
+                app,
+                [
+                    "identity",
+                    "analyze-profile-metadata",
+                    "--all-anonymous-profiles",
+                    "--plan-only",
+                    "--base-dir",
+                    str(self.paths.root),
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        build_llm.assert_not_called()
+        normalized_output = " ".join(result.output.split())
+        self.assertIn("eligible=1", normalized_output)
+        self.assertIn("no Ollama calls or artifact writes", normalized_output)
+
+    def test_review_all_anonymous_profiles_plan_only_avoids_review_writes(self) -> None:
+        runner = CliRunner()
+        observation = self.database.list_effective_observation_ids_for_profile(
+            self.profile.id
+        )[0]
+        observation_record = self.database.get_speaker_observation(observation)
+        assert observation_record is not None
+        with patch(
+            "pastor_transcript_extractor.cli.load_profile_attribution_clip_timestamps",
+            return_value={observation_record.input_fingerprint: 10},
+        ), patch(
+            "pastor_transcript_extractor.cli.write_profile_attribution_packet"
+        ) as write_packet:
+            result = runner.invoke(
+                app,
+                [
+                    "identity",
+                    "review-profile-attribution",
+                    "--all-anonymous-profiles",
+                    "--plan-only",
+                    "--reviewer",
+                    "reviewer",
+                    "--base-dir",
+                    str(self.paths.root),
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        write_packet.assert_not_called()
+        normalized_output = " ".join(result.output.split())
+        self.assertIn("profiles=1 metadata_proposals=0", normalized_output)
+        self.assertIn(
+            "no packets opened and no review events written",
+            normalized_output,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

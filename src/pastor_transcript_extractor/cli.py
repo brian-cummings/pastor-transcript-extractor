@@ -4872,6 +4872,16 @@ def review_profile_attribution_command(
         "--all-proposals",
         help="Review every current non-deferred metadata name proposal.",
     ),
+    all_anonymous_profiles: bool = typer.Option(
+        False,
+        "--all-anonymous-profiles",
+        help="Review every current non-deferred, reviewable anonymous profile.",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Show the review queue without opening packets or writing review events.",
+    ),
     representative_videos: int = typer.Option(
         6,
         min=1,
@@ -4891,12 +4901,22 @@ def review_profile_attribution_command(
         help="Override app data directory.",
     ),
 ) -> None:
-    if all_proposals and profile_id is not None:
+    if sum((profile_id is not None, all_proposals, all_anonymous_profiles)) > 1:
         raise typer.BadParameter(
-            "--all-proposals cannot be combined with --profile-id"
+            "Pass at most one of --profile-id, --all-proposals, or "
+            "--all-anonymous-profiles."
         )
-    paths = build_paths(base_dir, remember=True)
-    database = get_database(base_dir)
+    batch_mode = all_proposals or all_anonymous_profiles
+    paths = build_paths(base_dir, remember=not plan_only)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    database = (
+        Database(paths.database, readonly=True)
+        if plan_only
+        else get_database(base_dir)
+    )
     deferral_root = paths.logs / "profile-attribution-reviews" / "deferrals"
     metadata_attributions = load_profile_metadata_attributions(
         paths.logs / "profile-metadata-attribution"
@@ -4953,6 +4973,19 @@ def review_profile_attribution_command(
             )
     except (OSError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
+
+    if plan_only:
+        proposal_count = sum(
+            candidate.metadata_attribution is not None
+            and candidate.metadata_attribution.decision == "propose_name"
+            for candidate in candidates
+        )
+        console.print(
+            "Profile attribution review plan: "
+            f"profiles={len(candidates)} metadata_proposals={proposal_count}; "
+            "no packets opened and no review events written."
+        )
+        return
 
     approved_count = deferred_count = cancelled_count = 0
     for queue_index, candidate in enumerate(candidates, start=1):
@@ -5053,7 +5086,7 @@ def review_profile_attribution_command(
         ):
             console.print("Attribution cancelled; no registry mutation occurred.")
             cancelled_count += 1
-            if all_proposals:
+            if batch_mode:
                 continue
             return
         try:
@@ -5078,12 +5111,17 @@ def review_profile_attribution_command(
                 f"Linked configured pastor: {result.linked_pastor_slug}"
             )
         approved_count += 1
-        if not all_proposals:
+        if not batch_mode:
             return
 
-    if all_proposals:
+    if batch_mode:
+        summary_label = (
+            "Metadata proposal review complete"
+            if all_proposals
+            else "Anonymous profile review complete"
+        )
         console.print(
-            "Metadata proposal review complete: "
+            f"{summary_label}: "
             f"approved={approved_count} deferred={deferred_count} "
             f"cancelled={cancelled_count}."
         )
@@ -5211,6 +5249,7 @@ def analyze_profile_metadata_command(
     all_profiles: bool = typer.Option(
         False,
         "--all",
+        "--all-anonymous-profiles",
         help="Analyze every current unnamed canonical profile.",
     ),
     profile_id: int | None = typer.Option(
@@ -5228,23 +5267,26 @@ def analyze_profile_metadata_command(
         "--details",
         help="Show names, evidence excerpts, failures, and artifact paths.",
     ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Show eligible profiles without Ollama calls or artifact writes.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
     ),
 ) -> None:
     if all_profiles == (profile_id is not None):
-        raise typer.BadParameter("Pass exactly one of --all or --profile-id.")
-    paths = build_paths(base_dir, remember=True)
+        raise typer.BadParameter(
+            "Pass exactly one of --all-anonymous-profiles (or --all) or "
+            "--profile-id."
+        )
+    paths = build_paths(base_dir, remember=not plan_only)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
         )
-    config = build_llm_config()
-    if model is not None:
-        config = replace(config, model=model)
-    if not config.enabled:
-        raise typer.BadParameter("Local LLM is disabled by PTE_LLM_ENABLED.")
     database = Database(paths.database, readonly=True)
     selected_ids = (
         None if all_profiles else frozenset((int(profile_id),))
@@ -5256,6 +5298,17 @@ def analyze_profile_metadata_command(
     if not candidate_ids:
         console.print("Profile metadata attribution: eligible=0; no Ollama calls.")
         return
+    if plan_only:
+        console.print(
+            "Profile metadata attribution plan: "
+            f"eligible={len(candidate_ids)}; no Ollama calls or artifact writes."
+        )
+        return
+    config = build_llm_config()
+    if model is not None:
+        config = replace(config, model=model)
+    if not config.enabled:
+        raise typer.BadParameter("Local LLM is disabled by PTE_LLM_ENABLED.")
     try:
         client = OllamaClient(config)
         result = run_profile_metadata_attribution(

@@ -1022,6 +1022,8 @@ Review every current metadata-backed name proposal in one session with:
 
 ```bash
 pte identity review-profile-attribution --all-proposals --reviewer REVIEWER_ID --base-dir /path/to/app-data
+pte identity review-profile-attribution --all-anonymous-profiles --plan-only --reviewer REVIEWER_ID --base-dir /path/to/app-data
+pte identity review-profile-attribution --all-anonymous-profiles --reviewer REVIEWER_ID --base-dir /path/to/app-data
 ```
 
 The batch continues after approvals, corrections, deferrals, and cancellations;
@@ -1035,6 +1037,8 @@ pte identity enrich-metadata --profile-id PROFILE_ID --base-dir /path/to/app-dat
 pte identity enrich-metadata --all-anonymous-profiles --plan-only --base-dir /path/to/app-data
 pte identity enrich-metadata --all-anonymous-profiles --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --all --base-dir /path/to/app-data
+pte identity analyze-profile-metadata --all-anonymous-profiles --plan-only --base-dir /path/to/app-data
+pte identity analyze-profile-metadata --all-anonymous-profiles --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --profile-id PROFILE_ID --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --all --details --base-dir /path/to/app-data
 ```
