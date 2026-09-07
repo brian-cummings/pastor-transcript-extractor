@@ -410,6 +410,44 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
         self.assertEqual(1, run.failed)
         self.assertEqual(0, run.proposed)
 
+    def test_repeated_adventist_series_name_cannot_be_proposed_as_a_person(
+        self,
+    ) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE videos SET title = ? WHERE id IN (?, ?, ?)",
+                (
+                    "Our series on Growing up Adventist",
+                    *(observation.video_id for observation in self.observations),
+                ),
+            )
+        client = FakeMetadataClient(
+            {
+                "decision": "propose_name",
+                "proposed_name": "Growing up Adventist",
+                "reason_codes": ["repeated_name_across_recordings"],
+                "evidence": [
+                    {
+                        "youtube_video_id": youtube_video_id,
+                        "field_path": "video.title",
+                        "exact_excerpt": "Growing up Adventist",
+                    }
+                    for youtube_video_id in ("curt-a", "curt-b", "curt-c")
+                ],
+                "conflicting_names": [],
+            }
+        )
+
+        run = run_profile_metadata_attribution(
+            self.database,
+            self.root / "adventist-series-name",
+            client,
+            model_digest="digest-1",
+        )
+
+        self.assertEqual(1, run.failed)
+        self.assertEqual(0, run.proposed)
+
     def test_hallucinated_conflicts_cannot_be_persisted(self) -> None:
         client = FakeMetadataClient(
             {
@@ -567,6 +605,48 @@ class ProfileMetadataAttributionTests(unittest.TestCase):
             ).encode("utf-8")
         ).hexdigest()
         root = self.root / "cached-numbered-title"
+        path = root / "profile-140" / "input.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "version": "profile_metadata_attribution_v4",
+                    "profile_id": 140,
+                    "membership_fingerprint": "membership",
+                    "input_fingerprint": "input",
+                    "result": result,
+                    "result_sha256": result_sha256,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertEqual({}, load_profile_metadata_attributions(root))
+
+    def test_cached_adventist_series_proposal_is_rejected_on_load(self) -> None:
+        result = {
+            "decision": "propose_name",
+            "routing": "human_confirmation_available",
+            "proposed_name": "Growing up Adventist",
+            "normalized_name": "growing up adventist",
+            "reason_codes": [
+                "consistent_speaker_credit",
+                "repeated_name_across_recordings",
+            ],
+            "evidence": [],
+            "conflicting_names": [],
+            "supporting_recording_count": 3,
+        }
+        result_sha256 = hashlib.sha256(
+            json.dumps(
+                result,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        root = self.root / "cached-adventist-series"
         path = root / "profile-140" / "input.json"
         path.parent.mkdir(parents=True)
         path.write_text(

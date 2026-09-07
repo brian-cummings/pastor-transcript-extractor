@@ -46,6 +46,7 @@ _REASON_CODES = {
 _NON_PERSON_NAME_TOKENS = {
     "a",
     "advent",
+    "adventist",
     "an",
     "and",
     "baptist",
