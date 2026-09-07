@@ -12,6 +12,8 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     build_diagnostic_markdown,
     build_diagnostic_trace,
     build_identity_automation_blocker_analysis,
+    build_identity_pipeline_mermaid,
+    build_identity_pipeline_summary,
     build_identity_operational_outcome,
     build_systemic_disposition_mermaid,
     build_systemic_outcome_mermaid,
@@ -662,6 +664,9 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertIn("## Sermon disposition distribution", markdown)
         self.assertIn("## Operational dispositions", markdown)
         self.assertIn("## Identity operational outcomes", markdown)
+        self.assertIn("### Identity progression checkpoints", markdown)
+        self.assertIn("Accepted sermons,Reviewed profile membership,1", markdown)
+        self.assertIn("Accepted sermons,Observation unavailable or stale,1", markdown)
         self.assertIn("### Sermon-to-identity transitions", markdown)
         self.assertIn("Identity processing volume (not population counts)", markdown)
         self.assertTrue(
@@ -674,6 +679,70 @@ class PipelineDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             {"accepted_sermon": {"not_observed": 1, "profiled": 1}},
             report["identity_outcome_summary"]["state_counts_by_disposition"],
+        )
+
+    def test_identity_pipeline_preserves_unique_video_progression(self) -> None:
+        report = {
+            "final_disposition_counts": {"accepted_sermon": 20},
+            "identity_outcome_summary": {
+                "state_counts_by_disposition": {
+                    "accepted_sermon": {
+                        "profiled": 2,
+                        "observation_available": 10,
+                        "association_proposed_match": 3,
+                        "association_insufficient_evidence": 4,
+                        "association_no_match": 1,
+                    }
+                }
+            },
+            "automation_blocker_analysis": {
+                "domains": {
+                    "identity": {
+                        "blocker_classes": [
+                            {
+                                "blocker_class": "association_not_attempted",
+                                "accepted_unresolved_sermon_count": 6,
+                            },
+                            {
+                                "blocker_class": "association_prerequisite_unavailable",
+                                "accepted_unresolved_sermon_count": 3,
+                            },
+                            {
+                                "blocker_class": "association_admission_metadata_blocked",
+                                "accepted_unresolved_sermon_count": 1,
+                            },
+                        ],
+                        "operational_association_summary": {
+                            "active_provisional_assignment_count": 1,
+                            "proposal_blocked_profile_readiness_count": 1,
+                            "stale_assignment_excluded_count": 1,
+                        },
+                    }
+                }
+            },
+        }
+
+        summary = build_identity_pipeline_summary(report)
+        self.assertEqual(20, summary["accepted_sermon_count"])
+        self.assertEqual(18, summary["unprofiled_count"])
+        self.assertEqual(18, summary["current_observation_count"])
+        self.assertEqual(8, summary["association_attempted_count"])
+        self.assertEqual(10, summary["observation_available_count"])
+        mermaid = build_identity_pipeline_mermaid(report)
+        self.assertIn("Accepted sermons,Reviewed profile membership,2", mermaid)
+        self.assertIn(
+            "Current unprofiled observation,Association dispatch pending,6",
+            mermaid,
+        )
+        self.assertIn(
+            "Current unprofiled observation,Association attempted,8", mermaid
+        )
+        self.assertIn("Association attempted,Proposed profile match,3", mermaid)
+        self.assertIn(
+            "Proposed profile match,Active provisional assignment,1", mermaid
+        )
+        self.assertIn(
+            "Proposed profile match,Stale or revoked assignment,1", mermaid
         )
 
     def test_identity_attempt_loader_and_stale_observation_truth_boundary(self) -> None:

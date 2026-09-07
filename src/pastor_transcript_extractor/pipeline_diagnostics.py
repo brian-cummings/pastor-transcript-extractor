@@ -5598,6 +5598,241 @@ def build_systemic_disposition_mermaid(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def build_identity_pipeline_summary(report: Mapping[str, Any]) -> dict[str, int]:
+    """Project accepted sermons through mutually exclusive identity gates."""
+    identity = report.get("identity_outcome_summary", {})
+    accepted_states = identity.get("state_counts_by_disposition", {}).get(
+        "accepted_sermon", {}
+    )
+    accepted_count = int(
+        report.get("final_disposition_counts", {}).get("accepted_sermon") or 0
+    )
+    profiled_count = int(accepted_states.get("profiled") or 0)
+    association_counts = {
+        str(state).removeprefix("association_"): int(count or 0)
+        for state, count in accepted_states.items()
+        if str(state).startswith("association_")
+    }
+    association_attempted_count = sum(association_counts.values())
+    observation_available_count = int(
+        accepted_states.get("observation_available") or 0
+    )
+    unprofiled_count = max(0, accepted_count - profiled_count)
+    observation_unavailable_count = max(
+        0,
+        unprofiled_count
+        - observation_available_count
+        - association_attempted_count,
+    )
+    current_observation_count = (
+        observation_available_count + association_attempted_count
+    )
+
+    blocker_domain = (
+        report.get("automation_blocker_analysis", {})
+        .get("domains", {})
+        .get("identity", {})
+    )
+    blocker_classes = blocker_domain.get("blocker_classes", [])
+
+    def blocker_count(code: str) -> int:
+        return sum(
+            int(item.get("accepted_unresolved_sermon_count") or 0)
+            for item in blocker_classes
+            if item.get("blocker_class") == code
+        )
+
+    dispatch_pending_count = blocker_count("association_not_attempted")
+    prerequisite_unavailable_count = blocker_count(
+        "association_prerequisite_unavailable"
+    )
+    admission_blocked_count = sum(
+        int(item.get("accepted_unresolved_sermon_count") or 0)
+        for item in blocker_classes
+        if str(item.get("blocker_class") or "").startswith(
+            "association_admission_"
+        )
+    )
+    known_preassociation_stops = (
+        dispatch_pending_count
+        + prerequisite_unavailable_count
+        + admission_blocked_count
+    )
+    other_preassociation_count = max(
+        0, observation_available_count - known_preassociation_stops
+    )
+
+    automation = blocker_domain.get("operational_association_summary", {})
+    proposal_count = int(association_counts.get("proposed_match") or 0)
+    active_assignment_count = int(
+        automation.get("active_provisional_assignment_count") or 0
+    )
+    eligible_assignment_count = int(
+        automation.get("eligible_unapplied_assignment_count") or 0
+    )
+    profile_blocked_count = int(
+        automation.get("proposal_blocked_profile_readiness_count") or 0
+    )
+    policy_blocked_count = int(
+        automation.get("proposal_blocked_policy_or_circuit_count") or 0
+    )
+    human_review_count = int(
+        automation.get("proposal_genuinely_requires_human_review_count") or 0
+    )
+    evidence_missing_count = int(
+        automation.get("assignment_evidence_missing_or_noncurrent_count") or 0
+    )
+    stale_or_revoked_count = (
+        int(automation.get("stale_assignment_excluded_count") or 0)
+        + int(automation.get("stale_proposal_excluded_count") or 0)
+        + int(automation.get("revoked_assignment_excluded_count") or 0)
+    )
+    known_proposal_outcomes = (
+        active_assignment_count
+        + eligible_assignment_count
+        + profile_blocked_count
+        + policy_blocked_count
+        + human_review_count
+        + evidence_missing_count
+        + stale_or_revoked_count
+    )
+    other_proposal_outcome_count = max(0, proposal_count - known_proposal_outcomes)
+    return {
+        "accepted_sermon_count": accepted_count,
+        "profiled_count": profiled_count,
+        "unprofiled_count": unprofiled_count,
+        "current_observation_count": current_observation_count,
+        "observation_unavailable_count": observation_unavailable_count,
+        "observation_available_count": observation_available_count,
+        "dispatch_pending_count": dispatch_pending_count,
+        "prerequisite_unavailable_count": prerequisite_unavailable_count,
+        "admission_blocked_count": admission_blocked_count,
+        "other_preassociation_count": other_preassociation_count,
+        "association_attempted_count": association_attempted_count,
+        "association_proposed_match_count": proposal_count,
+        "association_insufficient_evidence_count": int(
+            association_counts.get("insufficient_evidence") or 0
+        ),
+        "association_no_match_count": int(
+            association_counts.get("no_match") or 0
+        ),
+        "association_other_outcome_count": sum(
+            count
+            for outcome, count in association_counts.items()
+            if outcome not in {"proposed_match", "insufficient_evidence", "no_match"}
+        ),
+        "active_assignment_count": active_assignment_count,
+        "eligible_assignment_count": eligible_assignment_count,
+        "profile_blocked_count": profile_blocked_count,
+        "policy_blocked_count": policy_blocked_count,
+        "human_review_count": human_review_count,
+        "evidence_missing_count": evidence_missing_count,
+        "stale_or_revoked_count": stale_or_revoked_count,
+        "other_proposal_outcome_count": other_proposal_outcome_count,
+    }
+
+
+def build_identity_pipeline_mermaid(report: Mapping[str, Any]) -> str:
+    """Render the identity journey without mixing event volume into population flow."""
+    summary = build_identity_pipeline_summary(report)
+    lines = ["sankey-beta"]
+
+    def flow(source: str, target: str, key: str) -> None:
+        count = summary[key]
+        if count > 0:
+            lines.append(f"{source},{target},{count}")
+
+    flow("Accepted sermons", "Reviewed profile membership", "profiled_count")
+    flow(
+        "Accepted sermons",
+        "Current unprofiled observation",
+        "current_observation_count",
+    )
+    flow(
+        "Accepted sermons",
+        "Observation unavailable or stale",
+        "observation_unavailable_count",
+    )
+    flow(
+        "Current unprofiled observation",
+        "Association dispatch pending",
+        "dispatch_pending_count",
+    )
+    flow(
+        "Current unprofiled observation",
+        "Association prerequisites unavailable",
+        "prerequisite_unavailable_count",
+    )
+    flow(
+        "Current unprofiled observation",
+        "Association admission blocked",
+        "admission_blocked_count",
+    )
+    flow(
+        "Current unprofiled observation",
+        "Other pre-association stop",
+        "other_preassociation_count",
+    )
+    flow(
+        "Current unprofiled observation",
+        "Association attempted",
+        "association_attempted_count",
+    )
+    flow(
+        "Association attempted",
+        "Proposed profile match",
+        "association_proposed_match_count",
+    )
+    flow(
+        "Association attempted",
+        "Insufficient identity evidence",
+        "association_insufficient_evidence_count",
+    )
+    flow("Association attempted", "No profile match", "association_no_match_count")
+    flow(
+        "Association attempted",
+        "Other association outcome",
+        "association_other_outcome_count",
+    )
+    flow(
+        "Proposed profile match",
+        "Active provisional assignment",
+        "active_assignment_count",
+    )
+    flow(
+        "Proposed profile match",
+        "Automatic assignment ready",
+        "eligible_assignment_count",
+    )
+    flow(
+        "Proposed profile match",
+        "Profile readiness blocked",
+        "profile_blocked_count",
+    )
+    flow(
+        "Proposed profile match",
+        "Policy or circuit blocked",
+        "policy_blocked_count",
+    )
+    flow("Proposed profile match", "Human review required", "human_review_count")
+    flow(
+        "Proposed profile match",
+        "Assignment evidence missing",
+        "evidence_missing_count",
+    )
+    flow(
+        "Proposed profile match",
+        "Stale or revoked assignment",
+        "stale_or_revoked_count",
+    )
+    flow(
+        "Proposed profile match",
+        "Other proposal outcome",
+        "other_proposal_outcome_count",
+    )
+    return "\n".join(lines)
+
+
 def build_systemic_markdown(report: dict[str, Any]) -> str:
     population = report.get("population", {})
     progression = build_systemic_progression_summary(report)
@@ -5690,12 +5925,45 @@ def build_systemic_markdown(report: dict[str, Any]) -> str:
             f"{unreviewed_dispositions.get(disposition, 0)} |"
         )
     identity_outcomes = report.get("identity_outcome_summary", {})
+    identity_progression = build_identity_pipeline_summary(report)
     lines.extend(
         [
             "",
             "## Identity operational outcomes",
             "",
             identity_outcomes.get("interpretation", "No identity outcomes reported."),
+            "",
+            "The identity flow starts with accepted sermons and preserves one "
+            "unique-video denominator through observation readiness, association, "
+            "and assignment. Repeated attempts and advisory events are excluded.",
+            "",
+            "```mermaid",
+            build_identity_pipeline_mermaid(report),
+            "```",
+            "",
+            "### Identity progression checkpoints",
+            "",
+            "Counts are unique accepted-sermon videos. Each row uses the population "
+            "that reached that identity stage.",
+            "",
+            "| Stage | Progressed or completed | Stopped or waiting | Meaning |",
+            "|---|---:|---:|---|",
+            f"| Speaker observation | "
+            f"{identity_progression['profiled_count'] + identity_progression['current_observation_count']} | "
+            f"{identity_progression['observation_unavailable_count']} | "
+            "Reviewed membership or current observation available |",
+            f"| Association readiness | "
+            f"{identity_progression['association_attempted_count']} | "
+            f"{identity_progression['dispatch_pending_count'] + identity_progression['prerequisite_unavailable_count'] + identity_progression['admission_blocked_count'] + identity_progression['other_preassociation_count']} | "
+            "Attempted versus pending or blocked before comparison |",
+            f"| Association decision | "
+            f"{identity_progression['association_proposed_match_count']} | "
+            f"{identity_progression['association_insufficient_evidence_count'] + identity_progression['association_no_match_count'] + identity_progression['association_other_outcome_count']} | "
+            "Proposed match versus a terminal or inconclusive attempt |",
+            f"| Proposal assignment | "
+            f"{identity_progression['active_assignment_count'] + identity_progression['eligible_assignment_count']} | "
+            f"{identity_progression['profile_blocked_count'] + identity_progression['policy_blocked_count'] + identity_progression['human_review_count'] + identity_progression['evidence_missing_count'] + identity_progression['stale_or_revoked_count'] + identity_progression['other_proposal_outcome_count']} | "
+            "Active/ready versus proposal work remaining |",
             "",
             "| State | Traces |",
             "|---|---:|",
