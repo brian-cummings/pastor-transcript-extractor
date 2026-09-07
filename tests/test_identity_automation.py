@@ -170,7 +170,7 @@ class IdentityAutomationTests(unittest.TestCase):
         self.assertEqual("profile_prerequisite_blocked", item.state)
         self.assertEqual("candidate_profile_eligibility", item.stage)
         self.assertEqual(
-            "no_profile_has_three_independent_reviewed_recordings",
+            "no_profile_has_two_current_reviewed_acoustic_exemplars",
             item.reason_code,
         )
         self.assertFalse(item.retryable)
