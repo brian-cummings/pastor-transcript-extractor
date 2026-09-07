@@ -11,6 +11,14 @@ import statistics
 from typing import Iterable
 
 from pastor_transcript_extractor.analysis_readiness import build_readiness_report
+from pastor_transcript_extractor.comparison_features import (
+    BENCHMARK_FEATURE_SCHEMA_VERSION,
+    CORE_FEATURE_NAMES,
+    DEPTH_SENSITIVE_FEATURE_NAMES,
+    DIAGNOSTIC_ONLY_FEATURE_NAMES,
+    FEATURE_ROLE_ASSIGNMENTS,
+    RAW_CANONICAL_SHARE_FEATURE_NAMES,
+)
 from pastor_transcript_extractor.models import PopulationAnalysisSnapshot
 from pastor_transcript_extractor.profile_analysis import (
     CANONICAL_DIVISIONS,
@@ -22,11 +30,13 @@ from pastor_transcript_extractor.sermon_analysis import OLD_TESTAMENT_BOOKS
 from pastor_transcript_extractor.storage import Database
 
 
-POPULATION_ANALYZER_VERSION = "scripture-population-diagnostics@1"
+POPULATION_ANALYZER_VERSION = "scripture-population-diagnostics@2"
 FEATURE_SCHEMA_VERSION = "deterministic-profile-feature-vector@2"
 ELIGIBILITY_POLICY_VERSION = "population-current-profiles@1"
 MIN_CORRELATION_PROFILES = 10
 MIN_OUTLIER_PROFILES = 8
+STRONG_CORRELATION_THRESHOLD = 0.75
+HIGH_CORRELATION_THRESHOLD = 0.90
 FEATURE_NAMES = tuple(
     name for name in PROFILE_FEATURE_ORDER if name != "analysis_coverage_fraction"
 )
@@ -434,7 +444,10 @@ def _selection_delta(
 
 
 def _recommendation(
-    distribution: dict[str, object], stability: str, redundant_with: list[str]
+    name: str,
+    distribution: dict[str, object],
+    stability: str,
+    redundant_with: list[str],
 ) -> tuple[str, list[str]]:
     reasons: list[str] = []
     if (_number(distribution["missing_fraction"]) or 0) > 0.25:
@@ -447,7 +460,14 @@ def _recommendation(
         reasons.append("no_usable_between_profile_scale")
     if redundant_with:
         reasons.append("high_pairwise_correlation")
-    if "no_usable_between_profile_scale" in reasons:
+    role = _reviewed_role(name)
+    if role == "diagnostic_only":
+        reasons.append("reviewed_diagnostic_only_role")
+        decision = "diagnostic_only_reviewed"
+    elif role == "composition_source_not_independent_dimension":
+        reasons.append("reviewed_compositional_family_source")
+        decision = "use_only_via_canonical_composition"
+    elif "no_usable_between_profile_scale" in reasons:
         decision = "move_to_diagnostic_only_or_collect_more_profiles"
     elif "high_missingness" in reasons:
         decision = "investigate_detector_or_require_larger_corpus"
@@ -457,9 +477,25 @@ def _recommendation(
         decision = "move_to_diagnostic_only_or_transform"
     elif redundant_with:
         decision = "review_redundancy"
+    elif role == "depth_sensitive_minimum_8_sermons":
+        decision = "retain_with_minimum_8_sermons"
+    elif role == "core_minimum_5_sermons":
+        decision = "retain_core_minimum_5_sermons"
     else:
         decision = "retain"
     return decision, reasons
+
+
+def _reviewed_role(name: str) -> str:
+    if name in CORE_FEATURE_NAMES:
+        return "core_minimum_5_sermons"
+    if name in DEPTH_SENSITIVE_FEATURE_NAMES:
+        return "depth_sensitive_minimum_8_sermons"
+    if name in RAW_CANONICAL_SHARE_FEATURE_NAMES:
+        return "composition_source_not_independent_dimension"
+    if name in DIAGNOSTIC_ONLY_FEATURE_NAMES:
+        return "diagnostic_only"
+    return "not_selected"
 
 
 def build_population_snapshot(
@@ -513,6 +549,8 @@ def build_population_snapshot(
             "policy": policy.payload(),
             "profile_analyzer_key": PROFILE_ANALYZER_KEY,
             "profile_analyzer_version": PROFILE_ANALYZER_VERSION,
+            "reviewed_comparison_schema_version": BENCHMARK_FEATURE_SCHEMA_VERSION,
+            "reviewed_feature_roles": FEATURE_ROLE_ASSIGNMENTS,
         }
     )
     existing = database.get_population_analysis_snapshot_by_fingerprint(fingerprint)
@@ -586,7 +624,8 @@ def build_population_snapshot(
         )
         for name in FEATURE_NAMES
     }
-    correlations = []
+    strong_correlations = []
+    high_correlations = []
     redundant: dict[str, list[str]] = {name: [] for name in FEATURE_NAMES}
     for left_name, right_name in combinations(FEATURE_NAMES, 2):
         pairs = [
@@ -601,18 +640,19 @@ def build_population_snapshot(
         if (
             len(pairs) >= MIN_CORRELATION_PROFILES
             and correlation is not None
-            and abs(correlation) >= 0.9
+            and abs(correlation) >= STRONG_CORRELATION_THRESHOLD
         ):
-            correlations.append(
-                {
-                    "left": left_name,
-                    "right": right_name,
-                    "pearson": correlation,
-                    "shared_profiles": len(pairs),
-                }
-            )
+            item = {
+                "left": left_name,
+                "right": right_name,
+                "pearson": correlation,
+                "shared_profiles": len(pairs),
+            }
+            strong_correlations.append(item)
             redundant[left_name].append(right_name)
             redundant[right_name].append(left_name)
+            if abs(correlation) >= HIGH_CORRELATION_THRESHOLD:
+                high_correlations.append(item)
 
     feature_diagnostics: dict[str, object] = {}
     sermon_counts = [float(profile["sermon_count"]) for profile in profiles]
@@ -627,12 +667,24 @@ def build_population_snapshot(
         scale = _scale(distribution)
         median = _number(distribution["median"])
         mad = _number(distribution["median_absolute_deviation"])
-        q1 = _number(distribution["q1"])
-        q3 = _number(distribution["q3"])
         outliers = []
+        minimum = _number(distribution["minimum"])
+        maximum = _number(distribution["maximum"])
+        zero_fraction = _number(distribution["zero_fraction"])
+        bounded = (
+            minimum is not None
+            and maximum is not None
+            and 0 <= minimum <= maximum <= 1
+        )
+        outlier_policy = (
+            "suppressed_bounded_or_zero_inflated"
+            if bounded or (zero_fraction is not None and zero_fraction >= 0.2)
+            else "modified_z_mad_3.5"
+        )
         outlier_population = (
             profiles
             if int(distribution["observed_count"]) >= MIN_OUTLIER_PROFILES
+            and outlier_policy == "modified_z_mad_3.5"
             else []
         )
         for profile in outlier_population:
@@ -643,10 +695,8 @@ def build_population_snapshot(
                 median is not None
                 and mad is not None
                 and mad > 0
-                and abs(value - median) > 3 * mad
+                and abs(value - median) / (1.4826 * mad) > 3.5
             )
-            if not is_outlier and q1 is not None and q3 is not None and q3 > q1:
-                is_outlier = value < q1 - 1.5 * (q3 - q1) or value > q3 + 1.5 * (q3 - q1)
             if is_outlier:
                 outliers.append({"profile_id": profile["profile_id"], "value": value})
         normalized_loo = []
@@ -688,7 +738,9 @@ def build_population_snapshot(
         ]
         between_variance = _variance(observed_values)
         mean_within = statistics.fmean(within_variances) if within_variances else None
-        decision, reasons = _recommendation(distribution, stability_label, redundant[name])
+        decision, reasons = _recommendation(
+            name, distribution, stability_label, redundant[name]
+        )
         standard_deviation = _number(distribution["standard_deviation"])
         feature_diagnostics[name] = {
             "distribution": distribution,
@@ -740,6 +792,8 @@ def build_population_snapshot(
                 ),
             },
             "highly_correlated_with": sorted(redundant[name]),
+            "reviewed_schema_role": _reviewed_role(name),
+            "outlier_policy": outlier_policy,
             "outliers": sorted(outliers, key=lambda item: item["profile_id"]),
             "recommendation": decision,
             "recommendation_reasons": reasons,
@@ -772,6 +826,8 @@ def build_population_snapshot(
         "analyzer_version": analyzer_version,
         "profile_analyzer": f"{PROFILE_ANALYZER_KEY}@{PROFILE_ANALYZER_VERSION}",
         "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "reviewed_comparison_schema_version": BENCHMARK_FEATURE_SCHEMA_VERSION,
+        "reviewed_feature_roles": FEATURE_ROLE_ASSIGNMENTS,
         "eligibility_policy": policy.payload(),
         "input_fingerprint": fingerprint,
         "population": {
@@ -784,8 +840,13 @@ def build_population_snapshot(
         },
         "feature_names": list(FEATURE_NAMES),
         "feature_diagnostics": feature_diagnostics,
+        "strong_correlations": sorted(
+            strong_correlations,
+            key=lambda item: (-abs(item["pearson"]), item["left"], item["right"]),
+        ),
         "high_correlations": sorted(
-            correlations, key=lambda item: (-abs(item["pearson"]), item["left"], item["right"])
+            high_correlations,
+            key=lambda item: (-abs(item["pearson"]), item["left"], item["right"]),
         ),
         "stability_by_minimum_sermons": depth_stability,
         "profiles": profiles,
@@ -798,6 +859,20 @@ def build_population_snapshot(
             "null_values_mean_insufficient_evidence": True,
             "minimum_profiles_for_correlation_flag": MIN_CORRELATION_PROFILES,
             "minimum_profiles_for_outlier_flag": MIN_OUTLIER_PROFILES,
+            "strong_correlation_threshold": STRONG_CORRELATION_THRESHOLD,
+            "high_correlation_threshold": HIGH_CORRELATION_THRESHOLD,
+        },
+        "metadata_coverage": {
+            "dated_sermons": sum(
+                profile["dated_sermon_count"] for profile in profiles
+            ),
+            "total_sermons": sum(profile["sermon_count"] for profile in profiles),
+            "profiles_eligible_for_date_split": sum(
+                profile["dated_sermon_count"] >= 4 for profile in profiles
+            ),
+            "multi_source_profiles": sum(
+                profile["source_count"] >= 2 for profile in profiles
+            ),
         },
     }
     snapshot, created = database.add_population_analysis_snapshot(

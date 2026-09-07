@@ -19,6 +19,7 @@ from pastor_transcript_extractor.benchmark import (
 from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.profile_analysis import (
+    CANONICAL_DIVISIONS,
     PROFILE_ANALYZER_KEY,
     PROFILE_ANALYZER_VERSION,
     PROFILE_FEATURE_ORDER,
@@ -68,6 +69,10 @@ class ReferencePanelTests(unittest.TestCase):
             "sermons_missing_analysis": 0,
             "total_sermon_words": 20_000,
             "structural_coverage_diagnostics": {"sermons_analyzed": 4},
+            "canonical_division_emphasis": {
+                division: {"mentions": index + 1, "share": None}
+                for index, division in enumerate(CANONICAL_DIVISIONS)
+            },
             "deterministic_profile_feature_vector": {
                 "schema_version": 2,
                 "feature_names": list(PROFILE_FEATURE_ORDER),
@@ -219,6 +224,20 @@ class ReferencePanelTests(unittest.TestCase):
             "analysis_coverage_fraction",
             document["snapshot"]["feature_family_assignments"]["diagnostic_only"],
         )
+        self.assertEqual(
+            "benchmark-feature-schema@2",
+            document["snapshot"]["feature_schema_version"],
+        )
+        self.assertNotIn("old_testament_share", document["feature_matrix"]["feature_names"])
+        composition_names = document["snapshot"]["feature_family_assignments"][
+            "canonical_composition"
+        ]["feature_names"]
+        composition_values = members[eligible.id]["comparison_values"]
+        self.assertAlmostEqual(
+            0.0,
+            sum(composition_values[name] for name in composition_names),
+            places=5,
+        )
         stats = document["snapshot"]["panel_feature_statistics"]["features"]
         first_stats = stats[COMPARISON_FEATURE_NAMES[0]]
         self.assertEqual(1, first_stats["eligible_count"])
@@ -348,6 +367,16 @@ class ReferencePanelTests(unittest.TestCase):
                 ("sermons_analyzed", "2", None),
                 ("sermons_missing_analysis", "0", None),
                 ("total_sermon_words", "20000", None),
+                (
+                    "canonical_division_emphasis",
+                    json.dumps(
+                        {
+                            division: {"mentions": index + 1, "share": None}
+                            for index, division in enumerate(CANONICAL_DIVISIONS)
+                        }
+                    ),
+                    None,
+                ),
                 (
                     "deterministic_profile_feature_vector",
                     json.dumps(

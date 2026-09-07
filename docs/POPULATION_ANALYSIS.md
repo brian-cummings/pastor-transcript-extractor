@@ -76,6 +76,13 @@ create synthetic sermon or profile-analysis runs.
 
 ## Interpretation
 
+Population analyzer `scripture-population-diagnostics@2` also records the reviewed
+`benchmark-feature-schema@2` roles. It distinguishes strong correlations (`|r| >= 0.75`)
+from high correlations (`|r| >= 0.90`). Outlier detection is suppressed for bounded or
+zero-inflated measurements; other features use a conservative modified-Z/MAD rule.
+Metadata coverage explicitly shows when date-split or multi-source diagnostics cannot be
+interpreted.
+
 Leave-one-out sensitivity is normalized by the feature's population interquartile range,
 with standard deviation or range used only when the IQR is unavailable:
 
@@ -84,9 +91,14 @@ with standard deviation or range used only when the IQR is unavailable:
 - `low`: greater than 0.75; and
 - `not_evaluable`: the population has no usable scale or the feature is too sparse.
 
-Recommendations are deterministic review prompts, not schema mutations:
+Snapshot `@1` recommendations were deterministic review prompts rather than schema
+mutations. Snapshot `@2` adds reviewed-role outcomes:
 
 - `retain`;
+- `retain_core_minimum_5_sermons`;
+- `retain_with_minimum_8_sermons`;
+- `diagnostic_only_reviewed`;
+- `use_only_via_canonical_composition`;
 - `review_redundancy`;
 - `require_larger_corpus_or_transform`;
 - `move_to_diagnostic_only_or_transform`;

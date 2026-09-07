@@ -7,6 +7,15 @@ import re
 import statistics
 from typing import Mapping
 
+from pastor_transcript_extractor.comparison_features import (
+    BENCHMARK_FEATURE_SCHEMA_VERSION,
+    CANONICAL_COMPOSITION_FEATURE_NAMES,
+    COMPARISON_FEATURE_NAMES,
+    CORE_FEATURE_NAMES,
+    DIAGNOSTIC_ONLY_FEATURE_NAMES,
+    FEATURE_ROLE_ASSIGNMENTS,
+    canonical_division_clr,
+)
 from pastor_transcript_extractor.models import (
     ReferencePanel,
     ReferencePanelMembershipEvent,
@@ -21,9 +30,9 @@ from pastor_transcript_extractor.profile_analysis import (
 from pastor_transcript_extractor.storage import Database
 
 
-SNAPSHOT_ANALYZER_VERSION = "reference-panel-snapshot@1"
-FEATURE_SCHEMA_VERSION = "deterministic-profile-feature-vector@2"
-ELIGIBILITY_POLICY_VERSION = "scripture-reference-eligibility@1"
+SNAPSHOT_ANALYZER_VERSION = "reference-panel-snapshot@2"
+FEATURE_SCHEMA_VERSION = BENCHMARK_FEATURE_SCHEMA_VERSION
+ELIGIBILITY_POLICY_VERSION = "scripture-reference-eligibility@2"
 
 # Corpus sufficiency and analysis completeness explain whether a vector is usable;
 # they are deliberately not dimensions in similarity space.
@@ -35,15 +44,9 @@ COVERAGE_FEATURE_NAMES = (
     "analysis_coverage_fraction",
     "structural_coverage_diagnostics",
 )
-COMPARISON_FEATURE_NAMES = tuple(
-    name for name in PROFILE_FEATURE_ORDER if name != "analysis_coverage_fraction"
-)
 REQUIRED_COMPARISON_FEATURE_NAMES = (
-    "zero_detected_reference_sermon_fraction",
-    "references_per_1000_words",
-    "book_breadth_per_10_references",
-    "book_concentration_hhi",
-    "old_testament_share",
+    *CORE_FEATURE_NAMES,
+    *CANONICAL_COMPOSITION_FEATURE_NAMES,
 )
 UNSUPPORTED_FEATURE_FAMILIES = (
     "semantic-style-run-coverage",
@@ -53,9 +56,11 @@ UNSUPPORTED_FEATURE_FAMILIES = (
     "embeddings",
 )
 FEATURE_FAMILY_ASSIGNMENTS = {
-    "version": "benchmark-feature-families@1",
+    **FEATURE_ROLE_ASSIGNMENTS,
     "comparison_eligible": list(COMPARISON_FEATURE_NAMES),
-    "diagnostic_only": list(COVERAGE_FEATURE_NAMES),
+    "diagnostic_only": sorted(
+        set(COVERAGE_FEATURE_NAMES) | set(DIAGNOSTIC_ONLY_FEATURE_NAMES)
+    ),
     "excluded": list(UNSUPPORTED_FEATURE_FAMILIES),
 }
 
@@ -65,7 +70,7 @@ _PANEL_KEY = re.compile(r"^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?$")
 @dataclass(frozen=True, slots=True)
 class EligibilityPolicy:
     version: str = ELIGIBILITY_POLICY_VERSION
-    minimum_analyzed_sermons: int = 3
+    minimum_analyzed_sermons: int = 5
     minimum_total_sermon_words: int = 10_000
     minimum_analysis_coverage: float = 0.8
     required_comparison_feature_names: tuple[str, ...] = REQUIRED_COMPARISON_FEATURE_NAMES
@@ -266,7 +271,19 @@ def _member_payload(
             by_name = dict(zip(PROFILE_FEATURE_ORDER, vector["values"], strict=True))
         else:
             reasons.append("incompatible_feature_schema")
-        comparison = {name: _number(by_name.get(name)) for name in COMPARISON_FEATURE_NAMES}
+        composition = canonical_division_clr(
+            values.get("canonical_division_emphasis", {})
+            if isinstance(values.get("canonical_division_emphasis"), dict)
+            else {}
+        )
+        comparison = {
+            name: (
+                composition.get(name)
+                if composition is not None and name in CANONICAL_COMPOSITION_FEATURE_NAMES
+                else _number(by_name.get(name))
+            )
+            for name in COMPARISON_FEATURE_NAMES
+        }
         diagnostics = {
             "sermons_attached": _number(values.get("sermons_attached")),
             "sermons_analyzed": _number(values.get("sermons_analyzed")),
@@ -293,6 +310,11 @@ def _member_payload(
         ]
         diagnostics["missing_comparison_features"] = missing
         diagnostics["missing_required_comparison_features"] = missing_required
+        diagnostics["reviewed_feature_depth_support"] = {
+            "core": bool(analyzed is not None and analyzed >= 5),
+            "canonical_composition": bool(analyzed is not None and analyzed >= 5),
+            "depth_sensitive": bool(analyzed is not None and analyzed >= 8),
+        }
         if missing_required:
             reasons.append("missing_required_comparison_features")
     return {

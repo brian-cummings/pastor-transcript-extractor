@@ -168,6 +168,18 @@ class PopulationAnalysisTests(unittest.TestCase):
             {"high", "moderate", "low", "not_evaluable"},
         )
         self.assertTrue(first.report["interpretation"]["recommendations_are_advisory"])
+        self.assertEqual(
+            "benchmark-feature-schema@2",
+            first.report["reviewed_comparison_schema_version"],
+        )
+        alignment_presence = first.report["feature_diagnostics"][
+            "sermons_with_text_alignment_fraction"
+        ]
+        self.assertEqual(
+            "suppressed_bounded_or_zero_inflated",
+            alignment_presence["outlier_policy"],
+        )
+        self.assertEqual([], alignment_presence["outliers"])
 
     def test_changed_profile_run_or_population_version_creates_new_snapshot(self) -> None:
         first = build_population_snapshot(self.database, policy=self.policy)
@@ -264,7 +276,10 @@ class PopulationAnalysisTests(unittest.TestCase):
         )
         self.assertEqual(0, built.exit_code, msg=built.output)
         self.assertIn("Population snapshot #", built.output)
-        self.assertIn("Recommendations are advisory only", built.output)
+        self.assertIn(
+            "Recommendations are advisory; reviewed schema roles are recorded",
+            built.output,
+        )
 
         shown = runner.invoke(
             app,

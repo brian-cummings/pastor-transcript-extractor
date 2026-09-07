@@ -1937,7 +1937,7 @@ def benchmark_show(
 @benchmark_app.command("build", help="Build or reuse an immutable panel snapshot.")
 def benchmark_build(
     panel_key: str = typer.Argument(..., help="Reference panel key."),
-    minimum_analyzed_sermons: int = typer.Option(3, "--min-analyzed-sermons"),
+    minimum_analyzed_sermons: int = typer.Option(5, "--min-analyzed-sermons"),
     minimum_total_sermon_words: int = typer.Option(10_000, "--min-total-words"),
     minimum_analysis_coverage: float = typer.Option(0.8, "--min-coverage"),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -2314,7 +2314,7 @@ def _print_population_analysis(snapshot: object, report: dict[str, object]) -> N
     table.add_column("Zero", justify="right")
     table.add_column("LOO")
     table.add_column("Size r", justify="right")
-    table.add_column("Correlated", justify="right")
+    table.add_column("Strong corr.", justify="right")
     table.add_column("Outliers", justify="right")
     table.add_column("Advisory recommendation")
     diagnostics = report["feature_diagnostics"]
@@ -2339,12 +2339,21 @@ def _print_population_analysis(snapshot: object, report: dict[str, object]) -> N
         for profile in report["profiles"]
     )
     console.print(
-        f"High-correlation pairs: {len(report['high_correlations'])}; "
+        f"Strong-correlation pairs: {len(report.get('strong_correlations', []))}; "
+        f"high-correlation pairs: {len(report['high_correlations'])}; "
         f"profile recomputation parity failures: {parity_failures}."
     )
+    metadata = report.get("metadata_coverage", {})
+    if metadata:
+        console.print(
+            f"Metadata diagnostics: dated_sermons={metadata['dated_sermons']}/"
+            f"{metadata['total_sermons']}, "
+            f"date_split_profiles={metadata['profiles_eligible_for_date_split']}, "
+            f"multi_source_profiles={metadata['multi_source_profiles']}."
+        )
     console.print(
-        "Recommendations are advisory only; no comparison schema, weights, rankings, "
-        "or clusters were changed."
+        "Recommendations are advisory; reviewed schema roles are recorded, but no "
+        "similarity weights, rankings, or clusters were created."
     )
 
 

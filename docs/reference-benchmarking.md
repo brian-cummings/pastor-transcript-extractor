@@ -8,18 +8,25 @@ a later `detach` event removes it from effective membership without deleting his
 Profiles may belong to more than one panel, and redirects are resolved when a snapshot
 is built.
 
-The first snapshot format accepts only immutable `profile-scripture-usage@4` runs and
-the deterministic profile feature-vector schema `@2`. Its comparison vector contains
-the ordered Scripture-usage features except `analysis_coverage_fraction`. Coverage,
-corpus size, missing-analysis counts, and structural coverage remain diagnostics outside
-the vector. Semantic style coverage, theology, politics, Christian nationalism, and
-embeddings are explicitly excluded. These assignments are recorded as
-`benchmark-feature-families@1` so later methods can change feature families deliberately.
+Snapshot analyzer `reference-panel-snapshot@2` accepts immutable
+`profile-scripture-usage@4` runs and materializes reviewed
+`benchmark-feature-schema@2`. The comparison representation contains four core features
+usable for exploratory comparison at five sermons, eight depth-sensitive features that
+must abstain below eight sermons, and a smoothed centered-log-ratio representation of the
+ten canonical divisions. The canonical composition is one feature family rather than ten
+independently weighted claims.
 
-Eligibility policy `scripture-reference-eligibility@1` requires, by default, at least
-three analyzed sermons, 10,000 sermon words, 80% analysis coverage, and a small stable
-required subset (zero-reference fraction, reference density, book breadth, book
-concentration, and Old Testament share). Other comparison-eligible values may remain
+Coverage, zero-reference exceptions, saturated alignment-presence, redundant raw
+breadth/concentration measurements, raw canonical shares, corpus size, missing-analysis
+counts, and structural coverage remain diagnostics outside the vector. Semantic style,
+theology, politics, Christian nationalism, and embeddings remain explicitly excluded.
+The complete role assignment and minimum-depth policy are persisted with every snapshot.
+
+Eligibility policy `scripture-reference-eligibility@2` requires, by default, at least
+five analyzed sermons, 10,000 sermon words, 80% analysis coverage, the four core
+features, and the canonical composition. Depth-sensitive values remain present for
+traceability but later comparison must abstain from using them below eight sermons.
+Other comparison-eligible values may remain
 missing and carry explicit missingness. CLI build flags can adjust the numeric thresholds; the complete policy is
 persisted. Every member remains visible. Missing analysis, insufficient corpus or
 coverage, incompatible schema, and missing features are recorded as exclusion reasons,
@@ -60,8 +67,9 @@ pte benchmark show-snapshot prominent-pastors-v1 --json
 
 The JSON feature matrix is ready for a later transparent nearest-reference comparison:
 rows retain stable profile identity, label, run provenance, ordered raw values, explicit
-missingness, and separate coverage. The natural next increment is
+missingness, explicit feature roles, and separate coverage. The natural next increment is
 `pte benchmark compare --profile-id PROFILE_ID --panel PANEL_KEY`, using raw differences
-or a documented robust standardization based on the persisted median and MAD. Clustering,
+or a documented robust standardization based on the persisted median and MAD, equal
+feature-family weighting, and depth-aware abstention. Clustering,
 learned weights, resampling, and semantic features are intentionally not part of this
 slice.
