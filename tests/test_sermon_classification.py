@@ -188,6 +188,51 @@ class RecallRescueLlmClient:
         return LocalLlmResponse(content, json.dumps(content), self.model)
 
 
+class AlternativeRefinementLlmClient:
+    model = "fake-alternative-refinement-model"
+
+    def __init__(self, *, strong_region: str = "LATE") -> None:
+        self.calls = 0
+        self.strong_region = strong_region
+
+    def generate_json(self, prompt: str, schema: dict[str, object]) -> LocalLlmResponse:
+        self.calls += 1
+        properties = schema.get("properties", {})
+        if isinstance(properties, dict) and "phase" in properties:
+            content = {
+                "phase": (
+                    "sermon" if "EARLY_" in prompt or "LATE_" in prompt else "administration"
+                ),
+                "reason_code": (
+                    "biblical_exposition"
+                    if "EARLY_" in prompt or "LATE_" in prompt
+                    else "logistics_or_welcome"
+                ),
+            }
+        elif isinstance(properties, dict) and "decision" in properties:
+            content = {
+                "decision": (
+                    "sermon_biblical_exposition"
+                    if "EARLY_" in prompt or "LATE_" in prompt
+                    else "not_sermon_administration"
+                )
+            }
+        else:
+            content = {
+                "label": (
+                    "sermon"
+                    if f"{self.strong_region}_" in prompt
+                    else "announcements"
+                ),
+                "reason_code": (
+                    "biblical_exposition"
+                    if f"{self.strong_region}_" in prompt
+                    else "logistics_or_welcome"
+                ),
+            }
+        return LocalLlmResponse(content, json.dumps(content), self.model)
+
+
 def draft(start: float, end: float, text: str) -> SegmentDraft:
     return SegmentDraft(start, end, text, None, TranscriptSegmentLabel.SERMON, 0.55)
 
@@ -1450,6 +1495,73 @@ class HybridClassificationTests(unittest.TestCase):
         )
         self.assertTrue(result["search"]["discovery"]["rescue_triggered"])
         self.assertEqual("likelihood_rescue", result["search"]["discovery"]["selected_mode"])
+
+    def test_risk_trigger_refines_one_alternative_and_reranks_on_fine_evidence(self) -> None:
+        drafts = [
+            draft(0.0, 300.0, "EARLY_ our sermon title today is Grace"),
+            draft(300.0, 600.0, "EARLY_ generic religious remarks"),
+            draft(600.0, 900.0, "SERVICE_ announcements and logistics"),
+            draft(900.0, 1200.0, "LATE_ sustained biblical exposition"),
+            draft(1200.0, 1500.0, "LATE_ the passage teaches grace"),
+            draft(1500.0, 1800.0, "LATE_ exposition continues"),
+            draft(1800.0, 2100.0, "LATE_ application and exhortation"),
+            draft(2100.0, 2400.0, "LATE_ sermon conclusion"),
+        ]
+        rule_window = SermonWindowResult(
+            None, None, 0.0, [], "rule_based_v1", [], list(range(8)), False, []
+        )
+        client = AlternativeRefinementLlmClient()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = classify_sermon_content_adaptive(
+                drafts,
+                rule_window,
+                client,
+                prompt_version="alternative-refinement-v1",
+                cache_dir=Path(temp_dir),
+                model_digest="model-digest",
+            ).to_dict()
+
+        strategy = result["search"]["discovery"]["refinement_strategy"]
+        self.assertEqual([1, 2], strategy["refined_ranks"])
+        self.assertEqual("alternative_selected", strategy["comparison"]["decision"])
+        self.assertEqual(2, result["search"]["selected_rank"])
+        self.assertEqual(list(range(3, 8)), result["retained_segment_indexes"])
+        self.assertGreater(result["cache_stats"]["hits"], 0)
+        self.assertEqual(
+            "low",
+            result["confidence_tier"],
+            "reranking must not raise the primary result's sermon-existence confidence",
+        )
+
+    def test_additional_refinement_retains_primary_when_alternative_is_weaker(self) -> None:
+        drafts = [
+            draft(0.0, 300.0, "EARLY_ our sermon title today is Grace"),
+            draft(300.0, 600.0, "EARLY_ sustained biblical exposition"),
+            draft(600.0, 900.0, "SERVICE_ announcements and logistics"),
+            draft(900.0, 1200.0, "LATE_ generic religious remarks"),
+            draft(1200.0, 1500.0, "LATE_ generic religious remarks"),
+            draft(1500.0, 1800.0, "LATE_ generic religious remarks"),
+        ]
+        rule_window = SermonWindowResult(
+            None, None, 0.0, [], "rule_based_v1", [], list(range(6)), False, []
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = classify_sermon_content_adaptive(
+                drafts,
+                rule_window,
+                AlternativeRefinementLlmClient(strong_region="EARLY"),
+                prompt_version="alternative-refinement-primary-v1",
+                cache_dir=Path(temp_dir),
+                model_digest="model-digest",
+            ).to_dict()
+
+        strategy = result["search"]["discovery"]["refinement_strategy"]
+        self.assertEqual([1, 2], strategy["refined_ranks"])
+        self.assertEqual("primary_retained", strategy["comparison"]["decision"])
+        self.assertEqual(1, result["search"]["selected_rank"])
+        self.assertEqual([0, 1, 2], result["retained_segment_indexes"])
 
     def test_adaptive_search_splits_objective_noise_and_selects_stronger_component(self) -> None:
         drafts = [

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 import hashlib
 import json
@@ -20,8 +20,8 @@ from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 CONFIDENCE_POLICY_VERSION = "semantic_primary_rule_guard_v3"
 BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
-FINE_COMPONENT_VERSION = "objective-service-guards+segment-precision-v8"
-SEARCH_ALGORITHM_VERSION = "adaptive_llm_v7"
+FINE_COMPONENT_VERSION = "objective-service-guards+segment-precision-v9"
+SEARCH_ALGORITHM_VERSION = "adaptive_llm_v8"
 POSITION_PRIOR_VERSION = "service-position-prior-v2"
 LONG_EDGE_EXPANSION_SECONDS = 600.0
 MAX_PRE_ANCHOR_RECOVERY_SECONDS = 180.0
@@ -1300,6 +1300,95 @@ def _adaptive_confidence_tier(
     return "high"
 
 
+def _selected_search_candidate(result: HybridSermonResult) -> dict[str, Any]:
+    search = result.search if isinstance(result.search, dict) else {}
+    candidates = search.get("candidates")
+    candidates = candidates if isinstance(candidates, list) else []
+    selected_rank = search.get("selected_rank")
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if isinstance(candidate, dict) and candidate.get("rank") == selected_rank
+        ),
+        {},
+    )
+
+
+def _refined_candidate_quality(result: HybridSermonResult) -> dict[str, Any]:
+    """Score only persisted fine/semantic evidence, with duration deliberately absent."""
+    candidate = _selected_search_candidate(result)
+    score_components = candidate.get("score_components")
+    score_components = score_components if isinstance(score_components, dict) else {}
+    recovery = candidate.get("boundary_recovery")
+    recovery = recovery if isinstance(recovery, dict) else {}
+    fine_support_count = len(candidate.get("fine_support_block_ids") or [])
+    semantic_ratio = float(score_components.get("sermon_specific_support_ratio") or 0.0)
+    cohesion_ratio = float(score_components.get("cohesion_ratio") or 0.0)
+    boundary_support = sum(
+        1
+        for edge in ("start", "end")
+        if isinstance(recovery.get(edge), dict)
+        and recovery[edge].get("status")
+        in {"semantic_transition", "objective_service_boundary", "recording_edge"}
+    )
+    central = next(
+        (
+            reason
+            for reason in result.confidence_reasons or []
+            if isinstance(reason, dict) and reason.get("code") == "central_consistency"
+        ),
+        {},
+    )
+    hard_consistency_failure = central.get("effect") == "forces_low"
+    quality_score = (
+        semantic_ratio * 5.0
+        + cohesion_ratio * 2.0
+        + min(fine_support_count, 8) * 0.25
+        + boundary_support * 0.5
+        - (4.0 if hard_consistency_failure else 0.0)
+        - min(len(result.uncertain_block_ids), 4) * 0.5
+    )
+    return {
+        "score": round(quality_score, 6),
+        "sermon_specific_support_ratio": round(semantic_ratio, 6),
+        "cohesion_ratio": round(cohesion_ratio, 6),
+        "fine_support_block_count": fine_support_count,
+        "boundary_support_count": boundary_support,
+        "hard_consistency_failure": hard_consistency_failure,
+        "confidence_tier": result.confidence_tier,
+    }
+
+
+def _alternative_refinement_is_stronger(
+    primary: HybridSermonResult,
+    alternative: HybridSermonResult,
+) -> tuple[bool, dict[str, Any]]:
+    primary_quality = _refined_candidate_quality(primary)
+    alternative_quality = _refined_candidate_quality(alternative)
+    alternative_eligible = (
+        bool(alternative.retained_segment_indexes)
+        and alternative_quality["fine_support_block_count"] >= 3
+        and not alternative_quality["hard_consistency_failure"]
+    )
+    stronger = alternative_eligible and (
+        (
+            primary_quality["hard_consistency_failure"]
+            and alternative_quality["sermon_specific_support_ratio"]
+            >= primary_quality["sermon_specific_support_ratio"] - 0.1
+        )
+        or alternative_quality["score"] >= primary_quality["score"] + 0.75
+    )
+    return stronger, {
+        "policy_version": "fine_evidence_rerank_v1",
+        "primary": primary_quality,
+        "alternative": alternative_quality,
+        "alternative_eligible": alternative_eligible,
+        "minimum_score_margin": 0.75,
+        "decision": "alternative_selected" if stronger else "primary_retained",
+    }
+
+
 def _long_recording_edge_expansion(
     probe_outcomes: dict[str, dict[str, Any]], blocks: list[TranscriptBlock]
 ) -> dict[str, Any] | None:
@@ -1346,6 +1435,8 @@ def classify_sermon_content_adaptive(
     rule_baseline_algorithm_version: str | None = None,
     manual_override_present: bool = False,
     video_title: str | None = None,
+    _selected_candidate_rank: int | None = None,
+    _allow_additional_refinement: bool = True,
 ) -> HybridSermonResult:
     if rule_window.method == "manual_override_v1" or rule_baseline_source == "manual_override":
         raise ValueError(
@@ -1570,7 +1661,18 @@ def classify_sermon_content_adaptive(
         candidate["rank"] = rank
         candidate["selection_state"] = "selected" if rank == 1 else "alternative"
     if ranked_candidates:
-        selected_candidate = ranked_candidates[0]
+        selected_candidate = next(
+            (
+                candidate
+                for candidate in ranked_candidates
+                if candidate.get("rank") == _selected_candidate_rank
+            ),
+            ranked_candidates[0],
+        )
+        for candidate in ranked_candidates:
+            candidate["selection_state"] = (
+                "selected" if candidate is selected_candidate else "alternative"
+            )
     elif rule_window.start_seconds is not None and rule_window.end_seconds is not None:
         selected_candidate = {
             "rank": 1,
@@ -2008,13 +2110,18 @@ def classify_sermon_content_adaptive(
     ):
         post_refinement_rescue_reasons.append("alternative_indicates_uncovered_continuation")
     discovery["post_refinement_rescue_reasons"] = post_refinement_rescue_reasons
+    additional_refinement_reasons = list(dict.fromkeys([
+        *rescue_reasons,
+        *post_refinement_rescue_reasons,
+    ])) if len(ranked_candidates) > 1 else []
     discovery["refinement_strategy"] = {
         "refined_ranks": [int(selected_candidate["rank"])],
         "reranked_candidate_count": len(ranked_candidates),
-        "additional_refinement_required": bool(post_refinement_rescue_reasons),
+        "additional_refinement_required": bool(additional_refinement_reasons),
+        "trigger_reasons": additional_refinement_reasons,
         "reason": (
             "review_required_before_selecting_an_unrefined_alternative"
-            if post_refinement_rescue_reasons
+            if additional_refinement_reasons
             else "top_evidence_candidate_was_coherent"
         ),
     }
@@ -2107,7 +2214,7 @@ def classify_sermon_content_adaptive(
         "discovery": discovery,
         "recording_structure": position_prior,
     }
-    return HybridSermonResult(
+    primary_result = HybridSermonResult(
         SEARCH_ALGORITHM_VERSION, client.model, prompt_version, confidence,
         sorted(retained), sorted(all_timed - retained), uncertain_ids, warnings,
         coarse_blocks + fine_blocks, coarse_audit + fine_audit,
@@ -2115,6 +2222,145 @@ def classify_sermon_content_adaptive(
         search,
         confidence_reasons,
         CONFIDENCE_POLICY_VERSION,
+    )
+    if (
+        not _allow_additional_refinement
+        or _selected_candidate_rank is not None
+        or not additional_refinement_reasons
+        or len(ranked_candidates) < 2
+    ):
+        return primary_result
+
+    selected_end = float(selected_candidate["end_seconds"])
+    selected_semantic_ratio = float(
+        selected_candidate.get("score_components", {}).get(
+            "sermon_specific_support_ratio", 0.0
+        )
+    )
+    later_candidates = [
+        candidate
+        for candidate in ranked_candidates
+        if candidate is not selected_candidate
+        and float(candidate["start_seconds"]) > selected_end
+        and float(candidate.get("score_components", {}).get(
+            "sermon_specific_support_ratio", 0.0
+        )) >= selected_semantic_ratio
+    ]
+    alternative_candidate = max(
+        later_candidates,
+        key=lambda candidate: float(candidate["score"]),
+        default=next(
+            (
+                candidate
+                for candidate in ranked_candidates
+                if candidate is not selected_candidate
+            ),
+            None,
+        ),
+    )
+    if alternative_candidate is None:
+        return primary_result
+
+    alternative_result = classify_sermon_content_adaptive(
+        drafts,
+        rule_window,
+        client,
+        prompt_version=prompt_version,
+        progress=progress,
+        cache_dir=cache_dir,
+        model_digest=model_digest,
+        context_size=context_size,
+        rule_baseline_source=rule_baseline_source,
+        rule_baseline_algorithm_version=rule_baseline_algorithm_version,
+        manual_override_present=manual_override_present,
+        video_title=video_title,
+        _selected_candidate_rank=int(alternative_candidate["rank"]),
+        _allow_additional_refinement=False,
+    )
+    stronger, comparison = _alternative_refinement_is_stronger(
+        primary_result, alternative_result
+    )
+    chosen = alternative_result if stronger else primary_result
+    chosen_search = chosen.search if isinstance(chosen.search, dict) else {}
+    chosen_rank = chosen_search.get("selected_rank")
+    refined_candidates = {
+        primary_result.search.get("selected_rank"): _selected_search_candidate(
+            primary_result
+        ),
+        alternative_result.search.get("selected_rank"): _selected_search_candidate(
+            alternative_result
+        ),
+    }
+    for position, candidate in enumerate(chosen_search.get("candidates") or []):
+        if not isinstance(candidate, dict):
+            continue
+        refined = refined_candidates.get(candidate.get("rank"))
+        if refined:
+            chosen_search["candidates"][position] = {
+                **refined,
+                "selection_state": (
+                    "selected" if refined.get("rank") == chosen_rank else "alternative"
+                ),
+            }
+    chosen_discovery = chosen_search.get("discovery")
+    if isinstance(chosen_discovery, dict):
+        chosen_discovery["refinement_strategy"] = {
+            "refined_ranks": [
+                int(selected_candidate["rank"]),
+                int(alternative_candidate["rank"]),
+            ],
+            "reranked_candidate_count": len(ranked_candidates),
+            "additional_refinement_required": False,
+            "trigger_reasons": list(additional_refinement_reasons),
+            "comparison": comparison,
+            "reason": (
+                "alternative_fine_evidence_was_stronger"
+                if stronger
+                else "primary_fine_evidence_remained_stronger"
+            ),
+        }
+    combined_cache_stats = None
+    if (
+        primary_result.cache_stats is not None
+        and alternative_result.cache_stats is not None
+    ):
+        combined_cache_stats = {
+            "hits": int(primary_result.cache_stats.get("hits", 0))
+            + int(alternative_result.cache_stats.get("hits", 0)),
+            "misses": int(primary_result.cache_stats.get("misses", 0))
+            + int(alternative_result.cache_stats.get("misses", 0)),
+        }
+    # Candidate reranking is a localization operation. It may preserve or lower
+    # confidence, but must never promote sermon existence by raising the tier.
+    tier_order = {"low": 0, "medium": 1, "high": 2}
+    final_confidence = chosen.confidence_tier
+    if tier_order.get(final_confidence, 0) > tier_order.get(
+        primary_result.confidence_tier, 0
+    ):
+        final_confidence = primary_result.confidence_tier
+    final_confidence_reasons = [
+        dict(reason) if isinstance(reason, dict) else reason
+        for reason in chosen.confidence_reasons or []
+    ]
+    for reason in final_confidence_reasons:
+        if isinstance(reason, dict) and reason.get("code") == "confidence_decision":
+            reason["tier"] = final_confidence
+    final_confidence_reasons.append({
+        "code": "candidate_rerank_confidence_ceiling",
+        "primary_tier": primary_result.confidence_tier,
+        "selected_candidate_tier": chosen.confidence_tier,
+        "tier": final_confidence,
+        "effect": (
+            "prevented_existence_confidence_promotion"
+            if final_confidence != chosen.confidence_tier
+            else "no_effect"
+        ),
+    })
+    return replace(
+        chosen,
+        confidence_tier=final_confidence,
+        cache_stats=combined_cache_stats,
+        confidence_reasons=final_confidence_reasons,
     )
 
 
