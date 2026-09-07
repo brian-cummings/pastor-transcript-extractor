@@ -125,6 +125,16 @@ class IdentityAutomationTests(unittest.TestCase):
             reason="test",
             review_event_key="membership",
         )
+        for index in range(2):
+            member = self._observation(f"profiled-{index}")
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=member.id,
+                reviewer="reviewer",
+                reason="test",
+                review_event_key=f"membership-{index}",
+            )
 
         with patch(
             "pastor_transcript_extractor.identity_automation."
@@ -141,6 +151,29 @@ class IdentityAutomationTests(unittest.TestCase):
         self.assertNotIn(profiled.id, states)
         self.assertNotIn(stale.id, states)
         self.assertEqual("dispatch_ready", states[replacement.id])
+
+    def test_dispatch_is_blocked_when_no_profile_has_independent_seed(self):
+        candidate = self._observation("candidate-without-profile-seed")
+
+        with patch(
+            "pastor_transcript_extractor.identity_automation."
+            "assess_automatic_speaker_observation",
+            side_effect=self._eligible,
+        ):
+            plan = build_identity_association_work_plan(
+                self.database, self.association_root
+            )
+
+        item = next(
+            item for item in plan.items if item.observation_id == candidate.id
+        )
+        self.assertEqual("profile_prerequisite_blocked", item.state)
+        self.assertEqual("candidate_profile_eligibility", item.stage)
+        self.assertEqual(
+            "no_profile_has_three_independent_reviewed_recordings",
+            item.reason_code,
+        )
+        self.assertFalse(item.retryable)
 
     def test_blocker_policy_separates_repairable_technical_from_terminal_policy(self):
         self.assertEqual(

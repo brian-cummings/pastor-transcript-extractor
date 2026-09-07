@@ -117,6 +117,23 @@ def build_identity_association_work_plan(
         association_root, database_video_ids=video_ids
     )
     attempt_volume = sum(len(values) for values in attempts.values())
+    review_ready_profile_seed_available = any(
+        len(
+            {
+                observation.video_id
+                for observation_id in (
+                    database.list_effective_observation_ids_for_profile(
+                        profile.id
+                    )
+                )
+                if (observation := database.get_speaker_observation(observation_id))
+                is not None
+            }
+        )
+        >= 3
+        for profile in database.list_speaker_profiles()
+        if database.resolve_speaker_profile_id(profile.id) == profile.id
+    )
     items: list[IdentityAssociationWorkItem] = []
     for video in sorted(videos, key=lambda item: item.youtube_video_id):
         observation = database.get_latest_speaker_observation_for_video(video.id)
@@ -157,13 +174,22 @@ def build_identity_association_work_plan(
             reason = str(admission.get("reason_code") or "technical_failure")
             state, operation, retryable = classify_association_blocker(stage, reason)
         elif eligibility.eligible and eligibility.observation is not None:
-            state, stage, reason, operation, retryable = (
-                "dispatch_ready",
-                "association_dispatch",
-                "current_result_missing",
-                "run_bounded_association_dispatch",
-                True,
-            )
+            if review_ready_profile_seed_available:
+                state, stage, reason, operation, retryable = (
+                    "dispatch_ready",
+                    "association_dispatch",
+                    "current_result_missing",
+                    "run_bounded_association_dispatch",
+                    True,
+                )
+            else:
+                state, stage, reason, operation, retryable = (
+                    "profile_prerequisite_blocked",
+                    "candidate_profile_eligibility",
+                    "no_profile_has_three_independent_reviewed_recordings",
+                    "review_or_promote_independent_profile_evidence",
+                    False,
+                )
         else:
             admission = admissions.get(observation.id, {})
             admission_is_current = (
