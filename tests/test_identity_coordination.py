@@ -14,6 +14,7 @@ from pastor_transcript_extractor.identity_coordination import (
     load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
+    load_prepared_shadow_association_context,
     load_shadow_association_confirmation_pairs,
     load_unmatched_association_fingerprints,
     write_identity_coordination_report,
@@ -618,6 +619,9 @@ class IdentityCoordinationTests(unittest.TestCase):
                         cache_path=cache_path,
                     )
                 )
+            prepared_context = load_prepared_shadow_association_context(
+                cache_path
+            )
 
         self.assertEqual(2, len(nominations))
         self.assertEqual(
@@ -631,6 +635,7 @@ class IdentityCoordinationTests(unittest.TestCase):
         self.assertAlmostEqual(0.08, nominations[0].same_boundary_margin)
         self.assertEqual([(1, 1, path.resolve())], progress)
         self.assertEqual(nominations, cached_nominations)
+        self.assertEqual((nominations, frozenset()), prepared_context)
 
     def test_association_loader_uses_latest_boundary_state(self) -> None:
         clean = self._association_payload()

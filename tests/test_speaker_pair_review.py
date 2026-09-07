@@ -9,11 +9,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import Mock, patch
 
 from pastor_transcript_extractor.cli import (
     _normalize_review_terminal_input,
-    _sync_reviewed_speaker_evidence_after_review,
+    _reviewed_evidence_sync_command,
     review_speaker_pair,
 )
 from pastor_transcript_extractor.models import SpeakerObservation
@@ -34,9 +34,6 @@ from pastor_transcript_extractor.speaker_pair_review import (
 )
 from pastor_transcript_extractor.speaker_pair_selector import (
     selection_history_from_artifacts,
-)
-from pastor_transcript_extractor.reviewed_speaker_evidence import (
-    ReviewedEvidenceSyncResult,
 )
 
 
@@ -822,7 +819,10 @@ class SpeakerPairReviewTests(unittest.TestCase):
         with (
             patch(
                 "pastor_transcript_extractor.cli.build_paths",
-                return_value=SimpleNamespace(database=self.root / "database.sqlite3"),
+                return_value=SimpleNamespace(
+                    root=self.root,
+                    database=self.root / "database.sqlite3",
+                ),
             ),
             patch("pastor_transcript_extractor.cli.Path.exists", return_value=True),
             patch("pastor_transcript_extractor.cli.Database", return_value=database),
@@ -843,11 +843,7 @@ class SpeakerPairReviewTests(unittest.TestCase):
                 "pastor_transcript_extractor.cli.submit_review",
                 return_value=submission,
             ),
-            patch(
-                "pastor_transcript_extractor.cli."
-                "_sync_reviewed_speaker_evidence_after_review",
-                return_value=None,
-            ) as sync_reviewed,
+            patch("pastor_transcript_extractor.cli.console.print") as output,
         ):
             review_speaker_pair(
                 "video-a",
@@ -867,55 +863,26 @@ class SpeakerPairReviewTests(unittest.TestCase):
             "Freeze this exact-span binary judgment as an approved acoustic fixture?",
             default=True,
         )
-        sync_reviewed.assert_called_once_with(
-            ANY,
-            self.evaluation_root.resolve(),
+        self.assertIn(
+            "Evidence was not synchronized",
+            "\n".join(str(call.args[0]) for call in output.call_args_list),
         )
 
-    def test_completed_review_sync_materializes_registry_evidence(self):
+    def test_completed_review_prints_exact_deferred_sync_command(self):
         paths = SimpleNamespace(
-            root=self.root,
-            database=self.root / "database.sqlite3",
+            root=self.root / "app data",
         )
-        database = SimpleNamespace(initialize=Mock())
-        evidence = SimpleNamespace()
-        result = ReviewedEvidenceSyncResult(
-            qualification_events_added=2,
-            difference_events_added=1,
-            profiles_added=0,
-            membership_events_added=0,
-            name_claim_events_added=0,
-            profile_redirect_events_added=0,
-            missing_observations=(),
-            merge_candidates=(),
-            conflicts=(),
+        command = _reviewed_evidence_sync_command(
+            paths,
+            self.evaluation_root / "review data",
         )
-        with (
-            patch(
-                "pastor_transcript_extractor.cli."
-                "load_reviewed_speaker_evidence",
-                return_value=evidence,
-            ) as load_evidence,
-            patch(
-                "pastor_transcript_extractor.cli.Database",
-                return_value=database,
-            ),
-            patch(
-                "pastor_transcript_extractor.cli."
-                "sync_reviewed_speaker_evidence",
-                return_value=result,
-            ) as synchronize,
-            patch("pastor_transcript_extractor.cli.console.print"),
-        ):
-            actual = _sync_reviewed_speaker_evidence_after_review(
-                paths,
-                self.evaluation_root,
-            )
 
-        self.assertIs(result, actual)
-        load_evidence.assert_called_once_with(self.evaluation_root)
-        database.initialize.assert_called_once_with()
-        synchronize.assert_called_once_with(database, evidence)
+        self.assertEqual(
+            "pte identity sync-reviewed-speaker-evidence "
+            f"--evaluation-root '{self.evaluation_root / 'review data'}' "
+            f"--base-dir '{self.root / 'app data'}'",
+            command,
+        )
 
     def test_automatic_review_uses_exact_selected_observations(self):
         exact_a = replace(self.observation_a, video_id=101)

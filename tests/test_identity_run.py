@@ -239,8 +239,8 @@ class IdentityRunTests(unittest.TestCase):
             DISCOVERY_PROFILE_REASON,
         )
 
-    def test_hidden_prewarm_fallback_parameter_belongs_to_review_command(self):
-        self.assertIn(
+    def test_review_command_has_no_full_corpus_prewarm_fallback_switch(self):
+        self.assertNotIn(
             "ignore_prewarm",
             inspect.signature(review_next_speaker_pair).parameters,
         )

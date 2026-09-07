@@ -929,6 +929,40 @@ def _load_association_confirmation_cache(
         return None
 
 
+def load_prepared_shadow_association_context(
+    path: Path,
+) -> tuple[tuple[AssociationConfirmationPair, ...], frozenset[str]] | None:
+    """Load a preparation-time association snapshot without rescanning reports."""
+    resolved = path.expanduser().resolve()
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        raw_nominations = payload["nominations"]
+        raw_unmatched = payload["unmatched_fingerprints"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("cache_version")
+        != ASSOCIATION_CONFIRMATION_CACHE_VERSION
+        or not isinstance(raw_nominations, list)
+        or not isinstance(raw_unmatched, list)
+        or not all(
+            isinstance(fingerprint, str) and fingerprint
+            for fingerprint in raw_unmatched
+        )
+    ):
+        return None
+    try:
+        nominations = tuple(
+            AssociationConfirmationPair(**item)
+            for item in raw_nominations
+            if isinstance(item, dict)
+        )
+    except TypeError:
+        return None
+    return nominations, frozenset(raw_unmatched)
+
+
 def _write_association_confirmation_cache(
     path: Path,
     *,
