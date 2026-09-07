@@ -321,3 +321,7 @@ LLM judgments, embeddings, clustering, theology, politics, or style labels.
 
 The subsequent semantic style iteration is documented separately in
 [`SEMANTIC_STYLE_ANALYSIS.md`](SEMANTIC_STYLE_ANALYSIS.md).
+
+Corpus-wide readiness/backfill and the deterministic feature stability checkpoint are
+documented in [`analysis-readiness.md`](analysis-readiness.md) and
+[`POPULATION_ANALYSIS.md`](POPULATION_ANALYSIS.md).

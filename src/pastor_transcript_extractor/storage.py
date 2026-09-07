@@ -21,6 +21,7 @@ from pastor_transcript_extractor.models import (
     Organization,
     Pastor,
     PastorOrganizationAffiliation,
+    PopulationAnalysisSnapshot,
     ReferencePanel,
     ReferencePanelMembershipEvent,
     ReferencePanelSnapshot,
@@ -304,6 +305,33 @@ CREATE TABLE IF NOT EXISTS speaker_profile_analysis_measurements (
 
 CREATE INDEX IF NOT EXISTS idx_speaker_profile_analysis_runs_profile
 ON speaker_profile_analysis_runs(profile_id, analyzer_key, id);
+
+CREATE TABLE IF NOT EXISTS population_analysis_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    analyzer_version TEXT NOT NULL,
+    profile_analyzer_key TEXT NOT NULL,
+    profile_analyzer_version TEXT NOT NULL,
+    feature_schema_version TEXT NOT NULL,
+    eligibility_policy_json TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    report_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS population_analysis_snapshot_inputs (
+    snapshot_id INTEGER NOT NULL,
+    profile_id INTEGER NOT NULL,
+    profile_analysis_run_id INTEGER NOT NULL,
+    PRIMARY KEY(snapshot_id, profile_id),
+    FOREIGN KEY(snapshot_id)
+        REFERENCES population_analysis_snapshots(id) ON DELETE CASCADE,
+    FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id),
+    FOREIGN KEY(profile_analysis_run_id)
+        REFERENCES speaker_profile_analysis_runs(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_population_analysis_snapshots_created
+ON population_analysis_snapshots(id);
 
 CREATE TABLE IF NOT EXISTS reference_panels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3012,6 +3040,132 @@ class Database:
             if row is not None
             else None
         )
+
+    def _population_analysis_snapshot_from_row(
+        self, row: sqlite3.Row
+    ) -> PopulationAnalysisSnapshot:
+        return PopulationAnalysisSnapshot(
+            id=int(row["id"]),
+            analyzer_version=str(row["analyzer_version"]),
+            profile_analyzer_key=str(row["profile_analyzer_key"]),
+            profile_analyzer_version=str(row["profile_analyzer_version"]),
+            feature_schema_version=str(row["feature_schema_version"]),
+            eligibility_policy_json=str(row["eligibility_policy_json"]),
+            input_fingerprint=str(row["input_fingerprint"]),
+            report_json=str(row["report_json"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def get_population_analysis_snapshot(
+        self, snapshot_id: int
+    ) -> PopulationAnalysisSnapshot | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM population_analysis_snapshots WHERE id = ?",
+                (snapshot_id,),
+            ).fetchone()
+        return self._population_analysis_snapshot_from_row(row) if row else None
+
+    def get_latest_population_analysis_snapshot(
+        self,
+    ) -> PopulationAnalysisSnapshot | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM population_analysis_snapshots ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return self._population_analysis_snapshot_from_row(row) if row else None
+
+    def get_population_analysis_snapshot_by_fingerprint(
+        self, input_fingerprint: str
+    ) -> PopulationAnalysisSnapshot | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM population_analysis_snapshots WHERE input_fingerprint = ?",
+                (input_fingerprint,),
+            ).fetchone()
+        return self._population_analysis_snapshot_from_row(row) if row else None
+
+    def list_population_analysis_snapshot_inputs(
+        self, snapshot_id: int
+    ) -> list[tuple[int, int]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT profile_id, profile_analysis_run_id
+                FROM population_analysis_snapshot_inputs
+                WHERE snapshot_id = ? ORDER BY profile_id
+                """,
+                (snapshot_id,),
+            ).fetchall()
+        return [
+            (int(row["profile_id"]), int(row["profile_analysis_run_id"]))
+            for row in rows
+        ]
+
+    def add_population_analysis_snapshot(
+        self,
+        *,
+        analyzer_version: str,
+        profile_analyzer_key: str,
+        profile_analyzer_version: str,
+        feature_schema_version: str,
+        eligibility_policy_json: str,
+        input_fingerprint: str,
+        report_json: str,
+        inputs: list[tuple[int, int]],
+    ) -> tuple[PopulationAnalysisSnapshot, bool]:
+        existing = self.get_population_analysis_snapshot_by_fingerprint(
+            input_fingerprint
+        )
+        if existing is not None:
+            return existing, False
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO population_analysis_snapshots (
+                        analyzer_version, profile_analyzer_key,
+                        profile_analyzer_version, feature_schema_version,
+                        eligibility_policy_json, input_fingerprint,
+                        report_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        analyzer_version,
+                        profile_analyzer_key,
+                        profile_analyzer_version,
+                        feature_schema_version,
+                        eligibility_policy_json,
+                        input_fingerprint,
+                        report_json,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    "SELECT * FROM population_analysis_snapshots "
+                    "WHERE input_fingerprint = ?",
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._population_analysis_snapshot_from_row(row), False
+            snapshot_id = int(cursor.lastrowid)
+            connection.executemany(
+                """
+                INSERT INTO population_analysis_snapshot_inputs (
+                    snapshot_id, profile_id, profile_analysis_run_id
+                ) VALUES (?, ?, ?)
+                """,
+                [(snapshot_id, profile_id, run_id) for profile_id, run_id in inputs],
+            )
+            row = connection.execute(
+                "SELECT * FROM population_analysis_snapshots WHERE id = ?",
+                (snapshot_id,),
+            ).fetchone()
+            assert row is not None
+            return self._population_analysis_snapshot_from_row(row), True
 
     def _reference_panel_from_row(self, row: sqlite3.Row) -> ReferencePanel:
         return ReferencePanel(

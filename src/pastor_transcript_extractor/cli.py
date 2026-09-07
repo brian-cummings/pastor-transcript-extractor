@@ -118,6 +118,12 @@ from pastor_transcript_extractor.profile_analysis import (
     build_profile_scripture_analysis,
     resolve_profile_sermon_scope,
 )
+from pastor_transcript_extractor.population_analysis import (
+    POPULATION_ANALYZER_VERSION,
+    PopulationPolicy,
+    build_population_snapshot,
+    load_population_snapshot_report,
+)
 from pastor_transcript_extractor.analysis_readiness import (
     ReadinessReport,
     build_readiness_report,
@@ -2287,6 +2293,136 @@ def analysis_refresh_profiles(
             profile_analyzer_version=profile_analyzer_version,
         )
     )
+
+
+def _print_population_analysis(snapshot: object, report: dict[str, object]) -> None:
+    population = report["population"]
+    console.print(
+        f"Population snapshot #{snapshot.id}: profiles={population['profile_count']}, "
+        f"sermons={population['sermon_count']}, "
+        f"fingerprint={snapshot.input_fingerprint[:12]}…"
+    )
+    depth = population["depth_counts"]
+    console.print(
+        "Depth: "
+        + ", ".join(f">={minimum}: {depth[str(minimum)]}" for minimum in (3, 5, 8, 10))
+    )
+    table = Table(title="Scripture Feature Diagnostics")
+    table.add_column("Feature")
+    table.add_column("N", justify="right")
+    table.add_column("Missing", justify="right")
+    table.add_column("Zero", justify="right")
+    table.add_column("LOO")
+    table.add_column("Size r", justify="right")
+    table.add_column("Correlated", justify="right")
+    table.add_column("Outliers", justify="right")
+    table.add_column("Advisory recommendation")
+    diagnostics = report["feature_diagnostics"]
+    for name in report["feature_names"]:
+        item = diagnostics[name]
+        distribution = item["distribution"]
+        correlation = item["corpus_size_pearson"]
+        table.add_row(
+            name,
+            str(distribution["observed_count"]),
+            str(distribution["missing_count"]),
+            str(distribution["zero_count"]),
+            str(item["leave_one_out"]["stability"]),
+            f"{correlation:.2f}" if correlation is not None else "—",
+            str(len(item["highly_correlated_with"])),
+            str(len(item["outliers"])),
+            str(item["recommendation"]),
+        )
+    console.print(table)
+    parity_failures = sum(
+        (profile["recomputation_parity_max_absolute_delta"] or 0) > 0.000001
+        for profile in report["profiles"]
+    )
+    console.print(
+        f"High-correlation pairs: {len(report['high_correlations'])}; "
+        f"profile recomputation parity failures: {parity_failures}."
+    )
+    console.print(
+        "Recommendations are advisory only; no comparison schema, weights, rankings, "
+        "or clusters were changed."
+    )
+
+
+@analysis_app.command(
+    "population-build",
+    help="Freeze current profile runs and build deterministic population diagnostics.",
+)
+def analysis_population_build(
+    minimum_sermons: int = typer.Option(
+        3, "--minimum-sermons", min=2, help="Minimum current sermons per profile."
+    ),
+    bootstrap_samples: int = typer.Option(
+        200, "--bootstrap-samples", min=20, help="Deterministic resamples per profile."
+    ),
+    analyzer_version: str = typer.Option(
+        POPULATION_ANALYZER_VERSION,
+        "--analyzer-version",
+        help="Population diagnostic implementation version.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit the complete report as JSON."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        outcome = build_population_snapshot(
+            get_database(base_dir),
+            policy=PopulationPolicy(
+                minimum_sermons=minimum_sermons,
+                bootstrap_samples=bootstrap_samples,
+            ),
+            analyzer_version=analyzer_version,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    if as_json:
+        console.print_json(
+            data={
+                "snapshot": {
+                    "id": outcome.snapshot.id,
+                    "created": outcome.created,
+                    "created_at": outcome.snapshot.created_at.isoformat(),
+                    "input_fingerprint": outcome.snapshot.input_fingerprint,
+                },
+                "report": outcome.report,
+            }
+        )
+        return
+    console.print("Created." if outcome.created else "Reused unchanged snapshot.")
+    _print_population_analysis(outcome.snapshot, outcome.report)
+
+
+@analysis_app.command(
+    "population-show", help="Inspect a persisted population diagnostic snapshot."
+)
+def analysis_population_show(
+    snapshot_id: int | None = typer.Option(None, "--snapshot-id", help="Default: latest."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the complete report as JSON."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        snapshot, report = load_population_snapshot_report(
+            get_database(base_dir), snapshot_id=snapshot_id
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    if as_json:
+        console.print_json(
+            data={
+                "snapshot": {
+                    "id": snapshot.id,
+                    "created_at": snapshot.created_at.isoformat(),
+                    "input_fingerprint": snapshot.input_fingerprint,
+                    "analyzer_version": snapshot.analyzer_version,
+                },
+                "report": report,
+            }
+        )
+        return
+    _print_population_analysis(snapshot, report)
 
 
 @analysis_app.command(

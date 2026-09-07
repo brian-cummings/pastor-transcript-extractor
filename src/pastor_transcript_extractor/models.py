@@ -294,6 +294,19 @@ class SpeakerProfileAnalysisMeasurement:
 
 
 @dataclass(slots=True)
+class PopulationAnalysisSnapshot:
+    id: int
+    analyzer_version: str
+    profile_analyzer_key: str
+    profile_analyzer_version: str
+    feature_schema_version: str
+    eligibility_policy_json: str
+    input_fingerprint: str
+    report_json: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
 class ReferencePanel:
     id: int
     key: str
