@@ -2110,8 +2110,9 @@ class CliTests(unittest.TestCase):
             calls: list[str] = []
             identity_complete = False
 
-            def apply_identity(_base_dir):
+            def apply_identity(_base_dir, *, jobs):
                 nonlocal identity_complete
+                self.assertEqual(2, jobs)
                 calls.append("identity")
                 identity_complete = True
 
@@ -2191,7 +2192,7 @@ class CliTests(unittest.TestCase):
                 skip_review=True,
             )
 
-        identity.assert_called_once_with(None)
+        identity.assert_called_once_with(None, jobs=2)
         review.assert_not_called()
 
     def test_run_multiple_source_ids_scopes_every_downstream_stage(self) -> None:
@@ -2347,11 +2348,12 @@ class CliTests(unittest.TestCase):
         with patch(
             "pastor_transcript_extractor.cli.run_identity_workflow_service"
         ) as identity:
-            _run_post_content_identity(Path("data"))
+            _run_post_content_identity(Path("data"), jobs=3)
 
         self.assertTrue(identity.call_args.kwargs["apply_automatic"])
         self.assertFalse(identity.call_args.kwargs["plan_only"])
         self.assertTrue(identity.call_args.kwargs["all_extractions"])
+        self.assertEqual(3, identity.call_args.kwargs["jobs"])
 
     def test_run_audio_stage_options_are_forwarded(self) -> None:
         with patch("pastor_transcript_extractor.cli.run_workflow_service") as workflow:

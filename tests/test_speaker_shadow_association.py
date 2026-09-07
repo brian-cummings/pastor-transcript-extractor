@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import tempfile
+from threading import Lock
+import time
 import unittest
 from pathlib import Path
 
@@ -437,6 +439,75 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
             report["profiles"][0]["profile_readiness"][
                 "automatic_profile_ready"
             ]
+        )
+
+    def test_parallel_comparisons_preserve_exemplar_order(self) -> None:
+        candidate = self._observation("parallel-candidate")
+        exemplars = [
+            self._observation(f"parallel-{index}") for index in range(4)
+        ]
+        profile = self._profile(exemplars)
+        readiness = ProfileAssociationReadiness(
+            profile_id=profile.id,
+            member_observation_ids=tuple(item.id for item in exemplars),
+            member_fingerprints=tuple(
+                item.input_fingerprint for item in exemplars
+            ),
+            recording_count=4,
+            source_count=1,
+            normalized_names=(),
+            shadow_ready=True,
+            automatic_profile_ready=True,
+            shadow_blockers=(),
+            automatic_blockers=(),
+            review_ready=True,
+        )
+        active = 0
+        maximum_active = 0
+        lock = Lock()
+
+        def compare(*_args):
+            nonlocal active, maximum_active
+            with lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            return {"outcome": "same_speaker"}
+
+        report = evaluate_shadow_association(
+            candidate=candidate,
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="candidate-audio",
+            candidate_normalized_names=(),
+            profiles=(
+                (
+                    readiness,
+                    tuple(
+                        ShadowExemplar(
+                            profile.id,
+                            exemplar,
+                            Path(f"{exemplar.id}.wav"),
+                            f"audio-{exemplar.id}",
+                        )
+                        for exemplar in exemplars
+                    ),
+                ),
+            ),
+            compare=compare,
+            policy_spec=self._policy_spec(),
+            model_fingerprint="model",
+            jobs=2,
+        )
+
+        self.assertGreaterEqual(maximum_active, 2)
+        self.assertEqual(
+            [item.id for item in exemplars],
+            [
+                item["exemplar_observation_id"]
+                for item in report["profiles"][0]["comparisons"]
+            ],
         )
 
     def test_immature_review_targets_require_source_or_name_routing(self) -> None:

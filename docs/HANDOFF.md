@@ -445,6 +445,7 @@ scope convention as top-level `pte run`:
 ```bash
 caffeinate pte identity run --all \
   --apply-automatic \
+  --jobs 2 \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
@@ -458,6 +459,10 @@ and provisional promotions; `--apply-confirmations` and `--apply-promotions`
 remain available for granular control. New pair judgments, naming, conflicts,
 and model/policy approval remain separate. Use `--skip-discovery` for an
 association-only corpus pass.
+The identity runner defaults to two concurrent acoustic comparison jobs.
+`--jobs` is passed to both shadow association and initial discovery pair
+evaluation; deterministic aggregation and every registry mutation remain
+serialized.
 
 A profile is first created when a confirmed same-speaker pair forms a reviewed
 component. Later confirmed same-speaker frontier comparisons add observations;

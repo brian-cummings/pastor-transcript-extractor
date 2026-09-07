@@ -404,6 +404,7 @@ class IdentityRunTests(unittest.TestCase):
                     apply_confirmations=False,
                     apply_promotions=False,
                     base_dir=Path(tempdir),
+                    jobs=3,
                 )
 
         backfill.assert_called_once_with(
@@ -427,6 +428,9 @@ class IdentityRunTests(unittest.TestCase):
             leverage_snapshot.call_args_list[1].kwargs["baseline"],
         )
         self.assertEqual(2, associate.call_count)
+        self.assertTrue(
+            all(call.kwargs["jobs"] == 3 for call in associate.call_args_list)
+        )
         self.assertFalse(associate.call_args.kwargs["plan_only"])
         self.assertTrue(associate.call_args.kwargs["all_eligible"])
         self.assertEqual(
@@ -436,6 +440,7 @@ class IdentityRunTests(unittest.TestCase):
         self.assertFalse(apply_machine.call_args.kwargs["activate_canary"])
         self.assertFalse(confirm.call_args.kwargs["apply"])
         self.assertFalse(discover.call_args.kwargs["plan_only"])
+        self.assertEqual(3, discover.call_args.kwargs["jobs"])
         promote.assert_not_called()
         self.assertTrue(coordinate.call_args.kwargs["all_extractions"])
         prewarm.assert_called_once_with(

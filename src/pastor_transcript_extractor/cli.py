@@ -5579,6 +5579,12 @@ def shadow_discover_profiles_command(
             "decision thresholds."
         ),
     ),
+    jobs: int = typer.Option(
+        2,
+        "--jobs",
+        min=1,
+        help="Concurrent acoustic pair-comparison jobs.",
+    ),
     minimum_component_members: int = typer.Option(
         3,
         min=3,
@@ -5971,6 +5977,7 @@ def shadow_discover_profiles_command(
         for signature in signatures
     }
     pair_index = 0
+    pair_progress_lock = Lock()
 
     def compare(
         observation_a: SpeakerObservation,
@@ -5979,16 +5986,17 @@ def shadow_discover_profiles_command(
         audio_path_b: Path,
     ) -> dict[str, object]:
         nonlocal pair_index
-        pair_index += 1
-        phase = (
-            f"{pair_index}/{len(nominations)}"
-            if pair_index <= len(nominations)
-            else f"closure+{pair_index - len(nominations)}"
-        )
-        console.print(
-            f"Pair {phase}: {observation_a.input_fingerprint[:8]}:"
-            f"{observation_b.input_fingerprint[:8]}"
-        )
+        with pair_progress_lock:
+            pair_index += 1
+            phase = (
+                f"{pair_index}/{len(nominations)}"
+                if pair_index <= len(nominations)
+                else f"closure+{pair_index - len(nominations)}"
+            )
+            console.print(
+                f"Pair {phase}: {observation_a.input_fingerprint[:8]}:"
+                f"{observation_b.input_fingerprint[:8]}"
+            )
         signature_a = signatures_by_observation_id[observation_a.id]
         signature_b = signatures_by_observation_id[observation_b.id]
         return analyze_observation_pair(
@@ -6058,6 +6066,7 @@ def shadow_discover_profiles_command(
         staged_review_maximum_same_boundary_distance=(
             staged_review_maximum_same_boundary_distance
         ),
+        jobs=jobs,
     )
     destination = write_shadow_profile_discovery(output_root, report)
     counts = report["counts"]
@@ -6605,6 +6614,7 @@ def _repair_exemplars_and_retry_association(
     paths: AppPaths,
     base_dir: Path | None,
     state_cache: ExemplarPreparationStateCache,
+    jobs: int,
 ) -> tuple[Path, ...]:
     profile_ids = tuple(
         sorted({state.profile_id for state in pending_exemplar_repairs})
@@ -6693,6 +6703,7 @@ def _repair_exemplars_and_retry_association(
             maximum_exemplars=3,
             minimum_same_exemplars=2,
             maximum_global_profiles=3,
+            jobs=jobs,
             model_path=Path(
                 "evaluation/speaker-pairs/models/"
                 "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
@@ -6748,6 +6759,7 @@ def run_identity_workflow_service(
     machine_assignment_policy_path: Path | None = None,
     review_prewarm_limit: int = 24,
     base_dir: Path | None,
+    jobs: int = 2,
 ) -> None:
     if (youtube_video_id is None) == (not all_extractions):
         raise ValueError("Pass exactly one YouTube video ID or --all.")
@@ -6769,6 +6781,8 @@ def run_identity_workflow_service(
         raise ValueError("machine canary activation requires --all")
     if review_prewarm_limit < 0:
         raise ValueError("review prewarm limit cannot be negative")
+    if jobs < 1:
+        raise ValueError("identity jobs must be at least one")
     paths = build_paths(base_dir, remember=not plan_only)
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
@@ -6783,7 +6797,7 @@ def run_identity_workflow_service(
     console.print(
         "[bold]Identity run[/bold] "
         f"scope={'all' if all_extractions else youtube_video_id} "
-        f"mode={'plan' if plan_only else 'execute'}"
+        f"mode={'plan' if plan_only else 'execute'} jobs={jobs}"
     )
     try:
         reviewed_evidence = load_reviewed_speaker_evidence(
@@ -6842,6 +6856,7 @@ def run_identity_workflow_service(
         maximum_exemplars=3,
         minimum_same_exemplars=2,
         maximum_global_profiles=3,
+        jobs=jobs,
         model_path=Path(
             "evaluation/speaker-pairs/models/"
             "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
@@ -6877,6 +6892,7 @@ def run_identity_workflow_service(
             paths=paths,
             base_dir=base_dir,
             state_cache=exemplar_state_cache,
+            jobs=jobs,
         )
 
     machine_policy = load_machine_assignment_policy(
@@ -6973,6 +6989,7 @@ def run_identity_workflow_service(
             borderline_deferred_candidates_per_same_pair=4,
             staged_review_candidates_per_component=2,
             staged_review_maximum_same_boundary_distance=0.15,
+            jobs=jobs,
             minimum_component_members=3,
             consistency_report=None,
             minimum_consistency_score=None,
@@ -7386,6 +7403,15 @@ def identity_run_command(
             "observations during an --all run; use 0 to disable."
         ),
     ),
+    jobs: int = typer.Option(
+        2,
+        "--jobs",
+        min=1,
+        help=(
+            "Concurrent acoustic comparison jobs; registry mutations and "
+            "artifact aggregation remain serialized."
+        ),
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
@@ -7404,6 +7430,7 @@ def identity_run_command(
             machine_assignment_policy_path=machine_assignment_policy,
             review_prewarm_limit=review_prewarm_limit,
             base_dir=base_dir,
+            jobs=jobs,
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
@@ -7761,6 +7788,7 @@ def coordinate_identity_command(
                     maximum_exemplars=3,
                     minimum_same_exemplars=2,
                     maximum_global_profiles=3,
+                    jobs=2,
                     model_path=model_path,
                     model_sha256=model_sha256,
                     policy_path=policy_path,
@@ -8138,6 +8166,7 @@ def _replay_profile_association_neighborhood(
         maximum_exemplars=3,
         minimum_same_exemplars=2,
         maximum_global_profiles=3,
+        jobs=2,
         model_path=Path(
             "evaluation/speaker-pairs/models/"
             "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
@@ -8328,6 +8357,12 @@ def shadow_associate_speakers_command(
             "Maximum globally retrieved profiles per candidate in addition "
             "to every same-source or explicit-name profile."
         ),
+    ),
+    jobs: int = typer.Option(
+        2,
+        "--jobs",
+        min=1,
+        help="Concurrent acoustic exemplar-comparison jobs.",
     ),
     model_path: Path = typer.Option(
         Path(
@@ -9129,40 +9164,79 @@ def shadow_associate_speakers_command(
     assert backend is not None
     assert embedding_cache is not None
     assert pair_diagnostic_cache is not None
+
+    def ordered_acoustic_map(function, items, *, thread_name_prefix):
+        if jobs == 1 or len(items) < 2:
+            return tuple(map(function, items))
+        with ThreadPoolExecutor(
+            max_workers=min(jobs, len(items)),
+            thread_name_prefix=thread_name_prefix,
+        ) as executor:
+            return tuple(executor.map(function, items))
+
     exemplar_centroids: dict[int, tuple[float, ...]] = {}
+    unique_exemplars = tuple(
+        {
+            exemplar.observation.id: exemplar
+            for exemplar in eligible_exemplars
+        }.values()
+    )
     console.print(
         "Association preprocessing: building retrieval centroids for "
-        f"{len(eligible_exemplars)} eligible exemplar(s)."
+        f"{len(unique_exemplars)} eligible exemplar(s) with {jobs} job(s)."
     )
-    for exemplar in eligible_exemplars:
-        if exemplar.observation.id in exemplar_centroids:
-            continue
-        exemplar_centroids[exemplar.observation.id] = (
-            build_embedding_centroid(
-                observation=exemplar.observation,
-                audio_path=exemplar.audio_path,
-                span_specs=span_specs_by_observation_id[
-                    exemplar.observation.id
-                ],
-                span_cache=span_cache,
-                embedding_cache=embedding_cache,
-                backend=backend,
-            )
+
+    def build_exemplar_centroid(exemplar):
+        return exemplar.observation.id, build_embedding_centroid(
+            observation=exemplar.observation,
+            audio_path=exemplar.audio_path,
+            span_specs=span_specs_by_observation_id[
+                exemplar.observation.id
+            ],
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
         )
+
+    exemplar_centroids.update(
+        ordered_acoustic_map(
+            build_exemplar_centroid,
+            unique_exemplars,
+            thread_name_prefix="identity-exemplar-centroid",
+        )
+    )
     candidate_centroids: dict[int, tuple[float, ...]] = {}
     candidate_video_ids: dict[int, int] = {}
     console.print(
         "Association preprocessing: building retrieval centroids for "
-        f"{len(candidates)} candidate observation(s)."
+        f"{len(candidates)} candidate observation(s) with {jobs} job(s)."
     )
-    for candidate_index, (_video, eligibility, _span_specs) in enumerate(
-        candidates,
-        start=1,
-    ):
+
+    def build_candidate_centroid(indexed_candidate):
+        candidate_index, (_video, eligibility, _span_specs) = indexed_candidate
         observation = eligibility.observation
         media_artifact = eligibility.media_artifact
         if observation is None or media_artifact is None:
-            continue
+            return candidate_index, None, None, None
+        centroid = build_embedding_centroid(
+            observation=observation,
+            audio_path=Path(media_artifact.artifact_path),
+            span_specs=span_specs_by_observation_id[observation.id],
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
+        )
+        return candidate_index, observation.id, observation.video_id, centroid
+
+    indexed_candidates = tuple(enumerate(candidates, start=1))
+    candidate_centroid_results = ordered_acoustic_map(
+        build_candidate_centroid,
+        indexed_candidates,
+        thread_name_prefix="identity-candidate-centroid",
+    )
+    for candidate_index, observation_id, video_id, centroid in (
+        candidate_centroid_results
+    ):
         if (
             candidate_index == 1
             or candidate_index == len(candidates)
@@ -9172,15 +9246,13 @@ def shadow_associate_speakers_command(
                 "Association preprocessing: candidate centroid "
                 f"{candidate_index}/{len(candidates)}"
             )
-        candidate_centroids[observation.id] = build_embedding_centroid(
-            observation=observation,
-            audio_path=Path(media_artifact.artifact_path),
-            span_specs=span_specs_by_observation_id[observation.id],
-            span_cache=span_cache,
-            embedding_cache=embedding_cache,
-            backend=backend,
-        )
-        candidate_video_ids[observation.id] = observation.video_id
+        if (
+            observation_id is not None
+            and video_id is not None
+            and centroid is not None
+        ):
+            candidate_centroids[observation_id] = centroid
+            candidate_video_ids[observation_id] = video_id
     pending_confirmation_profiles = tuple(
         (profile, exemplars)
         for profile, exemplars in usable_profiles
@@ -9437,6 +9509,7 @@ def shadow_associate_speakers_command(
                 ),
                 routing=routing_payload,
                 span_selection=span_selection_payload,
+                jobs=jobs,
             ), None
 
         report, reusable_path = evaluate_profiles(
@@ -14434,7 +14507,7 @@ def run_workflow_service(
         )
         if run_identity:
             console.print("Resume checkpoint: starting the requested identity workflow.")
-            _run_post_content_identity(base_dir)
+            _run_post_content_identity(base_dir, jobs=jobs)
         if not skip_review:
             console.print("Resume checkpoint: refreshing review exports.")
             pastor_slugs = {
@@ -14614,7 +14687,7 @@ def run_workflow_service(
             video_ids=failed_video_ids,
         )
         if run_identity:
-            _run_post_content_identity(base_dir)
+            _run_post_content_identity(base_dir, jobs=jobs)
         if not skip_review:
             pastor_slugs = {
                 pastor_record.slug
@@ -14703,7 +14776,7 @@ def run_workflow_service(
             video_ids=selected_video_ids,
         )
         if run_identity:
-            _run_post_content_identity(base_dir)
+            _run_post_content_identity(base_dir, jobs=jobs)
         if not skip_review:
             pastor_slugs = {
                 pastor_record.slug
@@ -14784,7 +14857,7 @@ def run_workflow_service(
         console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
         _ensure_and_archive_run_media(database, paths, video_ids=selected_video_ids)
         if run_identity:
-            _run_post_content_identity(base_dir)
+            _run_post_content_identity(base_dir, jobs=jobs)
         if not skip_review:
             pastor_slugs = {
                 pastor_record.slug
@@ -14862,7 +14935,7 @@ def run_workflow_service(
         video_ids=selected_video_ids,
     )
     if run_identity:
-        _run_post_content_identity(base_dir)
+        _run_post_content_identity(base_dir, jobs=jobs)
     if not skip_review:
         reviews = prepare_review_exports(
             database,
@@ -14875,7 +14948,11 @@ def run_workflow_service(
         _print_review_batch(reviews)
 
 
-def _run_post_content_identity(base_dir: Path | None) -> None:
+def _run_post_content_identity(
+    base_dir: Path | None,
+    *,
+    jobs: int = 2,
+) -> None:
     console.print(
         "Run identity stage: refreshing reviewed evidence, profile "
         "associations, anonymous discovery, and coordination."
@@ -14889,6 +14966,7 @@ def _run_post_content_identity(base_dir: Path | None) -> None:
         apply_confirmations=False,
         apply_promotions=False,
         base_dir=base_dir,
+        jobs=jobs,
     )
 
 

@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 import statistics
 import subprocess
+from threading import Lock
 import wave
 from typing import Any, Mapping, Protocol, Sequence
 
@@ -129,6 +130,10 @@ class SherpaOnnxEmbeddingBackend:
                 model=str(model_path), num_threads=num_threads, debug=False, provider="cpu"
             )
         )
+        # sherpa-onnx does not document one extractor instance as safe for
+        # concurrent compute calls. Cache misses may now arrive from bounded
+        # identity workers, so serialize only the model invocation itself.
+        self._compute_lock = Lock()
         self.spec = ModelSpec(
             backend="sherpa-onnx",
             model_name=model_path.name,
@@ -143,12 +148,17 @@ class SherpaOnnxEmbeddingBackend:
             sample_rate = source.getframerate()
             samples = array("h")
             samples.frombytes(source.readframes(source.getnframes()))
-        stream = self._extractor.create_stream()
-        stream.accept_waveform(sample_rate, [sample / 32768.0 for sample in samples])
-        stream.input_finished()
-        if not self._extractor.is_ready(stream):
-            raise ValueError("audio span is too short for the embedding model")
-        embedding = tuple(float(value) for value in self._extractor.compute(stream))
+        with self._compute_lock:
+            stream = self._extractor.create_stream()
+            stream.accept_waveform(
+                sample_rate, [sample / 32768.0 for sample in samples]
+            )
+            stream.input_finished()
+            if not self._extractor.is_ready(stream):
+                raise ValueError("audio span is too short for the embedding model")
+            embedding = tuple(
+                float(value) for value in self._extractor.compute(stream)
+            )
         if not embedding or not all(math.isfinite(value) for value in embedding):
             raise ValueError("model produced an invalid embedding")
         return embedding
@@ -616,6 +626,7 @@ class PairDiagnosticCache:
         self.hits = 0
         self.misses = 0
         self.primed = 0
+        self._lock = Lock()
 
     def get(
         self,
@@ -637,7 +648,8 @@ class PairDiagnosticCache:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError):
-            self.misses += 1
+            with self._lock:
+                self.misses += 1
             return None
         if not isinstance(payload, dict):
             raise RuntimeError(
@@ -652,7 +664,8 @@ class PairDiagnosticCache:
             or payload.get("result_sha256") != _sha256_json(result)
         ):
             raise RuntimeError(f"pair diagnostic cache verification failed: {path}")
-        self.hits += 1
+        with self._lock:
+            self.hits += 1
         return dict(result)
 
     def put(self, result: Mapping[str, Any]) -> Path | None:
@@ -668,13 +681,16 @@ class PairDiagnosticCache:
             "result_sha256": _sha256_json(result),
             "result": dict(result),
         }
-        if path.exists():
-            existing = json.loads(path.read_text(encoding="utf-8"))
-            if existing != payload:
-                raise RuntimeError(f"pair diagnostic cache collision: {path}")
-            return path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _write_json(path, payload)
+        with self._lock:
+            if path.exists():
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                if existing != payload:
+                    raise RuntimeError(
+                        f"pair diagnostic cache collision: {path}"
+                    )
+                return path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _write_json(path, payload)
         return path
 
     def prime_from_shadow_associations(

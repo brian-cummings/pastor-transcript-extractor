@@ -1071,6 +1071,7 @@ top-level `pte run`:
 pte identity run YOUTUBE_VIDEO_ID --base-dir /path/to/app-data
 pte identity run --all --base-dir /path/to/app-data
 pte identity run --all --apply-automatic --base-dir /path/to/app-data
+pte identity run --all --jobs 2 --base-dir /path/to/app-data
 pte identity run --all --plan-only --base-dir /path/to/app-data
 ```
 
@@ -1085,6 +1086,11 @@ An executing `--all` run then prewarms exact review clips
 for up to 24 actionable observations before normalized archival. Set
 `--review-prewarm-limit 0` to disable this bounded stage or choose another
 limit. Discovery and association remain shadow computations.
+Identity acoustic pair comparisons use two concurrent jobs by default. Adjust
+this with `--jobs`; result aggregation, artifacts, registry changes, and
+archival remain deterministically ordered and serialized. The standalone
+`shadow-associate-speakers` and `shadow-discover-profiles` commands expose the
+same option.
 `--apply-automatic` applies validated confirmations and promotions and activates
 eligible reversible human-on-loop assignments to automatic-ready profiles. The
 older `--apply-confirmations`, `--apply-promotions`, and

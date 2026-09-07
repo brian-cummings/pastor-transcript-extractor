@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 import hashlib
 import itertools
@@ -1056,9 +1057,12 @@ def evaluate_shadow_profile_discovery(
     borderline_deferred_candidates_per_same_pair: int = 4,
     staged_review_candidates_per_component: int = 2,
     staged_review_maximum_same_boundary_distance: float = 0.15,
+    jobs: int = 1,
 ) -> dict[str, Any]:
     if minimum_component_members < 3:
         raise ValueError("provisional profiles require at least three members")
+    if jobs < 1:
+        raise ValueError("profile discovery jobs must be at least one")
     if closure_candidates_per_same_pair < 0:
         raise ValueError("closure candidate count cannot be negative")
     if borderline_deferred_candidates_per_same_pair < 0:
@@ -1087,13 +1091,10 @@ def evaluate_shadow_profile_discovery(
         raise ValueError(
             "reviewed same/different constraints conflict for observation pair(s)"
         )
-    pair_results: list[dict[str, Any]] = []
-    evaluated_pairs: set[tuple[int, int]] = set()
-    for nomination in nominations:
+    def evaluate_nomination(nomination: NominatedPair) -> dict[str, Any]:
         left = nomination.left.candidate
         right = nomination.right.candidate
         pair = nomination.observation_ids
-        evaluated_pairs.add(pair)
         if pair in reviewed_differences:
             result: Mapping[str, Any] = {
                 "outcome": PairOutcome.DIFFERENT_SPEAKER,
@@ -1113,27 +1114,43 @@ def evaluate_shadow_profile_discovery(
                 left.audio_path,
                 right.audio_path,
             )
-        pair_results.append(
-            {
-                "observation_ids": list(pair),
-                "observation_fingerprints": sorted(
-                    (
-                        left.observation.input_fingerprint,
-                        right.observation.input_fingerprint,
-                    )
-                ),
-                "centroid_similarity": nomination.centroid_similarity,
-                "consistency_tier": nomination.consistency_tier,
-                "retrieval_reason": nomination.retrieval_reasons[0],
-                "retrieval_reasons": list(nomination.retrieval_reasons),
-                "source_context": {
-                    "source_ids": list(nomination.source_context_ids),
-                    "role": "retrieval_only",
-                    "identity_evidence": False,
-                },
-                **dict(result),
-            }
-        )
+        return {
+            "observation_ids": list(pair),
+            "observation_fingerprints": sorted(
+                (
+                    left.observation.input_fingerprint,
+                    right.observation.input_fingerprint,
+                )
+            ),
+            "centroid_similarity": nomination.centroid_similarity,
+            "consistency_tier": nomination.consistency_tier,
+            "retrieval_reason": nomination.retrieval_reasons[0],
+            "retrieval_reasons": list(nomination.retrieval_reasons),
+            "source_context": {
+                "source_ids": list(nomination.source_context_ids),
+                "role": "retrieval_only",
+                "identity_evidence": False,
+            },
+            **dict(result),
+        }
+
+    if jobs == 1 or len(nominations) < 2:
+        pair_results = [
+            evaluate_nomination(nomination) for nomination in nominations
+        ]
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(jobs, len(nominations)),
+            thread_name_prefix="identity-discovery",
+        ) as executor:
+            # map preserves nomination order, so concurrency cannot alter the
+            # frozen report or downstream component construction.
+            pair_results = list(
+                executor.map(evaluate_nomination, nominations)
+            )
+    evaluated_pairs: set[tuple[int, int]] = {
+        nomination.observation_ids for nomination in nominations
+    }
     signatures_by_observation_id = {
         signature.candidate.observation.id: signature
         for signature in signatures

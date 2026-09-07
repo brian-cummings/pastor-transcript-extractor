@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import tempfile
+from threading import Lock
+import time
 import unittest
 from pathlib import Path
 
@@ -240,6 +242,58 @@ class SpeakerProfileDiscoveryTests(unittest.TestCase):
         }
         self.assertEqual(tiers["weak"], "deferred")
 
+    def test_parallel_initial_pairs_preserve_nomination_order(self) -> None:
+        signatures = tuple(
+            self._signature(key, centroid)
+            for key, centroid in (
+                ("parallel-a", (1.0, 0.0)),
+                ("parallel-b", (0.99, 0.01)),
+                ("parallel-c", (0.98, 0.02)),
+                ("parallel-d", (0.97, 0.03)),
+            )
+        )
+        nominations = nominate_discovery_pairs(
+            signatures,
+            nearest_neighbors=2,
+            consistency_policy=self._consistency_policy(),
+            source_complete_link_limit=0,
+            source_nearest_neighbors=0,
+        )
+        active = 0
+        maximum_active = 0
+        lock = Lock()
+
+        def compare(*_args):
+            nonlocal active, maximum_active
+            with lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            return {
+                "outcome": "insufficient_evidence",
+                "reason": "test_ambiguous",
+            }
+
+        report = evaluate_shadow_profile_discovery(
+            signatures=signatures,
+            nominations=nominations,
+            compare=compare,
+            policy_spec=self._policy(),
+            model_fingerprint="model",
+            consistency_policy=self._consistency_policy(),
+            jobs=2,
+        )
+
+        self.assertGreaterEqual(maximum_active, 2)
+        self.assertEqual(
+            [list(item.observation_ids) for item in nominations],
+            [
+                item["observation_ids"]
+                for item in report["pair_results"][: len(nominations)]
+            ],
+        )
     def test_same_pair_closure_can_complete_three_recording_profile(self) -> None:
         signatures = (
             self._signature("a", (1.0, 0.0), consistency=0.9),

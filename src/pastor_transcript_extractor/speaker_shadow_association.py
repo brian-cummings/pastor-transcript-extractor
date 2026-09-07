@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 import hashlib
@@ -901,49 +902,80 @@ def evaluate_shadow_association(
     reviewed_difference_pairs: Sequence[tuple[int, int]] = (),
     span_selection: Mapping[str, Any] | None = None,
     routing: Mapping[str, Any] | None = None,
+    jobs: int = 1,
 ) -> dict[str, Any]:
     if minimum_same_exemplars < 2:
         raise ValueError("a shadow match requires at least two same exemplars")
     if not candidate_audio_sha256:
         raise ValueError("candidate normalized audio requires a SHA-256")
+    if jobs < 1:
+        raise ValueError("shadow association jobs must be at least one")
     reviewed_differences = {
         tuple(sorted(pair)) for pair in reviewed_difference_pairs
     }
-    profile_results: list[dict[str, Any]] = []
-    for readiness, exemplars in profiles:
-        comparisons: list[dict[str, Any]] = []
-        for exemplar in exemplars:
+    comparison_slots: list[list[dict[str, Any] | None]] = [
+        [None] * len(exemplars) for _readiness, exemplars in profiles
+    ]
+    pending_comparisons: list[tuple[int, int, ShadowExemplar]] = []
+    for profile_index, (_readiness, exemplars) in enumerate(profiles):
+        for exemplar_index, exemplar in enumerate(exemplars):
             if exemplar.observation.id == candidate.id:
                 continue
             pair = tuple(sorted((candidate.id, exemplar.observation.id)))
             if pair in reviewed_differences:
-                comparisons.append(
-                    {
-                        "exemplar_observation_id": exemplar.observation.id,
-                        "exemplar_fingerprint": exemplar.observation.input_fingerprint,
-                        "exemplar_normalized_audio_sha256": exemplar.audio_sha256,
-                        "outcome": PairOutcome.DIFFERENT_SPEAKER,
-                        "reason": "reviewed_different_speaker_constraint",
-                        "reviewed_constraint": True,
-                    }
-                )
-                continue
-            result = dict(
-                compare(
-                    candidate,
-                    exemplar.observation,
-                    candidate_audio_path,
-                    exemplar.audio_path,
-                )
-            )
-            comparisons.append(
-                {
+                comparison_slots[profile_index][exemplar_index] = {
                     "exemplar_observation_id": exemplar.observation.id,
                     "exemplar_fingerprint": exemplar.observation.input_fingerprint,
                     "exemplar_normalized_audio_sha256": exemplar.audio_sha256,
-                    **result,
+                    "outcome": PairOutcome.DIFFERENT_SPEAKER,
+                    "reason": "reviewed_different_speaker_constraint",
+                    "reviewed_constraint": True,
                 }
+                continue
+            pending_comparisons.append(
+                (profile_index, exemplar_index, exemplar)
             )
+
+    def evaluate_exemplar(
+        item: tuple[int, int, ShadowExemplar],
+    ) -> tuple[int, int, dict[str, Any]]:
+        profile_index, exemplar_index, exemplar = item
+        result = dict(
+            compare(
+                candidate,
+                exemplar.observation,
+                candidate_audio_path,
+                exemplar.audio_path,
+            )
+        )
+        return profile_index, exemplar_index, {
+            "exemplar_observation_id": exemplar.observation.id,
+            "exemplar_fingerprint": exemplar.observation.input_fingerprint,
+            "exemplar_normalized_audio_sha256": exemplar.audio_sha256,
+            **result,
+        }
+
+    if jobs == 1 or len(pending_comparisons) < 2:
+        evaluated = map(evaluate_exemplar, pending_comparisons)
+        for profile_index, exemplar_index, result in evaluated:
+            comparison_slots[profile_index][exemplar_index] = result
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(jobs, len(pending_comparisons)),
+            thread_name_prefix="identity-association",
+        ) as executor:
+            for profile_index, exemplar_index, result in executor.map(
+                evaluate_exemplar, pending_comparisons
+            ):
+                comparison_slots[profile_index][exemplar_index] = result
+
+    profile_results: list[dict[str, Any]] = []
+    for profile_index, (readiness, _exemplars) in enumerate(profiles):
+        comparisons = [
+            comparison
+            for comparison in comparison_slots[profile_index]
+            if comparison is not None
+        ]
         counts = {
             outcome.value: sum(
                 str(comparison.get("outcome")) == outcome.value
