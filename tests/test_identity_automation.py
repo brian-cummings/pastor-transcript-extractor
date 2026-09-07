@@ -12,6 +12,7 @@ from pastor_transcript_extractor.identity_automation import (
     build_identity_association_work_plan,
     classify_association_blocker,
     latest_association_reports,
+    select_superseded_profile_member_review,
 )
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.speaker_registry import (
@@ -174,6 +175,57 @@ class IdentityAutomationTests(unittest.TestCase):
             item.reason_code,
         )
         self.assertFalse(item.retryable)
+
+    def test_selects_one_review_to_restore_second_current_exemplar(self):
+        members = [self._observation(f"member-{index}") for index in range(3)]
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="test",
+            review_event_key="profile-for-restoration",
+        )
+        for index, member in enumerate(members):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=member.id,
+                reviewer="reviewer",
+                reason="test",
+                review_event_key=f"restoration-member-{index}",
+            )
+        replacements = []
+        for index, member in enumerate(members[1:], start=1):
+            replacements.append(
+                self.database.add_speaker_observation(
+                    video_id=member.video_id,
+                    extraction_result_id=member.extraction_result_id,
+                    role=member.role,
+                    multiplicity_state=member.multiplicity_state,
+                    start_seconds=member.start_seconds,
+                    end_seconds=member.end_seconds,
+                    artifact_path=member.artifact_path,
+                    content_sha256=member.content_sha256,
+                    extractor_version=member.extractor_version,
+                    input_fingerprint=f"replacement-{index}",
+                )
+            )
+
+        with patch(
+            "pastor_transcript_extractor.identity_automation."
+            "assess_automatic_speaker_observation",
+            side_effect=self._eligible,
+        ):
+            candidate = select_superseded_profile_member_review(self.database)
+
+        self.assertIsNotNone(candidate)
+        assert candidate is not None
+        self.assertEqual(profile.id, candidate.profile_id)
+        self.assertEqual(members[0].id, candidate.anchor_observation_id)
+        self.assertIn(
+            candidate.replacement_observation_id,
+            {replacement.id for replacement in replacements},
+        )
+        self.assertEqual(1, candidate.current_exemplar_count)
 
     def test_blocker_policy_separates_repairable_technical_from_terminal_policy(self):
         self.assertEqual(

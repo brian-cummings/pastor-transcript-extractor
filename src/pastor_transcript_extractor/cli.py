@@ -254,6 +254,7 @@ from pastor_transcript_extractor.identity_exemplar_preparation import (
 from pastor_transcript_extractor.identity_automation import (
     build_identity_association_work_plan,
     latest_association_reports,
+    select_superseded_profile_member_review,
     write_identity_work_event,
 )
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
@@ -7933,6 +7934,62 @@ def association_work_status_command(
             Database(paths.database, readonly=True), association_root
         ),
         details=details,
+    )
+
+
+@identity_app.command(
+    "review-next-superseded-profile-member",
+    help=(
+        "Review one current replacement against a current profile exemplar "
+        "to restore acoustic profile coverage."
+    ),
+)
+def review_next_superseded_profile_member_command(
+    reviewer: str | None = typer.Option(
+        None, help="Stable human reviewer identifier."
+    ),
+    prepare_only: bool = typer.Option(False, "--prepare-only"),
+    open_packet: bool = typer.Option(
+        True, "--open-packet/--no-open-packet"
+    ),
+    evaluation_root: Path = typer.Option(
+        Path("evaluation/speaker-pairs")
+    ),
+    cache_dir: Path = typer.Option(Path("evaluation/speaker-pairs/cache")),
+    base_dir: Path | None = typer.Option(None),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    candidate = select_superseded_profile_member_review(
+        Database(paths.database, readonly=True)
+    )
+    if candidate is None:
+        console.print(
+            "No safe one-review superseded-member candidate is available."
+        )
+        return
+    console.print(
+        "Selected current-exemplar restoration review: "
+        f"profile={candidate.profile_id} "
+        f"anchor={candidate.anchor_youtube_video_id} "
+        f"replacement={candidate.replacement_youtube_video_id} "
+        f"superseded_observation={candidate.superseded_observation_id}."
+    )
+    review_speaker_pair(
+        video_a=candidate.anchor_youtube_video_id,
+        video_b=candidate.replacement_youtube_video_id,
+        reviewer=reviewer,
+        evaluation_root=evaluation_root,
+        cache_dir=cache_dir,
+        open_packet=open_packet,
+        prepare_only=prepare_only,
+        base_dir=base_dir,
+        selection_manifest_json=None,
+        observation_fingerprint_a=None,
+        observation_fingerprint_b=None,
     )
 
 

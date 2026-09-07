@@ -77,6 +77,104 @@ class IdentityAssociationWorkPlan:
         return selected[:limit] if limit is not None else selected
 
 
+@dataclass(frozen=True, slots=True)
+class SupersededProfileMemberReviewCandidate:
+    profile_id: int
+    anchor_observation_id: int
+    anchor_youtube_video_id: str
+    replacement_observation_id: int
+    replacement_youtube_video_id: str
+    superseded_observation_id: int
+    profile_member_count: int
+    current_exemplar_count: int
+
+
+def select_superseded_profile_member_review(
+    database: Database,
+) -> SupersededProfileMemberReviewCandidate | None:
+    """Select one human review that can add a second current profile exemplar."""
+    videos_by_id = {video.id: video for video in database.list_videos()}
+    candidates: list[SupersededProfileMemberReviewCandidate] = []
+    for profile in database.list_speaker_profiles():
+        if database.resolve_speaker_profile_id(profile.id) != profile.id:
+            continue
+        members = [
+            observation
+            for observation_id in (
+                database.list_effective_observation_ids_for_profile(profile.id)
+            )
+            if (observation := database.get_speaker_observation(observation_id))
+            is not None
+        ]
+        if len({member.video_id for member in members}) < 3:
+            continue
+        current_members = [
+            member
+            for member in members
+            if (
+                current := database.get_latest_speaker_observation_for_video(
+                    member.video_id
+                )
+            )
+            is not None
+            and current.id == member.id
+        ]
+        if len({member.video_id for member in current_members}) != 1:
+            continue
+        anchor = current_members[0]
+        anchor_video = videos_by_id.get(anchor.video_id)
+        if anchor_video is None:
+            continue
+        anchor_eligibility = assess_automatic_speaker_observation(
+            database, anchor.video_id, verify_media=False
+        )
+        if not anchor_eligibility.eligible:
+            continue
+        for superseded in members:
+            replacement = database.get_latest_speaker_observation_for_video(
+                superseded.video_id
+            )
+            if replacement is None or replacement.id == superseded.id:
+                continue
+            replacement_video = videos_by_id.get(replacement.video_id)
+            if replacement_video is None:
+                continue
+            if database.list_effective_profile_ids_for_observation(replacement.id):
+                continue
+            replacement_eligibility = assess_automatic_speaker_observation(
+                database, replacement.video_id, verify_media=False
+            )
+            if (
+                not replacement_eligibility.eligible
+                or replacement_eligibility.observation is None
+                or replacement_eligibility.observation.id != replacement.id
+            ):
+                continue
+            candidates.append(
+                SupersededProfileMemberReviewCandidate(
+                    profile_id=profile.id,
+                    anchor_observation_id=anchor.id,
+                    anchor_youtube_video_id=anchor_video.youtube_video_id,
+                    replacement_observation_id=replacement.id,
+                    replacement_youtube_video_id=(
+                        replacement_video.youtube_video_id
+                    ),
+                    superseded_observation_id=superseded.id,
+                    profile_member_count=len(members),
+                    current_exemplar_count=1,
+                )
+            )
+    return min(
+        candidates,
+        key=lambda item: (
+            -item.profile_member_count,
+            item.profile_id,
+            item.replacement_youtube_video_id,
+        ),
+        default=None,
+    )
+
+
 def classify_association_blocker(stage: str, reason_code: str) -> tuple[str, str, bool]:
     """Classify an exact blocker without weakening identity admission policy."""
     if reason_code in POLICY_TERMINAL_REASONS or stage in {
