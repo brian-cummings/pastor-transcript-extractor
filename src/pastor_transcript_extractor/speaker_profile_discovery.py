@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import statistics
+from threading import Lock
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from pastor_transcript_extractor.models import SpeakerObservation
@@ -104,6 +105,7 @@ class ActivityQualifiedSelectionCache:
         self.hits = 0
         self.misses = 0
         self.failure_hits = 0
+        self._lock = Lock()
 
     def get_or_prepare(
         self,
@@ -134,13 +136,16 @@ class ActivityQualifiedSelectionCache:
         if cached is not None:
             outcome, value = cached
             if outcome == "failure":
-                self.failure_hits += 1
+                with self._lock:
+                    self.failure_hits += 1
                 raise ValueError(str(value))
-            self.hits += 1
+            with self._lock:
+                self.hits += 1
             assert isinstance(value, CachedActivityQualifiedSelection)
             return value
 
-        self.misses += 1
+        with self._lock:
+            self.misses += 1
         try:
             prepared = prepare_activity_qualified_spans(
                 observation=observation,

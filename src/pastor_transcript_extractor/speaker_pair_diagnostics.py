@@ -199,6 +199,7 @@ class AudioSpanCache:
             tuple[Path, dict[str, Any]],
         ] | None = None
         self._verified_span_files: set[tuple[str, int, int, str]] = set()
+        self._lock = Lock()
 
     def remember_verified_source(
         self,
@@ -220,7 +221,8 @@ class AudioSpanCache:
             file_stat.st_size,
             file_stat.st_mtime_ns,
         )
-        self._source_hashes[key] = content_sha256
+        with self._lock:
+            self._source_hashes[key] = content_sha256
 
     def prepare(
         self,
@@ -321,13 +323,14 @@ class AudioSpanCache:
         manifest = {"schema_version": 1, "cache_key": key, "input": key_payload, "span": asdict(cached)}
         manifest["span"].pop("cache_hit")
         _write_json(manifest_path, manifest)
-        if self._span_manifest_index is not None:
-            manifest_key = self._span_manifest_key(key_payload)
-            if manifest_key is not None:
-                self._span_manifest_index[manifest_key] = (
-                    manifest_path,
-                    manifest,
-                )
+        with self._lock:
+            if self._span_manifest_index is not None:
+                manifest_key = self._span_manifest_key(key_payload)
+                if manifest_key is not None:
+                    self._span_manifest_index[manifest_key] = (
+                        manifest_path,
+                        manifest,
+                    )
         return cached
 
     def _find_cached_span(
@@ -353,7 +356,8 @@ class AudioSpanCache:
             span.end_seconds,
             generation_policy_version,
         )
-        indexed = self._span_manifest_index.get(manifest_key)
+        with self._lock:
+            indexed = self._span_manifest_index.get(manifest_key)
         if indexed is None:
             return None
         _manifest_path, manifest = indexed
@@ -374,24 +378,34 @@ class AudioSpanCache:
     def _ensure_span_manifest_index(self) -> None:
         if self._span_manifest_index is not None:
             return
-        index: dict[
-            tuple[str, str, str, float, float, str | None],
-            tuple[Path, dict[str, Any]],
-        ] = {}
-        directory = self.root / "spans"
-        if directory.is_dir():
-            for manifest_path in sorted(directory.glob("*.json")):
-                try:
-                    manifest = json.loads(
-                        manifest_path.read_text(encoding="utf-8")
-                    )
-                    item = manifest["input"]
-                except (OSError, KeyError, TypeError, json.JSONDecodeError):
-                    continue
-                manifest_key = self._span_manifest_key(item)
-                if manifest_key is not None:
-                    index.setdefault(manifest_key, (manifest_path, manifest))
-        self._span_manifest_index = index
+        with self._lock:
+            if self._span_manifest_index is not None:
+                return
+            index: dict[
+                tuple[str, str, str, float, float, str | None],
+                tuple[Path, dict[str, Any]],
+            ] = {}
+            directory = self.root / "spans"
+            if directory.is_dir():
+                for manifest_path in sorted(directory.glob("*.json")):
+                    try:
+                        manifest = json.loads(
+                            manifest_path.read_text(encoding="utf-8")
+                        )
+                        item = manifest["input"]
+                    except (
+                        OSError,
+                        KeyError,
+                        TypeError,
+                        json.JSONDecodeError,
+                    ):
+                        continue
+                    manifest_key = self._span_manifest_key(item)
+                    if manifest_key is not None:
+                        index.setdefault(
+                            manifest_key, (manifest_path, manifest)
+                        )
+            self._span_manifest_index = index
 
     @staticmethod
     def _span_manifest_key(
@@ -441,11 +455,13 @@ class AudioSpanCache:
             file_stat.st_mtime_ns,
             expected_sha256,
         )
-        if key in self._verified_span_files:
-            return True
+        with self._lock:
+            if key in self._verified_span_files:
+                return True
         if _sha256_file(path) != expected_sha256:
             return False
-        self._verified_span_files.add(key)
+        with self._lock:
+            self._verified_span_files.add(key)
         return True
 
     def _observation_source_audio_sha256(
@@ -486,10 +502,12 @@ class AudioSpanCache:
                 f"local audio is unavailable: {path}"
             ) from error
         key = (str(path.expanduser().resolve()), file_stat.st_size, file_stat.st_mtime_ns)
-        content_sha256 = self._source_hashes.get(key)
+        with self._lock:
+            content_sha256 = self._source_hashes.get(key)
         if content_sha256 is None:
             content_sha256 = _sha256_file(path)
-            self._source_hashes[key] = content_sha256
+            with self._lock:
+                self._source_hashes[key] = content_sha256
         return content_sha256
 
     def recording_activity_profile(
@@ -588,6 +606,7 @@ class AudioSpanCache:
 class EmbeddingCache:
     def __init__(self, root: Path):
         self.root = root
+        self._lock = Lock()
 
     def get_or_compute(
         self, span: CachedSpan, backend: EmbeddingBackend
@@ -604,17 +623,21 @@ class EmbeddingCache:
             payload = json.loads(path.read_text(encoding="utf-8"))
             return tuple(float(value) for value in payload["embedding"]), True
         embedding = tuple(float(value) for value in backend.embed(Path(span.wav_path)))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _write_json(
-            path,
-            {
-                "schema_version": 1,
-                "cache_key": key,
-                "wav_sha256": span.wav_sha256,
-                "model": asdict(backend.spec),
-                "embedding": embedding,
-            },
-        )
+        with self._lock:
+            if path.exists():
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                return tuple(float(value) for value in payload["embedding"]), True
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _write_json(
+                path,
+                {
+                    "schema_version": 1,
+                    "cache_key": key,
+                    "wav_sha256": span.wav_sha256,
+                    "model": asdict(backend.spec),
+                    "embedding": embedding,
+                },
+            )
         return embedding, False
 
 
