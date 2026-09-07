@@ -8531,6 +8531,11 @@ def shadow_associate_speakers_command(
         observation.id: observation
         for observation in database.list_speaker_observations()
     }
+    current_observation_by_video_id: dict[int, SpeakerObservation] = {}
+    for observation in observations_by_id.values():
+        current = current_observation_by_video_id.get(observation.video_id)
+        if current is None or observation.id > current.id:
+            current_observation_by_video_id[observation.video_id] = observation
     source_id_by_video_id = {
         video_id: video.source_id for video_id, video in videos_by_id.items()
     }
@@ -8617,6 +8622,19 @@ def shadow_associate_speakers_command(
         for observation_id in preparation_observation_ids:
             observation = database.get_speaker_observation(observation_id)
             if observation is None:
+                continue
+            current_observation = current_observation_by_video_id.get(
+                observation.video_id
+            )
+            if (
+                current_observation is None
+                or current_observation.id != observation.id
+            ):
+                count_exemplar_preparation(
+                    profile.profile_id,
+                    "observation_currency:"
+                    "profile_member_observation_superseded",
+                )
                 continue
             eligibility = assess_automatic_speaker_observation(
                 database,
@@ -8868,7 +8886,18 @@ def shadow_associate_speakers_command(
                 "profile id(s)."
             )
     else:
-        requested_videos = list(videos_by_id.values())
+        requested_videos = [
+            video
+            for video in videos_by_id.values()
+            if video.id in current_observation_by_video_id
+        ]
+        console.print(
+            "Association candidate inventory: "
+            f"database_videos={len(videos_by_id)} "
+            f"videos_with_observations={len(requested_videos)} "
+            f"skipped_without_observations="
+            f"{len(videos_by_id) - len(requested_videos)}."
+        )
 
     attempted_observation_ids: set[int] = set()
     if unattempted_only:
@@ -9326,6 +9355,7 @@ def shadow_associate_speakers_command(
     sermon_window_quality_flag_count = 0
     proposal_targets: dict[int, int] = {}
     written_reports: list[Path] = []
+    comparison_executor: ThreadPoolExecutor | None = None
     for index, (video, eligibility, _span_specs) in enumerate(
         candidates,
         start=1,
@@ -9449,6 +9479,7 @@ def shadow_associate_speakers_command(
             selected_profiles,
             routing_payload,
         ):
+            nonlocal comparison_executor
             span_selection_payload = {
                 "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
                 "required_label": "sermon",
@@ -9494,23 +9525,39 @@ def shadow_associate_speakers_command(
             )
             if reusable is not None:
                 return reusable[1], reusable[0]
-            return evaluate_shadow_association(
-                candidate=observation,
-                candidate_audio_path=Path(media_artifact.artifact_path),
-                candidate_audio_sha256=media_artifact.content_sha256,
-                candidate_normalized_names=sorted(explicit_candidate_names),
-                profiles=selected_profiles,
-                compare=compare,
-                policy_spec=policy_spec,
-                model_fingerprint=backend.spec.fingerprint,
-                minimum_same_exemplars=minimum_same_exemplars,
-                reviewed_difference_pairs=(
-                    database.list_effective_observation_difference_pairs()
-                ),
-                routing=routing_payload,
-                span_selection=span_selection_payload,
-                jobs=jobs,
-            ), None
+            if jobs > 1 and comparison_executor is None:
+                comparison_executor = ThreadPoolExecutor(
+                    max_workers=jobs,
+                    thread_name_prefix="identity-association",
+                )
+            try:
+                report = evaluate_shadow_association(
+                    candidate=observation,
+                    candidate_audio_path=Path(media_artifact.artifact_path),
+                    candidate_audio_sha256=media_artifact.content_sha256,
+                    candidate_normalized_names=sorted(explicit_candidate_names),
+                    profiles=selected_profiles,
+                    compare=compare,
+                    policy_spec=policy_spec,
+                    model_fingerprint=backend.spec.fingerprint,
+                    minimum_same_exemplars=minimum_same_exemplars,
+                    reviewed_difference_pairs=(
+                        database.list_effective_observation_difference_pairs()
+                    ),
+                    routing=routing_payload,
+                    span_selection=span_selection_payload,
+                    jobs=jobs,
+                    executor=comparison_executor,
+                )
+            except BaseException:
+                if comparison_executor is not None:
+                    comparison_executor.shutdown(
+                        wait=True,
+                        cancel_futures=True,
+                    )
+                    comparison_executor = None
+                raise
+            return report, None
 
         report, reusable_path = evaluate_profiles(
             candidate_profiles, initial_routing_payload
@@ -9622,6 +9669,8 @@ def shadow_associate_speakers_command(
             f" reused={reusable_path is not None}"
             f"{window_flag_text}"
         )
+    if comparison_executor is not None:
+        comparison_executor.shutdown(wait=True)
     console.print(
         "Shadow association complete: "
         + " ".join(

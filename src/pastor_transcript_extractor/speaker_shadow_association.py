@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 import hashlib
@@ -903,6 +903,7 @@ def evaluate_shadow_association(
     span_selection: Mapping[str, Any] | None = None,
     routing: Mapping[str, Any] | None = None,
     jobs: int = 1,
+    executor: Executor | None = None,
 ) -> dict[str, Any]:
     if minimum_same_exemplars < 2:
         raise ValueError("a shadow match requires at least two same exemplars")
@@ -958,6 +959,11 @@ def evaluate_shadow_association(
     if jobs == 1 or len(pending_comparisons) < 2:
         evaluated = map(evaluate_exemplar, pending_comparisons)
         for profile_index, exemplar_index, result in evaluated:
+            comparison_slots[profile_index][exemplar_index] = result
+    elif executor is not None:
+        for profile_index, exemplar_index, result in executor.map(
+            evaluate_exemplar, pending_comparisons
+        ):
             comparison_slots[profile_index][exemplar_index] = result
     else:
         with ThreadPoolExecutor(

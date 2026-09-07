@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
 import json
 import tempfile
 from threading import Lock
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
@@ -509,6 +511,63 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
                 for item in report["profiles"][0]["comparisons"]
             ],
         )
+
+    def test_external_executor_is_reused_without_nested_pool(self) -> None:
+        candidate = self._observation("external-pool-candidate")
+        exemplars = [
+            self._observation(f"external-pool-{index}")
+            for index in range(2)
+        ]
+        profile = self._profile(exemplars)
+        readiness = ProfileAssociationReadiness(
+            profile_id=profile.id,
+            member_observation_ids=tuple(item.id for item in exemplars),
+            member_fingerprints=tuple(
+                item.input_fingerprint for item in exemplars
+            ),
+            recording_count=2,
+            source_count=1,
+            normalized_names=(),
+            shadow_ready=False,
+            automatic_profile_ready=False,
+            shadow_blockers=("fewer_than_three_profile_members",),
+            automatic_blockers=("fewer_than_three_profile_members",),
+            review_ready=True,
+        )
+        profile_input = (
+            (
+                readiness,
+                tuple(
+                    ShadowExemplar(
+                        profile.id,
+                        exemplar,
+                        Path(f"{exemplar.id}.wav"),
+                        f"audio-{exemplar.id}",
+                    )
+                    for exemplar in exemplars
+                ),
+            ),
+        )
+
+        with ThreadPoolExecutor(max_workers=2) as executor, patch(
+            "pastor_transcript_extractor.speaker_shadow_association."
+            "ThreadPoolExecutor"
+        ) as nested_pool:
+            report = evaluate_shadow_association(
+                candidate=candidate,
+                candidate_audio_path=Path("candidate.wav"),
+                candidate_audio_sha256="candidate-audio",
+                candidate_normalized_names=(),
+                profiles=profile_input,
+                compare=lambda *_args: {"outcome": "same_speaker"},
+                policy_spec=self._policy_spec(),
+                model_fingerprint="model",
+                jobs=2,
+                executor=executor,
+            )
+
+        nested_pool.assert_not_called()
+        self.assertEqual("proposed_match", report["outcome"])
 
     def test_immature_review_targets_require_source_or_name_routing(self) -> None:
         observations = [

@@ -28,6 +28,7 @@ from pastor_transcript_extractor.cli import (
     validate_source_families,
 )
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.models import SourceType
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.speaker_shadow_association import (
     DISCOVERY_PROFILE_REASON as SHARED_DISCOVERY_PROFILE_REASON,
@@ -63,6 +64,41 @@ class IdentityRunTests(unittest.TestCase):
 
         self.assertEqual(0, result.exit_code, result.output)
         self.assertIn("eligible_unassigned=0", result.output)
+
+    def test_association_inventory_skips_videos_without_observations(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            database = Database(Path(tempdir) / "app.db")
+            database.initialize()
+            source = database.add_source(
+                "https://www.youtube.com/@inventory",
+                SourceType.CHANNEL,
+                pastor_id=None,
+            )
+            database.add_video(
+                source.id,
+                None,
+                "not-observed",
+                "Not observed",
+                "https://www.youtube.com/watch?v=not-observed",
+            )
+
+            result = CliRunner().invoke(
+                app,
+                [
+                    "identity",
+                    "shadow-associate-speakers",
+                    "--all-eligible",
+                    "--plan-only",
+                    "--base-dir",
+                    tempdir,
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertIn("database_videos=1", result.output)
+        self.assertIn("videos_with_observations=0", result.output)
+        self.assertIn("skipped_without_observations=1", result.output)
+        self.assertIn("scanning 0 video(s)", result.output)
 
     def test_superseded_profile_member_has_observed_blocker(self) -> None:
         self.assertEqual(
