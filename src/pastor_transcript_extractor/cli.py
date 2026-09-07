@@ -240,6 +240,11 @@ from pastor_transcript_extractor.identity_leverage import (
 from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
+from pastor_transcript_extractor.identity_automation import (
+    build_identity_association_work_plan,
+    latest_association_reports,
+    write_identity_work_event,
+)
 from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
@@ -7040,6 +7045,45 @@ def run_identity_workflow_service(
             jobs=jobs,
         )
 
+    # Assignment planning is a projection of every current association result,
+    # not merely the artifacts produced by this invocation. Superseded evidence
+    # is explicitly revoked before the current proposal is planned.
+    association_root = Path("evaluation/speaker-associations/shadow-runs")
+    persisted_current_reports = latest_association_reports(association_root)
+    if persisted_current_reports:
+        current_association_reports = persisted_current_reports
+    current_result_sha256_by_observation: dict[int, str] = {}
+    for report_path in current_association_reports:
+        try:
+            association_payload = json.loads(
+                report_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        candidate_payload = association_payload.get("candidate")
+        observation_id = (
+            candidate_payload.get("observation_id")
+            if isinstance(candidate_payload, Mapping)
+            else None
+        )
+        result_sha256 = association_payload.get("result_sha256")
+        if isinstance(observation_id, int) and isinstance(result_sha256, str):
+            current_result_sha256_by_observation[observation_id] = result_sha256
+    if not plan_only:
+        current_reconciliation = reconcile_machine_assignments(
+            Database(paths.database),
+            verification_cache=machine_cache,
+            current_association_result_sha256_by_observation=(
+                current_result_sha256_by_observation
+            ),
+        )
+        console.print(
+            "Current-result assignment reconciliation: "
+            f"confirmed={current_reconciliation.confirmed} "
+            f"revoked={current_reconciliation.revoked} "
+            f"unchanged={current_reconciliation.unchanged}."
+        )
+
     machine_policy = load_machine_assignment_policy(
         machine_assignment_policy_path
         or Path(
@@ -7579,6 +7623,353 @@ def identity_run_command(
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
+
+
+def _print_identity_work_plan(plan, *, details: bool = False) -> None:
+    console.print(
+        "Identity association work: "
+        + " ".join(f"{state}={count}" for state, count in plan.counts.items())
+        + f" unique_videos={len(plan.items)} attempt_volume={plan.attempt_volume}."
+    )
+    blocker_counts: dict[tuple[str, str], int] = {}
+    for item in plan.items:
+        if item.state in {"associated", "dispatch_ready"}:
+            continue
+        key = (item.stage, item.reason_code)
+        blocker_counts[key] = blocker_counts.get(key, 0) + 1
+    if blocker_counts:
+        console.print(
+            "Durable blockers: "
+            + ", ".join(
+                f"{stage}:{reason}={count}"
+                for (stage, reason), count in sorted(blocker_counts.items())
+            )
+        )
+    if details:
+        for item in plan.items:
+            console.print(
+                f"{item.youtube_video_id} state={item.state} "
+                f"stage={item.stage} reason={item.reason_code} "
+                f"next={item.next_operation}"
+            )
+
+
+@identity_app.command(
+    "association-work-plan",
+    help="Plan current accepted-sermon identity work without writing artifacts.",
+)
+def association_work_plan_command(
+    details: bool = typer.Option(False, "--details"),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs")
+    ),
+    base_dir: Path | None = typer.Option(None),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    plan = build_identity_association_work_plan(
+        Database(paths.database, readonly=True), association_root
+    )
+    _print_identity_work_plan(plan, details=details)
+    console.print("Dry run; durable identity state was not changed.")
+
+
+@identity_app.command(
+    "association-work-status",
+    help="Summarize unique-video identity work and durable blocker reason codes.",
+)
+def association_work_status_command(
+    details: bool = typer.Option(False, "--details"),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs")
+    ),
+    base_dir: Path | None = typer.Option(None),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    _print_identity_work_plan(
+        build_identity_association_work_plan(
+            Database(paths.database, readonly=True), association_root
+        ),
+        details=details,
+    )
+
+
+@identity_app.command(
+    "dispatch-associations",
+    help="Run a bounded, restart-safe batch of current unattempted associations.",
+)
+def dispatch_associations_command(
+    limit: int = typer.Option(25, "--limit", min=1),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    jobs: int = typer.Option(2, "--jobs", min=1),
+    retry_failed_only: bool = typer.Option(
+        False,
+        "--retry-failed-only",
+        help=(
+            "Retry persisted technical failures without retrying "
+            "policy-terminal outcomes."
+        ),
+    ),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs")
+    ),
+    base_dir: Path | None = typer.Option(None),
+) -> None:
+    paths = build_paths(base_dir)
+    plan = build_identity_association_work_plan(
+        Database(paths.database, readonly=True), association_root
+    )
+    selected = plan.select(
+        *("technical_failure",)
+        if retry_failed_only
+        else ("dispatch_ready", "technical_failure"),
+        limit=limit,
+    )
+    console.print(
+        f"Association dispatch selected={len(selected)} limit={limit} "
+        f"mode={'dry-run' if dry_run else 'execute'}."
+    )
+    if dry_run or not selected:
+        for item in selected:
+            console.print(f"{item.youtube_video_id} {item.reason_code}")
+        return
+    # Limit by explicit deterministic video IDs. This gives observation-level
+    # failure isolation and makes restart semantics independent of scan order.
+    succeeded = failed = 0
+    for item in selected:
+        try:
+            shadow_associate_speakers_command(
+                youtube_video_id=item.youtube_video_id,
+                all_eligible=False,
+                unattempted_only=False,
+                neighborhood_profile_id=[],
+                include_profiled=False,
+                limit=None,
+                plan_only=False,
+                minimum_profile_members=3,
+                maximum_exemplars=3,
+                minimum_same_exemplars=2,
+                maximum_global_profiles=3,
+                jobs=jobs,
+                model_path=Path(
+                    "evaluation/speaker-pairs/models/"
+                    "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+                ),
+                model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+                policy_path=Path(
+                    "evaluation/speaker-pairs/policies/"
+                    "campplus-development-candidate-v1.json"
+                ),
+                evaluation_root=Path("evaluation/speaker-pairs"),
+                cache_dir=Path("evaluation/speaker-pairs/cache"),
+                output_root=association_root,
+                base_dir=base_dir,
+            )
+            succeeded += 1
+        except Exception as error:
+            failed += 1
+            write_identity_work_event(
+                association_root,
+                item,
+                operation="association_dispatch",
+                outcome="technical_failure",
+                detail=f"{type(error).__name__}: {error}",
+            )
+            console.print(
+                f"Association failed in isolation: {item.youtube_video_id} "
+                f"{type(error).__name__}: {error}"
+            )
+    console.print(
+        f"Association dispatch complete: selected={len(selected)} "
+        f"succeeded={succeeded} failed={failed}."
+    )
+
+
+@identity_app.command(
+    "repair-association-prerequisites",
+    help="Repair current technical prerequisites from existing local artifacts only.",
+)
+def repair_association_prerequisites_command(
+    limit: int = typer.Option(25, "--limit", min=1),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs")
+    ),
+    base_dir: Path | None = typer.Option(None),
+) -> None:
+    paths = build_paths(base_dir, remember=not dry_run)
+    readonly = Database(paths.database, readonly=True)
+    plan = build_identity_association_work_plan(readonly, association_root)
+    selected = plan.select("prerequisite_blocked", limit=limit)
+    console.print(
+        f"Prerequisite repair selected={len(selected)} limit={limit} "
+        f"mode={'dry-run' if dry_run else 'execute'}."
+    )
+    if dry_run:
+        for item in selected:
+            console.print(
+                f"{item.youtube_video_id} reason={item.reason_code} "
+                f"operation={item.next_operation}"
+            )
+        return
+    database = Database(paths.database)
+    repaired = still_blocked = failed = 0
+    for item in selected:
+        outcome = "still_blocked"
+        detail = "prerequisite unchanged"
+        try:
+            if item.next_operation == "backfill_existing_normalized_media":
+                result = backfill_existing_media_artifacts(
+                    database, paths, video_id=item.video_id
+                )
+                detail = (
+                    f"registered={result.artifacts_registered}; "
+                    f"attempts={result.attempts_registered}"
+                )
+            elif item.next_operation == "rebuild_observation_from_current_extraction":
+                result = backfill_shadow_identity_assessments(
+                    database, paths, video_id=item.video_id
+                )
+                detail = (
+                    f"created={result.created}; reused={result.reused}; "
+                    f"skipped={result.skipped}; failed={result.failed}"
+                )
+            eligibility = assess_automatic_speaker_observation(
+                database, item.video_id, verify_media=False
+            )
+            if eligibility.eligible:
+                outcome = "repaired_and_requeued"
+                repaired += 1
+            else:
+                detail += f"; current_reason={eligibility.reason_code}"
+                still_blocked += 1
+        except (OSError, RuntimeError, ValueError) as error:
+            outcome = "technical_failure"
+            detail = f"{type(error).__name__}: {error}"
+            failed += 1
+        write_identity_work_event(
+            association_root,
+            item,
+            operation=item.next_operation,
+            outcome=outcome,
+            detail=detail,
+        )
+    console.print(
+        f"Prerequisite repair complete: repaired_and_requeued={repaired} "
+        f"still_blocked={still_blocked} failed={failed}."
+    )
+
+
+@identity_app.command(
+    "reconcile-current-proposals",
+    help="Reconcile stale assignment evidence and plan every current proposal.",
+)
+def reconcile_current_proposals_command(
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    activate_canary: bool = typer.Option(False, "--activate-canary"),
+    machine_assignment_policy: Path = typer.Option(
+        Path(
+            "evaluation/speaker-associations/policies/"
+            "machine-assignment-human-on-loop-v1.json"
+        )
+    ),
+    association_root: Path = typer.Option(
+        Path("evaluation/speaker-associations/shadow-runs")
+    ),
+    base_dir: Path | None = typer.Option(None),
+) -> None:
+    paths = build_paths(base_dir)
+    database = Database(paths.database, readonly=dry_run)
+    reports = latest_association_reports(association_root)
+    current_results: dict[int, str] = {}
+    for report_path in reports:
+        try:
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+            candidate = payload.get("candidate", {})
+            observation_id = candidate.get("observation_id")
+            result_sha256 = payload.get("result_sha256")
+            if isinstance(observation_id, int) and isinstance(result_sha256, str):
+                current_results[observation_id] = result_sha256
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+    verification_cache = MediaVerificationCache(
+        Path("evaluation/speaker-pairs/cache/media-verification").resolve()
+    )
+    evidence = load_reviewed_speaker_evidence(
+        Path("evaluation/speaker-pairs").resolve()
+    )
+    readiness = assess_profile_association_readiness(database, evidence)
+    policy = load_machine_assignment_policy(machine_assignment_policy)
+    plan = plan_machine_assignments(
+        database,
+        latest_association_reports(association_root, outcomes=("proposed_match",)),
+        readiness=readiness,
+        policy=policy,
+        verification_cache=verification_cache,
+        excluded_observation_fingerprints=_held_out_speaker_fixture_fingerprints(
+            Path("evaluation/speaker-pairs/fixtures").resolve()
+        ),
+    )
+    stale_evidence_count = sum(
+        current_results.get(int(row["observation_id"])) is not None
+        and current_results[int(row["observation_id"])]
+        != row["association_result_sha256"]
+        for row in database.list_speaker_machine_evidence()
+    )
+    if dry_run:
+        console.print(
+            "Proposal reconciliation dry run: "
+            f"current_results={len(current_results)} "
+            f"stale_evidence={stale_evidence_count} "
+            f"assignment_ready={len(plan.candidates)} "
+            f"blocked_or_skipped={sum(plan.skipped_counts.values())}."
+        )
+        if plan.skipped_counts:
+            console.print(
+                "Planning outcomes: "
+                + ", ".join(
+                    f"{reason}={count}"
+                    for reason, count in plan.skipped_counts.items()
+                )
+            )
+        return
+    reconciliation = reconcile_machine_assignments(
+        database,
+        verification_cache=verification_cache,
+        current_association_result_sha256_by_observation=current_results,
+    )
+    # Re-plan after stale active evidence has been revoked so its replacement
+    # proposal can be admitted in this same reconciliation run.
+    plan = plan_machine_assignments(
+        database,
+        latest_association_reports(
+            association_root, outcomes=("proposed_match",)
+        ),
+        readiness=readiness,
+        policy=policy,
+        verification_cache=verification_cache,
+        excluded_observation_fingerprints=(
+            _held_out_speaker_fixture_fingerprints(
+                Path("evaluation/speaker-pairs/fixtures").resolve()
+            )
+        ),
+    )
+    applied = apply_machine_assignment_plan(
+        database, plan, activate_canary=activate_canary
+    )
+    console.print(
+        "Proposal reconciliation complete: "
+        f"stale_or_reviewed_revoked={reconciliation.revoked} "
+        f"confirmed={reconciliation.confirmed} "
+        f"current_candidates={len(plan.candidates)} "
+        f"evidence_recorded={applied.evidence_recorded} "
+        f"evidence_reused={applied.evidence_reused} "
+        f"activated={applied.assignments_activated} "
+        f"activation_blocked={applied.activation_blocked}."
+    )
 
 
 @identity_app.command(
@@ -9051,18 +9442,18 @@ def shadow_associate_speakers_command(
             f"{len(videos_by_id) - len(requested_videos)}."
         )
 
-    attempted_observation_ids: set[int] = set()
+    attempted_observation_fingerprints: set[str] = set()
     if unattempted_only:
         persisted_attempts = load_identity_association_attempts(
             output_root,
             database_video_ids={video.id for video in requested_videos},
         )
-        attempted_observation_ids = {
-            observation_id
+        attempted_observation_fingerprints = {
+            fingerprint
             for attempts in persisted_attempts.values()
             for attempt in attempts
             if isinstance(
-                observation_id := attempt.get("observation_id"), int
+                fingerprint := attempt.get("observation_fingerprint"), str
             )
         }
 
@@ -9076,10 +9467,8 @@ def shadow_associate_speakers_command(
         media_sha256: str | None = None,
     ) -> None:
         if (
-            not unattempted_only
-            or plan_only
+            plan_only
             or observation is None
-            or not _association_admission_is_actionable(stage, reason_code)
         ):
             return
         admission_paths.add(
@@ -9129,7 +9518,8 @@ def shadow_associate_speakers_command(
         if unattempted_only:
             if (
                 latest_observation is not None
-                and latest_observation.id in attempted_observation_ids
+                and latest_observation.input_fingerprint
+                in attempted_observation_fingerprints
             ):
                 ineligible_reasons["association_already_attempted"] = (
                     ineligible_reasons.get(
@@ -9267,7 +9657,7 @@ def shadow_associate_speakers_command(
                     None if plan_only else span_preparation_backend()
                 ),
             )
-        except (OSError, RuntimeError, ValueError) as error:
+        except Exception as error:
             return item, (), None, (
                 str(error) or "activity_qualified_spans_unavailable"
             )
@@ -9463,15 +9853,24 @@ def shadow_associate_speakers_command(
         media_artifact = eligibility.media_artifact
         if observation is None or media_artifact is None:
             return candidate_index, None, None, None
-        centroid = build_embedding_centroid(
-            observation=observation,
-            audio_path=Path(media_artifact.artifact_path),
-            span_specs=span_specs_by_observation_id[observation.id],
-            span_cache=span_cache,
-            embedding_cache=embedding_cache,
-            backend=backend,
-        )
-        return candidate_index, observation.id, observation.video_id, centroid
+        try:
+            centroid = build_embedding_centroid(
+                observation=observation,
+                audio_path=Path(media_artifact.artifact_path),
+                span_specs=span_specs_by_observation_id[observation.id],
+                span_cache=span_cache,
+                embedding_cache=embedding_cache,
+                backend=backend,
+            )
+        except Exception as error:
+            return (
+                candidate_index,
+                observation.id,
+                observation.video_id,
+                None,
+                f"{type(error).__name__}:{error}",
+            )
+        return candidate_index, observation.id, observation.video_id, centroid, None
 
     indexed_candidates = tuple(enumerate(candidates, start=1))
     candidate_centroid_results = ordered_acoustic_map(
@@ -9479,7 +9878,8 @@ def shadow_associate_speakers_command(
         indexed_candidates,
         thread_name_prefix="identity-candidate-centroid",
     )
-    for candidate_index, observation_id, video_id, centroid in (
+    failed_candidate_observation_ids: set[int] = set()
+    for candidate_index, observation_id, video_id, centroid, failure in (
         candidate_centroid_results
     ):
         if (
@@ -9491,7 +9891,22 @@ def shadow_associate_speakers_command(
                 "Association preprocessing: candidate centroid "
                 f"{candidate_index}/{len(candidates)}"
             )
-        if (
+        if failure is not None and observation_id is not None:
+            failed_candidate_observation_ids.add(observation_id)
+            video = videos_by_id.get(video_id) if video_id is not None else None
+            observation = observations_by_id.get(observation_id)
+            if video is not None and observation is not None:
+                persist_admission(
+                    video,
+                    observation,
+                    stage="technical_failure",
+                    reason_code="candidate_centroid_failed",
+                )
+            console.print(
+                f"Association candidate failed in isolation: observation="
+                f"{observation_id} stage=candidate_centroid detail={failure}"
+            )
+        elif (
             observation_id is not None
             and video_id is not None
             and centroid is not None
@@ -9579,6 +9994,8 @@ def shadow_associate_speakers_command(
         observation = eligibility.observation
         media_artifact = eligibility.media_artifact
         if observation is None or media_artifact is None:
+            continue
+        if observation.id in failed_candidate_observation_ids:
             continue
         explicit_candidate_names = set(
             candidate_names_by_observation.get(observation.id, ())
@@ -9775,9 +10192,23 @@ def shadow_associate_speakers_command(
                 raise
             return report, None
 
-        report, reusable_path = evaluate_profiles(
-            candidate_profiles, initial_routing_payload
-        )
+        try:
+            report, reusable_path = evaluate_profiles(
+                candidate_profiles, initial_routing_payload
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            persist_admission(
+                video,
+                observation,
+                stage="technical_failure",
+                reason_code=f"association_evaluation_failed:{type(error).__name__}",
+                media_sha256=media_artifact.content_sha256,
+            )
+            console.print(
+                f"Association {index}/{len(candidates)} failed in isolation: "
+                f"{video.youtube_video_id} {type(error).__name__}: {error}"
+            )
+            continue
         if reusable_path is None:
             detailed_profile_comparisons += len(candidate_profiles)
         if report["outcome"] == "proposed_match" and not routing.exhaustive:

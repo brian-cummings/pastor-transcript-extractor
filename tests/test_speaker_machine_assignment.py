@@ -397,6 +397,45 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
             ],
         )
 
+    def test_superseded_result_revokes_old_evidence_idempotently(self) -> None:
+        candidate = self._observation("superseded")
+        apply_machine_assignment_plan(
+            self.database,
+            self._plan((candidate,), self.canary_policy),
+            activate_canary=False,
+        )
+        old_result = self.database.list_speaker_machine_evidence()[0][
+            "association_result_sha256"
+        ]
+
+        result = reconcile_machine_assignments(
+            self.database,
+            current_association_result_sha256_by_observation={
+                candidate.id: "new-result"
+            },
+        )
+
+        self.assertNotEqual("new-result", old_result)
+        self.assertEqual(1, result.revoked)
+        events = self.database.list_speaker_machine_assignment_events()
+        self.assertEqual(1, len(events))
+        self.assertEqual("revoke", events[0]["action"])
+        self.assertEqual(
+            "stale:superseded_by_current_association_result",
+            events[0]["reason"],
+        )
+        replay = reconcile_machine_assignments(
+            self.database,
+            current_association_result_sha256_by_observation={
+                candidate.id: "new-result"
+            },
+        )
+        self.assertEqual(0, replay.revoked)
+        self.assertEqual(
+            1,
+            len(self.database.list_speaker_machine_assignment_events()),
+        )
+
     def test_evidence_only_contradiction_trips_policy(self) -> None:
         candidate = self._observation("candidate")
         other = create_anonymous_profile(

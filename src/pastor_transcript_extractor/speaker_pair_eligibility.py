@@ -220,7 +220,9 @@ def assess_automatic_speaker_observation(
                 "verified_normalized_media_unavailable"
                 if verify_media
                 else "registered_normalized_media_unavailable"
-            )
+            ),
+            observation=observation,
+            diagnostic_spans=diagnostic_spans,
         )
     return AutomaticSpeakerObservationEligibility(
         "eligible",

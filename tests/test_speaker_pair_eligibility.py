@@ -159,6 +159,28 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
             "verified_normalized_media_unavailable",
             result.reason_code,
         )
+        self.assertEqual(self.observation.id, result.observation.id)
+        self.assertEqual(5, len(result.diagnostic_spans))
+
+    def test_missing_registered_media_preserves_observation_for_blocker(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_eligibility."
+            "get_registered_normalized_media_artifact",
+            return_value=None,
+        ):
+            result = assess_automatic_speaker_observation(
+                self.database,
+                self.video.id,
+                verify_media=False,
+            )
+
+        self.assertFalse(result.eligible)
+        self.assertEqual(
+            "registered_normalized_media_unavailable",
+            result.reason_code,
+        )
+        self.assertEqual(self.observation.id, result.observation.id)
+        self.assertEqual(5, len(result.diagnostic_spans))
 
     def test_metadata_only_status_eligibility_does_not_verify_media(self) -> None:
         with (

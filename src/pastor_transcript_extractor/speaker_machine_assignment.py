@@ -579,6 +579,9 @@ def reconcile_machine_assignments(
     database: Database,
     *,
     verification_cache: MediaVerificationCache | None = None,
+    current_association_result_sha256_by_observation: (
+        Mapping[int, str] | None
+    ) = None,
 ) -> MachineAssignmentReconciliationResult:
     evidence_by_id = {
         int(row["id"]): row
@@ -602,6 +605,18 @@ def reconcile_machine_assignments(
             profile_id=profile_id,
         )
         action, reason = disposition if disposition is not None else (None, None)
+        current_result_sha256 = (
+            current_association_result_sha256_by_observation.get(observation_id)
+            if current_association_result_sha256_by_observation is not None
+            else None
+        )
+        if (
+            action is None
+            and current_result_sha256 is not None
+            and evidence["association_result_sha256"] != current_result_sha256
+        ):
+            action = "revoke"
+            reason = "stale:superseded_by_current_association_result"
         if action is None and event is not None and event["action"] == "activate":
             observation = database.get_speaker_observation(observation_id)
             eligibility = (
