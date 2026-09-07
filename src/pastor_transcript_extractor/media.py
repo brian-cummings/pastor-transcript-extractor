@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import subprocess
+import json
 from pathlib import Path
+import subprocess
+from typing import Any
 
 
 class YtDlpError(RuntimeError):
@@ -31,10 +33,12 @@ class YtDlpRateLimitError(YtDlpError):
 AUDIO_NORMALIZATION_TIMEOUT_SECONDS = 600
 
 
-def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) -> None:
+def _run_yt_dlp(
+    command: list[str], *, url: str, expect_captions: bool = False
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode == 0:
-        return
+        return result
 
     raw_output = "\n".join(part for part in (result.stderr, result.stdout) if part)
     output_lines = [line.strip() for line in raw_output.splitlines() if line.strip()]
@@ -69,9 +73,46 @@ def _run_yt_dlp(command: list[str], *, url: str, expect_captions: bool = False) 
         raise YtDlpRateLimitError(
             f"YouTube rate limited yt-dlp for {url}: {detail}"
         )
-    if "this video is not available" in lowered or "video unavailable" in lowered:
+    unavailable_markers = (
+        "this video is not available",
+        "video unavailable",
+        "private video",
+        "video has been removed",
+        "video has been deleted",
+        "account associated with this video has been terminated",
+    )
+    if any(marker in lowered_output for marker in unavailable_markers):
         raise VideoUnavailableError(f"Video unavailable for {url}")
     raise YtDlpError(detail)
+
+
+def fetch_video_metadata(
+    url: str,
+    yt_dlp_bin: str,
+    yt_dlp_js_runtimes: str | None = None,
+) -> dict[str, Any]:
+    """Fetch non-flat metadata for one video without downloading media."""
+    command = [
+        yt_dlp_bin,
+        "--dump-single-json",
+        "--no-playlist",
+        "--skip-download",
+        "--no-warnings",
+        "--quiet",
+    ]
+    if yt_dlp_js_runtimes:
+        command.extend(["--js-runtimes", yt_dlp_js_runtimes])
+    command.append(url)
+    result = _run_yt_dlp(command, url=url)
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise YtDlpError(
+            f"yt-dlp returned invalid metadata JSON for {url}"
+        ) from error
+    if not isinstance(payload, dict):
+        raise YtDlpError(f"yt-dlp returned non-object metadata for {url}")
+    return payload
 
 
 def _run_audio_download(command: list[str], *, url: str) -> None:

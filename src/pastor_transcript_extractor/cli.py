@@ -153,6 +153,7 @@ from pastor_transcript_extractor.identity_coordination import (
     load_discovery_acoustic_ranking_pairs,
     load_discovery_observation_states,
     load_discovery_resolution_pairs,
+    load_prepared_shadow_association_context,
     load_shadow_association_confirmation_pairs,
     load_unmatched_association_fingerprints,
     write_identity_coordination_report,
@@ -161,6 +162,7 @@ from pastor_transcript_extractor.models import (
     MediaArtifact,
     SpeakerObservation,
     TranscriptSourceKind,
+    Video,
     VideoStatus,
 )
 from pastor_transcript_extractor.media import (
@@ -169,6 +171,13 @@ from pastor_transcript_extractor.media import (
     VideoUnavailableError,
     YtDlpConfigurationError,
     YtDlpRateLimitError,
+)
+from pastor_transcript_extractor.metadata_enrichment import (
+    MetadataEnrichmentResult,
+    enrich_metadata,
+    latest_metadata_description,
+    videos_for_profile,
+    videos_for_profiles,
 )
 from pastor_transcript_extractor.media_archive import (
     ArchivePreflightEvent,
@@ -4364,7 +4373,7 @@ def review_speaker_pair(
         )
     else:
         console.print("Review was preserved but did not create a fixture.")
-    _sync_reviewed_speaker_evidence_after_review(
+    _print_reviewed_evidence_sync_command(
         paths,
         evaluation_root.expanduser().resolve(),
     )
@@ -4454,52 +4463,25 @@ def _print_reviewed_evidence_summary(
         console.print(f"[yellow]Review conflict:[/yellow] {conflict}")
 
 
-def _sync_reviewed_speaker_evidence_after_review(
+def _reviewed_evidence_sync_command(
     paths: AppPaths,
     evaluation_root: Path,
-) -> ReviewedEvidenceSyncResult | None:
-    """Materialize a durable review immediately without risking its event."""
-    try:
-        evidence = load_reviewed_speaker_evidence(evaluation_root)
-        database = Database(paths.database)
-        database.initialize()
-        result = sync_reviewed_speaker_evidence(database, evidence)
-    except (
-        OSError,
-        RuntimeError,
-        ValueError,
-        sqlite3.Error,
-        json.JSONDecodeError,
-    ) as error:
-        console.print(
-            "[yellow]Review preserved; automatic registry sync failed:[/yellow] "
-            f"{error}"
-        )
-        console.print(
-            "Retry with: pte identity sync-reviewed-speaker-evidence "
-            f"--base-dir {shlex.quote(str(paths.root))}"
-        )
-        return None
-    console.print(
-        "Automatic registry sync: "
-        f"qualifications={result.qualification_events_added} "
-        f"profiles={result.profiles_added} "
-        f"memberships={result.membership_events_added} "
-        f"different_constraints={result.difference_events_added} "
-        f"name_claims={result.name_claim_events_added} "
-        f"profile_redirects={result.profile_redirect_events_added} "
-        f"missing={len(result.missing_observations)} "
-        f"merge_candidates={len(result.merge_candidates)} "
-        f"conflicts={len(result.conflicts)}"
+) -> str:
+    """Return the exact deferred command for materializing review evidence."""
+    return (
+        "pte identity sync-reviewed-speaker-evidence "
+        f"--evaluation-root {shlex.quote(str(evaluation_root))} "
+        f"--base-dir {shlex.quote(str(paths.root))}"
     )
-    for candidate in result.merge_candidates:
-        console.print(f"[cyan]Merge candidate:[/cyan] {candidate}")
-    for conflict in result.conflicts:
-        console.print(
-            "[yellow]Review conflict; affected registry mutation was "
-            f"deferred:[/yellow] {conflict}"
-        )
-    return result
+
+
+def _print_reviewed_evidence_sync_command(
+    paths: AppPaths,
+    evaluation_root: Path,
+) -> None:
+    console.print("Review saved. Evidence was not synchronized.")
+    console.print("Sync when ready by copying this command:")
+    console.print(_reviewed_evidence_sync_command(paths, evaluation_root))
 
 
 @identity_app.command(
@@ -5107,6 +5089,116 @@ def review_profile_attribution_command(
         )
     else:
         console.print("All currently reviewable unnamed profiles were deferred.")
+
+
+@identity_app.command(
+    "enrich-metadata",
+    help=(
+        "Fetch full yt-dlp metadata only when a video's latest snapshot has no description."
+    ),
+)
+def enrich_metadata_command(
+    video_id: int | None = typer.Option(
+        None,
+        "--video-id",
+        help="Enrich one video by numeric database id.",
+    ),
+    profile_id: int | None = typer.Option(
+        None,
+        "--profile-id",
+        help="Enrich videos attached to one speaker profile.",
+    ),
+    all_anonymous_profiles: bool = typer.Option(
+        False,
+        "--all-anonymous-profiles",
+        help="Enrich all current canonical anonymous profiles.",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Show the selected and eligible counts without network requests or writes.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    selector_count = sum(
+        (video_id is not None, profile_id is not None, all_anonymous_profiles)
+    )
+    if selector_count != 1:
+        raise typer.BadParameter(
+            "Pass exactly one of --video-id, --profile-id, or "
+            "--all-anonymous-profiles."
+        )
+    paths = build_paths(base_dir, remember=not plan_only)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    database = Database(paths.database, readonly=plan_only)
+    selected_profile_count = 0
+    if video_id is not None:
+        video = database.get_video_by_id(video_id)
+        if video is None:
+            raise typer.BadParameter(f"Video does not exist: {video_id}")
+        videos = (video,)
+    elif profile_id is not None:
+        try:
+            videos = videos_for_profile(database, profile_id)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        selected_profile_count = 1
+    else:
+        anonymous_profile_ids = profile_metadata_candidate_profile_ids(database)
+        videos = videos_for_profiles(database, anonymous_profile_ids)
+        selected_profile_count = len(anonymous_profile_ids)
+
+    if plan_only:
+        already_complete = sum(
+            latest_metadata_description(database, video) is not None
+            for video in videos
+        )
+        console.print(
+            "Metadata enrichment plan: "
+            f"profiles={selected_profile_count} videos={len(videos)} "
+            f"eligible={len(videos) - already_complete} "
+            f"already_complete={already_complete}; "
+            "no network requests or writes."
+        )
+        return
+
+    tools = build_tool_config()
+
+    def report_progress(
+        index: int,
+        total: int,
+        video: Video,
+        outcome: str,
+        detail: str | None,
+    ) -> None:
+        message = (
+            f"Metadata enrichment [{index}/{total}] video #{video.id} "
+            f"({video.youtube_video_id}): {outcome.replace('_', ' ')}"
+        )
+        if detail:
+            message += f" — {detail}"
+        console.print(message, markup=False)
+
+    result: MetadataEnrichmentResult = enrich_metadata(
+        database,
+        paths,
+        videos,
+        yt_dlp_bin=tools.yt_dlp_bin,
+        yt_dlp_js_runtimes=tools.yt_dlp_js_runtimes,
+        progress_callback=report_progress,
+    )
+    console.print(
+        "Metadata enrichment complete: "
+        f"eligible={result.eligible} enriched={result.enriched} "
+        f"already_complete={result.already_complete} "
+        f"unavailable={result.unavailable} failed={result.failed}."
+    )
 
 
 @identity_app.command(
@@ -9910,7 +10002,6 @@ def review_next_speaker_pair(
         ),
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-    ignore_prewarm: bool = typer.Option(False, hidden=True),
 ) -> None:
     paths = build_paths(base_dir)
     if not paths.database.exists():
@@ -9918,21 +10009,26 @@ def review_next_speaker_pair(
     database = Database(paths.database, readonly=True)
     root = evaluation_root.expanduser().resolve()
     verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
-    prewarmed_fingerprints = (
-        ()
-        if ignore_prewarm
-        else _load_actionable_review_prewarm(cache_dir)
-    )
+    prewarmed_fingerprints = _load_actionable_review_prewarm(cache_dir)
     if prewarmed_fingerprints:
         console.print(
             "Speaker pair selection: using prewarmed pool with "
-            f"{len(prewarmed_fingerprints)} observation(s); corpus fallback "
-            "will run only if this pool is exhausted or stale."
+            f"{len(prewarmed_fingerprints)} observation(s)."
+        )
+    elif selection_objective in {
+        SelectionGoal.AUTOMATION_READINESS,
+        SelectionGoal.PROFILE_GROWTH,
+    }:
+        raise typer.BadParameter(
+            "No prepared actionable review pool is available. Refresh it "
+            "before reviewing:\n"
+            "pte identity prepare-actionable-review-audio "
+            f"--base-dir {shlex.quote(str(paths.root))}"
         )
     else:
         console.print(
             "Speaker pair selection: no prewarmed pool is available; "
-            "building selection from the corpus."
+            "building the evaluation selection from the corpus."
         )
     try:
         allowed_scopes = {"all", "development", "validation", "held_out"}
@@ -10054,27 +10150,48 @@ def review_next_speaker_pair(
                 )
                 for row in active_machine_assignment_evidence(database)
             }
-            association_paths = tuple(
-                association_root.expanduser().resolve().glob("*/*.json")
-            )
             association_cache_path = (
                 cache_dir.expanduser().resolve()
                 / "selector-context"
                 / "association-nominations-v1.json"
             )
+            prepared_association_context = (
+                load_prepared_shadow_association_context(
+                    association_cache_path
+                )
+                if prewarmed_fingerprints
+                else None
+            )
+            association_paths = (
+                ()
+                if prewarmed_fingerprints
+                else tuple(
+                    association_root.expanduser().resolve().glob("*/*.json")
+                )
+            )
+            prepared_nominations = (
+                prepared_association_context[0]
+                if prepared_association_context is not None
+                else ()
+            )
             current_association_nominations = []
-            for nomination in load_shadow_association_confirmation_pairs(
-                association_paths,
-                cache_path=association_cache_path,
-                progress_callback=(
-                    lambda index, total, _path: console.print(
-                        "Speaker pair selection: association artifact "
-                        f"{index}/{total}."
-                    )
-                    if index == 1 or index == total or index % 50 == 0
-                    else None
-                ),
-            ):
+            nominations = (
+                prepared_nominations
+                if prewarmed_fingerprints
+                else load_shadow_association_confirmation_pairs(
+                    association_paths,
+                    cache_path=association_cache_path,
+                    progress_callback=(
+                        lambda index, total, _path: console.print(
+                            "Speaker pair selection: association artifact "
+                            f"{index}/{total}."
+                        )
+                        if index == 1 or index == total or index % 50 == 0
+                        else None
+                    ),
+                )
+            )
+            for nomination in nominations:
                 try:
                     canonical_profile_id = (
                         database.resolve_speaker_profile_id(
@@ -10107,9 +10224,15 @@ def review_next_speaker_pair(
                 current_association_nominations
             )
             unmatched_association_fingerprints = (
-                load_unmatched_association_fingerprints(
-                    association_paths,
-                    cache_path=association_cache_path,
+                prepared_association_context[1]
+                if prepared_association_context is not None
+                else (
+                    frozenset()
+                    if prewarmed_fingerprints
+                    else load_unmatched_association_fingerprints(
+                        association_paths,
+                        cache_path=association_cache_path,
+                    )
                 )
             )
         consistency_index = load_consistency_score_index(
@@ -10287,29 +10410,12 @@ def review_next_speaker_pair(
             selection = verified_selection.selection
         except ValueError as error:
             if prewarmed_fingerprints:
-                console.print(
-                    "Speaker pair selection: prewarmed pool is exhausted or "
-                    "stale; rebuilding from the full corpus now."
-                )
-                review_next_speaker_pair(
-                    reviewer=reviewer,
-                    evaluation_root=evaluation_root,
-                    cache_dir=cache_dir,
-                    source_family_registry=source_family_registry,
-                    open_packet=open_packet,
-                    prepare_only=prepare_only,
-                    evaluation_scope=evaluation_scope,
-                    selection_objective=selection_objective,
-                    discovery_report=discovery_report,
-                    discovery_root=discovery_root,
-                    association_root=association_root,
-                    observation_consistency_report=(
-                        observation_consistency_report
-                    ),
-                    base_dir=base_dir,
-                    ignore_prewarm=True,
-                )
-                return
+                raise ValueError(
+                    "prepared actionable review pool is exhausted or stale; "
+                    "refresh it with:\n"
+                    "pte identity prepare-actionable-review-audio "
+                    f"--base-dir {shlex.quote(str(paths.root))}"
+                ) from error
             if (
                 selection_objective == SelectionGoal.PROFILE_GROWTH
                 and missing_discovery_reviewed_constraints
@@ -10372,39 +10478,7 @@ def review_next_speaker_pair(
                     ],
                 )
             )
-    leverage_context = (
-        _review_leverage_context(selection.manifest)
-        if not prepare_only
-        else None
-    )
-    leverage_baseline: Path | None = None
-    if leverage_context is not None:
-        profile_ids, decision_kind = leverage_context
-        try:
-            leverage_baseline = profile_leverage_snapshot_command(
-                profile_id=list(profile_ids),
-                decision_kind=decision_kind,
-                baseline=None,
-                profile_level_decisions=0,
-                sermon_level_reviews=0,
-                prospective_correct=0,
-                prospective_incorrect=0,
-                association_root=association_root,
-                output_root=Path("evaluation/identity-leverage"),
-                base_dir=base_dir,
-            )
-            selection.manifest["automatic_impact_tracking"] = {
-                "profile_ids": list(profile_ids),
-                "decision_kind": decision_kind,
-                "baseline_path": str(leverage_baseline),
-                "bounded_neighborhood_replay": True,
-            }
-        except (OSError, ValueError, typer.BadParameter) as error:
-            console.print(
-                "Automatic impact baseline was unavailable; review may "
-                f"continue without leverage measurement: {error}"
-            )
-    submission = review_speaker_pair(
+    review_speaker_pair(
         video_a=selection.observation_a.video_id,
         video_b=selection.observation_b.video_id,
         reviewer=reviewer,
@@ -10421,77 +10495,6 @@ def review_next_speaker_pair(
             selection.observation_b.input_fingerprint
         ),
     )
-    if (
-        submission is None
-        or leverage_context is None
-        or leverage_baseline is None
-    ):
-        return
-    try:
-        event = json.loads(submission.event_path.read_text(encoding="utf-8"))
-        if event.get("identity_evidence_eligible") is not True:
-            console.print(
-                "Automatic neighborhood replay skipped: the review did not "
-                "produce approved binary identity evidence."
-            )
-            return
-        profile_ids, decision_kind = leverage_context
-        console.print(
-            "Approved identity evidence recorded; replaying only the affected "
-            "association neighborhood for profile(s) "
-            + ", ".join(str(value) for value in profile_ids)
-            + "."
-        )
-        try:
-            _replay_profile_association_neighborhood(
-                profile_ids,
-                evaluation_root=evaluation_root,
-                cache_dir=cache_dir,
-                association_root=association_root,
-                base_dir=base_dir,
-            )
-        except typer.BadParameter as replay_error:
-            if "No persisted affected neighborhood" not in str(replay_error):
-                raise
-            console.print(
-                "No persisted association neighborhood exists for these "
-                "profiles; recording an observed zero-neighborhood result."
-            )
-        (
-            profile_level_decisions,
-            sermon_level_reviews,
-            prospective_correct,
-            prospective_incorrect,
-        ) = _review_leverage_human_counts(
-            decision_kind,
-            event.get("pair_judgment"),
-        )
-        profile_leverage_snapshot_command(
-            profile_id=list(profile_ids),
-            decision_kind=decision_kind,
-            baseline=leverage_baseline,
-            profile_level_decisions=profile_level_decisions,
-            sermon_level_reviews=sermon_level_reviews,
-            prospective_correct=prospective_correct,
-            prospective_incorrect=prospective_incorrect,
-            association_root=association_root,
-            output_root=Path("evaluation/identity-leverage"),
-            base_dir=base_dir,
-        )
-    except (OSError, RuntimeError, ValueError, json.JSONDecodeError, typer.BadParameter) as error:
-        console.print(
-            "Review evidence is safely persisted, but automatic neighborhood "
-            f"impact tracking did not complete: {error}"
-        )
-        console.print(
-            "Retry the bounded replay with: pte identity "
-            "shadow-associate-speakers "
-            + " ".join(
-                "--neighborhood-profile-id " + str(profile_id)
-                for profile_id in leverage_context[0]
-            )
-            + f" --base-dir {paths.root}"
-        )
 
 
 @media_app.command(

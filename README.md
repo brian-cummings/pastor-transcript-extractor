@@ -585,10 +585,17 @@ pte identity prepare-actionable-review-audio \
 It prioritizes current association confirmations, discovery frontiers, and
 acoustic growth nominations, then prepares the exact activity-qualified clips
 used by blinded review. It also persists the usable prepared-observation pool
-and shared association-nomination index. `review-next-speaker-pair` announces
-that pool immediately and selects from it before considering the full corpus;
-only an exhausted or stale pool triggers a clearly announced corpus fallback.
+and shared association-nomination index. For profile-growth and
+automation-readiness work, `review-next-speaker-pair` consumes that bounded pool
+without falling back to a corpus-wide rebuild. If the pool is missing, exhausted,
+or stale, the command exits quickly and prints the preparation command to run.
 Prewarming creates no draft and does not consume a nomination.
+
+Completing a speaker-pair review only writes the append-only review event (and
+an eligible frozen fixture). It does not synchronize registry evidence, rerun
+association neighborhoods, or calculate leverage snapshots. The command prints
+the exact `sync-reviewed-speaker-evidence` command at the end so synchronization
+can be performed explicitly when the review batch is ready.
 
 Backfill neutral speaker observations and, where a pastor target exists, shadow
 identity artifacts for existing extractions without invoking classification or
@@ -1023,10 +1030,23 @@ only an approved name becomes reviewed registry evidence.
 Rerun only metadata consolidation—without acoustic association or discovery—with:
 
 ```bash
+pte identity enrich-metadata --video-id VIDEO_DATABASE_ID --base-dir /path/to/app-data
+pte identity enrich-metadata --profile-id PROFILE_ID --base-dir /path/to/app-data
+pte identity enrich-metadata --all-anonymous-profiles --plan-only --base-dir /path/to/app-data
+pte identity enrich-metadata --all-anonymous-profiles --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --all --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --profile-id PROFILE_ID --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --all --details --base-dir /path/to/app-data
 ```
+
+Metadata enrichment reads each selected video's latest immutable metadata
+snapshot and fetches full per-video yt-dlp metadata only when that snapshot has
+no nonblank description. Successful fetches append a content-addressed snapshot;
+reruns skip videos whose latest snapshot is already complete. Unavailable videos
+are reported individually without stopping the remaining profile members.
+The broader `--all-anonymous-profiles` selector uses the same current canonical,
+unnamed-profile eligibility rules as metadata attribution. Preview it first with
+`--plan-only`, which performs no network requests or writes.
 
 `--details` prints proposed names, grounded evidence, validation failures, cache
 state, and artifact paths. Every model attempt is persisted beside its validated

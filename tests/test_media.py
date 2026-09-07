@@ -17,6 +17,7 @@ from pastor_transcript_extractor.media import (
     YtDlpRateLimitError,
     _run_yt_dlp,
     download_source_audio,
+    fetch_video_metadata,
     normalize_audio,
 )
 
@@ -60,6 +61,10 @@ class YtDlpErrorClassificationTests(unittest.TestCase):
     def test_real_unavailable_error_remains_terminal(self) -> None:
         with self.assertRaises(VideoUnavailableError):
             self._run_with_stderr("ERROR: This video is not available")
+
+    def test_private_video_is_terminally_unavailable(self) -> None:
+        with self.assertRaises(VideoUnavailableError):
+            self._run_with_stderr("ERROR: Private video. Sign in if you have access")
 
     def test_rate_limit_is_classified_separately(self) -> None:
         with self.assertRaises(YtDlpRateLimitError):
@@ -125,6 +130,36 @@ class YtDlpErrorClassificationTests(unittest.TestCase):
                 )
 
         run.assert_called_once()
+
+    def test_full_metadata_fetch_uses_single_video_json_without_download(self) -> None:
+        completed = subprocess.CompletedProcess(
+            ["yt-dlp"],
+            0,
+            stdout='{"id":"abcdefghijk","description":"Speaker credit"}',
+            stderr="",
+        )
+        with patch(
+            "pastor_transcript_extractor.media.subprocess.run",
+            return_value=completed,
+        ) as run:
+            payload = fetch_video_metadata(
+                "https://www.youtube.com/watch?v=abcdefghijk",
+                "yt-dlp",
+                "node:/usr/bin/node",
+            )
+
+        self.assertEqual("Speaker credit", payload["description"])
+        command = run.call_args.args[0]
+        self.assertIn("--dump-single-json", command)
+        self.assertIn("--no-playlist", command)
+        self.assertIn("--skip-download", command)
+        self.assertNotIn("--flat-playlist", command)
+        self.assertEqual(
+            ["--js-runtimes", "node:/usr/bin/node"],
+            command[
+                command.index("--js-runtimes") : command.index("--js-runtimes") + 2
+            ],
+        )
 
 
 class YtDlpRuntimeDetectionTests(unittest.TestCase):
