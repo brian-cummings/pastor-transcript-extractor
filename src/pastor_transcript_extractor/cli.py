@@ -52,6 +52,16 @@ from pastor_transcript_extractor.sermon_policy import (
     publication_is_not_future,
     video_is_sermon_eligible,
 )
+from pastor_transcript_extractor.structure_analysis import (
+    FEATURE_EXPLANATIONS as STRUCTURE_FEATURE_EXPLANATIONS,
+    FEATURE_NAMES as STRUCTURE_FEATURE_NAMES,
+    PROFILE_STRUCTURE_ANALYZER_KEY,
+    PROFILE_STRUCTURE_ANALYZER_VERSION,
+    STRUCTURE_ANALYZER_KEY,
+    STRUCTURE_ANALYZER_VERSION,
+    analyze_sermon_structure,
+    build_profile_structure_analysis,
+)
 from pastor_transcript_extractor.exporting import (
     export_organization_review_markdown,
     export_profile_transcript_collection,
@@ -133,6 +143,7 @@ from pastor_transcript_extractor.analysis_readiness import (
 from pastor_transcript_extractor.benchmark import (
     EligibilityPolicy,
     build_snapshot,
+    compare_profile_to_panel,
     create_panel,
     effective_membership,
     record_membership,
@@ -2037,6 +2048,112 @@ def benchmark_show_snapshot(
     )
 
 
+@benchmark_app.command(
+    "compare",
+    help="Compare one profile with an immutable Scripture reference-panel snapshot.",
+)
+def benchmark_compare(
+    profile_id: int = typer.Option(..., "--profile-id", help="Candidate speaker profile."),
+    panel_key: str = typer.Option(..., "--panel", help="Reference panel key."),
+    snapshot_id: int | None = typer.Option(
+        None, "--snapshot-id", help="Use an exact panel snapshot instead of the latest."
+    ),
+    limit: int = typer.Option(5, "--limit", min=1, help="Nearest references to show."),
+    json_output: bool = typer.Option(False, "--json", help="Emit the durable result JSON."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        outcome = compare_profile_to_panel(
+            database,
+            profile_id=profile_id,
+            panel_key=panel_key,
+            snapshot_id=snapshot_id,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    result = outcome.result
+    if json_output:
+        console.print_json(json.dumps(result, sort_keys=True))
+        return
+    candidate = result["candidate"]
+    panel = result["panel"]
+    diagnostics = candidate["coverage_diagnostics"]
+    console.print(
+        f"Comparison #{outcome.run.id} {'created' if outcome.created else 'reused'}: "
+        f"profile #{candidate['resolved_profile_id']} {candidate['display_label']}\n"
+        f"Panel: {panel['display_name']} ({panel['key']}), snapshot #{panel['snapshot_id']}\n"
+        f"Scope: deterministic Scripture-use similarity; "
+        f"level={result['comparison_level']}; "
+        f"sermons={diagnostics.get('sermons_analyzed', '—')}; "
+        f"analysis coverage={diagnostics.get('analysis_coverage_fraction', '—')}"
+    )
+    if result["status"] == "abstained":
+        console.print(
+            "Comparison abstained: " + ", ".join(result["abstention_reasons"])
+        )
+        if result["excluded_references"]:
+            console.print(
+                f"Excluded references: {len(result['excluded_references'])}. "
+                "Use --json for exact reasons."
+            )
+        return
+    table = Table(title="Nearest Scripture-use references")
+    table.add_column("Rank", justify="right")
+    table.add_column("Reference")
+    table.add_column("Profile", justify="right")
+    table.add_column("Distance", justify="right")
+    table.add_column("Family distances")
+    rankings = result["rankings"][:limit]
+    for index, ranking in enumerate(rankings, start=1):
+        family_text = ", ".join(
+            f"{item['family']}={item['distance']:.3f}"
+            for item in ranking["family_distances"]
+        )
+        table.add_row(
+            str(index),
+            str(ranking["reference_display_label"]),
+            f"#{ranking['reference_profile_id']}",
+            f"{ranking['distance']:.3f}",
+            family_text,
+        )
+    console.print(table)
+    separation = result.get("ranking_separation")
+    if separation is not None:
+        console.print(
+            f"Nearest/second-nearest distance margin: "
+            f"{separation['absolute_margin']:.3f} "
+            "(descriptive separation, not confidence)."
+        )
+    nearest = rankings[0]
+    feature_rows = nearest["feature_differences"]
+    closest = feature_rows[:3]
+    different = list(reversed(feature_rows[-3:]))
+    console.print(f"Closest measured features to {nearest['reference_display_label']}:")
+    for item in closest:
+        console.print(
+            f"  {str(item['feature']).replace('_', ' ')}: "
+            f"standardized difference={item['standardized_absolute_difference']:.3f}"
+        )
+    console.print("Largest measured differences:")
+    for item in different:
+        console.print(
+            f"  {str(item['feature']).replace('_', ' ')}: "
+            f"candidate={item['candidate_value']:.3f}, "
+            f"reference={item['reference_value']:.3f}, "
+            f"standardized difference={item['standardized_absolute_difference']:.3f}"
+        )
+    if result["excluded_references"]:
+        console.print(
+            f"Excluded references: {len(result['excluded_references'])}; "
+            "use --json for exact reasons."
+        )
+    console.print(
+        "Distances are descriptive, not probabilities. Nearest does not necessarily mean "
+        "close, and this does not measure overall preaching similarity or church fit."
+    )
+
+
 def _analysis_videos(
     database: Database,
     *,
@@ -2498,6 +2615,126 @@ def analysis_run(
         )
     console.print(
         f"Analysis complete: created={created}, reused={reused}, skipped={skipped}."
+    )
+
+
+@analysis_app.command(
+    "structure-run",
+    help="Measure deterministic transcript stylometry and sermon organization.",
+)
+def analysis_structure_run(
+    video_id: int | None = typer.Option(None, "--video-id"),
+    youtube_video_id: str | None = typer.Option(None, "--youtube-video-id"),
+    profile_id: int | None = typer.Option(None, "--profile-id"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    videos, resolved_profile_id = _analysis_videos(
+        database,
+        video_id=video_id,
+        youtube_video_id=youtube_video_id,
+        profile_id=profile_id,
+        pastor_slug=None,
+    )
+    created = reused = skipped = 0
+    for video in videos:
+        try:
+            outcome = analyze_sermon_structure(database, video)
+        except ValueError as error:
+            if len(videos) == 1:
+                raise typer.BadParameter(str(error)) from error
+            skipped += 1
+            console.print(f"Skipped {video.youtube_video_id}: {error}", markup=False)
+            continue
+        created += int(outcome.created)
+        reused += int(not outcome.created)
+        console.print(
+            f"{video.youtube_video_id}: structure analysis #{outcome.run.id} "
+            f"{'created' if outcome.created else 'reused'}"
+        )
+    if resolved_profile_id is not None:
+        profile = build_profile_structure_analysis(database, resolved_profile_id)
+        console.print(
+            f"Profile structure analysis #{profile.run.id} "
+            f"{'created' if profile.created else 'reused'}."
+        )
+    console.print(
+        f"Structure analysis complete: created={created}, reused={reused}, skipped={skipped}."
+    )
+
+
+@analysis_app.command("structure-show", help="Inspect deterministic structure measurements.")
+def analysis_structure_show(
+    youtube_video_id: str | None = typer.Option(None, "--youtube-video-id"),
+    profile_id: int | None = typer.Option(None, "--profile-id"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    if (youtube_video_id is None) == (profile_id is None):
+        raise typer.BadParameter("Choose exactly one of --youtube-video-id or --profile-id")
+    database = get_database(base_dir)
+    if profile_id is not None:
+        resolved = database.resolve_speaker_profile_id(profile_id)
+        run = database.get_compatible_speaker_profile_analysis_run(
+            resolved,
+            PROFILE_STRUCTURE_ANALYZER_KEY,
+            PROFILE_STRUCTURE_ANALYZER_VERSION,
+        )
+        if run is None:
+            raise typer.BadParameter("No profile structure analysis; run structure-run first")
+        values = {
+            item.metric_key: json.loads(item.value_json)
+            for item in database.list_speaker_profile_analysis_measurements(run.id)
+        }
+        summaries = values["feature_summaries"]
+        console.print(
+            f"Profile #{resolved}: structure analysis #{run.id}; "
+            f"sermons={values['sermons_analyzed']}/{values['sermons_attached']}"
+        )
+        table = Table(title="Deterministic Sermon Structure Profile")
+        table.add_column("Feature")
+        table.add_column("Mean", justify="right")
+        table.add_column("Median", justify="right")
+        table.add_column("SD", justify="right")
+        table.add_column("Observed", justify="right")
+        for name in STRUCTURE_FEATURE_NAMES:
+            item = summaries[name]
+            table.add_row(
+                name,
+                "—" if item["mean"] is None else f"{item['mean']:.4f}",
+                "—" if item["median"] is None else f"{item['median']:.4f}",
+                "—" if item["standard_deviation"] is None else f"{item['standard_deviation']:.4f}",
+                str(item["observed_sermons"]),
+            )
+        console.print(table)
+        return
+    video = database.get_video_by_youtube_id(str(youtube_video_id))
+    if video is None:
+        raise typer.BadParameter(f"Unknown YouTube video: {youtube_video_id}")
+    run = database.get_latest_sermon_analysis_run(
+        video.id, STRUCTURE_ANALYZER_KEY, STRUCTURE_ANALYZER_VERSION
+    )
+    if run is None:
+        raise typer.BadParameter("No sermon structure analysis; run structure-run first")
+    values = {
+        item.metric_key: json.loads(item.value_json)
+        for item in database.list_sermon_analysis_measurements(run.id)
+    }
+    vector = values["feature_vector"]["by_name"]
+    table = Table(title=f"Deterministic Sermon Structure — {youtube_video_id}")
+    table.add_column("Feature")
+    table.add_column("Value", justify="right")
+    table.add_column("Operational meaning")
+    for name in STRUCTURE_FEATURE_NAMES:
+        value = vector[name]
+        table.add_row(
+            name,
+            "—" if value is None else f"{value:.4f}",
+            STRUCTURE_FEATURE_EXPLANATIONS[name],
+        )
+    console.print(table)
+    console.print(
+        f"Provenance: structure_run=#{run.id}; source={run.source_content_sha256}; "
+        f"scripture_run={values['source_diagnostics']['scripture_analysis_run_id']}"
     )
 
 
@@ -3300,8 +3537,6 @@ def analysis_evaluate_style_boundaries(
         f"Judgments: {json.dumps(result.judgment_counts, sort_keys=True)}",
         markup=False,
     )
-
-
 @analysis_app.command(
     "evaluate-style", help="Evaluate the configured semantic style model on reviewed cases."
 )
@@ -3389,7 +3624,9 @@ def compare_speakers(
 ) -> None:
     paths = build_paths(base_dir)
     if not paths.database.exists():
-        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
     database = Database(paths.database, readonly=True)
     videos = [database.get_video_by_youtube_id(value) for value in (video_a, video_b)]
     missing = [value for value, video in zip((video_a, video_b), videos) if video is None]
@@ -3613,7 +3850,9 @@ def run_speaker_model_bakeoff(
 
     paths = build_paths(base_dir)
     if not paths.database.exists():
-        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
     database = Database(paths.database, readonly=True)
     backends: dict[str, SherpaOnnxEmbeddingBackend] = {}
     try:

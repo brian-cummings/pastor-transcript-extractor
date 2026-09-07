@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 import re
 import statistics
 from typing import Mapping
@@ -12,11 +13,13 @@ from pastor_transcript_extractor.comparison_features import (
     CANONICAL_COMPOSITION_FEATURE_NAMES,
     COMPARISON_FEATURE_NAMES,
     CORE_FEATURE_NAMES,
+    DEPTH_SENSITIVE_FEATURE_NAMES,
     DIAGNOSTIC_ONLY_FEATURE_NAMES,
     FEATURE_ROLE_ASSIGNMENTS,
     canonical_division_clr,
 )
 from pastor_transcript_extractor.models import (
+    BenchmarkComparisonRun,
     ReferencePanel,
     ReferencePanelMembershipEvent,
     ReferencePanelSnapshot,
@@ -30,9 +33,13 @@ from pastor_transcript_extractor.profile_analysis import (
 from pastor_transcript_extractor.storage import Database
 
 
-SNAPSHOT_ANALYZER_VERSION = "reference-panel-snapshot@2"
+SNAPSHOT_ANALYZER_VERSION = "reference-panel-snapshot@3"
 FEATURE_SCHEMA_VERSION = BENCHMARK_FEATURE_SCHEMA_VERSION
 ELIGIBILITY_POLICY_VERSION = "scripture-reference-eligibility@2"
+COMPARISON_ANALYZER_VERSION = "scripture-reference-comparison@1"
+NORMALIZATION_POLICY_VERSION = "robust-panel-mad-family-balanced@1"
+MAD_CONSISTENCY_FACTOR = 1.4826
+MAX_STANDARDIZED_DIFFERENCE = 5.0
 
 # Corpus sufficiency and analysis completeness explain whether a vector is usable;
 # they are deliberately not dimensions in similarity space.
@@ -113,6 +120,13 @@ class MembershipOutcome:
 class SnapshotOutcome:
     snapshot: ReferencePanelSnapshot
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ComparisonOutcome:
+    run: BenchmarkComparisonRun
+    created: bool
+    result: dict[str, object]
 
 
 def _json(value: object) -> str:
@@ -347,6 +361,12 @@ def _panel_feature_statistics(
                 value := member["comparison_values"][name]  # type: ignore[index]
             )
             is not None
+            and (
+                name not in DEPTH_SENSITIVE_FEATURE_NAMES
+                or member["coverage_diagnostics"]
+                .get("reviewed_feature_depth_support", {})  # type: ignore[union-attr]
+                .get("depth_sensitive", False)
+            )
         ]
         if values:
             center = statistics.median(values)
@@ -520,3 +540,350 @@ def _decode_member(member: ReferencePanelSnapshotMember) -> dict[str, object]:
         "comparison_values": json.loads(member.comparison_values_json),
         "coverage_diagnostics": json.loads(member.coverage_diagnostics_json),
     }
+
+
+def _policy_from_snapshot(snapshot: ReferencePanelSnapshot) -> EligibilityPolicy:
+    payload = json.loads(snapshot.eligibility_policy_json)
+    required = payload.get("required_comparison_feature_names")
+    return EligibilityPolicy(
+        version=str(payload["version"]),
+        minimum_analyzed_sermons=int(payload["minimum_analyzed_sermons"]),
+        minimum_total_sermon_words=int(payload["minimum_total_sermon_words"]),
+        minimum_analysis_coverage=float(payload["minimum_analysis_coverage"]),
+        required_comparison_feature_names=(
+            tuple(str(name) for name in required)
+            if isinstance(required, list)
+            else REQUIRED_COMPARISON_FEATURE_NAMES
+        ),
+    )
+
+
+def _candidate_payload(
+    database: Database,
+    *,
+    requested_profile_id: int,
+    policy: EligibilityPolicy,
+) -> dict[str, object]:
+    if database.get_speaker_profile(requested_profile_id) is None:
+        raise ValueError(f"Unknown speaker profile: {requested_profile_id}")
+    resolved_id = database.resolve_speaker_profile_id(requested_profile_id)
+    profile = database.get_speaker_profile(resolved_id)
+    assert profile is not None
+    return _member_payload(
+        database,
+        {
+            "requested_profile_ids": [requested_profile_id],
+            "membership_event_ids": [],
+            "resolved_profile_id": resolved_id,
+            "resolved_display_label": profile.display_label or profile.stable_key,
+        },
+        policy,
+    )
+
+
+def _feature_scale(statistics_payload: Mapping[str, object]) -> tuple[float, str] | None:
+    mad = _number(statistics_payload.get("median_absolute_deviation"))
+    if mad is not None and mad > 0:
+        return float(mad) * MAD_CONSISTENCY_FACTOR, "scaled_mad"
+    minimum = _number(statistics_payload.get("minimum"))
+    maximum = _number(statistics_payload.get("maximum"))
+    if minimum is not None and maximum is not None and maximum > minimum:
+        return float(maximum - minimum), "observed_range_fallback"
+    return None
+
+
+def _comparison_families(level: str) -> dict[str, tuple[str, ...]]:
+    families = {
+        "core": tuple(CORE_FEATURE_NAMES),
+        "canonical_composition": tuple(CANONICAL_COMPOSITION_FEATURE_NAMES),
+    }
+    if level == "full":
+        families["depth_sensitive"] = tuple(DEPTH_SENSITIVE_FEATURE_NAMES)
+    return families
+
+
+def _rank_reference(
+    candidate: Mapping[str, object],
+    reference: Mapping[str, object],
+    *,
+    families: Mapping[str, tuple[str, ...]],
+    panel_statistics: Mapping[str, object],
+) -> dict[str, object] | None:
+    candidate_values = candidate["comparison_values"]
+    reference_values = reference["comparison_values"]
+    feature_statistics = panel_statistics.get("features", {})
+    assert isinstance(candidate_values, Mapping)
+    assert isinstance(reference_values, Mapping)
+    assert isinstance(feature_statistics, Mapping)
+    family_rows: list[dict[str, object]] = []
+    all_features: list[dict[str, object]] = []
+    unavailable_families: list[str] = []
+    for family_name, feature_names in families.items():
+        feature_rows: list[dict[str, object]] = []
+        for name in feature_names:
+            left = _number(candidate_values.get(name))
+            right = _number(reference_values.get(name))
+            stats = feature_statistics.get(name)
+            scale = _feature_scale(stats) if isinstance(stats, Mapping) else None
+            if left is None or right is None or scale is None:
+                continue
+            scale_value, scale_method = scale
+            raw_difference = float(left - right)
+            uncapped = abs(raw_difference) / scale_value
+            row = {
+                "feature": name,
+                "family": family_name,
+                "candidate_value": left,
+                "reference_value": right,
+                "raw_difference": round(raw_difference, 6),
+                "normalization_scale": round(scale_value, 6),
+                "normalization_method": scale_method,
+                "standardized_absolute_difference": round(
+                    min(uncapped, MAX_STANDARDIZED_DIFFERENCE), 6
+                ),
+                "standardized_difference_was_capped": uncapped
+                > MAX_STANDARDIZED_DIFFERENCE,
+            }
+            feature_rows.append(row)
+            all_features.append(row)
+        if not feature_rows:
+            unavailable_families.append(family_name)
+            continue
+        family_distance = math.sqrt(
+            statistics.fmean(
+                float(row["standardized_absolute_difference"]) ** 2
+                for row in feature_rows
+            )
+        )
+        family_rows.append(
+            {
+                "family": family_name,
+                "distance": round(family_distance, 6),
+                "feature_count": len(feature_rows),
+            }
+        )
+    if not family_rows:
+        return None
+    overall = math.sqrt(
+        statistics.fmean(float(row["distance"]) ** 2 for row in family_rows)
+    )
+    return {
+        "reference_profile_id": reference["resolved_profile_id"],
+        "reference_display_label": reference["resolved_display_label"],
+        "reference_profile_analysis_run_id": reference["profile_analysis_run_id"],
+        "distance": round(overall, 6),
+        "family_distances": family_rows,
+        "unavailable_families": unavailable_families,
+        "feature_differences": sorted(
+            all_features,
+            key=lambda row: (
+                float(row["standardized_absolute_difference"]),
+                str(row["feature"]),
+            ),
+        ),
+    }
+
+
+def compare_profile_to_panel(
+    database: Database,
+    *,
+    profile_id: int,
+    panel_key: str,
+    snapshot_id: int | None = None,
+    analyzer_version: str = COMPARISON_ANALYZER_VERSION,
+) -> ComparisonOutcome:
+    if not analyzer_version.strip():
+        raise ValueError("Comparison analyzer version must not be blank")
+    panel = database.get_reference_panel(panel_key)
+    if panel is None:
+        raise ValueError(f"Unknown reference panel: {panel_key}")
+    snapshot = (
+        database.get_reference_panel_snapshot(snapshot_id)
+        if snapshot_id is not None
+        else database.get_latest_reference_panel_snapshot(panel.id)
+    )
+    if snapshot is None:
+        detail = f" #{snapshot_id}" if snapshot_id is not None else ""
+        raise ValueError(f"Reference panel {panel_key!r} has no snapshot{detail}")
+    if snapshot.panel_id != panel.id:
+        raise ValueError(
+            f"Snapshot #{snapshot.id} does not belong to reference panel {panel_key!r}"
+        )
+    if snapshot.snapshot_analyzer_version != SNAPSHOT_ANALYZER_VERSION:
+        raise ValueError(
+            f"Reference panel snapshot #{snapshot.id} uses "
+            f"{snapshot.snapshot_analyzer_version}; rebuild the panel for "
+            f"{SNAPSHOT_ANALYZER_VERSION}"
+        )
+    if snapshot.feature_schema_version != FEATURE_SCHEMA_VERSION:
+        raise ValueError(
+            f"Reference panel snapshot #{snapshot.id} has incompatible feature schema "
+            f"{snapshot.feature_schema_version}"
+        )
+    policy = _policy_from_snapshot(snapshot)
+    candidate = _candidate_payload(
+        database, requested_profile_id=profile_id, policy=policy
+    )
+    candidate_run_id = candidate["profile_analysis_run_id"]
+    candidate_diagnostics = candidate["coverage_diagnostics"]
+    assert isinstance(candidate_diagnostics, Mapping)
+    depth_support = candidate_diagnostics.get("reviewed_feature_depth_support", {})
+    candidate_core_supported = bool(
+        isinstance(depth_support, Mapping)
+        and depth_support.get("core")
+        and depth_support.get("canonical_composition")
+    )
+    level = (
+        "full"
+        if isinstance(depth_support, Mapping) and depth_support.get("depth_sensitive")
+        else "core"
+    )
+    reasons = list(candidate["exclusion_reasons"])  # type: ignore[arg-type]
+    if candidate["eligibility_status"] != "eligible":
+        reasons.insert(0, "candidate_ineligible")
+    if not candidate_core_supported:
+        reasons.append("insufficient_depth_for_core_comparison")
+    members = [
+        _decode_member(item)
+        for item in database.list_reference_panel_snapshot_members(snapshot.id)
+    ]
+    excluded_references: list[dict[str, object]] = []
+    eligible_references: list[dict[str, object]] = []
+    for member in members:
+        member_reasons: list[str] = []
+        if member["resolved_profile_id"] == candidate["resolved_profile_id"]:
+            member_reasons.append("same_profile_as_candidate")
+        if member["eligibility_status"] != "eligible":
+            member_reasons.extend(member["exclusion_reasons"])  # type: ignore[arg-type]
+        member_diagnostics = member["coverage_diagnostics"]
+        member_depth = (
+            member_diagnostics.get("reviewed_feature_depth_support", {})
+            if isinstance(member_diagnostics, Mapping)
+            else {}
+        )
+        if not (
+            isinstance(member_depth, Mapping)
+            and member_depth.get("core")
+            and member_depth.get("canonical_composition")
+        ):
+            member_reasons.append("insufficient_depth_for_core_comparison")
+        if level == "full" and not (
+            isinstance(member_depth, Mapping) and member_depth.get("depth_sensitive")
+        ):
+            member_reasons.append("insufficient_depth_for_full_comparison")
+        if member_reasons:
+            excluded_references.append(
+                {
+                    "profile_id": member["resolved_profile_id"],
+                    "display_label": member["resolved_display_label"],
+                    "reasons": sorted(set(member_reasons)),
+                }
+            )
+        else:
+            eligible_references.append(member)
+    if not eligible_references:
+        reasons.append("no_eligible_reference_profiles")
+    panel_statistics = json.loads(snapshot.panel_feature_statistics_json)
+    rankings = []
+    if not reasons:
+        for reference in eligible_references:
+            ranking = _rank_reference(
+                candidate,
+                reference,
+                families=_comparison_families(level),
+                panel_statistics=panel_statistics,
+            )
+            if ranking is None:
+                excluded_references.append(
+                    {
+                        "profile_id": reference["resolved_profile_id"],
+                        "display_label": reference["resolved_display_label"],
+                        "reasons": ["insufficient_normalization_or_feature_coverage"],
+                    }
+                )
+            else:
+                rankings.append(ranking)
+        rankings.sort(key=lambda row: (float(row["distance"]), int(row["reference_profile_id"])))
+        if not rankings:
+            reasons.append("no_comparable_reference_profiles")
+    ranking_separation = None
+    if len(rankings) >= 2:
+        nearest_distance = float(rankings[0]["distance"])
+        second_distance = float(rankings[1]["distance"])
+        ranking_separation = {
+            "nearest_distance": nearest_distance,
+            "second_nearest_distance": second_distance,
+            "absolute_margin": round(second_distance - nearest_distance, 6),
+            "relative_margin": (
+                round((second_distance - nearest_distance) / second_distance, 6)
+                if second_distance > 0
+                else None
+            ),
+            "interpretation": "descriptive_ranking_separation_not_confidence",
+        }
+    result: dict[str, object] = {
+        "schema_version": 1,
+        "status": "comparable" if not reasons else "abstained",
+        "abstention_reasons": sorted(set(reasons)),
+        "scope": "deterministic_scripture_usage_similarity_only",
+        "candidate": {
+            "requested_profile_id": profile_id,
+            "resolved_profile_id": candidate["resolved_profile_id"],
+            "display_label": candidate["resolved_display_label"],
+            "profile_analysis_run_id": candidate_run_id,
+            "coverage_diagnostics": candidate_diagnostics,
+        },
+        "panel": {
+            "key": panel.key,
+            "display_name": panel.display_name,
+            "snapshot_id": snapshot.id,
+            "snapshot_fingerprint": snapshot.input_fingerprint,
+        },
+        "comparison_level": level,
+        "feature_families": {
+            name: list(features) for name, features in _comparison_families(level).items()
+        },
+        "normalization": {
+            "policy_version": NORMALIZATION_POLICY_VERSION,
+            "center_source": "frozen_reference_panel_snapshot",
+            "scale": "1.4826 * median absolute deviation; observed range fallback",
+            "standardized_difference_cap": MAX_STANDARDIZED_DIFFERENCE,
+            "family_aggregation": "root mean square within family",
+            "overall_aggregation": "equal-weight root mean square across families",
+        },
+        "rankings": rankings,
+        "ranking_separation": ranking_separation,
+        "excluded_references": excluded_references,
+        "interpretation_limits": [
+            "Distances are descriptive and are not calibrated probabilities.",
+            "The nearest reference is not necessarily a close reference.",
+            "This result does not measure overall preaching similarity or church fit.",
+        ],
+    }
+    fingerprint = _fingerprint(
+        {
+            "analyzer_version": analyzer_version,
+            "candidate_profile_id": candidate["resolved_profile_id"],
+            "candidate_profile_analysis_run_id": candidate_run_id,
+            "feature_schema_version": snapshot.feature_schema_version,
+            "normalization_policy_version": NORMALIZATION_POLICY_VERSION,
+            "panel_snapshot_id": snapshot.id,
+            "result_schema_version": result["schema_version"],
+        }
+    )
+    run, created = database.add_benchmark_comparison_run(
+        candidate_profile_id=int(candidate["resolved_profile_id"]),
+        candidate_profile_analysis_run_id=(
+            int(candidate_run_id) if candidate_run_id is not None else None
+        ),
+        panel_snapshot_id=snapshot.id,
+        analyzer_version=analyzer_version,
+        normalization_policy_version=NORMALIZATION_POLICY_VERSION,
+        input_fingerprint=fingerprint,
+        result_json=_json(result),
+    )
+    return ComparisonOutcome(
+        run=run,
+        created=created,
+        result=json.loads(run.result_json),
+    )

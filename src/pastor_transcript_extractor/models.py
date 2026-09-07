@@ -362,6 +362,19 @@ class ReferencePanelSnapshotMember:
 
 
 @dataclass(slots=True)
+class BenchmarkComparisonRun:
+    id: int
+    candidate_profile_id: int
+    candidate_profile_analysis_run_id: Optional[int]
+    panel_snapshot_id: int
+    analyzer_version: str
+    normalization_policy_version: str
+    input_fingerprint: str
+    result_json: str
+    created_at: datetime
+
+
+@dataclass(slots=True)
 class ExcludedVideo:
     id: int
     pastor_id: Optional[int]

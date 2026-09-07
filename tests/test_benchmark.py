@@ -8,9 +8,11 @@ import unittest
 from typer.testing import CliRunner
 
 from pastor_transcript_extractor.benchmark import (
+    COMPARISON_ANALYZER_VERSION,
     COMPARISON_FEATURE_NAMES,
     EligibilityPolicy,
     build_snapshot,
+    compare_profile_to_panel,
     create_panel,
     effective_membership,
     record_membership,
@@ -58,19 +60,27 @@ class ReferencePanelTests(unittest.TestCase):
             created_reason="reviewed test profile",
         )
 
-    def _analysis(self, profile_id: int, fingerprint: str, *, missing: str | None = None):
+    def _analysis(
+        self,
+        profile_id: int,
+        fingerprint: str,
+        *,
+        missing: str | None = None,
+        offset: float = 0.0,
+        sermons: int = 4,
+    ):
         by_name = {
-            name: (None if name == missing else float(index + 1))
+            name: (None if name == missing else float(index + 1) + offset)
             for index, name in enumerate(PROFILE_FEATURE_ORDER)
         }
         measurements = {
-            "sermons_attached": 4,
-            "sermons_analyzed": 4,
+            "sermons_attached": sermons,
+            "sermons_analyzed": sermons,
             "sermons_missing_analysis": 0,
             "total_sermon_words": 20_000,
             "structural_coverage_diagnostics": {"sermons_analyzed": 4},
             "canonical_division_emphasis": {
-                division: {"mentions": index + 1, "share": None}
+                division: {"mentions": index + 1 + offset, "share": None}
                 for index, division in enumerate(CANONICAL_DIVISIONS)
             },
             "deterministic_profile_feature_vector": {
@@ -94,6 +104,23 @@ class ReferencePanelTests(unittest.TestCase):
         )
         self.assertTrue(created)
         return run
+
+    def _comparison_fixture(self, *, candidate_sermons: int = 8):
+        near = self._profile("near", "Shane Anderson")
+        far = self._profile("far", "Ty Gibson")
+        candidate = self._profile("candidate", "Candidate Pastor")
+        self._attach(near.id, "near archetype")
+        self._attach(far.id, "far archetype")
+        self._analysis(near.id, "near-run", offset=0, sermons=8)
+        self._analysis(far.id, "far-run", offset=10, sermons=8)
+        self._analysis(
+            candidate.id,
+            "candidate-run",
+            offset=1,
+            sermons=candidate_sermons,
+        )
+        snapshot = build_snapshot(self.database, self.panel.key)
+        return candidate, near, far, snapshot
 
     def _attach(self, profile_id: int, reason: str = "selected"):
         return record_membership(
@@ -306,6 +333,181 @@ class ReferencePanelTests(unittest.TestCase):
         self.assertIsNone(
             self.database.get_reference_panel_snapshot_by_fingerprint("atomic-failure")
         )
+
+    def test_comparison_ranks_nearest_reference_and_balances_families(self) -> None:
+        candidate, near, far, snapshot = self._comparison_fixture()
+
+        outcome = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+
+        self.assertTrue(outcome.created)
+        self.assertEqual("comparable", outcome.result["status"])
+        self.assertEqual("full", outcome.result["comparison_level"])
+        self.assertEqual(snapshot.snapshot.id, outcome.run.panel_snapshot_id)
+        rankings = outcome.result["rankings"]
+        self.assertEqual([near.id, far.id], [row["reference_profile_id"] for row in rankings])
+        family_distances = rankings[0]["family_distances"]
+        self.assertEqual(
+            {"core", "canonical_composition", "depth_sensitive"},
+            {row["family"] for row in family_distances},
+        )
+        expected = (
+            sum(row["distance"] ** 2 for row in family_distances)
+            / len(family_distances)
+        ) ** 0.5
+        self.assertAlmostEqual(expected, rankings[0]["distance"], places=5)
+        self.assertEqual(
+            "deterministic_scripture_usage_similarity_only", outcome.result["scope"]
+        )
+        self.assertGreater(
+            outcome.result["ranking_separation"]["absolute_margin"], 0
+        )
+        self.assertEqual(
+            "descriptive_ranking_separation_not_confidence",
+            outcome.result["ranking_separation"]["interpretation"],
+        )
+
+    def test_comparison_reuses_then_invalidates_for_new_candidate_run(self) -> None:
+        candidate, _near, _far, _snapshot = self._comparison_fixture()
+        first = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+        reused = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+        self.assertFalse(reused.created)
+        self.assertEqual(first.run.id, reused.run.id)
+
+        replacement = self._analysis(
+            candidate.id, "candidate-run-new", offset=2, sermons=8
+        )
+        changed = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+        self.assertTrue(changed.created)
+        self.assertNotEqual(first.run.id, changed.run.id)
+        self.assertEqual(replacement.id, changed.run.candidate_profile_analysis_run_id)
+        self.assertEqual(COMPARISON_ANALYZER_VERSION, changed.run.analyzer_version)
+
+        added_reference = self._profile("added-reference")
+        self._attach(added_reference.id, "expand reviewed panel")
+        self._analysis(
+            added_reference.id,
+            "added-reference-run",
+            offset=5,
+            sermons=8,
+        )
+        rebuilt = build_snapshot(self.database, self.panel.key)
+        panel_changed = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+        self.assertTrue(rebuilt.created)
+        self.assertTrue(panel_changed.created)
+        self.assertNotEqual(changed.run.id, panel_changed.run.id)
+        self.assertEqual(rebuilt.snapshot.id, panel_changed.run.panel_snapshot_id)
+
+    def test_five_sermon_candidate_uses_core_comparison(self) -> None:
+        candidate, _near, _far, _snapshot = self._comparison_fixture(
+            candidate_sermons=5
+        )
+        outcome = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+        self.assertEqual("comparable", outcome.result["status"])
+        self.assertEqual("core", outcome.result["comparison_level"])
+        self.assertEqual(
+            {"core", "canonical_composition"},
+            set(outcome.result["feature_families"]),
+        )
+
+    def test_full_comparison_excludes_shallow_reference_from_ranking(self) -> None:
+        deep = self._profile("deep")
+        deep_two = self._profile("deep-two")
+        shallow = self._profile("shallow")
+        candidate = self._profile("candidate")
+        for profile, offset, sermons in (
+            (deep, 0, 8),
+            (deep_two, 6, 8),
+            (shallow, 10, 5),
+        ):
+            self._attach(profile.id, f"select {profile.id}")
+            self._analysis(
+                profile.id,
+                f"reference-{profile.id}",
+                offset=offset,
+                sermons=sermons,
+            )
+        self._analysis(candidate.id, "candidate-run", offset=1, sermons=8)
+        snapshot = build_snapshot(self.database, self.panel.key)
+
+        outcome = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+
+        self.assertEqual(
+            [deep.id, deep_two.id],
+            [row["reference_profile_id"] for row in outcome.result["rankings"]],
+        )
+        excluded = {
+            row["profile_id"]: row["reasons"]
+            for row in outcome.result["excluded_references"]
+        }
+        self.assertIn("insufficient_depth_for_full_comparison", excluded[shallow.id])
+        statistics_payload = json.loads(
+            snapshot.snapshot.panel_feature_statistics_json
+        )
+        self.assertEqual(
+            2,
+            statistics_payload["features"][
+                "chapter_breadth_per_10_references"
+            ]["eligible_count"],
+        )
+
+    def test_ineligible_candidate_persists_explained_abstention(self) -> None:
+        near = self._profile("near")
+        far = self._profile("far")
+        candidate = self._profile("candidate")
+        for profile, offset in ((near, 0), (far, 10)):
+            self._attach(profile.id, f"select {profile.id}")
+            self._analysis(profile.id, f"reference-{profile.id}", offset=offset, sermons=8)
+        self._analysis(candidate.id, "sparse-candidate", offset=2, sermons=1)
+        build_snapshot(self.database, self.panel.key)
+
+        outcome = compare_profile_to_panel(
+            self.database, profile_id=candidate.id, panel_key=self.panel.key
+        )
+
+        self.assertEqual("abstained", outcome.result["status"])
+        self.assertIn("candidate_ineligible", outcome.result["abstention_reasons"])
+        self.assertIn(
+            "insufficient_analyzed_sermons", outcome.result["abstention_reasons"]
+        )
+        self.assertEqual([], outcome.result["rankings"])
+
+    def test_cli_compare_shows_summary_and_supporting_differences(self) -> None:
+        candidate, _near, _far, _snapshot = self._comparison_fixture()
+        runner = CliRunner()
+
+        shown = runner.invoke(
+            app,
+            [
+                "benchmark",
+                "compare",
+                "--profile-id",
+                str(candidate.id),
+                "--panel",
+                self.panel.key,
+                "--base-dir",
+                str(self.base_dir),
+            ],
+        )
+
+        self.assertEqual(0, shown.exit_code, shown.output)
+        self.assertIn("Nearest Scripture-use references", shown.output)
+        self.assertIn("Shane Anderson", shown.output)
+        self.assertIn("Closest measured features", shown.output)
+        self.assertIn("does not measure overall preaching similarity", shown.output)
 
     def test_cli_create_membership_build_and_inspection(self) -> None:
         cli_base = self.base_dir / "cli"

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterator
 
 from pastor_transcript_extractor.models import (
+    BenchmarkComparisonRun,
     ExcludedVideo,
     ExtractionResult,
     IdentityAction,
@@ -396,6 +397,26 @@ CREATE TABLE IF NOT EXISTS reference_panel_snapshot_members (
     FOREIGN KEY(profile_analysis_run_id) REFERENCES speaker_profile_analysis_runs(id),
     UNIQUE(snapshot_id, resolved_profile_id)
 );
+
+CREATE TABLE IF NOT EXISTS benchmark_comparison_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_profile_id INTEGER NOT NULL,
+    candidate_profile_analysis_run_id INTEGER NULL,
+    panel_snapshot_id INTEGER NOT NULL,
+    analyzer_version TEXT NOT NULL,
+    normalization_policy_version TEXT NOT NULL,
+    input_fingerprint TEXT NOT NULL UNIQUE,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(candidate_profile_id) REFERENCES speaker_profiles(id),
+    FOREIGN KEY(candidate_profile_analysis_run_id)
+        REFERENCES speaker_profile_analysis_runs(id),
+    FOREIGN KEY(panel_snapshot_id)
+        REFERENCES reference_panel_snapshots(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparison_runs_candidate
+ON benchmark_comparison_runs(candidate_profile_id, panel_snapshot_id, id);
 
 CREATE TABLE IF NOT EXISTS excluded_videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3382,6 +3403,16 @@ class Database:
             ).fetchone()
         return self._reference_panel_snapshot_from_row(row) if row is not None else None
 
+    def get_reference_panel_snapshot(
+        self, snapshot_id: int
+    ) -> ReferencePanelSnapshot | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM reference_panel_snapshots WHERE id = ?",
+                (snapshot_id,),
+            ).fetchone()
+        return self._reference_panel_snapshot_from_row(row) if row is not None else None
+
     def add_reference_panel_snapshot(
         self,
         *,
@@ -3491,6 +3522,88 @@ class Database:
             )
             for row in rows
         ]
+
+    def _benchmark_comparison_run_from_row(
+        self, row: sqlite3.Row
+    ) -> BenchmarkComparisonRun:
+        return BenchmarkComparisonRun(
+            id=int(row["id"]),
+            candidate_profile_id=int(row["candidate_profile_id"]),
+            candidate_profile_analysis_run_id=(
+                int(row["candidate_profile_analysis_run_id"])
+                if row["candidate_profile_analysis_run_id"] is not None
+                else None
+            ),
+            panel_snapshot_id=int(row["panel_snapshot_id"]),
+            analyzer_version=str(row["analyzer_version"]),
+            normalization_policy_version=str(row["normalization_policy_version"]),
+            input_fingerprint=str(row["input_fingerprint"]),
+            result_json=str(row["result_json"]),
+            created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+        )
+
+    def get_benchmark_comparison_run_by_fingerprint(
+        self, input_fingerprint: str
+    ) -> BenchmarkComparisonRun | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM benchmark_comparison_runs WHERE input_fingerprint = ?",
+                (input_fingerprint,),
+            ).fetchone()
+        return self._benchmark_comparison_run_from_row(row) if row is not None else None
+
+    def add_benchmark_comparison_run(
+        self,
+        *,
+        candidate_profile_id: int,
+        candidate_profile_analysis_run_id: int | None,
+        panel_snapshot_id: int,
+        analyzer_version: str,
+        normalization_policy_version: str,
+        input_fingerprint: str,
+        result_json: str,
+    ) -> tuple[BenchmarkComparisonRun, bool]:
+        existing = self.get_benchmark_comparison_run_by_fingerprint(input_fingerprint)
+        if existing is not None:
+            return existing, False
+        created_at = utc_now().isoformat()
+        with self.connect() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO benchmark_comparison_runs (
+                        candidate_profile_id, candidate_profile_analysis_run_id,
+                        panel_snapshot_id, analyzer_version,
+                        normalization_policy_version, input_fingerprint,
+                        result_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        candidate_profile_id,
+                        candidate_profile_analysis_run_id,
+                        panel_snapshot_id,
+                        analyzer_version,
+                        normalization_policy_version,
+                        input_fingerprint,
+                        result_json,
+                        created_at,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                row = connection.execute(
+                    "SELECT * FROM benchmark_comparison_runs "
+                    "WHERE input_fingerprint = ?",
+                    (input_fingerprint,),
+                ).fetchone()
+                if row is None:
+                    raise
+                return self._benchmark_comparison_run_from_row(row), False
+            row = connection.execute(
+                "SELECT * FROM benchmark_comparison_runs WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            assert row is not None
+            return self._benchmark_comparison_run_from_row(row), True
 
     def add_metadata_artifact(
         self,

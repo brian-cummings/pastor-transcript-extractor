@@ -8,7 +8,7 @@ a later `detach` event removes it from effective membership without deleting his
 Profiles may belong to more than one panel, and redirects are resolved when a snapshot
 is built.
 
-Snapshot analyzer `reference-panel-snapshot@2` accepts immutable
+Snapshot analyzer `reference-panel-snapshot@3` accepts immutable
 `profile-scripture-usage@4` runs and materializes reviewed
 `benchmark-feature-schema@2`. The comparison representation contains four core features
 usable for exploratory comparison at five sermons, eight depth-sensitive features that
@@ -32,7 +32,8 @@ persisted. Every member remains visible. Missing analysis, insufficient corpus o
 coverage, incompatible schema, and missing features are recorded as exclusion reasons,
 and missing feature values remain JSON `null` rather than becoming zero.
 
-Each immutable snapshot stores its panel, effective reviewed and redirect-resolved
+Depth-sensitive panel statistics use only reference profiles with at least eight analyzed
+sermons. Each immutable snapshot stores its panel, effective reviewed and redirect-resolved
 membership, frozen profile display labels, exact profile-analysis run IDs, analyzer and
 schema versions, ordered feature names, raw values, diagnostics, policy, feature-family
 assignments, and per-feature eligible count, missing count, median, median absolute
@@ -63,13 +64,55 @@ pte benchmark show prominent-pastors-v1
 pte benchmark build prominent-pastors-v1
 pte benchmark show-snapshot prominent-pastors-v1
 pte benchmark show-snapshot prominent-pastors-v1 --json
+
+pte benchmark compare \
+  --profile-id 59 \
+  --panel prominent-pastors-v1
+
+pte benchmark compare \
+  --profile-id 59 \
+  --panel prominent-pastors-v1 \
+  --snapshot-id 3 \
+  --json
 ```
 
-The JSON feature matrix is ready for a later transparent nearest-reference comparison:
-rows retain stable profile identity, label, run provenance, ordered raw values, explicit
-missingness, explicit feature roles, and separate coverage. The natural next increment is
-`pte benchmark compare --profile-id PROFILE_ID --panel PANEL_KEY`, using raw differences
-or a documented robust standardization based on the persisted median and MAD, equal
-feature-family weighting, and depth-aware abstention. Clustering,
-learned weights, resampling, and semantic features are intentionally not part of this
-slice.
+## Nearest-reference comparison
+
+Comparison analyzer `scripture-reference-comparison@1` compares the candidate's current
+immutable `profile-scripture-usage@4` run with an exact panel snapshot. It is descriptive
+Scripture-use similarity only: the nearest reference is not necessarily close, distances
+are not probabilities, and the result is neither overall preaching similarity nor church
+fit.
+
+Candidates with five through seven analyzed sermons receive a core comparison. Candidates
+with at least eight receive a full comparison, and references lacking eight sermons are
+excluded from that full ranking. An ineligible candidate, an empty compatible panel, or
+insufficient normalization evidence produces an explicit, persisted abstention.
+
+`robust-panel-mad-family-balanced@1` divides each raw feature difference by `1.4826 * MAD`
+from the frozen panel. When MAD is zero but the observed range is nonzero, the range is the
+documented fallback; a constant feature contributes nothing. Standardized feature
+differences are capped at 5 so one extreme cannot dominate. Distances are root-mean-square
+within each of three feature families and then root-mean-square with equal weight across
+the available families:
+
+- core Scripture measurements,
+- canonical composition,
+- depth-sensitive structure for full comparisons.
+
+This makes the ten-coordinate canonical composition one family rather than ten votes.
+The durable result preserves raw candidate/reference values, raw differences,
+normalization scales and methods, standardized differences, family distances, exclusions,
+coverage diagnostics, nearest/second-nearest distance separation, the exact candidate
+analysis run, and exact panel snapshot. Ranking separation is a descriptive margin, not a
+confidence estimate.
+
+Comparison runs are immutable and fingerprinted by resolved candidate identity, exact
+candidate analysis run, exact panel snapshot, analyzer version, feature schema, result
+schema, and normalization policy. An unchanged command reuses the prior run. A changed
+candidate analysis or rebuilt panel snapshot creates a new run naturally.
+
+Clustering, learned weights, semantic style, uncertainty calibration, and church-fit
+assessment remain outside this slice. The next validation step is to populate a reviewed
+panel and compare known pastors whose similarities and differences can be inspected by a
+human reviewer before treating the distance space as meaningful.

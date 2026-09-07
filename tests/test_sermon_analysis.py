@@ -14,6 +14,11 @@ from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.profile_analysis import build_profile_scripture_analysis
 from pastor_transcript_extractor.sermon_analysis import ANALYZER_KEY, analyze_sermon
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.structure_analysis import (
+    FEATURE_NAMES as STRUCTURE_FEATURE_NAMES,
+    analyze_sermon_structure,
+    build_profile_structure_analysis,
+)
 
 
 class SermonAnalysisTests(unittest.TestCase):
@@ -122,6 +127,102 @@ class SermonAnalysisTests(unittest.TestCase):
         self.assertFalse(second.created)
         self.assertEqual(first.run.id, second.run.id)
         self.assertEqual(1, len(self.database.list_sermon_analysis_runs()))
+
+    def test_deterministic_structure_analysis_is_traceable_and_idempotent(self) -> None:
+        scripture = analyze_sermon(self.database, self.video)
+        first = analyze_sermon_structure(self.database, self.video)
+        reused = analyze_sermon_structure(self.database, self.video)
+        values = self._measurement_values(first.run.id)
+        vector = values["feature_vector"]
+
+        self.assertTrue(first.created)
+        self.assertFalse(reused.created)
+        self.assertEqual(first.run.id, reused.run.id)
+        self.assertEqual(list(STRUCTURE_FEATURE_NAMES), vector["feature_names"])
+        self.assertGreater(vector["by_name"]["transcript_tokens_per_minute"], 0)
+        self.assertGreater(
+            vector["by_name"]["first_person_plural_per_1000_words"], 0
+        )
+        self.assertEqual(0.5, vector["by_name"]["dominant_scripture_anchor_share"])
+        self.assertEqual(
+            scripture.run.id, values["source_diagnostics"]["scripture_analysis_run_id"]
+        )
+        self.assertEqual(
+            "John 3", values["scripture_organization_trace"]["dominant_anchor"]
+        )
+        self.payload["segments"][1]["text"] += " We return to John 3:18."
+        self._write_payload()
+        analyze_sermon(self.database, self.video)
+        changed = analyze_sermon_structure(self.database, self.video)
+        self.assertTrue(changed.created)
+        self.assertNotEqual(first.run.id, changed.run.id)
+
+    def test_profile_structure_summary_reuses_exact_sermon_runs(self) -> None:
+        profile = self.database.ensure_speaker_profile(
+            stable_key="person:structure",
+            display_label="Structure Pastor",
+            lifecycle_state="active",
+            created_reason="test",
+        )
+        observation = self.database.add_speaker_observation(
+            video_id=self.video.id,
+            extraction_result_id=self.extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="single",
+            start_seconds=60.0,
+            end_seconds=120.0,
+            artifact_path=str(self.proposed_path),
+            content_sha256="structure-observation",
+            extractor_version="test-v1",
+            input_fingerprint="structure-observation",
+        )
+        self.database.add_profile_observation_event(
+            profile_id=profile.id,
+            observation_id=observation.id,
+            action="attach",
+            reviewer="test",
+            reason="verified",
+            event_fingerprint="structure-attach",
+        )
+        analyze_sermon(self.database, self.video)
+        sermon = analyze_sermon_structure(self.database, self.video)
+
+        first = build_profile_structure_analysis(self.database, profile.id)
+        reused = build_profile_structure_analysis(self.database, profile.id)
+        values = {
+            item.metric_key: json.loads(item.value_json)
+            for item in self.database.list_speaker_profile_analysis_measurements(
+                first.run.id
+            )
+        }
+
+        self.assertTrue(first.created)
+        self.assertFalse(reused.created)
+        self.assertEqual(first.run.id, reused.run.id)
+        self.assertEqual(1, values["sermons_analyzed"])
+        self.assertEqual([sermon.run.id], self.database.list_speaker_profile_analysis_input_run_ids(first.run.id))
+
+    def test_structure_cli_runs_and_explains_measurements(self) -> None:
+        analyze_sermon(self.database, self.video)
+        runner = CliRunner()
+        run = runner.invoke(
+            app,
+            [
+                "analysis", "structure-run", "--youtube-video-id",
+                self.video.youtube_video_id, "--base-dir", str(self.base_dir),
+            ],
+        )
+        shown = runner.invoke(
+            app,
+            [
+                "analysis", "structure-show", "--youtube-video-id",
+                self.video.youtube_video_id, "--base-dir", str(self.base_dir),
+            ],
+        )
+        self.assertEqual(0, run.exit_code, run.output)
+        self.assertEqual(0, shown.exit_code, shown.output)
+        self.assertIn("mean unique-token share", shown.output)
+        self.assertIn("Operational meaning", shown.output)
 
     def test_changed_source_or_analyzer_version_intentionally_creates_new_run(self) -> None:
         first = analyze_sermon(self.database, self.video)
