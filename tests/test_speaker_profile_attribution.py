@@ -286,6 +286,49 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
             list_unnamed_profile_attribution_candidates(self.database),
         )
 
+    def test_review_cli_normalizes_terminal_before_prompting(self) -> None:
+        with (
+            patch(
+                "pastor_transcript_extractor.cli."
+                "load_profile_attribution_clip_timestamps",
+                return_value={
+                    observation.input_fingerprint: int(
+                        observation.start_seconds
+                    )
+                    for observation in self.observations
+                },
+            ),
+            patch(
+                "pastor_transcript_extractor.cli."
+                "_normalize_review_terminal_input"
+            ) as normalize_terminal,
+            patch(
+                "pastor_transcript_extractor.cli.typer.prompt",
+                return_value="skip",
+            ) as prompt,
+        ):
+            manager = unittest.mock.Mock()
+            manager.attach_mock(normalize_terminal, "normalize_terminal")
+            manager.attach_mock(prompt, "prompt")
+            result = CliRunner().invoke(
+                app,
+                [
+                    "identity",
+                    "review-profile-attribution",
+                    "--profile-id",
+                    str(self.profile.id),
+                    "--reviewer",
+                    "Brian Cummings",
+                    "--no-open-packet",
+                    "--base-dir",
+                    str(self.paths.root),
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertEqual("normalize_terminal", manager.mock_calls[0][0])
+        self.assertEqual("prompt", manager.mock_calls[1][0])
+
     def test_reviewed_name_claim_links_unique_configured_pastor(self) -> None:
         pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
         configured = ensure_configured_pastor_profile(self.database, pastor)

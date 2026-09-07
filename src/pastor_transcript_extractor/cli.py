@@ -5026,6 +5026,7 @@ def review_profile_attribution_command(
                 )
         if open_packet:
             webbrowser.open(packet_path.as_uri())
+        _normalize_review_terminal_input()
         name = typer.prompt(
             "Speaker name (blank or 'skip' defers this evidence set)",
             default=suggested_name,
