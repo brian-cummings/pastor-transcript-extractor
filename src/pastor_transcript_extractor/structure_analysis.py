@@ -17,6 +17,7 @@ from pastor_transcript_extractor.profile_analysis import (
 from pastor_transcript_extractor.sermon_analysis import (
     ANALYZER_KEY as SCRIPTURE_ANALYZER_KEY,
     ANALYZER_VERSION as SCRIPTURE_ANALYZER_VERSION,
+    PreparedSermonAnalysis,
     prepare_sermon_analysis,
 )
 from pastor_transcript_extractor.storage import Database
@@ -83,6 +84,13 @@ class StructureOutcome:
 class ProfileStructureOutcome:
     run: SpeakerProfileAnalysisRun
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedStructureInput:
+    prepared_sermon: PreparedSermonAnalysis
+    scripture_run: SermonAnalysisRun
+    input_fingerprint: str
 
 
 def _json(value: object) -> str:
@@ -192,13 +200,35 @@ def _scripture_organization(
     }
 
 
-def analyze_sermon_structure(database: Database, video: Video) -> StructureOutcome:
+def prepare_structure_analysis(
+    database: Database, video: Video
+) -> PreparedStructureInput:
     prepared = prepare_sermon_analysis(database, video)
     scripture_run = database.get_sermon_analysis_run_by_fingerprint(prepared.input_fingerprint)
     if scripture_run is None:
         raise ValueError(
             f"Video {video.youtube_video_id} needs current {SCRIPTURE_ANALYZER_KEY}@{SCRIPTURE_ANALYZER_VERSION}"
         )
+    fingerprint = _fingerprint(
+        {
+            "analyzer_key": STRUCTURE_ANALYZER_KEY,
+            "analyzer_version": STRUCTURE_ANALYZER_VERSION,
+            "schema_version": STRUCTURE_SCHEMA_VERSION,
+            "source_content_sha256": prepared.source_content_sha256,
+            "scripture_analysis_run_id": scripture_run.id,
+            "scripture_analysis_input_fingerprint": scripture_run.input_fingerprint,
+            "tokenizer_version": TOKENIZER_VERSION,
+            "lexical_window_version": LEXICAL_WINDOW_VERSION,
+            "video_id": video.id,
+        }
+    )
+    return PreparedStructureInput(prepared, scripture_run, fingerprint)
+
+
+def analyze_sermon_structure(database: Database, video: Video) -> StructureOutcome:
+    structure_input = prepare_structure_analysis(database, video)
+    prepared = structure_input.prepared_sermon
+    scripture_run = structure_input.scripture_run
     tokens = _tokens(" ".join(segment.text for segment in prepared.segments))
     word_count = len(tokens)
     bins = _lexical_bins(tokens)
@@ -223,19 +253,6 @@ def analyze_sermon_structure(database: Database, video: Video) -> StructureOutco
         "opening_closing_eighth_lexical_cosine": _cosine(bins[0], bins[-1]) if bins else None,
         **{name: organization[name] for name in FEATURE_NAMES if name.startswith("dominant_")},
     }
-    fingerprint = _fingerprint(
-        {
-            "analyzer_key": STRUCTURE_ANALYZER_KEY,
-            "analyzer_version": STRUCTURE_ANALYZER_VERSION,
-            "schema_version": STRUCTURE_SCHEMA_VERSION,
-            "source_content_sha256": prepared.source_content_sha256,
-            "scripture_analysis_run_id": scripture_run.id,
-            "scripture_analysis_input_fingerprint": scripture_run.input_fingerprint,
-            "tokenizer_version": TOKENIZER_VERSION,
-            "lexical_window_version": LEXICAL_WINDOW_VERSION,
-            "video_id": video.id,
-        }
-    )
     run, created = database.add_sermon_analysis_run(
         video_id=video.id,
         extraction_result_id=prepared.extraction_result_id,
@@ -244,7 +261,7 @@ def analyze_sermon_structure(database: Database, video: Video) -> StructureOutco
         source_kind="identified_sermon_transcript",
         source_path=str(prepared.source_path),
         source_content_sha256=prepared.source_content_sha256,
-        input_fingerprint=fingerprint,
+        input_fingerprint=structure_input.input_fingerprint,
         measurements=[
             ("feature_vector", _json({"schema_version": 1, "feature_names": list(FEATURE_NAMES), "by_name": values}), None),
             ("feature_explanations", _json(FEATURE_EXPLANATIONS), None),
@@ -254,6 +271,19 @@ def analyze_sermon_structure(database: Database, video: Video) -> StructureOutco
         evidence=[],
     )
     return StructureOutcome(run, created)
+
+
+def profile_structure_input_fingerprint(
+    *, profile_id: int, membership_fingerprint: str, sermon_run_ids: list[int]
+) -> str:
+    return _fingerprint({
+        "analyzer_key": PROFILE_STRUCTURE_ANALYZER_KEY,
+        "analyzer_version": PROFILE_STRUCTURE_ANALYZER_VERSION,
+        "membership_fingerprint": membership_fingerprint,
+        "profile_id": profile_id,
+        "schema_version": 1,
+        "sermon_structure_run_ids": sorted(sermon_run_ids),
+    })
 
 
 def _measurements(database: Database, run_id: int) -> dict[str, object]:
@@ -286,14 +316,11 @@ def build_profile_structure_analysis(database: Database, profile_id: int) -> Pro
             "median": round(statistics.median(observed), 6) if observed else None,
             "standard_deviation": round(statistics.pstdev(observed), 6) if observed else None,
         }
-    fingerprint = _fingerprint({
-        "analyzer_key": PROFILE_STRUCTURE_ANALYZER_KEY,
-        "analyzer_version": PROFILE_STRUCTURE_ANALYZER_VERSION,
-        "membership_fingerprint": membership,
-        "profile_id": scope.profile_id,
-        "schema_version": 1,
-        "sermon_structure_run_ids": sorted(run_id for run_id, _ in inputs),
-    })
+    fingerprint = profile_structure_input_fingerprint(
+        profile_id=scope.profile_id,
+        membership_fingerprint=membership,
+        sermon_run_ids=[run_id for run_id, _ in inputs],
+    )
     run, created = database.add_speaker_profile_analysis_run(
         profile_id=scope.profile_id,
         analyzer_key=PROFILE_STRUCTURE_ANALYZER_KEY,

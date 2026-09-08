@@ -894,7 +894,9 @@ def load_population_snapshot_report(
     snapshot = (
         database.get_population_analysis_snapshot(snapshot_id)
         if snapshot_id is not None
-        else database.get_latest_population_analysis_snapshot()
+        else database.get_latest_population_analysis_snapshot_for_analyzer(
+            POPULATION_ANALYZER_VERSION
+        )
     )
     if snapshot is None:
         raise ValueError("No population analysis snapshot is available")

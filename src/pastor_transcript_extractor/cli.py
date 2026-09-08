@@ -62,6 +62,14 @@ from pastor_transcript_extractor.structure_analysis import (
     analyze_sermon_structure,
     build_profile_structure_analysis,
 )
+from pastor_transcript_extractor.structure_population_analysis import (
+    build_structure_population_snapshot,
+    load_structure_population_snapshot,
+)
+from pastor_transcript_extractor.structure_readiness import (
+    build_structure_readiness,
+    run_structure_backfill,
+)
 from pastor_transcript_extractor.exporting import (
     export_organization_review_markdown,
     export_profile_transcript_collection,
@@ -2737,6 +2745,145 @@ def analysis_structure_show(
         f"Provenance: structure_run=#{run.id}; source={run.source_content_sha256}; "
         f"scripture_run={values['source_diagnostics']['scripture_analysis_run_id']}"
     )
+
+
+def _print_structure_readiness(report: object) -> None:
+    table = Table(title="Deterministic Structure Analysis Readiness")
+    for heading in ("Profile", "Sermons", "Current", "Missing", "Stale", "Blocked", "Aggregate"):
+        table.add_column(heading, justify="right" if heading not in {"Profile", "Aggregate"} else "left")
+    for item in report.profiles:
+        table.add_row(
+            f"#{item.profile_id} {item.display_label or ''}".rstrip(),
+            str(item.sermon_count), str(item.current_sermons), str(item.missing_sermons),
+            str(item.stale_sermons), str(item.blocked_sermons), item.aggregate_state,
+        )
+    console.print(table)
+    totals = report.totals
+    console.print(
+        f"Profiles={totals['profiles']}; attached sermon instances={totals['sermons']}; "
+        f"current={totals['current']}; missing={totals['missing']}; "
+        f"stale={totals['stale']}; blocked={totals['blocked']}; "
+        f"current aggregates={totals['current_aggregates']}."
+    )
+
+
+@analysis_app.command("structure-readiness", help="Report structure analysis readiness.")
+def analysis_structure_readiness(
+    as_json: bool = typer.Option(False, "--json"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    report = build_structure_readiness(get_database(base_dir))
+    if as_json:
+        console.print_json(data=report.payload())
+    else:
+        _print_structure_readiness(report)
+
+
+@analysis_app.command(
+    "structure-backfill",
+    help="Safely backfill current deterministic structure runs and profile summaries.",
+)
+def analysis_structure_backfill(
+    minimum_sermons: int = typer.Option(3, "--minimum-sermons", min=1),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    result = run_structure_backfill(
+        get_database(base_dir), dry_run=dry_run, minimum_sermons=minimum_sermons
+    )
+    if dry_run:
+        target_ids = {
+            state["video_id"]
+            for profile in result.before.profiles
+            if profile.sermon_count >= minimum_sermons
+            for state in profile.sermon_states
+            if state["state"] in {"missing", "stale"}
+        }
+        console.print(
+            f"Dry run: {len(target_ids)} unique sermon(s) need structure analysis; "
+            f"{sum(profile.sermon_count >= minimum_sermons and profile.aggregate_state != 'current' for profile in result.before.profiles)} "
+            "profile aggregate(s) need refresh."
+        )
+        _print_structure_readiness(result.before)
+        return
+    for video_id, error in result.sermon_failures:
+        console.print(f"Failed sermon video #{video_id}: {error}", markup=False)
+    for profile_id, error in result.profile_failures:
+        console.print(f"Failed profile #{profile_id}: {error}", markup=False)
+    console.print(
+        f"Structure backfill complete: sermon created={result.created_sermon_runs}, "
+        f"reused={result.reused_sermon_runs}, failed={len(result.sermon_failures)}; "
+        f"profile created={result.created_profile_runs}, "
+        f"reused={result.reused_profile_runs}, failed={len(result.profile_failures)}."
+    )
+    assert result.after is not None
+    _print_structure_readiness(result.after)
+
+
+def _print_structure_population(snapshot: object, report: dict[str, object]) -> None:
+    population = report["population"]
+    console.print(
+        f"Structure population snapshot #{snapshot.id}: profiles={population['profile_count']}, "
+        f"sermons={population['sermon_count']}, fingerprint={snapshot.input_fingerprint[:12]}…"
+    )
+    table = Table(title="Preliminary Structure Feature Diagnostics")
+    for heading in ("Feature", "N", "Missing", "LOO", "Between/within", "Size r", "Recommendation"):
+        table.add_column(heading, justify="right" if heading in {"N", "Missing", "Between/within", "Size r"} else "left")
+    for name in report["feature_names"]:
+        item = report["feature_diagnostics"][name]
+        distribution = item["distribution"]
+        ratio = item["between_to_within_variance_ratio"]
+        size = item["corpus_size_pearson"]
+        table.add_row(
+            name, str(distribution["observed_count"]), str(distribution["missing_count"]),
+            item["leave_one_out"]["stability"], "—" if ratio is None else f"{ratio:.2f}",
+            "—" if size is None else f"{size:.2f}", item["recommendation"],
+        )
+    console.print(table)
+    metadata = report["metadata_coverage"]
+    console.print(
+        f"Strong correlations: {len(report['strong_correlations'])}. "
+        f"Dated sermons={metadata['dated_sermons']}/{metadata['total_sermons']}; "
+        f"multi-source profiles={metadata['multi_source_profiles']}. "
+        "Advisory only; no comparison schema, PCA, ranking, or clustering changed."
+    )
+
+
+@analysis_app.command("structure-population-build", help="Freeze structure population diagnostics.")
+def analysis_structure_population_build(
+    minimum_sermons: int = typer.Option(3, "--minimum-sermons", min=2),
+    as_json: bool = typer.Option(False, "--json"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        outcome = build_structure_population_snapshot(
+            get_database(base_dir), minimum_sermons=minimum_sermons
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    if as_json:
+        console.print_json(data={"snapshot_id": outcome.snapshot.id, "created": outcome.created, "report": outcome.report})
+    else:
+        console.print("Created." if outcome.created else "Reused unchanged snapshot.")
+        _print_structure_population(outcome.snapshot, outcome.report)
+
+
+@analysis_app.command("structure-population-show", help="Inspect a structure population snapshot.")
+def analysis_structure_population_show(
+    snapshot_id: int | None = typer.Option(None, "--snapshot-id"),
+    as_json: bool = typer.Option(False, "--json"),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        snapshot, report = load_structure_population_snapshot(
+            get_database(base_dir), snapshot_id
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    if as_json:
+        console.print_json(data={"snapshot_id": snapshot.id, "report": report})
+    else:
+        _print_structure_population(snapshot, report)
 
 
 @analysis_app.command("show", help="Inspect persisted sermon measurements and Scripture evidence.")

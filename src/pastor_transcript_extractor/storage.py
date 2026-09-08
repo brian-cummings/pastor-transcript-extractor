@@ -3096,6 +3096,19 @@ class Database:
             ).fetchone()
         return self._population_analysis_snapshot_from_row(row) if row else None
 
+    def get_latest_population_analysis_snapshot_for_analyzer(
+        self, analyzer_version: str
+    ) -> PopulationAnalysisSnapshot | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM population_analysis_snapshots
+                WHERE analyzer_version = ? ORDER BY id DESC LIMIT 1
+                """,
+                (analyzer_version,),
+            ).fetchone()
+        return self._population_analysis_snapshot_from_row(row) if row else None
+
     def get_population_analysis_snapshot_by_fingerprint(
         self, input_fingerprint: str
     ) -> PopulationAnalysisSnapshot | None:

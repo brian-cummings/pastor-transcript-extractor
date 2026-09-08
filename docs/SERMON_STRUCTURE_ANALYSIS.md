@@ -60,7 +60,46 @@ Inspect one sermon with its operational definitions and provenance:
 pte analysis structure-show --youtube-video-id VIDEO_ID --base-dir /path/to/data
 ```
 
-The next increment should add readiness/backfill reporting and a population diagnostic
-snapshot for these preliminary features. Only stable, nonredundant measurements should
-then feed exploratory PCA or factor analysis. Semantic style and theology remain separate
-evidence-backed concerns.
+Only stable, nonredundant measurements may later feed exploratory PCA or factor analysis.
+Semantic style and theology remain separate evidence-backed concerns.
+
+## Corpus readiness and population diagnostics
+
+Structure readiness independently reports current, missing, stale, and blocked sermon
+runs plus current, missing, or stale profile aggregates. A sermon is blocked when its
+identified transcript or exact current `sermon-basics@4` prerequisite is unavailable.
+Dry-run backfill does not write analysis artifacts. Execution handles each unique sermon
+independently, records failures without discarding completed runs, and then refreshes
+profile summaries:
+
+```bash
+pte analysis structure-readiness --base-dir /path/to/data
+pte analysis structure-backfill --minimum-sermons 3 --dry-run --base-dir /path/to/data
+pte analysis structure-backfill --minimum-sermons 3 --base-dir /path/to/data
+```
+
+`structure-population-diagnostics@1` freezes exact current
+`profile-sermon-structure@2` runs in the existing immutable population-snapshot model.
+For every feature it reports distribution and missingness, median maximum
+leave-one-sermon-out change in population-IQR units, between-profile and mean
+within-profile variance, their ratio, and correlation with sermon count. Pairwise
+correlations with absolute Pearson correlation at least 0.75 are listed. Transcript token
+density and question-mark segment rate are always marked source-sensitive and
+diagnostic-only. Pairwise correlations require at least ten profiles. The stability labels
+use median maximum leave-one-out change of at most 0.15 population-IQR units for `high`
+and at most 0.35 for `moderate`; these thresholds are persisted policy, not learned truth.
+Date and multi-source coverage are reported so unavailable selection-bias checks remain
+visible.
+
+```bash
+pte analysis structure-population-build \
+  --minimum-sermons 3 --base-dir /path/to/data
+pte analysis structure-population-show --base-dir /path/to/data
+pte analysis structure-population-show --json --base-dir /path/to/data
+```
+
+Recommendations are advisory. This increment does not modify the benchmark feature
+schema or perform PCA, ranking, or clustering. The next step is to run the backfill and
+inspect the frozen population report. Features should advance only if they distinguish
+pastors more than sermons within a pastor, remain stable when one sermon is removed, have
+acceptable missingness, and are not redundant.
