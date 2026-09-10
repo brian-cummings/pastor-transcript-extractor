@@ -28,6 +28,7 @@ from pastor_transcript_extractor.cli import (
     _recover_stale_transcribing_videos,
     _run_post_content_identity,
     _should_transcribe_video,
+    _select_existing_stage_video_ids,
     app,
     discover_sources_service,
     run_workflow_service,
@@ -2360,13 +2361,117 @@ class CliTests(unittest.TestCase):
             result = CliRunner().invoke(
                 app,
                 [
-                    "run", "--all", "--stage-audio-only", "--download-jobs", "7",
+                    "run", "--all", "--stage-audio-only", "--skip-discovery",
+                    "--download-jobs", "7",
                 ],
             )
 
         self.assertEqual(0, result.exit_code, msg=result.output)
         self.assertTrue(workflow.call_args.kwargs["stage_audio_only"])
+        self.assertTrue(workflow.call_args.kwargs["skip_discovery"])
         self.assertEqual(7, workflow.call_args.kwargs["download_jobs"])
+
+    def test_skip_discovery_selects_newest_eligible_existing_videos_per_source(self) -> None:
+        videos = {
+            1: [
+                SimpleNamespace(
+                    id=11, youtube_video_id="older", duration_seconds=900,
+                    published_at="2026-01-01T00:00:00+00:00",
+                ),
+                SimpleNamespace(
+                    id=12, youtube_video_id="newer", duration_seconds=900,
+                    published_at="2026-02-01T00:00:00+00:00",
+                ),
+                SimpleNamespace(
+                    id=13, youtube_video_id="short", duration_seconds=600,
+                    published_at="2026-03-01T00:00:00+00:00",
+                ),
+            ],
+            2: [
+                SimpleNamespace(
+                    id=21, youtube_video_id="excluded", duration_seconds=900,
+                    published_at="2026-02-01T00:00:00+00:00",
+                ),
+                SimpleNamespace(
+                    id=22, youtube_video_id="selected", duration_seconds=900,
+                    published_at="2026-01-15T00:00:00+00:00",
+                ),
+            ],
+        }
+        database = SimpleNamespace(
+            list_excluded_videos=lambda: [
+                SimpleNamespace(youtube_video_id="excluded")
+            ],
+            list_videos_by_source_id=lambda source_id: videos[source_id],
+        )
+
+        selected = _select_existing_stage_video_ids(
+            database, (1, 2), limit=1, all_videos=False
+        )
+
+        self.assertEqual({12, 22}, selected)
+
+    def test_skip_discovery_requires_offline_input_staging(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "--skip-discovery is only valid with --stage-offline-inputs",
+        ):
+            run_workflow_service(all_sources=True, skip_discovery=True)
+
+    def test_audio_stage_skip_discovery_never_contacts_source_feeds(self) -> None:
+        database = SimpleNamespace(
+            list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            list_excluded_videos=lambda: [],
+            list_videos_by_source_id=lambda _source_id: [
+                SimpleNamespace(
+                    id=11,
+                    youtube_video_id="existing-newer",
+                    duration_seconds=900,
+                    published_at="2026-02-01T00:00:00+00:00",
+                ),
+                SimpleNamespace(
+                    id=12,
+                    youtube_video_id="existing-older",
+                    duration_seconds=900,
+                    published_at="2026-01-01T00:00:00+00:00",
+                ),
+            ],
+        )
+        with patch(
+            "pastor_transcript_extractor.cli.get_database",
+            return_value=database,
+        ), patch(
+            "pastor_transcript_extractor.cli.build_paths",
+            return_value=SimpleNamespace(logs=Path("logs"), root=Path("data")),
+        ), patch(
+            "pastor_transcript_extractor.cli.build_tool_config",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "pastor_transcript_extractor.cli.discover_sources_service"
+        ) as discover, patch(
+            "pastor_transcript_extractor.cli.stage_source_audio_for_video",
+            return_value=StageSourceAudioResult(
+                11,
+                "existing-newer",
+                "failed",
+                "archived_media_unavailable",
+                None,
+                None,
+                False,
+            ),
+        ) as stage, patch(
+            "pastor_transcript_extractor.cli.write_audio_stage_manifest",
+            return_value=Path("stage.json"),
+        ):
+            run_workflow_service(
+                all_sources=True,
+                stage_audio_only=True,
+                skip_discovery=True,
+                limit=1,
+            )
+
+        discover.assert_not_called()
+        self.assertEqual(11, stage.call_args.kwargs["video_id"])
 
     def test_audio_stage_fetches_captions_for_verified_subset(self) -> None:
         database = SimpleNamespace(

@@ -335,6 +335,11 @@ def prepare_transcription_input(
         staged = stage_source_audio_for_video(
             database, app_paths, tools, video_id=video.id
         )
+        if staged.reason_code == "archived_media_unavailable":
+            raise RuntimeError(
+                "archived_media_unavailable: authoritative source audio is "
+                "temporarily inaccessible; mount the configured archive"
+            )
         source_artifact = staged.artifact
         # Preserve compatibility with pre-media-service workspaces and unusual
         # downloader formats while new successful downloads use immutable sources.

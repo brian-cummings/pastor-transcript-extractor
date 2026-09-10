@@ -487,6 +487,7 @@ verifies every staged audio artifact and disables network download fallback:
 ```bash
 pte run --all \
   --stage-offline-inputs \
+  --skip-discovery \
   --download-jobs 6 \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 
@@ -509,6 +510,11 @@ The legacy `--stage-audio-only` spelling remains an alias. The same staging
 option works with a URL plus `--pastor`, or with one or more `--source-id`
 values. Re-running staging reuses verified source and caption artifacts and only
 downloads missing inputs.
+
+Add `--skip-discovery` with `--all` or `--source-id` to select the newest
+eligible videos already stored in the catalog without contacting source feeds.
+`--limit` still applies per source; use `--all-videos` to select the complete
+eligible existing catalog for the chosen sources.
 
 To complete extraction and media maintenance without creating or refreshing
 review exports:

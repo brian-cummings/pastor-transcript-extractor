@@ -732,14 +732,38 @@ def get_verified_source_media_artifact(
     verification_cache: MediaVerificationCache | None = None,
 ) -> MediaArtifact | None:
     """Return the newest verified immutable downloader source for a video."""
+    artifact, availability = get_authoritative_source_media_artifact(
+        database,
+        video_id,
+        verification_cache=verification_cache,
+    )
+    return artifact if availability is not None and availability.verified else None
+
+
+def get_authoritative_source_media_artifact(
+    database: Database,
+    video_id: int,
+    *,
+    verification_cache: MediaVerificationCache | None = None,
+) -> tuple[MediaArtifact | None, MediaAvailability | None]:
+    """Select source audio without losing authority when its archive is offline."""
+    archived_unavailable: tuple[MediaArtifact, MediaAvailability] | None = None
     for artifact in reversed(database.list_media_artifacts_for_video(video_id)):
+        if artifact.artifact_kind != "source_audio" or artifact.provenance_kind != "original_download":
+            continue
+        availability = media_artifact_availability(
+            database,
+            artifact,
+            verification_cache=verification_cache,
+        )
+        if availability.verified:
+            return artifact, availability
         if (
-            artifact.artifact_kind == "source_audio"
-            and artifact.provenance_kind == "original_download"
-            and verify_media_artifact(artifact, verification_cache=verification_cache)
+            availability.status == "archived_media_unavailable"
+            and archived_unavailable is None
         ):
-            return artifact
-    return None
+            archived_unavailable = (artifact, availability)
+    return archived_unavailable or (None, None)
 
 
 def stage_source_audio_for_video(
@@ -758,11 +782,43 @@ def stage_source_audio_for_video(
         raise ValueError(f"Unknown video id: {video_id}")
     emit = event_callback or (lambda _message: None)
     emit("checking for verified source audio")
-    existing = get_verified_source_media_artifact(database, video.id)
-    if existing is not None:
+    existing, availability = get_authoritative_source_media_artifact(
+        database, video.id
+    )
+    if existing is not None and availability is not None and availability.verified:
         return StageSourceAudioResult(
             video.id, video.youtube_video_id, "verified", "verified_existing_source",
             existing, None, False,
+        )
+    if (
+        existing is not None
+        and availability is not None
+        and availability.status == "archived_media_unavailable"
+    ):
+        detail = (
+            "authoritative source audio is archived but currently unavailable at "
+            f"{availability.path}"
+        )
+        attempt = (
+            _record_attempt(
+                database,
+                video=video,
+                outcome="failed",
+                reason_code="archived_media_unavailable",
+                detail=detail,
+                artifact=existing,
+                target_kind="source_audio",
+            )
+            if record_attempt else None
+        )
+        return StageSourceAudioResult(
+            video.id,
+            video.youtube_video_id,
+            "failed",
+            "archived_media_unavailable",
+            None,
+            attempt,
+            False,
         )
     pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id else None
     versions = tool_versions or {

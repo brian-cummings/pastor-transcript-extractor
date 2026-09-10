@@ -523,6 +523,46 @@ def _selected_discovery_video_ids(
     }
 
 
+def _select_existing_stage_video_ids(
+    database: Database,
+    source_ids: Sequence[int],
+    *,
+    limit: int | None,
+    all_videos: bool,
+) -> set[int]:
+    """Select the newest eligible cataloged videos without source discovery."""
+    excluded_ids = {
+        video.youtube_video_id for video in database.list_excluded_videos()
+    }
+    minimum_duration = minimum_sermon_duration_seconds()
+    selected: set[int] = set()
+    for source_id in source_ids:
+        candidates = [
+            video
+            for video in database.list_videos_by_source_id(source_id)
+            if video.youtube_video_id not in excluded_ids
+            and video_is_sermon_eligible(
+                video.duration_seconds,
+                video.published_at,
+                minimum_seconds=minimum_duration,
+            )
+        ]
+        candidates.sort(
+            key=lambda video: (
+                video.published_at is not None,
+                video.published_at.isoformat()
+                if hasattr(video.published_at, "isoformat")
+                else str(video.published_at or ""),
+                video.id,
+            ),
+            reverse=True,
+        )
+        if not all_videos and limit is not None:
+            candidates = candidates[:limit]
+        selected.update(video.id for video in candidates)
+    return selected
+
+
 @app.command(help="Validate manually reviewed sermon evaluation fixtures.")
 def validate_fixtures(
     fixture_dir: Path = typer.Argument(
@@ -15528,6 +15568,7 @@ def run_workflow_service(
     base_dir: Path | None = None,
     source_ids: Sequence[int] | None = None,
     stage_audio_only: bool = False,
+    skip_discovery: bool = False,
     resume_stage: Path | None = None,
     acquire_captions: bool = False,
     download_jobs: int = DEFAULT_PREP_WORKERS,
@@ -15535,6 +15576,8 @@ def run_workflow_service(
     selected_source_ids = tuple(dict.fromkeys(source_ids or ()))
     if stage_audio_only and resume_stage is not None:
         raise ValueError("Use either --stage-audio-only or --resume-stage, not both.")
+    if skip_discovery and not stage_audio_only:
+        raise ValueError("--skip-discovery is only valid with --stage-offline-inputs.")
     if acquire_captions and resume_stage is None:
         raise ValueError("--acquire-captions is only valid with --resume-stage.")
     if resume_stage is not None:
@@ -15688,14 +15731,22 @@ def run_workflow_service(
             unknown = [value for value in selected_source_ids if database.get_source_by_id(value) is None]
             if unknown:
                 raise ValueError("Unknown source id(s): " + ", ".join(map(str, unknown)))
-            selected_video_ids: set[int] = set()
-            for source_id in selected_source_ids:
-                discovery = discover_sources_service(
-                    limit, all_videos, source_id, base_dir
+            if skip_discovery:
+                selected_video_ids = _select_existing_stage_video_ids(
+                    database,
+                    selected_source_ids,
+                    limit=limit,
+                    all_videos=all_videos,
                 )
-                selected_video_ids.update(
-                    _selected_discovery_video_ids(discovery, (source_id,))
-                )
+            else:
+                selected_video_ids = set()
+                for source_id in selected_source_ids:
+                    discovery = discover_sources_service(
+                        limit, all_videos, source_id, base_dir
+                    )
+                    selected_video_ids.update(
+                        _selected_discovery_video_ids(discovery, (source_id,))
+                    )
         elif all_sources:
             if url is not None or pastor is not None:
                 raise ValueError("Do not pass a URL or pastor when using --all.")
@@ -15705,11 +15756,25 @@ def run_workflow_service(
             if not enabled_source_ids:
                 console.print("No processing-enabled sources configured.")
                 return
-            discovery = discover_sources_service(limit, all_videos, None, base_dir)
-            selected_video_ids = _selected_discovery_video_ids(
-                discovery, tuple(enabled_source_ids)
-            )
+            if skip_discovery:
+                selected_video_ids = _select_existing_stage_video_ids(
+                    database,
+                    tuple(enabled_source_ids),
+                    limit=limit,
+                    all_videos=all_videos,
+                )
+            else:
+                discovery = discover_sources_service(
+                    limit, all_videos, None, base_dir
+                )
+                selected_video_ids = _selected_discovery_video_ids(
+                    discovery, tuple(enabled_source_ids)
+                )
         else:
+            if skip_discovery:
+                raise ValueError(
+                    "--skip-discovery requires --all or at least one --source-id."
+                )
             if url is None or pastor is None:
                 raise ValueError("Audio staging requires URL plus --pastor, --source-id, or --all.")
             if replace_existing:
@@ -15724,6 +15789,11 @@ def run_workflow_service(
             discovery = discover_sources_service(limit, all_videos, source.id, base_dir)
             selected_video_ids = _selected_discovery_video_ids(
                 discovery, (source.id,)
+            )
+        if skip_discovery:
+            console.print(
+                f"Selected {len(selected_video_ids)} eligible existing catalog "
+                "video(s) without source discovery."
             )
         if not selected_video_ids:
             console.print("No videos selected for audio staging.")
@@ -16260,8 +16330,16 @@ def run(
         "--stage-audio-only",
         "--stage-offline-inputs",
         help=(
-            "Discover the selected scope, download immutable source audio and "
-            "available captions, write a resume manifest, and stop."
+            "Discover or select the requested scope, download immutable source "
+            "audio and available captions, write a resume manifest, and stop."
+        ),
+    ),
+    skip_discovery: bool = typer.Option(
+        False,
+        "--skip-discovery",
+        help=(
+            "With --stage-offline-inputs, select eligible videos already in "
+            "the catalog without contacting source feeds."
         ),
     ),
     resume_stage: Path | None = typer.Option(
@@ -16288,9 +16366,10 @@ def run(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     if stage_audio_only:
+        selection = "select the existing catalog" if skip_discovery else "discover the selected scope"
         console.print(
-            "Run will discover the selected scope, stage immutable source audio and "
-            "available captions, write a checksum-pinned resume manifest, and stop."
+            f"Run will {selection}, stage immutable source audio and available "
+            "captions, write a checksum-pinned resume manifest, and stop."
         )
     elif resume_stage is not None:
         if acquire_captions:
@@ -16329,6 +16408,7 @@ def run(
             run_identity=run_identity,
             base_dir=base_dir,
             stage_audio_only=stage_audio_only,
+            skip_discovery=skip_discovery,
             resume_stage=resume_stage,
             acquire_captions=acquire_captions,
             download_jobs=download_jobs,

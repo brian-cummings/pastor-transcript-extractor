@@ -268,6 +268,72 @@ class MediaArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no longer verifies"):
             load_and_verify_audio_stage_manifest(self.database, manifest)
 
+    def test_source_audio_stage_does_not_download_over_offline_archive_symlink(self) -> None:
+        video, _ = self._video("stagearchive1")
+        media_root = build_video_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        ).audio / "media"
+        source_path = media_root / "source.wav"
+        write_wav(source_path, value=432)
+        artifact = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="original_download",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+        )
+        normalized_path = media_root / "normalized.wav"
+        write_wav(normalized_path, value=321)
+        register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=normalized_path,
+            artifact_kind="normalized_audio",
+            provenance_kind="derived",
+            acquisition_tool="test",
+            acquisition_tool_version="1",
+            parent=artifact,
+        )
+        archive_root = self.paths.root / "nas-source-stage"
+        archive_root.mkdir()
+        archive_source_media(
+            self.database,
+            self.paths,
+            archive_root=archive_root,
+            video_ids={video.id},
+        )
+        archive_entry = self.database.get_media_archive_entry_for_artifact(artifact.id)
+        self.assertIsNotNone(archive_entry)
+        symlink_target = source_path.readlink()
+        archive_root.rename(self.paths.root / "nas-source-stage-offline")
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.download_source_audio"
+        ) as download:
+            result = stage_source_audio_for_video(
+                self.database,
+                self.paths,
+                self.tools,
+                video_id=video.id,
+                tool_versions={"yt-dlp": "test"},
+            )
+
+        download.assert_not_called()
+        self.assertEqual("failed", result.outcome)
+        self.assertEqual("archived_media_unavailable", result.reason_code)
+        self.assertFalse(result.downloaded)
+        self.assertIsNone(result.artifact)
+        self.assertTrue(source_path.is_symlink())
+        self.assertEqual(symlink_target, source_path.readlink())
+        self.assertEqual(artifact.id, result.attempt.media_artifact_id)
+        self.assertIn(str(archive_entry.archive_path), result.attempt.detail)
+
     def test_audio_stage_manifest_resumes_verified_subset(self) -> None:
         verified_video, _ = self._video("stagepartial1")
         failed_video, _ = self._video("stagepartial2")
