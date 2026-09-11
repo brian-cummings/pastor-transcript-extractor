@@ -18,6 +18,7 @@ from pastor_transcript_extractor.artifact_namespace import (
     resolve_video_artifact_paths,
 )
 from pastor_transcript_extractor.config import AppPaths, ToolConfig
+from pastor_transcript_extractor.identity import latest_metadata_live_status
 from pastor_transcript_extractor.media import (
     VideoUnavailableError,
     YtDlpError,
@@ -29,6 +30,7 @@ from pastor_transcript_extractor.models import (
     MediaArtifact,
     Video,
 )
+from pastor_transcript_extractor.sermon_policy import live_status_is_sermon_eligible
 from pastor_transcript_extractor.storage import Database
 
 
@@ -816,6 +818,31 @@ def stage_source_audio_for_video(
         return StageSourceAudioResult(
             video.id, video.youtube_video_id, "verified", "verified_existing_source",
             existing, None, False,
+        )
+    live_status = latest_metadata_live_status(database, video.id)
+    if not live_status_is_sermon_eligible(live_status):
+        detail = f"yt-dlp metadata reports live_status={live_status}"
+        attempt = (
+            _record_attempt(
+                database,
+                video=video,
+                outcome="unavailable",
+                reason_code="live_broadcast_in_progress",
+                detail=detail,
+                artifact=None,
+                target_kind="source_audio",
+            )
+            if record_attempt
+            else None
+        )
+        return StageSourceAudioResult(
+            video.id,
+            video.youtube_video_id,
+            "unavailable",
+            "live_broadcast_in_progress",
+            None,
+            attempt,
+            False,
         )
     if (
         existing is not None

@@ -325,6 +325,14 @@ class SermonDetectionTests(unittest.TestCase):
             self.assertFalse(video_is_sermon_eligible(10801, None))
         self.assertEqual(10800.0, maximum)
 
+    def test_active_and_upcoming_live_broadcasts_are_ineligible(self) -> None:
+        self.assertFalse(video_is_sermon_eligible(None, None, live_status="is_live"))
+        self.assertFalse(
+            video_is_sermon_eligible(None, None, live_status="is_upcoming")
+        )
+        self.assertTrue(video_is_sermon_eligible(None, None, live_status="was_live"))
+        self.assertTrue(video_is_sermon_eligible(None, None, live_status=None))
+
     def test_future_publications_are_ineligible(self) -> None:
         self.assertFalse(publication_is_not_future("2099-01-01T00:00:00Z"))
         self.assertTrue(publication_is_not_future("2020-01-01T00:00:00Z"))
@@ -718,6 +726,15 @@ class SegmentationTests(unittest.TestCase):
 
             discovered = [
                 DiscoveredVideo(
+                    youtube_video_id="livestream1",
+                    title="Continuous live channel",
+                    url="https://www.youtube.com/watch?v=livestream1",
+                    channel_name="Sample Church",
+                    published_at=None,
+                    duration_seconds=None,
+                    metadata={"live_status": "is_live"},
+                ),
+                DiscoveredVideo(
                     youtube_video_id="abc123",
                     title="Sermon 1",
                     url="https://www.youtube.com/watch?v=abc123",
@@ -747,6 +764,7 @@ class SegmentationTests(unittest.TestCase):
             self.assertIsNotNone(metadata)
             self.assertTrue(Path(metadata.artifact_path).exists())
             self.assertIn("skipped 1 duplicate", result.output)
+            self.assertIn("active/upcoming live 1", result.output)
 
     def test_discover_skips_excluded_videos(self) -> None:
         runner = CliRunner()
@@ -2418,6 +2436,10 @@ class CliTests(unittest.TestCase):
                     id=14, youtube_video_id="overlong", duration_seconds=10801,
                     published_at="2026-04-01T00:00:00+00:00",
                 ),
+                SimpleNamespace(
+                    id=15, youtube_video_id="live", duration_seconds=None,
+                    published_at=None,
+                ),
             ],
             2: [
                 SimpleNamespace(
@@ -2429,19 +2451,47 @@ class CliTests(unittest.TestCase):
                     published_at="2026-01-15T00:00:00+00:00",
                 ),
             ],
+            3: [
+                SimpleNamespace(
+                    id=31, youtube_video_id="stale-live-with-source",
+                    duration_seconds=None,
+                    published_at="2026-01-01T00:00:00+00:00",
+                ),
+                SimpleNamespace(
+                    id=32, youtube_video_id="older-finished",
+                    duration_seconds=900,
+                    published_at="2025-01-01T00:00:00+00:00",
+                ),
+            ],
         }
         database = SimpleNamespace(
             list_excluded_videos=lambda: [
                 SimpleNamespace(youtube_video_id="excluded")
             ],
             list_videos_by_source_id=lambda source_id: videos[source_id],
+            list_media_artifacts_for_video=lambda video_id: (
+                [
+                    SimpleNamespace(
+                        artifact_kind="source_audio",
+                        provenance_kind="original_download",
+                    )
+                ]
+                if video_id == 31
+                else []
+            ),
         )
 
-        selected = _select_existing_stage_video_ids(
-            database, (1, 2), limit=1, all_videos=False
-        )
+        with patch(
+            "pastor_transcript_extractor.cli.latest_metadata_live_status",
+            side_effect=lambda _database, video_id: (
+                "is_live" if video_id in {15, 31} else None
+            ),
+        ):
+            selected = _select_existing_stage_video_ids(
+                database, (1, 2, 3), limit=1, all_videos=False
+            )
 
-        self.assertEqual({12, 22}, selected)
+        self.assertEqual({12, 22, 31}, selected)
 
     def test_skip_discovery_requires_offline_input_staging(self) -> None:
         with self.assertRaisesRegex(

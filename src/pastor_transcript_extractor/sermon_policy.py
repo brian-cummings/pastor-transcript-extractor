@@ -9,6 +9,7 @@ DEFAULT_MINIMUM_SERMON_DURATION_SECONDS = 12 * 60
 DEFAULT_MAXIMUM_SERMON_DURATION_SECONDS = 3 * 60 * 60
 MINIMUM_SERMON_DURATION_ENV = "PTE_MIN_SERMON_DURATION_SECONDS"
 MAXIMUM_SERMON_DURATION_ENV = "PTE_MAX_SERMON_DURATION_SECONDS"
+NONFINAL_LIVE_STATUSES = frozenset({"is_live", "is_upcoming"})
 
 
 def minimum_sermon_duration_seconds() -> float:
@@ -96,12 +97,19 @@ def publication_is_not_future(
     return resolved <= comparison_time
 
 
+def live_status_is_sermon_eligible(live_status: object) -> bool:
+    if not isinstance(live_status, str):
+        return True
+    return live_status.strip().lower() not in NONFINAL_LIVE_STATUSES
+
+
 def video_is_sermon_eligible(
     duration_seconds: float | int | None,
     published_at: datetime | str | None,
     *,
     minimum_seconds: float | None = None,
     maximum_seconds: float | None = None,
+    live_status: object = None,
     now: datetime | None = None,
 ) -> bool:
     return duration_meets_sermon_minimum(
@@ -110,7 +118,10 @@ def video_is_sermon_eligible(
     ) and duration_within_sermon_maximum(
         duration_seconds,
         maximum_seconds=maximum_seconds,
-    ) and publication_is_not_future(published_at, now=now)
+    ) and publication_is_not_future(
+        published_at,
+        now=now,
+    ) and live_status_is_sermon_eligible(live_status)
 
 
 def format_minimum_sermon_duration(minimum_seconds: float) -> str:

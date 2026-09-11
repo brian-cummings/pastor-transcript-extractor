@@ -49,6 +49,7 @@ from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
     duration_within_sermon_maximum,
+    live_status_is_sermon_eligible,
     maximum_sermon_duration_seconds,
     minimum_sermon_duration_seconds,
     publication_is_not_future,
@@ -167,6 +168,7 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
 )
 from pastor_transcript_extractor.identity import (
     backfill_shadow_identity_assessments,
+    latest_metadata_live_status,
     persist_metadata_snapshot,
     record_neutral_speaker_evidence,
 )
@@ -525,6 +527,32 @@ def _selected_discovery_video_ids(
     }
 
 
+def _catalog_video_is_sermon_eligible(
+    database: Database,
+    video: object,
+    *,
+    minimum_seconds: float | None = None,
+    maximum_seconds: float | None = None,
+) -> bool:
+    return video_is_sermon_eligible(
+        getattr(video, "duration_seconds", None),
+        getattr(video, "published_at", None),
+        minimum_seconds=minimum_seconds,
+        maximum_seconds=maximum_seconds,
+    )
+
+
+def _catalog_video_has_registered_source_audio(
+    database: Database,
+    video_id: int,
+) -> bool:
+    return any(
+        artifact.artifact_kind == "source_audio"
+        and artifact.provenance_kind == "original_download"
+        for artifact in database.list_media_artifacts_for_video(video_id)
+    )
+
+
 def _select_existing_stage_video_ids(
     database: Database,
     source_ids: Sequence[int],
@@ -544,11 +572,17 @@ def _select_existing_stage_video_ids(
             video
             for video in database.list_videos_by_source_id(source_id)
             if video.youtube_video_id not in excluded_ids
-            and video_is_sermon_eligible(
-                video.duration_seconds,
-                video.published_at,
+            and _catalog_video_is_sermon_eligible(
+                database,
+                video,
                 minimum_seconds=minimum_duration,
                 maximum_seconds=maximum_duration,
+            )
+            and (
+                live_status_is_sermon_eligible(
+                    latest_metadata_live_status(database, video.id)
+                )
+                or _catalog_video_has_registered_source_audio(database, video.id)
             )
         ]
         candidates.sort(
@@ -12748,7 +12782,7 @@ def _should_transcribe_video(
     video = database.get_video_by_id(video_id)
     if video is None:
         return False
-    if not video_is_sermon_eligible(video.duration_seconds, video.published_at):
+    if not _catalog_video_is_sermon_eligible(database, video):
         return False
     if _is_terminal_unavailable(video.status, video.failure_reason) or _is_retryable_fetch_failure(
         video.status, video.failure_reason
@@ -14332,6 +14366,7 @@ def discover_sources_service(
     excluded_count = 0
     below_minimum_count = 0
     above_maximum_count = 0
+    active_live_count = 0
     future_count = 0
     found_count = 0
     effective_limit = None if all_videos else limit
@@ -14394,6 +14429,7 @@ def discover_sources_service(
                 minimum_seconds=minimum_duration,
             )
             and publication_is_not_future(video.published_at)
+            and live_status_is_sermon_eligible(video.metadata.get("live_status"))
         ]
         future_videos = [
             video
@@ -14408,6 +14444,13 @@ def discover_sources_service(
                 maximum_seconds=maximum_duration,
             )
             and publication_is_not_future(video.published_at)
+            and live_status_is_sermon_eligible(video.metadata.get("live_status"))
+        ]
+        active_live_videos = [
+            video
+            for video in discovered_videos
+            if not live_status_is_sermon_eligible(video.metadata.get("live_status"))
+            and publication_is_not_future(video.published_at)
         ]
         discovered_videos = [
             video
@@ -14417,6 +14460,7 @@ def discover_sources_service(
                 video.published_at,
                 minimum_seconds=minimum_duration,
                 maximum_seconds=maximum_duration,
+                live_status=video.metadata.get("live_status"),
             )
         ]
         selected_discovered = (
@@ -14432,6 +14476,7 @@ def discover_sources_service(
         found_count += source_found_count
         below_minimum_count += len(short_videos)
         above_maximum_count += len(long_videos)
+        active_live_count += len(active_live_videos)
         future_count += len(future_videos)
         existing_source_videos = database.list_videos_by_source_id(source.id)
         discovered_videos = _discover_candidate_window(
@@ -14451,6 +14496,26 @@ def discover_sources_service(
             if discovered.youtube_video_id in existing_ids:
                 skipped_count += 1
                 source_skipped_count += 1
+                existing_video = database.get_video_by_youtube_id(
+                    discovered.youtube_video_id
+                )
+                discovered_live_status = discovered.metadata.get("live_status")
+                if (
+                    existing_video is not None
+                    and isinstance(discovered_live_status, str)
+                    and discovered_live_status
+                    != latest_metadata_live_status(database, existing_video.id)
+                ):
+                    # Preserve live-state transitions so a completed broadcast
+                    # can become eligible without rewriting older snapshots.
+                    persist_metadata_snapshot(
+                        database,
+                        app_paths,
+                        video=existing_video,
+                        pastor=pastor_record,
+                        source_kind="yt_dlp_flat_playlist",
+                        raw_metadata=discovered.metadata,
+                    )
                 continue
             video = database.add_video(
                 source_id=source.id,
@@ -14482,6 +14547,8 @@ def discover_sources_service(
             source_summary += f", below minimum {len(short_videos)}"
         if long_videos:
             source_summary += f", above maximum {len(long_videos)}"
+        if active_live_videos:
+            source_summary += f", active/upcoming live {len(active_live_videos)}"
         if future_videos:
             source_summary += f", future {len(future_videos)}"
         if source_excluded_count:
@@ -14511,6 +14578,11 @@ def discover_sources_service(
         summary = (
             f"{summary[:-1]}; bypassed {above_maximum_count} video(s) above the "
             f"configured {maximum_duration:g}-second sermon-video maximum."
+        )
+    if active_live_count:
+        summary = (
+            f"{summary[:-1]}; bypassed {active_live_count} active or upcoming "
+            "live broadcast(s)."
         )
     if future_count:
         summary = f"{summary[:-1]}; bypassed {future_count} future event(s)."
@@ -14593,9 +14665,9 @@ def transcribe_videos_service(
     videos = [
         video
         for video in videos
-        if video_is_sermon_eligible(
-            video.duration_seconds,
-            video.published_at,
+        if _catalog_video_is_sermon_eligible(
+            database,
+            video,
             minimum_seconds=minimum_duration,
             maximum_seconds=maximum_duration,
         )
@@ -14910,9 +14982,9 @@ def fetch_captions_service(
         raise AssertionError("unreachable caption retry state")
 
     for video in videos:
-        if not video_is_sermon_eligible(
-            video.duration_seconds,
-            video.published_at,
+        if not _catalog_video_is_sermon_eligible(
+            database,
+            video,
             minimum_seconds=minimum_duration,
             maximum_seconds=maximum_duration,
         ):
@@ -15420,9 +15492,9 @@ def reclassify(
         # Frozen fixtures are explicit validation targets.  Do not silently
         # leave stale classifier artifacts because a fixture now falls outside
         # the production discovery eligibility policy.
-        if fixture_dir is None and not video_is_sermon_eligible(
-            video.duration_seconds,
-            video.published_at,
+        if fixture_dir is None and not _catalog_video_is_sermon_eligible(
+            database,
+            video,
             minimum_seconds=minimum_duration,
             maximum_seconds=maximum_duration,
         ):

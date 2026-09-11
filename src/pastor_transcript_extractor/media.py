@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
+from pastor_transcript_extractor.sermon_policy import maximum_sermon_duration_seconds
+
 
 class YtDlpError(RuntimeError):
     pass
@@ -213,6 +215,8 @@ def download_source_audio(
     command = [
         yt_dlp_bin,
         "--no-playlist",
+        "--match-filters",
+        f"!is_live & duration <=? {maximum_sermon_duration_seconds():g}",
         "-f",
         "bestaudio/best",
     ]
