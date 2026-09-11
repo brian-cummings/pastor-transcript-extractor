@@ -1,0 +1,686 @@
+{
+  "actual_sermon_variation": {
+    "references_per_1000_words": {
+      "between_equal_sermon_profile_mean_sd": 1.3543007234398927,
+      "caveat": "One-way method of moments; source, topic, date, measurement error and selection unadjusted. No interval estimated; not a causal pastor variance component.",
+      "residual_mean_square": 2.490805501751318,
+      "sermon_distribution": {
+        "maximum": 14.81715,
+        "median": 2.076771,
+        "minimum": 0.0,
+        "n": 293,
+        "q1": 1.207032,
+        "q3": 3.201397
+      },
+      "unadjusted_icc": 0.47528162636798826,
+      "unadjusted_profile_intercept_variance": 2.256132335607767,
+      "within_profile_sd_distribution": {
+        "maximum": 3.8314406019062197,
+        "median": 0.9831604384114189,
+        "minimum": 0.11670783429680286,
+        "n": 47,
+        "q1": 0.8400820621934644,
+        "q3": 1.6160990378041944
+      }
+    },
+    "scripture_text_engagement_fraction": {
+      "between_equal_sermon_profile_mean_sd": 0.01267131553146565,
+      "caveat": "One-way method of moments; source, topic, date, measurement error and selection unadjusted. No interval estimated; not a causal pastor variance component.",
+      "residual_mean_square": 0.00032910086705874753,
+      "sermon_distribution": {
+        "maximum": 0.165511,
+        "median": 0.014524,
+        "minimum": 0.0,
+        "n": 293,
+        "q1": 0.007697,
+        "q3": 0.026677
+      },
+      "unadjusted_icc": 0.2920638886248332,
+      "unadjusted_profile_intercept_variance": 0.0001357728154257759,
+      "within_profile_sd_distribution": {
+        "maximum": 0.05115834925307891,
+        "median": 0.012186200482285053,
+        "minimum": 0.0016350917405454652,
+        "n": 47,
+        "q1": 0.007669125419924797,
+        "q3": 0.017584466113050368
+      }
+    }
+  },
+  "depth_counts": {
+    "3": 14,
+    "4": 8,
+    "5": 5,
+    "6": 3,
+    "7": 5,
+    "8": 1,
+    "9": 2,
+    "10": 2,
+    "11": 2,
+    "13": 2,
+    "15": 2,
+    "17": 1
+  },
+  "features": {
+    "acts_share": {
+      "distribution": {
+        "maximum": 0.247934,
+        "mean": 0.04213214893617021,
+        "median": 0.017327,
+        "median_absolute_deviation": 0.017327,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0,
+        "q3": 0.0602825,
+        "standard_deviation": 0.05791718408797122,
+        "zero_count": 18,
+        "zero_fraction": 0.382979
+      },
+      "median_conditional_bootstrap_width_iqr": 0.885324,
+      "median_max_loo_iqr": 0.191415,
+      "sermon_count_r": 0.0049
+    },
+    "aligned_passage_concentration_hhi": {
+      "distribution": {
+        "maximum": 0.469388,
+        "mean": 0.12054551063829787,
+        "median": 0.097656,
+        "median_absolute_deviation": 0.04209699999999998,
+        "minimum": 0.019174,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0575815,
+        "q3": 0.140521,
+        "standard_deviation": 0.09661840048990984,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 2.932463,
+      "median_max_loo_iqr": 0.680773,
+      "sermon_count_r": -0.49487
+    },
+    "anchored_text_alignment_fraction": {
+      "distribution": {
+        "maximum": 0.857143,
+        "mean": 0.49452736170212763,
+        "median": 0.518519,
+        "median_absolute_deviation": 0.09916399999999997,
+        "minimum": 0.066667,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.385185,
+        "q3": 0.6,
+        "standard_deviation": 0.19164106738617306,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.624747,
+      "median_max_loo_iqr": 0.393897,
+      "sermon_count_r": 0.030572
+    },
+    "book_breadth_per_10_references": {
+      "distribution": {
+        "maximum": 4.375,
+        "mean": 1.1706798936170213,
+        "median": 1.079137,
+        "median_absolute_deviation": 0.2757019999999999,
+        "minimum": 0.215545,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.8075505,
+        "q3": 1.3592374999999999,
+        "standard_deviation": 0.7141971502659841,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.30445,
+      "median_max_loo_iqr": 0.516064,
+      "sermon_count_r": -0.415838
+    },
+    "book_concentration_hhi": {
+      "distribution": {
+        "maximum": 0.731112,
+        "mean": 0.17637259574468087,
+        "median": 0.152367,
+        "median_absolute_deviation": 0.05710599999999999,
+        "minimum": 0.068839,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.1009045,
+        "q3": 0.210595,
+        "standard_deviation": 0.11007716998729139,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 2.121825,
+      "median_max_loo_iqr": 0.600061,
+      "sermon_count_r": -0.354542
+    },
+    "chapter_breadth_per_10_references": {
+      "distribution": {
+        "maximum": 4.444444,
+        "mean": 1.8180562340425532,
+        "median": 1.666667,
+        "median_absolute_deviation": 0.3921570000000001,
+        "minimum": 0.508475,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 1.3789615,
+        "q3": 2.063895,
+        "standard_deviation": 0.7990701256015129,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.632357,
+      "median_max_loo_iqr": 0.450882,
+      "sermon_count_r": -0.278374
+    },
+    "cross_sermon_anchor_coverage": {
+      "distribution": {
+        "maximum": 0.75,
+        "mean": 0.26340617021276597,
+        "median": 0.285714,
+        "median_absolute_deviation": 0.285714,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0,
+        "q3": 0.4,
+        "standard_deviation": 0.23839593766318976,
+        "zero_count": 17,
+        "zero_fraction": 0.361702
+      },
+      "median_conditional_bootstrap_width_iqr": 1.111112,
+      "median_max_loo_iqr": 0.119047,
+      "sermon_count_r": 0.139677
+    },
+    "effective_book_count": {
+      "distribution": {
+        "maximum": 14.526735,
+        "mean": 7.165422170212765,
+        "median": 6.563107,
+        "median_absolute_deviation": 2.4592539999999996,
+        "minimum": 1.36778,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 4.748552,
+        "q3": 9.9184045,
+        "standard_deviation": 3.033775942825182,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.08168,
+      "median_max_loo_iqr": 0.381495,
+      "sermon_count_r": 0.408812
+    },
+    "general_epistles_share": {
+      "distribution": {
+        "maximum": 0.461538,
+        "mean": 0.05758746808510638,
+        "median": 0.035398,
+        "median_absolute_deviation": 0.027102,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.01469,
+        "q3": 0.0764165,
+        "standard_deviation": 0.07693067720505067,
+        "zero_count": 9,
+        "zero_fraction": 0.191489
+      },
+      "median_conditional_bootstrap_width_iqr": 1.352021,
+      "median_max_loo_iqr": 0.426332,
+      "sermon_count_r": -0.080877
+    },
+    "gospels_share": {
+      "distribution": {
+        "maximum": 0.78125,
+        "mean": 0.24761561702127657,
+        "median": 0.22335,
+        "median_absolute_deviation": 0.118585,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.142256,
+        "q3": 0.35366,
+        "standard_deviation": 0.16157753895326465,
+        "zero_count": 2,
+        "zero_fraction": 0.042553
+      },
+      "median_conditional_bootstrap_width_iqr": 1.598382,
+      "median_max_loo_iqr": 0.347704,
+      "sermon_count_r": 0.004101
+    },
+    "historical_share": {
+      "distribution": {
+        "maximum": 0.419786,
+        "mean": 0.047761957446808515,
+        "median": 0.017143,
+        "median_absolute_deviation": 0.017143,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0,
+        "q3": 0.042487,
+        "standard_deviation": 0.08528549064520842,
+        "zero_count": 19,
+        "zero_fraction": 0.404255
+      },
+      "median_conditional_bootstrap_width_iqr": 1.157851,
+      "median_max_loo_iqr": 0.339469,
+      "sermon_count_r": 0.1184
+    },
+    "major_prophets_share": {
+      "distribution": {
+        "maximum": 0.545455,
+        "mean": 0.09614017021276597,
+        "median": 0.054054,
+        "median_absolute_deviation": 0.054054,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.023478,
+        "q3": 0.135849,
+        "standard_deviation": 0.10923867844824911,
+        "zero_count": 9,
+        "zero_fraction": 0.191489
+      },
+      "median_conditional_bootstrap_width_iqr": 1.148268,
+      "median_max_loo_iqr": 0.278097,
+      "sermon_count_r": -0.019706
+    },
+    "mean_pairwise_book_distribution_cosine": {
+      "distribution": {
+        "maximum": 0.680542,
+        "mean": 0.21348476595744684,
+        "median": 0.212987,
+        "median_absolute_deviation": 0.08930900000000001,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.1040505,
+        "q3": 0.274772,
+        "standard_deviation": 0.14720409509512639,
+        "zero_count": 1,
+        "zero_fraction": 0.021277
+      },
+      "median_conditional_bootstrap_width_iqr": 3.083184,
+      "median_max_loo_iqr": 0.375413,
+      "sermon_count_r": 0.064645
+    },
+    "mean_scripture_text_alignment_score": {
+      "distribution": {
+        "maximum": 0.745554,
+        "mean": 0.6546487234042553,
+        "median": 0.654122,
+        "median_absolute_deviation": 0.026402000000000037,
+        "minimum": 0.563496,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.6269165,
+        "q3": 0.678254,
+        "standard_deviation": 0.0460810705922019,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.668555,
+      "median_max_loo_iqr": 0.471371,
+      "sermon_count_r": -0.107982
+    },
+    "minor_prophets_share": {
+      "distribution": {
+        "maximum": 0.274336,
+        "mean": 0.02318908510638298,
+        "median": 0.0,
+        "median_absolute_deviation": 0.0,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0,
+        "q3": 0.024239,
+        "standard_deviation": 0.04910456205518032,
+        "zero_count": 25,
+        "zero_fraction": 0.531915
+      },
+      "median_conditional_bootstrap_width_iqr": 0.0,
+      "median_max_loo_iqr": 0.0,
+      "sermon_count_r": 0.06437
+    },
+    "multi_verse_reference_ratio": {
+      "distribution": {
+        "maximum": 0.151515,
+        "mean": 0.026463234042553192,
+        "median": 0.017699,
+        "median_absolute_deviation": 0.017699,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0,
+        "q3": 0.0337605,
+        "standard_deviation": 0.03490557868185882,
+        "zero_count": 14,
+        "zero_fraction": 0.297872
+      },
+      "median_conditional_bootstrap_width_iqr": 1.070196,
+      "median_max_loo_iqr": 0.210838,
+      "sermon_count_r": 0.076145
+    },
+    "old_testament_share": {
+      "distribution": {
+        "maximum": 0.697051,
+        "mean": 0.3607108085106383,
+        "median": 0.363636,
+        "median_absolute_deviation": 0.16051100000000001,
+        "minimum": 0.050847,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.2015625,
+        "q3": 0.47855499999999995,
+        "standard_deviation": 0.17849418695065702,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.503413,
+      "median_max_loo_iqr": 0.346222,
+      "sermon_count_r": 0.095714
+    },
+    "pauline_epistles_share": {
+      "distribution": {
+        "maximum": 0.949153,
+        "mean": 0.18017172340425533,
+        "median": 0.125,
+        "median_absolute_deviation": 0.066176,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0778095,
+        "q3": 0.222187,
+        "standard_deviation": 0.17705862144447276,
+        "zero_count": 2,
+        "zero_fraction": 0.042553
+      },
+      "median_conditional_bootstrap_width_iqr": 1.233592,
+      "median_max_loo_iqr": 0.314273,
+      "sermon_count_r": -0.134516
+    },
+    "pentateuch_share": {
+      "distribution": {
+        "maximum": 0.5,
+        "mean": 0.11276293617021277,
+        "median": 0.09434,
+        "median_absolute_deviation": 0.06902600000000002,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.031947500000000004,
+        "q3": 0.1695405,
+        "standard_deviation": 0.10459187667338107,
+        "zero_count": 6,
+        "zero_fraction": 0.12766
+      },
+      "median_conditional_bootstrap_width_iqr": 1.507173,
+      "median_max_loo_iqr": 0.448569,
+      "sermon_count_r": -0.041678
+    },
+    "reference_density_consistency": {
+      "distribution": {
+        "maximum": 0.906238,
+        "mean": 0.6891912127659574,
+        "median": 0.685816,
+        "median_absolute_deviation": 0.07647899999999996,
+        "minimum": 0.470794,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.608398,
+        "q3": 0.75425,
+        "standard_deviation": 0.0975772036315372,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.793839,
+      "median_max_loo_iqr": 0.507974,
+      "sermon_count_r": -0.269372
+    },
+    "references_per_1000_words": {
+      "distribution": {
+        "maximum": 8.115085,
+        "mean": 2.3852594680851067,
+        "median": 2.168498,
+        "median_absolute_deviation": 0.673832,
+        "minimum": 0.466024,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 1.5347855,
+        "q3": 3.0280515,
+        "standard_deviation": 1.3119362550550488,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.00573,
+      "median_max_loo_iqr": 0.248535,
+      "sermon_count_r": 0.271651
+    },
+    "revelation_share": {
+      "distribution": {
+        "maximum": 0.648649,
+        "mean": 0.11178242553191489,
+        "median": 0.052632,
+        "median_absolute_deviation": 0.052632,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0064605,
+        "q3": 0.1428595,
+        "standard_deviation": 0.14821976164261427,
+        "zero_count": 11,
+        "zero_fraction": 0.234043
+      },
+      "median_conditional_bootstrap_width_iqr": 0.893256,
+      "median_max_loo_iqr": 0.25281,
+      "sermon_count_r": 0.081019
+    },
+    "scripture_text_engagement_fraction": {
+      "distribution": {
+        "maximum": 0.048855,
+        "mean": 0.017577000000000002,
+        "median": 0.014949,
+        "median_absolute_deviation": 0.00681,
+        "minimum": 0.004923,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0108655,
+        "q3": 0.0237205,
+        "standard_deviation": 0.010599020107257206,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.071643,
+      "median_max_loo_iqr": 0.239984,
+      "sermon_count_r": 0.124963
+    },
+    "sermons_with_text_alignment_fraction": {
+      "distribution": {
+        "maximum": 1.0,
+        "mean": 0.9520594468085106,
+        "median": 1.0,
+        "median_absolute_deviation": 0.0,
+        "minimum": 0.5,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.970588,
+        "q3": 1.0,
+        "standard_deviation": 0.10222646143022385,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 0.0,
+      "median_max_loo_iqr": 0.0,
+      "sermon_count_r": -0.053342
+    },
+    "sustained_chapter_reference_ratio": {
+      "distribution": {
+        "maximum": 1.0,
+        "mean": 0.8699279787234042,
+        "median": 0.90991,
+        "median_absolute_deviation": 0.03745799999999999,
+        "minimum": 0.375,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.858177,
+        "q3": 0.9413085,
+        "standard_deviation": 0.1299994407379933,
+        "zero_count": 0,
+        "zero_fraction": 0.0
+      },
+      "median_conditional_bootstrap_width_iqr": 1.731077,
+      "median_max_loo_iqr": 0.437235,
+      "sermon_count_r": 0.114108
+    },
+    "wisdom_poetry_share": {
+      "distribution": {
+        "maximum": 0.385965,
+        "mean": 0.08085670212765958,
+        "median": 0.053097,
+        "median_absolute_deviation": 0.040276,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0151145,
+        "q3": 0.0912535,
+        "standard_deviation": 0.08991623826459796,
+        "zero_count": 10,
+        "zero_fraction": 0.212766
+      },
+      "median_conditional_bootstrap_width_iqr": 1.876266,
+      "median_max_loo_iqr": 0.498811,
+      "sermon_count_r": 0.114965
+    },
+    "zero_detected_reference_sermon_fraction": {
+      "distribution": {
+        "maximum": 0.5,
+        "mean": 0.02664640425531915,
+        "median": 0.0,
+        "median_absolute_deviation": 0.0,
+        "minimum": 0.0,
+        "missing_count": 0,
+        "missing_fraction": 0.0,
+        "observed_count": 47,
+        "q1": 0.0,
+        "q3": 0.0,
+        "standard_deviation": 0.09474369494311943,
+        "zero_count": 42,
+        "zero_fraction": 0.893617
+      },
+      "median_conditional_bootstrap_width_iqr": 0.0,
+      "median_max_loo_iqr": 0.0,
+      "sermon_count_r": -0.04874
+    }
+  },
+  "input_sha256": {
+    "persisted-inputs.json": "739798cbd7c7dcdb22f3592660befd97cecddf06af630100ec3725093f675fe1",
+    "population-snapshot-2.json": "e48a0370c1e8507b38fdaf0722ddd8616ce3b3aea1c3b602b01cb19a1896b0b6"
+  },
+  "snapshot_fingerprint": "c81bfbee61ad029487804737339ad52edb1065693ba94608bc2b98faf7838e07",
+  "snapshot_id": 2,
+  "structure": {
+    "adjacent_eighth_lexical_cosine_mean": {
+      "mean": 0.320544,
+      "median": 0.34491,
+      "observed_sermons": 13,
+      "standard_deviation": 0.069163
+    },
+    "adjacent_eighth_lexical_cosine_min": {
+      "mean": 0.198846,
+      "median": 0.209698,
+      "observed_sermons": 13,
+      "standard_deviation": 0.066552
+    },
+    "dominant_scripture_anchor_return_rate": {
+      "mean": 0.010859,
+      "median": 0.0,
+      "observed_sermons": 12,
+      "standard_deviation": 0.028142
+    },
+    "dominant_scripture_anchor_share": {
+      "mean": 0.613194,
+      "median": 0.45,
+      "observed_sermons": 12,
+      "standard_deviation": 0.295167
+    },
+    "dominant_scripture_anchor_span_fraction": {
+      "mean": 0.138145,
+      "median": 0.019772,
+      "observed_sermons": 12,
+      "standard_deviation": 0.225627
+    },
+    "first_person_plural_per_1000_words": {
+      "mean": 25.26619,
+      "median": 23.718887,
+      "observed_sermons": 13,
+      "standard_deviation": 9.216725
+    },
+    "first_person_singular_per_1000_words": {
+      "mean": 15.094213,
+      "median": 16.363023,
+      "observed_sermons": 13,
+      "standard_deviation": 8.723594
+    },
+    "moving_average_type_token_ratio_100": {
+      "mean": 0.33706,
+      "median": 0.31013,
+      "observed_sermons": 13,
+      "standard_deviation": 0.094928
+    },
+    "opening_closing_eighth_lexical_cosine": {
+      "mean": 0.215305,
+      "median": 0.194866,
+      "observed_sermons": 13,
+      "standard_deviation": 0.098755
+    },
+    "question_mark_segments_per_1000_words": {
+      "mean": 3.977813,
+      "median": 3.949355,
+      "observed_sermons": 13,
+      "standard_deviation": 2.326168
+    },
+    "second_person_per_1000_words": {
+      "mean": 20.411242,
+      "median": 22.883029,
+      "observed_sermons": 13,
+      "standard_deviation": 5.403119
+    },
+    "transcript_tokens_per_minute": {
+      "mean": 340.922997,
+      "median": 363.046307,
+      "observed_sermons": 13,
+      "standard_deviation": 71.006448
+    }
+  }
+}

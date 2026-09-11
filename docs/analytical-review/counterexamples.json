@@ -1,0 +1,40 @@
+{
+  "bootstrap_duplicate": {
+    "cross_sermon_anchor_coverage": [
+      0.0,
+      1.0
+    ],
+    "mean_pairwise_book_distribution_cosine": [
+      0.0,
+      1.0
+    ]
+  },
+  "sermon_to_loo_variance_ratio_n5": 16.0,
+  "constant_panel_dimension_result": {
+    "reference_profile_id": 1,
+    "reference_display_label": "synthetic",
+    "reference_profile_analysis_run_id": 1,
+    "distance": 0.0,
+    "family_distances": [
+      {
+        "family": "example",
+        "distance": 0.0,
+        "feature_count": 1
+      }
+    ],
+    "unavailable_families": [],
+    "feature_differences": [
+      {
+        "feature": "varying",
+        "family": "example",
+        "candidate_value": 0.0,
+        "reference_value": 0.0,
+        "raw_difference": 0.0,
+        "normalization_scale": 1.4826,
+        "normalization_method": "scaled_mad",
+        "standardized_absolute_difference": 0.0,
+        "standardized_difference_was_capped": false
+      }
+    ]
+  }
+}
