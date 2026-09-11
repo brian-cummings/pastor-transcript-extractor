@@ -12942,6 +12942,7 @@ def _build_live_transcription_stage_callback(
     task_id: TaskID,
     lock: Lock,
 ) -> Callable[[str], None]:
+    state = {"started": False}
     valid_statuses = {
         STAGE_QUEUED_PREP,
         STAGE_DOWNLOADING,
@@ -12965,9 +12966,9 @@ def _build_live_transcription_stage_callback(
         if label not in valid_statuses:
             return
         with lock:
-            task = progress.tasks[task_id]
-            if label in active_statuses and task.start_time is None:
+            if label in active_statuses and not state["started"]:
                 progress.start_task(task_id)
+                state["started"] = True
             if label == STAGE_TRANSCRIBING:
                 progress.update(task_id, status=label, completed=0)
             elif label == STAGE_DONE:
@@ -14729,6 +14730,14 @@ def transcribe_videos_service(
             video = next(pending_videos, None)
             if video is None:
                 return False
+            task_ids[video.id] = progress.add_task(
+                video.title,
+                total=100,
+                completed=0,
+                status=STAGE_QUEUED_PREP,
+                video_id=video.id,
+                start=False,
+            )
             prep_future = executor.submit(
                 _prepare_transcription_task,
                 database,
@@ -14744,15 +14753,6 @@ def transcribe_videos_service(
         with progress, ThreadPoolExecutor(max_workers=prep_workers) as prep_executor, ThreadPoolExecutor(
             max_workers=max_workers
         ) as transcribe_executor:
-            for video in claimed_videos:
-                task_ids[video.id] = progress.add_task(
-                    video.title,
-                    total=100,
-                    completed=0,
-                    status=STAGE_QUEUED_PREP,
-                    video_id=video.id,
-                    start=False,
-                )
             for _ in range(prep_workers):
                 if not submit_prep(prep_executor):
                     break
@@ -14769,8 +14769,10 @@ def transcribe_videos_service(
                             failed += 1
                             with progress_lock:
                                 progress.update(task_ids[video.id], status="failed", completed=100)
+                                progress.remove_task(task_ids.pop(video.id))
                             console.print(
-                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe "
+                                f"video #{video.id} {video.title}: {error}",
                                 style="red",
                                 markup=False,
                             )
@@ -14786,7 +14788,6 @@ def transcribe_videos_service(
                                 _build_live_transcription_stage_callback(progress, task_ids[video.id], progress_lock),
                             )
                             transcribe_future_to_video[transcribe_future] = video
-                        submit_prep(prep_executor)
                 if transcribe_future_to_video:
                     transcribe_done, _ = wait(set(transcribe_future_to_video), timeout=0.05, return_when=FIRST_COMPLETED)
                     for future in transcribe_done:
@@ -14799,8 +14800,11 @@ def transcribe_videos_service(
                             failed += 1
                             with progress_lock:
                                 progress.update(task_id, status=STAGE_FAILED, completed=100)
+                                progress.remove_task(task_id)
+                                task_ids.pop(video.id, None)
                             console.print(
-                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
+                                f"[{processed + failed}/{total_claimed} finished] Failed to transcribe "
+                                f"video #{video.id} {video.title}: {error}",
                                 style="red",
                                 markup=False,
                             )
@@ -14808,7 +14812,20 @@ def transcribe_videos_service(
                         processed += 1
                         with progress_lock:
                             progress.update(task_id, status=STAGE_DONE, completed=100)
-                        console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
+                            progress.remove_task(task_id)
+                            task_ids.pop(video.id, None)
+                        console.print(
+                            f"[{processed + failed}/{total_claimed} finished] Transcribed "
+                            f"video #{video.id}: {video.title}",
+                            markup=False,
+                        )
+                while (
+                    len(prep_future_to_video) < prep_workers
+                    and len(prep_future_to_video) + len(transcribe_future_to_video)
+                    < prep_workers + max_workers
+                ):
+                    if not submit_prep(prep_executor):
+                        break
     else:
         prep_future_to_video: dict[Future[PreparedTranscriptInput], object] = {}
         transcribe_future_to_video: dict[Future[None], object] = {}
@@ -14910,10 +14927,25 @@ def fetch_captions_service(
     base_dir: Path | None = None,
     video_ids: set[int] | None = None,
     request_interval_seconds: float = 0.0,
+    cookies_from_browser: str | None = None,
+    cookies: Path | None = None,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     tools = build_tool_config()
+    if cookies_from_browser is not None or cookies is not None:
+        tools = replace(
+            tools,
+            yt_dlp_cookies_from_browser=cookies_from_browser,
+            yt_dlp_cookies_path=cookies,
+        )
+    if (
+        tools.yt_dlp_cookies_from_browser is not None
+        and tools.yt_dlp_cookies_path is not None
+    ):
+        raise ValueError(
+            "Use either --cookies-from-browser or --cookies for YouTube, not both."
+        )
     videos = database.list_videos()
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]
@@ -15056,10 +15088,27 @@ def fetch_captions_service(
 @app.command(help="Fetch YouTube captions when available and persist them as transcript artifacts.")
 def fetch(
     source_id: int | None = typer.Option(None, help="Only fetch captions for videos from a specific source id."),
+    cookies_from_browser: str | None = typer.Option(
+        None,
+        "--cookies-from-browser",
+        help="Pass an explicit browser profile to yt-dlp for YouTube authentication.",
+    ),
+    cookies: Path | None = typer.Option(
+        None,
+        "--cookies",
+        exists=True,
+        dir_okay=False,
+        help="Pass an explicit Netscape-format cookie file to yt-dlp.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     try:
-        fetch_captions_service(source_id, base_dir)
+        fetch_captions_service(
+            source_id,
+            base_dir,
+            cookies_from_browser=cookies_from_browser,
+            cookies=cookies,
+        )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -15715,8 +15764,19 @@ def run_workflow_service(
     resume_stage: Path | None = None,
     acquire_captions: bool = False,
     download_jobs: int = DEFAULT_PREP_WORKERS,
+    cookies_from_browser: str | None = None,
+    cookies: Path | None = None,
 ) -> None:
     selected_source_ids = tuple(dict.fromkeys(source_ids or ()))
+    caption_auth_options: dict[str, object] = {}
+    if cookies_from_browser is not None:
+        caption_auth_options["cookies_from_browser"] = cookies_from_browser
+    if cookies is not None:
+        caption_auth_options["cookies"] = cookies
+    if cookies_from_browser is not None and cookies is not None:
+        raise ValueError(
+            "Use either --cookies-from-browser or --cookies for YouTube, not both."
+        )
     if stage_audio_only and resume_stage is not None:
         raise ValueError("Use either --stage-audio-only or --resume-stage, not both.")
     if skip_discovery and not stage_audio_only:
@@ -15786,6 +15846,7 @@ def run_workflow_service(
                     base_dir=base_dir,
                     video_ids=video_ids,
                     request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
+                    **caption_auth_options,
                 )
             except CaptionAcquisitionBlockedError as error:
                 console.print(
@@ -16008,6 +16069,7 @@ def run_workflow_service(
                     base_dir=base_dir,
                     video_ids=verified_video_ids,
                     request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
+                    **caption_auth_options,
                 )
             except CaptionAcquisitionBlockedError as error:
                 console.print(
@@ -16038,7 +16100,11 @@ def run_workflow_service(
             return
 
         console.print(f"Reprocessing {len(failed_video_ids)} failed video(s) systemwide.")
-        fetch_captions_service(base_dir=base_dir, video_ids=failed_video_ids)
+        fetch_captions_service(
+            base_dir=base_dir,
+            video_ids=failed_video_ids,
+            **caption_auth_options,
+        )
         if not captions_only:
             transcribe_videos_service(
                 missing_only=True,
@@ -16128,6 +16194,7 @@ def run_workflow_service(
         fetch_captions_service(
             base_dir=base_dir,
             video_ids=selected_video_ids,
+            **caption_auth_options,
         )
         if not captions_only:
             transcribe_videos_service(
@@ -16210,7 +16277,11 @@ def run_workflow_service(
         selected_video_ids = _selected_discovery_video_ids(
             discovery, tuple(enabled_source_ids)
         )
-        fetch_captions_service(base_dir=base_dir, video_ids=selected_video_ids)
+        fetch_captions_service(
+            base_dir=base_dir,
+            video_ids=selected_video_ids,
+            **caption_auth_options,
+        )
         if not captions_only and transcribe_missing:
             transcribe_videos_service(
                 missing_only=False,
@@ -16295,6 +16366,7 @@ def run_workflow_service(
         source_id=source_id,
         base_dir=base_dir,
         video_ids=selected_video_ids,
+        **caption_auth_options,
     )
     if not captions_only and transcribe_missing:
         transcribe_videos_service(missing_only=False, captions_missing_only=True, jobs=jobs, source_id=source_id, base_dir=base_dir, video_ids=selected_video_ids)
@@ -16531,6 +16603,21 @@ def run(
             "manifest scope before offline-only local transcription."
         ),
     ),
+    cookies_from_browser: str | None = typer.Option(
+        None,
+        "--cookies-from-browser",
+        help=(
+            "Use an explicit browser profile for authenticated YouTube caption "
+            "requests, for example chrome or 'chrome:Profile 1'."
+        ),
+    ),
+    cookies: Path | None = typer.Option(
+        None,
+        "--cookies",
+        exists=True,
+        dir_okay=False,
+        help="Use an explicit Netscape-format cookie file for YouTube captions.",
+    ),
     download_jobs: int = typer.Option(
         DEFAULT_PREP_WORKERS,
         "--download-jobs",
@@ -16586,6 +16673,8 @@ def run(
             resume_stage=resume_stage,
             acquire_captions=acquire_captions,
             download_jobs=download_jobs,
+            cookies_from_browser=cookies_from_browser,
+            cookies=cookies,
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error

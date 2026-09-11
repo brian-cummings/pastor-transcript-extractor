@@ -16,6 +16,7 @@ from pastor_transcript_extractor.media import (
     YtDlpConfigurationError,
     YtDlpRateLimitError,
     _run_yt_dlp,
+    download_captions,
     download_source_audio,
     fetch_video_metadata,
     normalize_audio,
@@ -116,6 +117,32 @@ class YtDlpErrorClassificationTests(unittest.TestCase):
         self.assertNotIn("--extractor-args", commands[0])
         self.assertIn("--extractor-args", commands[1])
         self.assertIn("youtube:player_client=web_embedded", commands[1])
+
+    def test_caption_download_passes_explicit_browser_cookies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "captions.txt"
+            captured: list[str] = []
+
+            def fake_run(command: list[str], **_kwargs: object) -> None:
+                captured.extend(command)
+                output.with_suffix(".en.vtt").write_text(
+                    "WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n",
+                    encoding="utf-8",
+                )
+
+            with patch(
+                "pastor_transcript_extractor.media._run_yt_dlp",
+                side_effect=fake_run,
+            ):
+                download_captions(
+                    "https://www.youtube.com/watch?v=test",
+                    "yt-dlp",
+                    output,
+                    yt_dlp_cookies_from_browser="chrome:Profile 1",
+                )
+
+        option_index = captured.index("--cookies-from-browser")
+        self.assertEqual("chrome:Profile 1", captured[option_index + 1])
 
     def test_audio_download_does_not_retry_non_403_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
