@@ -15678,6 +15678,9 @@ def run_workflow_service(
                 database,
                 resume_stage,
                 progress_callback=report_stage_verification,
+                verification_cache=MediaVerificationCache(
+                    paths.logs / "source-audio-verification"
+                ),
             )
             progress.update(
                 verification_task,
@@ -15858,6 +15861,9 @@ def run_workflow_service(
             return
         paths = build_paths(base_dir, remember=True)
         tools = build_tool_config()
+        verification_cache = MediaVerificationCache(
+            paths.logs / "source-audio-verification"
+        )
         workers = min(download_jobs, len(selected_video_ids))
         console.print(f"Staging source audio for {len(selected_video_ids)} video(s) with {workers} worker(s).")
         results = []
@@ -15869,6 +15875,7 @@ def run_workflow_service(
                     paths,
                     tools,
                     video_id=video_id,
+                    verification_cache=verification_cache,
                 ): video_id
                 for video_id in selected_video_ids
             }

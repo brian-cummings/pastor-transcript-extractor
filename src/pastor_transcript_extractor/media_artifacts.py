@@ -261,17 +261,37 @@ class MediaVerificationCache:
 
         if _sha256_file(path) != artifact.content_sha256:
             return False
+        self.remember_verified(artifact, file_stat=file_stat)
+        return True
+
+    def remember_verified(
+        self,
+        artifact: MediaArtifact,
+        *,
+        file_stat: os.stat_result | None = None,
+    ) -> None:
+        """Persist a receipt after a caller has already verified artifact bytes."""
+        resolved_stat = file_stat or Path(artifact.artifact_path).stat()
+        if resolved_stat.st_size != artifact.byte_size:
+            raise ValueError(
+                f"verified artifact size changed before receipt: {artifact.artifact_path}"
+            )
+        receipt_path = self._receipt_path(artifact)
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "schema_version": MEDIA_VERIFICATION_RECEIPT_VERSION,
             "artifact": self._artifact_identity(artifact),
-            "file_stat": expected_stat,
+            "file_stat": {
+                "device": resolved_stat.st_dev,
+                "inode": resolved_stat.st_ino,
+                "size": resolved_stat.st_size,
+                "mtime_ns": resolved_stat.st_mtime_ns,
+            },
         }
         receipt_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        return True
 
     def _receipt_path(self, artifact: MediaArtifact) -> Path:
         return self._receipt_path_under(self.root, artifact)
@@ -348,6 +368,7 @@ def register_media_file(
     acquisition_tool_version: str,
     parent: MediaArtifact | None = None,
     operation_kind: str | None = None,
+    verification_cache: MediaVerificationCache | None = None,
 ) -> MediaArtifact:
     resolved_path = artifact_path.expanduser().resolve()
     if not resolved_path.exists():
@@ -407,7 +428,7 @@ def register_media_file(
         ),
     }
     _write_json_idempotent(manifest_path, manifest)
-    return database.add_media_artifact(
+    artifact = database.add_media_artifact(
         video_id=video.id,
         parent_media_artifact_id=parent.id if parent else None,
         artifact_kind=artifact_kind,
@@ -424,6 +445,9 @@ def register_media_file(
         acquisition_tool_version=acquisition_tool_version,
         input_fingerprint=input_fingerprint,
     )
+    if verification_cache is not None:
+        verification_cache.remember_verified(artifact)
+    return artifact
 
 
 def backfill_existing_media_artifacts(
@@ -775,6 +799,7 @@ def stage_source_audio_for_video(
     tool_versions: dict[str, str] | None = None,
     record_attempt: bool = True,
     event_callback: Callable[[str], None] | None = None,
+    verification_cache: MediaVerificationCache | None = None,
 ) -> StageSourceAudioResult:
     """Download and register source audio without normalizing or changing video state."""
     video = database.get_video_by_id(video_id)
@@ -783,7 +808,9 @@ def stage_source_audio_for_video(
     emit = event_callback or (lambda _message: None)
     emit("checking for verified source audio")
     existing, availability = get_authoritative_source_media_artifact(
-        database, video.id
+        database,
+        video.id,
+        verification_cache=verification_cache,
     )
     if existing is not None and availability is not None and availability.verified:
         return StageSourceAudioResult(
@@ -857,6 +884,7 @@ def stage_source_audio_for_video(
                 provenance_kind="original_download",
                 acquisition_tool="yt-dlp",
                 acquisition_tool_version=versions["yt-dlp"],
+                verification_cache=verification_cache,
             )
         attempt = (
             _record_attempt(

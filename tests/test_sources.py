@@ -40,7 +40,10 @@ from pastor_transcript_extractor.media import (
     YtDlpConfigurationError,
     YtDlpRateLimitError,
 )
-from pastor_transcript_extractor.media_artifacts import StageSourceAudioResult
+from pastor_transcript_extractor.media_artifacts import (
+    MediaVerificationCache,
+    StageSourceAudioResult,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmResponse
 from pastor_transcript_extractor.models import SourceType, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.extraction import extract_video
@@ -2201,7 +2204,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.transcribe_videos_service"
         ), patch(
             "pastor_transcript_extractor.cli.build_paths",
-            return_value=SimpleNamespace(),
+            return_value=SimpleNamespace(logs=Path("logs")),
         ), patch(
             "pastor_transcript_extractor.cli.extract_batch",
             return_value=ExtractionBatchResult(1, 0, 0),
@@ -2512,7 +2515,10 @@ class CliTests(unittest.TestCase):
         )
         paths = SimpleNamespace(logs=Path("logs"), root=Path("data"))
 
-        def staged_result(_database, _paths, _tools, *, video_id):
+        def staged_result(
+            _database, _paths, _tools, *, video_id, verification_cache
+        ):
+            self.assertIsInstance(verification_cache, MediaVerificationCache)
             return StageSourceAudioResult(
                 video_id,
                 f"video-{video_id}",
@@ -2560,7 +2566,7 @@ class CliTests(unittest.TestCase):
 
     def test_resume_stage_can_acquire_captions_then_disables_other_network(self) -> None:
         database = SimpleNamespace()
-        paths = SimpleNamespace()
+        paths = SimpleNamespace(logs=Path("logs"))
         with patch(
             "pastor_transcript_extractor.cli.get_database", return_value=database
         ), patch(
@@ -2605,7 +2611,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.get_database", return_value=database
         ), patch(
             "pastor_transcript_extractor.cli.build_paths",
-            return_value=SimpleNamespace(),
+            return_value=SimpleNamespace(logs=Path("logs")),
         ), patch(
             "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
             return_value={11},

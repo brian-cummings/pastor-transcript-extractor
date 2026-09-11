@@ -238,14 +238,23 @@ class MediaArtifactTests(unittest.TestCase):
             "pastor_transcript_extractor.media_artifacts.download_source_audio",
             side_effect=fake_download,
         ) as download:
+            verification_cache = MediaVerificationCache(
+                self.paths.logs / "source-audio-verification"
+            )
             first = stage_source_audio_for_video(
                 self.database, self.paths, self.tools, video_id=video.id,
                 tool_versions={"yt-dlp": "test"},
+                verification_cache=verification_cache,
             )
-            second = stage_source_audio_for_video(
-                self.database, self.paths, self.tools, video_id=video.id,
-                tool_versions={"yt-dlp": "test"},
-            )
+            with patch(
+                "pastor_transcript_extractor.media_artifacts._sha256_file",
+                side_effect=AssertionError("unchanged source must use its receipt"),
+            ):
+                second = stage_source_audio_for_video(
+                    self.database, self.paths, self.tools, video_id=video.id,
+                    tool_versions={"yt-dlp": "test"},
+                    verification_cache=verification_cache,
+                )
 
         download.assert_called_once()
         self.assertTrue(first.downloaded)
@@ -260,6 +269,7 @@ class MediaArtifactTests(unittest.TestCase):
                 progress_callback=lambda index, total, youtube_id: progress.append(
                     (index, total, youtube_id)
                 ),
+                verification_cache=verification_cache,
             ),
         )
         self.assertEqual([(1, 1, video.youtube_video_id)], progress)

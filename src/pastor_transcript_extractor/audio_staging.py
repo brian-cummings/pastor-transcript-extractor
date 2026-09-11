@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from pastor_transcript_extractor.media_artifacts import (
+    MediaVerificationCache,
     StageSourceAudioResult,
     verify_media_artifact,
 )
@@ -56,6 +57,7 @@ def load_and_verify_audio_stage_manifest(
     path: Path,
     *,
     progress_callback: AudioStageVerificationProgress | None = None,
+    verification_cache: MediaVerificationCache | None = None,
 ) -> set[int]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -98,7 +100,10 @@ def load_and_verify_audio_stage_manifest(
             and artifact.content_sha256 == row.get("content_sha256")
             and artifact.byte_size == row.get("byte_size")
         ]
-        if len(matching) != 1 or not verify_media_artifact(matching[0]):
+        if len(matching) != 1 or not verify_media_artifact(
+            matching[0],
+            verification_cache=verification_cache,
+        ):
             invalid_verified.append(youtube_id)
             continue
         video_ids.add(video_id)
