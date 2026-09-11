@@ -198,6 +198,7 @@ from pastor_transcript_extractor.media import (
     NoCaptionsAvailableError,
     VideoNotYetAvailableError,
     VideoUnavailableError,
+    YtDlpAuthenticationRequiredError,
     YtDlpConfigurationError,
     YtDlpRateLimitError,
 )
@@ -495,6 +496,12 @@ STAGE_QUEUED_TRANSCRIBE = "q-xcribe"
 STAGE_TRANSCRIBING = "xcribe"
 STAGE_DONE = "done"
 STAGE_FAILED = "failed"
+
+
+class CaptionAcquisitionBlockedError(ValueError):
+    """A batch-wide YouTube condition makes further caption requests unsafe."""
+
+
 STAGE_LABELS = {
     "queued": STAGE_QUEUED_PREP,
     "downloading": STAGE_DOWNLOADING,
@@ -15016,10 +15023,16 @@ def fetch_captions_service(
             failed += 1
             continue
         except YtDlpRateLimitError as error:
-            raise ValueError(
+            raise CaptionAcquisitionBlockedError(
                 "YouTube repeatedly rate limited caption acquisition after retries. "
                 "Wait for the limit to clear and rerun the same command; captions "
                 "already persisted will be skipped."
+            ) from error
+        except YtDlpAuthenticationRequiredError as error:
+            raise CaptionAcquisitionBlockedError(
+                "YouTube requested authentication while acquiring captions. Stopped "
+                "further caption requests; captions already persisted will be skipped "
+                "on retry, and staged audio remains available for local transcription."
             ) from error
         except VideoUnavailableError as error:
             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
@@ -15768,11 +15781,26 @@ def run_workflow_service(
                 "Resume checkpoint: reconciling requested online captions; "
                 "persisted caption artifacts will be skipped."
             )
-            fetch_captions_service(
-                base_dir=base_dir,
-                video_ids=video_ids,
-                request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
-            )
+            try:
+                fetch_captions_service(
+                    base_dir=base_dir,
+                    video_ids=video_ids,
+                    request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
+                )
+            except CaptionAcquisitionBlockedError as error:
+                console.print(
+                    f"[yellow]Caption acquisition stopped[/yellow]: {error}"
+                )
+                if captions_only:
+                    console.print(
+                        "Remaining caption misses will stay pending because local "
+                        "transcription is disabled by --captions-only."
+                    )
+                else:
+                    console.print(
+                        "Continuing with offline local transcription for remaining "
+                        "caption misses."
+                    )
         else:
             console.print(
                 "Resume checkpoint: skipping caption acquisition; persisted captions "
@@ -15963,16 +15991,6 @@ def run_workflow_service(
         verified_video_ids = {
             result.video_id for result in results if result.outcome == "verified"
         }
-        if verified_video_ids:
-            console.print(
-                f"Fetching available captions for {len(verified_video_ids)} "
-                "verified staged video(s)."
-            )
-            fetch_captions_service(
-                base_dir=base_dir,
-                video_ids=verified_video_ids,
-                request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
-            )
         console.print(f"Audio stage complete: verified={verified}, failed={len(results) - verified}.")
         console.print(f"Manifest: {manifest}")
         console.print(
@@ -15980,6 +15998,25 @@ def run_workflow_service(
             f"--resume-stage {shlex.quote(str(manifest))} --jobs {jobs} "
             f"--base-dir {shlex.quote(str(paths.root))}"
         )
+        if verified_video_ids:
+            console.print(
+                f"Fetching available captions for {len(verified_video_ids)} "
+                "verified staged video(s)."
+            )
+            try:
+                fetch_captions_service(
+                    base_dir=base_dir,
+                    video_ids=verified_video_ids,
+                    request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
+                )
+            except CaptionAcquisitionBlockedError as error:
+                console.print(
+                    f"[yellow]Caption acquisition stopped[/yellow]: {error}"
+                )
+                console.print(
+                    "The audio stage is complete. Use the offline resume command "
+                    "above; caption misses will use local transcription."
+                )
         return
     if failed_only:
         if url is not None:

@@ -24,6 +24,7 @@ from pastor_transcript_extractor.config import (
 )
 from pastor_transcript_extractor.discovery import DiscoveredVideo, extract_discovered_videos, sort_discovered_videos_by_recency
 from pastor_transcript_extractor.cli import (
+    CaptionAcquisitionBlockedError,
     _ensure_and_archive_run_media,
     _recover_stale_transcribing_videos,
     _run_post_content_identity,
@@ -37,6 +38,7 @@ from pastor_transcript_extractor.media import (
     NoCaptionsAvailableError,
     VideoNotYetAvailableError,
     VideoUnavailableError,
+    YtDlpAuthenticationRequiredError,
     YtDlpConfigurationError,
     YtDlpRateLimitError,
 )
@@ -2649,6 +2651,38 @@ class CliTests(unittest.TestCase):
         self.assertEqual({11, 12}, transcribe.call_args.kwargs["video_ids"])
         self.assertFalse(media.call_args.kwargs["allow_download"])
 
+    def test_resume_stage_continues_local_transcription_when_captions_are_blocked(self) -> None:
+        database = SimpleNamespace()
+        paths = SimpleNamespace(logs=Path("logs"))
+        with patch(
+            "pastor_transcript_extractor.cli.get_database", return_value=database
+        ), patch(
+            "pastor_transcript_extractor.cli.build_paths", return_value=paths
+        ), patch(
+            "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
+            return_value={11},
+        ), patch(
+            "pastor_transcript_extractor.cli.fetch_captions_service",
+            side_effect=CaptionAcquisitionBlockedError(
+                "YouTube requested authentication"
+            ),
+        ), patch(
+            "pastor_transcript_extractor.cli.transcribe_videos_service"
+        ) as transcribe, patch(
+            "pastor_transcript_extractor.cli.extract_batch",
+            return_value=ExtractionBatchResult(1, 0, 0),
+        ), patch(
+            "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+        ):
+            run_workflow_service(
+                resume_stage=Path("stage.json"),
+                acquire_captions=True,
+                skip_review=True,
+            )
+
+        transcribe.assert_called_once()
+        self.assertFalse(transcribe.call_args.kwargs["allow_network"])
+
     def test_resume_stage_runs_identity_before_review_export(self) -> None:
         video = SimpleNamespace(id=11, pastor_id=7)
         pastor = SimpleNamespace(id=7, slug="sample-church")
@@ -3112,6 +3146,48 @@ class CliTests(unittest.TestCase):
             self.assertNotEqual(0, result.exit_code)
             self.assertIn("rate limited caption acquisition", result.output)
             self.assertEqual(4, fetch_captions.call_count)
+            self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
+            self.assertIsNone(updated_video.failure_reason)
+
+    def test_fetch_stops_batch_on_authentication_challenge_without_failing_video(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            first = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="First sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+            )
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="xyz987uvw65",
+                title="Second sermon",
+                url="https://www.youtube.com/watch?v=xyz987uvw65",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=YtDlpAuthenticationRequiredError(
+                    "Sign in to confirm you’re not a bot"
+                ),
+            ) as fetch_captions:
+                result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
+
+            updated_video = database.get_video_by_id(first.id)
+            self.assertNotEqual(0, result.exit_code)
+            self.assertIn("requested authentication", result.output)
+            self.assertEqual(1, fetch_captions.call_count)
             self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
             self.assertIsNone(updated_video.failure_reason)
 

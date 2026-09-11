@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,7 +23,9 @@ from pastor_transcript_extractor.audio_staging import (
 from pastor_transcript_extractor.filesystem_capacity import FilesystemCapacity
 from pastor_transcript_extractor.media import (
     VideoUnavailableError,
+    YtDlpAuthenticationRequiredError,
     YtDlpError,
+    _run_yt_dlp,
     download_source_audio,
 )
 from pastor_transcript_extractor.media_archive import (
@@ -671,6 +674,25 @@ class MediaArtifactTests(unittest.TestCase):
         self.assertEqual("!is_live & duration <=? 10800", captured[filter_index + 1])
         self.assertNotIn("-x", captured)
         self.assertNotIn("--audio-format", captured)
+
+    def test_yt_dlp_authentication_challenge_has_dedicated_error(self) -> None:
+        completed = subprocess.CompletedProcess(
+            ["yt-dlp"],
+            1,
+            stdout="",
+            stderr=(
+                "ERROR: sample: Sign in to confirm you’re not a bot. "
+                "Use --cookies-from-browser or --cookies for the authentication"
+            ),
+        )
+
+        with patch("pastor_transcript_extractor.media.subprocess.run", return_value=completed):
+            with self.assertRaises(YtDlpAuthenticationRequiredError):
+                _run_yt_dlp(
+                    ["yt-dlp", "https://www.youtube.com/watch?v=sample"],
+                    url="https://www.youtube.com/watch?v=sample",
+                    expect_captions=True,
+                )
 
     def test_source_audio_stage_does_not_download_active_live_broadcast(self) -> None:
         video, _ = self._video("activelive01")
