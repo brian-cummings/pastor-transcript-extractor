@@ -143,6 +143,27 @@ def persist_metadata_snapshot(
     )
 
 
+def latest_metadata_live_status(database: Database, video_id: int) -> str | None:
+    """Read yt-dlp live state from the newest immutable metadata snapshot."""
+    artifact_getter = getattr(database, "get_latest_metadata_artifact_for_video", None)
+    if artifact_getter is None:
+        return None
+    artifact = artifact_getter(video_id)
+    if artifact is None:
+        return None
+    try:
+        payload = json.loads(Path(artifact.artifact_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw_metadata = payload.get("raw_metadata")
+    if not isinstance(raw_metadata, dict):
+        return None
+    live_status = raw_metadata.get("live_status")
+    return live_status if isinstance(live_status, str) else None
+
+
 def recommended_action_for_state(state: IdentityState) -> IdentityAction:
     if state == IdentityState.TARGET_CONFIRMED:
         return IdentityAction.ACCEPT

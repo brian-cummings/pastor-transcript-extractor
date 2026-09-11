@@ -35,6 +35,7 @@ from pastor_transcript_extractor.media_archive import (
     sweep_local_audio,
     write_canonical_clip_preparation_manifest,
 )
+from pastor_transcript_extractor.identity import persist_metadata_snapshot
 from pastor_transcript_extractor.media_artifacts import (
     ArchivedMediaUnavailableError,
     MediaVerificationCache,
@@ -666,8 +667,85 @@ class MediaArtifactTests(unittest.TestCase):
 
         self.assertEqual(".webm", result.suffix)
         self.assertIn("bestaudio/best", captured)
+        filter_index = captured.index("--match-filters")
+        self.assertEqual("!is_live & duration <=? 10800", captured[filter_index + 1])
         self.assertNotIn("-x", captured)
         self.assertNotIn("--audio-format", captured)
+
+    def test_source_audio_stage_does_not_download_active_live_broadcast(self) -> None:
+        video, _ = self._video("activelive01")
+        persist_metadata_snapshot(
+            self.database,
+            self.paths,
+            video=video,
+            pastor=self.pastor,
+            source_kind="yt_dlp_flat_playlist",
+            raw_metadata={"live_status": "is_live"},
+        )
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.download_source_audio"
+        ) as download:
+            result = stage_source_audio_for_video(
+                self.database,
+                self.paths,
+                self.tools,
+                video_id=video.id,
+                tool_versions={"yt-dlp": "test"},
+            )
+
+        download.assert_not_called()
+        self.assertEqual("unavailable", result.outcome)
+        self.assertEqual("live_broadcast_in_progress", result.reason_code)
+        self.assertFalse(result.downloaded)
+
+    def test_source_audio_stage_reuses_registered_audio_despite_stale_live_status(self) -> None:
+        video, _ = self._video("stalelive01")
+        source_path = (
+            build_video_artifact_paths(
+                self.paths,
+                self.pastor.slug,
+                video.youtube_video_id,
+            ).audio
+            / "media"
+            / "source.wav"
+        )
+        write_wav(source_path)
+        artifact = register_media_file(
+            self.database,
+            self.paths,
+            video=video,
+            pastor_slug=self.pastor.slug,
+            artifact_path=source_path,
+            artifact_kind="source_audio",
+            provenance_kind="original_download",
+            acquisition_tool="yt-dlp",
+            acquisition_tool_version="test",
+        )
+        persist_metadata_snapshot(
+            self.database,
+            self.paths,
+            video=video,
+            pastor=self.pastor,
+            source_kind="yt_dlp_flat_playlist",
+            raw_metadata={"live_status": "is_live"},
+        )
+
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.download_source_audio"
+        ) as download:
+            result = stage_source_audio_for_video(
+                self.database,
+                self.paths,
+                self.tools,
+                video_id=video.id,
+                tool_versions={"yt-dlp": "test"},
+            )
+
+        download.assert_not_called()
+        self.assertEqual("verified", result.outcome)
+        self.assertEqual("verified_existing_source", result.reason_code)
+        self.assertEqual(artifact.id, result.artifact.id)
 
     def test_caption_backed_sermon_acquires_audio_without_transcription(self) -> None:
         video, proposed_path = self._video("caption001")
