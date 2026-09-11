@@ -32,6 +32,10 @@ class YtDlpRateLimitError(YtDlpError):
     pass
 
 
+class YtDlpAuthenticationRequiredError(YtDlpError):
+    """YouTube challenged the client and requires authenticated cookies."""
+
+
 AUDIO_NORMALIZATION_TIMEOUT_SECONDS = 600
 
 
@@ -74,6 +78,15 @@ def _run_yt_dlp(
     if "http error 429" in lowered_output or "too many requests" in lowered_output:
         raise YtDlpRateLimitError(
             f"YouTube rate limited yt-dlp for {url}: {detail}"
+        )
+    authentication_markers = (
+        "sign in to confirm you’re not a bot",
+        "sign in to confirm you're not a bot",
+        "use --cookies-from-browser or --cookies",
+    )
+    if any(marker in lowered_output for marker in authentication_markers):
+        raise YtDlpAuthenticationRequiredError(
+            f"YouTube requires authentication for {url}: {detail}"
         )
     unavailable_markers = (
         "this video is not available",
