@@ -11,8 +11,11 @@ from pastor_transcript_extractor.extraction import extract_video
 from pastor_transcript_extractor.local_llm import LocalLlmClient, OllamaClient
 from pastor_transcript_extractor.models import VideoStatus
 from pastor_transcript_extractor.sermon_policy import (
-    publication_is_not_future,
+    duration_meets_sermon_minimum,
+    duration_within_sermon_maximum,
+    maximum_sermon_duration_seconds,
     minimum_sermon_duration_seconds,
+    publication_is_not_future,
     video_is_sermon_eligible,
 )
 from pastor_transcript_extractor.storage import Database
@@ -113,19 +116,32 @@ def extract_batch(
     skipped = 0
     eligible_videos = []
     minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
     below_minimum = 0
+    above_maximum = 0
     future_events = 0
     for video in videos:
         if not video_is_sermon_eligible(
             video.duration_seconds,
             video.published_at,
             minimum_seconds=minimum_duration,
+            maximum_seconds=maximum_duration,
         ):
             skipped += 1
-            if publication_is_not_future(video.published_at):
-                below_minimum += 1
-            else:
+            if not publication_is_not_future(video.published_at):
                 future_events += 1
+            elif not duration_meets_sermon_minimum(
+                video.duration_seconds,
+                minimum_seconds=minimum_duration,
+            ):
+                below_minimum += 1
+            elif not duration_within_sermon_maximum(
+                video.duration_seconds,
+                maximum_seconds=maximum_duration,
+            ):
+                above_maximum += 1
+            else:
+                raise AssertionError("ineligible video did not match an eligibility rule")
             continue
         latest_artifact = database.get_latest_transcript_artifact_for_video(video.id)
         if latest_artifact is None:
@@ -150,6 +166,12 @@ def extract_batch(
             event_callback,
             f"Bypassing {below_minimum} video(s) below the configured "
             f"{minimum_duration:g}-second sermon minimum.",
+        )
+    if above_maximum:
+        _emit(
+            event_callback,
+            f"Bypassing {above_maximum} video(s) above the configured "
+            f"{maximum_duration:g}-second sermon-video maximum.",
         )
     if future_events:
         _emit(event_callback, f"Bypassing {future_events} future event(s).")

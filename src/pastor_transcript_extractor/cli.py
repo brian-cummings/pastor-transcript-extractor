@@ -48,6 +48,8 @@ from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
+    duration_within_sermon_maximum,
+    maximum_sermon_duration_seconds,
     minimum_sermon_duration_seconds,
     publication_is_not_future,
     video_is_sermon_eligible,
@@ -535,6 +537,7 @@ def _select_existing_stage_video_ids(
         video.youtube_video_id for video in database.list_excluded_videos()
     }
     minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
     selected: set[int] = set()
     for source_id in source_ids:
         candidates = [
@@ -545,6 +548,7 @@ def _select_existing_stage_video_ids(
                 video.duration_seconds,
                 video.published_at,
                 minimum_seconds=minimum_duration,
+                maximum_seconds=maximum_duration,
             )
         ]
         candidates.sort(
@@ -14257,6 +14261,7 @@ def doctor(
     tools = build_tool_config()
     llm = build_llm_config()
     sermon_minimum = minimum_sermon_duration_seconds()
+    sermon_maximum = maximum_sermon_duration_seconds()
 
     try:
         ensure_directories(paths)
@@ -14271,6 +14276,7 @@ def doctor(
         ("whisper.cpp", str(tools.whisper_cpp_bin), _path_status(tools.whisper_cpp_bin)),
         ("whisper model", str(tools.whisper_model_path), _path_status(tools.whisper_model_path)),
         ("sermon minimum", f"{sermon_minimum:g} seconds", "configured"),
+        ("sermon-video maximum", f"{sermon_maximum:g} seconds", "configured"),
     ]
 
     ffmpeg_resolved, ffmpeg_status = _tool_status(tools.ffmpeg_bin)
@@ -14325,10 +14331,12 @@ def discover_sources_service(
     skipped_count = 0
     excluded_count = 0
     below_minimum_count = 0
+    above_maximum_count = 0
     future_count = 0
     found_count = 0
     effective_limit = None if all_videos else limit
     minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
     existing_ids = {
         video.youtube_video_id for video in database.list_videos()
     }
@@ -14392,6 +14400,15 @@ def discover_sources_service(
             for video in discovered_videos
             if not publication_is_not_future(video.published_at)
         ]
+        long_videos = [
+            video
+            for video in discovered_videos
+            if not duration_within_sermon_maximum(
+                video.duration_seconds,
+                maximum_seconds=maximum_duration,
+            )
+            and publication_is_not_future(video.published_at)
+        ]
         discovered_videos = [
             video
             for video in discovered_videos
@@ -14399,6 +14416,7 @@ def discover_sources_service(
                 video.duration_seconds,
                 video.published_at,
                 minimum_seconds=minimum_duration,
+                maximum_seconds=maximum_duration,
             )
         ]
         selected_discovered = (
@@ -14413,6 +14431,7 @@ def discover_sources_service(
         }
         found_count += source_found_count
         below_minimum_count += len(short_videos)
+        above_maximum_count += len(long_videos)
         future_count += len(future_videos)
         existing_source_videos = database.list_videos_by_source_id(source.id)
         discovered_videos = _discover_candidate_window(
@@ -14461,6 +14480,8 @@ def discover_sources_service(
         )
         if short_videos:
             source_summary += f", below minimum {len(short_videos)}"
+        if long_videos:
+            source_summary += f", above maximum {len(long_videos)}"
         if future_videos:
             source_summary += f", future {len(future_videos)}"
         if source_excluded_count:
@@ -14485,6 +14506,11 @@ def discover_sources_service(
         summary = (
             f"{summary[:-1]}; bypassed {below_minimum_count} video(s) below the "
             f"configured {minimum_duration:g}-second sermon minimum."
+        )
+    if above_maximum_count:
+        summary = (
+            f"{summary[:-1]}; bypassed {above_maximum_count} video(s) above the "
+            f"configured {maximum_duration:g}-second sermon-video maximum."
         )
     if future_count:
         summary = f"{summary[:-1]}; bypassed {future_count} future event(s)."
@@ -14530,16 +14556,25 @@ def transcribe_videos_service(
         return
 
     minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
     future_events = sum(
         1 for video in videos if not publication_is_not_future(video.published_at)
     )
     below_minimum = sum(
         1
         for video in videos
-        if not video_is_sermon_eligible(
+        if not duration_meets_sermon_minimum(
             video.duration_seconds,
-            video.published_at,
             minimum_seconds=minimum_duration,
+        )
+        and publication_is_not_future(video.published_at)
+    )
+    above_maximum = sum(
+        1
+        for video in videos
+        if not duration_within_sermon_maximum(
+            video.duration_seconds,
+            maximum_seconds=maximum_duration,
         )
         and publication_is_not_future(video.published_at)
     )
@@ -14547,6 +14582,11 @@ def transcribe_videos_service(
         console.print(
             f"Bypassing {below_minimum} video(s) below the configured "
             f"{minimum_duration:g}-second sermon minimum."
+        )
+    if above_maximum:
+        console.print(
+            f"Bypassing {above_maximum} video(s) above the configured "
+            f"{maximum_duration:g}-second sermon-video maximum."
         )
     if future_events:
         console.print(f"Bypassing {future_events} future event(s).")
@@ -14557,13 +14597,14 @@ def transcribe_videos_service(
             video.duration_seconds,
             video.published_at,
             minimum_seconds=minimum_duration,
+            maximum_seconds=maximum_duration,
         )
     ]
     _recover_stale_transcribing_videos(database, videos)
     videos = [database.get_video_by_id(video.id) or video for video in videos]
 
     processed = 0
-    skipped = below_minimum + future_events
+    skipped = below_minimum + above_maximum + future_events
     failed = 0
     claimed_videos = []
     for video in videos:
@@ -14804,16 +14845,25 @@ def fetch_captions_service(
         return
 
     minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
     future_events = sum(
         1 for video in videos if not publication_is_not_future(video.published_at)
     )
     below_minimum = sum(
         1
         for video in videos
-        if not video_is_sermon_eligible(
+        if not duration_meets_sermon_minimum(
             video.duration_seconds,
-            video.published_at,
             minimum_seconds=minimum_duration,
+        )
+        and publication_is_not_future(video.published_at)
+    )
+    above_maximum = sum(
+        1
+        for video in videos
+        if not duration_within_sermon_maximum(
+            video.duration_seconds,
+            maximum_seconds=maximum_duration,
         )
         and publication_is_not_future(video.published_at)
     )
@@ -14822,11 +14872,16 @@ def fetch_captions_service(
             f"Bypassing {below_minimum} video(s) below the configured "
             f"{minimum_duration:g}-second sermon minimum."
         )
+    if above_maximum:
+        console.print(
+            f"Bypassing {above_maximum} video(s) above the configured "
+            f"{maximum_duration:g}-second sermon-video maximum."
+        )
     if future_events:
         console.print(f"Bypassing {future_events} future event(s).")
 
     processed = 0
-    skipped = below_minimum + future_events
+    skipped = below_minimum + above_maximum + future_events
     unavailable = 0
     deferred = 0
     failed = 0
@@ -14859,6 +14914,7 @@ def fetch_captions_service(
             video.duration_seconds,
             video.published_at,
             minimum_seconds=minimum_duration,
+            maximum_seconds=maximum_duration,
         ):
             continue
         transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
@@ -15359,6 +15415,7 @@ def reclassify(
     failed = 0
     eligible_videos = []
     minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
     for video in videos:
         # Frozen fixtures are explicit validation targets.  Do not silently
         # leave stale classifier artifacts because a fixture now falls outside
@@ -15367,12 +15424,13 @@ def reclassify(
             video.duration_seconds,
             video.published_at,
             minimum_seconds=minimum_duration,
+            maximum_seconds=maximum_duration,
         ):
             skipped += 1
             if all_videos or review_required:
                 console.print(
-                    f"Skipping video #{video.id}: video is below the configured "
-                    "sermon minimum or is a future event."
+                    f"Skipping video #{video.id}: video is outside the configured "
+                    "sermon-video duration range or is a future event."
                 )
             continue
         extraction = database.get_latest_extraction_result_for_video(video.id)

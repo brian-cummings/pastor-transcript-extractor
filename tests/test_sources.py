@@ -53,8 +53,11 @@ from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.sermon_detection import detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
+    duration_within_sermon_maximum,
+    maximum_sermon_duration_seconds,
     minimum_sermon_duration_seconds,
     publication_is_not_future,
+    video_is_sermon_eligible,
 )
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.transcription import (
@@ -305,6 +308,19 @@ class SermonDetectionTests(unittest.TestCase):
             self.assertFalse(duration_meets_sermon_minimum(899))
             self.assertTrue(duration_meets_sermon_minimum(900))
         self.assertEqual(900.0, minimum)
+
+    def test_sermon_maximum_keeps_unknown_durations_eligible(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"PTE_MAX_SERMON_DURATION_SECONDS": "10800"},
+            clear=False,
+        ):
+            maximum = maximum_sermon_duration_seconds()
+            self.assertTrue(duration_within_sermon_maximum(None))
+            self.assertTrue(duration_within_sermon_maximum(10800))
+            self.assertFalse(duration_within_sermon_maximum(10801))
+            self.assertFalse(video_is_sermon_eligible(10801, None))
+        self.assertEqual(10800.0, maximum)
 
     def test_future_publications_are_ineligible(self) -> None:
         self.assertFalse(publication_is_not_future("2099-01-01T00:00:00Z"))
@@ -882,6 +898,14 @@ class SegmentationTests(unittest.TestCase):
             )
             discovered = [
                 DiscoveredVideo(
+                    youtube_video_id="overlong001",
+                    title="Seven-hour stream",
+                    url="https://www.youtube.com/watch?v=overlong001",
+                    channel_name="Sample Church",
+                    published_at="2026-08-04T00:00:00Z",
+                    duration_seconds=7 * 60 * 60,
+                ),
+                DiscoveredVideo(
                     youtube_video_id="futureevent",
                     title="Scheduled event",
                     url="https://www.youtube.com/watch?v=futureevent",
@@ -931,6 +955,7 @@ class SegmentationTests(unittest.TestCase):
                 {video.youtube_video_id for video in videos},
             )
             self.assertIsNone(database.get_video_by_youtube_id("futureevent"))
+            self.assertIsNone(database.get_video_by_youtube_id("overlong001"))
             self.assertEqual(2, len(result.selected_video_ids_by_source[source.id]))
 
     def test_discover_limit_keeps_most_recent_results_not_raw_source_order(self) -> None:
@@ -2385,6 +2410,10 @@ class CliTests(unittest.TestCase):
                 SimpleNamespace(
                     id=13, youtube_video_id="short", duration_seconds=600,
                     published_at="2026-03-01T00:00:00+00:00",
+                ),
+                SimpleNamespace(
+                    id=14, youtube_video_id="overlong", duration_seconds=10801,
+                    published_at="2026-04-01T00:00:00+00:00",
                 ),
             ],
             2: [

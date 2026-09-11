@@ -13,6 +13,33 @@ from pastor_transcript_extractor.models import VideoStatus
 
 
 class ExtractionParallelismTests(unittest.TestCase):
+    def test_extract_batch_bypasses_video_above_maximum(self) -> None:
+        video = SimpleNamespace(
+            id=1,
+            pastor_id=None,
+            title="Seven-hour stream",
+            status=VideoStatus.TRANSCRIBED_LOCAL,
+            duration_seconds=7 * 60 * 60,
+            published_at=None,
+        )
+        database = SimpleNamespace(list_videos=lambda: [video])
+        events: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "pastor_transcript_extractor.application.extract_video",
+        ) as extract:
+            result = extract_batch(
+                database,
+                build_paths(Path(tmp)),
+                classifier="rules",
+                event_callback=events.append,
+            )
+
+        self.assertEqual(0, result.processed)
+        self.assertEqual(1, result.skipped)
+        self.assertTrue(any("above" in event and "10800" in event for event in events))
+        extract.assert_not_called()
+
     def test_extract_batch_includes_targetless_video(self) -> None:
         video = SimpleNamespace(
             id=1,

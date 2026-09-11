@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 
 
 DEFAULT_MINIMUM_SERMON_DURATION_SECONDS = 12 * 60
+DEFAULT_MAXIMUM_SERMON_DURATION_SECONDS = 3 * 60 * 60
 MINIMUM_SERMON_DURATION_ENV = "PTE_MIN_SERMON_DURATION_SECONDS"
+MAXIMUM_SERMON_DURATION_ENV = "PTE_MAX_SERMON_DURATION_SECONDS"
 
 
 def minimum_sermon_duration_seconds() -> float:
@@ -26,6 +28,23 @@ def minimum_sermon_duration_seconds() -> float:
     return value
 
 
+def maximum_sermon_duration_seconds() -> float:
+    raw_value = os.environ.get(MAXIMUM_SERMON_DURATION_ENV)
+    if raw_value is None or not raw_value.strip():
+        return float(DEFAULT_MAXIMUM_SERMON_DURATION_SECONDS)
+    try:
+        value = float(raw_value)
+    except ValueError as error:
+        raise ValueError(
+            f"{MAXIMUM_SERMON_DURATION_ENV} must be a positive number of seconds"
+        ) from error
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(
+            f"{MAXIMUM_SERMON_DURATION_ENV} must be a positive number of seconds"
+        )
+    return value
+
+
 def duration_meets_sermon_minimum(
     duration_seconds: float | int | None,
     *,
@@ -36,6 +55,22 @@ def duration_meets_sermon_minimum(
         return True
     threshold = minimum_sermon_duration_seconds() if minimum_seconds is None else minimum_seconds
     return float(duration_seconds) >= threshold
+
+
+def duration_within_sermon_maximum(
+    duration_seconds: float | int | None,
+    *,
+    maximum_seconds: float | None = None,
+) -> bool:
+    """Keep unknown durations eligible until authoritative metadata is available."""
+    if duration_seconds is None:
+        return True
+    threshold = (
+        maximum_sermon_duration_seconds()
+        if maximum_seconds is None
+        else maximum_seconds
+    )
+    return float(duration_seconds) <= threshold
 
 
 def publication_is_not_future(
@@ -66,11 +101,15 @@ def video_is_sermon_eligible(
     published_at: datetime | str | None,
     *,
     minimum_seconds: float | None = None,
+    maximum_seconds: float | None = None,
     now: datetime | None = None,
 ) -> bool:
     return duration_meets_sermon_minimum(
         duration_seconds,
         minimum_seconds=minimum_seconds,
+    ) and duration_within_sermon_maximum(
+        duration_seconds,
+        maximum_seconds=maximum_seconds,
     ) and publication_is_not_future(published_at, now=now)
 
 

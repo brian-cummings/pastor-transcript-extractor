@@ -203,16 +203,17 @@ download admission can continue while the disk reservation remains safe.
 The `--latest` window is preserved through captions, local ASR, extraction,
 registration, and archival; older videos already attached to a reused source are
 not pulled into downstream work merely because `--all-audio` is enabled.
-Videos with a known duration below the universal sermon minimum, along with
-scheduled future events, are bypassed before the per-source discovery limit is
-applied, so they do not consume download slots. The same policy prevents caption
-acquisition, local ASR, extraction, and reclassification of already-discovered
-ineligible videos. Unknown durations remain eligible unless the publication
-timestamp is in the future. The default is 12 minutes; configure it once for
-every workflow:
+Videos with a known duration outside the universal sermon-video duration range,
+along with scheduled future events, are bypassed before the per-source discovery
+limit is applied, so they do not consume download slots. The same policy prevents
+caption acquisition, local ASR, extraction, and reclassification of
+already-discovered ineligible videos. Unknown durations remain eligible unless
+the publication timestamp is in the future. The defaults are 12 minutes minimum
+and 3 hours maximum; configure them once for every workflow:
 
 ```bash
 export PTE_MIN_SERMON_DURATION_SECONDS=720
+export PTE_MAX_SERMON_DURATION_SECONDS=10800
 ```
 
 Imported channel-identity or publisher-association conflicts are never silently
