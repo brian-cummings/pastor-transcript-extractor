@@ -146,7 +146,14 @@ def _run_audio_download(command: list[str], *, url: str) -> None:
         _run_yt_dlp(retry_command, url=url)
 
 
-def download_captions(url: str, yt_dlp_bin: str, output_path: Path, yt_dlp_js_runtimes: str | None = None) -> Path:
+def download_captions(
+    url: str,
+    yt_dlp_bin: str,
+    output_path: Path,
+    yt_dlp_js_runtimes: str | None = None,
+    yt_dlp_cookies_from_browser: str | None = None,
+    yt_dlp_cookies_path: Path | None = None,
+) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     base = output_path.with_suffix("")
     command = [
@@ -162,6 +169,10 @@ def download_captions(url: str, yt_dlp_bin: str, output_path: Path, yt_dlp_js_ru
     ]
     if yt_dlp_js_runtimes:
         command.extend(["--js-runtimes", yt_dlp_js_runtimes])
+    if yt_dlp_cookies_from_browser:
+        command.extend(["--cookies-from-browser", yt_dlp_cookies_from_browser])
+    if yt_dlp_cookies_path is not None:
+        command.extend(["--cookies", str(yt_dlp_cookies_path)])
     command.extend(
         [
             "--no-progress",

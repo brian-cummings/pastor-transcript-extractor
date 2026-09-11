@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+import io
 import json
 import os
 import tempfile
@@ -11,6 +12,8 @@ from typing import Callable
 from unittest.mock import patch
 
 from typer.testing import CliRunner
+from rich.console import Console
+from rich.progress import Progress
 
 from pastor_transcript_extractor.application import ExtractionBatchResult
 from pastor_transcript_extractor.config import (
@@ -33,6 +36,7 @@ from pastor_transcript_extractor.cli import (
     app,
     discover_sources_service,
     run_workflow_service,
+    transcribe_videos_service,
 )
 from pastor_transcript_extractor.media import (
     NoCaptionsAvailableError,
@@ -3191,6 +3195,46 @@ class CliTests(unittest.TestCase):
             self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
             self.assertIsNone(updated_video.failure_reason)
 
+    def test_fetch_passes_explicit_browser_profile_to_caption_downloader(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+            )
+
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                return_value=SimpleNamespace(raw_text_path=Path("captions.txt")),
+            ) as fetch_captions:
+                result = runner.invoke(
+                    app,
+                    [
+                        "fetch",
+                        "--cookies-from-browser",
+                        "chrome:Profile 1",
+                        "--base-dir",
+                        str(base_dir),
+                    ],
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            tools = fetch_captions.call_args.args[2]
+            self.assertEqual("chrome:Profile 1", tools.yt_dlp_cookies_from_browser)
+            self.assertIsNone(tools.yt_dlp_cookies_path)
+
     def test_fetch_retries_infrequent_rate_limit(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -4167,6 +4211,99 @@ class CliTests(unittest.TestCase):
             self.assertIn("Transcribed 2 video(s); skipped 0; failed 0.", result.output)
             self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, first_updated.status)
             self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, second_updated.status)
+
+    def test_terminal_transcription_progress_is_bounded_and_keeps_completion_lines(self) -> None:
+        class RecordingProgress(Progress):
+            instances: list["RecordingProgress"] = []
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.maximum_tasks = 0
+                self.__class__.instances.append(self)
+
+            def add_task(self, *args, **kwargs):
+                task_id = super().add_task(*args, **kwargs)
+                self.maximum_tasks = max(self.maximum_tasks, len(self.task_ids))
+                return task_id
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            videos = [
+                database.add_video(
+                    source_id=source.id,
+                    pastor_id=pastor.id,
+                    youtube_video_id=f"video{index:06d}",
+                    title=f"Sermon {index}",
+                    url=f"https://www.youtube.com/watch?v=video{index:06d}",
+                )
+                for index in range(8)
+            ]
+
+            def fake_prepare(*args, **kwargs):
+                video_id = args[3]
+                stage_callback = kwargs.get("stage_callback")
+                if stage_callback is not None:
+                    stage_callback("normalizing")
+                video = database.get_video_by_id(video_id)
+                return PreparedTranscriptInput(
+                    video_id=video_id,
+                    youtube_video_id=video.youtube_video_id,
+                    pastor_id=pastor.id,
+                    pastor_slug=pastor.slug,
+                    source_url=video.url,
+                    transcript_root=base_dir,
+                    metadata_path=base_dir / f"{video_id}.json",
+                    normalized_audio_path=base_dir / f"{video_id}.wav",
+                    whisper_output_base=base_dir / f"{video_id}-whisper",
+                )
+
+            def fake_complete(*args, **kwargs):
+                stage_callback = kwargs.get("stage_callback")
+                progress_callback = kwargs.get("progress_callback")
+                if stage_callback is not None:
+                    stage_callback("transcribing")
+                if progress_callback is not None:
+                    progress_callback(100)
+                if stage_callback is not None:
+                    stage_callback("done")
+
+            output = io.StringIO()
+            terminal_console = Console(
+                file=output,
+                force_terminal=True,
+                width=100,
+                height=8,
+            )
+            with patch(
+                "pastor_transcript_extractor.cli.get_database",
+                return_value=database,
+            ), patch(
+                "pastor_transcript_extractor.cli.console", terminal_console
+            ), patch(
+                "pastor_transcript_extractor.cli.Progress", RecordingProgress
+            ), patch(
+                "pastor_transcript_extractor.cli.prepare_transcription_input",
+                side_effect=fake_prepare,
+            ), patch(
+                "pastor_transcript_extractor.cli.complete_transcription_video",
+                side_effect=fake_complete,
+            ):
+                transcribe_videos_service(jobs=2, prep_jobs=2, base_dir=base_dir)
+
+            rendered = output.getvalue()
+            self.assertLessEqual(RecordingProgress.instances[-1].maximum_tasks, 4)
+            for video in videos:
+                self.assertIn(
+                    f"Transcribed video #{video.id}: {video.title}", rendered
+                )
 
 
 class TranscriptionTests(unittest.TestCase):

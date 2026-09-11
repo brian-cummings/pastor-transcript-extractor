@@ -227,6 +227,8 @@ def fetch_captions_video(
         tools.yt_dlp_bin,
         captions_download_path,
         tools.yt_dlp_js_runtimes,
+        tools.yt_dlp_cookies_from_browser,
+        tools.yt_dlp_cookies_path,
     )
     raw_text = _captions_to_plain_text(captions_path)
     raw_segments = _captions_to_segments(captions_path)

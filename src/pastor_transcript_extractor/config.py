@@ -35,6 +35,8 @@ class ToolConfig:
     ffmpeg_bin: str
     yt_dlp_bin: str
     yt_dlp_js_runtimes: str | None
+    yt_dlp_cookies_from_browser: str | None = None
+    yt_dlp_cookies_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,12 +192,21 @@ def _detect_yt_dlp_js_runtime() -> str | None:
 
 def build_tool_config() -> ToolConfig:
     configured_js_runtimes = os.environ.get("PTE_YT_DLP_JS_RUNTIMES")
+    configured_cookies_path = os.environ.get("PTE_YT_DLP_COOKIES")
     return ToolConfig(
         whisper_cpp_bin=Path(os.environ.get("PTE_WHISPER_CPP_BIN", DEFAULT_WHISPER_CPP_BIN)),
         whisper_model_path=Path(os.environ.get("PTE_WHISPER_MODEL_PATH", DEFAULT_WHISPER_MODEL_PATH)),
         ffmpeg_bin=_resolve_command_path(os.environ.get("PTE_FFMPEG_BIN", DEFAULT_FFMPEG_BIN)),
         yt_dlp_bin=_resolve_command_path(os.environ.get("PTE_YT_DLP_BIN", DEFAULT_YT_DLP_BIN)),
         yt_dlp_js_runtimes=configured_js_runtimes or _detect_yt_dlp_js_runtime(),
+        yt_dlp_cookies_from_browser=os.environ.get(
+            "PTE_YT_DLP_COOKIES_FROM_BROWSER"
+        ),
+        yt_dlp_cookies_path=(
+            Path(configured_cookies_path).expanduser().resolve()
+            if configured_cookies_path
+            else None
+        ),
     )
 
 
