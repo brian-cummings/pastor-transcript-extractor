@@ -24,6 +24,7 @@ def candidate(
     source_family: str | None = None,
     partition: str | None = None,
     profile_ids: frozenset[int] = frozenset(),
+    superseded_profile_ids: frozenset[int] = frozenset(),
     different_from: frozenset[str] = frozenset(),
     consistency_score: float | None = None,
     bootstrap_profile_id: int | None = None,
@@ -38,6 +39,7 @@ def candidate(
         source_family_id=source_family,
         evaluation_partition=partition,
         reviewed_profile_ids=profile_ids,
+        superseded_profile_ids=superseded_profile_ids,
         explicitly_different_from=different_from,
         observation_consistency_score=consistency_score,
         configured_profile_bootstrap_id=bootstrap_profile_id,
@@ -884,32 +886,27 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         self.assertEqual("review_nomination_only", provenance["role"])
         self.assertFalse(provenance["identity_evidence"])
 
-    def test_association_confirmation_routes_ready_profile_for_prospective_review(
+    def test_association_confirmation_does_not_route_ready_profile_for_review(
         self,
     ) -> None:
-        selected = select_next_speaker_pair(
-            [
-                candidate("candidate"),
-                candidate("ready", profile_ids=frozenset((7,))),
-            ],
-            PairSelectionHistory(),
-            selection_goal="automation-readiness",
-            association_confirmation_pairs=(
-                self._association_nomination("candidate", "ready"),
-            ),
-            automatic_profile_ready_ids=frozenset((7,)),
-        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "automatic-ready profile observations.*were excluded",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate("candidate"),
+                    candidate("ready", profile_ids=frozenset((7,))),
+                ],
+                PairSelectionHistory(),
+                selection_goal="automation-readiness",
+                association_confirmation_pairs=(
+                    self._association_nomination("candidate", "ready"),
+                ),
+                automatic_profile_ready_ids=frozenset((7,)),
+            )
 
-        self.assertEqual(
-            "shadow_association_prospective_confirmation",
-            selected.manifest["selection_objective"],
-        )
-        self.assertTrue(
-            selected.manifest["shadow_association_confirmation"]
-            ["target_profile_automatic_ready"]
-        )
-
-    def test_ready_active_assignment_is_prioritized_for_validation(
+    def test_ready_active_assignment_is_excluded_from_validation(
         self,
     ) -> None:
         selected = select_next_speaker_pair(
@@ -940,47 +937,40 @@ class SpeakerPairSelectorTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {"active-candidate", "active-exemplar"},
+            {"shadow-candidate", "shadow-exemplar"},
             {
                 selected.observation_a.input_fingerprint,
                 selected.observation_b.input_fingerprint,
             },
         )
         self.assertEqual(
-            "machine_assignment_validation",
+            "shadow_association_confirmation",
             selected.manifest["selection_objective"],
         )
         provenance = selected.manifest["shadow_association_confirmation"]
-        self.assertTrue(provenance["provisional_assignment_active"])
+        self.assertFalse(provenance["provisional_assignment_active"])
         self.assertFalse(provenance["identity_evidence"])
 
-    def test_blocked_machine_assignment_remains_reviewable(self) -> None:
-        selected = select_next_speaker_pair(
-            [
-                candidate("candidate"),
-                candidate("ready", profile_ids=frozenset((7,))),
-            ],
-            PairSelectionHistory(),
-            selection_goal="automation-readiness",
-            association_confirmation_pairs=(
-                self._association_nomination(
-                    "candidate",
-                    "ready",
-                    machine_assignment_reviewable=True,
+    def test_blocked_machine_assignment_to_ready_profile_is_not_reviewable(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(ValueError, "automatic-ready profile"):
+            select_next_speaker_pair(
+                [
+                    candidate("candidate"),
+                    candidate("ready", profile_ids=frozenset((7,))),
+                ],
+                PairSelectionHistory(),
+                selection_goal="automation-readiness",
+                association_confirmation_pairs=(
+                    self._association_nomination(
+                        "candidate",
+                        "ready",
+                        machine_assignment_reviewable=True,
+                    ),
                 ),
-            ),
-            automatic_profile_ready_ids=frozenset((7,)),
-        )
-
-        self.assertEqual(
-            "machine_assignment_validation",
-            selected.manifest["selection_objective"],
-        )
-        self.assertTrue(
-            selected.manifest["shadow_association_confirmation"][
-                "machine_assignment_reviewable"
-            ]
-        )
+                automatic_profile_ready_ids=frozenset((7,)),
+            )
 
     def test_stale_association_candidate_is_excluded_after_profile_assignment(
         self,
@@ -1052,6 +1042,65 @@ class SpeakerPairSelectorTests(unittest.TestCase):
             [7],
             selected.manifest[
                 "automatic_profile_ready_ids_excluded_from_reinforcement"
+            ],
+        )
+        self.assertEqual(
+            3,
+            selected.manifest[
+                "automatic_profile_ready_observation_count_excluded"
+            ],
+        )
+
+    def test_automation_readiness_excludes_current_replacements_of_ready_profiles(
+        self,
+    ) -> None:
+        redundant = AcousticPairRanking(
+            fingerprint_a="replacement-a",
+            fingerprint_b="replacement-b",
+            same_boundary_margin=0.20,
+            centroid_similarity=0.99,
+            report_result_sha256="a" * 64,
+            report_path="discovery.json",
+        )
+        useful = AcousticPairRanking(
+            fingerprint_a="useful-a",
+            fingerprint_b="useful-b",
+            same_boundary_margin=0.05,
+            centroid_similarity=0.90,
+            report_result_sha256="b" * 64,
+            report_path="discovery.json",
+        )
+
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "replacement-a",
+                    superseded_profile_ids=frozenset((7,)),
+                ),
+                candidate(
+                    "replacement-b",
+                    superseded_profile_ids=frozenset((7,)),
+                ),
+                candidate("useful-a"),
+                candidate("useful-b"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="automation-readiness",
+            profile_growth_acoustic_pairs=(redundant, useful),
+            automatic_profile_ready_ids=frozenset((7,)),
+        )
+
+        self.assertEqual(
+            {"useful-a", "useful-b"},
+            {
+                selected.observation_a.input_fingerprint,
+                selected.observation_b.input_fingerprint,
+            },
+        )
+        self.assertEqual(
+            2,
+            selected.manifest[
+                "automatic_profile_ready_observation_count_excluded"
             ],
         )
 
@@ -1364,27 +1413,23 @@ class SpeakerPairSelectorTests(unittest.TestCase):
                 automatic_profile_ready_ids=frozenset((7,)),
             )
 
-    def test_profile_growth_allows_ready_profile_reconciliation_by_name(
+    def test_profile_growth_excludes_ready_profile_reconciliation_by_name(
         self,
     ) -> None:
-        selected = select_next_speaker_pair(
-            [
-                candidate(
-                    "ready", name="alex", profile_ids=frozenset((7,))
-                ),
-                candidate(
-                    "duplicate", name="alex", profile_ids=frozenset((8,))
-                ),
-            ],
-            PairSelectionHistory(),
-            selection_goal="profile-growth",
-            automatic_profile_ready_ids=frozenset((7,)),
-        )
-
-        self.assertEqual(
-            "attribution_reconciliation_bridge",
-            selected.manifest["selection_objective"],
-        )
+        with self.assertRaisesRegex(ValueError, "automatic-ready profile"):
+            select_next_speaker_pair(
+                [
+                    candidate(
+                        "ready", name="alex", profile_ids=frozenset((7,))
+                    ),
+                    candidate(
+                        "duplicate", name="alex", profile_ids=frozenset((8,))
+                    ),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                automatic_profile_ready_ids=frozenset((7,)),
+            )
 
     def test_automation_readiness_skips_profile_without_bridge_edges(self) -> None:
         ready_edges = {

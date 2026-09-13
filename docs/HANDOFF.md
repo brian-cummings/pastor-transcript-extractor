@@ -530,7 +530,10 @@ recording.
 If no discovery overlap needs resolution, the objective selects an unseen
 internal comparison whose added edge would remove one or more bridge
 dependencies from a reviewed profile graph. Already bridge-free profiles are
-skipped. If no useful reinforcement remains, it falls back to normal
+skipped. Automatic-ready profiles and current observations that supersede their
+older members are also excluded from routine nomination. If currency repair is
+required, it is handled by `review-next-superseded-profile-member`, not generic
+profile growth. If no useful reinforcement remains, it falls back to normal
 profile-growth selection. It never tells the reviewer that the observations
 are currently grouped and never assumes that grouping is correct; timestamped
 source-video links are available for confirmation.

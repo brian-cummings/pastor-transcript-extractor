@@ -56,6 +56,7 @@ class PairCandidateObservation:
     source_family_id: str | None = None
     evaluation_partition: str | None = None
     reviewed_profile_ids: frozenset[int] = frozenset()
+    superseded_profile_ids: frozenset[int] = frozenset()
     explicitly_different_from: frozenset[str] = frozenset()
     observation_consistency_score: float | None = None
     configured_profile_bootstrap_id: int | None = None
@@ -464,8 +465,37 @@ def select_next_speaker_pair(
             )
         )
     ]
+    ready_profile_excluded = [
+        item
+        for item in candidates
+        if (
+            item.reviewed_profile_ids | item.superseded_profile_ids
+        )
+        & automatic_profile_ready_ids
+    ]
+    if goal in {
+        SelectionGoal.PROFILE_GROWTH,
+        SelectionGoal.AUTOMATION_READINESS,
+    }:
+        # Readiness is a terminal state for routine pair nomination. A current
+        # observation may have a new immutable fingerprint while superseding an
+        # older member of a ready profile; retain that lineage only to keep the
+        # replacement out of generic growth. Any required confirmation belongs
+        # to the explicit superseded-member restoration workflow.
+        candidates = [
+            item for item in candidates if item not in ready_profile_excluded
+        ]
     if len(candidates) < 2:
         scope = evaluation_partition or "all partitions"
+        if goal in {
+            SelectionGoal.PROFILE_GROWTH,
+            SelectionGoal.AUTOMATION_READINESS,
+        }:
+            raise ValueError(
+                f"no actionable {goal.value} pair remains in {scope}: "
+                "automatic-ready profile observations and their current "
+                "replacements were excluded"
+            )
         raise ValueError(
             f"fewer than two eligible speaker observations remain in {scope}"
         )
@@ -767,6 +797,7 @@ def select_next_speaker_pair(
             "source_family_id": item.source_family_id,
             "evaluation_partition": item.evaluation_partition,
             "reviewed_profile_ids": sorted(item.reviewed_profile_ids),
+            "superseded_profile_ids": sorted(item.superseded_profile_ids),
             "explicitly_different_from": sorted(item.explicitly_different_from),
             "configured_profile_bootstrap_id": (
                 item.configured_profile_bootstrap_id
@@ -812,6 +843,12 @@ def select_next_speaker_pair(
         ] = sorted(
             automatic_profile_ready_ids
         )
+        manifest[
+            "automatic_profile_ready_ids_excluded_from_nomination"
+        ] = sorted(automatic_profile_ready_ids)
+        manifest[
+            "automatic_profile_ready_observation_count_excluded"
+        ] = len(ready_profile_excluded)
     selected_association = association_confirmation_by_pair.get(
         frozenset(
             (
