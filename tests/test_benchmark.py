@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -17,6 +18,8 @@ from pastor_transcript_extractor.benchmark import (
     effective_membership,
     record_membership,
     snapshot_document,
+    _common_feature_mask,
+    _rank_reference,
 )
 from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.config import build_paths, ensure_directories
@@ -37,6 +40,16 @@ class ReferencePanelTests(unittest.TestCase):
         ensure_directories(paths)
         self.database = Database(paths.database)
         self.database.initialize()
+        # These tests use synthetic stored vectors to isolate comparison geometry.
+        # Exact-current input validation is exercised with real sermons in population tests.
+        current = patch(
+            "pastor_transcript_extractor.benchmark.get_current_profile_scripture_run",
+            side_effect=lambda db, profile_id: db.get_compatible_speaker_profile_analysis_run(
+                profile_id, PROFILE_ANALYZER_KEY, PROFILE_ANALYZER_VERSION
+            ),
+        )
+        current.start()
+        self.addCleanup(current.stop)
         self.panel, _ = create_panel(
             self.database,
             key="prominent-pastors-v1",
@@ -252,7 +265,7 @@ class ReferencePanelTests(unittest.TestCase):
             document["snapshot"]["feature_family_assignments"]["diagnostic_only"],
         )
         self.assertEqual(
-            "benchmark-feature-schema@2",
+            "benchmark-feature-schema@3",
             document["snapshot"]["feature_schema_version"],
         )
         self.assertNotIn("old_testament_share", document["feature_matrix"]["feature_names"])
@@ -338,7 +351,7 @@ class ReferencePanelTests(unittest.TestCase):
         candidate, near, far, snapshot = self._comparison_fixture()
 
         outcome = compare_profile_to_panel(
-            self.database, profile_id=candidate.id, panel_key=self.panel.key
+            self.database, profile_id=candidate.id, panel_key=self.panel.key, comparison_level="full"
         )
 
         self.assertTrue(outcome.created)
@@ -358,7 +371,7 @@ class ReferencePanelTests(unittest.TestCase):
         ) ** 0.5
         self.assertAlmostEqual(expected, rankings[0]["distance"], places=5)
         self.assertEqual(
-            "deterministic_scripture_usage_similarity_only", outcome.result["scope"]
+            "experimental_comparison_of_collected_sermon_samples", outcome.result["scope"]
         )
         self.assertGreater(
             outcome.result["ranking_separation"]["absolute_margin"], 0
@@ -407,6 +420,51 @@ class ReferencePanelTests(unittest.TestCase):
         self.assertNotEqual(changed.run.id, panel_changed.run.id)
         self.assertEqual(rebuilt.snapshot.id, panel_changed.run.panel_snapshot_id)
 
+    def test_eighth_sermon_does_not_automatically_change_scope(self) -> None:
+        candidate, near, far, snapshot = self._comparison_fixture(candidate_sermons=7)
+        before = compare_profile_to_panel(self.database, profile_id=candidate.id, panel_key=self.panel.key)
+        self._analysis(candidate.id, "eighth", offset=1, sermons=8)
+        after = compare_profile_to_panel(self.database, profile_id=candidate.id, panel_key=self.panel.key)
+        self.assertEqual(before.result["feature_families"], after.result["feature_families"])
+        self.assertEqual(before.result["rankings"], after.result["rankings"])
+
+    def test_stale_reference_abstains_or_requires_explicit_historical_scope(self) -> None:
+        candidate, near, far, snapshot = self._comparison_fixture()
+        first = compare_profile_to_panel(self.database, profile_id=candidate.id, panel_key=self.panel.key)
+        self._analysis(near.id, "replacement-reference", offset=2, sermons=8)
+        changed = compare_profile_to_panel(self.database, profile_id=candidate.id, panel_key=self.panel.key)
+        self.assertNotEqual(first.run.id, changed.run.id)
+        self.assertEqual("abstained", changed.result["status"])
+        self.assertEqual([], changed.result["rankings"])
+        self.assertTrue(any("reference_snapshot_input_not_current" in row["reasons"] for row in changed.result["excluded_references"]))
+        historical = compare_profile_to_panel(self.database, profile_id=candidate.id, panel_key=self.panel.key,
+                                              snapshot_id=snapshot.snapshot.id, historical_references=True)
+        self.assertEqual(2, len(historical.result["rankings"]))
+        self.assertEqual("current_candidate_historical_references", historical.result["input_scope"])
+        with self.assertRaisesRegex(ValueError, "explicit snapshot"):
+            compare_profile_to_panel(self.database, profile_id=candidate.id, panel_key=self.panel.key, historical_references=True)
+
+    def test_exact_ties_do_not_have_a_unique_winner(self) -> None:
+        candidate, near, far, snapshot = self._comparison_fixture()
+        self._analysis(far.id, "far-now-equal", offset=0, sermons=8)
+        anchor = self._profile("calibration-anchor")
+        self._attach(anchor.id)
+        self._analysis(anchor.id, "anchor-run", offset=10, sermons=8)
+        build_snapshot(self.database, self.panel.key)
+        result = compare_profile_to_panel(self.database, profile_id=candidate.id, panel_key=self.panel.key).result
+        self.assertEqual([near.id, far.id], result["tied_nearest_reference_ids"])
+        self.assertEqual(0, result["ranking_separation"]["absolute_margin"])
+        self.assertEqual([], result["certified_comparison_features"])
+
+    def test_all_constant_coordinates_abstain_even_for_a_matching_candidate(self) -> None:
+        candidate, near, far, snapshot = self._comparison_fixture()
+        self._analysis(far.id, "same-as-near", offset=0, sermons=8)
+        build_snapshot(self.database, self.panel.key)
+        result = compare_profile_to_panel(self.database, profile_id=near.id, panel_key=self.panel.key).result
+        self.assertEqual("abstained", result["status"])
+        self.assertIn("no_common_supported_features", result["abstention_reasons"])
+        self.assertEqual([], result["certified_comparison_features"])
+
     def test_five_sermon_candidate_uses_core_comparison(self) -> None:
         candidate, _near, _far, _snapshot = self._comparison_fixture(
             candidate_sermons=5
@@ -442,7 +500,7 @@ class ReferencePanelTests(unittest.TestCase):
         snapshot = build_snapshot(self.database, self.panel.key)
 
         outcome = compare_profile_to_panel(
-            self.database, profile_id=candidate.id, panel_key=self.panel.key
+            self.database, profile_id=candidate.id, panel_key=self.panel.key, comparison_level="full"
         )
 
         self.assertEqual(
@@ -593,6 +651,28 @@ class ReferencePanelTests(unittest.TestCase):
                 ),
             ],
         )
+
+
+class ComparisonGeometryTests(unittest.TestCase):
+    def test_constant_panel_mismatch_cannot_be_zero_distance(self):
+        candidate = {"comparison_values": {"x": 100, "y": 1}}
+        reference = {"resolved_profile_id": 1, "comparison_values": {"x": 0, "y": 1}}
+        stats = {"features": {"x": {"median_absolute_deviation": 0, "minimum": 0, "maximum": 0},
+                              "y": {"median_absolute_deviation": 1, "minimum": 0, "maximum": 2}}}
+        families, omissions, reasons = _common_feature_mask(candidate, [reference], {"family": ("x", "y")}, stats)
+        self.assertIn("out_of_panel_unscalable_difference", reasons)
+        self.assertEqual(100, omissions[0]["reference_values"][0]["raw_difference"])
+        self.assertIsNone(_rank_reference(candidate, reference, families={"family": ("x", "y")}, panel_statistics=stats))
+
+    def test_missing_optional_coordinate_is_omitted_for_every_reference(self):
+        candidate = {"comparison_values": {"x": 1, "y": 2}}
+        references = [{"resolved_profile_id": 1, "comparison_values": {"x": 0, "y": None}},
+                      {"resolved_profile_id": 2, "comparison_values": {"x": 3, "y": 4}}]
+        stats = {"features": {name: {"median_absolute_deviation": 1} for name in ("x", "y")}}
+        mask, omissions, reasons = _common_feature_mask(candidate, references, {"family": ("x", "y")}, stats)
+        self.assertEqual({"family": ("x",)}, mask)
+        self.assertEqual("y", omissions[0]["feature"])
+        self.assertEqual([], reasons)
 
 
 if __name__ == "__main__":

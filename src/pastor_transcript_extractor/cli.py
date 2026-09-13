@@ -2152,6 +2152,8 @@ def benchmark_compare(
     snapshot_id: int | None = typer.Option(
         None, "--snapshot-id", help="Use an exact panel snapshot instead of the latest."
     ),
+    comparison_level: str = typer.Option("core", "--comparison-level", help="Fixed experimental scope: core or full."),
+    historical_references: bool = typer.Option(False, "--historical-references", help="Explicitly pin historical reference inputs; requires --snapshot-id."),
     limit: int = typer.Option(5, "--limit", min=1, help="Nearest references to show."),
     json_output: bool = typer.Option(False, "--json", help="Emit the durable result JSON."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -2163,6 +2165,8 @@ def benchmark_compare(
             profile_id=profile_id,
             panel_key=panel_key,
             snapshot_id=snapshot_id,
+            comparison_level=comparison_level,
+            historical_references=historical_references,
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
@@ -2170,6 +2174,7 @@ def benchmark_compare(
     if json_output:
         console.print_json(json.dumps(result, sort_keys=True))
         return
+    console.print("Experimental comparison of collected sermon samples; no dimensions are certified.")
     candidate = result["candidate"]
     panel = result["panel"]
     diagnostics = candidate["coverage_diagnostics"]
@@ -2177,7 +2182,7 @@ def benchmark_compare(
         f"Comparison #{outcome.run.id} {'created' if outcome.created else 'reused'}: "
         f"profile #{candidate['resolved_profile_id']} {candidate['display_label']}\n"
         f"Panel: {panel['display_name']} ({panel['key']}), snapshot #{panel['snapshot_id']}\n"
-        f"Scope: deterministic Scripture-use similarity; "
+        f"Scope: experimental collected-sermon sample differences; "
         f"level={result['comparison_level']}; "
         f"sermons={diagnostics.get('sermons_analyzed', '—')}; "
         f"analysis coverage={diagnostics.get('analysis_coverage_fraction', '—')}"
@@ -2200,18 +2205,21 @@ def benchmark_compare(
     table.add_column("Family distances")
     rankings = result["rankings"][:limit]
     for index, ranking in enumerate(rankings, start=1):
+        tied_rank = 1 + sum(row["distance"] < ranking["distance"] for row in result["rankings"])
         family_text = ", ".join(
             f"{item['family']}={item['distance']:.3f}"
             for item in ranking["family_distances"]
         )
         table.add_row(
-            str(index),
+            str(tied_rank),
             str(ranking["reference_display_label"]),
             f"#{ranking['reference_profile_id']}",
             f"{ranking['distance']:.3f}",
             family_text,
         )
     console.print(table)
+    if len(result.get("tied_nearest_reference_ids", [])) > 1:
+        console.print("Tied nearest references (no unique winner): " + ", ".join(map(str, result["tied_nearest_reference_ids"])))
     separation = result.get("ranking_separation")
     if separation is not None:
         console.print(
@@ -2528,11 +2536,12 @@ def _print_population_analysis(snapshot: object, report: dict[str, object]) -> N
     table.add_column("N", justify="right")
     table.add_column("Missing", justify="right")
     table.add_column("Zero", justify="right")
-    table.add_column("LOO")
+    table.add_column("Deletion sensitivity")
     table.add_column("Size r", justify="right")
     table.add_column("Strong corr.", justify="right")
     table.add_column("Outliers", justify="right")
     table.add_column("Advisory recommendation")
+    console.print("LOO measures aggregate deletion sensitivity, not pastor reliability. Depth cohorts are not learning curves.")
     diagnostics = report["feature_diagnostics"]
     for name in report["feature_names"]:
         item = diagnostics[name]
@@ -2543,7 +2552,8 @@ def _print_population_analysis(snapshot: object, report: dict[str, object]) -> N
             str(distribution["observed_count"]),
             str(distribution["missing_count"]),
             str(distribution["zero_count"]),
-            str(item["leave_one_out"]["stability"]),
+            str(item["leave_one_out"].get("deletion_sensitivity",
+                "historical stability label: " + str(item["leave_one_out"].get("stability")))),
             f"{correlation:.2f}" if correlation is not None else "—",
             str(len(item["highly_correlated_with"])),
             str(len(item["outliers"])),
@@ -3217,7 +3227,8 @@ def _print_profile_scripture_summary(database: Database, run) -> None:
         ):
             value = structural_values.get(feature)
             structural.add_row(
-                feature,
+                "Detected Bible-text span fraction"
+                if feature == "scripture_text_engagement_fraction" else feature,
                 "insufficient coverage" if value is None else str(value),
             )
     console.print(structural)

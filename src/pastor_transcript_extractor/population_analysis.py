@@ -30,13 +30,21 @@ from pastor_transcript_extractor.sermon_analysis import OLD_TESTAMENT_BOOKS
 from pastor_transcript_extractor.storage import Database
 
 
-POPULATION_ANALYZER_VERSION = "scripture-population-diagnostics@2"
+POPULATION_ANALYZER_VERSION = "scripture-population-diagnostics@3"
 FEATURE_SCHEMA_VERSION = "deterministic-profile-feature-vector@2"
 ELIGIBILITY_POLICY_VERSION = "population-current-profiles@1"
 MIN_CORRELATION_PROFILES = 10
 MIN_OUTLIER_PROFILES = 8
 STRONG_CORRELATION_THRESHOLD = 0.75
 HIGH_CORRELATION_THRESHOLD = 0.90
+UNSUPPORTED_BOOTSTRAP_FEATURES = frozenset({
+    "cross_sermon_anchor_coverage",
+    "mean_pairwise_book_distribution_cosine",
+    "chapter_breadth_per_10_references",
+    "book_breadth_per_10_references",
+})
+PRIMARY_FEATURES = ("references_per_1000_words", "scripture_text_engagement_fraction")
+
 FEATURE_NAMES = tuple(
     name for name in PROFILE_FEATURE_ORDER if name != "analysis_coverage_fraction"
 )
@@ -396,18 +404,40 @@ def _profile_stability(
     for name in FEATURE_NAMES:
         center = baseline[name]
         loo_values = [value for item in leave_one_out if (value := item[name]) is not None]
-        bootstrap_values = [value for item in bootstraps if (value := item[name]) is not None]
+        bootstrap_values = (
+            [value for item in bootstraps if (value := item[name]) is not None]
+            if name not in UNSUPPORTED_BOOTSTRAP_FEATURES else []
+        )
         deltas = [abs(value - center) for value in loo_values] if center is not None else []
         features[name] = {
             "leave_one_out_observed": len(loo_values),
             "leave_one_out_max_absolute_delta": max(deltas) if deltas else None,
             "leave_one_out_median_absolute_delta": statistics.median(deltas) if deltas else None,
             "leave_one_out_variance": _variance(loo_values),
+            "bootstrap_status": (
+                "unsupported_distinct_origin_or_exposure_estimator_required"
+                if name in UNSUPPORTED_BOOTSTRAP_FEATURES
+                else "conditional_on_collected_sermons_not_pastor_reliability"
+            ),
             "bootstrap_observed": len(bootstrap_values),
             "bootstrap_ci_95_lower": _quantile(bootstrap_values, 0.025),
             "bootstrap_ci_95_upper": _quantile(bootstrap_values, 0.975),
         }
-    return {"features": features}
+    sermon_distributions = {}
+    for name in PRIMARY_FEATURES:
+        observations = [
+            {"sermon_run_id": record.run_id, "video_id": record.video_id,
+             "value": aggregate_sermon_records([record])[name]}
+            for record in records
+        ]
+        values = [item["value"] for item in observations if item["value"] is not None]
+        sermon_distributions[name] = {
+            "estimand": "equal_sermon_distribution",
+            "distribution": _distribution(values, len(records)),
+            "population_variance": _variance(values),
+            "observations": observations,
+        }
+    return {"features": features, "sermon_distributions": sermon_distributions}
 
 
 def _selection_delta(
@@ -478,11 +508,12 @@ def _recommendation(
     elif redundant_with:
         decision = "review_redundancy"
     elif role == "depth_sensitive_minimum_8_sermons":
-        decision = "retain_with_minimum_8_sermons"
+        decision = "validate_before_comparison"
     elif role == "core_minimum_5_sermons":
-        decision = "retain_core_minimum_5_sermons"
+        decision = "validate_before_comparison"
     else:
-        decision = "retain"
+        decision = "description_only_pending_validation"
+    reasons.append("deletion_sensitivity_does_not_establish_reliability")
     return decision, reasons
 
 
@@ -758,9 +789,12 @@ def build_population_snapshot(
                 "worst_max_delta_in_population_iqr": (
                     round(max(normalized_loo), 6) if normalized_loo else None
                 ),
-                "stability": stability_label,
+                "deletion_sensitivity": ({"high": "low", "moderate": "moderate", "low": "high", "not_evaluable": "not_evaluable"}[stability_label]),
             },
             "bootstrap": {
+                "status": ("unsupported_distinct_origin_or_exposure_estimator_required"
+                           if name in UNSUPPORTED_BOOTSTRAP_FEATURES
+                           else "conditional_on_collected_sermons_not_pastor_reliability"),
                 "profiles_evaluated": len(normalized_bootstrap),
                 "median_ci_width_in_population_iqr": (
                     round(statistics.median(normalized_bootstrap), 6)
@@ -769,8 +803,8 @@ def build_population_snapshot(
                 ),
             },
             "between_profile_variance": between_variance,
-            "estimated_mean_within_profile_loo_variance": mean_within,
-            "between_to_within_variance_ratio": (
+            "mean_aggregate_deletion_variance": mean_within,
+            "between_to_aggregate_deletion_variance_ratio": (
                 round(between_variance / mean_within, 6)
                 if between_variance is not None and mean_within is not None and mean_within > 0
                 else None
@@ -818,11 +852,12 @@ def build_population_snapshot(
         depth_stability[str(minimum)] = {
             "profile_count": len(cohort),
             "feature_estimates_evaluated": evaluated,
-            "high_stability_fraction": round(stable / evaluated, 6) if evaluated else None,
+            "low_deletion_sensitivity_fraction": round(stable / evaluated, 6) if evaluated else None,
+            "sampling": "eligible_cohort_full_samples_not_matched_depth",
         }
 
     report: dict[str, object] = {
-        "schema_version": "scripture-population-report@1",
+        "schema_version": "scripture-population-report@2",
         "analyzer_version": analyzer_version,
         "profile_analyzer": f"{PROFILE_ANALYZER_KEY}@{PROFILE_ANALYZER_VERSION}",
         "feature_schema_version": FEATURE_SCHEMA_VERSION,
@@ -848,13 +883,16 @@ def build_population_snapshot(
             high_correlations,
             key=lambda item: (-abs(item["pearson"]), item["left"], item["right"]),
         ),
-        "stability_by_minimum_sermons": depth_stability,
+        "cohorts_by_minimum_sermons": depth_stability,
         "profiles": profiles,
         "interpretation": {
             "recommendations_are_advisory": True,
             "feature_schema_changed": False,
             "comparison_or_ranking_performed": False,
-            "within_profile_variance_is_loo_estimate": True,
+            "aggregate_deletion_variance_is_not_sermon_variance": True,
+            "cohort_summaries_are_not_learning_curves": True,
+            "certified_comparison_features": [],
+            "primary_profile_estimates_are_pooled_word_weighted": True,
             "manual_inspection_included": False,
             "null_values_mean_insufficient_evidence": True,
             "minimum_profiles_for_correlation_flag": MIN_CORRELATION_PROFILES,

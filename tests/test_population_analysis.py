@@ -6,6 +6,8 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from dataclasses import replace
+import statistics
 
 from typer.testing import CliRunner
 
@@ -18,8 +20,9 @@ from pastor_transcript_extractor.population_analysis import (
     aggregate_sermon_records,
     build_population_snapshot,
     load_population_snapshot_report,
+    _profile_stability,
 )
-from pastor_transcript_extractor.profile_analysis import build_profile_scripture_analysis
+from pastor_transcript_extractor.profile_analysis import build_profile_scripture_analysis, get_current_profile_scripture_run
 from pastor_transcript_extractor.sermon_analysis import analyze_sermon
 from pastor_transcript_extractor.storage import Database
 
@@ -164,12 +167,12 @@ class PopulationAnalysisTests(unittest.TestCase):
         density = first.report["feature_diagnostics"]["references_per_1000_words"]
         self.assertEqual(3, density["distribution"]["observed_count"])
         self.assertIn(
-            density["leave_one_out"]["stability"],
+            density["leave_one_out"]["deletion_sensitivity"],
             {"high", "moderate", "low", "not_evaluable"},
         )
         self.assertTrue(first.report["interpretation"]["recommendations_are_advisory"])
         self.assertEqual(
-            "benchmark-feature-schema@2",
+            "benchmark-feature-schema@3",
             first.report["reviewed_comparison_schema_version"],
         )
         alignment_presence = first.report["feature_diagnostics"][
@@ -261,6 +264,53 @@ class PopulationAnalysisTests(unittest.TestCase):
         self.assertIsNone(all_empty["old_testament_share"])
         self.assertEqual(1.0, all_empty["zero_detected_reference_sermon_fraction"])
 
+    def test_current_profile_rejects_changed_source_and_membership(self) -> None:
+        profile = self.profiles[0]
+        self.assertIsNotNone(get_current_profile_scripture_run(self.database, profile.id))
+        path = self.base_dir / "population-0-0.json"
+        original = path.read_text()
+        content = json.loads(original)
+        content["segments"][0]["text"] += " Romans 12:1"
+        path.write_text(json.dumps(content))
+        self.assertIsNone(get_current_profile_scripture_run(self.database, profile.id))
+        path.write_text(original)
+        self.assertIsNotNone(get_current_profile_scripture_run(self.database, profile.id))
+        self._add_sermon(profile.id, self.database.list_sources()[0].id, 0, 3, "John 3:16")
+        self.assertIsNone(get_current_profile_scripture_run(self.database, profile.id))
+
+    def test_deletion_variance_is_not_sermon_variance_and_recurrence_ci_is_suppressed(self) -> None:
+        base = SermonRecord(1, 1, 1, None, 1000, Counter({"John": 1}),
+                            Counter({"John 3": 1}), 0, 0, 0, 0, (), Counter())
+        records = [replace(base, run_id=i, video_id=i, books=Counter({"John": i}))
+                   for i in range(1, 6)]
+        detail = _profile_stability(records, aggregate_sermon_records(records),
+                                    bootstrap_samples=20, seed="test")
+        density = detail["features"]["references_per_1000_words"]
+        actual = detail["sermon_distributions"]["references_per_1000_words"]["population_variance"]
+        self.assertAlmostEqual(statistics.pvariance(range(1, 6)), actual)
+        self.assertAlmostEqual(16, actual / density["leave_one_out_variance"])
+        for name in ("cross_sermon_anchor_coverage", "mean_pairwise_book_distribution_cosine"):
+            self.assertIsNone(detail["features"][name]["bootstrap_ci_95_lower"])
+            self.assertEqual(0, detail["features"][name]["bootstrap_observed"])
+        report = build_population_snapshot(self.database, policy=self.policy).report
+        self.assertNotIn("stability_by_minimum_sermons", report)
+        self.assertIn("cohorts_by_minimum_sermons", report)
+        self.assertNotIn("between_to_within_variance_ratio", report["feature_diagnostics"]["references_per_1000_words"])
+
+    def test_e1a_export_pins_saved_source_and_rejects_drift(self) -> None:
+        from pastor_transcript_extractor.analytical_pilot import export_packet
+        run = self.database.list_sermon_analysis_runs()[0]
+        output = self.base_dir / "review-packet.json"
+        packet = export_packet(self.database, run.id, output)
+        self.assertEqual(run.id, packet["original"]["run_id"])
+        self.assertEqual("unreviewed", packet["review"]["status"])
+        path = Path(run.source_path)
+        content = json.loads(path.read_text())
+        content["segments"][0]["text"] += " changed source"
+        path.write_text(json.dumps(content))
+        with self.assertRaisesRegex(ValueError, "no longer matches"):
+            export_packet(self.database, run.id, self.base_dir / "changed.json")
+
     def test_cli_builds_and_shows_snapshot(self) -> None:
         runner = CliRunner()
         built = runner.invoke(
@@ -292,10 +342,10 @@ class PopulationAnalysisTests(unittest.TestCase):
             ],
         )
         self.assertEqual(0, shown.exit_code, msg=shown.output)
-        self.assertIn('"scripture-population-report@1"', shown.output)
+        self.assertIn('"scripture-population-report@2"', shown.output)
         snapshot, report = load_population_snapshot_report(self.database)
         self.assertGreater(snapshot.id, 0)
-        self.assertEqual("scripture-population-report@1", report["schema_version"])
+        self.assertEqual("scripture-population-report@2", report["schema_version"])
 
 
 if __name__ == "__main__":

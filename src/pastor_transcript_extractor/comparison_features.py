@@ -6,12 +6,12 @@ from typing import Mapping
 from pastor_transcript_extractor.profile_analysis import CANONICAL_DIVISIONS
 
 
-BENCHMARK_FEATURE_SCHEMA_VERSION = "benchmark-feature-schema@2"
-FEATURE_ROLE_POLICY_VERSION = "scripture-feature-roles@1"
+BENCHMARK_FEATURE_SCHEMA_VERSION = "benchmark-feature-schema@3"
+FEATURE_ROLE_POLICY_VERSION = "scripture-feature-roles@2"
 CANONICAL_TRANSFORM_VERSION = "canonical-division-clr@1"
 CANONICAL_SMOOTHING_MENTIONS = 0.5
 
-# Stable, interpretable measurements available for exploratory comparison at five sermons.
+# Experimental sample measurements; depth eligibility is not validation.
 CORE_FEATURE_NAMES = (
     "references_per_1000_words",
     "scripture_text_engagement_fraction",
@@ -19,8 +19,7 @@ CORE_FEATURE_NAMES = (
     "cross_sermon_anchor_coverage",
 )
 
-# Useful but visibly more sample-sensitive in population snapshot #1. Consumers should
-# abstain until a profile has at least eight analyzed sermons.
+# Additional experimental measurements; the eight-sermon policy is unvalidated.
 DEPTH_SENSITIVE_FEATURE_NAMES = (
     "chapter_breadth_per_10_references",
     "effective_book_count",
@@ -28,8 +27,6 @@ DEPTH_SENSITIVE_FEATURE_NAMES = (
     "sustained_chapter_reference_ratio",
     "mean_pairwise_book_distribution_cosine",
     "reference_density_consistency",
-    "anchored_text_alignment_fraction",
-    "mean_scripture_text_alignment_score",
 )
 
 CANONICAL_COMPOSITION_FEATURE_NAMES = tuple(
@@ -47,6 +44,8 @@ RAW_CANONICAL_SHARE_FEATURE_NAMES = tuple(
 )
 
 DIAGNOSTIC_ONLY_FEATURE_NAMES = (
+    "anchored_text_alignment_fraction",
+    "mean_scripture_text_alignment_score",
     "analysis_coverage_fraction",
     "zero_detected_reference_sermon_fraction",
     "sermons_with_text_alignment_fraction",
@@ -59,6 +58,12 @@ DIAGNOSTIC_ONLY_FEATURE_NAMES = (
 FEATURE_ROLE_ASSIGNMENTS = {
     "version": FEATURE_ROLE_POLICY_VERSION,
     "schema_version": BENCHMARK_FEATURE_SCHEMA_VERSION,
+    "validation_status": "unvalidated",
+    "certified_comparison_features": [],
+    "depth_thresholds_are_exploratory": True,
+    "measurement_labels": {
+        "scripture_text_engagement_fraction": "Detected Bible-text span fraction",
+    },
     "minimum_sermons": {
         "core": 5,
         "canonical_composition": 5,

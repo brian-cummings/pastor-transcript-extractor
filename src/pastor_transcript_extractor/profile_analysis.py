@@ -143,6 +143,31 @@ def profile_analysis_input_fingerprint(
     )
 
 
+def get_current_profile_scripture_run(
+    database: Database, profile_id: int
+) -> SpeakerProfileAnalysisRun | None:
+    """Find an exact-current aggregate without running analysis or writing data."""
+    try:
+        scope = resolve_profile_sermon_scope(database, profile_id)
+    except ValueError:
+        return None
+    run_ids = []
+    for video in scope.videos:
+        try:
+            prepared = prepare_sermon_analysis(database, video)
+        except ValueError:
+            continue
+        run = database.get_sermon_analysis_run_by_fingerprint(prepared.input_fingerprint)
+        if run is not None:
+            run_ids.append(run.id)
+    fingerprint = profile_analysis_input_fingerprint(
+        profile_id=scope.profile_id,
+        membership_fingerprint=profile_membership_fingerprint(database, scope),
+        sermon_analysis_run_ids=run_ids,
+    )
+    return database.get_speaker_profile_analysis_run_by_fingerprint(fingerprint)
+
+
 def resolve_profile_sermon_scope(
     database: Database, profile_id: int
 ) -> ProfileSermonScope:
