@@ -15137,7 +15137,7 @@ def extract(
         "--recording-verifier-model",
         help="Ollama model used only for ambiguous recording-level decisions.",
     ),
-    jobs: int = typer.Option(1, "--jobs", min=1, help="Concurrent video extraction jobs."),
+    jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video extraction jobs."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
@@ -15426,7 +15426,7 @@ def reclassify(
         "--recording-verifier-model",
         help="Ollama model used only for ambiguous recording-level decisions.",
     ),
-    jobs: int = typer.Option(1, "--jobs", min=1, help="Concurrent video classification jobs."),
+    jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video classification jobs."),
     inference_cache_root: Path | None = typer.Option(
         None,
         "--inference-cache-root",
