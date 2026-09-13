@@ -445,6 +445,14 @@ class StyleAnalysisPersistenceTests(unittest.TestCase):
         self.assertEqual(1, practical["candidate_style_run_count"])
         self.assertEqual("unreviewed", practical["candidate_style_run_boundary_status"])
 
+        original_source = self.path.read_text()
+        changed_source = json.loads(original_source)
+        changed_source["segments"][0]["text"] += " Changed source material."
+        self.path.write_text(json.dumps(changed_source))
+        with self.assertRaisesRegex(ValueError, "stale style analysis"):
+            build_profile_style_analysis(self.database, profile.id)
+        self.path.write_text(original_source)
+
         sermon_show = CliRunner().invoke(
             app,
             [

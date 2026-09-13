@@ -2716,6 +2716,13 @@ class Database:
             ).fetchone()
         return self._sermon_analysis_run_from_row(row) if row is not None else None
 
+    def get_sermon_analysis_run(self, run_id: int) -> SermonAnalysisRun | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM sermon_analysis_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+        return self._sermon_analysis_run_from_row(row) if row is not None else None
+
     def add_sermon_analysis_run(
         self,
         *,

@@ -22,6 +22,7 @@ from pastor_transcript_extractor.sermon_analysis import (
     ANALYZER_KEY as SCRIPTURE_ANALYZER_KEY,
     ANALYZER_VERSION as SCRIPTURE_ANALYZER_VERSION,
     canonical_sermon_source,
+    prepare_sermon_analysis,
     load_identified_sermon_source,
 )
 from pastor_transcript_extractor.storage import Database
@@ -403,6 +404,67 @@ def _scripture_corroboration(
     return result
 
 
+def current_style_prompt_provenance(
+    prompt_version: str = STYLE_PROMPT_VERSION,
+) -> dict[str, object]:
+    return {
+        "prompt_version": prompt_version,
+        "prompt_template_sha256": _sha256(
+            style_prompt(
+                SemanticBlock(
+                    0,
+                    (SemanticSegment(0, "{CURRENT}", 0.0, 1.0),),
+                ),
+                None,
+                None,
+                prompt_version=prompt_version,
+            )
+        ),
+        "block_version": STYLE_BLOCK_VERSION,
+        "validation_version": SEMANTIC_VALIDATION_VERSION,
+        "style_acceptance_version": STYLE_ACCEPTANCE_VERSION,
+        "style_run_merge_version": STYLE_RUN_MERGE_VERSION,
+    }
+
+
+def current_style_run_matches(
+    database: Database, video: Video, run: SermonAnalysisRun
+) -> bool:
+    """Check source, Scripture support and current prompt without model inference."""
+    if run.analyzer_version != STYLE_ANALYZER_VERSION:
+        return False
+    try:
+        prepared = prepare_sermon_analysis(database, video)
+    except ValueError:
+        return False
+    scripture = database.get_sermon_analysis_run_by_fingerprint(prepared.input_fingerprint)
+    if scripture is None:
+        return False
+    values = {item.metric_key: json.loads(item.value_json)
+              for item in database.list_sermon_analysis_measurements(run.id)}
+    prompt = current_style_prompt_provenance()
+    if values.get("prompt_provenance") != prompt:
+        return False
+    model = values.get("model_provenance")
+    if not isinstance(model, dict) or not model.get("model_digest"):
+        return False
+    source_hash = _sha256(canonical_sermon_source(
+        list(prepared.segments), prepared.sermon_start_seconds, prepared.duration_seconds
+    ))
+    expected = _sha256({
+        "analyzer_key": STYLE_ANALYZER_KEY,
+        "analyzer_version": STYLE_ANALYZER_VERSION,
+        "schema_version": STYLE_ANALYSIS_SCHEMA_VERSION,
+        "source_content_sha256": source_hash,
+        "scripture_analysis_run_id": scripture.id,
+        "scripture_analysis_input_fingerprint": scripture.input_fingerprint,
+        "model_provenance": model,
+        "prompt_provenance": prompt,
+        "video_id": video.id,
+    })
+    return run.input_fingerprint == expected
+
+
 def analyze_sermon_style(
     database: Database,
     video: Video,
@@ -420,11 +482,8 @@ def analyze_sermon_style(
     extraction = database.get_latest_extraction_result_for_video(video.id)
     if extraction is None or extraction.proposed_json_path is None:
         raise ValueError(f"Video {video.youtube_video_id} has no identified sermon content")
-    scripture_run = database.get_latest_sermon_analysis_run(
-        video.id,
-        SCRIPTURE_ANALYZER_KEY,
-        analyzer_version=SCRIPTURE_ANALYZER_VERSION,
-    )
+    prepared = prepare_sermon_analysis(database, video)
+    scripture_run = database.get_sermon_analysis_run_by_fingerprint(prepared.input_fingerprint)
     if scripture_run is None:
         raise ValueError(
             f"Video {video.youtube_video_id} needs {SCRIPTURE_ANALYZER_KEY}@"
@@ -446,24 +505,7 @@ def analyze_sermon_style(
         "temperature": 0,
         "output_token_budget": STYLE_OUTPUT_TOKEN_BUDGET,
     }
-    prompt_provenance = {
-        "prompt_version": prompt_version,
-        "prompt_template_sha256": _sha256(
-            style_prompt(
-                SemanticBlock(
-                    0,
-                    (SemanticSegment(0, "{CURRENT}", 0.0, 1.0),),
-                ),
-                None,
-                None,
-                prompt_version=prompt_version,
-            )
-        ),
-        "block_version": STYLE_BLOCK_VERSION,
-        "validation_version": SEMANTIC_VALIDATION_VERSION,
-        "style_acceptance_version": STYLE_ACCEPTANCE_VERSION,
-        "style_run_merge_version": STYLE_RUN_MERGE_VERSION,
-    }
+    prompt_provenance = current_style_prompt_provenance(prompt_version)
     input_fingerprint = _sha256(
         {
             "analyzer_key": STYLE_ANALYZER_KEY,

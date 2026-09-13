@@ -29,15 +29,16 @@ from pastor_transcript_extractor.profile_analysis import (
     PROFILE_ANALYZER_KEY,
     PROFILE_ANALYZER_VERSION,
     PROFILE_FEATURE_ORDER,
+    get_current_profile_scripture_run,
 )
 from pastor_transcript_extractor.storage import Database
 
 
-SNAPSHOT_ANALYZER_VERSION = "reference-panel-snapshot@3"
+SNAPSHOT_ANALYZER_VERSION = "reference-panel-snapshot@4"
 FEATURE_SCHEMA_VERSION = BENCHMARK_FEATURE_SCHEMA_VERSION
 ELIGIBILITY_POLICY_VERSION = "scripture-reference-eligibility@2"
-COMPARISON_ANALYZER_VERSION = "scripture-reference-comparison@1"
-NORMALIZATION_POLICY_VERSION = "robust-panel-mad-family-balanced@1"
+COMPARISON_ANALYZER_VERSION = "scripture-reference-comparison@2"
+NORMALIZATION_POLICY_VERSION = "robust-panel-common-mask@2"
 MAD_CONSISTENCY_FACTOR = 1.4826
 MAX_STANDARDIZED_DIFFERENCE = 5.0
 
@@ -255,9 +256,7 @@ def _member_payload(
     requested_ids = list(membership["requested_profile_ids"])  # type: ignore[arg-type]
     membership_event_ids = list(membership["membership_event_ids"])  # type: ignore[arg-type]
     resolved_display_label = str(membership["resolved_display_label"])
-    run = database.get_compatible_speaker_profile_analysis_run(
-        resolved_id, PROFILE_ANALYZER_KEY, PROFILE_ANALYZER_VERSION
-    )
+    run = get_current_profile_scripture_run(database, resolved_id)
     comparison = {name: None for name in COMPARISON_FEATURE_NAMES}
     diagnostics: dict[str, object] = {
         "sermons_attached": None,
@@ -269,7 +268,10 @@ def _member_payload(
     }
     reasons: list[str] = []
     if run is None:
-        reasons.append("missing_analysis")
+        latest = database.get_compatible_speaker_profile_analysis_run(
+            resolved_id, PROFILE_ANALYZER_KEY, PROFILE_ANALYZER_VERSION
+        )
+        reasons.append("stale_analysis" if latest else "missing_analysis")
     else:
         values = _measurements(database, run.id)
         vector = values.get("deterministic_profile_feature_vector")
@@ -423,6 +425,8 @@ def build_snapshot(
                 "resolved_profile_id": item["resolved_profile_id"],
                 "resolved_display_label": item["resolved_display_label"],
                 "profile_analysis_run_id": item["profile_analysis_run_id"],
+                "eligibility_status": item["eligibility_status"],
+                "exclusion_reasons": item["exclusion_reasons"],
             }
             for item in member_payloads
         ],
@@ -602,6 +606,42 @@ def _comparison_families(level: str) -> dict[str, tuple[str, ...]]:
     return families
 
 
+def _common_feature_mask(candidate, references, families, panel_statistics):
+    """Freeze one geometry; missing/constant coordinates never disappear per pair."""
+    selected = {}
+    omissions = []
+    reasons = []
+    statistics_by_feature = panel_statistics.get("features", {})
+    for family, names in families.items():
+        supported = []
+        for name in names:
+            values = [_number(item["comparison_values"].get(name)) for item in [candidate, *references]]
+            stats = statistics_by_feature.get(name)
+            scale = _feature_scale(stats) if isinstance(stats, Mapping) else None
+            reason = None
+            if any(value is None for value in values):
+                reason = "missing_in_common_comparison_set"
+            elif scale is None:
+                reason = "constant_or_unscalable_calibration_coordinate"
+                if any(value != values[0] for value in values[1:]):
+                    reasons.append("out_of_panel_unscalable_difference")
+            if reason:
+                omissions.append({"feature": name, "family": family, "reason": reason,
+                                  "candidate_value": values[0],
+                                  "reference_values": [
+                                      {"profile_id": reference["resolved_profile_id"], "value": value,
+                                       "raw_difference": values[0] - value if values[0] is not None and value is not None else None}
+                                      for reference, value in zip(references, values[1:], strict=True)
+                                  ]})
+            else:
+                supported.append(name)
+        if supported:
+            selected[family] = tuple(supported)
+    if not selected:
+        reasons.append("no_common_supported_features")
+    return selected, omissions, reasons
+
+
 def _rank_reference(
     candidate: Mapping[str, object],
     reference: Mapping[str, object],
@@ -625,7 +665,11 @@ def _rank_reference(
             right = _number(reference_values.get(name))
             stats = feature_statistics.get(name)
             scale = _feature_scale(stats) if isinstance(stats, Mapping) else None
-            if left is None or right is None or scale is None:
+            if left is None or right is None:
+                return None
+            if scale is None:
+                if left != right:
+                    return None
                 continue
             scale_value, scale_method = scale
             raw_difference = float(left - right)
@@ -691,7 +735,13 @@ def compare_profile_to_panel(
     panel_key: str,
     snapshot_id: int | None = None,
     analyzer_version: str = COMPARISON_ANALYZER_VERSION,
+    comparison_level: str = "core",
+    historical_references: bool = False,
 ) -> ComparisonOutcome:
+    if comparison_level not in {"core", "full"}:
+        raise ValueError("Comparison level must be core or full")
+    if historical_references and snapshot_id is None:
+        raise ValueError("Historical references require an explicit snapshot ID")
     if not analyzer_version.strip():
         raise ValueError("Comparison analyzer version must not be blank")
     panel = database.get_reference_panel(panel_key)
@@ -733,14 +783,12 @@ def compare_profile_to_panel(
         and depth_support.get("core")
         and depth_support.get("canonical_composition")
     )
-    level = (
-        "full"
-        if isinstance(depth_support, Mapping) and depth_support.get("depth_sensitive")
-        else "core"
-    )
+    level = comparison_level
     reasons = list(candidate["exclusion_reasons"])  # type: ignore[arg-type]
     if candidate["eligibility_status"] != "eligible":
         reasons.insert(0, "candidate_ineligible")
+    if level == "full" and not (isinstance(depth_support, Mapping) and depth_support.get("depth_sensitive")):
+        reasons.append("insufficient_depth_for_full_comparison")
     if not candidate_core_supported:
         reasons.append("insufficient_depth_for_core_comparison")
     members = [
@@ -751,6 +799,14 @@ def compare_profile_to_panel(
     eligible_references: list[dict[str, object]] = []
     for member in members:
         member_reasons: list[str] = []
+        if not historical_references:
+            current = get_current_profile_scripture_run(database, int(member["resolved_profile_id"]))
+            if current is None or current.id != member["profile_analysis_run_id"]:
+                member_reasons.append("reference_snapshot_input_not_current")
+                if member["eligibility_status"] == "eligible":
+                    # Frozen calibration includes this member too. Silently
+                    # dropping it would still use its stale normalization input.
+                    reasons.append("reference_snapshot_inputs_not_current")
         if member["resolved_profile_id"] == candidate["resolved_profile_id"]:
             member_reasons.append("same_profile_as_candidate")
         if member["eligibility_status"] != "eligible":
@@ -784,13 +840,17 @@ def compare_profile_to_panel(
     if not eligible_references:
         reasons.append("no_eligible_reference_profiles")
     panel_statistics = json.loads(snapshot.panel_feature_statistics_json)
+    families, omissions, mask_reasons = _common_feature_mask(
+        candidate, eligible_references, _comparison_families(level), panel_statistics
+    )
+    reasons.extend(mask_reasons)
     rankings = []
     if not reasons:
         for reference in eligible_references:
             ranking = _rank_reference(
                 candidate,
                 reference,
-                families=_comparison_families(level),
+                families=families,
                 panel_statistics=panel_statistics,
             )
             if ranking is None:
@@ -822,10 +882,14 @@ def compare_profile_to_panel(
             "interpretation": "descriptive_ranking_separation_not_confidence",
         }
     result: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "validation_status": "experimental_unvalidated",
+        "certified_comparison_features": [],
+        "input_scope": "current_candidate_historical_references" if historical_references else "current_candidate_and_references",
+        "omitted_coordinates": omissions,
         "status": "comparable" if not reasons else "abstained",
         "abstention_reasons": sorted(set(reasons)),
-        "scope": "deterministic_scripture_usage_similarity_only",
+        "scope": "experimental_comparison_of_collected_sermon_samples",
         "candidate": {
             "requested_profile_id": profile_id,
             "resolved_profile_id": candidate["resolved_profile_id"],
@@ -841,15 +905,26 @@ def compare_profile_to_panel(
         },
         "comparison_level": level,
         "feature_families": {
-            name: list(features) for name, features in _comparison_families(level).items()
+            name: list(features) for name, features in families.items()
         },
         "normalization": {
             "policy_version": NORMALIZATION_POLICY_VERSION,
             "center_source": "frozen_reference_panel_snapshot",
+            "calibration_profile_ids": [member["resolved_profile_id"] for member in members if member["eligibility_status"] == "eligible"],
+            "candidate_in_calibration": any(member["resolved_profile_id"] == candidate["resolved_profile_id"] and member["eligibility_status"] == "eligible" for member in members),
+            "calibration_scope": "eligible_snapshot_members_including_any_candidate_overlap",
             "scale": "1.4826 * median absolute deviation; observed range fallback",
             "standardized_difference_cap": MAX_STANDARDIZED_DIFFERENCE,
             "family_aggregation": "root mean square within family",
             "overall_aggregation": "equal-weight root mean square across families",
+        },
+        "tied_nearest_reference_ids": [
+            row["reference_profile_id"] for row in rankings
+            if row["distance"] == rankings[0]["distance"]
+        ],
+        "effective_feature_squared_weights": {
+            feature: 1 / (len(families) * len(features))
+            for features in families.values() for feature in features
         },
         "rankings": rankings,
         "ranking_separation": ranking_separation,
@@ -868,7 +943,7 @@ def compare_profile_to_panel(
             "feature_schema_version": snapshot.feature_schema_version,
             "normalization_policy_version": NORMALIZATION_POLICY_VERSION,
             "panel_snapshot_id": snapshot.id,
-            "result_schema_version": result["schema_version"],
+            "result": result,
         }
     )
     run, created = database.add_benchmark_comparison_run(

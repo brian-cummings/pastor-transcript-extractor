@@ -12,11 +12,12 @@ from pastor_transcript_extractor.style_analysis import (
     STYLE_ANALYZER_KEY,
     STYLE_ANALYZER_VERSION,
     STYLE_DIMENSIONS,
+    current_style_run_matches,
 )
 
 
 STYLE_PROFILE_ANALYZER_KEY = "profile-style-evidence"
-STYLE_PROFILE_ANALYZER_VERSION = "3"
+STYLE_PROFILE_ANALYZER_VERSION = "4"
 STYLE_PROFILE_SCHEMA_VERSION = 2
 
 
@@ -91,6 +92,8 @@ def build_profile_style_analysis(
         )
         if run is None:
             continue
+        if not current_style_run_matches(database, video, run):
+            raise ValueError(f"Video {video.youtube_video_id} has stale style analysis; refresh explicitly before aggregation")
         inputs.append((run.id, video.id))
         values = _measurements(database, run.id)
         dimensions = values.get("style_dimension_measurements")

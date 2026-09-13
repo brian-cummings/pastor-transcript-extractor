@@ -581,27 +581,9 @@ def prepare_sermon_analysis(
     )
 
 
-def analyze_sermon(
-    database: Database,
-    video: Video,
-    *,
-    analyzer_version: str = ANALYZER_VERSION,
-) -> AnalysisOutcome:
-    prepared = prepare_sermon_analysis(
-        database, video, analyzer_version=analyzer_version
-    )
-    segments = list(prepared.segments)
-    sermon_start_seconds = prepared.sermon_start_seconds
-    duration_seconds = prepared.duration_seconds
-    bible_provenance = prepared.bible_provenance
-
+def detect_scripture_in_segments(segments: list[SermonSegment]):
+    """Shared detector path for production and offline paired transcript audits."""
     references = _reference_evidence(segments)
-    explicit_references = [
-        item for item in references if item["detection_class"] == "explicit"
-    ]
-    contextual_references = [
-        item for item in references if item["detection_class"] == "contextual"
-    ]
     alignments = detect_scripture_alignments(
         [
             AlignmentSegment(
@@ -631,6 +613,30 @@ def analyze_sermon(
             for item in references
         ],
     )
+    return references, alignments
+
+
+def analyze_sermon(
+    database: Database,
+    video: Video,
+    *,
+    analyzer_version: str = ANALYZER_VERSION,
+) -> AnalysisOutcome:
+    prepared = prepare_sermon_analysis(
+        database, video, analyzer_version=analyzer_version
+    )
+    segments = list(prepared.segments)
+    sermon_start_seconds = prepared.sermon_start_seconds
+    duration_seconds = prepared.duration_seconds
+    bible_provenance = prepared.bible_provenance
+
+    references, alignments = detect_scripture_in_segments(segments)
+    explicit_references = [
+        item for item in references if item["detection_class"] == "explicit"
+    ]
+    contextual_references = [
+        item for item in references if item["detection_class"] == "contextual"
+    ]
     anchored_alignments = [
         item for item in alignments if item["alignment_class"] == "anchored"
     ]
