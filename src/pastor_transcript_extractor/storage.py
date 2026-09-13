@@ -4802,6 +4802,34 @@ class Database:
             ).fetchall()
         return [int(row["profile_id"]) for row in rows]
 
+    def list_effective_profile_ids_for_superseded_observations(
+        self,
+        *,
+        video_id: int,
+        current_observation_id: int,
+    ) -> list[int]:
+        """Return effective memberships retained by older observations of a video."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT event.profile_id
+                FROM profile_observation_events event
+                JOIN (
+                    SELECT profile_id, observation_id, MAX(id) AS event_id
+                    FROM profile_observation_events
+                    GROUP BY profile_id, observation_id
+                ) latest ON latest.event_id = event.id
+                JOIN speaker_observations observation
+                  ON observation.id = event.observation_id
+                WHERE observation.video_id = ?
+                  AND observation.id < ?
+                  AND event.action = 'attach'
+                ORDER BY event.profile_id
+                """,
+                (video_id, current_observation_id),
+            ).fetchall()
+        return [int(row["profile_id"]) for row in rows]
+
     def list_effective_observation_ids_for_profile(self, profile_id: int) -> list[int]:
         with self.connect() as connection:
             rows = connection.execute(

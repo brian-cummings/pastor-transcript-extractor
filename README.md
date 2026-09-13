@@ -885,7 +885,12 @@ exhausted, its human-review-only exploratory tier may nominate an unreviewed
 `strong_strong` pair that the model classified as `insufficient_evidence` due
 to ambiguous similarity. Merely lacking a known different-speaker constraint—and
 merely sharing a source—is still not enough. Automation-readiness does not use
-the exploratory tier. The selection manifest records the discovery artifact,
+the exploratory tier. Observations belonging to automatic-ready profiles are
+terminal for routine nomination. Current observations that supersede older
+members of those profiles retain exclusion-only lineage, so a new immutable
+fingerprint cannot re-enter profile growth; any necessary currency repair uses
+the explicit superseded-member restoration workflow. The selection manifest
+records the discovery artifact,
 stage, companion edge, and downstream observations unlocked; undersized
 two-recording seeds without a qualified frontier wait instead of consuming human
 review. The next discovery run consumes the approved pair judgment directly as
@@ -1123,12 +1128,10 @@ pte identity run --all \
 
 Active provisional assignments remain outside reviewed profile membership and
 cannot become acoustic exemplars. Automatic-ready profile proposals no longer
-consume general profile reinforcement capacity, but they remain eligible for a
-separate prospective-confirmation lane. Active, awaiting, and policy-blocked
-machine proposals remain eligible for prioritized contextual human
-validation. Operators can inspect them with `machine-assignment-status`, then
-run `review-next-speaker-pair --selection-objective automation-readiness` to
-review the next exact candidate/exemplar edge. Reviewed membership is projected
+consume any routine pair-review capacity, including prospective confirmation
+and machine-validation lanes. Operators can inspect assignment state with
+`machine-assignment-status`; evidence-currency regressions are routed through
+the explicit superseded-member restoration workflow. Reviewed membership is projected
 over every evidence row whether or not it was first activated; reviewed
 contradictions trip the exact policy fingerprint. Stale active assignments are
 revoked conservatively. Rollback is plan-only unless `--apply` is passed. A

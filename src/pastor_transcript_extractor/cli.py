@@ -7011,14 +7011,14 @@ class ActionableReviewAudioPreparation:
     ready_fingerprints: tuple[str, ...] = ()
 
 
-ACTIONABLE_REVIEW_PREWARM_VERSION = "actionable_review_prewarm_v1"
+ACTIONABLE_REVIEW_PREWARM_VERSION = "actionable_review_prewarm_v2"
 
 
 def _actionable_review_prewarm_path(cache_dir: Path) -> Path:
     return (
         cache_dir.expanduser().resolve()
         / "selector-context"
-        / "actionable-review-prewarm-v1.json"
+        / "actionable-review-prewarm-v2.json"
     )
 
 
@@ -7077,18 +7077,15 @@ def _actionable_review_fingerprints(
             progress_callback=association_progress_callback,
             cache_path=association_cache_path,
         )
-        for ready in (False, True):
-            for nomination in nominations:
-                if (
-                    nomination.profile_id in automatic_profile_ready_ids
-                ) != ready:
-                    continue
-                ordered.extend(
-                    (
-                        nomination.candidate_fingerprint,
-                        nomination.exemplar_fingerprint,
-                    )
+        for nomination in nominations:
+            if nomination.profile_id in automatic_profile_ready_ids:
+                continue
+            ordered.extend(
+                (
+                    nomination.candidate_fingerprint,
+                    nomination.exemplar_fingerprint,
                 )
+            )
     if discovery_report is not None:
         for nomination in load_discovery_resolution_pairs(discovery_report):
             ordered.extend(
@@ -7118,7 +7115,7 @@ def _prepare_actionable_review_audio(
     """Prewarm exact review clips for the current actionable frontier."""
     if limit < 1:
         raise ValueError("review audio prewarm limit must be positive")
-    fingerprints = _actionable_review_fingerprints(
+    nominated_fingerprints = _actionable_review_fingerprints(
         discovery_report=discovery_report,
         association_reports=association_reports,
         automatic_profile_ready_ids=automatic_profile_ready_ids,
@@ -7128,14 +7125,46 @@ def _prepare_actionable_review_audio(
             / "selector-context"
             / "association-nominations-v1.json"
         ),
-    )[:limit]
+    )
+    fingerprints: list[str] = []
+    ready_profile_excluded = 0
+    for fingerprint in nominated_fingerprints:
+        observation = database.get_speaker_observation_by_fingerprint(
+            fingerprint
+        )
+        if observation is not None and automatic_profile_ready_ids:
+            direct_profile_ids = {
+                database.resolve_speaker_profile_id(profile_id)
+                for profile_id in (
+                    database.list_effective_profile_ids_for_observation(
+                        observation.id
+                    )
+                )
+            }
+            superseded_profile_ids = {
+                database.resolve_speaker_profile_id(profile_id)
+                for profile_id in (
+                    database.list_effective_profile_ids_for_superseded_observations(
+                        video_id=observation.video_id,
+                        current_observation_id=observation.id,
+                    )
+                )
+            }
+            if (
+                direct_profile_ids | superseded_profile_ids
+            ) & automatic_profile_ready_ids:
+                ready_profile_excluded += 1
+                continue
+        fingerprints.append(fingerprint)
+        if len(fingerprints) == limit:
+            break
     span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
     verification_cache = MediaVerificationCache(
         cache_dir.expanduser().resolve()
     )
     prepared = 0
     already_cached = 0
-    excluded = 0
+    excluded = ready_profile_excluded
     failed = 0
     ready_fingerprints: list[str] = []
     for index, fingerprint in enumerate(fingerprints, start=1):
@@ -7229,7 +7258,7 @@ def _prepare_actionable_review_audio(
         )
     _write_actionable_review_prewarm(cache_dir, ready_fingerprints)
     return ActionableReviewAudioPreparation(
-        requested=len(fingerprints),
+        requested=len(fingerprints) + ready_profile_excluded,
         prepared=prepared,
         already_cached=already_cached,
         excluded=excluded,
@@ -11706,6 +11735,23 @@ def review_next_speaker_pair(
                 if configured_title_hint
                 else frozenset()
             )
+            reviewed_profile_ids = frozenset(
+                database.resolve_speaker_profile_id(profile_id)
+                for profile_id in (
+                    database.list_effective_profile_ids_for_observation(
+                        observation.id
+                    )
+                )
+            )
+            superseded_profile_ids = frozenset(
+                database.resolve_speaker_profile_id(profile_id)
+                for profile_id in (
+                    database.list_effective_profile_ids_for_superseded_observations(
+                        video_id=video.id,
+                        current_observation_id=observation.id,
+                    )
+                )
+            ) - reviewed_profile_ids
             candidate = PairCandidateObservation(
                 input_fingerprint=observation.input_fingerprint,
                 video_id=video.youtube_video_id,
@@ -11718,11 +11764,8 @@ def review_next_speaker_pair(
                 ),
                 source_family_id=family.source_family_id,
                 evaluation_partition=family.partition.value,
-                reviewed_profile_ids=frozenset(
-                    database.list_effective_profile_ids_for_observation(
-                        observation.id
-                    )
-                ),
+                reviewed_profile_ids=reviewed_profile_ids,
+                superseded_profile_ids=superseded_profile_ids,
                 explicitly_different_from=frozenset(
                     different_fingerprints_by_observation_id.get(
                         observation.id, set()

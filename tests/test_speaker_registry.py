@@ -317,6 +317,50 @@ class SpeakerRegistryTests(unittest.TestCase):
         )
         self.assertFalse(self.database.is_observation_attached(profile.id, observation_id))
 
+    def test_superseded_observation_profile_membership_is_queryable(self) -> None:
+        result = self._persist()
+        profile = create_profile(
+            self.database,
+            display_label=None,
+            stable_key="speaker:lineage-test",
+            created_reason="manual_review",
+        )
+        record_observation_review(
+            self.database,
+            profile_id=profile.id,
+            observation_id=result.observation.id,
+            attach=True,
+            reviewer="reviewer",
+            reason="Same principal speaker",
+            review_event_key="lineage-review",
+        )
+        replacement = self.database.add_speaker_observation(
+            video_id=self.video.id,
+            extraction_result_id=self.extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=120.0,
+            end_seconds=1800.0,
+            artifact_path="replacement-speaker.json",
+            content_sha256="replacement-content",
+            extractor_version="speaker_evidence_v2",
+            input_fingerprint="replacement-observation",
+        )
+
+        self.assertEqual(
+            [profile.id],
+            self.database.list_effective_profile_ids_for_superseded_observations(
+                video_id=self.video.id,
+                current_observation_id=replacement.id,
+            ),
+        )
+        self.assertEqual(
+            [],
+            self.database.list_effective_profile_ids_for_observation(
+                replacement.id
+            ),
+        )
+
     def test_reviewed_anonymous_profile_creation_and_attachment_are_idempotent(self) -> None:
         result = self._persist()
         profile = create_anonymous_profile(

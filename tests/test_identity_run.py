@@ -540,8 +540,6 @@ class IdentityRunTests(unittest.TestCase):
             (
                 "candidate",
                 "shared",
-                "ready-candidate",
-                "ready-exemplar",
                 "frontier",
                 "acoustic-a",
                 "acoustic-b",
@@ -654,6 +652,92 @@ class IdentityRunTests(unittest.TestCase):
             ("current",),
             _load_actionable_review_prewarm(cache_dir),
         )
+
+    def test_actionable_review_audio_excludes_ready_profile_replacements_before_limit(
+        self,
+    ) -> None:
+        root = Path("/tmp/actionable-review-ready-lineage-test")
+        paths = AppPaths(
+            root=root,
+            database=root / "app.db",
+            artifacts=root / "artifacts",
+            logs=root / "logs",
+            exports=root / "exports",
+            pastors=root / "pastors",
+        )
+        observations = {
+            "replacement": SimpleNamespace(
+                id=10,
+                video_id=1,
+                input_fingerprint="replacement",
+            ),
+            "useful": SimpleNamespace(
+                id=20,
+                video_id=2,
+                input_fingerprint="useful",
+            ),
+        }
+        videos = {
+            2: SimpleNamespace(id=2, youtube_video_id="video-useful"),
+        }
+        database = SimpleNamespace(
+            get_speaker_observation_by_fingerprint=observations.get,
+            get_video_by_id=videos.get,
+            list_effective_profile_ids_for_observation=lambda _id: [],
+            list_effective_profile_ids_for_superseded_observations=(
+                lambda *, video_id, current_observation_id: (
+                    [7] if video_id == 1 else []
+                )
+            ),
+            resolve_speaker_profile_id=lambda profile_id: profile_id,
+        )
+        media = SimpleNamespace(artifact_path="/tmp/useful.wav")
+        prepared = SimpleNamespace(
+            spans=(
+                SimpleNamespace(
+                    wav_path="/tmp/useful-clip.wav",
+                    cache_hit=True,
+                ),
+            )
+        )
+
+        with (
+            patch(
+                "pastor_transcript_extractor.cli."
+                "_actionable_review_fingerprints",
+                return_value=("replacement", "useful"),
+            ),
+            patch(
+                "pastor_transcript_extractor.cli."
+                "assess_automatic_speaker_observation",
+                return_value=SimpleNamespace(
+                    eligible=True,
+                    observation=observations["useful"],
+                    media_artifact=media,
+                ),
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.prepare_review_observation",
+                return_value=prepared,
+            ),
+            patch(
+                "pastor_transcript_extractor.cli."
+                "write_canonical_clip_preparation_manifest"
+            ),
+        ):
+            result = _prepare_actionable_review_audio(
+                database,
+                paths,
+                discovery_report=Path("discovery.json"),
+                association_reports=(),
+                cache_dir=root / "cache",
+                limit=1,
+                automatic_profile_ready_ids=frozenset((7,)),
+            )
+
+        self.assertEqual(("useful",), result.ready_fingerprints)
+        self.assertEqual(2, result.requested)
+        self.assertEqual(1, result.excluded)
 
     def test_identity_archive_waits_for_lock_and_reports_unavailable_as_deferred(
         self,
