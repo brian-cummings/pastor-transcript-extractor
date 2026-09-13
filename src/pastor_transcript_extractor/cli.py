@@ -232,6 +232,7 @@ from pastor_transcript_extractor.media_artifacts import (
     ensure_audio_for_video,
     get_verified_normalized_media_artifact,
     get_authoritative_normalized_media_artifact,
+    StageSourceAudioResult,
     stage_source_audio_for_video,
     repair_normalized_audio_provenance,
     resolve_normalized_audio_path,
@@ -14441,8 +14442,11 @@ def discover_sources_service(
         video.youtube_video_id for video in database.list_excluded_videos()
     }
     total_sources = len(sources)
+    source_attempts: dict[int, int] = {}
     selected_video_ids_by_source: dict[int, tuple[int, ...]] = {}
     for index, source in enumerate(sources, start=1):
+        source_attempts[source.id] = source_attempts.get(source.id, 0) + 1
+        retrying = source_attempts[source.id] > 1
         pastor_record = (
             database.get_pastor_by_id(source.pastor_id)
             if source.pastor_id is not None
@@ -14465,9 +14469,13 @@ def discover_sources_service(
             )
         else:
             context_label = f"for publisher {publisher_label}"
+        progress_label = (
+            f"Discovery retry [{source_attempts[source.id] - 1}/1]"
+            if retrying
+            else f"[{index}/{total_sources}] Discovering"
+        )
         console.print(
-            f"[{index}/{total_sources}] Discovering source #{source.id} "
-            f"{context_label}: {source.url}",
+            f"{progress_label} source #{source.id} {context_label}: {source.url}",
             markup=False,
         )
         try:
@@ -14477,7 +14485,16 @@ def discover_sources_service(
                 tool_config.yt_dlp_js_runtimes,
             )
         except Exception as error:
-            console.print(f"[red]Failed to discover[/red] {source.url}: {error}")
+            if not retrying:
+                console.print(
+                    f"[red]Failed to discover[/red] {source.url}: {error}; "
+                    "deferred for retry after the first pass"
+                )
+                sources.append(source)
+            else:
+                console.print(
+                    f"[red]Failed discovery retry[/red] {source.url}: {error}"
+                )
             selected_video_ids_by_source[source.id] = ()
             continue
 
@@ -14602,7 +14619,8 @@ def discover_sources_service(
             source_discovered_count += 1
             existing_ids.add(discovered.youtube_video_id)
         source_summary = (
-            f"[{index}/{total_sources}] Finished source #{source.id}: found {source_found_count}, "
+            f"{'Discovery retry complete' if retrying else f'[{index}/{total_sources}] Finished'} "
+            f"source #{source.id}: found {source_found_count}, "
             f"queued {source_discovered_count}, skipped {source_skipped_count}"
         )
         if short_videos:
@@ -14676,6 +14694,7 @@ def transcribe_videos_service(
     prep_jobs: int = DEFAULT_PREP_WORKERS,
     video_ids: set[int] | None = None,
     allow_network: bool = True,
+    _retry_failed_once: bool = True,
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
@@ -14740,6 +14759,7 @@ def transcribe_videos_service(
     processed = 0
     skipped = below_minimum + above_maximum + future_events
     failed = 0
+    failed_video_ids: set[int] = set()
     claimed_videos = []
     for video in videos:
         if not _should_transcribe_video(
@@ -14821,6 +14841,7 @@ def transcribe_videos_service(
                         except Exception as error:
                             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
                             failed += 1
+                            failed_video_ids.add(video.id)
                             with progress_lock:
                                 progress.update(task_ids[video.id], status="failed", completed=100)
                                 progress.remove_task(task_ids.pop(video.id))
@@ -14852,6 +14873,7 @@ def transcribe_videos_service(
                         except Exception as error:
                             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
                             failed += 1
+                            failed_video_ids.add(video.id)
                             with progress_lock:
                                 progress.update(task_id, status=STAGE_FAILED, completed=100)
                                 progress.remove_task(task_id)
@@ -14918,6 +14940,7 @@ def transcribe_videos_service(
                         except Exception as error:
                             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
                             failed += 1
+                            failed_video_ids.add(video.id)
                             console.print(
                                 f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
                                 style="red",
@@ -14944,6 +14967,7 @@ def transcribe_videos_service(
                         except Exception as error:
                             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
                             failed += 1
+                            failed_video_ids.add(video.id)
                             console.print(
                                 f"[{processed + failed}/{total_claimed} finished] Failed to transcribe video #{video.id}: {error}",
                                 style="red",
@@ -14954,6 +14978,22 @@ def transcribe_videos_service(
                         console.print(f"[{processed + failed}/{total_claimed} finished] Transcribed video #{video.id}", markup=False)
 
     console.print(f"Transcribed {processed} video(s); skipped {skipped}; failed {failed}.")
+    if failed_video_ids and _retry_failed_once:
+        console.print(
+            f"Retrying {len(failed_video_ids)} transcription failure(s) after "
+            "the first pass."
+        )
+        transcribe_videos_service(
+            missing_only=missing_only,
+            captions_missing_only=captions_missing_only,
+            jobs=jobs,
+            source_id=source_id,
+            base_dir=base_dir,
+            prep_jobs=prep_jobs,
+            video_ids=failed_video_ids,
+            allow_network=allow_network,
+            _retry_failed_once=False,
+        )
 
 
 @app.command(help="Download or prepare local ASR transcripts for discovered videos.")
@@ -15000,7 +15040,7 @@ def fetch_captions_service(
         raise ValueError(
             "Use either --cookies-from-browser or --cookies for YouTube, not both."
         )
-    videos = database.list_videos()
+    videos = list(database.list_videos())
     if source_id is not None:
         videos = [video for video in videos if video.source_id == source_id]
     if video_ids is not None:
@@ -15051,6 +15091,7 @@ def fetch_captions_service(
     deferred = 0
     failed = 0
     last_request_started: float | None = None
+    caption_attempts: dict[int, int] = {}
 
     def fetch_with_rate_limit_retry(video):
         nonlocal last_request_started
@@ -15075,6 +15116,8 @@ def fetch_captions_service(
         raise AssertionError("unreachable caption retry state")
 
     for video in videos:
+        caption_attempts[video.id] = caption_attempts.get(video.id, 0) + 1
+        retrying = caption_attempts[video.id] > 1
         if not _catalog_video_is_sermon_eligible(
             database,
             video,
@@ -15088,7 +15131,8 @@ def fetch_captions_service(
             continue
 
         try:
-            console.print(f"Fetching captions for video #{video.id}: {video.title}")
+            action = "Retrying captions" if retrying else "Fetching captions"
+            console.print(f"{action} for video #{video.id}: {video.title}")
             result = fetch_with_rate_limit_retry(video)
         except NoCaptionsAvailableError:
             if _is_terminal_unavailable(video.status, video.failure_reason) or _is_retryable_fetch_failure(
@@ -15127,8 +15171,17 @@ def fetch_captions_service(
             continue
         except Exception as error:
             database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            console.print(f"[red]Failed to fetch captions[/red] video #{video.id}: {error}")
-            failed += 1
+            if not retrying:
+                console.print(
+                    f"[red]Failed to fetch captions[/red] video #{video.id}: "
+                    f"{error}; deferred for retry after the first pass"
+                )
+                videos.append(video)
+            else:
+                console.print(
+                    f"[red]Failed caption retry[/red] video #{video.id}: {error}"
+                )
+                failed += 1
             continue
         console.print(f"Fetched captions for video #{video.id}: {result.raw_text_path}")
         processed += 1
@@ -16081,26 +16134,72 @@ def run_workflow_service(
         )
         workers = min(download_jobs, len(selected_video_ids))
         console.print(f"Staging source audio for {len(selected_video_ids)} video(s) with {workers} worker(s).")
-        results = []
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(
-                    stage_source_audio_for_video,
-                    database,
-                    paths,
-                    tools,
-                    video_id=video_id,
-                    verification_cache=verification_cache,
-                ): video_id
-                for video_id in selected_video_ids
-            }
-            for index, future in enumerate(as_completed(futures), start=1):
-                result = future.result()
-                results.append(result)
-                console.print(
-                    f"Audio stage [{index}/{len(futures)}] {result.youtube_video_id}: "
-                    f"{result.outcome} ({result.reason_code})"
-                )
+        def stage_pass(target_video_ids: set[int], *, retry: bool = False):
+            pass_results = []
+            retry_video_ids: set[int] = set()
+            pass_label = "retry " if retry else ""
+            with ThreadPoolExecutor(
+                max_workers=min(workers, len(target_video_ids))
+            ) as executor:
+                futures = {
+                    executor.submit(
+                        stage_source_audio_for_video,
+                        database,
+                        paths,
+                        tools,
+                        video_id=video_id,
+                        verification_cache=verification_cache,
+                    ): video_id
+                    for video_id in target_video_ids
+                }
+                for index, future in enumerate(as_completed(futures), start=1):
+                    video_id = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as error:
+                        video = database.get_video_by_id(video_id)
+                        result = StageSourceAudioResult(
+                            video_id=video_id,
+                            youtube_video_id=(
+                                video.youtube_video_id
+                                if video is not None
+                                else f"video-{video_id}"
+                            ),
+                            outcome="failed",
+                            reason_code=(
+                                "unexpected_source_audio_stage_error: "
+                                f"{type(error).__name__}: {error}"
+                            ),
+                            artifact=None,
+                            attempt=None,
+                            downloaded=False,
+                        )
+                    if result.outcome == "failed" and not retry:
+                        retry_video_ids.add(video_id)
+                        suffix = "; deferred for retry after the first pass"
+                    else:
+                        suffix = ""
+                    pass_results.append(result)
+                    console.print(
+                        f"Audio stage {pass_label}[{index}/{len(futures)}] "
+                        f"{result.youtube_video_id}: {result.outcome} "
+                        f"({result.reason_code}){suffix}",
+                        markup=False,
+                    )
+            return pass_results, retry_video_ids
+
+        results, retry_video_ids = stage_pass(set(selected_video_ids))
+        results_by_video_id = {result.video_id: result for result in results}
+        if retry_video_ids:
+            console.print(
+                f"Retrying {len(retry_video_ids)} source-audio staging "
+                "failure(s) after the first pass."
+            )
+            retry_results, _ = stage_pass(retry_video_ids, retry=True)
+            results_by_video_id.update(
+                (result.video_id, result) for result in retry_results
+            )
+        results = list(results_by_video_id.values())
         manifest = write_audio_stage_manifest(paths.logs, results)
         verified = sum(result.outcome == "verified" for result in results)
         verified_video_ids = {
@@ -16500,31 +16599,62 @@ def _ensure_and_archive_run_media(
     tools = build_tool_config() if eligible else None
     counts = {"verified": 0, "unavailable": 0, "failed": 0, "skipped": 0}
     downloaded = 0
-    for index, video in enumerate(eligible, start=1):
-        assert tools is not None
-        try:
-            result = ensure_audio_for_video(
-                database,
-                paths,
-                tools,
-                video_id=video.id,
-                allow_download=allow_download,
-            )
-        except Exception as error:
-            counts["failed"] += 1
+
+    def ensure_pass(targets, *, retry: bool = False):
+        pass_results = []
+        retry_videos = []
+        pass_label = "retry " if retry else ""
+        for index, video in enumerate(targets, start=1):
+            assert tools is not None
+            try:
+                result = ensure_audio_for_video(
+                    database,
+                    paths,
+                    tools,
+                    video_id=video.id,
+                    allow_download=allow_download,
+                )
+            except Exception as error:
+                result = None
+                detail = f"unexpected_media_error: {type(error).__name__}: {error}"
+            else:
+                detail = result.reason_code
+            should_retry = result is None or result.outcome == "failed"
+            if should_retry and not retry:
+                retry_videos.append(video)
+                suffix = "; deferred for retry after the first pass"
+            else:
+                suffix = ""
+            outcome = result.outcome if result is not None else "failed"
             console.print(
-                f"Run audio [{index}/{len(eligible)}] {video.youtube_video_id}: "
-                f"failed (unexpected_media_error: {type(error).__name__}: {error})",
-                style="red",
+                f"Run audio {pass_label}[{index}/{len(targets)}] "
+                f"{video.youtube_video_id}: {outcome} ({detail}){suffix}",
+                style="red" if outcome == "failed" else None,
                 markup=False,
             )
+            pass_results.append((video, result))
+        return pass_results, retry_videos
+
+    initial_results, retry_videos = ensure_pass(eligible)
+    final_results = {video.id: result for video, result in initial_results}
+    if retry_videos:
+        console.print(
+            f"Retrying {len(retry_videos)} normalized-audio failure(s) after "
+            "the first pass."
+        )
+        retry_results, _ = ensure_pass(retry_videos, retry=True)
+        final_results.update(
+            (video.id, result) for video, result in retry_results
+        )
+
+    for video in eligible:
+        assert tools is not None
+        result = final_results[video.id]
+        if result is None:
+            counts["failed"] += 1
             continue
         counts[result.outcome] += 1
         downloaded += int(result.downloaded)
-        console.print(
-            f"Run audio [{index}/{len(eligible)}] {video.youtube_video_id}: "
-            f"{result.outcome} ({result.reason_code})"
-        )
     console.print(
         "Run audio ensure complete: "
         f"eligible={len(eligible)}, verified={counts['verified']} "
@@ -16565,6 +16695,19 @@ def _ensure_and_archive_run_media(
         progress_callback=report_progress,
         preflight_callback=report_preflight,
     )
+    if archive.counts["failed"]:
+        console.print(
+            f"Retrying source archival after {archive.counts['failed']} "
+            "artifact failure(s) in the first pass."
+        )
+        archive = archive_source_media(
+            database,
+            paths,
+            video_ids=video_ids,
+            wait_for_lock=True,
+            progress_callback=report_progress,
+            preflight_callback=report_preflight,
+        )
     archive_counts = archive.counts
     console.print(
         f"Run media archive complete: eligible={archive.eligible}, "

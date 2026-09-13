@@ -30,6 +30,7 @@ class ExtractionBatchResult:
     processed: int
     skipped: int
     failed: int
+    failed_video_ids: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,39 +229,65 @@ def extract_batch(
             recording_verifier_model_digest=verifier_digest,
         )
 
-    processed = 0
-    failed = 0
-    max_workers = min(workers, len(eligible_videos)) if eligible_videos else 1
-    if max_workers == 1:
-        for video in eligible_videos:
-            try:
-                extract_one(video)
-            except Exception as error:
-                database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-                _emit(event_callback, f"ERROR: Failed to extract video #{video.id}: {error}")
-                failed += 1
-            else:
-                _emit(event_callback, f"Extracted video #{video.id}")
-                processed += 1
-        return ExtractionBatchResult(processed=processed, skipped=skipped, failed=failed)
+    def run_pass(targets) -> tuple[int, list]:
+        pass_processed = 0
+        pass_failed = []
+        max_workers = min(workers, len(targets)) if targets else 1
+        if max_workers == 1:
+            for video in targets:
+                try:
+                    extract_one(video)
+                except Exception as error:
+                    database.update_video_status(
+                        video.id, VideoStatus.FAILED, str(error)
+                    )
+                    _emit(
+                        event_callback,
+                        f"ERROR: Failed to extract video #{video.id}: {error}",
+                    )
+                    pass_failed.append(video)
+                else:
+                    _emit(event_callback, f"Extracted video #{video.id}")
+                    pass_processed += 1
+            return pass_processed, pass_failed
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_video = {
-            executor.submit(extract_one, video): video for video in eligible_videos
-        }
-        for future in as_completed(future_to_video):
-            video = future_to_video[future]
-            try:
-                future.result()
-            except Exception as error:
-                database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-                _emit(event_callback, f"ERROR: Failed to extract video #{video.id}: {error}")
-                failed += 1
-            else:
-                _emit(event_callback, f"Extracted video #{video.id}")
-                processed += 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_video = {
+                executor.submit(extract_one, video): video for video in targets
+            }
+            for future in as_completed(future_to_video):
+                video = future_to_video[future]
+                try:
+                    future.result()
+                except Exception as error:
+                    database.update_video_status(
+                        video.id, VideoStatus.FAILED, str(error)
+                    )
+                    _emit(
+                        event_callback,
+                        f"ERROR: Failed to extract video #{video.id}: {error}",
+                    )
+                    pass_failed.append(video)
+                else:
+                    _emit(event_callback, f"Extracted video #{video.id}")
+                    pass_processed += 1
+        return pass_processed, pass_failed
 
-    return ExtractionBatchResult(processed=processed, skipped=skipped, failed=failed)
+    processed, failed_videos = run_pass(eligible_videos)
+    if failed_videos:
+        _emit(
+            event_callback,
+            f"Retrying {len(failed_videos)} extraction failure(s) after the first pass.",
+        )
+        retry_processed, failed_videos = run_pass(failed_videos)
+        processed += retry_processed
+
+    return ExtractionBatchResult(
+        processed=processed,
+        skipped=skipped,
+        failed=len(failed_videos),
+        failed_video_ids=tuple(video.id for video in failed_videos),
+    )
 
 
 def prepare_review_exports(
