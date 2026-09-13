@@ -22,15 +22,18 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.storage import Database
 
 
-SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v7"
+SHADOW_ASSOCIATION_VERSION = "speaker_shadow_association_v8"
 SHADOW_ASSOCIATION_FINGERPRINT_VERSION = (
-    "speaker_shadow_association_input_v6"
+    "speaker_shadow_association_input_v7"
 )
 SHADOW_ASSOCIATION_ADMISSION_VERSION = (
     "speaker_shadow_association_admission_v1"
 )
 REVIEWED_PROFILE_REASON = "reviewed_anonymous_speaker"
 DISCOVERY_PROFILE_REASON = "shadow_discovery_candidate"
+WEAK_LOCAL_ASSOCIATION_OUTCOMES = frozenset(
+    ("no_match", "insufficient_evidence")
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +81,20 @@ class StagedAssociationRouting:
     total_routable_profiles: int
     confirmation_priority_profile_ids: tuple[int, ...] = ()
     candidate_funnel: Mapping[str, Any] | None = None
+    fallback_profiles: tuple[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
+    ] = ()
+
+
+def should_activate_cross_source_fallback(
+    outcome: str,
+    routing: StagedAssociationRouting,
+) -> bool:
+    """Activate the guest-speaker check only after a weak local result."""
+    return bool(
+        routing.fallback_profiles
+        and outcome in WEAK_LOCAL_ASSOCIATION_OUTCOMES
+    )
 
 
 def leave_one_out_profile_readiness(
@@ -200,19 +217,14 @@ def select_routed_association_profiles(
 ) -> tuple[
     tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
 ]:
-    """Keep confirmed mature profiles global and route review targets safely."""
+    """Route profiles with source-local or explicit-name evidence."""
     names = {
         name.strip() for name in candidate_normalized_names if name.strip()
     }
     return tuple(
         (readiness, exemplars)
         for readiness, exemplars in profiles
-        if (
-            readiness.shadow_ready
-            and "discovery_candidate_unconfirmed"
-            not in readiness.automatic_blockers
-        )
-        or bool(names & set(readiness.normalized_names))
+        if bool(names & set(readiness.normalized_names))
         or any(
             source_id_by_video_id.get(exemplar.observation.video_id)
             == candidate_source_id
@@ -231,10 +243,10 @@ def select_staged_association_profiles(
     source_id_by_video_id: Mapping[int, int],
     candidate_centroid: Sequence[float],
     exemplar_centroids: Mapping[int, Sequence[float]],
-    maximum_global_profiles: int = 3,
+    maximum_global_profiles: int = 1,
     confirmation_priority_profile_ids: frozenset[int] = frozenset(),
 ) -> StagedAssociationRouting:
-    """Prioritize source/name routes and bound expensive global comparisons."""
+    """Prefer local routes and use a bounded cross-source fallback only if needed."""
     if maximum_global_profiles < 1:
         raise ValueError("global association shortlist must contain a profile")
     routable_by_id = {
@@ -253,7 +265,7 @@ def select_staged_association_profiles(
             if readiness.profile_id in confirmation_priority_profile_ids
         }
     )
-    routable = tuple(routable_by_id.values())
+    locally_routable = tuple(routable_by_id.values())
     names = {
         name.strip() for name in candidate_normalized_names if name.strip()
     }
@@ -273,10 +285,21 @@ def select_staged_association_profiles(
         name_match = bool(names & set(readiness.normalized_names))
         return confirmation_match, source_match, name_match
 
-    priority = [item for item in routable if any(priority_reason(item))]
+    priority = [item for item in locally_routable if any(priority_reason(item))]
     priority_ids = {item[0].profile_id for item in priority}
+    has_source_route = any(priority_reason(item)[1] for item in priority)
+    has_name_route = any(priority_reason(item)[2] for item in priority)
+    has_confirmation_route = any(
+        priority_reason(item)[0] for item in priority
+    )
+    has_local_or_explicit_route = bool(priority)
     global_candidates = [
-        item for item in routable if item[0].profile_id not in priority_ids
+        item
+        for item in profiles
+        if item[0].profile_id not in priority_ids
+        and item[0].shadow_ready
+        and "discovery_candidate_unconfirmed"
+        not in item[0].automatic_blockers
     ]
 
     def profile_similarity(
@@ -298,12 +321,21 @@ def select_staged_association_profiles(
     }
     evaluation_similarity_by_profile_id = {
         item[0].profile_id: profile_similarity(item)
-        for item in routable
+        for item in profiles
+        if item[0].shadow_ready
+        and "discovery_candidate_unconfirmed"
+        not in item[0].automatic_blockers
     }
     evaluation_ranked_profile_ids = [
         item[0].profile_id
         for item in sorted(
-            routable,
+            (
+                item
+                for item in profiles
+                if item[0].shadow_ready
+                and "discovery_candidate_unconfirmed"
+                not in item[0].automatic_blockers
+            ),
             key=lambda item: (-profile_similarity(item), item[0].profile_id),
         )
     ]
@@ -320,7 +352,18 @@ def select_staged_association_profiles(
         item[0].profile_id: rank
         for rank, item in enumerate(global_candidates, start=1)
     }
-    shortlisted = global_candidates[:maximum_global_profiles]
+    cross_source_fallback = (
+        global_candidates[:maximum_global_profiles]
+        if has_source_route
+        and not has_name_route
+        and not has_confirmation_route
+        else []
+    )
+    shortlisted = (
+        []
+        if has_local_or_explicit_route
+        else global_candidates[:maximum_global_profiles]
+    )
     selected = sorted(
         (*priority, *shortlisted),
         key=lambda item: (
@@ -331,9 +374,12 @@ def select_staged_association_profiles(
             item[0].profile_id,
         ),
     )
-    exhaustive = len(selected) == len(routable)
+    # "Exhaustive" is relative to the deliberately source-first policy
+    # universe, not every known profile.  This prevents a local proposal from
+    # triggering the old all-profile validation pass.
+    exhaustive = True
     selected_ids = {item[0].profile_id for item in selected}
-    routable_ids = set(routable_by_id)
+    routable_ids = selected_ids
     candidate_funnel_entries = []
     for readiness, exemplars in sorted(
         profiles, key=lambda item: item[0].profile_id
@@ -405,6 +451,10 @@ def select_staged_association_profiles(
                     if profile_id in acoustic_rank_by_profile_id
                     else None
                 ),
+                "reserved_for_weak_local_fallback": profile_id
+                in {
+                    item[0].profile_id for item in cross_source_fallback
+                },
                 "selected_for_comparison": profile_id in selected_ids,
             }
         )
@@ -417,13 +467,12 @@ def select_staged_association_profiles(
         profiles=tuple(selected),
         exhaustive=exhaustive,
         route=(
-            "exhaustive"
-            if exhaustive
+            "pending_discovery_confirmation_priority"
+            if confirmation_priority_profile_ids
             else (
-                "pending_discovery_confirmation_priority_with_global_"
-                "centroid_shortlist"
-                if confirmation_priority_profile_ids
-                else "source_name_priority_with_global_centroid_shortlist"
+                "source_local_or_explicit_name"
+                if priority
+                else "bounded_cross_source_centroid_fallback"
             )
         ),
         priority_profile_ids=tuple(
@@ -432,7 +481,7 @@ def select_staged_association_profiles(
         shortlisted_profile_ids=tuple(
             item[0].profile_id for item in shortlisted
         ),
-        total_routable_profiles=len(routable),
+        total_routable_profiles=len(selected),
         confirmation_priority_profile_ids=tuple(
             sorted(
                 confirmation_priority_profile_ids
@@ -440,10 +489,17 @@ def select_staged_association_profiles(
             )
         ),
         candidate_funnel={
-            "version": "association_candidate_funnel_v1",
+            "version": "association_candidate_funnel_v2",
             "retrieval_candidates": candidate_funnel_entries,
             "acoustic_shortlist": {
                 "maximum_profiles": maximum_global_profiles,
+                "used_only_without_local_or_explicit_route": True,
+                "suppressed_by_local_or_explicit_route": (
+                    has_local_or_explicit_route
+                ),
+                "weak_local_fallback_profile_ids": [
+                    item[0].profile_id for item in cross_source_fallback
+                ],
                 "cutoff_score": cutoff_score,
                 "ranked_profile_ids": [
                     item[0].profile_id for item in global_candidates
@@ -454,6 +510,7 @@ def select_staged_association_profiles(
             },
             "profiles_selected_for_comparison": sorted(selected_ids),
         },
+        fallback_profiles=tuple(cross_source_fallback),
     )
 
 
