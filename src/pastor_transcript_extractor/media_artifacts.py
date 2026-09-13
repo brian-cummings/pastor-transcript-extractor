@@ -372,11 +372,11 @@ def register_media_file(
     operation_kind: str | None = None,
     verification_cache: MediaVerificationCache | None = None,
 ) -> MediaArtifact:
-    resolved_path = artifact_path.expanduser().resolve()
-    if not resolved_path.exists():
-        raise FileNotFoundError(resolved_path)
-    content_sha256 = _sha256_file(resolved_path)
-    metadata = _probe_audio(resolved_path)
+    logical_path = artifact_path.expanduser().absolute()
+    if not logical_path.exists():
+        raise FileNotFoundError(logical_path)
+    content_sha256 = _sha256_file(logical_path)
+    metadata = _probe_audio(logical_path)
     fingerprint_payload = {
         "service_version": MEDIA_SERVICE_VERSION,
         "video_id": video.id,
@@ -405,9 +405,9 @@ def register_media_file(
         "youtube_video_id": video.youtube_video_id,
         "artifact_kind": artifact_kind,
         "provenance_kind": provenance_kind,
-        "artifact_path": str(resolved_path),
+        "artifact_path": str(logical_path),
         "content_sha256": content_sha256,
-        "byte_size": resolved_path.stat().st_size,
+        "byte_size": logical_path.stat().st_size,
         "duration_seconds": metadata["duration_seconds"],
         "format_name": metadata["format_name"],
         "sample_rate_hz": metadata["sample_rate_hz"],
@@ -435,10 +435,10 @@ def register_media_file(
         parent_media_artifact_id=parent.id if parent else None,
         artifact_kind=artifact_kind,
         provenance_kind=provenance_kind,
-        artifact_path=str(resolved_path),
+        artifact_path=str(logical_path),
         manifest_path=str(manifest_path),
         content_sha256=content_sha256,
-        byte_size=resolved_path.stat().st_size,
+        byte_size=logical_path.stat().st_size,
         duration_seconds=metadata["duration_seconds"],
         format_name=metadata["format_name"],
         sample_rate_hz=metadata["sample_rate_hz"],
@@ -491,12 +491,12 @@ def backfill_existing_media_artifacts(
                 acquisition_tool_version="unknown",
             )
         candidate_paths = [
-            Path(transcript.audio_path).expanduser().resolve()
+            Path(transcript.audio_path).expanduser().absolute()
             for transcript in database.list_transcript_artifacts_for_video(video.id)
             if transcript.audio_path
         ]
         if transcript_paths.audio_normalized.exists():
-            candidate_paths.append(transcript_paths.audio_normalized.resolve())
+            candidate_paths.append(transcript_paths.audio_normalized.absolute())
         seen_paths: set[Path] = set()
         for path in candidate_paths:
             if path in seen_paths:
@@ -560,7 +560,13 @@ def _artifact_at_logical_path(
     for artifact in reversed(artifacts):
         if artifact.artifact_kind != artifact_kind:
             continue
-        if Path(artifact.artifact_path).expanduser().absolute() == logical_path:
+        artifact_path = Path(artifact.artifact_path).expanduser().absolute()
+        if artifact_path == logical_path:
+            return artifact
+        # Older registrations followed archive symlinks and persisted the NAS
+        # target instead of the stable workspace path. Treat the two spellings
+        # as the same logical artifact without rewriting its immutable manifest.
+        if artifact_path.resolve(strict=False) == logical_path.resolve(strict=False):
             return artifact
     return None
 
@@ -598,8 +604,28 @@ def ensure_audio_for_video(
 
     emit = event_callback or (lambda _message: None)
     emit("checking existing media registration and integrity")
-    backfill_existing_media_artifacts(database, app_paths, video_id=video.id)
-    existing = get_verified_normalized_media_artifact(database, video.id)
+    try:
+        backfill_existing_media_artifacts(database, app_paths, video_id=video.id)
+        existing = get_verified_normalized_media_artifact(database, video.id)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        attempt = _record_attempt(
+            database,
+            video=video,
+            outcome="failed",
+            reason_code="media_acquisition_failed",
+            detail=f"{type(error).__name__}: {error}",
+            artifact=None,
+        )
+        return EnsureAudioResult(
+            video.id,
+            video.youtube_video_id,
+            True,
+            "failed",
+            "media_acquisition_failed",
+            None,
+            attempt,
+            False,
+        )
     if existing is not None:
         latest_attempt = database.get_latest_media_acquisition_attempt(video.id)
         if (
@@ -740,7 +766,13 @@ def ensure_audio_for_video(
             video.id, video.youtube_video_id, True, "unavailable", "video_unavailable",
             None, attempt, False,
         )
-    except (YtDlpError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+    except (
+        YtDlpError,
+        OSError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
         attempt = _record_attempt(
             database, video=video, outcome="failed", reason_code="media_acquisition_failed",
             detail=f"{type(error).__name__}: {error}", artifact=None,
