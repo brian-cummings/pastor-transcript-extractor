@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr
+from io import StringIO
 import subprocess
 import tempfile
 import unittest
@@ -241,6 +243,51 @@ class AudioNormalizationTests(unittest.TestCase):
                 Path(tmp) / "normalized.wav",
                 "ffmpeg",
             )
+
+    def test_successful_normalization_hides_only_benign_opus_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.webm"
+            output = root / "normalized.wav"
+            source.write_bytes(b"source")
+
+            def complete_normalization(*_args, **_kwargs):
+                output.write_bytes(b"normalized")
+                return subprocess.CompletedProcess(
+                    ["ffmpeg"],
+                    0,
+                    stderr=(
+                        "[opus @ 0x7eecb8700] Error parsing Opus packet header.\n"
+                        "actionable diagnostic\n"
+                    ),
+                )
+
+            stderr = StringIO()
+            with patch(
+                "pastor_transcript_extractor.media.subprocess.run",
+                side_effect=complete_normalization,
+            ), redirect_stderr(stderr):
+                normalize_audio(source, output, "ffmpeg")
+
+        self.assertEqual("actionable diagnostic\n", stderr.getvalue())
+
+    def test_failed_normalization_preserves_opus_error(self) -> None:
+        diagnostic = "[opus @ 0x7eecb8700] Error parsing Opus packet header.\n"
+        completed = subprocess.CompletedProcess(
+            ["ffmpeg"], 1, stderr=diagnostic
+        )
+        stderr = StringIO()
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "pastor_transcript_extractor.media.subprocess.run",
+            return_value=completed,
+        ), redirect_stderr(stderr), self.assertRaises(subprocess.CalledProcessError):
+            normalize_audio(
+                Path(tmp) / "source.webm",
+                Path(tmp) / "normalized.wav",
+                "ffmpeg",
+            )
+
+        self.assertEqual(diagnostic, stderr.getvalue())
 
 
 if __name__ == "__main__":

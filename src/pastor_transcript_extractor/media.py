@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import subprocess
+import sys
 from typing import Any
 
 from pastor_transcript_extractor.sermon_policy import maximum_sermon_duration_seconds
@@ -37,6 +39,26 @@ class YtDlpAuthenticationRequiredError(YtDlpError):
 
 
 AUDIO_NORMALIZATION_TIMEOUT_SECONDS = 600
+_BENIGN_OPUS_PACKET_HEADER = re.compile(
+    r"^\[opus @ 0x[0-9a-fA-F]+\] Error parsing Opus packet header\.$"
+)
+_FFMPEG_REPEATED_MESSAGE = re.compile(r"^\s*Last message repeated \d+ times?$", re.IGNORECASE)
+
+
+def _report_successful_ffmpeg_stderr(stderr: str) -> None:
+    """Hide a known recoverable Opus warning after ffmpeg exits successfully."""
+    retained: list[str] = []
+    suppressed_previous = False
+    for line in stderr.splitlines():
+        if _BENIGN_OPUS_PACKET_HEADER.fullmatch(line.strip()):
+            suppressed_previous = True
+            continue
+        if suppressed_previous and _FFMPEG_REPEATED_MESSAGE.fullmatch(line):
+            continue
+        suppressed_previous = False
+        retained.append(line)
+    if retained:
+        sys.stderr.write("\n".join(retained) + "\n")
 
 
 def _run_yt_dlp(
@@ -288,12 +310,25 @@ def normalize_audio(input_path: Path, output_path: Path, ffmpeg_bin: str) -> Pat
         "-vn",
         str(output_path),
     ]
-    subprocess.run(
+    result = subprocess.run(
         command,
-        check=True,
+        check=False,
         stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
         timeout=AUDIO_NORMALIZATION_TIMEOUT_SECONDS,
     )
+    stderr = result.stderr or ""
+    if result.returncode != 0:
+        if stderr:
+            sys.stderr.write(stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            command,
+            stderr=stderr,
+        )
+    _report_successful_ffmpeg_stderr(stderr)
     if not output_path.exists():
         raise FileNotFoundError(f"ffmpeg did not create normalized audio at {output_path}")
     return output_path
