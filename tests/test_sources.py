@@ -985,6 +985,42 @@ class SegmentationTests(unittest.TestCase):
             self.assertIsNone(database.get_video_by_youtube_id("overlong001"))
             self.assertEqual(2, len(result.selected_video_ids_by_source[source.id]))
 
+    def test_discovery_retries_source_failure_after_first_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            discovered = [
+                DiscoveredVideo(
+                    youtube_video_id="retrydisc01",
+                    title="Recovered discovery",
+                    url="https://www.youtube.com/watch?v=retrydisc01",
+                    channel_name="Sample Church",
+                    published_at="2026-08-01T00:00:00Z",
+                    duration_seconds=1800,
+                )
+            ]
+            with patch(
+                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                side_effect=[RuntimeError("temporary"), discovered],
+            ) as extract:
+                result = discover_sources_service(
+                    limit=1,
+                    source_id=source.id,
+                    base_dir=base_dir,
+                )
+
+            self.assertEqual(2, extract.call_count)
+            self.assertEqual(
+                1, len(result.selected_video_ids_by_source[source.id])
+            )
+
     def test_discover_limit_keeps_most_recent_results_not_raw_source_order(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
@@ -2620,6 +2656,72 @@ class CliTests(unittest.TestCase):
             request_interval_seconds=5.0,
         )
 
+    def test_audio_stage_retries_unexpected_worker_failure(self) -> None:
+        database = SimpleNamespace(
+            list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            list_videos=lambda: [
+                SimpleNamespace(id=11, source_id=1, youtube_video_id="video-11"),
+                SimpleNamespace(id=12, source_id=1, youtube_video_id="video-12"),
+            ],
+            get_video_by_id=lambda video_id: SimpleNamespace(
+                id=video_id, youtube_video_id=f"video-{video_id}"
+            ),
+        )
+        paths = SimpleNamespace(logs=Path("logs"), root=Path("data"))
+        attempts: dict[int, int] = {}
+
+        def stage_result(
+            _database, _paths, _tools, *, video_id, verification_cache
+        ):
+            attempts[video_id] = attempts.get(video_id, 0) + 1
+            if video_id == 12 and attempts[video_id] == 1:
+                raise RuntimeError("temporary worker failure")
+            return StageSourceAudioResult(
+                video_id,
+                f"video-{video_id}",
+                "verified",
+                "source_audio_staged",
+                SimpleNamespace(),
+                None,
+                True,
+            )
+
+        with patch(
+            "pastor_transcript_extractor.cli.get_database",
+            return_value=database,
+        ), patch(
+            "pastor_transcript_extractor.cli.build_paths",
+            return_value=paths,
+        ), patch(
+            "pastor_transcript_extractor.cli.build_tool_config",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "pastor_transcript_extractor.cli.discover_sources_service",
+            return_value=SimpleNamespace(
+                selected_video_ids_by_source={1: (11, 12)}
+            ),
+        ), patch(
+            "pastor_transcript_extractor.cli.stage_source_audio_for_video",
+            side_effect=stage_result,
+        ), patch(
+            "pastor_transcript_extractor.cli.write_audio_stage_manifest",
+            return_value=Path("stage.json"),
+        ), patch(
+            "pastor_transcript_extractor.cli.fetch_captions_service"
+        ) as fetch:
+            run_workflow_service(
+                all_sources=True,
+                stage_audio_only=True,
+                download_jobs=2,
+            )
+
+        self.assertEqual({11: 1, 12: 2}, attempts)
+        fetch.assert_called_once_with(
+            base_dir=None,
+            video_ids={11, 12},
+            request_interval_seconds=5.0,
+        )
+
     def test_resume_stage_can_acquire_captions_then_disables_other_network(self) -> None:
         database = SimpleNamespace()
         paths = SimpleNamespace(logs=Path("logs"))
@@ -2962,7 +3064,80 @@ class CliTests(unittest.TestCase):
                 video_ids={1, 2},
             )
 
-        self.assertEqual(2, ensure_audio.call_count)
+        self.assertEqual(3, ensure_audio.call_count)
+
+    def test_run_media_retries_failed_video_after_first_pass(self) -> None:
+        videos = [
+            SimpleNamespace(id=1, youtube_video_id="retry000001"),
+            SimpleNamespace(id=2, youtube_video_id="steady00001"),
+        ]
+        database = SimpleNamespace(
+            list_videos=lambda: videos,
+            get_active_media_archive_destination=lambda: None,
+        )
+        failed = SimpleNamespace(
+            outcome="failed",
+            downloaded=False,
+            reason_code="temporary_failure",
+        )
+        verified = SimpleNamespace(
+            outcome="verified",
+            downloaded=False,
+            reason_code="downloaded_and_normalized",
+        )
+        with patch(
+            "pastor_transcript_extractor.cli.video_has_isolated_sermon",
+            return_value=(True, "isolated_sermon"),
+        ), patch(
+            "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
+            return_value=None,
+        ), patch(
+            "pastor_transcript_extractor.cli.build_tool_config",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "pastor_transcript_extractor.cli.ensure_audio_for_video",
+            side_effect=[failed, verified, verified],
+        ) as ensure_audio:
+            _ensure_and_archive_run_media(
+                database,
+                SimpleNamespace(),
+                video_ids={1, 2},
+            )
+
+        self.assertEqual([1, 2, 1], [
+            call.kwargs["video_id"] for call in ensure_audio.call_args_list
+        ])
+
+    def test_run_media_retries_archive_failures_after_first_pass(self) -> None:
+        database = SimpleNamespace(
+            list_videos=lambda: [],
+            get_active_media_archive_destination=lambda: SimpleNamespace(),
+        )
+        failed_archive = SimpleNamespace(
+            eligible=1,
+            counts={
+                "archived": 0,
+                "already_archived": 0,
+                "destination_unavailable": 0,
+                "failed": 1,
+            },
+        )
+        recovered_archive = SimpleNamespace(
+            eligible=1,
+            counts={
+                "archived": 1,
+                "already_archived": 0,
+                "destination_unavailable": 0,
+                "failed": 0,
+            },
+        )
+        with patch(
+            "pastor_transcript_extractor.cli.archive_source_media",
+            side_effect=[failed_archive, recovered_archive],
+        ) as archive:
+            _ensure_and_archive_run_media(database, SimpleNamespace())
+
+        self.assertEqual(2, archive.call_count)
 
     def test_run_failed_only_exits_cleanly_when_nothing_failed(self) -> None:
         runner = CliRunner()
@@ -3086,6 +3261,42 @@ class CliTests(unittest.TestCase):
             self.assertIn("unavailable 1", result.output)
             self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
             self.assertIsNone(updated_video.failure_reason)
+
+    def test_fetch_retries_unexpected_failure_after_first_pass(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/watch?v=abc123def45",
+                SourceType.VIDEO,
+                pastor_id=pastor.id,
+            )
+            database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="abc123def45",
+                title="Sermon",
+                url="https://www.youtube.com/watch?v=abc123def45",
+                status=VideoStatus.DISCOVERED,
+            )
+            with patch(
+                "pastor_transcript_extractor.cli.fetch_captions_video",
+                side_effect=[
+                    RuntimeError("temporary"),
+                    SimpleNamespace(raw_text_path=Path("captions.txt")),
+                ],
+            ) as fetch:
+                result = runner.invoke(
+                    app, ["fetch", "--base-dir", str(base_dir)]
+                )
+
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            self.assertEqual(2, fetch.call_count)
+            self.assertIn("Retrying captions", result.output)
+            self.assertIn("failed 0", result.output)
 
     def test_fetch_clears_stale_unavailable_failure_when_video_has_no_captions(self) -> None:
         runner = CliRunner()
@@ -4246,6 +4457,50 @@ class CliTests(unittest.TestCase):
             self.assertIn("Transcribed 2 video(s); skipped 0; failed 0.", result.output)
             self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, first_updated.status)
             self.assertEqual(VideoStatus.TRANSCRIBING_LOCAL, second_updated.status)
+
+    def test_transcribe_retries_failure_after_first_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base_dir = Path(tmp)
+            database = Database(base_dir / "app.db")
+            database.initialize()
+            pastor = database.add_pastor("sample-church", "Sample Church")
+            source = database.add_source(
+                "https://www.youtube.com/@samplechurch",
+                SourceType.CHANNEL,
+                pastor_id=pastor.id,
+            )
+            video = database.add_video(
+                source_id=source.id,
+                pastor_id=pastor.id,
+                youtube_video_id="retryasr001",
+                title="Retry ASR",
+                url="https://www.youtube.com/watch?v=retryasr001",
+                status=VideoStatus.DISCOVERED,
+            )
+            prepared = PreparedTranscriptInput(
+                video_id=video.id,
+                youtube_video_id=video.youtube_video_id,
+                pastor_id=pastor.id,
+                pastor_slug=pastor.slug,
+                source_url=video.url,
+                transcript_root=base_dir,
+                metadata_path=base_dir / "metadata.json",
+                normalized_audio_path=base_dir / "normalized.wav",
+                whisper_output_base=base_dir / "whisper",
+            )
+            with patch(
+                "pastor_transcript_extractor.cli.prepare_transcription_input",
+                side_effect=[RuntimeError("temporary"), prepared],
+            ) as prepare, patch(
+                "pastor_transcript_extractor.cli.complete_transcription_video"
+            ):
+                transcribe_videos_service(
+                    jobs=1,
+                    prep_jobs=1,
+                    base_dir=base_dir,
+                )
+
+            self.assertEqual(2, prepare.call_count)
 
     def test_terminal_transcription_progress_is_bounded_and_keeps_completion_lines(self) -> None:
         class RecordingProgress(Progress):
