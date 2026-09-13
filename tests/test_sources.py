@@ -2929,6 +2929,41 @@ class CliTests(unittest.TestCase):
             self.assertEqual({video.id}, archive.call_args.kwargs["video_ids"])
             self.assertTrue(archive.call_args.kwargs["wait_for_lock"])
 
+    def test_run_media_continues_after_one_unexpected_video_failure(self) -> None:
+        videos = [
+            SimpleNamespace(id=1, youtube_video_id="collision01"),
+            SimpleNamespace(id=2, youtube_video_id="continues01"),
+        ]
+        database = SimpleNamespace(
+            list_videos=lambda: videos,
+            get_active_media_archive_destination=lambda: None,
+        )
+        successful = SimpleNamespace(
+            outcome="verified",
+            downloaded=False,
+            reason_code="downloaded_and_normalized",
+        )
+        with patch(
+            "pastor_transcript_extractor.cli.video_has_isolated_sermon",
+            return_value=(True, "isolated_sermon"),
+        ), patch(
+            "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
+            return_value=None,
+        ), patch(
+            "pastor_transcript_extractor.cli.build_tool_config",
+            return_value=SimpleNamespace(),
+        ), patch(
+            "pastor_transcript_extractor.cli.ensure_audio_for_video",
+            side_effect=[ValueError("manifest collision"), successful],
+        ) as ensure_audio:
+            _ensure_and_archive_run_media(
+                database,
+                SimpleNamespace(),
+                video_ids={1, 2},
+            )
+
+        self.assertEqual(2, ensure_audio.call_count)
+
     def test_run_failed_only_exits_cleanly_when_nothing_failed(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:

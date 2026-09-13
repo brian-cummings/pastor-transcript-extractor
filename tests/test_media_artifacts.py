@@ -655,6 +655,80 @@ class MediaArtifactTests(unittest.TestCase):
             manifest["source_snapshot_semantics"],
         )
 
+    def test_backfill_recognizes_registered_audio_after_archive_symlink(self) -> None:
+        video, _ = self._video("archived001")
+        transcript_paths = build_transcript_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        )
+        write_wav(transcript_paths.audio_normalized)
+        self.database.add_transcript_artifact(
+            video_id=video.id,
+            source_kind=TranscriptSourceKind.LOCAL_ASR,
+            audio_path=str(transcript_paths.audio_normalized),
+        )
+        first = backfill_existing_media_artifacts(
+            self.database, self.paths, video_id=video.id
+        )
+        artifact = self.database.list_media_artifacts_for_video(video.id)[-1]
+        manifest_before = Path(artifact.manifest_path).read_text(encoding="utf-8")
+
+        archived_path = self.paths.root / "archive" / "normalized.wav"
+        archived_path.parent.mkdir(parents=True)
+        transcript_paths.audio_normalized.replace(archived_path)
+        transcript_paths.audio_normalized.symlink_to(archived_path)
+
+        second = backfill_existing_media_artifacts(
+            self.database, self.paths, video_id=video.id
+        )
+
+        self.assertEqual(1, first.artifacts_registered)
+        self.assertEqual(0, second.artifacts_registered)
+        self.assertEqual(1, len(self.database.list_media_artifacts_for_video(video.id)))
+        self.assertEqual(
+            manifest_before,
+            Path(artifact.manifest_path).read_text(encoding="utf-8"),
+        )
+
+    def test_backfill_recognizes_legacy_nas_resolved_artifact_path(self) -> None:
+        video, _ = self._video("legacy-nas1")
+        transcript_paths = build_transcript_artifact_paths(
+            self.paths, self.pastor.slug, video.youtube_video_id
+        )
+        write_wav(transcript_paths.audio_normalized)
+        self.database.add_transcript_artifact(
+            video_id=video.id,
+            source_kind=TranscriptSourceKind.LOCAL_ASR,
+            audio_path=str(transcript_paths.audio_normalized),
+        )
+        backfill_existing_media_artifacts(
+            self.database, self.paths, video_id=video.id
+        )
+        artifact = self.database.list_media_artifacts_for_video(video.id)[-1]
+
+        archived_path = self.paths.root / "archive" / "legacy-normalized.wav"
+        archived_path.parent.mkdir(parents=True)
+        transcript_paths.audio_normalized.replace(archived_path)
+        transcript_paths.audio_normalized.symlink_to(archived_path)
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE media_artifacts SET artifact_path = ? WHERE id = ?",
+                (str(archived_path), artifact.id),
+            )
+        manifest_path = Path(artifact.manifest_path)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["artifact_path"] = str(archived_path)
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        replay = backfill_existing_media_artifacts(
+            self.database, self.paths, video_id=video.id
+        )
+
+        self.assertEqual(0, replay.artifacts_registered)
+        self.assertEqual(1, len(self.database.list_media_artifacts_for_video(video.id)))
+
     def test_source_download_preserves_native_audio_instead_of_requesting_wav(self) -> None:
         output = self.paths.root / "work" / "source"
         captured: list[str] = []
@@ -974,6 +1048,26 @@ class MediaArtifactTests(unittest.TestCase):
         coverage = audit_media_coverage(self.database)
         self.assertEqual((unavailable_video.youtube_video_id,), coverage.unavailable)
         self.assertEqual((failed_video.youtube_video_id,), coverage.failed)
+
+    def test_manifest_collision_is_recorded_as_one_video_failure(self) -> None:
+        video, _ = self._video("collision01")
+        with patch(
+            "pastor_transcript_extractor.media_artifacts.backfill_existing_media_artifacts",
+            side_effect=ValueError("refusing to overwrite changed media manifest"),
+        ):
+            result = ensure_audio_for_video(
+                self.database,
+                self.paths,
+                self.tools,
+                video_id=video.id,
+                tool_versions={"yt-dlp": "test", "ffmpeg": "test"},
+            )
+
+        self.assertEqual("failed", result.outcome)
+        self.assertEqual("media_acquisition_failed", result.reason_code)
+        attempts = self.database.list_media_acquisition_attempts(video.id)
+        self.assertEqual(1, len(attempts))
+        self.assertIn("changed media manifest", attempts[0].detail)
 
     def test_non_sermon_is_skipped_without_download_or_attempt(self) -> None:
         video, _ = self._video("nosermon001", isolated=False)

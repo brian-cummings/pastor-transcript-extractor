@@ -16502,13 +16502,23 @@ def _ensure_and_archive_run_media(
     downloaded = 0
     for index, video in enumerate(eligible, start=1):
         assert tools is not None
-        result = ensure_audio_for_video(
-            database,
-            paths,
-            tools,
-            video_id=video.id,
-            allow_download=allow_download,
-        )
+        try:
+            result = ensure_audio_for_video(
+                database,
+                paths,
+                tools,
+                video_id=video.id,
+                allow_download=allow_download,
+            )
+        except Exception as error:
+            counts["failed"] += 1
+            console.print(
+                f"Run audio [{index}/{len(eligible)}] {video.youtube_video_id}: "
+                f"failed (unexpected_media_error: {type(error).__name__}: {error})",
+                style="red",
+                markup=False,
+            )
+            continue
         counts[result.outcome] += 1
         downloaded += int(result.downloaded)
         console.print(
