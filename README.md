@@ -656,6 +656,15 @@ Missing extraction/span evidence is routed to extraction repair, and too-few
 activity-qualified spans are routed to human exemplar review; neither condition
 weakens acoustic thresholds or the independent multi-exemplar membership guard.
 
+Association routing is source-first. Each observation is compared with every
+eligible profile represented on the same source, plus any profile reached by an
+explicit normalized name or a pending confirmation. A blind acoustic search is
+held in reserve while those comparisons run. If source-local comparisons end in
+`no_match` or `insufficient_evidence`, the observation receives one bounded
+nearest-profile cross-source check by default. This supports the uncommon guest
+pastor case without treating routine movement between churches as the base-rate
+assumption. `--maximum-global-profiles` can widen only that fallback.
+
 Current transcript-grounded sampling oversamples up to fifteen distributed
 sermon-speech candidates, measures speech activity relative to the recording,
 and embeds five qualified clips. Distribution remains primary. Only when those

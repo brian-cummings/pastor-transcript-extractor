@@ -402,6 +402,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     select_profile_exemplars,
     select_routed_association_profiles,
     select_staged_association_profiles,
+    should_activate_cross_source_fallback,
     summarize_shadow_associations,
     write_shadow_association,
     write_shadow_association_admission,
@@ -7365,7 +7366,7 @@ def _repair_exemplars_and_retry_association(
             minimum_profile_members=3,
             maximum_exemplars=3,
             minimum_same_exemplars=2,
-            maximum_global_profiles=3,
+            maximum_global_profiles=1,
             jobs=jobs,
             model_path=Path(
                 "evaluation/speaker-pairs/models/"
@@ -7518,7 +7519,7 @@ def run_identity_workflow_service(
         minimum_profile_members=3,
         maximum_exemplars=3,
         minimum_same_exemplars=2,
-        maximum_global_profiles=3,
+        maximum_global_profiles=1,
         jobs=jobs,
         model_path=Path(
             "evaluation/speaker-pairs/models/"
@@ -8321,7 +8322,7 @@ def dispatch_associations_command(
                 minimum_profile_members=3,
                 maximum_exemplars=3,
                 minimum_same_exemplars=2,
-                maximum_global_profiles=3,
+                maximum_global_profiles=1,
                 jobs=jobs,
                 model_path=Path(
                     "evaluation/speaker-pairs/models/"
@@ -8892,7 +8893,7 @@ def coordinate_identity_command(
                     minimum_profile_members=3,
                     maximum_exemplars=3,
                     minimum_same_exemplars=2,
-                    maximum_global_profiles=3,
+                    maximum_global_profiles=1,
                     jobs=2,
                     model_path=model_path,
                     model_sha256=model_sha256,
@@ -9270,7 +9271,7 @@ def _replay_profile_association_neighborhood(
         minimum_profile_members=3,
         maximum_exemplars=3,
         minimum_same_exemplars=2,
-        maximum_global_profiles=3,
+        maximum_global_profiles=1,
         jobs=2,
         model_path=Path(
             "evaluation/speaker-pairs/models/"
@@ -9456,11 +9457,11 @@ def shadow_associate_speakers_command(
         help="Same-speaker comparisons required to propose one profile.",
     ),
     maximum_global_profiles: int = typer.Option(
-        3,
+        1,
         min=1,
         help=(
-            "Maximum globally retrieved profiles per candidate in addition "
-            "to every same-source or explicit-name profile."
+            "Maximum cross-source acoustic fallback profiles when no "
+            "same-source, explicit-name, or confirmation route exists."
         ),
     ),
     jobs: int = typer.Option(
@@ -10780,6 +10781,82 @@ def shadow_associate_speakers_command(
             continue
         if reusable_path is None:
             detailed_profile_comparisons += len(candidate_profiles)
+        if should_activate_cross_source_fallback(
+            str(report["outcome"]), routing
+        ):
+            fallback_profiles = tuple(
+                (*candidate_profiles, *routing.fallback_profiles)
+            )
+            fallback_profile_ids = [
+                profile.profile_id
+                for profile, _exemplars in routing.fallback_profiles
+            ]
+            initial_candidate_funnel = dict(
+                initial_routing_payload.get("candidate_funnel") or {}
+            )
+            activated_retrieval_candidates = [
+                {
+                    **entry,
+                    "routing_policy_eligible": True,
+                    "selected_for_comparison": True,
+                    "passed_shortlist_cutoff": True,
+                    "weak_local_fallback_activated": True,
+                }
+                if isinstance(entry, Mapping)
+                and entry.get("profile_id") in fallback_profile_ids
+                else entry
+                for entry in initial_candidate_funnel.get(
+                    "retrieval_candidates", []
+                )
+            ]
+            fallback_routing_payload = {
+                **initial_routing_payload,
+                "route": "source_local_then_bounded_cross_source_fallback",
+                "initial_local_outcome": report["outcome"],
+                "weak_local_fallback_activated": True,
+                "fallback_profile_ids": fallback_profile_ids,
+                "profiles_actually_compared": sorted(
+                    profile.profile_id
+                    for profile, _exemplars in fallback_profiles
+                ),
+                "candidate_funnel": {
+                    **initial_candidate_funnel,
+                    "retrieval_candidates": (
+                        activated_retrieval_candidates
+                    ),
+                    "weak_local_fallback_activated": True,
+                    "initial_local_outcome": report["outcome"],
+                    "profiles_actually_compared": sorted(
+                        profile.profile_id
+                        for profile, _exemplars in fallback_profiles
+                    ),
+                },
+            }
+            try:
+                report, reusable_path = evaluate_profiles(
+                    fallback_profiles, fallback_routing_payload
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                persist_admission(
+                    video,
+                    observation,
+                    stage="technical_failure",
+                    reason_code=(
+                        "association_cross_source_fallback_failed:"
+                        f"{type(error).__name__}"
+                    ),
+                    media_sha256=media_artifact.content_sha256,
+                )
+                console.print(
+                    f"Association {index}/{len(candidates)} cross-source "
+                    f"fallback failed in isolation: {video.youtube_video_id} "
+                    f"{type(error).__name__}: {error}"
+                )
+                continue
+            if reusable_path is None:
+                detailed_profile_comparisons += len(
+                    routing.fallback_profiles
+                )
         if report["outcome"] == "proposed_match" and not routing.exhaustive:
             proposed_profile_id = report.get("proposed_profile_id")
             exhaustive_profiles = (

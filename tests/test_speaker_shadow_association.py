@@ -44,6 +44,7 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     select_profile_exemplars,
     select_routed_association_profiles,
     select_staged_association_profiles,
+    should_activate_cross_source_fallback,
     summarize_shadow_associations,
     write_shadow_association,
     write_shadow_association_admission,
@@ -569,7 +570,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         nested_pool.assert_not_called()
         self.assertEqual("proposed_match", report["outcome"])
 
-    def test_immature_review_targets_require_source_or_name_routing(self) -> None:
+    def test_routed_profiles_require_source_or_name_evidence(self) -> None:
         observations = [
             self._observation(key) for key in ("mature", "local", "distant")
         ]
@@ -619,7 +620,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {1, 2, 3},
+            {2, 3},
             {readiness.profile_id for readiness, _ in selected},
         )
 
@@ -632,10 +633,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
                 for index, observation in enumerate(observations)
             },
         )
-        self.assertEqual(
-            {1},
-            {readiness.profile_id for readiness, _ in unrelated},
-        )
+        self.assertEqual((), unrelated)
 
     def test_unconfirmed_discovery_profile_is_not_a_global_target(self) -> None:
         observation = self._observation("unconfirmed")
@@ -721,7 +719,7 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         self.assertEqual((profiles[0],), forced.profiles)
         self.assertEqual((93,), forced.confirmation_priority_profile_ids)
 
-    def test_staged_routing_keeps_local_and_shortlists_nearest_global(self) -> None:
+    def test_staged_routing_suppresses_global_search_when_local_exists(self) -> None:
         observations = [self._observation(str(index)) for index in range(5)]
 
         def profile_input(index: int):
@@ -774,13 +772,14 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         )
 
         self.assertEqual((1,), routing.priority_profile_ids)
-        self.assertEqual((2, 3), routing.shortlisted_profile_ids)
+        self.assertEqual((), routing.shortlisted_profile_ids)
         self.assertEqual(
-            {1, 2, 3},
+            {1},
             {readiness.profile_id for readiness, _ in routing.profiles},
         )
-        self.assertFalse(routing.exhaustive)
-        self.assertEqual(5, routing.total_routable_profiles)
+        self.assertTrue(routing.exhaustive)
+        self.assertEqual(1, routing.total_routable_profiles)
+        self.assertEqual("source_local_or_explicit_name", routing.route)
         funnel = routing.candidate_funnel
         self.assertIsNotNone(funnel)
         entries = {
@@ -790,13 +789,70 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
         self.assertEqual(["source"], entries[1]["retrieval_sources"])
         self.assertTrue(entries[1]["selected_for_comparison"])
         self.assertEqual(1, entries[2]["acoustic_rank"])
-        self.assertTrue(entries[2]["passed_shortlist_cutoff"])
-        self.assertEqual(3, entries[4]["acoustic_rank"])
-        self.assertFalse(entries[4]["passed_shortlist_cutoff"])
+        self.assertFalse(entries[2]["passed_shortlist_cutoff"])
+        self.assertTrue(entries[2]["reserved_for_weak_local_fallback"])
         self.assertFalse(entries[4]["selected_for_comparison"])
-        self.assertEqual([1, 2, 3], funnel["profiles_selected_for_comparison"])
+        self.assertEqual([1], funnel["profiles_selected_for_comparison"])
+        self.assertTrue(
+            funnel["acoustic_shortlist"][
+                "suppressed_by_local_or_explicit_route"
+            ]
+        )
+        self.assertEqual(
+            [2, 3],
+            funnel["acoustic_shortlist"][
+                "weak_local_fallback_profile_ids"
+            ],
+        )
+        self.assertEqual(
+            (2, 3),
+            tuple(
+                readiness.profile_id
+                for readiness, _ in routing.fallback_profiles
+            ),
+        )
+        self.assertTrue(
+            should_activate_cross_source_fallback(
+                "insufficient_evidence", routing
+            )
+        )
+        self.assertTrue(
+            should_activate_cross_source_fallback("no_match", routing)
+        )
+        self.assertFalse(
+            should_activate_cross_source_fallback(
+                "proposed_match", routing
+            )
+        )
         self.assertEqual(4, entries[1]["all_eligible_acoustic_rank"])
         self.assertEqual(1, entries[2]["all_eligible_acoustic_rank"])
+
+        fallback = select_staged_association_profiles(
+            profiles,
+            candidate_source_id=100,
+            candidate_normalized_names=(),
+            source_id_by_video_id={
+                observations[index].video_id: index
+                for index in range(5)
+            },
+            candidate_centroid=(1.0, 0.0),
+            exemplar_centroids={
+                observations[0].id: (0.0, 1.0),
+                observations[1].id: (0.9, 0.1),
+                observations[2].id: (0.8, 0.2),
+                observations[3].id: (0.7, 0.3),
+                observations[4].id: (-1.0, 0.0),
+            },
+            maximum_global_profiles=2,
+        )
+        self.assertEqual((2, 3), fallback.shortlisted_profile_ids)
+        self.assertEqual(
+            "bounded_cross_source_centroid_fallback", fallback.route
+        )
+        self.assertEqual(
+            {2, 3},
+            {readiness.profile_id for readiness, _ in fallback.profiles},
+        )
 
     def test_leave_one_out_readiness_hides_candidate_membership(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c")]
