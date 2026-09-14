@@ -513,6 +513,18 @@ class IdentityRunTests(unittest.TestCase):
             fingerprint_a="acoustic-a",
             fingerprint_b="acoustic-b",
         )
+        def eligibility(_database, video_id, **_kwargs):
+            selected = (
+                observations["replacement"]
+                if video_id == 1
+                else observations["useful"]
+            )
+            return SimpleNamespace(
+                eligible=True,
+                observation=selected,
+                media_artifact=media,
+            )
+
         with (
             patch(
                 "pastor_transcript_extractor.cli."
@@ -710,11 +722,7 @@ class IdentityRunTests(unittest.TestCase):
             patch(
                 "pastor_transcript_extractor.cli."
                 "assess_automatic_speaker_observation",
-                return_value=SimpleNamespace(
-                    eligible=True,
-                    observation=observations["useful"],
-                    media_artifact=media,
-                ),
+                side_effect=eligibility,
             ),
             patch(
                 "pastor_transcript_extractor.cli.prepare_review_observation",

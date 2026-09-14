@@ -867,6 +867,7 @@ reviewed different-speaker constraints block consolidation.
 - `pte identity coordinate --youtube-video-id <id> --execute-shadow --base-dir <app-data>`
 - `pte identity shadow-discover-profiles --plan-only --base-dir <app-data>`
 - `pte identity review-next-speaker-pair --selection-objective profile-growth`
+- `pte identity review-next-speaker-pair --selection-objective profile-growth --profile-id <id>`
 - `pte identity review-next-speaker-pair --selection-objective automation-readiness`
 - `pte identity sync-reviewed-speaker-evidence --base-dir <app-data>`
 - `pte identity shadow-associate-speakers --all-eligible --plan-only`
@@ -897,14 +898,27 @@ merely sharing a source—is still not enough. Automation-readiness does not use
 the exploratory tier. Observations belonging to automatic-ready profiles are
 terminal for routine nomination. Current observations that supersede older
 members of those profiles retain exclusion-only lineage, so a new immutable
-fingerprint cannot re-enter profile growth; any necessary currency repair uses
-the explicit superseded-member restoration workflow. The selection manifest
-records the discovery artifact,
+fingerprint cannot re-enter generic profile growth. Discovery applies the same
+lineage exclusion, preventing a replacement from being reclustered merely
+because its membership belongs to an older immutable observation. A targeted
+`review-next-speaker-pair --selection-objective profile-growth --profile-id ...`
+review can bridge an older named profile to a successor profile already holding
+its replacements, or bridge two fully superseded same-name profiles. Lineage
+and names nominate the blinded review only; an approved same-speaker judgment
+remains required before consolidation. After synchronization, repeating the
+same canonical `--profile-id` selects its strongest remaining superseded-lineage
+neighbor by the number of replacement recordings already converging on that
+profile. The
+selection manifest records the discovery artifact,
 stage, companion edge, and downstream observations unlocked; undersized
 two-recording seeds without a qualified frontier wait instead of consuming human
 review. The next discovery run consumes the approved pair judgment directly as
 a fingerprinted same/different constraint, allowing the answer to resolve or
 safely block the affected component before registry synchronization.
+Pass `--profile-id` with `--selection-objective profile-growth` to constrain
+nomination to a canonical profile. Targeted selection does not depend on the
+global prewarmed pool; it scans eligible metadata and prepares only the selected
+pair on demand. Redirected profile IDs are resolved before selection.
 
 Profile-state experiments use an explicit before/after ledger. The
 `automation-readiness` review command automatically creates the baseline for

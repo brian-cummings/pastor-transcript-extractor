@@ -12,6 +12,7 @@ from pastor_transcript_extractor.identity_automation import (
     build_identity_association_work_plan,
     classify_association_blocker,
     latest_association_reports,
+    observation_profile_lineage_exclusion,
     select_superseded_profile_member_review,
 )
 from pastor_transcript_extractor.models import SourceType, VideoStatus
@@ -92,6 +93,22 @@ class IdentityAutomationTests(unittest.TestCase):
             "result_sha256": suffix,
         }
         (directory / f"{suffix}.json").write_text(json.dumps(payload))
+
+    def _claim(self, observation, name: str, key: str) -> None:
+        self.database.add_speaker_name_claim(
+            video_id=observation.video_id,
+            observation_id=observation.id,
+            display_name=name,
+            normalized_name=name.casefold(),
+            claim_kind="explicit_speaker_attribution",
+            channel="test",
+            explicit_speaker_attribution=True,
+            correlation_group_id=f"claim-group-{key}",
+            provenance_json="{}",
+            artifact_path=str(self.root / f"claim-{key}.json"),
+            claim_fingerprint=f"claim-{key}",
+            extractor_version="test",
+        )
 
     def test_selects_only_current_unprofiled_observations_without_current_result(self):
         ready = self._observation("ready")
@@ -226,6 +243,268 @@ class IdentityAutomationTests(unittest.TestCase):
             {replacement.id for replacement in replacements},
         )
         self.assertEqual(1, candidate.current_exemplar_count)
+
+    def test_selects_named_lineage_bridge_when_replacements_are_profiled(self):
+        old_members = [self._observation(f"old-{index}") for index in range(2)]
+        old_profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="test",
+            review_event_key="old-profile",
+        )
+        successor_profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="test",
+            review_event_key="successor-profile",
+        )
+        replacements = []
+        for index, old_member in enumerate(old_members):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=old_profile.id,
+                observation_id=old_member.id,
+                reviewer="reviewer",
+                reason="test",
+                review_event_key=f"old-member-{index}",
+            )
+            replacement = self.database.add_speaker_observation(
+                video_id=old_member.video_id,
+                extraction_result_id=old_member.extraction_result_id,
+                role=old_member.role,
+                multiplicity_state=old_member.multiplicity_state,
+                start_seconds=old_member.start_seconds,
+                end_seconds=old_member.end_seconds,
+                artifact_path=old_member.artifact_path,
+                content_sha256=old_member.content_sha256,
+                extractor_version=old_member.extractor_version,
+                input_fingerprint=f"replacement-profiled-{index}",
+            )
+            replacements.append(replacement)
+            attach_reviewed_observation(
+                self.database,
+                profile_id=successor_profile.id,
+                observation_id=replacement.id,
+                reviewer="reviewer",
+                reason="test",
+                review_event_key=f"successor-member-{index}",
+            )
+        self._claim(old_members[0], "Ron Clouzet", "old")
+        self._claim(replacements[0], "Ron Clouzet", "successor")
+
+        with patch(
+            "pastor_transcript_extractor.identity_automation."
+            "assess_automatic_speaker_observation",
+            side_effect=self._eligible,
+        ):
+            candidate = select_superseded_profile_member_review(
+                self.database,
+                profile_id=old_profile.id,
+            )
+
+        self.assertIsNotNone(candidate)
+        assert candidate is not None
+        self.assertEqual("lineage_profile_consolidation", candidate.selection_kind)
+        self.assertEqual(old_profile.id, candidate.profile_id)
+        self.assertEqual(successor_profile.id, candidate.successor_profile_id)
+        self.assertIn(candidate.anchor_observation_id, {item.id for item in old_members})
+        self.assertIn(
+            candidate.replacement_observation_id,
+            {item.id for item in replacements},
+        )
+        anchor = self.database.get_speaker_observation(
+            candidate.anchor_observation_id
+        )
+        replacement = self.database.get_speaker_observation(
+            candidate.replacement_observation_id
+        )
+        assert anchor is not None and replacement is not None
+        self.assertNotEqual(anchor.video_id, replacement.video_id)
+        self.assertEqual(("ron clouzet",), candidate.shared_normalized_names)
+
+        reverse_candidate = select_superseded_profile_member_review(
+            self.database,
+            profile_id=successor_profile.id,
+        )
+        self.assertIsNotNone(reverse_candidate)
+        assert reverse_candidate is not None
+        self.assertEqual(
+            "lineage_profile_consolidation",
+            reverse_candidate.selection_kind,
+        )
+        self.assertEqual(successor_profile.id, reverse_candidate.profile_id)
+        self.assertEqual(old_profile.id, reverse_candidate.successor_profile_id)
+        self.assertEqual(2, reverse_candidate.lineage_overlap_count)
+        reverse_anchor = self.database.get_speaker_observation(
+            reverse_candidate.anchor_observation_id
+        )
+        assert reverse_anchor is not None
+        self.assertIn(
+            reverse_anchor.id,
+            {item.id for item in replacements},
+        )
+
+    def test_discovery_excludes_current_observation_with_profile_lineage(self):
+        old = self._observation("lineage-owned")
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="test",
+            review_event_key="lineage-owner",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=old.id,
+            reviewer="reviewer",
+            reason="test",
+            review_event_key="lineage-owned-member",
+        )
+        replacement = self.database.add_speaker_observation(
+            video_id=old.video_id,
+            extraction_result_id=old.extraction_result_id,
+            role=old.role,
+            multiplicity_state=old.multiplicity_state,
+            start_seconds=old.start_seconds,
+            end_seconds=old.end_seconds,
+            artifact_path=old.artifact_path,
+            content_sha256=old.content_sha256,
+            extractor_version=old.extractor_version,
+            input_fingerprint="lineage-owned-replacement",
+        )
+
+        self.assertEqual(
+            "superseded_profile_lineage",
+            observation_profile_lineage_exclusion(
+                self.database,
+                video_id=replacement.video_id,
+                observation_id=replacement.id,
+            ),
+        )
+
+    def test_selects_targeted_bridge_for_two_fully_superseded_named_profiles(self):
+        profiles = [
+            create_anonymous_profile(
+                self.database,
+                reviewer="reviewer",
+                reason="test",
+                review_event_key=f"named-stale-profile-{index}",
+            )
+            for index in range(2)
+        ]
+        members_by_profile = []
+        for profile_index, profile in enumerate(profiles):
+            members = [
+                self._observation(
+                    f"named-stale-{profile_index}-{member_index}"
+                )
+                for member_index in range(2)
+            ]
+            members_by_profile.append(members)
+            for member_index, member in enumerate(members):
+                attach_reviewed_observation(
+                    self.database,
+                    profile_id=profile.id,
+                    observation_id=member.id,
+                    reviewer="reviewer",
+                    reason="test",
+                    review_event_key=(
+                        f"named-stale-member-{profile_index}-{member_index}"
+                    ),
+                )
+                self.database.add_speaker_observation(
+                    video_id=member.video_id,
+                    extraction_result_id=member.extraction_result_id,
+                    role=member.role,
+                    multiplicity_state=member.multiplicity_state,
+                    start_seconds=member.start_seconds,
+                    end_seconds=member.end_seconds,
+                    artifact_path=member.artifact_path,
+                    content_sha256=member.content_sha256,
+                    extractor_version=member.extractor_version,
+                    input_fingerprint=(
+                        f"unprofiled-current-{profile_index}-{member_index}"
+                    ),
+                )
+            self._claim(
+                members[0], "Danail Tchakarov", f"named-{profile_index}"
+            )
+
+        self.assertIsNone(
+            select_superseded_profile_member_review(self.database)
+        )
+        candidate = select_superseded_profile_member_review(
+            self.database,
+            profile_id=profiles[0].id,
+        )
+
+        self.assertIsNotNone(candidate)
+        assert candidate is not None
+        self.assertEqual(
+            "superseded_named_profile_consolidation",
+            candidate.selection_kind,
+        )
+        self.assertEqual(profiles[1].id, candidate.successor_profile_id)
+        self.assertIn(
+            candidate.anchor_observation_id,
+            {item.id for item in members_by_profile[0]},
+        )
+        self.assertIn(
+            candidate.replacement_observation_id,
+            {item.id for item in members_by_profile[1]},
+        )
+        self.assertIsNone(
+            select_superseded_profile_member_review(
+                self.database,
+                profile_id=profiles[0].id,
+                excluded_pairs=tuple(
+                    frozenset(
+                        (left.input_fingerprint, right.input_fingerprint)
+                    )
+                    for left in members_by_profile[0]
+                    for right in members_by_profile[1]
+                ),
+            )
+        )
+
+    def test_targeted_named_bridge_does_not_replace_current_profile_review(self):
+        profiles = [
+            create_anonymous_profile(
+                self.database,
+                reviewer="reviewer",
+                reason="test",
+                review_event_key=f"current-named-profile-{index}",
+            )
+            for index in range(2)
+        ]
+        for profile_index, profile in enumerate(profiles):
+            for member_index in range(2):
+                member = self._observation(
+                    f"current-named-{profile_index}-{member_index}"
+                )
+                attach_reviewed_observation(
+                    self.database,
+                    profile_id=profile.id,
+                    observation_id=member.id,
+                    reviewer="reviewer",
+                    reason="test",
+                    review_event_key=(
+                        f"current-named-member-{profile_index}-{member_index}"
+                    ),
+                )
+                if member_index == 0:
+                    self._claim(
+                        member,
+                        "Current Example",
+                        f"current-name-{profile_index}",
+                    )
+
+        candidate = select_superseded_profile_member_review(
+            self.database,
+            profile_id=profiles[0].id,
+        )
+
+        self.assertIsNone(candidate)
 
     def test_blocker_policy_separates_repairable_technical_from_terminal_policy(self):
         self.assertEqual(
