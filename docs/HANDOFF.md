@@ -464,6 +464,15 @@ The identity runner defaults to two concurrent acoustic comparison jobs.
 evaluation; deterministic aggregation and every registry mutation remain
 serialized.
 
+Executing runs checkpoint the completed association and discovery stages under
+`logs/identity-stage-cache/`. A repeated run with the same identity-relevant
+database rows, extraction artifacts, reviewed-pair inputs, policies, model
+identity, scope, and algorithm parameters skips those corpus scans entirely.
+Any relevant change invalidates the affected checkpoint and runs the normal
+stage, whose content-addressed span, embedding, pair, and report caches still
+make the refresh incremental. Checkpoint outputs are checksum-verified; a
+missing, damaged, or unreadable checkpoint fails open to recomputation.
+
 A profile is first created when a confirmed same-speaker pair forms a reviewed
 component. Later confirmed same-speaker frontier comparisons add observations;
 bridge comparisons can merge reviewed-anonymous components and provisional
