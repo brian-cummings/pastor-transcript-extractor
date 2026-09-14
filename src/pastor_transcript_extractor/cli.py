@@ -265,9 +265,15 @@ from pastor_transcript_extractor.identity_leverage import (
 from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
+from pastor_transcript_extractor.identity_stage_cache import (
+    build_identity_stage_fingerprint,
+    load_identity_stage_checkpoint,
+    write_identity_stage_checkpoint,
+)
 from pastor_transcript_extractor.identity_automation import (
     build_identity_association_work_plan,
     latest_association_reports,
+    observation_profile_lineage_exclusion,
     select_superseded_profile_member_review,
     write_identity_work_event,
 )
@@ -373,6 +379,7 @@ from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
 from pastor_transcript_extractor.speaker_profile_discovery import (
     ActivityQualifiedSelectionCache,
     DiscoveryCandidate,
+    SHADOW_PROFILE_DISCOVERY_VERSION,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
     build_discovery_signature,
     evaluate_shadow_profile_discovery,
@@ -391,6 +398,7 @@ from pastor_transcript_extractor.speaker_profile_promotion import (
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     DISCOVERY_PROFILE_REASON,
+    SHADOW_ASSOCIATION_VERSION,
     ShadowExemplar,
     assess_profile_association_readiness,
     build_shadow_association_input_fingerprint,
@@ -6287,7 +6295,7 @@ def shadow_discover_profiles_command(
         None,
         help="Override app data directory.",
     ),
-) -> None:
+) -> Path | None:
     if include_deferred:
         raise typer.BadParameter(
             "--include-deferred is no longer supported; use the guarded "
@@ -6365,9 +6373,14 @@ def shadow_discover_profiles_command(
             excluded_reasons[reason] = excluded_reasons.get(reason, 0) + 1
             continue
         observation = eligibility.observation
-        if database.list_effective_profile_ids_for_observation(observation.id):
-            excluded_reasons["already_profiled"] = (
-                excluded_reasons.get("already_profiled", 0) + 1
+        profile_exclusion = observation_profile_lineage_exclusion(
+            database,
+            video_id=video.id,
+            observation_id=observation.id,
+        )
+        if profile_exclusion is not None:
+            excluded_reasons[profile_exclusion] = (
+                excluded_reasons.get(profile_exclusion, 0) + 1
             )
             continue
         review_action = database.get_effective_observation_review_action(
@@ -6806,6 +6819,7 @@ def shadow_discover_profiles_command(
     console.print(
         f"Policy status={policy_spec.review_status}; registry mutations=0."
     )
+    return destination
 
 
 @identity_app.command(
@@ -7129,12 +7143,42 @@ def _prepare_actionable_review_audio(
         ),
     )
     fingerprints: list[str] = []
-    ready_profile_excluded = 0
+    preflight_rejection_counts: dict[str, int] = {}
     for fingerprint in nominated_fingerprints:
         observation = database.get_speaker_observation_by_fingerprint(
             fingerprint
         )
-        if observation is not None and automatic_profile_ready_ids:
+        video = (
+            database.get_video_by_id(observation.video_id)
+            if observation is not None
+            else None
+        )
+        if observation is None or video is None:
+            reason = "observation_or_video_unavailable"
+            preflight_rejection_counts[reason] = (
+                preflight_rejection_counts.get(reason, 0) + 1
+            )
+            continue
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verify_media=False,
+        )
+        if (
+            not eligibility.eligible
+            or eligibility.observation is None
+            or eligibility.observation.input_fingerprint != fingerprint
+        ):
+            reason = (
+                getattr(eligibility, "reason_code", "ineligible")
+                if not eligibility.eligible
+                else "selected_observation_changed"
+            )
+            preflight_rejection_counts[reason] = (
+                preflight_rejection_counts.get(reason, 0) + 1
+            )
+            continue
+        if automatic_profile_ready_ids:
             direct_profile_ids = {
                 database.resolve_speaker_profile_id(profile_id)
                 for profile_id in (
@@ -7155,18 +7199,33 @@ def _prepare_actionable_review_audio(
             if (
                 direct_profile_ids | superseded_profile_ids
             ) & automatic_profile_ready_ids:
-                ready_profile_excluded += 1
+                reason = "automatic_profile_ready_lineage"
+                preflight_rejection_counts[reason] = (
+                    preflight_rejection_counts.get(reason, 0) + 1
+                )
                 continue
         fingerprints.append(fingerprint)
         if len(fingerprints) == limit:
             break
+    preflight_excluded = sum(preflight_rejection_counts.values())
+    if preflight_rejection_counts:
+        console.print(
+            "Review prewarm preflight: "
+            f"excluded={preflight_excluded} "
+            + " ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(
+                    preflight_rejection_counts.items()
+                )
+            )
+        )
     span_cache = AudioSpanCache(cache_dir.expanduser().resolve())
     verification_cache = MediaVerificationCache(
         cache_dir.expanduser().resolve()
     )
     prepared = 0
     already_cached = 0
-    excluded = ready_profile_excluded
+    excluded = preflight_excluded
     failed = 0
     ready_fingerprints: list[str] = []
     for index, fingerprint in enumerate(fingerprints, start=1):
@@ -7260,7 +7319,7 @@ def _prepare_actionable_review_audio(
         )
     _write_actionable_review_prewarm(cache_dir, ready_fingerprints)
     return ActionableReviewAudioPreparation(
-        requested=len(fingerprints) + ready_profile_excluded,
+        requested=len(fingerprints) + preflight_excluded,
         prepared=prepared,
         already_cached=already_cached,
         excluded=excluded,
@@ -7410,6 +7469,66 @@ def _repair_exemplars_and_retry_association(
     return current_association_reports
 
 
+def _identity_stage_input_paths(
+    database: Database,
+    *,
+    additional_paths: Sequence[Path],
+) -> tuple[Path, ...]:
+    paths = list(additional_paths)
+    for video in database.list_videos():
+        extraction = database.get_latest_extraction_result_for_video(video.id)
+        if extraction is not None and extraction.proposed_json_path:
+            paths.append(Path(extraction.proposed_json_path))
+    return tuple(paths)
+
+
+def _identity_stage_fingerprint_or_none(
+    paths: AppPaths,
+    database: Database,
+    *,
+    stage: str,
+    parameters: Mapping[str, Any],
+    additional_paths: Sequence[Path],
+) -> str | None:
+    try:
+        return build_identity_stage_fingerprint(
+            paths.database,
+            stage=stage,
+            parameters=parameters,
+            input_paths=_identity_stage_input_paths(
+                database,
+                additional_paths=additional_paths,
+            ),
+        )
+    except (OSError, UnicodeError, sqlite3.DatabaseError, ValueError) as error:
+        console.print(
+            f"Identity {stage} cache unavailable; running stage: "
+            f"{type(error).__name__}: {error}"
+        )
+        return None
+
+
+def _write_identity_stage_checkpoint_best_effort(
+    root: Path,
+    *,
+    stage: str,
+    input_fingerprint: str,
+    outputs: Sequence[Path],
+) -> None:
+    try:
+        write_identity_stage_checkpoint(
+            root,
+            stage=stage,
+            input_fingerprint=input_fingerprint,
+            outputs=outputs,
+        )
+    except (OSError, UnicodeError, ValueError) as error:
+        console.print(
+            f"Identity {stage} cache could not be saved; future runs will "
+            f"recompute the stage: {type(error).__name__}: {error}"
+        )
+
+
 def run_identity_workflow_service(
     *,
     youtube_video_id: str | None,
@@ -7508,33 +7627,83 @@ def run_identity_workflow_service(
             f"unchanged={reconciliation.unchanged}."
         )
 
-    current_association_reports = shadow_associate_speakers_command(
-        youtube_video_id=youtube_video_id,
-        all_eligible=all_extractions,
-        unattempted_only=False,
-        neighborhood_profile_id=[],
-        include_profiled=False,
-        limit=None,
-        plan_only=plan_only,
-        minimum_profile_members=3,
-        maximum_exemplars=3,
-        minimum_same_exemplars=2,
-        maximum_global_profiles=1,
-        jobs=jobs,
-        model_path=Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-        ),
-        model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
-        policy_path=Path(
-            "evaluation/speaker-pairs/policies/"
-            "campplus-development-candidate-v1.json"
-        ),
-        evaluation_root=Path("evaluation/speaker-pairs"),
-        cache_dir=Path("evaluation/speaker-pairs/cache"),
-        output_root=Path("evaluation/speaker-associations/shadow-runs"),
-        base_dir=base_dir,
+    identity_stage_cache_root = paths.logs / "identity-stage-cache"
+    speaker_evaluation_root = Path("evaluation/speaker-pairs").resolve()
+    association_policy_path = Path(
+        "evaluation/speaker-pairs/policies/"
+        "campplus-development-candidate-v1.json"
+    ).resolve()
+    reviewed_evidence_inputs = (
+        speaker_evaluation_root / "drafts",
+        speaker_evaluation_root / "reviews",
+        speaker_evaluation_root / "fixtures",
+        speaker_evaluation_root / "revocations",
     )
+    association_parameters = {
+        "association_version": SHADOW_ASSOCIATION_VERSION,
+        "span_selection_version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+        "scope": "all" if all_extractions else youtube_video_id,
+        "minimum_profile_members": 3,
+        "maximum_exemplars": 3,
+        "minimum_same_exemplars": 2,
+        "maximum_global_profiles": 1,
+        "model_sha256": DEFAULT_SPEAKER_MODEL_SHA256,
+    }
+    association_fingerprint = (
+        _identity_stage_fingerprint_or_none(
+            paths,
+            Database(paths.database, readonly=True),
+            stage="association",
+            parameters=association_parameters,
+            additional_paths=(
+                *reviewed_evidence_inputs,
+                association_policy_path,
+            ),
+        )
+        if not plan_only
+        else None
+    )
+    cached_association_reports = (
+        load_identity_stage_checkpoint(
+            identity_stage_cache_root,
+            stage="association",
+            input_fingerprint=association_fingerprint,
+        )
+        if association_fingerprint is not None
+        else None
+    )
+    association_checkpoint_needs_refresh = cached_association_reports is None
+    if cached_association_reports is not None:
+        current_association_reports = cached_association_reports
+        console.print(
+            "Association stage: unchanged inputs; reused completed stage "
+            f"with {len(current_association_reports)} report(s)."
+        )
+    else:
+        current_association_reports = shadow_associate_speakers_command(
+            youtube_video_id=youtube_video_id,
+            all_eligible=all_extractions,
+            unattempted_only=False,
+            neighborhood_profile_id=[],
+            include_profiled=False,
+            limit=None,
+            plan_only=plan_only,
+            minimum_profile_members=3,
+            maximum_exemplars=3,
+            minimum_same_exemplars=2,
+            maximum_global_profiles=1,
+            jobs=jobs,
+            model_path=Path(
+                "evaluation/speaker-pairs/models/"
+                "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+            ),
+            model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+            policy_path=association_policy_path,
+            evaluation_root=speaker_evaluation_root,
+            cache_dir=Path("evaluation/speaker-pairs/cache"),
+            output_root=Path("evaluation/speaker-associations/shadow-runs"),
+            base_dir=base_dir,
+        )
     exemplar_state_cache = ExemplarPreparationStateCache(
         Path("evaluation/speaker-pairs/cache").resolve()
     )
@@ -7548,6 +7717,7 @@ def run_identity_workflow_service(
         else ()
     )
     if pending_exemplar_repairs:
+        association_checkpoint_needs_refresh = True
         current_association_reports = _repair_exemplars_and_retry_association(
             pending_exemplar_repairs=pending_exemplar_repairs,
             current_association_reports=current_association_reports,
@@ -7566,6 +7736,24 @@ def run_identity_workflow_service(
     persisted_current_reports = latest_association_reports(association_root)
     if persisted_current_reports:
         current_association_reports = persisted_current_reports
+    if not plan_only and association_checkpoint_needs_refresh:
+        association_fingerprint = _identity_stage_fingerprint_or_none(
+            paths,
+            Database(paths.database, readonly=True),
+            stage="association",
+            parameters=association_parameters,
+            additional_paths=(
+                *reviewed_evidence_inputs,
+                association_policy_path,
+            ),
+        )
+        if association_fingerprint is not None:
+            _write_identity_stage_checkpoint_best_effort(
+                identity_stage_cache_root,
+                stage="association",
+                input_fingerprint=association_fingerprint,
+                outputs=current_association_reports,
+            )
     current_result_sha256_by_observation: dict[int, str] = {}
     for report_path in current_association_reports:
         try:
@@ -7678,49 +7866,99 @@ def run_identity_workflow_service(
     discovery_root = Path(
         "evaluation/speaker-profile-discovery/shadow-runs"
     )
-    if all_extractions and not skip_discovery:
-        shadow_discover_profiles_command(
-            plan_only=plan_only,
-            limit=None,
-            nearest_neighbors=8,
-            maximum_pairs=None,
-            closure_candidates_per_same_pair=8,
-            source_complete_link_limit=12,
-            source_nearest_neighbors=4,
-            borderline_deferred_minimum=0.50,
-            borderline_deferred_maximum=0.60,
-            borderline_deferred_candidates_per_same_pair=4,
-            staged_review_candidates_per_component=2,
-            staged_review_maximum_same_boundary_distance=0.15,
-            jobs=jobs,
-            minimum_component_members=3,
-            consistency_report=None,
-            minimum_consistency_score=None,
-            consistency_policy=Path(
-                "evaluation/speaker-pairs/policies/"
-                "observation-consistency-discovery-v1.json"
+    discovery_parameters = {
+        "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
+        "span_selection_version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+        "scope": "all",
+        "nearest_neighbors": 8,
+        "maximum_pairs": None,
+        "closure_candidates_per_same_pair": 8,
+        "source_complete_link_limit": 12,
+        "source_nearest_neighbors": 4,
+        "borderline_deferred_minimum": 0.50,
+        "borderline_deferred_maximum": 0.60,
+        "borderline_deferred_candidates_per_same_pair": 4,
+        "staged_review_candidates_per_component": 2,
+        "staged_review_maximum_same_boundary_distance": 0.15,
+        "minimum_component_members": 3,
+        "model_sha256": DEFAULT_SPEAKER_MODEL_SHA256,
+    }
+    consistency_policy_path = Path(
+        "evaluation/speaker-pairs/policies/"
+        "observation-consistency-discovery-v1.json"
+    ).resolve()
+    discovery_fingerprint = None
+    cached_discovery_reports = None
+    generated_discovery_report = None
+    if all_extractions and not skip_discovery and not plan_only:
+        discovery_fingerprint = _identity_stage_fingerprint_or_none(
+            paths,
+            Database(paths.database, readonly=True),
+            stage="discovery",
+            parameters=discovery_parameters,
+            additional_paths=(
+                *reviewed_evidence_inputs,
+                association_policy_path,
+                consistency_policy_path,
             ),
-            include_deferred=False,
-            model_path=Path(
-                "evaluation/speaker-pairs/models/"
-                "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-            ),
-            model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
-            policy_path=Path(
-                "evaluation/speaker-pairs/policies/"
-                "campplus-development-candidate-v1.json"
-            ),
-            evaluation_root=Path("evaluation/speaker-pairs"),
-            cache_dir=Path("evaluation/speaker-pairs/cache"),
-            output_root=discovery_root,
-            base_dir=base_dir,
         )
+        if discovery_fingerprint is not None:
+            cached_discovery_reports = load_identity_stage_checkpoint(
+                identity_stage_cache_root,
+                stage="discovery",
+                input_fingerprint=discovery_fingerprint,
+            )
+    if all_extractions and not skip_discovery:
+        if cached_discovery_reports is not None:
+            console.print(
+                "Discovery stage: unchanged inputs; reused completed stage "
+                f"with {len(cached_discovery_reports)} report(s)."
+            )
+        else:
+            generated_discovery_report = shadow_discover_profiles_command(
+                plan_only=plan_only,
+                limit=None,
+                nearest_neighbors=8,
+                maximum_pairs=None,
+                closure_candidates_per_same_pair=8,
+                source_complete_link_limit=12,
+                source_nearest_neighbors=4,
+                borderline_deferred_minimum=0.50,
+                borderline_deferred_maximum=0.60,
+                borderline_deferred_candidates_per_same_pair=4,
+                staged_review_candidates_per_component=2,
+                staged_review_maximum_same_boundary_distance=0.15,
+                jobs=jobs,
+                minimum_component_members=3,
+                consistency_report=None,
+                minimum_consistency_score=None,
+                consistency_policy=consistency_policy_path,
+                include_deferred=False,
+                model_path=Path(
+                    "evaluation/speaker-pairs/models/"
+                    "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+                ),
+                model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+                policy_path=association_policy_path,
+                evaluation_root=speaker_evaluation_root,
+                cache_dir=Path("evaluation/speaker-pairs/cache"),
+                output_root=discovery_root,
+                base_dir=base_dir,
+            )
     elif all_extractions:
         console.print("Discovery: skipped by --skip-discovery.")
     else:
         console.print("Discovery: deferred to a corpus-wide identity run.")
 
-    discovery_reports = list(discovery_root.resolve().glob("*/*.json"))
+    discovery_reports = (
+        list(cached_discovery_reports)
+        if cached_discovery_reports is not None
+        else (
+            [generated_discovery_report]
+            if isinstance(generated_discovery_report, Path)
+            else list(discovery_root.resolve().glob("*/*.json"))
+        )
+    )
     latest_discovery = (
         max(
             discovery_reports,
@@ -7729,6 +7967,19 @@ def run_identity_workflow_service(
         if discovery_reports
         else None
     )
+    if (
+        all_extractions
+        and not skip_discovery
+        and not plan_only
+        and cached_discovery_reports is None
+    ):
+        if discovery_fingerprint is not None:
+            _write_identity_stage_checkpoint_best_effort(
+                identity_stage_cache_root,
+                stage="discovery",
+                input_fingerprint=discovery_fingerprint,
+                outputs=(latest_discovery,) if latest_discovery is not None else (),
+            )
     if all_extractions and latest_discovery is not None:
         promote_discovered_profiles_command(
             discovery_report=latest_discovery,
@@ -11437,6 +11688,15 @@ def review_next_speaker_pair(
             "overlaps and reinforces profiles."
         ),
     ),
+    profile_id: int | None = typer.Option(
+        None,
+        "--profile-id",
+        min=1,
+        help=(
+            "Constrain profile-growth nomination to a specific canonical "
+            "speaker profile."
+        ),
+    ),
     discovery_report: Path | None = typer.Option(
         None,
         "--discovery-report",
@@ -11475,13 +11735,34 @@ def review_next_speaker_pair(
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
+    if profile_id is not None and selection_objective != SelectionGoal.PROFILE_GROWTH:
+        raise typer.BadParameter(
+            "--profile-id requires --selection-objective profile-growth"
+        )
+    target_profile_id = None
+    if profile_id is not None:
+        try:
+            target_profile_id = database.resolve_speaker_profile_id(profile_id)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        if target_profile_id != profile_id:
+            console.print(
+                f"Resolved speaker profile #{profile_id} to canonical "
+                f"profile #{target_profile_id}."
+            )
     root = evaluation_root.expanduser().resolve()
     verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
     prewarmed_fingerprints = _load_actionable_review_prewarm(cache_dir)
-    if prewarmed_fingerprints:
+    use_prewarmed_pool = bool(prewarmed_fingerprints) and target_profile_id is None
+    if use_prewarmed_pool:
         console.print(
             "Speaker pair selection: using prewarmed pool with "
             f"{len(prewarmed_fingerprints)} observation(s)."
+        )
+    elif target_profile_id is not None:
+        console.print(
+            f"Speaker pair selection: targeting profile {target_profile_id}; "
+            "the selected pair will be prepared on demand."
         )
     elif selection_objective in {
         SelectionGoal.AUTOMATION_READINESS,
@@ -11517,6 +11798,15 @@ def review_next_speaker_pair(
             current_clip_activity_policy_version=(
                 CLIP_ACTIVITY_POLICY_VERSION
             ),
+        )
+        lineage_review_candidate = (
+            select_superseded_profile_member_review(
+                database,
+                profile_id=target_profile_id,
+                excluded_pairs=history.excluded_pairs,
+            )
+            if target_profile_id is not None
+            else None
         )
         automatic_profile_ready_ids = frozenset()
         if selection_objective in {
@@ -11627,12 +11917,12 @@ def review_next_speaker_pair(
                 load_prepared_shadow_association_context(
                     association_cache_path
                 )
-                if prewarmed_fingerprints
+                if use_prewarmed_pool
                 else None
             )
             association_paths = (
                 ()
-                if prewarmed_fingerprints
+                if use_prewarmed_pool
                 else tuple(
                     association_root.expanduser().resolve().glob("*/*.json")
                 )
@@ -11645,7 +11935,7 @@ def review_next_speaker_pair(
             current_association_nominations = []
             nominations = (
                 prepared_nominations
-                if prewarmed_fingerprints
+                if use_prewarmed_pool
                 else load_shadow_association_confirmation_pairs(
                     association_paths,
                     cache_path=association_cache_path,
@@ -11696,7 +11986,7 @@ def review_next_speaker_pair(
                 if prepared_association_context is not None
                 else (
                     frozenset()
-                    if prewarmed_fingerprints
+                    if use_prewarmed_pool
                     else load_unmatched_association_fingerprints(
                         association_paths,
                         cache_path=association_cache_path,
@@ -11737,7 +12027,7 @@ def review_next_speaker_pair(
             is not None
         }
         for video in database.list_videos():
-            if prewarmed_fingerprints and video.id not in prewarmed_video_ids:
+            if use_prewarmed_pool and video.id not in prewarmed_video_ids:
                 continue
             source = database.get_source_by_id(video.source_id)
             if source is None:
@@ -11863,6 +12153,154 @@ def review_next_speaker_pair(
             )
             candidates.append(candidate)
 
+        lineage_selection: PairSelection | None = None
+        if lineage_review_candidate is not None:
+            lineage_observations = [
+                database.get_speaker_observation(observation_id)
+                for observation_id in (
+                    lineage_review_candidate.anchor_observation_id,
+                    lineage_review_candidate.replacement_observation_id,
+                )
+            ]
+            if all(observation is not None for observation in lineage_observations):
+                exact_candidates: list[PairCandidateObservation] = []
+                for observation in lineage_observations:
+                    assert observation is not None
+                    video = database.get_video_by_id(observation.video_id)
+                    source = (
+                        database.get_source_by_id(video.source_id)
+                        if video is not None
+                        else None
+                    )
+                    if video is None or source is None:
+                        exact_candidates = []
+                        break
+                    family = registry.resolve_source_url(source.url)
+                    exact_candidates.append(
+                        PairCandidateObservation(
+                            input_fingerprint=observation.input_fingerprint,
+                            video_id=video.youtube_video_id,
+                            recording_date=video.published_at,
+                            explicit_attributions=frozenset(
+                                claim.normalized_name
+                                for claim in (
+                                    database.list_speaker_name_claims_for_video(
+                                        video.id
+                                    )
+                                )
+                                if claim.observation_id == observation.id
+                                and claim.explicit_speaker_attribution
+                                and claim.normalized_name.strip()
+                            ),
+                            source_family_id=(
+                                family.source_family_id
+                                if family is not None
+                                else None
+                            ),
+                            evaluation_partition=(
+                                family.partition.value
+                                if family is not None
+                                else None
+                            ),
+                            reviewed_profile_ids=frozenset(
+                                database.resolve_speaker_profile_id(value)
+                                for value in (
+                                    database.list_effective_profile_ids_for_observation(
+                                        observation.id
+                                    )
+                                )
+                            ),
+                            explicitly_different_from=frozenset(
+                                different_fingerprints_by_observation_id.get(
+                                    observation.id, set()
+                                )
+                            ),
+                        )
+                    )
+                if len(exact_candidates) == 2 and (
+                    evaluation_scope == "all"
+                    or all(
+                        item.evaluation_partition == evaluation_scope
+                        for item in exact_candidates
+                    )
+                ):
+                    observation_a, observation_b = exact_candidates
+                    shared_attributions = sorted(
+                        observation_a.explicit_attributions
+                        & observation_b.explicit_attributions
+                    )
+                    source_relation = (
+                        "same_source_family"
+                        if observation_a.source_family_id is not None
+                        and observation_a.source_family_id
+                        == observation_b.source_family_id
+                        else "cross_source_family"
+                    )
+                    lineage_selection = PairSelection(
+                        observation_a=observation_a,
+                        observation_b=observation_b,
+                        manifest={
+                            "selector_version": (
+                                "speaker_pair_selector_lineage_bridge_v1"
+                            ),
+                            "selection_origin": "automatic",
+                            "selected_observation_fingerprints": {
+                                "a": observation_a.input_fingerprint,
+                                "b": observation_b.input_fingerprint,
+                            },
+                            "selection_goal": "profile-growth",
+                            "selection_objective": (
+                                lineage_review_candidate.selection_kind
+                            ),
+                            "selection_stratum": (
+                                "shared_attribution"
+                                if shared_attributions
+                                else "unattributed"
+                            ),
+                            "source_relation": source_relation,
+                            "source_family_ids": {
+                                "a": observation_a.source_family_id,
+                                "b": observation_b.source_family_id,
+                            },
+                            "evaluation_partitions": {
+                                "a": observation_a.evaluation_partition,
+                                "b": observation_b.evaluation_partition,
+                            },
+                            "evaluation_scope": (
+                                evaluation_scope
+                                if evaluation_scope != "all"
+                                else "all_partitions"
+                            ),
+                            "target_profile_id": target_profile_id,
+                            "reason_codes": [
+                                lineage_review_candidate.selection_kind,
+                                "superseded_profile_lineage",
+                                "human_review_required",
+                            ],
+                            "profile_consolidation": {
+                                "profile_ids": sorted(
+                                    value
+                                    for value in (
+                                        lineage_review_candidate.profile_id,
+                                        lineage_review_candidate.successor_profile_id,
+                                    )
+                                    if value is not None
+                                ),
+                                "shared_explicit_attributions": (
+                                    list(
+                                        lineage_review_candidate.shared_normalized_names
+                                    )
+                                ),
+                                "role": "human_review_nomination_only",
+                                "identity_evidence": False,
+                                "known_cross_profile_difference": False,
+                                "membership_firewall": (
+                                    "approved_pair_review_required"
+                                ),
+                            },
+                        },
+                    )
+
         def select_pair(
             remaining: Sequence[PairCandidateObservation],
         ) -> PairSelection:
@@ -11880,18 +12318,23 @@ def review_next_speaker_pair(
                 unmatched_association_fingerprints=(
                     unmatched_association_fingerprints
                 ),
+                target_profile_id=target_profile_id,
             )
 
+        verified_selection = None
         try:
-            verified_selection = select_verified_automatic_speaker_pair(
-                database,
-                candidates,
-                select_pair=select_pair,
-                verification_cache=verification_cache,
-            )
-            selection = verified_selection.selection
+            if lineage_selection is not None:
+                selection = lineage_selection
+            else:
+                verified_selection = select_verified_automatic_speaker_pair(
+                    database,
+                    candidates,
+                    select_pair=select_pair,
+                    verification_cache=verification_cache,
+                )
+                selection = verified_selection.selection
         except ValueError as error:
-            if prewarmed_fingerprints:
+            if use_prewarmed_pool:
                 raise ValueError(
                     "prepared actionable review pool is exhausted or stale; "
                     "refresh it with:\n"
@@ -11910,11 +12353,20 @@ def review_next_speaker_pair(
                     f"--base-dir {paths.root}`, then retry"
                 ) from error
             raise
-        selection.manifest["media_verification_scope"] = "selected_pair"
-        selection.manifest["media_verification_attempts"] = (
-            verified_selection.selection_attempts
+        selection.manifest["media_verification_scope"] = (
+            "review_packet_preparation"
+            if verified_selection is None
+            else "selected_pair"
         )
-        if verified_selection.rejection_counts:
+        selection.manifest["media_verification_attempts"] = (
+            0
+            if verified_selection is None
+            else verified_selection.selection_attempts
+        )
+        if (
+            verified_selection is not None
+            and verified_selection.rejection_counts
+        ):
             selection.manifest["media_verification_rejections"] = dict(
                 sorted(verified_selection.rejection_counts.items())
             )
