@@ -46,6 +46,23 @@ POLICY_TERMINAL_REASONS = frozenset(
 )
 
 
+def observation_profile_lineage_exclusion(
+    database: Database,
+    *,
+    video_id: int,
+    observation_id: int,
+) -> str | None:
+    """Classify direct or superseded profile ownership for discovery gates."""
+    if database.list_effective_profile_ids_for_observation(observation_id):
+        return "already_profiled"
+    if database.list_effective_profile_ids_for_observation_lineage(
+        video_id=video_id,
+        current_observation_id=observation_id,
+    ):
+        return "superseded_profile_lineage"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class IdentityAssociationWorkItem:
     video_id: int
@@ -87,16 +104,78 @@ class SupersededProfileMemberReviewCandidate:
     superseded_observation_id: int
     profile_member_count: int
     current_exemplar_count: int
+    selection_kind: str = "restore_unprofiled_replacement"
+    successor_profile_id: int | None = None
+    shared_normalized_names: tuple[str, ...] = ()
+    lineage_overlap_count: int = 0
 
 
 def select_superseded_profile_member_review(
     database: Database,
+    *,
+    profile_id: int | None = None,
+    excluded_pairs: Iterable[frozenset[str]] = (),
 ) -> SupersededProfileMemberReviewCandidate | None:
-    """Select one human review that can add a second current profile exemplar."""
+    """Select one guarded review for superseded membership or profile lineage."""
     videos_by_id = {video.id: video for video in database.list_videos()}
+    claims = database.list_speaker_name_claims()
+    claims_by_id = {claim.id: claim for claim in claims}
+    claims_by_observation_id: dict[int, set[str]] = {}
+    for claim in claims:
+        if (
+            claim.observation_id is not None
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        ):
+            claims_by_observation_id.setdefault(
+                claim.observation_id, set()
+            ).add(claim.normalized_name.strip())
+
+    def profile_names(
+        candidate_profile_id: int,
+        member_ids: set[int],
+    ) -> set[str]:
+        names = {
+            name
+            for observation_id in member_ids
+            for name in claims_by_observation_id.get(observation_id, set())
+        }
+        for claim_id in database.list_effective_name_claim_ids_for_profile(
+            candidate_profile_id
+        ):
+            claim = claims_by_id.get(claim_id)
+            if claim is not None and claim.normalized_name.strip():
+                names.add(claim.normalized_name.strip())
+        return names
+
+    requested_profile_id = (
+        database.resolve_speaker_profile_id(profile_id)
+        if profile_id is not None
+        else None
+    )
+    excluded_pair_keys = frozenset(excluded_pairs)
+    different_pairs = set(
+        database.list_effective_observation_difference_pairs()
+    )
+
+    def all_members_are_superseded(members: Iterable[Any]) -> bool:
+        members = tuple(members)
+        return bool(members) and all(
+            (
+                current := database.get_latest_speaker_observation_for_video(
+                    member.video_id
+                )
+            )
+            is not None
+            and current.id != member.id
+            for member in members
+        )
+
     candidates: list[SupersededProfileMemberReviewCandidate] = []
     for profile in database.list_speaker_profiles():
         if database.resolve_speaker_profile_id(profile.id) != profile.id:
+            continue
+        if requested_profile_id is not None and profile.id != requested_profile_id:
             continue
         members = [
             observation
@@ -106,8 +185,7 @@ def select_superseded_profile_member_review(
             if (observation := database.get_speaker_observation(observation_id))
             is not None
         ]
-        if len({member.video_id for member in members}) < 3:
-            continue
+        member_recording_count = len({member.video_id for member in members})
         current_members = [
             member
             for member in members
@@ -119,54 +197,388 @@ def select_superseded_profile_member_review(
             is not None
             and current.id == member.id
         ]
-        if len({member.video_id for member in current_members}) != 1:
+        if (
+            member_recording_count >= 3
+            and len({member.video_id for member in current_members}) == 1
+        ):
+            anchor = current_members[0]
+            anchor_video = videos_by_id.get(anchor.video_id)
+            anchor_eligibility = assess_automatic_speaker_observation(
+                database, anchor.video_id, verify_media=False
+            )
+            if anchor_video is not None and anchor_eligibility.eligible:
+                for superseded in members:
+                    replacement = (
+                        database.get_latest_speaker_observation_for_video(
+                            superseded.video_id
+                        )
+                    )
+                    if replacement is None or replacement.id == superseded.id:
+                        continue
+                    replacement_video = videos_by_id.get(
+                        replacement.video_id
+                    )
+                    if replacement_video is None:
+                        continue
+                    if database.list_effective_profile_ids_for_observation(
+                        replacement.id
+                    ):
+                        continue
+                    replacement_eligibility = (
+                        assess_automatic_speaker_observation(
+                            database,
+                            replacement.video_id,
+                            verify_media=False,
+                        )
+                    )
+                    if (
+                        not replacement_eligibility.eligible
+                        or replacement_eligibility.observation is None
+                        or replacement_eligibility.observation.id
+                        != replacement.id
+                        or frozenset(
+                            (
+                                anchor.input_fingerprint,
+                                replacement.input_fingerprint,
+                            )
+                        )
+                        in excluded_pair_keys
+                    ):
+                        continue
+                    candidates.append(
+                        SupersededProfileMemberReviewCandidate(
+                            profile_id=profile.id,
+                            anchor_observation_id=anchor.id,
+                            anchor_youtube_video_id=(
+                                anchor_video.youtube_video_id
+                            ),
+                            replacement_observation_id=replacement.id,
+                            replacement_youtube_video_id=(
+                                replacement_video.youtube_video_id
+                            ),
+                            superseded_observation_id=superseded.id,
+                            profile_member_count=len(members),
+                            current_exemplar_count=1,
+                        )
+                    )
+
+        # If every useful exemplar was superseded and discovery attached a
+        # replacement elsewhere, retain the old observation as one side of a
+        # blinded bridge.  Lineage and one exact shared name nominate the
+        # review; neither is treated as identity proof.
+        if requested_profile_id is None or member_recording_count < 2:
             continue
-        anchor = current_members[0]
-        anchor_video = videos_by_id.get(anchor.video_id)
-        if anchor_video is None:
-            continue
-        anchor_eligibility = assess_automatic_speaker_observation(
-            database, anchor.video_id, verify_media=False
-        )
-        if not anchor_eligibility.eligible:
-            continue
+        successor_mappings: dict[
+            int, list[tuple[Any, Any]]
+        ] = {}
         for superseded in members:
             replacement = database.get_latest_speaker_observation_for_video(
                 superseded.video_id
             )
             if replacement is None or replacement.id == superseded.id:
                 continue
-            replacement_video = videos_by_id.get(replacement.video_id)
-            if replacement_video is None:
+            replacement_profile_ids = {
+                database.resolve_speaker_profile_id(candidate_id)
+                for candidate_id in (
+                    database.list_effective_profile_ids_for_observation(
+                        replacement.id
+                    )
+                )
+            }
+            if len(replacement_profile_ids) != 1:
                 continue
-            if database.list_effective_profile_ids_for_observation(replacement.id):
+            successor_profile_id = next(iter(replacement_profile_ids))
+            if successor_profile_id == profile.id:
                 continue
-            replacement_eligibility = assess_automatic_speaker_observation(
-                database, replacement.video_id, verify_media=False
+            successor_mappings.setdefault(successor_profile_id, []).append(
+                (superseded, replacement)
+            )
+
+        old_member_ids = {member.id for member in members}
+        old_names = profile_names(profile.id, old_member_ids)
+        if len(old_names) != 1:
+            continue
+        for successor_profile_id, mappings in sorted(
+            successor_mappings.items()
+        ):
+            successor_profile = database.get_speaker_profile(
+                successor_profile_id
+            )
+            if successor_profile is None:
+                continue
+            successor_members = [
+                observation
+                for observation_id in (
+                    database.list_effective_observation_ids_for_profile(
+                        successor_profile_id
+                    )
+                )
+                if (
+                    observation := database.get_speaker_observation(
+                        observation_id
+                    )
+                )
+                is not None
+            ]
+            successor_member_ids = {
+                member.id for member in successor_members
+            }
+            successor_names = profile_names(
+                successor_profile_id, successor_member_ids
+            )
+            if successor_names != old_names:
+                continue
+            if any(
+                tuple(sorted((old_id, successor_id))) in different_pairs
+                for old_id in old_member_ids
+                for successor_id in successor_member_ids
+            ):
+                continue
+            current_successors = [
+                member
+                for member in successor_members
+                if (
+                    current := database.get_latest_speaker_observation_for_video(
+                        member.video_id
+                    )
+                )
+                is not None
+                and current.id == member.id
+            ]
+            bridge_options = [
+                (old_member, current_successor)
+                for old_member in members
+                for current_successor in current_successors
+                if old_member.video_id != current_successor.video_id
+                and tuple(
+                    sorted((old_member.id, current_successor.id))
+                )
+                not in different_pairs
+                and frozenset(
+                    (
+                        old_member.input_fingerprint,
+                        current_successor.input_fingerprint,
+                    )
+                )
+                not in excluded_pair_keys
+            ]
+            if not bridge_options:
+                continue
+            old_member, current_successor = min(
+                bridge_options,
+                key=lambda item: (item[0].id, item[1].id),
+            )
+            old_video = videos_by_id.get(old_member.video_id)
+            successor_video = videos_by_id.get(current_successor.video_id)
+            if old_video is None or successor_video is None:
+                continue
+            successor_eligibility = assess_automatic_speaker_observation(
+                database,
+                current_successor.video_id,
+                verify_media=False,
             )
             if (
-                not replacement_eligibility.eligible
-                or replacement_eligibility.observation is None
-                or replacement_eligibility.observation.id != replacement.id
+                not successor_eligibility.eligible
+                or successor_eligibility.observation is None
+                or successor_eligibility.observation.id
+                != current_successor.id
             ):
                 continue
             candidates.append(
                 SupersededProfileMemberReviewCandidate(
                     profile_id=profile.id,
-                    anchor_observation_id=anchor.id,
-                    anchor_youtube_video_id=anchor_video.youtube_video_id,
-                    replacement_observation_id=replacement.id,
+                    anchor_observation_id=old_member.id,
+                    anchor_youtube_video_id=old_video.youtube_video_id,
+                    replacement_observation_id=current_successor.id,
                     replacement_youtube_video_id=(
-                        replacement_video.youtube_video_id
+                        successor_video.youtube_video_id
                     ),
-                    superseded_observation_id=superseded.id,
+                    superseded_observation_id=min(
+                        item[0].id for item in mappings
+                    ),
                     profile_member_count=len(members),
-                    current_exemplar_count=1,
+                    current_exemplar_count=len(current_successors),
+                    selection_kind="lineage_profile_consolidation",
+                    successor_profile_id=successor_profile_id,
+                    shared_normalized_names=tuple(sorted(old_names)),
+                    lineage_overlap_count=len(mappings),
                 )
             )
+
+    # Targeted review may also recover two named profiles whose members were
+    # all superseded before either lineage acquired a current exemplar.  Keep
+    # this out of the untargeted queue: an operator must select the profile,
+    # and a blinded review remains the only evidence that permits the merge.
+    if requested_profile_id is not None and not any(
+        item.selection_kind == "lineage_profile_consolidation"
+        for item in candidates
+    ):
+        requested_members = [
+            observation
+            for observation_id in (
+                database.list_effective_observation_ids_for_profile(
+                    requested_profile_id
+                )
+            )
+            if (
+                observation := database.get_speaker_observation(
+                    observation_id
+                )
+            )
+            is not None
+        ]
+        requested_member_ids = {
+            member.id for member in requested_members
+        }
+        requested_names = profile_names(
+            requested_profile_id, requested_member_ids
+        )
+        requested_current_members = [
+            member
+            for member in requested_members
+            if (
+                current := database.get_latest_speaker_observation_for_video(
+                    member.video_id
+                )
+            )
+            is not None
+            and current.id == member.id
+        ]
+        requested_fully_superseded = all_members_are_superseded(
+            requested_members
+        )
+        if (
+            len({member.video_id for member in requested_members}) >= 2
+            and len(requested_names) == 1
+        ):
+            for other_profile in database.list_speaker_profiles():
+                other_profile_id = database.resolve_speaker_profile_id(
+                    other_profile.id
+                )
+                if (
+                    other_profile_id != other_profile.id
+                    or other_profile_id == requested_profile_id
+                ):
+                    continue
+                other_members = [
+                    observation
+                    for observation_id in (
+                        database.list_effective_observation_ids_for_profile(
+                            other_profile_id
+                        )
+                    )
+                    if (
+                        observation := database.get_speaker_observation(
+                            observation_id
+                        )
+                    )
+                    is not None
+                ]
+                other_member_ids = {
+                    member.id for member in other_members
+                }
+                if (
+                    len({member.video_id for member in other_members}) < 2
+                    or not all_members_are_superseded(other_members)
+                    or profile_names(
+                        other_profile_id, other_member_ids
+                    )
+                    != requested_names
+                ):
+                    continue
+                if any(
+                    tuple(sorted((left_id, right_id))) in different_pairs
+                    for left_id in requested_member_ids
+                    for right_id in other_member_ids
+                ):
+                    continue
+                reverse_lineage_overlap = []
+                for other_member in other_members:
+                    replacement = (
+                        database.get_latest_speaker_observation_for_video(
+                            other_member.video_id
+                        )
+                    )
+                    if replacement is None or replacement.id == other_member.id:
+                        continue
+                    replacement_profile_ids = {
+                        database.resolve_speaker_profile_id(value)
+                        for value in (
+                            database.list_effective_profile_ids_for_observation(
+                                replacement.id
+                            )
+                        )
+                    }
+                    if requested_profile_id in replacement_profile_ids:
+                        reverse_lineage_overlap.append(
+                            (other_member, replacement)
+                        )
+                if (
+                    not requested_fully_superseded
+                    and not reverse_lineage_overlap
+                ):
+                    continue
+                requested_bridge_members = (
+                    requested_current_members or requested_members
+                )
+                bridge_options = [
+                    (left, right)
+                    for left in requested_bridge_members
+                    for right in other_members
+                    if left.video_id != right.video_id
+                    and tuple(sorted((left.id, right.id)))
+                    not in different_pairs
+                    and frozenset(
+                        (left.input_fingerprint, right.input_fingerprint)
+                    )
+                    not in excluded_pair_keys
+                ]
+                if not bridge_options:
+                    continue
+                left, right = min(
+                    bridge_options,
+                    key=lambda item: (item[0].id, item[1].id),
+                )
+                left_video = videos_by_id.get(left.video_id)
+                right_video = videos_by_id.get(right.video_id)
+                if left_video is None or right_video is None:
+                    continue
+                candidates.append(
+                    SupersededProfileMemberReviewCandidate(
+                        profile_id=requested_profile_id,
+                        anchor_observation_id=left.id,
+                        anchor_youtube_video_id=(
+                            left_video.youtube_video_id
+                        ),
+                        replacement_observation_id=right.id,
+                        replacement_youtube_video_id=(
+                            right_video.youtube_video_id
+                        ),
+                        superseded_observation_id=left.id,
+                        profile_member_count=len(requested_members),
+                        current_exemplar_count=0,
+                        selection_kind=(
+                            "lineage_profile_consolidation"
+                            if reverse_lineage_overlap
+                            else "superseded_named_profile_consolidation"
+                        ),
+                        successor_profile_id=other_profile_id,
+                        shared_normalized_names=tuple(
+                            sorted(requested_names)
+                        ),
+                        lineage_overlap_count=len(reverse_lineage_overlap),
+                    )
+                )
     return min(
         candidates,
         key=lambda item: (
+            0
+            if item.selection_kind == "lineage_profile_consolidation"
+            else 1
+            if item.selection_kind
+            == "superseded_named_profile_consolidation"
+            else 2,
+            -item.lineage_overlap_count,
             -item.profile_member_count,
             item.profile_id,
             item.replacement_youtube_video_id,

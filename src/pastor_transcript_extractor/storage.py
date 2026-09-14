@@ -4830,6 +4830,24 @@ class Database:
             ).fetchall()
         return [int(row["profile_id"]) for row in rows]
 
+    def list_effective_profile_ids_for_observation_lineage(
+        self,
+        *,
+        video_id: int,
+        current_observation_id: int,
+    ) -> list[int]:
+        """Return direct and superseded memberships for one current observation."""
+        direct = self.list_effective_profile_ids_for_observation(
+            current_observation_id
+        )
+        superseded = (
+            self.list_effective_profile_ids_for_superseded_observations(
+                video_id=video_id,
+                current_observation_id=current_observation_id,
+            )
+        )
+        return sorted(set((*direct, *superseded)))
+
     def list_effective_observation_ids_for_profile(self, profile_id: int) -> list[int]:
         with self.connect() as connection:
             rows = connection.execute(

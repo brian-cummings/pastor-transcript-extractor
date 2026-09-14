@@ -307,6 +307,57 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         )
         self.assertIn("merge candidates", status.next_actions[0])
 
+    def test_fully_superseded_merge_candidates_use_lineage_review(self) -> None:
+        observations = [self._observation(key) for key in ("a", "b", "c", "d")]
+        profiles = [
+            create_anonymous_profile(
+                self.database,
+                reviewer="reviewer",
+                reason="same pair",
+                review_event_key=f"stale-profile-{index}",
+            )
+            for index in range(2)
+        ]
+        for index, profile in enumerate(profiles):
+            for observation in observations[index * 2 : index * 2 + 2]:
+                attach_reviewed_observation(
+                    self.database,
+                    profile_id=profile.id,
+                    observation_id=observation.id,
+                    reviewer="reviewer",
+                    reason="same pair",
+                    review_event_key=f"stale-attach-{observation.id}",
+                )
+                self._claim(observation, "Jordan Fowler")
+                self.database.add_speaker_observation(
+                    video_id=observation.video_id,
+                    extraction_result_id=observation.extraction_result_id,
+                    role=observation.role,
+                    multiplicity_state=observation.multiplicity_state,
+                    start_seconds=observation.start_seconds,
+                    end_seconds=observation.end_seconds,
+                    artifact_path=observation.artifact_path,
+                    content_sha256=observation.content_sha256,
+                    extractor_version=observation.extractor_version,
+                    input_fingerprint=f"replacement-{observation.id}",
+                )
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 2),
+        )
+
+        action_codes = {action.code for action in status.actions}
+        self.assertIn("superseded_lineage_profile_merges", action_codes)
+        self.assertNotIn("same_name_profile_merges", action_codes)
+        lineage_action = next(
+            action
+            for action in status.actions
+            if action.code == "superseded_lineage_profile_merges"
+        )
+        self.assertIn("review-next-speaker-pair", lineage_action.command)
+        self.assertIn("--profile-id PROFILE_ID", lineage_action.command)
+
     def test_display_name_variants_do_not_create_attribution_conflict(self) -> None:
         observations = [self._observation(key) for key in ("a", "b")]
         profile = create_anonymous_profile(

@@ -1,0 +1,357 @@
+{
+  "approval_confirmed": true,
+  "clip_quality": {
+    "A": {
+      "clip_selection": {
+        "attempts": [
+          {
+            "accepted": true,
+            "end_seconds": 1108.495,
+            "non_silent_fraction": 0.745,
+            "reason": "qualified",
+            "rms_dbfs": -20.474900801235737,
+            "start_seconds": 1096.495,
+            "wav_sha256": "111f1e8ff32fac9df5d8b1db2fa71853f59735f4da48e60bcfd775df48cdf9f0"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1759.045,
+            "non_silent_fraction": 0.88,
+            "reason": "qualified",
+            "rms_dbfs": -20.528729788033665,
+            "start_seconds": 1747.045,
+            "wav_sha256": "1b6f504190297043cd2f9c7ecf863c9341b651bf30cdd6f24f0208c1a1202122"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 2409.595,
+            "non_silent_fraction": 0.47,
+            "reason": "qualified",
+            "rms_dbfs": -41.37312196512067,
+            "start_seconds": 2397.595,
+            "wav_sha256": "64998b6434951777f8cca0bde0196ef14599d97d6b6276498f58edde79d32ec3"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 3060.145,
+            "non_silent_fraction": 0.5675,
+            "reason": "qualified",
+            "rms_dbfs": -38.75862459219317,
+            "start_seconds": 3048.145,
+            "wav_sha256": "d07b41ac94c7b48463820261163a0e8e205a3c8515dc9aec82e4669bc20093c7"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 3710.695,
+            "non_silent_fraction": 0.7825,
+            "reason": "qualified",
+            "rms_dbfs": -25.099323667104958,
+            "start_seconds": 3698.695,
+            "wav_sha256": "0bef6dca8c2569d21bfb666413d690a56f51893e62a56d2ade7667cd1af22e6a"
+          }
+        ],
+        "candidate_clip_count": 17,
+        "minimum_clip_count": 5,
+        "policy_version": "speaker_pair_clip_activity_v3",
+        "prepared_clip_count": 5,
+        "qualified_clip_count": 5,
+        "recording_activity_profile": {
+          "frame_count": 142312,
+          "frame_duration_ms": 30.0,
+          "policy_version": "speaker_pair_clip_activity_v3",
+          "reference_dbfs": -17.81557406651403,
+          "reference_percentile": 0.9,
+          "silence_threshold_dbfs": -50.0,
+          "source_audio_sha256": "04571eccc6353134062c1394272522961248391daa53eba217f8b859cabf7429"
+        },
+        "requested_clip_count": 5,
+        "selection_outcome": "complete",
+        "thresholds": {
+          "min_non_silent_fraction": 0.4,
+          "min_rms_dbfs": -52.0
+        }
+      },
+      "clips": [
+        {
+          "non_silent_fraction": 0.745,
+          "rms_dbfs": -20.474900801235737,
+          "wav_sha256": "111f1e8ff32fac9df5d8b1db2fa71853f59735f4da48e60bcfd775df48cdf9f0"
+        },
+        {
+          "non_silent_fraction": 0.88,
+          "rms_dbfs": -20.528729788033665,
+          "wav_sha256": "1b6f504190297043cd2f9c7ecf863c9341b651bf30cdd6f24f0208c1a1202122"
+        },
+        {
+          "non_silent_fraction": 0.47,
+          "rms_dbfs": -41.37312196512067,
+          "wav_sha256": "64998b6434951777f8cca0bde0196ef14599d97d6b6276498f58edde79d32ec3"
+        },
+        {
+          "non_silent_fraction": 0.5675,
+          "rms_dbfs": -38.75862459219317,
+          "wav_sha256": "d07b41ac94c7b48463820261163a0e8e205a3c8515dc9aec82e4669bc20093c7"
+        },
+        {
+          "non_silent_fraction": 0.7825,
+          "rms_dbfs": -25.099323667104958,
+          "wav_sha256": "0bef6dca8c2569d21bfb666413d690a56f51893e62a56d2ade7667cd1af22e6a"
+        }
+      ]
+    },
+    "B": {
+      "clip_selection": {
+        "attempts": [
+          {
+            "accepted": true,
+            "end_seconds": 521.85,
+            "non_silent_fraction": 0.8575,
+            "reason": "qualified",
+            "rms_dbfs": -25.67315681412778,
+            "start_seconds": 509.85,
+            "wav_sha256": "5e539cf040b128138889e687c16ecb4eca34651dbea6564bd6c71f1c31d822b0"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1099.395,
+            "non_silent_fraction": 0.7875,
+            "reason": "qualified",
+            "rms_dbfs": -26.637562046474947,
+            "start_seconds": 1087.395,
+            "wav_sha256": "f5efa6d14f9a8f4ae4d4e99224c150b4d742a94187a88e02ff86d21616cdfd1a"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 1676.94,
+            "non_silent_fraction": 0.7075,
+            "reason": "qualified",
+            "rms_dbfs": -25.562066715415767,
+            "start_seconds": 1664.94,
+            "wav_sha256": "a129621a6fbe3eb0b5533a00387ce1bd857a8b559a52c0453e011867ef3f1498"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 2254.485,
+            "non_silent_fraction": 0.7225,
+            "reason": "qualified",
+            "rms_dbfs": -24.874119787300003,
+            "start_seconds": 2242.485,
+            "wav_sha256": "840a2c20148288fc5122bd1363d24c46c3353b94e8cee032ce1279db67243daa"
+          },
+          {
+            "accepted": true,
+            "end_seconds": 2832.03,
+            "non_silent_fraction": 0.8075,
+            "reason": "qualified",
+            "rms_dbfs": -26.697671774116223,
+            "start_seconds": 2820.03,
+            "wav_sha256": "d04c9e533bc02cde8953ccc5d01332caac28a61baac9d1b83ed1d75485d62828"
+          }
+        ],
+        "candidate_clip_count": 17,
+        "minimum_clip_count": 5,
+        "policy_version": "speaker_pair_clip_activity_v3",
+        "prepared_clip_count": 5,
+        "qualified_clip_count": 5,
+        "recording_activity_profile": {
+          "frame_count": 111010,
+          "frame_duration_ms": 30.0,
+          "policy_version": "speaker_pair_clip_activity_v3",
+          "reference_dbfs": -21.576144132861803,
+          "reference_percentile": 0.9,
+          "silence_threshold_dbfs": -50.0,
+          "source_audio_sha256": "a08e3e5b2f0c82eb2ca0938ffddb26a2cc9ef55033b014b129b36739a762a479"
+        },
+        "requested_clip_count": 5,
+        "selection_outcome": "complete",
+        "thresholds": {
+          "min_non_silent_fraction": 0.4,
+          "min_rms_dbfs": -52.0
+        }
+      },
+      "clips": [
+        {
+          "non_silent_fraction": 0.8575,
+          "rms_dbfs": -25.67315681412778,
+          "wav_sha256": "5e539cf040b128138889e687c16ecb4eca34651dbea6564bd6c71f1c31d822b0"
+        },
+        {
+          "non_silent_fraction": 0.7875,
+          "rms_dbfs": -26.637562046474947,
+          "wav_sha256": "f5efa6d14f9a8f4ae4d4e99224c150b4d742a94187a88e02ff86d21616cdfd1a"
+        },
+        {
+          "non_silent_fraction": 0.7075,
+          "rms_dbfs": -25.562066715415767,
+          "wav_sha256": "a129621a6fbe3eb0b5533a00387ce1bd857a8b559a52c0453e011867ef3f1498"
+        },
+        {
+          "non_silent_fraction": 0.7225,
+          "rms_dbfs": -24.874119787300003,
+          "wav_sha256": "840a2c20148288fc5122bd1363d24c46c3353b94e8cee032ce1279db67243daa"
+        },
+        {
+          "non_silent_fraction": 0.8075,
+          "rms_dbfs": -26.697671774116223,
+          "wav_sha256": "d04c9e533bc02cde8953ccc5d01332caac28a61baac9d1b83ed1d75485d62828"
+        }
+      ]
+    }
+  },
+  "draft_id": "5e40badf3d676ff251dd60c02083d9462707aa94decc1edbb82554bed8537b5c",
+  "event_kind": "speaker_pair_human_review",
+  "fixture_eligible": false,
+  "identity_evidence_eligible": true,
+  "notes": "",
+  "pair_id": "pair-1c547967649f686c",
+  "pair_judgment": "same_speaker",
+  "qualification": {
+    "A": "qualified_single_speaker",
+    "B": "qualified_single_speaker"
+  },
+  "review_event_id": "36c7e0b6b66a464c9d9b48a006c853cfb49fcb696f31de730ce1b8ec8c6caf59",
+  "review_evidence_mode": "audio_plus_visual",
+  "reviewed_at": "2026-09-13T20:46:32.462210+00:00",
+  "reviewer": "Brian Cummings",
+  "schema_version": 1,
+  "selection_manifest": {
+    "automatic_profile_ready_ids_excluded_from_nomination": [
+      57,
+      58,
+      59,
+      60,
+      63,
+      65,
+      67,
+      74,
+      75,
+      76,
+      77,
+      78,
+      80,
+      81,
+      84,
+      86,
+      88,
+      93,
+      94,
+      95,
+      96,
+      98,
+      100,
+      102,
+      103,
+      105,
+      106,
+      111,
+      112,
+      114,
+      118,
+      119,
+      133,
+      136,
+      139
+    ],
+    "automatic_profile_ready_ids_excluded_from_reinforcement": [
+      57,
+      58,
+      59,
+      60,
+      63,
+      65,
+      67,
+      74,
+      75,
+      76,
+      77,
+      78,
+      80,
+      81,
+      84,
+      86,
+      88,
+      93,
+      94,
+      95,
+      96,
+      98,
+      100,
+      102,
+      103,
+      105,
+      106,
+      111,
+      112,
+      114,
+      118,
+      119,
+      133,
+      136,
+      139
+    ],
+    "automatic_profile_ready_observation_count_excluded": 0,
+    "corpus_snapshot_fingerprint": "5e15d8c79fb2fd2615ae687f86b7e4cae23d9013fdf9b4dad98d95ed5ebce287",
+    "discovery_resolution": {
+      "component_ids": [
+        "030e61d82df7ef78afffe5c333a0fe5caee803af6426f5763217f5b67927a27c",
+        "445bd38761fe3668853ed29d35f5d2803e023f9c1c440b719a113acf5a09e46e"
+      ],
+      "member_fingerprints": [
+        "0cef44de44dd24833c039d6a3196469fe553e558aea5542ba76ee70c1c71528d",
+        "117b154afe055175696f3f95520e273897a1af4a663a2d2c0ad6df540e1cc601",
+        "3027cf6a52156e77f1d5b31c876f6331eb4b25478b11e823f9f76687ebbbb41d",
+        "76ef46001783a831428edd050f245a90766359d1975244cabe0f5b35d1f3c2e1",
+        "bdaf1b400d98c86e5676928e80077278b22e5af45f9814236e0a435cd1812724",
+        "ce9b52ced2633242bc2e178ceda092d2d84a2e8cde88dc96ac00f9c637a034a5",
+        "e3f9b9ed0a5a030b72bf08adad1b0fe77d443a9f3ae08407b8a4045310cac0bb",
+        "fe74340c85cedba68d270e8ed36a4ae20ed75daa8840767fcc6801da70470940"
+      ],
+      "observations_unlocked": 8,
+      "report_path": "/Users/briancummings/code/pastor-transcript-extractor/evaluation/speaker-profile-discovery/shadow-runs/cc58996b59f84693/cc58996b59f846936b02d7a6f4afe13dd493740d5feb33061adf054dfbae56c3.json",
+      "report_result_sha256": "a7aea6e3bb05dbdbc25d6fb50f32007050ff751e5475b4e4cc3791fdfb4a568c",
+      "resolution_kind": "near_same_ambiguous_frontier",
+      "same_boundary_distance": 0.0014492577169741283
+    },
+    "evaluation_partitions": {
+      "a": "validation",
+      "b": "validation"
+    },
+    "evaluation_scope": "all_partitions",
+    "media_verification_attempts": 1,
+    "media_verification_scope": "selected_pair",
+    "observation_prior_use": {
+      "a": 0,
+      "b": 0
+    },
+    "reason_codes": [
+      "discovery_near_same_frontier_review",
+      "both_observations_unused",
+      "same_source_family",
+      "least_used_source_families"
+    ],
+    "reviewed_outcome_counts": {
+      "different_speaker": 34,
+      "same_speaker": 22
+    },
+    "selected_observation_fingerprints": {
+      "a": "3027cf6a52156e77f1d5b31c876f6331eb4b25478b11e823f9f76687ebbbb41d",
+      "b": "e3f9b9ed0a5a030b72bf08adad1b0fe77d443a9f3ae08407b8a4045310cac0bb"
+    },
+    "selection_goal": "automation-readiness",
+    "selection_objective": "discovery_near_same_frontier_review",
+    "selection_origin": "automatic",
+    "selection_stratum": "unattributed",
+    "selector_version": "speaker_pair_selector_v29",
+    "source_family_ids": {
+      "a": "youtube-channel-ucf208016ka7zf7476ekoq6a",
+      "b": "youtube-channel-ucf208016ka7zf7476ekoq6a"
+    },
+    "source_family_prior_use": {
+      "a": 6,
+      "b": 6
+    },
+    "source_relation": "same_source_family"
+  },
+  "variation_tags": [],
+  "workflow_version": "speaker_pair_review_v3"
+}

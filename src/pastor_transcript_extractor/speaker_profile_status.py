@@ -465,6 +465,27 @@ def build_profile_pipeline_status(
             attribution_conflict_profile_ids if blocked else merge_profile_ids
         )
         target.update(profile_ids)
+    latest_observation_id_by_video: dict[int, int] = {}
+    for observation in observations:
+        latest_observation_id_by_video[observation.video_id] = max(
+            observation.id,
+            latest_observation_id_by_video.get(observation.video_id, 0),
+        )
+    fully_superseded_merge_profile_ids = {
+        profile_id
+        for profile_id in merge_profile_ids
+        if members_by_profile[profile_id]
+        and all(
+            (
+                observation_id in observations_by_id
+                and latest_observation_id_by_video.get(
+                    observations_by_id[observation_id].video_id
+                )
+                != observation_id
+            )
+            for observation_id in members_by_profile[profile_id]
+        )
+    }
 
     attached_observation_ids = {
         observation_id
@@ -610,7 +631,8 @@ def build_profile_pipeline_status(
                     "review a same-name profile bridge",
                     "profile-growth",
                     "pte identity review-next-speaker-pair --selection-objective "
-                    "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+                    f"profile-growth --profile-id {profile_id} "
+                    "--reviewer REVIEWER_ID --base-dir BASE_DIR",
                 )
             )
         elif (
@@ -650,11 +672,12 @@ def build_profile_pipeline_status(
                 needs.append(
                     StatusNeed(
                         "attributed_profile_frontier",
-                        f"review {frontier_count} attributed frontier candidate(s); "
-                        "selection remains globally prioritized",
+                        f"review {frontier_count} attributed frontier candidate(s) "
+                        "for this profile",
                         "profile-growth",
                         "pte identity review-next-speaker-pair --selection-objective "
-                        "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+                        f"profile-growth --profile-id {profile_id} "
+                        "--reviewer REVIEWER_ID --base-dir BASE_DIR",
                     )
                 )
             if "reviewed_same_graph_contains_bridge" in (
@@ -686,7 +709,8 @@ def build_profile_pipeline_status(
                         "continue profile-growth review for broader voice evidence",
                         "profile-growth",
                         "pte identity review-next-speaker-pair --selection-objective "
-                        "profile-growth --reviewer REVIEWER_ID --base-dir BASE_DIR",
+                        f"profile-growth --profile-id {profile_id} "
+                        "--reviewer REVIEWER_ID --base-dir BASE_DIR",
                     )
                 )
             if state == "anonymous":
@@ -818,7 +842,19 @@ def build_profile_pipeline_status(
                 actionable=False,
             )
         )
-    if merge_profile_ids:
+    if fully_superseded_merge_profile_ids:
+        actions.append(
+            StatusNeed(
+                "superseded_lineage_profile_merges",
+                "Resolve fully superseded same-name profiles with targeted "
+                "profile-growth review using a profile id from the table.",
+                "profile-growth",
+                "pte identity review-next-speaker-pair --selection-objective "
+                "profile-growth --profile-id PROFILE_ID --reviewer "
+                "REVIEWER_ID --base-dir BASE_DIR",
+            )
+        )
+    if merge_profile_ids - fully_superseded_merge_profile_ids:
         actions.append(
             StatusNeed(
                 "same_name_profile_merges",

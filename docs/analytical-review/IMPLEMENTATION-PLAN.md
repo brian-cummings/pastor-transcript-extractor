@@ -46,22 +46,24 @@ Scope: `benchmark.py`, `style_profile_analysis.py`, fingerprint helpers in `prof
 
 Acceptance: focused tests cover stale source and membership, historical pinning, constant-panel mismatch, all-unusable features, unequal missingness, ties and fixed comparison scope. Existing historical snapshots remain reproducible under their recorded policy.
 
-### 3a. E1a: targeted falsification before certification investment
+### 3a. E1a: targeted falsification with prepared, approval-only review
 
-Use two to four distinct original sermons, including run 145 and at least one independently selected example with a recorded selection rationale. Prefer different caption methods/pastors where feasible. Freeze these inputs and the practical paired-shift bound before review. This is purposive counterexample search, not an error-rate estimate.
+**Division of responsibility:** Codex chooses and prepares the cases, sets documented defaults, preserves evidence, interprets the results and proposes the next bounded action. Brian executes commands, approves/rejects concrete outputs and makes minor corrections. Do not hand Brian sampling design, run-ID selection, JSON editing, threshold selection or open-ended labeling work.
 
-The existing style packet conventions are reusable, but style packets require semantic runs and lack citation-episode adjudication. More significantly, listening, correcting and double-reviewing 12 sermons is a material human cost. Therefore split the stages while sharing one file-backed workflow.
+The initial deliverable is a small **caption-excerpt screen**, not a request to fully annotate multiple sermons:
 
-- Export exact saved Scripture runs without semantic inference, normalization, migration or backfill. Reject a source that no longer matches its saved canonical hash.
-- Freeze two to four packet originals, original sermon identities, analyzer/Bible provenance, scale provenance and the selected shift bound in a manifest. Freeze before editing the review sections.
-- Review identity, audio, original boundaries, transcript method and the entire selected sermon. Correct text with source-segment mappings, explicitly explain removed segments, and distinguish spoken citation episodes from rolling-caption duplicates. Include missed episodes.
-- Rerun the same deterministic detectors on original/reviewed representations using the shared production detector path. Require reconstruction of saved original counts and aligned-span words before interpreting paired differences.
-- Report per-sermon raw and standardized shifts in detected citation density and detected Bible-text span fraction, sustained-reference ratio as a diagnostic, and distinct-episode counts/precision/recall. An illustrative prespecified counterexample bound is .25 frozen IQR; Brian can set a different practical bound before review.
-- Outcomes are **counterexample found**, **inconclusive**, or **not falsified in selected cases, not certified**. Even an unchanged transcript pair cannot certify a feature. Duplicate episodes can expose a counting failure even if a ratio cancels the error.
+- One command (`python -m pastor_transcript_extractor.analytical_caption_review`) reads existing saved Scripture runs, with no migration, backfill, alignment evaluation or semantic inference. It opens a local review page and resumes saved decisions on rerun.
+- Start with run 145 when its original source still matches the saved hash. Select another source through a fixed hash ordering, record skipped inputs, and inspect at most six source artifacts. No inference of actual transcript method or pastor identity follows from source IDs.
+- Prepare at most three nonoverlapping, ≤20-second candidate edits per selected sermon, using existing caption normalization only as a proposal. Freeze original snippets, saved citation evidence, source hashes, policy and code provenance before the reviewer sees the cards.
+- Present original captions, proposed text, surrounding context and a timestamped video link. Brian clicks Matches audio / Keep original / Can't tell, or makes a minor edit and approves. No decision is pre-approved. Saves are automatic and prior decisions remain in the event history.
+- Recompute citation counts on both versions of an approved **excerpt** with the same local detector context. Report only excerpt-level counterexamples, rejected proposals and uncertainty; never extrapolate them to full-sermon density, alignment accuracy, recall or population error rates. Every report says whole-sermon review and feature certification have not occurred.
+- Codex reads the report and owns the next bounded check or repair proposal. If the screen has no useful candidates, Codex investigates its recorded exclusions; Brian is not asked to repair packets or select substitutes.
 
-Implemented in `analytical_pilot.py` with export/freeze/evaluate subcommands. See `E1A-HANDOFF.md` for exact invocations and the review format. Output files cannot overwrite existing artifacts. The evaluator accepts only E1a manifests, not E1b certification.
+See `E1A-HANDOFF.md` for Brian's single command and review instructions. Original transcripts and production records remain unchanged.
 
-Acceptance: synthetic tests cover uneven caption duplication, preservation of genuine spoken repetition, missing adjudications, source provenance, frozen-input mutation, duplicate originals, detector reconstruction, and explicit non-certification. Brian runs the actual E1a audit. A material counterexample sends the affected feature to Step 4 before expanding the audit; unresolved ambiguity triggers targeted review, not a broad corpus run.
+The earlier `analytical_pilot.py` export/freeze/evaluate functions remain engineering facilities for a genuinely reviewed whole-sermon paired audit. They are not the default user handoff and must not consume excerpt approvals as whole-sermon annotations. Any later full-sermon paired-shift experiment must be prepared by Codex and must disclose the additional ground truth it needs; do not recreate the previous open-ended manual assignment. The full-audit .25-IQR falsification bound and E1b distributional gates are not applied to excerpt changes.
+
+Acceptance: focused tests verify deterministic bounded case preparation, source drift handling, short nonoverlapping edits, approval-only changes, preserved originals, automatic save/resume, rejected/unclear cases, and refusal to infer certification. Browser verification exercises a minor edit, approval, rejection and completion using synthetic snippets. Brian runs the actual bounded screen.
 
 ### 3b. E1b: reviewed measurement-error certification pilot
 
@@ -121,7 +123,7 @@ During development run focused unit tests and inexpensive static checks only. Ex
 
 Add the focused tests specified above as their implementations land. A passing unit test establishes code behavior, not measurement validity.
 
-E1a now has a bounded module CLI documented in `E1A-HANDOFF.md`. E1b/E2 are not implemented yet and depend on reviewed E1a results. Brian runs all dataset validation; the agent neither launches broad evaluation/reclassification nor monitors its progress.
+E1a now starts with a single-command caption review page documented in `E1A-HANDOFF.md`. E1b/E2 are not implemented yet and depend on reviewed E1a results. Brian runs all dataset validation; the agent neither launches broad evaluation/reclassification nor monitors its progress.
 
 The main human dependency is audio-linked review and verified series/date/source metadata. Engineering can prepare packets and enforce consistency, but cannot substitute detector output for those ground-truth decisions.
 
@@ -131,3 +133,7 @@ The main human dependency is audio-linked review and verified series/date/source
 - Historical snapshots/reports remain inspectable. New comparisons require the new snapshot schema; `--historical-references` pins a specified snapshot of that schema while requiring a current candidate. It does not replay an old comparison algorithm.
 - Calibration membership and candidate overlap are disclosed; independently designed calibration, construct-family redesign and validation-based eligibility gates remain E2 work. No feature has been certified.
 - Step 3a infrastructure is implemented; actual audio review and E1a dataset execution are pending Brian. Step 3b and later conditional experiments are pending those findings. Production transcript normalization is unchanged.
+
+## Handoff correction — September 13, 2026
+
+The prior handoff assigned Brian experimental-design and annotation work. It is superseded by a prepared short-excerpt review with one command and thumbs-up/down or minor edits. This narrows the first evidence claim honestly; it does not silently lower the requirements for the later whole-sermon or E1b experiments. Codex owns selection, defaults, data preparation, interpretation and the next proposal.

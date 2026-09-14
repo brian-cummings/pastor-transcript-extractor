@@ -33,4 +33,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-pastor_transcript_extractor = ["data/*.json", "data/*.gz"]
+pastor_transcript_extractor = ["data/*.json", "data/*.gz", "data/*.html"]

@@ -9,7 +9,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 
-SELECTOR_VERSION = "speaker_pair_selector_v29"
+SELECTOR_VERSION = "speaker_pair_selector_v30"
 SAME_SPEAKER_BALANCE_GAP = 2
 EXPLORATORY_MAX_SAME_BOUNDARY_DISTANCE = 0.15
 
@@ -398,6 +398,7 @@ def select_next_speaker_pair(
     ] = (),
     automatic_profile_ready_ids: frozenset[int] = frozenset(),
     unmatched_association_fingerprints: frozenset[str] = frozenset(),
+    target_profile_id: int | None = None,
 ) -> PairSelection:
     """Select the next pair deterministically without assigning identity truth."""
     try:
@@ -407,6 +408,13 @@ def select_next_speaker_pair(
             "selection goal must be one of: evaluation, profile-growth, "
             "automation-readiness"
         ) from error
+    if target_profile_id is not None:
+        if target_profile_id < 1:
+            raise ValueError("target profile id must be positive")
+        if goal != SelectionGoal.PROFILE_GROWTH:
+            raise ValueError(
+                "a target profile is supported only for profile-growth selection"
+            )
     ordered = sorted(observations, key=lambda item: item.input_fingerprint)
     if len({item.input_fingerprint for item in ordered}) != len(ordered):
         raise ValueError("candidate observation fingerprints must be unique")
@@ -568,21 +576,26 @@ def select_next_speaker_pair(
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
             allow_ready_profile_confirmations=False,
+            target_profile_id=target_profile_id,
         )
-        or _select_nearest_unassociated_neighbor_pair(
-            pairs,
-            candidates=candidates,
-            history=history,
-            acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
-            unmatched_association_fingerprints=(
-                unmatched_association_fingerprints
-            ),
-            source_family_use=source_family_use,
-            observation_use=observation_use,
-            source_use=source_use,
-            disfavored=disfavored,
-            disfavored_sources=disfavored_sources,
-            condition_counts=condition_counts,
+        or (
+            _select_nearest_unassociated_neighbor_pair(
+                pairs,
+                candidates=candidates,
+                history=history,
+                acoustic_ranking_by_pair=profile_growth_acoustic_by_pair,
+                unmatched_association_fingerprints=(
+                    unmatched_association_fingerprints
+                ),
+                source_family_use=source_family_use,
+                observation_use=observation_use,
+                source_use=source_use,
+                disfavored=disfavored,
+                disfavored_sources=disfavored_sources,
+                condition_counts=condition_counts,
+            )
+            if target_profile_id is None
+            else None
         )
         or _select_profile_growth_pair(
             pairs,
@@ -598,6 +611,7 @@ def select_next_speaker_pair(
             automatic_profile_ready_ids=automatic_profile_ready_ids,
             allow_exploratory=True,
             required_objectives=None,
+            target_profile_id=target_profile_id,
         )
         if goal == SelectionGoal.PROFILE_GROWTH
         else None
@@ -616,6 +630,7 @@ def select_next_speaker_pair(
             disfavored_sources=disfavored_sources,
             condition_counts=condition_counts,
             allow_ready_profile_confirmations=True,
+            target_profile_id=None,
         ) or _select_discovery_resolution_pair(
             pairs,
             discovery_resolution_by_pair=discovery_resolution_by_pair,
@@ -641,6 +656,7 @@ def select_next_speaker_pair(
             required_objectives=frozenset(
                 {"attribution_reconciliation_bridge"}
             ),
+            target_profile_id=None,
         ) or _select_profile_reinforcement_pair(
             pairs,
             candidates=candidates,
@@ -666,6 +682,7 @@ def select_next_speaker_pair(
             automatic_profile_ready_ids=automatic_profile_ready_ids,
             allow_exploratory=False,
             required_objectives=None,
+            target_profile_id=None,
         )
     if (
         goal in {
@@ -674,8 +691,13 @@ def select_next_speaker_pair(
         }
         and objective_selection is None
     ):
+        target_suffix = (
+            f" for profile {target_profile_id}"
+            if target_profile_id is not None
+            else ""
+        )
         raise ValueError(
-            f"no actionable {goal.value} pair remains: discovery and "
+            f"no actionable {goal.value} pair remains{target_suffix}: discovery and "
             "same-speaker nomination signals are exhausted or excluded; "
             "generic unsupported pairs were withheld"
         )
@@ -837,6 +859,8 @@ def select_next_speaker_pair(
         "reviewed_outcome_counts": outcome_counts,
         "reason_codes": reason_codes,
     }
+    if target_profile_id is not None:
+        manifest["target_profile_id"] = target_profile_id
     if goal == SelectionGoal.AUTOMATION_READINESS:
         manifest[
             "automatic_profile_ready_ids_excluded_from_reinforcement"
@@ -1204,6 +1228,7 @@ def _select_association_confirmation_pair(
     disfavored_sources: Mapping[str, int],
     condition_counts: Mapping[str, int],
     allow_ready_profile_confirmations: bool,
+    target_profile_id: int | None,
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -1224,6 +1249,11 @@ def _select_association_confirmation_pair(
             )
         )
         if nomination is None:
+            continue
+        if (
+            target_profile_id is not None
+            and nomination.profile_id != target_profile_id
+        ):
             continue
         candidate = (
             observation_a
@@ -1429,6 +1459,7 @@ def _select_profile_growth_pair(
     automatic_profile_ready_ids: frozenset[int],
     allow_exploratory: bool,
     required_objectives: frozenset[str] | None,
+    target_profile_id: int | None,
 ) -> tuple[
     PairCandidateObservation,
     PairCandidateObservation,
@@ -1554,6 +1585,28 @@ def _select_profile_growth_pair(
             == observation_b.configured_profile_bootstrap_id
             else None
         )
+        component_profile_ids = {
+            profile_id
+            for fingerprint in component_a | component_b
+            for profile_id in candidate_by_fingerprint[
+                fingerprint
+            ].reviewed_profile_ids
+        }
+        component_bootstrap_profile_ids = {
+            candidate_by_fingerprint[
+                fingerprint
+            ].configured_profile_bootstrap_id
+            for fingerprint in component_a | component_b
+            if candidate_by_fingerprint[
+                fingerprint
+            ].configured_profile_bootstrap_id is not None
+        }
+        if (
+            target_profile_id is not None
+            and target_profile_id
+            not in component_profile_ids | component_bootstrap_profile_ids
+        ):
+            continue
         has_configured_bootstrap_signal = bool(
             shared_bootstrap_profile_id is not None
             and (

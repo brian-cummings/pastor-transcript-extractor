@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caption edit review</title>
+<style>
+:root{color-scheme:light;font:17px/1.55 system-ui,sans-serif;color:#1c302c;background:#f3f5f1}*{box-sizing:border-box}body{margin:0}main{max-width:1080px;margin:auto;padding:38px 24px 80px}h1{font-size:2.1rem;line-height:1.2;margin:.5rem 0}h2{font-size:1.15rem}p{margin:.6rem 0}.eyebrow{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:#557466;font-weight:700}.muted{color:#53655d}.toolbar,.buttons{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.toolbar{justify-content:space-between;margin:28px 0 18px}button,a.clip{font:inherit;border-radius:9px;padding:10px 17px;cursor:pointer;border:1px solid #b4c1b7;background:white;color:#17382c;text-decoration:none}button:hover,a.clip:hover{background:#e8eee8}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #628fa5;outline-offset:3px}button.primary{background:#205942;color:white;border-color:#205942}button:disabled{opacity:.45;cursor:default}.card{border:1px solid #d2dbd1;background:white;border-radius:16px;padding:26px;box-shadow:0 4px 16px #172e2007}.columns{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:22px 0}.fragments{border-left:3px solid #c8d1c6;padding-left:15px}.fragment{padding:7px 0;white-space:pre-wrap}.stamp{display:block;font-size:.76rem;color:#64746b}textarea{width:100%;min-height:240px;padding:15px;font:inherit;line-height:1.55;border:1px solid #afc2b4;border-radius:8px;resize:vertical;color:inherit;background:#f9fcf8}.buttons{border-top:1px solid #e0e6de;padding-top:20px;margin-top:18px}#error{color:#9d2f2f}#done{margin:20px 0;padding:20px;border:1px solid #94bfa4;background:#e8f4ea;border-radius:12px}details{color:#53655d;margin:16px 0}summary{cursor:pointer}.context{white-space:pre-wrap}progress{width:160px;accent-color:#205942}#status{font-weight:650}a{color:#205942}@media(max-width:720px){main{padding:22px 15px}.card{padding:18px}.columns{grid-template-columns:1fr}h1{font-size:1.65rem}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">E1a · Short caption checks</div>
+<h1>Does this edit match the audio?</h1>
+<p class="muted">Listen to the linked clip. Approve the proposed text, keep the original, or make a small correction and approve.</p>
+<div id="error" role="alert"></div>
+<div id="done" hidden><strong>Review saved. You’re done.</strong><p>Tell Codex: “caption review finished.” Codex will interpret the results and prepare the next step.</p></div>
+<div class="toolbar"><span id="progressText"></span><progress id="progress" value="0" max="1"></progress><div><button id="prev" aria-label="Previous case">←</button> <button id="next" aria-label="Next case">→</button></div></div>
+<section id="card" class="card" hidden>
+<div class="eyebrow" id="position"></div><h2 id="title"></h2>
+<div class="toolbar"><a class="clip" id="clip" target="_blank" rel="noopener noreferrer">▶ Listen to this clip</a><span class="muted" id="times"></span></div>
+<p class="muted" id="reason"></p>
+<div class="columns"><div><h2>Original captions</h2><div class="fragments" id="original"></div></div><div><h2>Proposed spoken text</h2><label class="muted" for="edit">Make a minor edit here if needed.</label><textarea id="edit" spellcheck="true"></textarea></div></div>
+<details><summary>Show surrounding context</summary><div class="context" id="context"></div></details>
+<div id="status" aria-live="polite"></div>
+<div class="buttons"><button class="primary" id="approve">👍 Matches audio</button><button id="reject">👎 Keep original</button><button id="unclear">Can’t tell</button></div>
+<p class="muted"><small>Only this excerpt is being reviewed. Original transcripts remain unchanged.</small></p>
+</section>
+</main>
+<script>
+let state, token, index = 0, busy = false;
+const el = id => document.getElementById(id);
+const time = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2,'0')}`;
+function render(){
+ const count = state.cases.length, finished = count - state.report.pending;
+ el('progressText').textContent = `${finished} of ${count} saved`;
+ el('progress').max = Math.max(count,1);el('progress').value = finished;
+ el('done').hidden = state.report.pending !== 0 || count === 0;
+ el('card').hidden = count === 0;el('prev').disabled = index === 0 || busy;el('next').disabled = index >= count - 1 || busy;
+ if(!count){el('progressText').textContent = 'No short cases found. Tell Codex; there is nothing to label.';return;}
+ const item = state.cases[index], saved = state.decisions[item.case_id];
+ el('position').textContent = `Case ${index + 1} of ${count}`;
+ el('title').textContent = item.video_title;
+ el('clip').href = item.audio_url;
+ el('times').textContent = `${time(item.start_seconds)}–${time(item.end_seconds)} · link starts 4 seconds early`;
+ el('reason').textContent = item.reason;
+ el('original').replaceChildren();
+ for(const segment of item.source_segments){const p=document.createElement('div');p.className='fragment';const stamp=document.createElement('span');stamp.className='stamp';stamp.textContent=`${time(segment.start_seconds)}–${time(segment.end_seconds)}`;p.append(stamp,document.createTextNode(segment.text));el('original').append(p);}
+ el('edit').value = saved?.decision === 'approve' ? saved.text : item.proposed_text;
+ el('context').textContent = [...item.context_before.map(s=>s.text),'[excerpt shown above]',...item.context_after.map(s=>s.text)].join('\n\n');
+ el('status').textContent = saved ? ({approve:'Saved: approved',reject:'Saved: keep original',unclear:'Saved: unclear'})[saved.decision] : 'Awaiting your review';
+ for(const id of ['approve','reject','unclear']) el(id).disabled=busy;
+}
+async function record(decision){
+ if(busy)return;busy=true;el('error').textContent='';
+ const text=el('edit').value;for(const id of ['approve','reject','unclear'])el(id).disabled=true;
+ try{const response=await fetch('/decision',{method:'POST',headers:{'Content-Type':'application/json','X-Review-Token':token},body:JSON.stringify({case_id:state.cases[index].case_id,decision,text})});const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not save');state=result;const pending=state.cases.findIndex(c=>!state.decisions[c.case_id]);if(pending>=0)index=pending;}
+ catch(error){el('error').textContent=error.message;busy=false;for(const id of ['approve','reject','unclear'])el(id).disabled=false;return;}
+ busy=false;render();window.scrollTo({top:0,behavior:"auto"});
+}
+el('prev').onclick=()=>{if(!busy&&index>0){index--;render();}};
+el('next').onclick=()=>{if(!busy&&index<state.cases.length-1){index++;render();}};
+for(const id of ['approve','reject','unclear'])el(id).onclick=()=>record(id);
+fetch('/state').then(r=>{if(!r.ok)throw new Error('Could not load prepared review');return r.json();}).then(value=>{token=value.token;state=value;const pending=state.cases.findIndex(c=>!state.decisions[c.case_id]);index=Math.max(pending,0);render();}).catch(error=>{el('error').textContent=error.message;});
+</script></body></html>

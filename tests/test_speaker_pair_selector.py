@@ -48,6 +48,76 @@ def candidate(
 
 
 class SpeakerPairSelectorTests(unittest.TestCase):
+    def test_profile_growth_can_target_one_profile(self) -> None:
+        selected = select_next_speaker_pair(
+            [
+                candidate(
+                    "andres-a",
+                    name="andres palacios",
+                    profile_ids=frozenset((92,)),
+                ),
+                candidate(
+                    "andres-b",
+                    name="andres palacios",
+                    profile_ids=frozenset((92,)),
+                ),
+                candidate("andres-frontier", name="andres palacios"),
+                candidate(
+                    "alex-a",
+                    name="alex example",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate(
+                    "alex-b",
+                    name="alex example",
+                    profile_ids=frozenset((7,)),
+                ),
+                candidate("alex-frontier", name="alex example"),
+            ],
+            PairSelectionHistory(),
+            selection_goal="profile-growth",
+            target_profile_id=92,
+        )
+
+        selected_fingerprints = {
+            selected.observation_a.input_fingerprint,
+            selected.observation_b.input_fingerprint,
+        }
+        self.assertIn("andres-frontier", selected_fingerprints)
+        self.assertTrue(selected_fingerprints & {"andres-a", "andres-b"})
+        self.assertEqual(92, selected.manifest["target_profile_id"])
+
+    def test_target_profile_requires_profile_growth(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "supported only for profile-growth",
+        ):
+            select_next_speaker_pair(
+                [candidate("a"), candidate("b")],
+                PairSelectionHistory(),
+                selection_goal="automation-readiness",
+                target_profile_id=92,
+            )
+
+    def test_target_profile_reports_when_it_has_no_actionable_pair(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "no actionable profile-growth pair remains for profile 92",
+        ):
+            select_next_speaker_pair(
+                [
+                    candidate(
+                        "other-a",
+                        name="alex example",
+                        profile_ids=frozenset((7,)),
+                    ),
+                    candidate("other-frontier", name="alex example"),
+                ],
+                PairSelectionHistory(),
+                selection_goal="profile-growth",
+                target_profile_id=92,
+            )
+
     def test_profile_growth_prefers_source_local_nearest_unassociated_fallback(
         self,
     ) -> None:

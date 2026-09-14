@@ -360,6 +360,13 @@ class SpeakerRegistryTests(unittest.TestCase):
                 replacement.id
             ),
         )
+        self.assertEqual(
+            [profile.id],
+            self.database.list_effective_profile_ids_for_observation_lineage(
+                video_id=self.video.id,
+                current_observation_id=replacement.id,
+            ),
+        )
 
     def test_reviewed_anonymous_profile_creation_and_attachment_are_idempotent(self) -> None:
         result = self._persist()
