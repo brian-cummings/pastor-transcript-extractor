@@ -905,7 +905,10 @@ because its membership belongs to an older immutable observation. A targeted
 review can bridge an older named profile to a successor profile already holding
 its replacements, or bridge two fully superseded same-name profiles. Lineage
 and names nominate the blinded review only; an approved same-speaker judgment
-remains required before consolidation. After synchronization, repeating the
+remains required before cross-source consolidation. The human-on-loop policy
+automatically consolidates profiles when they have one exact normalized
+attribution and share at least one source, unless reviewed difference or manual
+claim evidence conflicts. After synchronization, repeating the
 same canonical `--profile-id` selects its strongest remaining superseded-lineage
 neighbor by the number of replacement recordings already converging on that
 profile. The

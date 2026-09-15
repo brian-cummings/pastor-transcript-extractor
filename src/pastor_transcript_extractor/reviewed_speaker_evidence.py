@@ -25,6 +25,12 @@ from pastor_transcript_extractor.storage import Database
 
 REVIEWED_EVIDENCE_SYNC_VERSION = "reviewed_speaker_evidence_sync_v1"
 ATTRIBUTION_RECONCILIATION_VERSION = "reviewed_profile_attribution_sync_v1"
+SAME_SOURCE_PROFILE_CONSOLIDATION_VERSION = (
+    "human_on_loop_same_source_profile_consolidation_v1"
+)
+SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR = (
+    "system:human-on-loop-profile-consolidation"
+)
 _DERIVED_QUALIFICATION_REASON_PREFIX = (
     "Derived from consistent speaker-pair qualification review(s): "
 )
@@ -562,6 +568,10 @@ def sync_reviewed_speaker_evidence(
                 )
             )
 
+    consolidate_same_source_attributed_profiles(
+        database,
+        conflicts=conflicts,
+    )
     _reconcile_profile_attributions(
         database,
         candidates=attribution_candidates,
@@ -604,6 +614,31 @@ def _merge_reviewed_component_profiles(
     profile_ids: set[int],
     provenance: ReviewProvenance,
     component_key: str,
+    conflicts: list[str],
+) -> int | None:
+    reason = (
+        "Merged reviewed speaker profiles through confirmed same-speaker "
+        f"component {component_key}"
+    )
+    return _merge_profiles(
+        database,
+        profile_ids=profile_ids,
+        reviewer=provenance.reviewer,
+        reason=reason,
+        event_namespace=f"{REVIEWED_EVIDENCE_SYNC_VERSION}:merge",
+        event_key=component_key,
+        conflicts=conflicts,
+    )
+
+
+def _merge_profiles(
+    database: Database,
+    *,
+    profile_ids: set[int],
+    reviewer: str,
+    reason: str,
+    event_namespace: str,
+    event_key: str,
     conflicts: list[str],
 ) -> int | None:
     ordered_profile_ids = sorted(profile_ids)
@@ -717,10 +752,6 @@ def _merge_reviewed_component_profiles(
         )
         return None
 
-    reason = (
-        "Merged reviewed speaker profiles through confirmed same-speaker "
-        f"component {component_key}"
-    )
     for profile_id in retired_profile_ids:
         for observation_id in members_by_profile[profile_id]:
             record_observation_review(
@@ -728,11 +759,11 @@ def _merge_reviewed_component_profiles(
                 profile_id=profile_id,
                 observation_id=observation_id,
                 attach=False,
-                reviewer=provenance.reviewer,
+                reviewer=reviewer,
                 reason=reason,
                 review_event_key=(
-                    f"{REVIEWED_EVIDENCE_SYNC_VERSION}:merge-detach:"
-                    f"{component_key}:{profile_id}:{observation_id}"
+                    f"{event_namespace}-detach:"
+                    f"{event_key}:{profile_id}:{observation_id}"
                 ),
             )
             if not database.is_observation_attached(
@@ -743,11 +774,11 @@ def _merge_reviewed_component_profiles(
                     database,
                     profile_id=canonical_profile_id,
                     observation_id=observation_id,
-                    reviewer=provenance.reviewer,
+                    reviewer=reviewer,
                     reason=reason,
                     review_event_key=(
-                        f"{REVIEWED_EVIDENCE_SYNC_VERSION}:merge-attach:"
-                        f"{component_key}:{canonical_profile_id}:"
+                        f"{event_namespace}-attach:"
+                        f"{event_key}:{canonical_profile_id}:"
                         f"{observation_id}"
                     ),
                 )
@@ -756,15 +787,155 @@ def _merge_reviewed_component_profiles(
                 database,
                 from_profile_id=profile_id,
                 to_profile_id=canonical_profile_id,
-                reviewer=provenance.reviewer,
+                reviewer=reviewer,
                 reason=reason,
                 review_event_key=(
-                    f"{REVIEWED_EVIDENCE_SYNC_VERSION}:merge-redirect:"
-                    f"{component_key}:{profile_id}:"
+                    f"{event_namespace}-redirect:"
+                    f"{event_key}:{profile_id}:"
                     f"{canonical_profile_id}"
                 ),
             )
     return canonical_profile_id
+
+
+def consolidate_same_source_attributed_profiles(
+    database: Database,
+    *,
+    conflicts: list[str] | None = None,
+) -> tuple[tuple[int, ...], ...]:
+    """Merge same-name profile components that share an exact source.
+
+    This is the bounded human-on-loop exception to the reviewed-pair bridge
+    requirement. A manually rejected/conflicting name claim or a reviewed
+    different-speaker constraint still prevents consolidation.
+    """
+    reported_conflicts = conflicts if conflicts is not None else []
+    videos_by_id = {video.id: video for video in database.list_videos()}
+    claims = database.list_speaker_name_claims()
+    claims_by_observation: dict[int, list[Any]] = {}
+    for claim in claims:
+        if (
+            claim.observation_id is not None
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        ):
+            claims_by_observation.setdefault(claim.observation_id, []).append(
+                claim
+            )
+
+    canonical_profiles = [
+        profile
+        for profile in database.list_speaker_profiles()
+        if profile.created_reason in _MERGEABLE_PROFILE_REASONS
+        and database.resolve_speaker_profile_id(profile.id) == profile.id
+    ]
+    profile_facts: dict[int, tuple[str, frozenset[int]]] = {}
+    for profile in canonical_profiles:
+        member_ids = set(
+            database.list_effective_observation_ids_for_profile(profile.id)
+        )
+        member_claims = [
+            claim
+            for observation_id in member_ids
+            for claim in claims_by_observation.get(observation_id, ())
+        ]
+        names = {claim.normalized_name.strip() for claim in member_claims}
+        if len(names) != 1:
+            continue
+        if any(
+            review is not None
+            and (
+                review[0] != "attach"
+                or review[1] is None
+                or database.resolve_speaker_profile_id(review[1]) != profile.id
+            )
+            for claim in member_claims
+            if (review := database.get_effective_name_claim_review(claim.id))
+            is not None
+        ):
+            continue
+        source_ids = frozenset(
+            videos_by_id[observation.video_id].source_id
+            for observation_id in member_ids
+            if (
+                observation := database.get_speaker_observation(observation_id)
+            )
+            is not None
+            and observation.video_id in videos_by_id
+        )
+        if source_ids:
+            profile_facts[profile.id] = (next(iter(names)), source_ids)
+
+    adjacency: dict[int, set[int]] = {
+        profile_id: set() for profile_id in profile_facts
+    }
+    ordered_ids = sorted(profile_facts)
+    for index, left_id in enumerate(ordered_ids):
+        left_name, left_sources = profile_facts[left_id]
+        for right_id in ordered_ids[index + 1 :]:
+            right_name, right_sources = profile_facts[right_id]
+            if left_name == right_name and left_sources & right_sources:
+                adjacency[left_id].add(right_id)
+                adjacency[right_id].add(left_id)
+
+    merged_groups: list[tuple[int, ...]] = []
+    visited: set[int] = set()
+    for root_id in ordered_ids:
+        if root_id in visited:
+            continue
+        stack = [root_id]
+        component: set[int] = set()
+        while stack:
+            profile_id = stack.pop()
+            if profile_id in component:
+                continue
+            component.add(profile_id)
+            stack.extend(adjacency[profile_id] - component)
+        visited.update(component)
+        if len(component) < 2:
+            continue
+        names = {profile_facts[value][0] for value in component}
+        component_source_ids = {
+            source_id
+            for value in component
+            for source_id in profile_facts[value][1]
+        }
+        shared_source_ids = {
+            source_id
+            for source_id in component_source_ids
+            if sum(
+                source_id in profile_facts[value][1]
+                for value in component
+            )
+            >= 2
+        }
+        policy_key = _sha256(
+            {
+                "version": SAME_SOURCE_PROFILE_CONSOLIDATION_VERSION,
+                "profile_ids": sorted(component),
+                "normalized_names": sorted(names),
+                "shared_source_ids": sorted(shared_source_ids),
+            }
+        )
+        reason = (
+            "Automatically consolidated profiles under the human-on-loop "
+            "same-source attribution policy; names="
+            + ",".join(sorted(names))
+            + "; shared_sources="
+            + ",".join(str(value) for value in sorted(shared_source_ids))
+        )
+        canonical_id = _merge_profiles(
+            database,
+            profile_ids=component,
+            reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+            reason=reason,
+            event_namespace=SAME_SOURCE_PROFILE_CONSOLIDATION_VERSION,
+            event_key=policy_key,
+            conflicts=reported_conflicts,
+        )
+        if canonical_id is not None:
+            merged_groups.append(tuple(sorted(component)))
+    return tuple(merged_groups)
 
 
 def _reconcile_profile_attributions(
@@ -774,8 +945,32 @@ def _reconcile_profile_attributions(
     merge_candidates: list[str],
     conflicts: list[str],
 ) -> None:
-    candidates_by_name: dict[str, list[_ProfileAttributionCandidate]] = {}
+    canonical_candidates: dict[
+        tuple[str, int], _ProfileAttributionCandidate
+    ] = {}
     for candidate in candidates:
+        profile_id = database.resolve_speaker_profile_id(candidate.profile_id)
+        key = (candidate.normalized_name, profile_id)
+        existing = canonical_candidates.get(key)
+        if existing is None:
+            canonical_candidates[key] = _ProfileAttributionCandidate(
+                profile_id=profile_id,
+                normalized_name=candidate.normalized_name,
+                claim_ids=candidate.claim_ids,
+                provenance=candidate.provenance,
+            )
+            continue
+        canonical_candidates[key] = _ProfileAttributionCandidate(
+            profile_id=profile_id,
+            normalized_name=candidate.normalized_name,
+            claim_ids=tuple(sorted(set(existing.claim_ids + candidate.claim_ids))),
+            provenance=min(
+                (existing.provenance, candidate.provenance),
+                key=lambda item: item.review_event_id,
+            ),
+        )
+    candidates_by_name: dict[str, list[_ProfileAttributionCandidate]] = {}
+    for candidate in canonical_candidates.values():
         candidates_by_name.setdefault(candidate.normalized_name, []).append(
             candidate
         )

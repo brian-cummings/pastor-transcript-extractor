@@ -49,9 +49,16 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def _add_observation(self, index: int, fingerprint: str):
+    def _add_observation(
+        self,
+        index: int,
+        fingerprint: str,
+        *,
+        source=None,
+    ):
+        source = source or self.source
         video = self.database.add_video(
-            source_id=self.source.id,
+            source_id=source.id,
             pastor_id=None,
             youtube_video_id=f"video-{fingerprint}",
             title=f"Video {fingerprint}",
@@ -405,7 +412,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertEqual(0, replay.profile_redirect_events_added)
         self.assertEqual((), replay.conflicts)
 
-    def test_sync_blocks_name_spanning_multiple_reviewed_profiles(
+    def test_sync_merges_same_source_name_spanning_reviewed_profiles(
         self,
     ) -> None:
         pastor = self.database.add_pastor("jordan-fowler", "Jordan Fowler")
@@ -422,18 +429,67 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             load_reviewed_speaker_evidence(self.evaluation_root),
         )
 
+        profile_ids = {
+            self.database.resolve_speaker_profile_id(profile_id)
+            for observation in self.observations.values()
+            for profile_id in self.database.list_effective_profile_ids_for_observation(
+                observation.id
+            )
+        }
+        self.assertEqual(1, len(profile_ids))
+        canonical_profile_id = next(iter(profile_ids))
+        self.assertEqual(4, result.name_claim_events_added)
+        self.assertEqual(2, result.profile_redirect_events_added)
+        self.assertEqual(
+            canonical_profile_id,
+            self.database.get_effective_profile_redirect(configured.id),
+        )
+        self.assertEqual((), result.merge_candidates)
+        self.assertEqual((), result.conflicts)
+        self.assertTrue(
+            all(
+                self.database.get_effective_name_claim_review(claim.id)
+                == ("attach", canonical_profile_id)
+                for claim in claims
+            )
+        )
+
+    def test_sync_keeps_cross_source_same_name_profiles_for_review(self) -> None:
+        second_source = self.database.add_source(
+            "https://www.youtube.com/@reviewed-two",
+            SourceType.CHANNEL,
+            pastor_id=None,
+        )
+        self.observations.update(
+            {
+                fingerprint: self._add_observation(
+                    index,
+                    fingerprint,
+                    source=second_source,
+                )
+                for index, fingerprint in enumerate(("e", "f"), start=5)
+            }
+        )
+        claims = [
+            self._add_explicit_claim(fingerprint, "jordan fowler")
+            for fingerprint in ("a", "b", "e", "f")
+        ]
+        self._write_fixture("pair-ab", "a", "b", "same_speaker")
+        self._write_fixture("pair-ef", "e", "f", "same_speaker")
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
         self.assertEqual(0, result.name_claim_events_added)
         self.assertEqual(0, result.profile_redirect_events_added)
-        self.assertIsNone(
-            self.database.get_effective_profile_redirect(configured.id)
-        )
         self.assertTrue(
             any(
                 "spans reviewed profiles" in candidate
                 for candidate in result.merge_candidates
             )
         )
-        self.assertEqual((), result.conflicts)
         self.assertTrue(
             all(
                 self.database.get_effective_name_claim_review(claim.id)
@@ -445,14 +501,29 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
     def test_confirmed_bridge_merges_reviewed_profiles_and_reconciles_name(
         self,
     ) -> None:
+        second_source = self.database.add_source(
+            "https://www.youtube.com/@reviewed-bridge",
+            SourceType.CHANNEL,
+            pastor_id=None,
+        )
+        self.observations.update(
+            {
+                fingerprint: self._add_observation(
+                    index,
+                    fingerprint,
+                    source=second_source,
+                )
+                for index, fingerprint in enumerate(("e", "f"), start=5)
+            }
+        )
         pastor = self.database.add_pastor("jordan-fowler", "Jordan Fowler")
         configured = ensure_configured_pastor_profile(self.database, pastor)
         claims = [
             self._add_explicit_claim(fingerprint, "jordan fowler")
-            for fingerprint in ("a", "b", "c", "d")
+            for fingerprint in ("a", "b", "e", "f")
         ]
         self._write_fixture("pair-ab", "a", "b", "same_speaker")
-        self._write_fixture("pair-cd", "c", "d", "same_speaker")
+        self._write_fixture("pair-ef", "e", "f", "same_speaker")
         first_evidence = load_reviewed_speaker_evidence(
             self.evaluation_root
         )
@@ -464,12 +535,12 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         )
         second_profile_id = (
             self.database.list_effective_profile_ids_for_observation(
-                self.observations["c"].id
+                self.observations["e"].id
             )[0]
         )
         self.assertNotEqual(first_profile_id, second_profile_id)
 
-        self._write_fixture("pair-bc", "b", "c", "same_speaker")
+        self._write_fixture("pair-be", "b", "e", "same_speaker")
         result = sync_reviewed_speaker_evidence(
             self.database,
             load_reviewed_speaker_evidence(self.evaluation_root),
@@ -477,7 +548,8 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
 
         canonical_profile_id = min(first_profile_id, second_profile_id)
         retired_profile_id = max(first_profile_id, second_profile_id)
-        for observation in self.observations.values():
+        for fingerprint in ("a", "b", "e", "f"):
+            observation = self.observations[fingerprint]
             self.assertEqual(
                 [canonical_profile_id],
                 self.database.list_effective_profile_ids_for_observation(
@@ -505,11 +577,26 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
     def test_confirmed_bridge_merges_discovery_profile_into_linked_profile(
         self,
     ) -> None:
+        second_source = self.database.add_source(
+            "https://www.youtube.com/@reviewed-discovery",
+            SourceType.CHANNEL,
+            pastor_id=None,
+        )
+        self.observations.update(
+            {
+                fingerprint: self._add_observation(
+                    index,
+                    fingerprint,
+                    source=second_source,
+                )
+                for index, fingerprint in enumerate(("e", "f"), start=5)
+            }
+        )
         pastor = self.database.add_pastor("andrew-korp", "Andrew Korp")
         configured = ensure_configured_pastor_profile(self.database, pastor)
         claims = [
             self._add_explicit_claim(fingerprint, "andrew korp")
-            for fingerprint in ("a", "b", "c", "d")
+            for fingerprint in ("a", "b", "e", "f")
         ]
         discovery = self.database.ensure_speaker_profile(
             stable_key="speaker:discovery:test-component",
@@ -517,7 +604,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             lifecycle_state="provisional",
             created_reason="shadow_discovery_candidate",
         )
-        for fingerprint in ("c", "d"):
+        for fingerprint in ("e", "f"):
             attach_reviewed_observation(
                 self.database,
                 profile_id=discovery.id,
@@ -538,7 +625,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertNotEqual(discovery.id, linked_profile_id)
         self.assertGreater(linked_profile_id, discovery.id)
 
-        self._write_fixture("pair-bc", "b", "c", "same_speaker")
+        self._write_fixture("pair-be", "b", "e", "same_speaker")
         result = sync_reviewed_speaker_evidence(
             self.database,
             load_reviewed_speaker_evidence(self.evaluation_root),
@@ -552,7 +639,8 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             linked_profile_id,
             self.database.resolve_speaker_profile_id(configured.id),
         )
-        for observation in self.observations.values():
+        for fingerprint in ("a", "b", "e", "f"):
+            observation = self.observations[fingerprint]
             self.assertEqual(
                 [linked_profile_id],
                 self.database.list_effective_profile_ids_for_observation(
