@@ -8,11 +8,13 @@ from pathlib import Path
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
+    consolidate_same_source_attributed_profiles,
     load_reviewed_speaker_evidence,
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
+    create_anonymous_profile,
     ensure_configured_pastor_profile,
     record_name_claim_review,
     record_observation_disposition,
@@ -498,6 +500,79 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             )
         )
 
+    def test_same_source_consolidation_detaches_superseded_member(self) -> None:
+        original = self.observations["a"]
+        replacement_extraction = self.database.add_extraction_result(
+            video_id=original.video_id,
+            version=2,
+            proposed_text_path="a-v2.md",
+            proposed_json_path="a-v2.json",
+        )
+        replacement = self.database.add_speaker_observation(
+            video_id=original.video_id,
+            extraction_result_id=replacement_extraction.id,
+            role=original.role,
+            multiplicity_state=original.multiplicity_state,
+            start_seconds=original.start_seconds,
+            end_seconds=original.end_seconds,
+            artifact_path="a-v2.speaker.json",
+            content_sha256="content-a-v2",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="a-v2",
+        )
+        self.observations["a-v2"] = replacement
+        first = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="first component",
+            review_event_key="first-profile",
+        )
+        second = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="second component",
+            review_event_key="second-profile",
+        )
+        for profile, fingerprints in (
+            (first, ("a", "b")),
+            (second, ("a-v2", "c", "d")),
+        ):
+            for fingerprint in fingerprints:
+                observation = self.observations[fingerprint]
+                attach_reviewed_observation(
+                    self.database,
+                    profile_id=profile.id,
+                    observation_id=observation.id,
+                    reviewer="reviewer",
+                    reason="test membership",
+                    review_event_key=f"attach:{profile.id}:{observation.id}",
+                )
+                self._add_explicit_claim(fingerprint, "alex example")
+
+        consolidated = consolidate_same_source_attributed_profiles(
+            self.database
+        )
+
+        self.assertEqual(((first.id, second.id),), consolidated)
+        self.assertEqual(
+            first.id,
+            self.database.get_effective_profile_redirect(second.id),
+        )
+        effective_member_ids = self.database.list_effective_observation_ids_for_profile(
+            first.id
+        )
+        self.assertNotIn(original.id, effective_member_ids)
+        self.assertIn(replacement.id, effective_member_ids)
+        self.assertEqual(4, len(effective_member_ids))
+        self.assertEqual(
+            4,
+            len(
+                {
+                    self.database.get_speaker_observation(observation_id).video_id
+                    for observation_id in effective_member_ids
+                }
+            ),
+        )
     def test_confirmed_bridge_merges_reviewed_profiles_and_reconciles_name(
         self,
     ) -> None:
