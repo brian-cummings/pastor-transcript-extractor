@@ -935,7 +935,57 @@ def consolidate_same_source_attributed_profiles(
         )
         if canonical_id is not None:
             merged_groups.append(tuple(sorted(component)))
+    _detach_superseded_profile_members(database)
     return tuple(merged_groups)
+
+
+def _detach_superseded_profile_members(database: Database) -> int:
+    """Keep one effective profile member per recording when its replacement exists.
+
+    Immutable observations remain in the registry and the appended detach event
+    preserves their former membership. We only remove a superseded member when
+    the profile already contains that recording's current observation.
+    """
+    detached = 0
+    for profile in database.list_speaker_profiles():
+        if (
+            profile.created_reason not in _MERGEABLE_PROFILE_REASONS
+            or database.resolve_speaker_profile_id(profile.id) != profile.id
+        ):
+            continue
+        member_ids = database.list_effective_observation_ids_for_profile(
+            profile.id
+        )
+        member_ids_by_video: dict[int, set[int]] = {}
+        for observation_id in member_ids:
+            observation = database.get_speaker_observation(observation_id)
+            if observation is not None:
+                member_ids_by_video.setdefault(observation.video_id, set()).add(
+                    observation.id
+                )
+        for video_id, video_member_ids in member_ids_by_video.items():
+            current = database.get_latest_speaker_observation_for_video(video_id)
+            if current is None or current.id not in video_member_ids:
+                continue
+            for observation_id in sorted(video_member_ids - {current.id}):
+                record_observation_review(
+                    database,
+                    profile_id=profile.id,
+                    observation_id=observation_id,
+                    attach=False,
+                    reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+                    reason=(
+                        "Superseded observation removed from effective profile "
+                        f"membership; current observation is {current.id}"
+                    ),
+                    review_event_key=(
+                        f"{SAME_SOURCE_PROFILE_CONSOLIDATION_VERSION}:"
+                        f"superseded-member-detach:{profile.id}:"
+                        f"{observation_id}:{current.id}"
+                    ),
+                )
+                detached += 1
+    return detached
 
 
 def _reconcile_profile_attributions(
