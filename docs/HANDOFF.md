@@ -226,8 +226,8 @@ The reported states mean:
   link have not yet been materialized by reviewed-evidence sync;
 - `linked`: attribution has reconciled the reviewed voice component to a
   configured pastor identity;
-- `merge-candidate`: the same explicit attribution spans separate profiles and
-  needs an exact-span bridge comparison;
+- `merge-candidate`: the same explicit attribution spans separate profiles
+  without a shared source and needs an exact-span bridge comparison;
 - `attribution-conflict`: conflicting names or a reviewed different-speaker
   constraint requires adjudication.
 
@@ -294,13 +294,15 @@ consistent normalized name receives append-only claim attachments. When that
 name uniquely matches a configured pastor identity, the configured placeholder
 profile redirects to the reviewed anonymous voice component; voice memberships
 remain on the reviewed component and are never copied from attribution alone.
-One attribution spanning multiple reviewed profiles is reported as a pending
-merge candidate because profile separation is not different-speaker evidence.
-If an effective different-speaker constraint crosses those profiles, it becomes
-a true attribution conflict instead. Multiple names inside one component,
-multiple configured matches, a manual claim decision, an incompatible
-redirect, or direct membership on the configured placeholder also blocks the
-affected identity link and is reported as a conflict.
+One exact normalized attribution spanning profiles with at least one shared
+source now consolidates automatically under the human-on-loop policy. This
+bounded exception runs during reviewed-evidence synchronization and immediately
+after discovery promotion, preventing re-extracted or rediscovered same-source
+lineages from accumulating independent profiles. Cross-source duplicates remain
+pending merge candidates. An effective different-speaker constraint, a manual
+claim rejection or conflicting attachment, multiple configured identities,
+multiple names inside one profile, or an incompatible redirect still blocks
+automatic consolidation.
 
 Continue identity review through the existing pair workflow:
 

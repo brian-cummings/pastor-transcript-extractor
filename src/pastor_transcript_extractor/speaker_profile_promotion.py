@@ -161,7 +161,18 @@ def apply_discovery_promotions(
                 review_event_key=f"{event_key}:seed:{observation_id}",
             )
         promoted.append(profile.id)
-    return tuple(promoted)
+    # Promotion can rediscover a current component after an older extraction
+    # lineage already established the same attributed speaker on this source.
+    # Collapse that duplicate before human-on-loop readiness is projected.
+    from pastor_transcript_extractor.reviewed_speaker_evidence import (
+        consolidate_same_source_attributed_profiles,
+    )
+
+    consolidate_same_source_attributed_profiles(database)
+    return tuple(
+        database.resolve_speaker_profile_id(profile_id)
+        for profile_id in promoted
+    )
 
 
 def plan_candidate_confirmations(

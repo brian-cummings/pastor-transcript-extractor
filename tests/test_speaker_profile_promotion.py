@@ -22,10 +22,16 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
 )
 from pastor_transcript_extractor.speaker_profile_promotion import (
     CandidateConfirmationPlan,
+    DiscoveryPromotionPlan,
+    PromotionCandidate,
     apply_candidate_confirmations,
     apply_discovery_promotions,
     plan_candidate_confirmations,
     plan_discovery_promotions,
+)
+from pastor_transcript_extractor.speaker_registry import (
+    attach_reviewed_observation,
+    create_anonymous_profile,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     SHADOW_ASSOCIATION_VERSION,
@@ -102,6 +108,88 @@ class SpeakerProfilePromotionTests(unittest.TestCase):
             pair_relations={},
             pair_conflicts={},
             review_event_count=0,
+        )
+
+    def _claim(self, observation, normalized_name: str) -> None:
+        self.database.add_speaker_name_claim(
+            video_id=observation.video_id,
+            observation_id=observation.id,
+            display_name=normalized_name.title(),
+            normalized_name=normalized_name,
+            claim_kind="explicit_speaker_attribution",
+            channel="metadata",
+            explicit_speaker_attribution=True,
+            correlation_group_id=f"group-{observation.input_fingerprint}",
+            provenance_json="{}",
+            artifact_path=observation.artifact_path,
+            claim_fingerprint=f"claim-{observation.input_fingerprint}",
+            extractor_version="speaker_evidence_v1",
+        )
+
+    def test_promotion_consolidates_same_source_attributed_profile(self) -> None:
+        existing_members = [
+            self._observation(key) for key in ("existing-a", "existing-b")
+        ]
+        existing = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="reviewed pair",
+            review_event_key="existing-profile",
+        )
+        for observation in existing_members:
+            attach_reviewed_observation(
+                self.database,
+                profile_id=existing.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="reviewed pair",
+                review_event_key=f"existing-{observation.id}",
+            )
+            self._claim(observation, "alex example")
+
+        promoted_members = [
+            self._observation(key) for key in ("new-a", "new-b", "new-c")
+        ]
+        for observation in promoted_members:
+            self._claim(observation, "alex example")
+        component_id = _sha256(
+            sorted(item.input_fingerprint for item in promoted_members)
+        )
+        plan = DiscoveryPromotionPlan(
+            report_path=self.root / "discovery.json",
+            report_result_sha256="report",
+            candidates=(
+                PromotionCandidate(
+                    component_id=component_id,
+                    observation_ids=tuple(item.id for item in promoted_members),
+                    observation_fingerprints=tuple(
+                        item.input_fingerprint for item in promoted_members
+                    ),
+                    recording_ids=tuple(item.video_id for item in promoted_members),
+                    normalized_names=("alex example",),
+                    existing_profile_id=None,
+                ),
+            ),
+            skipped=(),
+        )
+
+        returned_profile_id = apply_discovery_promotions(
+            self.database,
+            plan,
+        )[0]
+
+        self.assertEqual(existing.id, returned_profile_id)
+        self.assertEqual(
+            {existing.id},
+            {
+                self.database.resolve_speaker_profile_id(profile_id)
+                for observation in (*existing_members, *promoted_members)
+                for profile_id in (
+                    self.database.list_effective_profile_ids_for_observation(
+                        observation.id
+                    )
+                )
+            },
         )
 
     def test_discovery_seed_is_shadow_ready_then_independent_match_confirms_it(
