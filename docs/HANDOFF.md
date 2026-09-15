@@ -474,6 +474,16 @@ Any relevant change invalidates the affected checkpoint and runs the normal
 stage, whose content-addressed span, embedding, pair, and report caches still
 make the refresh incremental. Checkpoint outputs are checksum-verified; a
 missing, damaged, or unreadable checkpoint fails open to recomputation.
+Association checkpoints also retain a checksum-covered split between global
+profile/policy state and recording-local state. If only new current observation
+fingerprints were added, the next corpus run selects `--unattempted-only`
+automatically. Profile membership, reviewed constraints, removals, policy
+changes, or a recording change without a new observation still force the
+conservative full association scan.
+Checkpoint output hashes are paired with checksum-covered size and nanosecond
+mtime metadata. Unchanged report trees take the metadata fast path instead of
+rereading gigabytes of artifacts; a metadata change triggers SHA-256
+verification and any content mismatch invalidates the checkpoint.
 
 A profile is first created when a confirmed same-speaker pair forms a reviewed
 component. Later confirmed same-speaker frontier comparisons add observations;
@@ -711,6 +721,11 @@ path, so it cannot silently remove small-group complete-link coverage. Source
 membership is retrieval provenance only and never supplies identity evidence.
 The limits are configurable with `--source-complete-link-limit` and
 `--source-nearest-neighbors`.
+The global nearest-neighbor search is exhaustive but evaluated in vectorized
+blocks when NumPy is available, avoiding the former pair-by-pair Python dot
+product loop. Discovery pair decisions use the same checksum-verified
+pair-diagnostic cache as association, so an invalidated discovery stage normally
+computes acoustic diagnostics only for newly nominated or changed pairs.
 
 Below-threshold signatures remain fully recorded as `deferred` and never enter
 global or source-local discovery. The former `--include-deferred` diagnostic
@@ -744,7 +759,7 @@ artifact hash, threshold, policy status, score and tier for every signature;
 separate global, source-local, strong closure, and borderline-deferred pair
 counts; every retrieval reason and source context; and each deferred attempt's
 score, seed, endpoint comparisons, and atomic admission outcome. Discovery
-artifacts use the v7 contract; v2-v6 artifacts remain readable.
+artifacts use the v10 contract; v2-v9 artifacts remain readable.
 
 Ambiguous comparisons in the acoustic near-same band are tested hypothetically
 against the complete-link rules. When one reviewed judgment could complete a

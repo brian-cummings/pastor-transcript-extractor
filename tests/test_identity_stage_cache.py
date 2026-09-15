@@ -8,8 +8,12 @@ from unittest.mock import patch
 
 from pastor_transcript_extractor.cli import run_identity_workflow_service
 from pastor_transcript_extractor.identity_stage_cache import (
+    ASSOCIATION_INPUT_STATE_VERSION,
+    association_refresh_mode,
+    build_association_input_state,
     build_identity_stage_fingerprint,
     load_identity_stage_checkpoint,
+    load_identity_stage_input_state,
     write_identity_stage_checkpoint,
 )
 from pastor_transcript_extractor.models import SourceType
@@ -17,6 +21,140 @@ from pastor_transcript_extractor.storage import Database
 
 
 class IdentityStageCacheTests(unittest.TestCase):
+    def test_association_refresh_is_incremental_only_for_new_observations(self) -> None:
+        def state(recordings, *, global_fingerprint="global"):
+            return {
+                "version": ASSOCIATION_INPUT_STATE_VERSION,
+                "global_fingerprint": global_fingerprint,
+                "recordings": recordings,
+            }
+
+        original = state(
+            {
+                "video-a": {
+                    "fingerprint": "recording-a",
+                    "current_observation_fingerprint": "observation-a",
+                }
+            }
+        )
+        added = state(
+            {
+                **original["recordings"],
+                "video-b": {
+                    "fingerprint": "recording-b",
+                    "current_observation_fingerprint": "observation-b",
+                },
+            }
+        )
+        replaced = state(
+            {
+                "video-a": {
+                    "fingerprint": "recording-a-v2",
+                    "current_observation_fingerprint": "observation-a-v2",
+                }
+            }
+        )
+        metadata_only = state(
+            {
+                "video-a": {
+                    "fingerprint": "recording-a-v2",
+                    "current_observation_fingerprint": "observation-a",
+                }
+            }
+        )
+
+        self.assertEqual("incremental", association_refresh_mode(original, added))
+        self.assertEqual("incremental", association_refresh_mode(original, replaced))
+        self.assertEqual("full", association_refresh_mode(original, metadata_only))
+        self.assertEqual(
+            "full",
+            association_refresh_mode(
+                original,
+                state(
+                    original["recordings"],
+                    global_fingerprint="changed",
+                ),
+            ),
+        )
+        self.assertEqual("full", association_refresh_mode(added, original))
+
+    def test_checkpoint_round_trips_verified_association_input_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            database = Database(root / "app.db")
+            database.initialize()
+            state = build_association_input_state(
+                root / "app.db",
+                parameters={"policy": "v1"},
+            )
+            output = root / "association.json"
+            output.write_text("{}\n", encoding="utf-8")
+            cache_root = root / "cache"
+            write_identity_stage_checkpoint(
+                cache_root,
+                stage="association",
+                input_fingerprint="inputs",
+                outputs=(output,),
+                input_state=state,
+            )
+
+            loaded = load_identity_stage_input_state(
+                cache_root,
+                stage="association",
+            )
+
+        self.assertEqual(state, loaded)
+
+    def test_association_input_state_tracks_latest_observation_per_video(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            database = Database(root / "app.db")
+            database.initialize()
+            source = database.add_source(
+                "https://www.youtube.com/@state-test",
+                SourceType.CHANNEL,
+                pastor_id=None,
+            )
+            video = database.add_video(
+                source.id,
+                None,
+                "state-test-video",
+                "State test",
+                "https://www.youtube.com/watch?v=state-test-video",
+            )
+            proposed = root / "proposed.json"
+            proposed.write_text("{}\n", encoding="utf-8")
+            extraction = database.add_extraction_result(
+                video.id,
+                1,
+                str(root / "proposed.md"),
+                str(proposed),
+            )
+            database.add_speaker_observation(
+                video_id=video.id,
+                extraction_result_id=extraction.id,
+                role="principal_speaker_candidate",
+                multiplicity_state="unknown",
+                start_seconds=1.0,
+                end_seconds=10.0,
+                artifact_path=str(root / "speaker.json"),
+                content_sha256="content",
+                extractor_version="test",
+                input_fingerprint="observation-v1",
+            )
+
+            state = build_association_input_state(
+                root / "app.db",
+                parameters={"policy": "v1"},
+            )
+
+        self.assertEqual(
+            "observation-v1",
+            state["recordings"]["state-test-video"][
+                "current_observation_fingerprint"
+            ],
+        )
+
     def test_fingerprint_changes_for_database_and_review_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
@@ -75,11 +213,16 @@ class IdentityStageCacheTests(unittest.TestCase):
                 outputs=(output,),
             )
 
-            reused = load_identity_stage_checkpoint(
-                cache_root,
-                stage="association",
-                input_fingerprint="inputs-a",
-            )
+            with patch.object(
+                Path,
+                "read_bytes",
+                side_effect=AssertionError("unchanged output was rehashed"),
+            ):
+                reused = load_identity_stage_checkpoint(
+                    cache_root,
+                    stage="association",
+                    input_fingerprint="inputs-a",
+                )
             wrong_inputs = load_identity_stage_checkpoint(
                 cache_root,
                 stage="association",
@@ -226,6 +369,8 @@ class IdentityStageCacheTests(unittest.TestCase):
 
         self.assertEqual(2, associate.call_count)
         self.assertEqual(2, discover.call_count)
+        self.assertFalse(associate.call_args_list[0].kwargs["unattempted_only"])
+        self.assertTrue(associate.call_args_list[1].kwargs["unattempted_only"])
 
 
 if __name__ == "__main__":

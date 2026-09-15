@@ -31,7 +31,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_shadow_association import ShadowPolicySpec
 
 
-SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v9"
+SHADOW_PROFILE_DISCOVERY_VERSION = "speaker_profile_shadow_discovery_v10"
 SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
     {
         "speaker_profile_shadow_discovery_v2",
@@ -41,6 +41,7 @@ SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS = frozenset(
         "speaker_profile_shadow_discovery_v6",
         "speaker_profile_shadow_discovery_v7",
         "speaker_profile_shadow_discovery_v8",
+        "speaker_profile_shadow_discovery_v9",
         SHADOW_PROFILE_DISCOVERY_VERSION,
     }
 )
@@ -298,6 +299,74 @@ PairComparer = Callable[
     [SpeakerObservation, SpeakerObservation, Path, Path],
     Mapping[str, Any],
 ]
+
+
+def _global_nearest_neighbors(
+    signatures: Sequence[DiscoverySignature],
+    nearest_neighbors: int,
+) -> tuple[tuple[tuple[float, DiscoverySignature], ...], ...]:
+    """Find exact neighbors, using vectorized blocks when NumPy is available."""
+    if len(signatures) < 2:
+        return tuple(() for _ in signatures)
+    count = min(nearest_neighbors, len(signatures) - 1)
+    try:
+        import numpy as np
+    except ImportError:
+        return tuple(
+            tuple(
+                (similarity, right)
+                for similarity, _, right in sorted(
+                    (
+                        (
+                            _cosine(left.centroid, right.centroid),
+                            right.candidate.observation.input_fingerprint,
+                            right,
+                        )
+                        for right in signatures
+                        if left.candidate.observation.id
+                        != right.candidate.observation.id
+                    ),
+                    key=lambda item: (-item[0], item[1]),
+                )[:count]
+            )
+            for left in signatures
+        )
+
+    matrix = np.asarray(
+        [signature.centroid for signature in signatures], dtype=np.float64
+    )
+    if matrix.ndim != 2 or matrix.shape[1] == 0:
+        raise ValueError("centroids must have equal non-zero dimensions")
+    norms = np.linalg.norm(matrix, axis=1)
+    if bool(np.any(norms == 0)):
+        raise ValueError("zero-norm embedding")
+    normalized = matrix / norms[:, None]
+    fingerprints = tuple(
+        signature.candidate.observation.input_fingerprint
+        for signature in signatures
+    )
+    neighbors: list[tuple[tuple[float, DiscoverySignature], ...]] = []
+    block_size = 512
+    for block_start in range(0, len(signatures), block_size):
+        block_end = min(block_start + block_size, len(signatures))
+        similarities = normalized[block_start:block_end] @ normalized.T
+        for local_index, scores in enumerate(similarities):
+            left_index = block_start + local_index
+            scores[left_index] = -np.inf
+            selected = np.argpartition(-scores, count - 1)[:count]
+            cutoff = float(np.min(scores[selected]))
+            tied = np.flatnonzero(scores >= cutoff)
+            ranked = sorted(
+                (int(index) for index in tied),
+                key=lambda index: (-float(scores[index]), fingerprints[index]),
+            )[:count]
+            neighbors.append(
+                tuple(
+                    (float(scores[index]), signatures[index])
+                    for index in ranked
+                )
+            )
+    return tuple(neighbors)
 
 
 def build_discovery_signature(
@@ -931,21 +1000,9 @@ def nominate_discovery_pairs(
         )
 
     global_selected: dict[tuple[int, int], NominatedPair] = {}
-    for left in ordered:
-        ranked: list[tuple[float, str, DiscoverySignature]] = []
-        for right in ordered:
-            if left.candidate.observation.id == right.candidate.observation.id:
-                continue
-            similarity = _cosine(left.centroid, right.centroid)
-            ranked.append(
-                (
-                    similarity,
-                    right.candidate.observation.input_fingerprint,
-                    right,
-                )
-            )
-        ranked.sort(key=lambda item: (-item[0], item[1]))
-        for similarity, _, right in ranked[:nearest_neighbors]:
+    global_neighbors = _global_nearest_neighbors(ordered, nearest_neighbors)
+    for left, ranked in zip(ordered, global_neighbors):
+        for similarity, right in ranked:
             nomination = NominatedPair(
                 left,
                 right,
@@ -998,21 +1055,19 @@ def nominate_discovery_pairs(
             reason = "source_local_complete_link"
         else:
             reason = "source_local_nearest_neighbor"
-            for left_index, left in enumerate(source_signatures):
-                ranked = sorted(
-                    (
-                        (_cosine(left.centroid, right.centroid), right_index)
-                        for right_index, right in enumerate(source_signatures)
-                        if right_index != left_index
-                    ),
-                    key=lambda item: (
-                        -item[0],
-                        source_signatures[
-                            item[1]
-                        ].candidate.observation.input_fingerprint,
-                    ),
-                )
-                for _similarity, right_index in ranked[:source_nearest_neighbors]:
+            index_by_observation_id = {
+                signature.candidate.observation.id: index
+                for index, signature in enumerate(source_signatures)
+            }
+            source_neighbors = _global_nearest_neighbors(
+                source_signatures,
+                source_nearest_neighbors,
+            )
+            for left_index, ranked in enumerate(source_neighbors):
+                for _similarity, right in ranked:
+                    right_index = index_by_observation_id[
+                        right.candidate.observation.id
+                    ]
                     source_pairs.add(tuple(sorted((left_index, right_index))))
         for left_index, right_index in sorted(source_pairs):
             left = source_signatures[left_index]

@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 acoustic-experiment = [
+  "numpy>=1.26,<3.0",
   "sherpa-onnx==1.13.1",
 ]
 
