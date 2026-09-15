@@ -266,8 +266,11 @@ from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
 from pastor_transcript_extractor.identity_stage_cache import (
+    association_refresh_mode,
+    build_association_input_state,
     build_identity_stage_fingerprint,
     load_identity_stage_checkpoint,
+    load_identity_stage_input_state,
     write_identity_stage_checkpoint,
 )
 from pastor_transcript_extractor.identity_automation import (
@@ -6561,6 +6564,7 @@ def shadow_discover_profiles_command(
         raise typer.BadParameter(str(error)) from error
     span_cache = AudioSpanCache(cache_root)
     embedding_cache = EmbeddingCache(cache_root)
+    pair_diagnostic_cache = PairDiagnosticCache(cache_root)
     activity_selection_cache = ActivityQualifiedSelectionCache(cache_root)
     signatures = []
     signature_failures: list[dict[str, object]] = []
@@ -6659,6 +6663,7 @@ def shadow_discover_profiles_command(
             span_specs_a=signature_a.span_specs,
             span_specs_b=signature_b.span_specs,
             span_specs_are_activity_qualified=True,
+            pair_diagnostic_cache=pair_diagnostic_cache,
         )
 
     report = evaluate_shadow_profile_discovery(
@@ -6715,6 +6720,11 @@ def shadow_discover_profiles_command(
             staged_review_maximum_same_boundary_distance
         ),
         jobs=jobs,
+    )
+    console.print(
+        "Discovery pair diagnostics: "
+        f"cache_hits={pair_diagnostic_cache.hits} "
+        f"cache_misses={pair_diagnostic_cache.misses}."
     )
     destination = write_shadow_profile_discovery(output_root, report)
     counts = report["counts"]
@@ -7514,6 +7524,7 @@ def _write_identity_stage_checkpoint_best_effort(
     stage: str,
     input_fingerprint: str,
     outputs: Sequence[Path],
+    input_state: Mapping[str, Any] | None = None,
 ) -> None:
     try:
         write_identity_stage_checkpoint(
@@ -7521,12 +7532,33 @@ def _write_identity_stage_checkpoint_best_effort(
             stage=stage,
             input_fingerprint=input_fingerprint,
             outputs=outputs,
+            input_state=input_state,
         )
     except (OSError, UnicodeError, ValueError) as error:
         console.print(
             f"Identity {stage} cache could not be saved; future runs will "
             f"recompute the stage: {type(error).__name__}: {error}"
         )
+
+
+def _association_input_state_or_none(
+    paths: AppPaths,
+    *,
+    parameters: Mapping[str, Any],
+    global_input_paths: Sequence[Path],
+) -> Mapping[str, Any] | None:
+    try:
+        return build_association_input_state(
+            paths.database,
+            parameters=parameters,
+            global_input_paths=global_input_paths,
+        )
+    except (OSError, UnicodeError, sqlite3.DatabaseError, ValueError) as error:
+        console.print(
+            "Association incremental cache unavailable; using full refresh: "
+            f"{type(error).__name__}: {error}"
+        )
+        return None
 
 
 def run_identity_workflow_service(
@@ -7649,16 +7681,34 @@ def run_identity_workflow_service(
         "maximum_global_profiles": 1,
         "model_sha256": DEFAULT_SPEAKER_MODEL_SHA256,
     }
+    association_global_inputs = (
+        *reviewed_evidence_inputs,
+        association_policy_path,
+    )
+    previous_association_input_state = (
+        load_identity_stage_input_state(
+            identity_stage_cache_root,
+            stage="association",
+        )
+        if all_extractions and not plan_only
+        else None
+    )
+    association_input_state = (
+        _association_input_state_or_none(
+            paths,
+            parameters=association_parameters,
+            global_input_paths=association_global_inputs,
+        )
+        if all_extractions and not plan_only
+        else None
+    )
     association_fingerprint = (
         _identity_stage_fingerprint_or_none(
             paths,
             Database(paths.database, readonly=True),
             stage="association",
             parameters=association_parameters,
-            additional_paths=(
-                *reviewed_evidence_inputs,
-                association_policy_path,
-            ),
+            additional_paths=association_global_inputs,
         )
         if not plan_only
         else None
@@ -7672,7 +7722,11 @@ def run_identity_workflow_service(
         if association_fingerprint is not None
         else None
     )
-    association_checkpoint_needs_refresh = cached_association_reports is None
+    association_checkpoint_needs_refresh = (
+        cached_association_reports is None
+        or association_input_state is not None
+        and previous_association_input_state is None
+    )
     if cached_association_reports is not None:
         current_association_reports = cached_association_reports
         console.print(
@@ -7680,10 +7734,29 @@ def run_identity_workflow_service(
             f"with {len(current_association_reports)} report(s)."
         )
     else:
+        refresh_mode = (
+            association_refresh_mode(
+                previous_association_input_state,
+                association_input_state,
+            )
+            if all_extractions
+            else "full"
+        )
+        incremental_association = refresh_mode == "incremental"
+        if incremental_association:
+            console.print(
+                "Association stage: only new observation-local inputs changed; "
+                "evaluating unattempted observations."
+            )
+        else:
+            console.print(
+                "Association stage: global or ambiguous inputs changed; "
+                "running conservative full refresh."
+            )
         current_association_reports = shadow_associate_speakers_command(
             youtube_video_id=youtube_video_id,
             all_eligible=all_extractions,
-            unattempted_only=False,
+            unattempted_only=incremental_association,
             neighborhood_profile_id=[],
             include_profiled=False,
             limit=None,
@@ -7742,10 +7815,16 @@ def run_identity_workflow_service(
             Database(paths.database, readonly=True),
             stage="association",
             parameters=association_parameters,
-            additional_paths=(
-                *reviewed_evidence_inputs,
-                association_policy_path,
-            ),
+            additional_paths=association_global_inputs,
+        )
+        association_input_state = (
+            _association_input_state_or_none(
+                paths,
+                parameters=association_parameters,
+                global_input_paths=association_global_inputs,
+            )
+            if all_extractions
+            else None
         )
         if association_fingerprint is not None:
             _write_identity_stage_checkpoint_best_effort(
@@ -7753,6 +7832,7 @@ def run_identity_workflow_service(
                 stage="association",
                 input_fingerprint=association_fingerprint,
                 outputs=current_association_reports,
+                input_state=association_input_state,
             )
     current_result_sha256_by_observation: dict[int, str] = {}
     for report_path in current_association_reports:
