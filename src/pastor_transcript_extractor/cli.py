@@ -6627,6 +6627,30 @@ def consolidate_source_profiles_command(
             )
         else:
             console.print(f"Merged cohort into canonical profile {canonical_id}.")
+            refreshed_candidates, refreshed_excluded = source_profile_candidates(
+                database,
+                reviewed_evidence,
+                source_id=source_id,
+                exemplars_per_profile=exemplars_per_profile,
+            )
+            refreshed_ids = ",".join(
+                str(item.profile_id) for item in refreshed_candidates
+            ) or "none"
+            console.print(
+                f"POST-MERGE SOURCE STATE: source {source_id} now has "
+                f"{len(refreshed_candidates)} eligible canonical profile(s): "
+                f"{refreshed_ids}; excluded={len(refreshed_excluded)}."
+            )
+            if len(refreshed_candidates) >= 2:
+                console.print(
+                    "This source will remain in the default --list-sources "
+                    "inventory because at least two eligible profiles remain."
+                )
+            else:
+                console.print(
+                    "This source will leave the default --list-sources "
+                    "inventory; use --minimum-profiles 1 to display it."
+                )
     console.print(f"Wrote source-profile consolidation artifact to {artifact_path}")
     if not apply:
         if plan.proposals:
