@@ -333,6 +333,7 @@ def plan_machine_assignments(
                 assess_automatic_speaker_observation(
                     database,
                     exemplar.video_id,
+                    observation_id=exemplar.id,
                     verification_cache=verification_cache,
                 )
                 if exemplar is not None
@@ -1238,6 +1239,7 @@ def _machine_evidence_provenance_current(
         member_eligibility = assess_automatic_speaker_observation(
             database,
             member.video_id,
+            observation_id=member.id,
             verification_cache=verification_cache,
         )
         if (

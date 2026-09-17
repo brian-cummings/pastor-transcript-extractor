@@ -922,7 +922,10 @@ def select_profile_exemplars(
     )
     selected: list[ShadowExemplar] = []
     used_sources: set[int] = set()
+    used_video_ids: set[int] = set()
     for exemplar in candidates:
+        if exemplar.observation.video_id in used_video_ids:
+            continue
         source_id = getattr(
             videos_by_id.get(exemplar.observation.video_id),
             "source_id",
@@ -932,12 +935,17 @@ def select_profile_exemplars(
             continue
         selected.append(exemplar)
         used_sources.add(source_id)
+        used_video_ids.add(exemplar.observation.video_id)
         if len(selected) == maximum_exemplars:
             return tuple(selected)
     for exemplar in candidates:
-        if exemplar in selected:
+        if (
+            exemplar in selected
+            or exemplar.observation.video_id in used_video_ids
+        ):
             continue
         selected.append(exemplar)
+        used_video_ids.add(exemplar.observation.video_id)
         if len(selected) == maximum_exemplars:
             break
     return tuple(selected)

@@ -130,51 +130,92 @@ def assess_automatic_speaker_observation(
     database: Database,
     video_id: int,
     *,
+    observation_id: int | None = None,
     verification_cache: MediaVerificationCache | None = None,
     verify_media: bool = True,
     allow_review_required: bool = False,
 ) -> AutomaticSpeakerObservationEligibility:
-    """Admit only an observation derived from the current accepted sermon window.
+    """Admit a current accepted observation or an exact persisted member.
 
     ``verify_media=False`` is metadata-only. It may be used for inventory,
     status reporting, or candidate ranking only when the selected observation
     is subsequently reassessed with the default byte-verifying behavior before
-    any media is consumed.
+    any media is consumed. By default the current observation is selected.
+    ``observation_id`` permits an exact immutable profile member to remain an
+    exemplar after a newer extraction exists. Its persisted window is
+    authoritative unless an explicit observation review invalidates it.
     """
-    extraction = database.get_latest_extraction_result_for_video(video_id)
-    if extraction is None or not extraction.proposed_json_path:
-        return AutomaticSpeakerObservationEligibility("extraction_unavailable")
-
-    try:
-        payload = json.loads(
-            Path(extraction.proposed_json_path).expanduser().read_text(encoding="utf-8")
+    requested_observation = None
+    if observation_id is not None:
+        requested_observation = database.get_speaker_observation(observation_id)
+        if requested_observation is None:
+            return AutomaticSpeakerObservationEligibility(
+                "observation_unavailable"
+            )
+        if requested_observation.video_id != video_id:
+            return AutomaticSpeakerObservationEligibility(
+                "observation_video_mismatch"
+            )
+        extraction = database.get_extraction_result(
+            requested_observation.extraction_result_id
         )
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return AutomaticSpeakerObservationEligibility("extraction_artifact_unreadable")
-    if not isinstance(payload, dict):
-        return AutomaticSpeakerObservationEligibility("extraction_artifact_malformed")
-
-    disposition = payload.get("final_disposition")
-    if not isinstance(disposition, dict):
-        return AutomaticSpeakerObservationEligibility("disposition_missing_or_malformed")
-    status = disposition.get("status")
-    if not isinstance(status, str):
-        return AutomaticSpeakerObservationEligibility("disposition_missing_or_malformed")
-    if status != ACCEPTED_SERMON and not (
-        allow_review_required and status == REVIEW_REQUIRED
-    ):
-        return AutomaticSpeakerObservationEligibility("disposition_not_accepted")
-
-    window = _valid_window(payload.get("sermon_window"))
-    if window is None:
-        return AutomaticSpeakerObservationEligibility("sermon_window_invalid")
-
-    observation = database.get_speaker_observation_for_extraction_window(
-        video_id,
-        extraction.id,
-        start_seconds=window[0],
-        end_seconds=window[1],
-    )
+    else:
+        extraction = database.get_latest_extraction_result_for_video(video_id)
+    if extraction is None:
+        return AutomaticSpeakerObservationEligibility("extraction_unavailable")
+    if extraction.video_id != video_id:
+        return AutomaticSpeakerObservationEligibility(
+            "observation_extraction_mismatch"
+        )
+    if requested_observation is not None:
+        observation = requested_observation
+        window = (observation.start_seconds, observation.end_seconds)
+    else:
+        if not extraction.proposed_json_path:
+            return AutomaticSpeakerObservationEligibility(
+                "extraction_unavailable"
+            )
+        try:
+            payload = json.loads(
+                Path(extraction.proposed_json_path)
+                .expanduser()
+                .read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return AutomaticSpeakerObservationEligibility(
+                "extraction_artifact_unreadable"
+            )
+        if not isinstance(payload, dict):
+            return AutomaticSpeakerObservationEligibility(
+                "extraction_artifact_malformed"
+            )
+        disposition = payload.get("final_disposition")
+        if not isinstance(disposition, dict):
+            return AutomaticSpeakerObservationEligibility(
+                "disposition_missing_or_malformed"
+            )
+        status = disposition.get("status")
+        if not isinstance(status, str):
+            return AutomaticSpeakerObservationEligibility(
+                "disposition_missing_or_malformed"
+            )
+        if status != ACCEPTED_SERMON and not (
+            allow_review_required and status == REVIEW_REQUIRED
+        ):
+            return AutomaticSpeakerObservationEligibility(
+                "disposition_not_accepted"
+            )
+        window = _valid_window(payload.get("sermon_window"))
+        if window is None:
+            return AutomaticSpeakerObservationEligibility(
+                "sermon_window_invalid"
+            )
+        observation = database.get_speaker_observation_for_extraction_window(
+            video_id,
+            extraction.id,
+            start_seconds=window[0],
+            end_seconds=window[1],
+        )
     if observation is None:
         latest_observation = database.get_latest_speaker_observation_for_video(
             video_id
@@ -194,6 +235,15 @@ def assess_automatic_speaker_observation(
             "observation_window_mismatch"
         )
 
+    review_action = database.get_effective_observation_review_action(
+        observation.id
+    )
+    if review_action not in {None, "qualified_single_speaker"}:
+        return AutomaticSpeakerObservationEligibility(
+            f"reviewed_{review_action}",
+            observation=observation,
+        )
+
     diagnostic_spans = select_diagnostic_spans(observation)
     if not diagnostic_spans:
         return AutomaticSpeakerObservationEligibility("diagnostic_spans_unavailable")
@@ -204,6 +254,11 @@ def assess_automatic_speaker_observation(
                 database,
                 video_id,
                 verification_cache=verification_cache,
+                **(
+                    {"required_window": window}
+                    if requested_observation is not None
+                    else {}
+                ),
             )
         except ArchivedMediaUnavailableError:
             return AutomaticSpeakerObservationEligibility(
@@ -213,7 +268,15 @@ def assess_automatic_speaker_observation(
         except OSError:
             media = None
     else:
-        media = get_registered_normalized_media_artifact(database, video_id)
+        media = get_registered_normalized_media_artifact(
+            database,
+            video_id,
+            **(
+                {"required_window": window}
+                if requested_observation is not None
+                else {}
+            ),
+        )
     if media is None:
         return AutomaticSpeakerObservationEligibility(
             (

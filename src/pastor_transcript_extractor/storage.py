@@ -2637,6 +2637,23 @@ class Database:
             ).fetchall()
         return [self._extraction_result_from_row(row) for row in rows]
 
+    def get_extraction_result(
+        self, extraction_result_id: int
+    ) -> ExtractionResult | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, video_id, version, proposed_text_path,
+                       proposed_json_path, notes, created_at
+                FROM extraction_results
+                WHERE id = ?
+                """,
+                (extraction_result_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._extraction_result_from_row(row)
+
     def get_latest_extraction_result_for_video(self, video_id: int) -> ExtractionResult | None:
         with self.connect() as connection:
             row = connection.execute(

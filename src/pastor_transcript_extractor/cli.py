@@ -6344,6 +6344,7 @@ def consolidate_source_profiles_command(
             eligibility = assess_automatic_speaker_observation(
                 database,
                 observation.video_id,
+                observation_id=observation.id,
                 verification_cache=verification_cache,
                 verify_media=True,
             )
@@ -6354,43 +6355,13 @@ def consolidate_source_profiles_command(
                 or eligibility.media_artifact is None
             ):
                 preparation_failures.append(
-                    (
-                        observation_id,
-                        (
-                            eligibility.reason_code
-                            if not eligibility.eligible
-                            else "profile_member_observation_not_current"
-                        ),
-                    )
+                    (observation_id, eligibility.reason_code)
                 )
                 continue
-            extraction = database.get_latest_extraction_result_for_video(
-                observation.video_id
-            )
-            try:
-                proposed_payload = (
-                    json.loads(
-                        Path(extraction.proposed_json_path).read_text(
-                            encoding="utf-8"
-                        )
-                    )
-                    if extraction is not None and extraction.proposed_json_path
-                    else None
-                )
-            except (OSError, UnicodeError, json.JSONDecodeError):
-                proposed_payload = None
-            if not isinstance(proposed_payload, dict):
-                preparation_failures.append(
-                    (observation_id, "speech_grounding_artifact_unavailable")
-                )
-                continue
-            span_specs = select_transcript_grounded_span_candidates(
-                proposed_payload,
-                observation,
-            )
+            span_specs = eligibility.diagnostic_spans
             if not span_specs:
                 preparation_failures.append(
-                    (observation_id, "speech_grounded_spans_unavailable")
+                    (observation_id, "diagnostic_spans_unavailable")
                 )
                 continue
             acoustic_candidate = DiscoveryCandidate(
@@ -10340,7 +10311,9 @@ def shadow_associate_speakers_command(
         *,
         acoustic_backend=None,
     ) -> tuple[tuple[SpanSpec, ...], Mapping[str, Any] | None]:
-        extraction = database.get_latest_extraction_result_for_video(video_id)
+        extraction = database.get_extraction_result(
+            observation.extraction_result_id
+        )
         if extraction is None or not extraction.proposed_json_path:
             return (), None
         try:
@@ -10484,22 +10457,10 @@ def shadow_associate_speakers_command(
             observation = database.get_speaker_observation(observation_id)
             if observation is None:
                 continue
-            current_observation = current_observation_by_video_id.get(
-                observation.video_id
-            )
-            if (
-                current_observation is None
-                or current_observation.id != observation.id
-            ):
-                count_exemplar_preparation(
-                    profile.profile_id,
-                    "observation_currency:"
-                    "profile_member_observation_superseded",
-                )
-                continue
             eligibility = assess_automatic_speaker_observation(
                 database,
                 observation.video_id,
+                observation_id=observation.id,
                 verification_cache=verification_cache,
                 verify_media=False,
             )
@@ -10560,6 +10521,7 @@ def shadow_associate_speakers_command(
             eligibility = assess_automatic_speaker_observation(
                 database,
                 observation.video_id,
+                observation_id=observation.id,
                 verification_cache=verification_cache,
                 verify_media=True,
             )

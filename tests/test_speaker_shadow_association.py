@@ -285,6 +285,62 @@ class SpeakerShadowAssociationTests(unittest.TestCase):
             {item.observation.id for item in selected},
         )
 
+    def test_exemplar_selection_counts_one_version_per_recording(self) -> None:
+        older = self._observation("versioned")
+        newer = self.database.add_speaker_observation(
+            video_id=older.video_id,
+            extraction_result_id=older.extraction_result_id,
+            role=older.role,
+            multiplicity_state=older.multiplicity_state,
+            start_seconds=older.start_seconds,
+            end_seconds=older.end_seconds,
+            artifact_path="versioned-newer.json",
+            content_sha256="versioned-newer",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="versioned-newer",
+        )
+        independent = self._observation("independent")
+        readiness = ProfileAssociationReadiness(
+            profile_id=7,
+            member_observation_ids=(older.id, newer.id, independent.id),
+            member_fingerprints=(
+                older.input_fingerprint,
+                newer.input_fingerprint,
+                independent.input_fingerprint,
+            ),
+            recording_count=2,
+            source_count=1,
+            normalized_names=(),
+            shadow_ready=True,
+            automatic_profile_ready=False,
+            shadow_blockers=(),
+            automatic_blockers=("fewer_than_three_distinct_recordings",),
+            review_ready=True,
+        )
+        exemplars = tuple(
+            ShadowExemplar(
+                7,
+                observation,
+                Path(f"{observation.id}.wav"),
+                f"audio-{observation.id}",
+            )
+            for observation in (older, newer, independent)
+        )
+
+        selected = select_profile_exemplars(
+            readiness,
+            exemplars,
+            videos_by_id={
+                video.id: video for video in self.database.list_videos()
+            },
+        )
+
+        self.assertEqual(2, len(selected))
+        self.assertEqual(
+            2,
+            len({item.observation.video_id for item in selected}),
+        )
+
     def test_merged_certified_components_remain_ready(self) -> None:
         left = [self._observation(key) for key in ("a", "b", "c")]
         right = [self._observation(key) for key in ("d", "e", "f")]

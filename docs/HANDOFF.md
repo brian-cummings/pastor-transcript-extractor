@@ -559,6 +559,17 @@ profile-growth selection. It never tells the reviewer that the observations
 are currently grouped and never assumes that grouping is correct; timestamped
 source-video links are available for confirmation.
 
+Supersession does not invalidate an observation already attached to a profile.
+Association preparation uses the member's persisted immutable window and
+verifies that the source recording's media still covers it, so later extraction
+artifacts do not retroactively redefine the observation. It remains eligible as
+an automatic exemplar unless a review explicitly invalidates it. At most
+one observation version from any recording is selected, so a re-extraction is
+not counted as independent identity evidence. Unattached association candidates
+continue to use the current observation for their recording. A provisional
+discovery component cannot confirm itself with one of its own members; its older
+members are exemplars for finding an independent confirmation instead.
+
 Discovery loads approved pair reviews directly as explicit constraints before
 registry synchronization. A reviewed `same` answer can supply the missing edge
 that turns overlapping cliques into one promotable complete-link component; a

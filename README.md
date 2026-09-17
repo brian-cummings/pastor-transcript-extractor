@@ -902,7 +902,16 @@ terminal for routine nomination. Current observations that supersede older
 members of those profiles retain exclusion-only lineage, so a new immutable
 fingerprint cannot re-enter generic profile growth. Discovery applies the same
 lineage exclusion, preventing a replacement from being reclustered merely
-because its membership belongs to an older immutable observation. A targeted
+because its membership belongs to an older immutable observation. Older
+observations already attached to a profile remain valid automatic exemplars:
+their immutable observation window and the source recording's media are
+verified unless a review explicitly invalidates the observation. Later
+extraction artifacts do not retroactively redefine it. Exemplar
+selection counts at most one observation version per recording, so
+re-extractions do not manufacture independent identity evidence. A provisional
+discovery component's own members still do not count as its independent
+confirmation; they now participate as exemplars used to find that confirmation.
+A targeted
 `review-next-speaker-pair --selection-objective profile-growth --profile-id ...`
 review can bridge an older named profile to a successor profile already holding
 its replacements, or bridge two fully superseded same-name profiles. Lineage
