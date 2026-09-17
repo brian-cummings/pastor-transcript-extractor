@@ -189,8 +189,13 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
         path.write_text(json.dumps(payload), encoding="utf-8")
         return path
 
-    def _eligibility(self, database, video_id, **_kwargs):
-        observation = database.get_latest_speaker_observation_for_video(video_id)
+    def _eligibility(self, database, video_id, **kwargs):
+        observation_id = kwargs.get("observation_id")
+        observation = (
+            database.get_speaker_observation(observation_id)
+            if observation_id is not None
+            else database.get_latest_speaker_observation_for_video(video_id)
+        )
         return SimpleNamespace(
             eligible=observation is not None,
             observation=observation,
@@ -263,6 +268,35 @@ class SpeakerMachineAssignmentTests(unittest.TestCase):
         self.assertEqual(0, replay.evidence_recorded)
         self.assertEqual(1, replay.evidence_reused)
         self.assertEqual(1, len(self.database.list_speaker_machine_evidence()))
+
+    def test_report_validation_accepts_older_attached_exemplar(self) -> None:
+        member = self.members[0]
+        extraction = self.database.add_extraction_result(
+            video_id=member.video_id,
+            version=2,
+            proposed_text_path=str(self.root / "a-new.md"),
+            proposed_json_path=str(self.root / "a-new.json"),
+        )
+        self.database.add_speaker_observation(
+            video_id=member.video_id,
+            extraction_result_id=extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=120.0,
+            end_seconds=900.0,
+            artifact_path=str(self.root / "a-new.speaker.json"),
+            content_sha256="content-a-new",
+            extractor_version="speaker_evidence_v2",
+            input_fingerprint="a-new",
+        )
+        candidate = self._observation("candidate-with-older-exemplar")
+
+        plan = self._plan((candidate,), self.shadow_policy)
+
+        self.assertEqual(
+            (candidate.id,),
+            tuple(item.observation_id for item in plan.candidates),
+        )
 
     def test_nonexhaustive_shortlist_proposal_is_not_machine_evidence(self) -> None:
         candidate = self._observation("shortlisted")

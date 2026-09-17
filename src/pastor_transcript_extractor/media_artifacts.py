@@ -1055,9 +1055,13 @@ def get_verified_normalized_media_artifact(
     video_id: int,
     *,
     verification_cache: MediaVerificationCache | None = None,
+    required_window: tuple[float, float] | None = None,
 ) -> MediaArtifact | None:
     artifact, availability = get_authoritative_normalized_media_artifact(
-        database, video_id, verification_cache=verification_cache
+        database,
+        video_id,
+        verification_cache=verification_cache,
+        required_window=required_window,
     )
     if availability is not None and availability.status == "archived_media_unavailable":
         assert artifact is not None
@@ -1070,6 +1074,7 @@ def get_registered_normalized_media_artifact(
     video_id: int,
     *,
     require_isolated_sermon: bool = True,
+    required_window: tuple[float, float] | None = None,
 ) -> MediaArtifact | None:
     """Select authoritative normalized-media metadata without touching its bytes.
 
@@ -1085,8 +1090,14 @@ def get_registered_normalized_media_artifact(
                 or artifact.provenance_kind != provenance_kind
             ):
                 continue
-            covers_required_audio = media_artifact_covers_isolated_sermon(
-                database, artifact
+            covers_required_audio = (
+                media_artifact_covers_window(
+                    database,
+                    artifact,
+                    required_window,
+                )
+                if required_window is not None
+                else media_artifact_covers_isolated_sermon(database, artifact)
             ) or (
                 not require_isolated_sermon
                 and media_artifact_covers_complete_recording(database, artifact)
@@ -1102,6 +1113,7 @@ def get_authoritative_normalized_media_artifact(
     *,
     verification_cache: MediaVerificationCache | None = None,
     require_isolated_sermon: bool = True,
+    required_window: tuple[float, float] | None = None,
 ) -> tuple[MediaArtifact | None, MediaAvailability | None]:
     """Select by provenance while preserving an offline archived derivative's authority."""
     artifacts = database.list_media_artifacts_for_video(video_id)
@@ -1118,8 +1130,14 @@ def get_authoritative_normalized_media_artifact(
             availability = media_artifact_availability(
                 database, artifact, verification_cache=verification_cache
             )
-            covers_required_audio = media_artifact_covers_isolated_sermon(
-                database, artifact
+            covers_required_audio = (
+                media_artifact_covers_window(
+                    database,
+                    artifact,
+                    required_window,
+                )
+                if required_window is not None
+                else media_artifact_covers_isolated_sermon(database, artifact)
             ) or (
                 not require_isolated_sermon
                 and media_artifact_covers_complete_recording(database, artifact)
@@ -1361,7 +1379,24 @@ def media_artifact_covers_isolated_sermon(
     tolerance_seconds: float = 2.0,
 ) -> bool:
     window, _ = _isolated_sermon_window(database, artifact.video_id)
-    if window is None or artifact.duration_seconds is None:
+    if window is None:
+        return False
+    return media_artifact_covers_window(
+        database,
+        artifact,
+        window,
+        tolerance_seconds=tolerance_seconds,
+    )
+
+
+def media_artifact_covers_window(
+    database: Database,
+    artifact: MediaArtifact,
+    window: tuple[float, float],
+    *,
+    tolerance_seconds: float = 2.0,
+) -> bool:
+    if artifact.duration_seconds is None:
         return False
     if artifact.duration_seconds + tolerance_seconds >= window[1]:
         return True

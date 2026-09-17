@@ -390,6 +390,68 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
         self.assertFalse(result.eligible)
         self.assertEqual("observation_not_current_extraction", result.reason_code)
 
+    def test_exact_older_profile_observation_remains_eligible(self) -> None:
+        self.database.add_extraction_result(
+            video_id=self.video.id,
+            version=2,
+            proposed_text_path=str(self.paths.root / "proposed-v2.md"),
+            proposed_json_path=str(self.proposed_path),
+        )
+        self.payload["final_disposition"] = {"status": "rejected_no_sermon"}
+        self.payload["sermon_window"] = {
+            "source": "hybrid_llm",
+            "start_seconds": 240.0,
+            "end_seconds": 1700.0,
+        }
+        self._write_payload()
+
+        with patch(
+            "pastor_transcript_extractor.speaker_pair_eligibility."
+            "get_verified_normalized_media_artifact",
+            return_value=self.media,
+        ) as verified_media:
+            result = assess_automatic_speaker_observation(
+                self.database,
+                self.video.id,
+                observation_id=self.observation.id,
+            )
+
+        self.assertTrue(result.eligible)
+        self.assertEqual(self.observation.id, result.observation.id)
+        verified_media.assert_called_once_with(
+            self.database,
+            self.video.id,
+            verification_cache=None,
+            required_window=(
+                self.observation.start_seconds,
+                self.observation.end_seconds,
+            ),
+        )
+
+    def test_exact_older_profile_observation_respects_invalidation(self) -> None:
+        self.database.add_extraction_result(
+            video_id=self.video.id,
+            version=2,
+            proposed_text_path=str(self.paths.root / "proposed-v2.md"),
+            proposed_json_path=str(self.proposed_path),
+        )
+        self.database.add_speaker_observation_review_event(
+            observation_id=self.observation.id,
+            action="invalid",
+            reviewer="reviewer",
+            reason="invalidated after review",
+            event_fingerprint="invalidated-observation",
+        )
+
+        result = assess_automatic_speaker_observation(
+            self.database,
+            self.video.id,
+            observation_id=self.observation.id,
+        )
+
+        self.assertFalse(result.eligible)
+        self.assertEqual("reviewed_invalid", result.reason_code)
+
     def test_observation_with_obsolete_window_boundaries_is_excluded(self) -> None:
         self.payload["sermon_window"] = {
             "source": "hybrid_llm",
