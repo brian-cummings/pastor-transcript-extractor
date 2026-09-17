@@ -6337,121 +6337,133 @@ def consolidate_source_profiles_command(
 
     signatures_by_observation_id = {}
     preparation_failures: list[tuple[int, str]] = []
-    offline_archive_observation_ids: set[int] = set()
-    canonical_clips_by_observation_id = {}
-    for candidate in candidates:
-        for observation_id in candidate.exemplar_observation_ids:
-            observation = database.get_speaker_observation(observation_id)
-            if observation is None:
-                preparation_failures.append((observation_id, "observation_missing"))
-                continue
-            eligibility = assess_automatic_speaker_observation(
+    prepared_ids_by_profile: dict[int, tuple[int, ...]] = {}
+
+    def prepare_observation(
+        candidate,
+        observation_id: int,
+    ) -> bool:
+        observation = database.get_speaker_observation(observation_id)
+        if observation is None:
+            preparation_failures.append((observation_id, "observation_missing"))
+            return False
+        eligibility = assess_automatic_speaker_observation(
+            database,
+            observation.video_id,
+            observation_id=observation.id,
+            verification_cache=verification_cache,
+            verify_media=True,
+        )
+        media_was_verified = eligibility.eligible
+        canonical_clips = ()
+        if eligibility.reason_code == "archived_media_unavailable":
+            # Archival finalization deliberately preserves immutable,
+            # checksum-bound canonical clips. Prefer those cached acoustic
+            # inputs over reopening a complete archived recording.
+            cached_eligibility = assess_automatic_speaker_observation(
                 database,
                 observation.video_id,
                 observation_id=observation.id,
-                verification_cache=verification_cache,
-                verify_media=True,
+                verify_media=False,
             )
-            media_was_verified = eligibility.eligible
-            if eligibility.reason_code == "archived_media_unavailable":
-                # Archival finalization deliberately preserves immutable,
-                # checksum-bound canonical clips. Prefer those cached acoustic
-                # inputs over reopening a complete archived recording.
-                cached_eligibility = assess_automatic_speaker_observation(
-                    database,
-                    observation.video_id,
-                    observation_id=observation.id,
-                    verify_media=False,
+            canonical_clips = (
+                load_verified_canonical_clips(
+                    cached_eligibility.media_artifact,
+                    observation,
                 )
-                canonical_clips = (
-                    load_verified_canonical_clips(
-                        cached_eligibility.media_artifact,
-                        observation,
-                    )
-                    if cached_eligibility.eligible
-                    and cached_eligibility.media_artifact is not None
-                    else ()
-                )
-                if canonical_clips:
-                    eligibility = cached_eligibility
-                    offline_archive_observation_ids.add(observation_id)
-                    canonical_clips_by_observation_id[observation_id] = (
-                        canonical_clips
-                    )
-            if (
-                not eligibility.eligible
-                or eligibility.observation is None
-                or eligibility.observation.id != observation.id
-                or eligibility.media_artifact is None
-            ):
-                preparation_failures.append(
-                    (observation_id, eligibility.reason_code)
-                )
-                continue
-            span_specs = eligibility.diagnostic_spans
-            if not span_specs:
-                preparation_failures.append(
-                    (observation_id, "diagnostic_spans_unavailable")
-                )
-                continue
-            acoustic_candidate = DiscoveryCandidate(
-                observation=observation,
-                audio_path=Path(eligibility.media_artifact.artifact_path),
-                source_id=source_id,
-                normalized_names=candidate.normalized_names,
-                span_specs=span_specs,
-                activity_qualify_spans=True,
-                normalized_audio_sha256=eligibility.media_artifact.content_sha256,
+                if cached_eligibility.eligible
+                and cached_eligibility.media_artifact is not None
+                else ()
             )
-            try:
-                if media_was_verified:
-                    span_cache.remember_verified_source(
-                        acoustic_candidate.audio_path,
-                        eligibility.media_artifact.content_sha256,
-                    )
-                if observation_id in canonical_clips_by_observation_id:
-                    signature = build_discovery_signature_from_canonical_clips(
-                        acoustic_candidate,
-                        canonical_clips_by_observation_id[observation_id],
-                        embedding_cache=embedding_cache,
-                        backend=backend,
-                        policy=policy_spec.policy,
-                    )
-                else:
-                    signature = build_discovery_signature(
-                        acoustic_candidate,
-                        span_cache=span_cache,
-                        embedding_cache=embedding_cache,
-                        backend=backend,
-                        policy=policy_spec.policy,
-                        activity_selection_cache=activity_selection_cache,
-                    )
-            except (OSError, RuntimeError, ValueError) as error:
-                preparation_failures.append(
-                    (
-                        observation_id,
-                        (
-                            "archived_media_unavailable_and_cached_"
-                            "acoustic_evidence_unavailable"
-                            if observation_id in offline_archive_observation_ids
-                            else str(error) or type(error).__name__
-                        ),
-                    )
+            if canonical_clips:
+                eligibility = cached_eligibility
+        if (
+            not eligibility.eligible
+            or eligibility.observation is None
+            or eligibility.observation.id != observation.id
+            or eligibility.media_artifact is None
+        ):
+            preparation_failures.append(
+                (observation_id, eligibility.reason_code)
+            )
+            return False
+        span_specs = eligibility.diagnostic_spans
+        if not span_specs:
+            preparation_failures.append(
+                (observation_id, "diagnostic_spans_unavailable")
+            )
+            return False
+        acoustic_candidate = DiscoveryCandidate(
+            observation=observation,
+            audio_path=Path(eligibility.media_artifact.artifact_path),
+            source_id=source_id,
+            normalized_names=candidate.normalized_names,
+            span_specs=span_specs,
+            activity_qualify_spans=True,
+            normalized_audio_sha256=eligibility.media_artifact.content_sha256,
+        )
+        try:
+            if media_was_verified:
+                span_cache.remember_verified_source(
+                    acoustic_candidate.audio_path,
+                    eligibility.media_artifact.content_sha256,
                 )
+            if canonical_clips:
+                signature = build_discovery_signature_from_canonical_clips(
+                    acoustic_candidate,
+                    canonical_clips,
+                    embedding_cache=embedding_cache,
+                    backend=backend,
+                    policy=policy_spec.policy,
+                )
+            else:
+                signature = build_discovery_signature(
+                    acoustic_candidate,
+                    span_cache=span_cache,
+                    embedding_cache=embedding_cache,
+                    backend=backend,
+                    policy=policy_spec.policy,
+                    activity_selection_cache=activity_selection_cache,
+                )
+        except (OSError, RuntimeError, ValueError) as error:
+            preparation_failures.append(
+                (observation_id, str(error) or type(error).__name__)
+            )
+            return False
+        signatures_by_observation_id[observation_id] = signature
+        return True
+
+    for candidate in candidates:
+        prepared_ids: list[int] = []
+        prepared_video_ids: set[int] = set()
+        observation_pool = tuple(
+            dict.fromkeys(
+                (*candidate.exemplar_observation_ids, *candidate.member_observation_ids)
+            )
+        )
+        for observation_id in observation_pool:
+            if len(prepared_ids) >= exemplars_per_profile:
+                break
+            observation = database.get_speaker_observation(observation_id)
+            if observation is None or observation.video_id in prepared_video_ids:
                 continue
-            signatures_by_observation_id[observation_id] = signature
+            if prepare_observation(candidate, observation_id):
+                prepared_ids.append(observation_id)
+                prepared_video_ids.add(observation.video_id)
+        prepared_ids_by_profile[candidate.profile_id] = tuple(prepared_ids)
 
     prepared_candidates = []
     failure_reason_by_observation_id = dict(preparation_failures)
     for candidate in candidates:
-        prepared_ids = tuple(
-            observation_id
-            for observation_id in candidate.exemplar_observation_ids
-            if observation_id in signatures_by_observation_id
-        )
+        prepared_ids = prepared_ids_by_profile[candidate.profile_id]
         if len(prepared_ids) < 2:
             failed_reasons: dict[str, list[int]] = {}
-            for observation_id in candidate.exemplar_observation_ids:
+            attempted_ids = {
+                observation_id
+                for observation_id, _reason in preparation_failures
+                if observation_id in candidate.member_observation_ids
+            }
+            for observation_id in sorted(attempted_ids):
                 reason = failure_reason_by_observation_id.get(observation_id)
                 if reason is not None:
                     failed_reasons.setdefault(reason, []).append(observation_id)
@@ -6527,6 +6539,8 @@ def consolidate_source_profiles_command(
             span_specs_a=left.span_specs,
             span_specs_b=right.span_specs,
             span_specs_are_activity_qualified=True,
+            prepared_spans_a=left.prepared_spans,
+            prepared_spans_b=right.prepared_spans,
             pair_diagnostic_cache=pair_diagnostic_cache,
         )
         return pair, result

@@ -881,6 +881,8 @@ def analyze_observation_pair(
     span_specs_a: Sequence[SpanSpec] | None = None,
     span_specs_b: Sequence[SpanSpec] | None = None,
     span_specs_are_activity_qualified: bool = False,
+    prepared_spans_a: Sequence[CachedSpan] | None = None,
+    prepared_spans_b: Sequence[CachedSpan] | None = None,
     pair_diagnostic_cache: PairDiagnosticCache | None = None,
 ) -> dict[str, Any]:
     base = {
@@ -893,7 +895,10 @@ def analyze_observation_pair(
     }
     if observation_a is None or observation_b is None:
         return {**base, "outcome": PairOutcome.INSUFFICIENT_EVIDENCE, "reason": "observation_unavailable"}
-    if audio_path_a is None or audio_path_b is None:
+    prepared_pair_supplied = (
+        prepared_spans_a is not None and prepared_spans_b is not None
+    )
+    if not prepared_pair_supplied and (audio_path_a is None or audio_path_b is None):
         return {**base, "outcome": PairOutcome.INSUFFICIENT_EVIDENCE, "reason": "local_audio_unavailable"}
     specs_a = tuple(span_specs_a) if span_specs_a is not None else select_diagnostic_spans(
         observation_a, count=span_count, duration_seconds=span_duration_seconds
@@ -904,18 +909,27 @@ def analyze_observation_pair(
     if not specs_a or not specs_b:
         return {**base, "outcome": PairOutcome.INSUFFICIENT_EVIDENCE, "reason": "observation_too_short"}
     try:
-        prepared_a = [
-            span_cache.prepare(
-                observation=observation_a, source_audio_path=audio_path_a, span=spec
-            )
-            for spec in specs_a
-        ]
-        prepared_b = [
-            span_cache.prepare(
-                observation=observation_b, source_audio_path=audio_path_b, span=spec
-            )
-            for spec in specs_b
-        ]
+        if prepared_pair_supplied:
+            prepared_a = list(prepared_spans_a or ())
+            prepared_b = list(prepared_spans_b or ())
+        else:
+            assert audio_path_a is not None and audio_path_b is not None
+            prepared_a = [
+                span_cache.prepare(
+                    observation=observation_a,
+                    source_audio_path=audio_path_a,
+                    span=spec,
+                )
+                for spec in specs_a
+            ]
+            prepared_b = [
+                span_cache.prepare(
+                    observation=observation_b,
+                    source_audio_path=audio_path_b,
+                    span=spec,
+                )
+                for spec in specs_b
+            ]
         valid_a = (
             prepared_a
             if span_specs_are_activity_qualified

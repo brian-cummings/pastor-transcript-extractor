@@ -25,6 +25,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
     EmbeddingCache,
     PairOutcome,
     SpanSpec,
+    measure_non_silent_fraction,
     observation_consistency_metrics,
     select_diagnostic_spans,
 )
@@ -83,6 +84,7 @@ class DiscoverySignature:
     signature_sha256: str
     span_specs: tuple[SpanSpec, ...] = ()
     span_selection: Mapping[str, Any] | None = None
+    prepared_spans: tuple[CachedSpan, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -480,6 +482,7 @@ def build_discovery_signature(
             SpanSpec(span.start_seconds, span.end_seconds) for span in valid
         ),
         span_selection=selection,
+        prepared_spans=tuple(valid),
     )
 
 
@@ -493,23 +496,45 @@ def build_discovery_signature_from_canonical_clips(
     span_count: int = 5,
 ) -> DiscoverySignature:
     """Build a signature from verified canonical clips while parent audio is offline."""
-    qualified = tuple(
-        sorted(
-            (
-                clip
-                for clip in clips
-                if clip.rms_dbfs >= TRANSCRIPT_SPAN_MINIMUM_THRESHOLD_DBFS
-                and (
-                    clip.non_silent_fraction is None
-                    or clip.non_silent_fraction
-                    >= TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION
-                )
+    ordered = tuple(sorted(clips, key=lambda clip: clip.start_seconds))
+    if not ordered:
+        raise ValueError("too_few_cached_canonical_clips")
+    reference_rms = _percentile_value(
+        sorted(clip.rms_dbfs for clip in ordered),
+        TRANSCRIPT_SPAN_ACTIVITY_REFERENCE_PERCENTILE,
+    )
+    silence_threshold = max(
+        TRANSCRIPT_SPAN_MINIMUM_THRESHOLD_DBFS,
+        min(
+            TRANSCRIPT_SPAN_MAXIMUM_THRESHOLD_DBFS,
+            reference_rms - TRANSCRIPT_SPAN_ACTIVITY_OFFSET_DB,
+        ),
+    )
+    rms_floor = silence_threshold - TRANSCRIPT_SPAN_RMS_MARGIN_DB
+    measured = tuple(
+        replace(
+            clip,
+            non_silent_fraction=measure_non_silent_fraction(
+                Path(clip.wav_path),
+                silence_threshold_dbfs=silence_threshold,
+                frame_duration_ms=30.0,
             ),
-            key=lambda clip: clip.start_seconds,
         )
+        for clip in ordered
+    )
+    qualified = tuple(
+        clip
+        for clip in measured
+        if clip.rms_dbfs >= rms_floor
+        and clip.non_silent_fraction is not None
+        and clip.non_silent_fraction
+        >= TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION
     )
     if len(qualified) < span_count:
-        raise ValueError("too_few_cached_canonical_clips")
+        raise ValueError(
+            "too_few_activity_qualified_canonical_clips: "
+            f"qualified={len(qualified)} required={span_count}"
+        )
     selected = tuple(
         qualified[
             round(index * (len(qualified) - 1) / (span_count - 1))
@@ -525,6 +550,12 @@ def build_discovery_signature_from_canonical_clips(
                 "candidate_span_count": len(clips),
                 "qualified_span_count": len(qualified),
                 "selected_span_count": len(selected),
+                "activity_reference_rms_dbfs": reference_rms,
+                "silence_threshold_dbfs": silence_threshold,
+                "minimum_clip_rms_dbfs": rms_floor,
+                "minimum_non_silent_fraction": (
+                    TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION
+                ),
             },
         ),
         embedding_cache=embedding_cache,
@@ -554,6 +585,7 @@ def build_discovery_signature_from_canonical_clips(
             for span in refined.spans
         ),
         span_selection=refined.selection,
+        prepared_spans=tuple(refined.spans),
     )
 
 
