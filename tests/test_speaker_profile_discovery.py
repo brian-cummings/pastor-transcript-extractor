@@ -39,7 +39,14 @@ class FakeActivitySpanCache:
         self.rms_by_start = rms_by_start
         self.activity_by_start = activity_by_start
 
-    def prepare(self, *, observation, source_audio_path, span):
+    def prepare(
+        self,
+        *,
+        observation,
+        source_audio_path,
+        span,
+        expected_source_audio_sha256=None,
+    ):
         return CachedSpan(
             observation_fingerprint=observation.input_fingerprint,
             start_seconds=span.start_seconds,

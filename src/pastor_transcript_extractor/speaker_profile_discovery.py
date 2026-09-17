@@ -154,6 +154,7 @@ class ActivityQualifiedSelectionCache:
                 span_cache=span_cache,
                 candidate_specs=candidate_specs,
                 requested_count=requested_count,
+                expected_source_audio_sha256=source_audio_sha256,
             )
             prepared = refine_activity_qualified_spans(
                 prepared,
@@ -413,6 +414,9 @@ def build_discovery_signature(
                     observation=candidate.observation,
                     source_audio_path=candidate.audio_path,
                     span=spec,
+                    expected_source_audio_sha256=(
+                        candidate.normalized_audio_sha256
+                    ),
                 )
                 for spec in cached_selection.span_specs
             )
@@ -424,6 +428,9 @@ def build_discovery_signature(
                 span_cache=span_cache,
                 candidate_specs=specs,
                 requested_count=span_count,
+                expected_source_audio_sha256=(
+                    candidate.normalized_audio_sha256
+                ),
             )
             qualified = refine_activity_qualified_spans(
                 qualified,
@@ -439,6 +446,9 @@ def build_discovery_signature(
                 observation=candidate.observation,
                 source_audio_path=candidate.audio_path,
                 span=span,
+                expected_source_audio_sha256=(
+                    candidate.normalized_audio_sha256
+                ),
             )
             for span in specs
         )
@@ -470,6 +480,80 @@ def build_discovery_signature(
             SpanSpec(span.start_seconds, span.end_seconds) for span in valid
         ),
         span_selection=selection,
+    )
+
+
+def build_discovery_signature_from_canonical_clips(
+    candidate: DiscoveryCandidate,
+    clips: Sequence[CachedSpan],
+    *,
+    embedding_cache: EmbeddingCache,
+    backend: EmbeddingBackend,
+    policy: DecisionPolicy,
+    span_count: int = 5,
+) -> DiscoverySignature:
+    """Build a signature from verified canonical clips while parent audio is offline."""
+    qualified = tuple(
+        sorted(
+            (
+                clip
+                for clip in clips
+                if clip.rms_dbfs >= TRANSCRIPT_SPAN_MINIMUM_THRESHOLD_DBFS
+                and (
+                    clip.non_silent_fraction is None
+                    or clip.non_silent_fraction
+                    >= TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION
+                )
+            ),
+            key=lambda clip: clip.start_seconds,
+        )
+    )
+    if len(qualified) < span_count:
+        raise ValueError("too_few_cached_canonical_clips")
+    selected = tuple(
+        qualified[
+            round(index * (len(qualified) - 1) / (span_count - 1))
+        ]
+        for index in range(span_count)
+    )
+    refined = refine_activity_qualified_spans(
+        ActivityQualifiedSpans(
+            spans=selected,
+            qualified_spans=qualified,
+            selection={
+                "version": "verified_canonical_clips_offline_v1",
+                "candidate_span_count": len(clips),
+                "qualified_span_count": len(qualified),
+                "selected_span_count": len(selected),
+            },
+        ),
+        embedding_cache=embedding_cache,
+        backend=backend,
+        policy=policy,
+    )
+    embeddings = tuple(
+        embedding_cache.get_or_compute(span, backend)[0]
+        for span in refined.spans
+    )
+    centroid = _normalized_centroid(embeddings)
+    signature_payload = {
+        "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
+        "observation_fingerprint": candidate.observation.input_fingerprint,
+        "model_fingerprint": backend.spec.fingerprint,
+        "span_wav_sha256s": [span.wav_sha256 for span in refined.spans],
+        "centroid_sha256": _sha256_json(centroid),
+    }
+    return DiscoverySignature(
+        candidate=candidate,
+        centroid=centroid,
+        span_evidence=tuple(_span_evidence(span) for span in refined.spans),
+        consistency_metrics=observation_consistency_metrics(embeddings),
+        signature_sha256=_sha256_json(signature_payload),
+        span_specs=tuple(
+            SpanSpec(span.start_seconds, span.end_seconds)
+            for span in refined.spans
+        ),
+        span_selection=refined.selection,
     )
 
 
@@ -611,6 +695,7 @@ def prepare_activity_qualified_spans(
     span_cache: AudioSpanCache,
     candidate_specs: Sequence[SpanSpec],
     requested_count: int = 5,
+    expected_source_audio_sha256: str | None = None,
     minimum_non_silent_fraction: float = (
         TRANSCRIPT_SPAN_MIN_NON_SILENT_FRACTION
     ),
@@ -623,6 +708,7 @@ def prepare_activity_qualified_spans(
             observation=observation,
             source_audio_path=audio_path,
             span=spec,
+            expected_source_audio_sha256=expected_source_audio_sha256,
         )
         for spec in candidate_specs
     )
