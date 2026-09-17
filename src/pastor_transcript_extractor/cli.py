@@ -6593,11 +6593,15 @@ def consolidate_source_profiles_command(
             artifact_path.with_name(f"proposal-{index}.html"),
         )
         console.print(
-            f"Proposal {index}: profiles={','.join(str(value) for value in proposal.profile_ids)} "
-            f"comparisons={proposal.comparison_count} weakest_pair="
-            f"{proposal.weakest_observation_pair[0]}-{proposal.weakest_observation_pair[1]} "
-            f"packet={packet_path}"
+            f"MERGE PROPOSAL {index}: profiles "
+            f"{','.join(str(value) for value in proposal.profile_ids)} would "
+            "become one canonical profile after approval. "
+            f"All {proposal.comparison_count} required comparisons passed; "
+            "review the weakest observation pair "
+            f"{proposal.weakest_observation_pair[0]}-"
+            f"{proposal.weakest_observation_pair[1]}."
         )
+        console.print(f"Review packet: {packet_path}")
         if not apply:
             continue
         if open_packet:
@@ -6625,9 +6629,43 @@ def consolidate_source_profiles_command(
             console.print(f"Merged cohort into canonical profile {canonical_id}.")
     console.print(f"Wrote source-profile consolidation artifact to {artifact_path}")
     if not apply:
+        if plan.proposals:
+            apply_command = shlex.join(
+                [
+                    "pte",
+                    "identity",
+                    "consolidate-source-profiles",
+                    "--source-id",
+                    str(source_id),
+                    "--apply",
+                    "--reviewer",
+                    "REVIEWER_ID",
+                    "--base-dir",
+                    str(paths.root),
+                ]
+            )
+            console.print(
+                "NEXT ACTION: No merge has occurred. Run the following command "
+                "to revalidate the proposal, open one weakest-edge review "
+                "packet per cohort, and receive an approval prompt:"
+            )
+            console.print(apply_command)
+            console.print(
+                "Approve a prompt only when the two weakest-edge recordings "
+                "contain the same principal speaker. Approval merges every "
+                "profile listed in that proposal; deferral writes no registry "
+                "mutation."
+            )
+        else:
+            console.print(
+                "NO MERGE ACTION: No proposal passed the complete-link policy. "
+                "No registry mutations were made, and --apply has nothing to "
+                "review."
+            )
+    elif not plan.proposals:
         console.print(
-            "No registry mutations were made; rerun with --apply and "
-            "--reviewer to review proposals."
+            "NO MERGE ACTION: Revalidation produced no proposals, so no "
+            "approval prompts or registry mutations were created."
         )
     return artifact_path
 

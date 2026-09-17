@@ -981,6 +981,12 @@ pte identity consolidate-source-profiles \
   --base-dir /path/to/app-data
 ```
 
+When proposals exist, the planning run prints this exact next command with the
+selected source and application-data path filled in. The apply run revalidates
+the evidence, opens the weakest-edge packet by default, and asks once whether
+to merge every profile listed in that proposal. If no proposal passes, the
+command explicitly prints `NO MERGE ACTION`; running `--apply` is unnecessary.
+
 Approval merges the whole coherent cohort through the existing append-only
 membership and redirect events and records the exact acoustic artifact hash in
 their reason. Deferral writes no registry mutation. The apply path revalidates
