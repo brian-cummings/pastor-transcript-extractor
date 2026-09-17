@@ -957,11 +957,16 @@ pte identity consolidate-source-profiles \
 
 Omit `--plan-only` to run the pinned acoustic policy across up to three
 independent recording exemplars per profile and write an immutable proposal
-artifact. Source membership only retrieves the cohort and never counts as
-identity evidence. A profile pair qualifies only when every cross-exemplar
-comparison is `same_speaker`; missing, ambiguous, different-speaker, conflicting
-name, and reviewed-difference evidence fail closed. Multi-profile proposals are
-complete-link at the profile level, so every profile pair must qualify.
+artifact. A valid observation remains eligible after its parent normalized
+audio is archived: consolidation uses its checksum-bound canonical clips when
+they are available, without reopening the full recording. If neither verified
+canonical clips nor parent audio are available, the command reports the exact
+observation-level reason without invalidating membership. Source membership
+only retrieves the cohort and never counts as identity evidence. A profile pair
+qualifies only when every cross-exemplar comparison is `same_speaker`; missing,
+ambiguous, different-speaker, conflicting name, and reviewed-difference
+evidence fail closed. Multi-profile proposals are complete-link at the profile
+level, so every profile pair must qualify.
 
 Apply proposals with one human check of each cohort's acoustically weakest edge:
 

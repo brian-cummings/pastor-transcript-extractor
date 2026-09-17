@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +16,7 @@ from pastor_transcript_extractor.extraction import _record_speaker_evidence_safe
 from pastor_transcript_extractor.media_archive import (
     CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
     _canonical_clip_preparation_status,
+    load_verified_canonical_clips,
     prepare_canonical_audio,
     write_canonical_clip_preparation_manifest,
 )
@@ -409,6 +412,51 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
                     "older-policy",
                 ),
             )
+
+    def test_verified_canonical_clips_load_without_parent_audio(self) -> None:
+        clip = self.root / "canonical.wav"
+        clip.write_bytes(b"immutable-canonical-clip")
+        clip_sha256 = hashlib.sha256(clip.read_bytes()).hexdigest()
+        clip.with_suffix(".json").write_text(
+            json.dumps(
+                {
+                    "input": {
+                        "observation_fingerprint": (
+                            self.observation.input_fingerprint
+                        )
+                    },
+                    "span": {
+                        "observation_fingerprint": (
+                            self.observation.input_fingerprint
+                        ),
+                        "start_seconds": 100.0,
+                        "end_seconds": 112.0,
+                        "wav_path": str(clip.resolve()),
+                        "wav_sha256": clip_sha256,
+                        "duration_seconds": 12.0,
+                        "rms_dbfs": -30.0,
+                        "clipped_fraction": 0.0,
+                        "non_silent_fraction": 0.8,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        write_canonical_clip_preparation_manifest(
+            self.paths,
+            self.artifact,
+            self.observation,
+            clip_paths=(clip,),
+        )
+
+        loaded = load_verified_canonical_clips(
+            self.artifact,
+            self.observation,
+        )
+
+        self.assertEqual(1, len(loaded))
+        self.assertEqual(clip_sha256, loaded[0].wav_sha256)
+        self.assertTrue(loaded[0].cache_hit)
 
     def test_existing_valid_manifest_accepts_review_clip_variation(self) -> None:
         first_clip = self.root / "canonical-first.wav"

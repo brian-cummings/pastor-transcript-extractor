@@ -28,6 +28,7 @@ from pastor_transcript_extractor.media_artifacts import (
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AcousticEvidenceUnavailableError,
     AudioSpanCache,
+    CachedSpan,
 )
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
@@ -1201,6 +1202,55 @@ def _canonical_clip_preparation_status(artifact, observation, policy_version: st
         if _canonical_clip_payload_is_current(payload):
             return "current"
     return "stale" if saw_manifest else "missing"
+
+
+def load_verified_canonical_clips(
+    artifact: MediaArtifact,
+    observation,
+    *,
+    policy_version: str = CANONICAL_CLIP_PREPARATION_POLICY_VERSION,
+) -> tuple[CachedSpan, ...]:
+    """Load immutable observation-bound clips without opening parent audio."""
+    directory = Path(artifact.manifest_path).parent / "canonical-clips"
+    expected = {
+        "normalized_audio_sha256": artifact.content_sha256,
+        "observation_fingerprint": observation.input_fingerprint,
+        "observation_window": {
+            "start_seconds": observation.start_seconds,
+            "end_seconds": observation.end_seconds,
+        },
+        "policy_version": policy_version,
+    }
+    for path in sorted(directory.glob("*.json")) if directory.is_dir() else ():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if payload.get("input") != expected or not _canonical_clip_payload_is_current(
+            payload
+        ):
+            continue
+        prepared: list[CachedSpan] = []
+        try:
+            for item in payload["clips"]:
+                clip_path = Path(str(item["path"])).expanduser().resolve()
+                companion = json.loads(
+                    clip_path.with_suffix(".json").read_text(encoding="utf-8")
+                )
+                span = dict(companion["span"])
+                if (
+                    companion.get("input", {}).get("observation_fingerprint")
+                    != observation.input_fingerprint
+                    or Path(str(span.get("wav_path", ""))).expanduser().resolve()
+                    != clip_path
+                    or span.get("wav_sha256") != item.get("sha256")
+                ):
+                    raise ValueError("canonical clip provenance mismatch")
+                prepared.append(CachedSpan(**{**span, "cache_hit": True}))
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        return tuple(sorted(prepared, key=lambda clip: clip.start_seconds))
+    return ()
 
 
 def _canonical_clip_payload_is_current(payload: object) -> bool:
