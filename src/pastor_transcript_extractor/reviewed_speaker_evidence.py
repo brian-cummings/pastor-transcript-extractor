@@ -31,6 +31,7 @@ SAME_SOURCE_PROFILE_CONSOLIDATION_VERSION = (
 SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR = (
     "system:human-on-loop-profile-consolidation"
 )
+SOURCE_PROFILE_COHORT_REVIEW_VERSION = "source_profile_cohort_review_v1"
 _DERIVED_QUALIFICATION_REASON_PREFIX = (
     "Derived from consistent speaker-pair qualification review(s): "
 )
@@ -796,6 +797,127 @@ def _merge_profiles(
                 ),
             )
     return canonical_profile_id
+
+
+def merge_reviewed_source_profile_cohort(
+    database: Database,
+    *,
+    source_id: int,
+    profile_ids: set[int],
+    reviewer: str,
+    evidence_sha256: str,
+    conflicts: list[str] | None = None,
+) -> int | None:
+    """Apply one human-approved, acoustically complete-link source cohort.
+
+    The shared source only bounds candidate retrieval. Before delegating to the
+    normal append-only merge path, this function independently verifies that
+    every profile is canonical and has an effective member on the requested
+    source. The immutable acoustic artifact hash is recorded in every event.
+    """
+    reported_conflicts = conflicts if conflicts is not None else []
+    clean_reviewer = reviewer.strip()
+    clean_sha256 = evidence_sha256.strip().lower()
+    if not clean_reviewer:
+        raise ValueError("source-profile cohort approval requires a reviewer")
+    if len(clean_sha256) != 64 or any(
+        character not in "0123456789abcdef" for character in clean_sha256
+    ):
+        raise ValueError("source-profile cohort approval requires a SHA-256 artifact hash")
+    if len(profile_ids) < 2:
+        raise ValueError("source-profile cohort approval requires at least two profiles")
+
+    videos = {video.id: video for video in database.list_videos()}
+    claims_by_observation: dict[int, set[str]] = {}
+    for claim in database.list_speaker_name_claims():
+        if (
+            claim.observation_id is not None
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        ):
+            claims_by_observation.setdefault(claim.observation_id, set()).add(
+                claim.normalized_name.strip()
+            )
+    linked_profile_ids = {
+        database.resolve_speaker_profile_id(profile_id)
+        for pastor in database.list_pastors()
+        if (profile_id := database.get_pastor_speaker_profile_id(pastor.id))
+        is not None
+    }
+    resolved_profile_ids: set[int] = set()
+    cohort_names: set[str] = set()
+    for profile_id in sorted(profile_ids):
+        resolved = database.resolve_speaker_profile_id(profile_id)
+        if resolved != profile_id:
+            reported_conflicts.append(
+                f"source cohort profile {profile_id} redirects to {resolved}"
+            )
+            return None
+        if (
+            profile_id in linked_profile_ids
+            or database.list_effective_name_claim_ids_for_profile(profile_id)
+        ):
+            reported_conflicts.append(
+                f"source cohort profile {profile_id} is no longer anonymous"
+            )
+            return None
+        member_ids = database.list_effective_observation_ids_for_profile(
+            profile_id
+        )
+        cohort_names.update(
+            name
+            for observation_id in member_ids
+            for name in claims_by_observation.get(observation_id, ())
+        )
+        has_source_member = any(
+            observation is not None
+            and observation.video_id in videos
+            and videos[observation.video_id].source_id == source_id
+            for observation_id in database.list_effective_observation_ids_for_profile(
+                profile_id
+            )
+            for observation in (database.get_speaker_observation(observation_id),)
+        )
+        if not has_source_member:
+            reported_conflicts.append(
+                f"source cohort profile {profile_id} has no effective member on source {source_id}"
+            )
+            return None
+        resolved_profile_ids.add(resolved)
+
+    if len(cohort_names) > 1:
+        reported_conflicts.append(
+            "source cohort has conflicting explicit attributions: "
+            + ", ".join(sorted(cohort_names))
+        )
+        return None
+
+    event_key = _sha256(
+        {
+            "version": SOURCE_PROFILE_COHORT_REVIEW_VERSION,
+            "source_id": source_id,
+            "profile_ids": sorted(resolved_profile_ids),
+            "evidence_sha256": clean_sha256,
+            "reviewer": clean_reviewer,
+        }
+    )
+    reason = (
+        "Human-approved source-local profile cohort after complete-link "
+        f"multi-exemplar acoustic review; source={source_id}; "
+        f"evidence_sha256={clean_sha256}"
+    )
+    canonical_id = _merge_profiles(
+        database,
+        profile_ids=resolved_profile_ids,
+        reviewer=clean_reviewer,
+        reason=reason,
+        event_namespace=SOURCE_PROFILE_COHORT_REVIEW_VERSION,
+        event_key=event_key,
+        conflicts=reported_conflicts,
+    )
+    if canonical_id is not None:
+        _detach_superseded_profile_members(database)
+    return canonical_id
 
 
 def consolidate_same_source_attributed_profiles(

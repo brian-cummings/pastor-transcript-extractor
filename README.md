@@ -862,6 +862,8 @@ reviewed different-speaker constraints block consolidation.
 - `pte pastor add <slug> <display-name>`
 - `pte pastor list`
 - `pte identity profile-status --base-dir <app-data>`
+- `pte identity consolidate-source-profiles --list-sources`
+- `pte identity consolidate-source-profiles --source-id <id> --plan-only`
 - `pte identity association-audit --base-dir <app-data>`
 - `pte identity coordinate --all --base-dir <app-data>`
 - `pte identity coordinate --youtube-video-id <id> --execute-shadow --base-dir <app-data>`
@@ -922,6 +924,51 @@ Pass `--profile-id` with `--selection-objective profile-growth` to constrain
 nomination to a canonical profile. Targeted selection does not depend on the
 global prewarmed pool; it scans eligible metadata and prepares only the selected
 pair on demand. Redirected profile IDs are resolved before selection.
+
+When one source contains several fractured anonymous profiles, preview the
+eligible source inventory first:
+
+```bash
+pte identity consolidate-source-profiles \
+  --list-sources \
+  --base-dir /path/to/app-data
+```
+
+The read-only table defaults to sources with at least two safe, canonical,
+anonymous profiles and reports profile, member, exemplar, excluded-profile, and
+maximum acoustic-comparison counts. Use `--minimum-profiles 1` to include
+single-profile sources. Select a source and preview its bounded cohort with:
+
+```bash
+pte identity consolidate-source-profiles \
+  --source-id SOURCE_ID \
+  --plan-only \
+  --base-dir /path/to/app-data
+```
+
+Omit `--plan-only` to run the pinned acoustic policy across up to three
+independent recording exemplars per profile and write an immutable proposal
+artifact. Source membership only retrieves the cohort and never counts as
+identity evidence. A profile pair qualifies only when every cross-exemplar
+comparison is `same_speaker`; missing, ambiguous, different-speaker, conflicting
+name, and reviewed-difference evidence fail closed. Multi-profile proposals are
+complete-link at the profile level, so every profile pair must qualify.
+
+Apply proposals with one human check of each cohort's acoustically weakest edge:
+
+```bash
+pte identity consolidate-source-profiles \
+  --source-id SOURCE_ID \
+  --apply \
+  --reviewer REVIEWER_ID \
+  --base-dir /path/to/app-data
+```
+
+Approval merges the whole coherent cohort through the existing append-only
+membership and redirect events and records the exact acoustic artifact hash in
+their reason. Deferral writes no registry mutation. The apply path revalidates
+canonical membership, anonymity, source overlap, attribution consistency, and
+reviewed different-speaker constraints immediately before merging.
 
 Profile-state experiments use an explicit before/after ledger. The
 `automation-readiness` review command automatically creates the baseline for
