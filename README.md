@@ -959,8 +959,11 @@ Omit `--plan-only` to run the pinned acoustic policy across up to three
 independent recording exemplars per profile and write an immutable proposal
 artifact. A valid observation remains eligible after its parent normalized
 audio is archived: consolidation uses its checksum-bound canonical clips when
-they are available, without reopening the full recording. If neither verified
-canonical clips nor parent audio are available, the command reports the exact
+they are available, without reopening the full recording during signature or
+pair analysis. If an initial exemplar cannot supply the five policy-required
+activity-qualified clips, the bounded selector tries additional independent
+members from that profile before excluding it. If neither verified canonical
+clips nor parent audio are available, the command reports the exact
 observation-level reason without invalidating membership. Source membership
 only retrieves the cohort and never counts as identity evidence. A profile pair
 qualifies only when every cross-exemplar comparison is `same_speaker`; missing,

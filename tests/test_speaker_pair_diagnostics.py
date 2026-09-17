@@ -151,6 +151,49 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
 
         self.assertNotEqual("too_few_valid_spans", result["reason"])
 
+    def test_prepared_spans_do_not_reopen_parent_audio(self):
+        spans = tuple(
+            SpanSpec(float(start), float(start + 12))
+            for start in (200, 400)
+        )
+        cache = FakeSpanCache(self.root)
+        prepared_a = tuple(
+            cache.prepare(
+                observation=self.a,
+                source_audio_path=Path("offline-a.wav"),
+                span=span,
+            )
+            for span in spans
+        )
+        prepared_b = tuple(
+            cache.prepare(
+                observation=self.b,
+                source_audio_path=Path("offline-b.wav"),
+                span=span,
+            )
+            for span in spans
+        )
+
+        result = analyze_observation_pair(
+            observation_a=self.a,
+            observation_b=self.b,
+            audio_path_a=None,
+            audio_path_b=None,
+            span_cache=FakeSpanCache(self.root, fail=True),
+            embedding_cache=EmbeddingCache(self.root / "prepared-cache"),
+            backend=FakeBackend(
+                {"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)}
+            ),
+            policy=approved_policy(),
+            span_specs_a=spans,
+            span_specs_b=spans,
+            span_specs_are_activity_qualified=True,
+            prepared_spans_a=prepared_a,
+            prepared_spans_b=prepared_b,
+        )
+
+        self.assertEqual(PairOutcome.SAME_SPEAKER, result["outcome"])
+
     def test_without_approved_policy_valid_analysis_abstains_and_replays_exactly(self):
         backend = FakeBackend({"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)})
         first = self._analyze(backend)
