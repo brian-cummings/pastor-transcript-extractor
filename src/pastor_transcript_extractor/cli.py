@@ -399,6 +399,15 @@ from pastor_transcript_extractor.speaker_profile_promotion import (
     plan_candidate_confirmations,
     plan_discovery_promotions,
 )
+from pastor_transcript_extractor.source_profile_consolidation import (
+    apply_source_profile_consolidation,
+    build_source_profile_consolidation_plan,
+    list_source_profile_cohorts,
+    source_profile_candidates,
+    source_profile_consolidation_payload,
+    write_source_profile_consolidation_artifact,
+    write_source_profile_consolidation_packet,
+)
 from pastor_transcript_extractor.speaker_shadow_association import (
     DISCOVERY_PROFILE_REASON,
     SHADOW_ASSOCIATION_VERSION,
@@ -6139,6 +6148,418 @@ def association_audit_command(
     console.print(f"Wrote association coverage audit to {result.report_path}")
     if strict and not result.ok:
         raise typer.Exit(code=1)
+
+
+@identity_app.command(
+    "consolidate-source-profiles",
+    help=(
+        "Plan or human-approve complete-link consolidation of anonymous "
+        "profiles sharing a source."
+    ),
+)
+def consolidate_source_profiles_command(
+    source_id: int | None = typer.Option(
+        None,
+        "--source-id",
+        min=1,
+        help="Source whose anonymous profiles should be compared.",
+    ),
+    list_sources: bool = typer.Option(
+        False,
+        "--list-sources",
+        help="List sources with eligible anonymous profile cohorts.",
+    ),
+    minimum_profiles: int = typer.Option(
+        2,
+        "--minimum-profiles",
+        min=1,
+        help="Minimum eligible profile count shown by --list-sources.",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Inventory the source cohort without acoustic execution or writes.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Prompt for one human approval per complete-link cohort and merge it.",
+    ),
+    reviewer: str | None = typer.Option(
+        None,
+        help="Stable reviewer identifier; required with --apply.",
+    ),
+    exemplars_per_profile: int = typer.Option(
+        3,
+        min=2,
+        max=5,
+        help="Independent recording exemplars compared for each profile.",
+    ),
+    jobs: int = typer.Option(2, "--jobs", min=1),
+    open_packet: bool = typer.Option(
+        True,
+        "--open-packet/--no-open-packet",
+        help="Open the weakest-edge review packet before an apply prompt.",
+    ),
+    model_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        )
+    ),
+    model_sha256: str = typer.Option(DEFAULT_SPEAKER_MODEL_SHA256),
+    policy_path: Path = typer.Option(
+        Path(
+            "evaluation/speaker-pairs/policies/"
+            "campplus-development-candidate-v1.json"
+        )
+    ),
+    evaluation_root: Path = typer.Option(Path("evaluation/speaker-pairs")),
+    cache_dir: Path = typer.Option(Path("evaluation/speaker-pairs/cache")),
+    output_root: Path = typer.Option(
+        Path("evaluation/source-profile-consolidation/runs")
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> Path | None:
+    if (source_id is None) == (not list_sources):
+        raise typer.BadParameter(
+            "Pass exactly one of --source-id or --list-sources"
+        )
+    if list_sources and apply:
+        raise typer.BadParameter("--list-sources cannot be combined with --apply")
+    if plan_only and apply:
+        raise typer.BadParameter("--plan-only cannot be combined with --apply")
+    if apply and not (reviewer or "").strip():
+        raise typer.BadParameter("--apply requires --reviewer")
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    database = Database(paths.database, readonly=not apply)
+    if source_id is not None and database.get_source_by_id(source_id) is None:
+        raise typer.BadParameter(f"Unknown source: {source_id}")
+    try:
+        reviewed_evidence = load_reviewed_speaker_evidence(
+            evaluation_root.expanduser().resolve()
+        )
+        if list_sources:
+            summaries = list_source_profile_cohorts(
+                database,
+                reviewed_evidence,
+                exemplars_per_profile=exemplars_per_profile,
+                minimum_profiles=minimum_profiles,
+            )
+            table = Table(title="Eligible anonymous profile cohorts by source")
+            table.add_column("Source", justify="right", no_wrap=True)
+            table.add_column("Profiles", justify="right", no_wrap=True)
+            table.add_column("Members", justify="right", no_wrap=True)
+            table.add_column("Exemplars", justify="right", no_wrap=True)
+            table.add_column("Max pairs", justify="right", no_wrap=True)
+            table.add_column("Excluded", justify="right", no_wrap=True)
+            table.add_column("Source reference", no_wrap=True)
+            for summary in summaries:
+                table.add_row(
+                    str(summary.source_id),
+                    str(summary.profile_count),
+                    str(summary.member_count),
+                    str(summary.exemplar_count),
+                    str(summary.comparison_upper_bound),
+                    str(summary.excluded_profile_count),
+                    summary.source_reference,
+                )
+            console.print(table)
+            console.print(
+                f"Sources shown={len(summaries)}; minimum_profiles="
+                f"{minimum_profiles}. Read-only inventory; source is retrieval "
+                "context only."
+            )
+            return None
+        policy_spec = load_shadow_policy(policy_path)
+        assert source_id is not None
+        candidates, excluded = source_profile_candidates(
+            database,
+            reviewed_evidence,
+            source_id=source_id,
+            exemplars_per_profile=exemplars_per_profile,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    pair_upper_bound = sum(
+        len(left.exemplar_observation_ids) * len(right.exemplar_observation_ids)
+        for index, left in enumerate(candidates)
+        for right in candidates[index + 1 :]
+    )
+    console.print(
+        "Source-profile consolidation plan: "
+        f"source={source_id} profiles={len(candidates)} "
+        f"exemplars={sum(len(item.exemplar_observation_ids) for item in candidates)} "
+        f"pair_comparison_upper_bound={pair_upper_bound} excluded={len(excluded)}."
+    )
+    for candidate in candidates:
+        names = ",".join(candidate.normalized_names) or "anonymous"
+        console.print(
+            f"- profile {candidate.profile_id}: members="
+            f"{len(candidate.member_observation_ids)} recordings="
+            f"{candidate.recording_count} exemplars="
+            f"{len(candidate.exemplar_observation_ids)} names={names}"
+        )
+    for profile_id, reason in excluded:
+        console.print(f"- excluded profile {profile_id}: {reason}")
+    if plan_only:
+        console.print(
+            "Plan only; source was used only to retrieve the cohort. No audio, "
+            "acoustic comparisons, artifacts, or registry records were created."
+        )
+        return None
+    if len(candidates) < 2:
+        raise typer.BadParameter(
+            "Fewer than two safe profiles with independent exemplars share this source."
+        )
+
+    cache_root = cache_dir.expanduser().resolve()
+    verification_cache = MediaVerificationCache(
+        cache_root,
+        fallback_roots=(cache_root / "media-verification",),
+    )
+    try:
+        backend = SherpaOnnxEmbeddingBackend(
+            model_path.expanduser().resolve(),
+            expected_sha256=model_sha256,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    span_cache = AudioSpanCache(cache_root)
+    embedding_cache = EmbeddingCache(cache_root)
+    pair_diagnostic_cache = PairDiagnosticCache(cache_root)
+    activity_selection_cache = ActivityQualifiedSelectionCache(cache_root)
+
+    signatures_by_observation_id = {}
+    preparation_failures: list[tuple[int, str]] = []
+    for candidate in candidates:
+        for observation_id in candidate.exemplar_observation_ids:
+            observation = database.get_speaker_observation(observation_id)
+            if observation is None:
+                preparation_failures.append((observation_id, "observation_missing"))
+                continue
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                observation.video_id,
+                verification_cache=verification_cache,
+                verify_media=True,
+            )
+            if (
+                not eligibility.eligible
+                or eligibility.observation is None
+                or eligibility.observation.id != observation.id
+                or eligibility.media_artifact is None
+            ):
+                preparation_failures.append(
+                    (
+                        observation_id,
+                        (
+                            eligibility.reason_code
+                            if not eligibility.eligible
+                            else "profile_member_observation_not_current"
+                        ),
+                    )
+                )
+                continue
+            extraction = database.get_latest_extraction_result_for_video(
+                observation.video_id
+            )
+            try:
+                proposed_payload = (
+                    json.loads(
+                        Path(extraction.proposed_json_path).read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                    if extraction is not None and extraction.proposed_json_path
+                    else None
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                proposed_payload = None
+            if not isinstance(proposed_payload, dict):
+                preparation_failures.append(
+                    (observation_id, "speech_grounding_artifact_unavailable")
+                )
+                continue
+            span_specs = select_transcript_grounded_span_candidates(
+                proposed_payload,
+                observation,
+            )
+            if not span_specs:
+                preparation_failures.append(
+                    (observation_id, "speech_grounded_spans_unavailable")
+                )
+                continue
+            acoustic_candidate = DiscoveryCandidate(
+                observation=observation,
+                audio_path=Path(eligibility.media_artifact.artifact_path),
+                source_id=source_id,
+                normalized_names=candidate.normalized_names,
+                span_specs=span_specs,
+                activity_qualify_spans=True,
+                normalized_audio_sha256=eligibility.media_artifact.content_sha256,
+            )
+            try:
+                span_cache.remember_verified_source(
+                    acoustic_candidate.audio_path,
+                    eligibility.media_artifact.content_sha256,
+                )
+                signature = build_discovery_signature(
+                    acoustic_candidate,
+                    span_cache=span_cache,
+                    embedding_cache=embedding_cache,
+                    backend=backend,
+                    policy=policy_spec.policy,
+                    activity_selection_cache=activity_selection_cache,
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                preparation_failures.append(
+                    (
+                        observation_id,
+                        str(error) or type(error).__name__,
+                    )
+                )
+                continue
+            signatures_by_observation_id[observation_id] = signature
+
+    prepared_candidates = []
+    for candidate in candidates:
+        prepared_ids = tuple(
+            observation_id
+            for observation_id in candidate.exemplar_observation_ids
+            if observation_id in signatures_by_observation_id
+        )
+        if len(prepared_ids) < 2:
+            console.print(
+                f"Excluded profile {candidate.profile_id}: fewer than two "
+                "usable acoustic exemplars."
+            )
+            continue
+        prepared_candidates.append(
+            replace(candidate, exemplar_observation_ids=prepared_ids)
+        )
+    if len(prepared_candidates) < 2:
+        raise typer.BadParameter(
+            "Fewer than two profiles retained two usable acoustic exemplars."
+        )
+
+    comparison_pairs = [
+        tuple(sorted((left_id, right_id)))
+        for index, left in enumerate(prepared_candidates)
+        for right in prepared_candidates[index + 1 :]
+        for left_id in left.exemplar_observation_ids
+        for right_id in right.exemplar_observation_ids
+    ]
+
+    def compare_pair(
+        pair: tuple[int, int],
+    ) -> tuple[tuple[int, int], Mapping[str, Any]]:
+        left = signatures_by_observation_id[pair[0]]
+        right = signatures_by_observation_id[pair[1]]
+        result = analyze_observation_pair(
+            observation_a=left.candidate.observation,
+            observation_b=right.candidate.observation,
+            audio_path_a=left.candidate.audio_path,
+            audio_path_b=right.candidate.audio_path,
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
+            policy=policy_spec.policy,
+            span_specs_a=left.span_specs,
+            span_specs_b=right.span_specs,
+            span_specs_are_activity_qualified=True,
+            pair_diagnostic_cache=pair_diagnostic_cache,
+        )
+        return pair, result
+
+    comparisons: dict[tuple[int, int], Mapping[str, Any]] = {}
+    if jobs == 1:
+        for pair in comparison_pairs:
+            key, result = compare_pair(pair)
+            comparisons[key] = result
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(jobs, len(comparison_pairs))
+        ) as executor:
+            for key, result in executor.map(compare_pair, comparison_pairs):
+                comparisons[key] = result
+
+    plan = build_source_profile_consolidation_plan(
+        database,
+        source_id=source_id,
+        candidates=prepared_candidates,
+        comparisons=comparisons,
+    )
+    plan = replace(
+        plan,
+        excluded_profiles=excluded,
+    )
+    payload = source_profile_consolidation_payload(
+        plan,
+        comparisons=comparisons,
+        model_fingerprint=backend.spec.fingerprint,
+        policy_fingerprint=policy_spec.artifact_sha256,
+        preparation_failures=preparation_failures,
+    )
+    result_sha256 = str(payload["result_sha256"])
+    artifact_path = write_source_profile_consolidation_artifact(
+        output_root.expanduser().resolve()
+        / result_sha256[:16]
+        / f"{result_sha256}.json",
+        payload,
+    )
+    console.print(
+        f"Source-profile acoustic plan complete: comparisons={len(comparisons)} "
+        f"proposals={len(plan.proposals)} cache_hits={pair_diagnostic_cache.hits} "
+        f"cache_misses={pair_diagnostic_cache.misses}."
+    )
+    for index, proposal in enumerate(plan.proposals, start=1):
+        packet_path = write_source_profile_consolidation_packet(
+            database,
+            proposal,
+            artifact_path.with_name(f"proposal-{index}.html"),
+        )
+        console.print(
+            f"Proposal {index}: profiles={','.join(str(value) for value in proposal.profile_ids)} "
+            f"comparisons={proposal.comparison_count} weakest_pair="
+            f"{proposal.weakest_observation_pair[0]}-{proposal.weakest_observation_pair[1]} "
+            f"packet={packet_path}"
+        )
+        if not apply:
+            continue
+        if open_packet:
+            webbrowser.open(packet_path.as_uri())
+        if not typer.confirm(
+            "Approve this complete-link cohort as one speaker?",
+            default=False,
+        ):
+            console.print("Cohort deferred; no registry mutation was written.")
+            continue
+        conflicts: list[str] = []
+        canonical_id = apply_source_profile_consolidation(
+            database,
+            plan=plan,
+            proposal=proposal,
+            reviewer=(reviewer or "").strip(),
+            artifact_sha256=result_sha256,
+            conflicts=conflicts,
+        )
+        if canonical_id is None:
+            console.print(
+                "Cohort was not merged: " + "; ".join(conflicts or ["unknown conflict"])
+            )
+        else:
+            console.print(f"Merged cohort into canonical profile {canonical_id}.")
+    console.print(f"Wrote source-profile consolidation artifact to {artifact_path}")
+    if not apply:
+        console.print(
+            "No registry mutations were made; rerun with --apply and "
+            "--reviewer to review proposals."
+        )
+    return artifact_path
 
 
 @identity_app.command(
