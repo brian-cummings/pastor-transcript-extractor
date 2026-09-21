@@ -533,6 +533,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             reason="second component",
             review_event_key="second-profile",
         )
+        claims = {}
         for profile, fingerprints in (
             (first, ("a", "b")),
             (second, ("a-v2", "c", "d")),
@@ -547,7 +548,22 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
                     reason="test membership",
                     review_event_key=f"attach:{profile.id}:{observation.id}",
                 )
-                self._add_explicit_claim(fingerprint, "alex example")
+                claims[fingerprint] = self._add_explicit_claim(
+                    fingerprint,
+                    "alex example",
+                )
+        record_name_claim_review(
+            self.database,
+            claim_id=claims["a-v2"].id,
+            profile_id=first.id,
+            attach=True,
+            reviewer="reviewer",
+            reason=(
+                "Historical claim review predates replacement-observation "
+                "profile membership"
+            ),
+            review_event_key="historical-claim-review",
+        )
 
         consolidated = consolidate_same_source_attributed_profiles(
             self.database
@@ -557,6 +573,12 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertEqual(
             first.id,
             self.database.get_effective_profile_redirect(second.id),
+        )
+        self.assertEqual(
+            ("attach", first.id),
+            self.database.get_effective_name_claim_review(
+                claims["a-v2"].id
+            ),
         )
         effective_member_ids = self.database.list_effective_observation_ids_for_profile(
             first.id
