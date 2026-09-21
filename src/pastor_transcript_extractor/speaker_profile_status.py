@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedSpeakerEvidence,
@@ -44,6 +44,7 @@ class StatusNeed:
 class ProfileStatus:
     profile_id: int
     member_count: int
+    superseded_member_count: int
     recording_count: int
     source_count: int
     names: tuple[str, ...]
@@ -74,6 +75,8 @@ class DiscoveredProfileStatus:
 @dataclass(frozen=True, slots=True)
 class ProfilePipelineStatus:
     registry_observation_count: int
+    current_observation_count: int
+    superseded_observation_count: int
     qualification_counts: Mapping[str, int]
     review_event_count: int
     pair_relation_count: int
@@ -159,9 +162,26 @@ def build_profile_pipeline_status(
     discovery_report: Mapping[str, Any] | None = None,
     discovery_report_path: Path | None = None,
     eligible_automatic_observation_ids: frozenset[int] | None = None,
+    automatic_eligibility_resolver: Callable[[int, int], bool] | None = None,
+    review_actions: Mapping[int, str] | None = None,
 ) -> ProfilePipelineStatus:
+    if (
+        eligible_automatic_observation_ids is not None
+        and automatic_eligibility_resolver is not None
+    ):
+        raise ValueError(
+            "pass either eligible automatic observation ids or an eligibility "
+            "resolver, not both"
+        )
     observations = database.list_speaker_observations()
     observations_by_id = {observation.id: observation for observation in observations}
+    latest_observation_id_by_video: dict[int, int] = {}
+    for observation in observations:
+        latest_observation_id_by_video[observation.video_id] = max(
+            observation.id,
+            latest_observation_id_by_video.get(observation.video_id, 0),
+        )
+    current_observation_ids = frozenset(latest_observation_id_by_video.values())
     videos_by_id = {video.id: video for video in database.list_videos()}
     claims = database.list_speaker_name_claims()
     explicit_names_by_observation: dict[int, set[str]] = defaultdict(set)
@@ -180,14 +200,19 @@ def build_profile_pipeline_status(
             )
             explicit_claim_ids_by_observation[claim.observation_id].add(claim.id)
 
+    effective_review_actions = (
+        database.list_effective_observation_review_actions()
+        if review_actions is None
+        else review_actions
+    )
     review_actions = {
-        observation.id: (
-            database.get_effective_observation_review_action(observation.id)
-            or "unreviewed"
-        )
+        observation.id: effective_review_actions.get(observation.id, "unreviewed")
         for observation in observations
     }
-    qualification_counts = Counter(review_actions.values())
+    qualification_counts = Counter(
+        review_actions[observation_id]
+        for observation_id in current_observation_ids
+    )
     all_profiles = database.list_speaker_profiles()
     reviewed_profiles = [
         profile
@@ -465,12 +490,6 @@ def build_profile_pipeline_status(
             attribution_conflict_profile_ids if blocked else merge_profile_ids
         )
         target.update(profile_ids)
-    latest_observation_id_by_video: dict[int, int] = {}
-    for observation in observations:
-        latest_observation_id_by_video[observation.video_id] = max(
-            observation.id,
-            latest_observation_id_by_video.get(observation.video_id, 0),
-        )
     fully_superseded_merge_profile_ids = {
         profile_id
         for profile_id in merge_profile_ids
@@ -500,6 +519,18 @@ def build_profile_pipeline_status(
             and observation.id not in attached_observation_ids
         )
     }
+    if automatic_eligibility_resolver is not None:
+        eligible_automatic_observation_ids = frozenset(
+            observation_id
+            for observation_id in all_ungrouped_single_ids
+            if (
+                observation_id in observations_by_id
+                and automatic_eligibility_resolver(
+                    observation_id,
+                    observations_by_id[observation_id].video_id,
+                )
+            )
+        )
     ungrouped_single_ids = (
         all_ungrouped_single_ids
         if eligible_automatic_observation_ids is None
@@ -747,6 +778,14 @@ def build_profile_pipeline_status(
             ProfileStatus(
                 profile_id=profile_id,
                 member_count=len(member_ids),
+                superseded_member_count=sum(
+                    observation_id in observations_by_id
+                    and latest_observation_id_by_video.get(
+                        observations_by_id[observation_id].video_id
+                    )
+                    != observation_id
+                    for observation_id in member_ids
+                ),
                 recording_count=len(video_ids),
                 source_count=len(source_ids),
                 names=names,
@@ -922,6 +961,10 @@ def build_profile_pipeline_status(
 
     return ProfilePipelineStatus(
         registry_observation_count=len(observations),
+        current_observation_count=len(current_observation_ids),
+        superseded_observation_count=(
+            len(observations) - len(current_observation_ids)
+        ),
         qualification_counts=dict(qualification_counts),
         review_event_count=evidence.review_event_count,
         pair_relation_count=len(evidence.pair_relations),

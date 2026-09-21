@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from pastor_transcript_extractor.speaker_review_invalidation import (
     filter_active_pair_artifacts,
@@ -65,6 +65,8 @@ class SpeakerNegativeWindowAudit:
 def audit_speaker_negative_windows(
     database: Database,
     evaluation_root: Path,
+    *,
+    review_actions: Mapping[int, str] | None = None,
 ) -> SpeakerNegativeWindowAudit:
     """Derive a read-only recovery queue from active immutable pair reviews."""
     root = evaluation_root.expanduser().resolve()
@@ -121,8 +123,27 @@ def audit_speaker_negative_windows(
     # Manual registry qualifications are append-only evidence too. Most are
     # projected from pair reviews, but include any standalone negative action
     # so the audit agrees with registry totals instead of silently omitting it.
+    if review_actions is not None:
+        effective_review_actions = review_actions
+    elif hasattr(database, "list_effective_observation_review_actions"):
+        effective_review_actions = (
+            database.list_effective_observation_review_actions()
+        )
+    else:
+        # Preserve compatibility with the small protocol fakes used by the
+        # audit tests and by downstream callers.
+        effective_review_actions = {
+            observation.id: action
+            for observation in database.list_speaker_observations()
+            if (
+                action := database.get_effective_observation_review_action(
+                    observation.id
+                )
+            )
+            is not None
+        }
     for observation in database.list_speaker_observations():
-        action = database.get_effective_observation_review_action(observation.id)
+        action = effective_review_actions.get(observation.id)
         if action not in {"multiple_speakers", "invalid"}:
             continue
         if observation.input_fingerprint in negative_by_fingerprint:

@@ -197,10 +197,13 @@ pte identity profile-status \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-`profile-status` is read-only. It reports registry observations by effective
-qualification, reviewed pair relations and components, canonical and retired
-profiles, profile members, attached name claims, configured-identity links,
-and the reviewed single-speaker observations that remain ungrouped. Its media
+`profile-status` is read-only. It reports current observations by effective
+qualification while separately showing the immutable registry total and the
+number of superseded observation rows. Profile evidence distinguishes immutable
+member rows from distinct source recordings. It also reports reviewed pair
+relations and components, canonical and retired profiles, attached name claims,
+configured-identity links, and the reviewed single-speaker observations that
+remain ungrouped. Its media
 readiness inventory uses authoritative registered artifact metadata and does
 not stat or hash every local or SMB audio file. Actual pair selection and
 acoustic processing still verify media bytes and fail closed. It also

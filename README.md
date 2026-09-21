@@ -1092,8 +1092,12 @@ summary reports pair-cache hits and misses so incremental work is visible.
 
 `pte identity profile-status` uses authoritative registered media metadata for
 its read-only inventory; it does not stat or hash every local or SMB audio
-artifact. Commands that select, compare, or consume audio continue to verify
-the actual media bytes and fail closed when they are unavailable or corrupt.
+artifact. Its qualification funnel counts only the latest observation for each
+recording and reports superseded immutable registry rows separately. Profile
+evidence labels immutable member rows separately from distinct recordings so
+re-extraction history is not presented as independent recording evidence.
+Commands that select, compare, or consume audio continue to verify the actual
+media bytes and fail closed when they are unavailable or corrupt.
 
 The same run now projects qualifying current proposals into a separate,
 append-only machine-evidence ledger. It requires a current accepted-sermon
