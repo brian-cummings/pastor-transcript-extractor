@@ -252,6 +252,8 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         status = build_profile_pipeline_status(self.database, evidence)
 
         self.assertEqual(status.registry_observation_count, 5)
+        self.assertEqual(status.current_observation_count, 5)
+        self.assertEqual(status.superseded_observation_count, 0)
         self.assertEqual(status.qualification_counts["qualified_single_speaker"], 3)
         self.assertEqual(status.qualification_counts["multiple_speakers"], 1)
         self.assertEqual(status.qualification_counts["unreviewed"], 1)
@@ -273,6 +275,70 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(status.pending_qualification_count, 0)
         self.assertEqual(status.pending_same_component_count, 0)
         self.assertEqual(status.pending_difference_count, 0)
+
+    def test_observation_totals_separate_current_rows_from_immutable_history(
+        self,
+    ) -> None:
+        original = self._observation("original")
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same recording",
+            review_event_key="profile-history",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=original.id,
+            reviewer="reviewer",
+            reason="reviewed version",
+            review_event_key="attach-original",
+        )
+        record_observation_disposition(
+            self.database,
+            observation_id=original.id,
+            action="multiple_speakers",
+            reviewer="reviewer",
+            reason="pair review",
+            review_event_key="single-original",
+        )
+        replacement = self.database.add_speaker_observation(
+            video_id=original.video_id,
+            extraction_result_id=original.extraction_result_id,
+            role=original.role,
+            multiplicity_state=original.multiplicity_state,
+            start_seconds=original.start_seconds,
+            end_seconds=original.end_seconds,
+            artifact_path="replacement.speaker.json",
+            content_sha256="replacement-content",
+            extractor_version=original.extractor_version,
+            input_fingerprint="replacement",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=replacement.id,
+            reviewer="reviewer",
+            reason="current reviewed version",
+            review_event_key="attach-replacement",
+        )
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+        )
+
+        self.assertEqual(status.registry_observation_count, 2)
+        self.assertEqual(status.current_observation_count, 1)
+        self.assertEqual(status.superseded_observation_count, 1)
+        self.assertEqual(
+            status.qualification_counts,
+            {"qualified_single_speaker": 1},
+        )
+        self.assertEqual(status.profile_member_count, 2)
+        self.assertEqual(status.profiles[0].member_count, 2)
+        self.assertEqual(status.profiles[0].superseded_member_count, 1)
+        self.assertEqual(status.profiles[0].recording_count, 1)
 
     def test_same_name_profiles_are_reported_as_merge_candidates(self) -> None:
         observations = [self._observation(key) for key in ("a", "b", "c", "d")]
@@ -495,6 +561,61 @@ class SpeakerProfileStatusTests(unittest.TestCase):
         self.assertEqual(1, status.stale_or_ineligible_ungrouped_single_count)
         self.assertEqual(0, status.attributed_frontier_observation_count)
         self.assertEqual(1, status.unmatched_named_ungrouped_single_count)
+
+    def test_automatic_eligibility_only_checks_qualified_ungrouped_observations(
+        self,
+    ) -> None:
+        member = self._observation("member")
+        eligible = self._observation("eligible")
+        ineligible = self._observation("ineligible")
+        unreviewed = self._observation("unreviewed")
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="same pair",
+            review_event_key="profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=member.id,
+            reviewer="reviewer",
+            reason="same pair",
+            review_event_key="attach-member",
+        )
+        for observation in (member, eligible, ineligible):
+            record_observation_disposition(
+                self.database,
+                observation_id=observation.id,
+                action="qualified_single_speaker",
+                reviewer="reviewer",
+                reason="pair review",
+                review_event_key=f"single-{observation.id}",
+            )
+        checked: list[tuple[int, int]] = []
+
+        def resolver(observation_id: int, video_id: int) -> bool:
+            checked.append((observation_id, video_id))
+            return observation_id == eligible.id
+
+        status = build_profile_pipeline_status(
+            self.database,
+            ReviewedSpeakerEvidence({}, {}, {}, {}, 0),
+            automatic_eligibility_resolver=resolver,
+        )
+
+        self.assertCountEqual(
+            checked,
+            [
+                (eligible.id, eligible.video_id),
+                (ineligible.id, ineligible.video_id),
+            ],
+        )
+        self.assertEqual(status.ungrouped_single_count, 1)
+        self.assertEqual(status.stale_or_ineligible_ungrouped_single_count, 1)
+        self.assertEqual(status.qualification_counts["unreviewed"], 1)
+        self.assertNotIn((member.id, member.video_id), checked)
+        self.assertNotIn((unreviewed.id, unreviewed.video_id), checked)
 
     def test_automatic_ready_profile_routes_frontier_to_identity_run(self) -> None:
         members = [self._observation(key) for key in ("a", "b", "c")]

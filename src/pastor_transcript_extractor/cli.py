@@ -5256,29 +5256,35 @@ def profile_status_command(
             discovery_report_path = candidate_path
             break
         database = Database(paths.database, readonly=True)
-        eligible_automatic_observation_ids = frozenset(
-            eligibility.observation.id
-            for video in database.list_videos()
-            if (
-                eligibility := assess_automatic_speaker_observation(
-                    database,
-                    video.id,
-                    verify_media=False,
-                )
-            ).eligible
-            and eligibility.observation is not None
-        )
+        review_actions = database.list_effective_observation_review_actions()
+
+        def automatic_eligibility_resolver(
+            observation_id: int,
+            video_id: int,
+        ) -> bool:
+            eligibility = assess_automatic_speaker_observation(
+                database,
+                video_id,
+                verify_media=False,
+            )
+            return (
+                eligibility.eligible
+                and eligibility.observation is not None
+                and eligibility.observation.id == observation_id
+            )
+
         status = build_profile_pipeline_status(
             database,
             evidence,
             discovery_report=discovery_report,
             discovery_report_path=discovery_report_path,
-            eligible_automatic_observation_ids=(
-                eligible_automatic_observation_ids
-            ),
+            automatic_eligibility_resolver=automatic_eligibility_resolver,
+            review_actions=review_actions,
         )
         negative_window_audit = audit_speaker_negative_windows(
-            database, evaluation_root.expanduser().resolve()
+            database,
+            evaluation_root.expanduser().resolve(),
+            review_actions=review_actions,
         )
         assignment_report = machine_assignment_report(database)
     except (OSError, ValueError, json.JSONDecodeError) as error:
@@ -5287,7 +5293,9 @@ def profile_status_command(
     qualifications = status.qualification_counts
     console.print("[bold]Speaker identity status[/bold]")
     console.print(
-        f"Observations: {status.registry_observation_count} | "
+        f"Observations: current={status.current_observation_count} "
+        f"superseded={status.superseded_observation_count} "
+        f"registry={status.registry_observation_count} | current "
         f"single={qualifications.get('qualified_single_speaker', 0)} "
         f"multiple={qualifications.get('multiple_speakers', 0)} "
         f"invalid={qualifications.get('invalid', 0)} "
@@ -5362,9 +5370,14 @@ def profile_status_command(
             str(profile.profile_id),
             profile.state,
             (
-                f"{profile.member_count} obs / "
+                f"{profile.member_count} member rows / "
                 f"{profile.recording_count} rec / "
                 f"{profile.source_count} src"
+                + (
+                    f" ({profile.superseded_member_count} older rows)"
+                    if profile.superseded_member_count
+                    else ""
+                )
             ),
             (
                 "human-on-loop"

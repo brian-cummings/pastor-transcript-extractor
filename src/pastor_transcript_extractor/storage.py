@@ -4920,6 +4920,26 @@ class Database:
         event = self.get_effective_observation_review_event(observation_id)
         return event[0] if event is not None else None
 
+    def list_effective_observation_review_actions(self) -> dict[int, str]:
+        """Return the latest review action for every reviewed observation."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event.observation_id, event.action
+                FROM speaker_observation_review_events event
+                JOIN (
+                    SELECT observation_id, MAX(id) AS event_id
+                    FROM speaker_observation_review_events
+                    GROUP BY observation_id
+                ) latest ON latest.event_id = event.id
+                ORDER BY event.observation_id
+                """
+            ).fetchall()
+        return {
+            int(row["observation_id"]): str(row["action"])
+            for row in rows
+        }
+
     def get_effective_observation_review_event(
         self, observation_id: int
     ) -> tuple[str, str, str] | None:
