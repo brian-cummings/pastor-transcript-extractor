@@ -10261,8 +10261,8 @@ def _exemplar_preparation_initial_blocker(
         and assessed_observation_id != profile_observation_id
     ):
         return (
-            "observation_currency",
-            "profile_member_observation_superseded",
+            "observation_consistency",
+            "assessed_observation_mismatch",
         )
     stage = (
         "extraction_lookup"

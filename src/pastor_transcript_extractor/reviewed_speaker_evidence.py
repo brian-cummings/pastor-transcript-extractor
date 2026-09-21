@@ -31,6 +31,10 @@ SAME_SOURCE_PROFILE_CONSOLIDATION_VERSION = (
 SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR = (
     "system:human-on-loop-profile-consolidation"
 )
+LINEAGE_MEMBERSHIP_RESTORATION_VERSION = "reviewed_lineage_membership_restoration_v1"
+_AUTOMATIC_SUPERSESSION_DETACH_REASON_PREFIX = (
+    "Superseded observation removed from effective profile membership; "
+)
 SOURCE_PROFILE_COHORT_REVIEW_VERSION = "source_profile_cohort_review_v1"
 _DERIVED_QUALIFICATION_REASON_PREFIX = (
     "Derived from consistent speaker-pair qualification review(s): "
@@ -386,6 +390,10 @@ def sync_reviewed_speaker_evidence(
                 f"different pair {fingerprint_a}, {fingerprint_b}: {error}"
             )
 
+    # Apply current invalidation and different-speaker evidence before repairing
+    # historical lineage, so new contradictory reviews remain hard guards.
+    _restore_automatically_detached_lineage_members(database, conflicts=conflicts)
+
     different_pairs = {
         pair
         for pair, relation in evidence.pair_relations.items()
@@ -641,6 +649,7 @@ def _merge_profiles(
     event_namespace: str,
     event_key: str,
     conflicts: list[str],
+    preferred_profile_id: int | None = None,
 ) -> int | None:
     ordered_profile_ids = sorted(profile_ids)
     profiles_by_id = {
@@ -691,6 +700,8 @@ def _merge_profiles(
     canonical_profile_id = (
         next(iter(linked_profile_ids))
         if linked_profile_ids
+        else preferred_profile_id
+        if preferred_profile_id in profile_ids
         else min(reviewed_profile_ids)
         if reviewed_profile_ids
         else ordered_profile_ids[0]
@@ -915,8 +926,6 @@ def merge_reviewed_source_profile_cohort(
         event_key=event_key,
         conflicts=reported_conflicts,
     )
-    if canonical_id is not None:
-        _detach_superseded_profile_members(database)
     return canonical_id
 
 
@@ -1081,57 +1090,151 @@ def consolidate_same_source_attributed_profiles(
         )
         if canonical_id is not None:
             merged_groups.append(tuple(sorted(component)))
-    _detach_superseded_profile_members(database)
     return tuple(merged_groups)
 
 
-def _detach_superseded_profile_members(database: Database) -> int:
-    """Keep one effective profile member per recording when its replacement exists.
+def _restore_automatically_detached_lineage_members(
+    database: Database,
+    *,
+    conflicts: list[str],
+) -> int:
+    """Undo legacy machine detaches whose only basis was supersession.
 
-    Immutable observations remain in the registry and the appended detach event
-    preserves their former membership. We only remove a superseded member when
-    the profile already contains that recording's current observation.
+    Supersession identifies the current processing version; it does not negate
+    reviewed identity evidence. Explicit invalidation, different-speaker
+    constraints, incompatible attribution, or attachment to another canonical
+    profile still prevent restoration.
     """
-    detached = 0
-    for profile in database.list_speaker_profiles():
+    restored = 0
+    different_pairs = set(database.list_effective_observation_difference_pairs())
+    for (
+        detach_event_id,
+        profile_id,
+        observation_id,
+        action,
+        reviewer,
+        reason,
+    ) in database.list_effective_profile_observation_events():
         if (
-            profile.created_reason not in _MERGEABLE_PROFILE_REASONS
-            or database.resolve_speaker_profile_id(profile.id) != profile.id
+            action != "detach"
+            or reviewer != SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR
+            or not reason.startswith(_AUTOMATIC_SUPERSESSION_DETACH_REASON_PREFIX)
         ):
             continue
-        member_ids = database.list_effective_observation_ids_for_profile(
-            profile.id
+        observation = database.get_speaker_observation(observation_id)
+        if observation is None:
+            continue
+        disposition = database.get_effective_observation_review_action(
+            observation_id
         )
-        member_ids_by_video: dict[int, set[int]] = {}
-        for observation_id in member_ids:
-            observation = database.get_speaker_observation(observation_id)
-            if observation is not None:
-                member_ids_by_video.setdefault(observation.video_id, set()).add(
-                    observation.id
+        if disposition not in (None, "qualified_single_speaker"):
+            continue
+        canonical_profile_id = database.resolve_speaker_profile_id(profile_id)
+        attached_canonical_ids = {
+            database.resolve_speaker_profile_id(value)
+            for value in database.list_effective_profile_ids_for_observation(
+                observation_id
+            )
+        }
+        other_profile_ids = attached_canonical_ids - {canonical_profile_id}
+        if other_profile_ids:
+            lineage_profile_ids = {canonical_profile_id, *other_profile_ids}
+            lineage_members = {
+                member_id
+                for lineage_profile_id in lineage_profile_ids
+                for member_id in database.list_effective_observation_ids_for_profile(
+                    lineage_profile_id
                 )
-        for video_id, video_member_ids in member_ids_by_video.items():
-            current = database.get_latest_speaker_observation_for_video(video_id)
-            if current is None or current.id not in video_member_ids:
+            }
+            lineage_names: set[str] = set()
+            for member_id in lineage_members:
+                member = database.get_speaker_observation(member_id)
+                if member is None:
+                    continue
+                lineage_names.update(
+                    claim.normalized_name.strip()
+                    for claim in database.list_speaker_name_claims_for_video(
+                        member.video_id
+                    )
+                    if claim.observation_id == member_id
+                    and claim.explicit_speaker_attribution
+                    and claim.normalized_name.strip()
+                )
+            if len(lineage_names) > 1:
                 continue
-            for observation_id in sorted(video_member_ids - {current.id}):
-                record_observation_review(
-                    database,
-                    profile_id=profile.id,
-                    observation_id=observation_id,
-                    attach=False,
-                    reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
-                    reason=(
-                        "Superseded observation removed from effective profile "
-                        f"membership; current observation is {current.id}"
-                    ),
-                    review_event_key=(
-                        f"{SAME_SOURCE_PROFILE_CONSOLIDATION_VERSION}:"
-                        f"superseded-member-detach:{profile.id}:"
-                        f"{observation_id}:{current.id}"
-                    ),
+            merged_profile_id = _merge_profiles(
+                database,
+                profile_ids=lineage_profile_ids,
+                reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+                reason=(
+                    "Reconciled profiles separated only because historical "
+                    "observation supersession was treated as invalidation"
+                ),
+                event_namespace=LINEAGE_MEMBERSHIP_RESTORATION_VERSION,
+                event_key=_sha256(
+                    {
+                        "detach_event_id": detach_event_id,
+                        "profile_ids": sorted(lineage_profile_ids),
+                    }
+                ),
+                conflicts=conflicts,
+                preferred_profile_id=canonical_profile_id,
+            )
+            if merged_profile_id is None:
+                continue
+            canonical_profile_id = merged_profile_id
+        if database.is_observation_attached(canonical_profile_id, observation_id):
+            continue
+        member_ids = database.list_effective_observation_ids_for_profile(
+            canonical_profile_id
+        )
+        if any(
+            tuple(sorted((observation_id, member_id))) in different_pairs
+            for member_id in member_ids
+        ):
+            continue
+        observation_names = {
+            claim.normalized_name.strip()
+            for claim in database.list_speaker_name_claims_for_video(
+                observation.video_id
+            )
+            if claim.observation_id == observation_id
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        }
+        profile_names: set[str] = set()
+        for member_id in member_ids:
+            member = database.get_speaker_observation(member_id)
+            if member is None:
+                continue
+            profile_names.update(
+                claim.normalized_name.strip()
+                for claim in database.list_speaker_name_claims_for_video(
+                    member.video_id
                 )
-                detached += 1
-    return detached
+                if claim.observation_id == member_id
+                and claim.explicit_speaker_attribution
+                and claim.normalized_name.strip()
+            )
+        if len(observation_names | profile_names) > 1:
+            continue
+        record_observation_review(
+            database,
+            profile_id=canonical_profile_id,
+            observation_id=observation_id,
+            attach=True,
+            reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+            reason=(
+                "Restored reviewed historical membership because observation "
+                "supersession alone is not invalidation"
+            ),
+            review_event_key=(
+                f"{LINEAGE_MEMBERSHIP_RESTORATION_VERSION}:"
+                f"{detach_event_id}:{canonical_profile_id}:{observation_id}"
+            ),
+        )
+        restored += 1
+    return restored
 
 
 def _reconcile_profile_attributions(

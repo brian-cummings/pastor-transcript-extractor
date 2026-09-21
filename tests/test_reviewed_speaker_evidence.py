@@ -8,6 +8,7 @@ from pathlib import Path
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.models import SourceType, VideoStatus
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
+    SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
     consolidate_same_source_attributed_profiles,
     load_reviewed_speaker_evidence,
     sync_reviewed_speaker_evidence,
@@ -18,6 +19,7 @@ from pastor_transcript_extractor.speaker_registry import (
     ensure_configured_pastor_profile,
     record_name_claim_review,
     record_observation_disposition,
+    record_observation_review,
 )
 from pastor_transcript_extractor.speaker_review_invalidation import (
     invalidate_reviews_for_videos,
@@ -500,7 +502,7 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
             )
         )
 
-    def test_same_source_consolidation_detaches_superseded_member(self) -> None:
+    def test_same_source_consolidation_preserves_superseded_member(self) -> None:
         original = self.observations["a"]
         replacement_extraction = self.database.add_extraction_result(
             video_id=original.video_id,
@@ -583,9 +585,9 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         effective_member_ids = self.database.list_effective_observation_ids_for_profile(
             first.id
         )
-        self.assertNotIn(original.id, effective_member_ids)
+        self.assertIn(original.id, effective_member_ids)
         self.assertIn(replacement.id, effective_member_ids)
-        self.assertEqual(4, len(effective_member_ids))
+        self.assertEqual(5, len(effective_member_ids))
         self.assertEqual(
             4,
             len(
@@ -595,6 +597,226 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
                 }
             ),
         )
+
+    def test_sync_restores_legacy_automatic_supersession_detach(self) -> None:
+        observation = self.observations["a"]
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="reviewed identity",
+            review_event_key="lineage-profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=observation.id,
+            reviewer="reviewer",
+            reason="reviewed membership",
+            review_event_key="lineage-attach",
+        )
+        record_observation_review(
+            self.database,
+            profile_id=profile.id,
+            observation_id=observation.id,
+            attach=False,
+            reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+            reason=(
+                "Superseded observation removed from effective profile "
+                "membership; current observation is 999"
+            ),
+            review_event_key="legacy-supersession-detach",
+        )
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(1, result.membership_events_added)
+        self.assertTrue(
+            self.database.is_observation_attached(profile.id, observation.id)
+        )
+        repeated = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+        self.assertEqual(0, repeated.membership_events_added)
+
+    def test_sync_does_not_restore_explicitly_invalidated_observation(self) -> None:
+        observation = self.observations["a"]
+        profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="reviewed identity",
+            review_event_key="invalid-lineage-profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=profile.id,
+            observation_id=observation.id,
+            reviewer="reviewer",
+            reason="reviewed membership",
+            review_event_key="invalid-lineage-attach",
+        )
+        record_observation_review(
+            self.database,
+            profile_id=profile.id,
+            observation_id=observation.id,
+            attach=False,
+            reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+            reason=(
+                "Superseded observation removed from effective profile "
+                "membership; current observation is 999"
+            ),
+            review_event_key="invalid-lineage-detach",
+        )
+        record_observation_disposition(
+            self.database,
+            observation_id=observation.id,
+            action="invalid",
+            reviewer="reviewer",
+            reason="explicit invalidation",
+            review_event_key="explicit-invalidation",
+        )
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(0, result.membership_events_added)
+        self.assertFalse(
+            self.database.is_observation_attached(profile.id, observation.id)
+        )
+
+    def test_sync_merges_profiles_split_only_by_legacy_supersession(self) -> None:
+        observation = self.observations["a"]
+        original_profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="original lineage",
+            review_event_key="split-original-profile",
+        )
+        replacement_profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="replacement lineage",
+            review_event_key="split-replacement-profile",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=original_profile.id,
+            observation_id=observation.id,
+            reviewer="reviewer",
+            reason="original membership",
+            review_event_key="split-original-attach",
+        )
+        record_observation_review(
+            self.database,
+            profile_id=original_profile.id,
+            observation_id=observation.id,
+            attach=False,
+            reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+            reason=(
+                "Superseded observation removed from effective profile "
+                "membership; current observation is 999"
+            ),
+            review_event_key="split-legacy-detach",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=replacement_profile.id,
+            observation_id=observation.id,
+            reviewer="reviewer",
+            reason="replacement membership",
+            review_event_key="split-replacement-attach",
+        )
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(2, result.membership_events_added)
+        self.assertEqual(
+            original_profile.id,
+            self.database.resolve_speaker_profile_id(replacement_profile.id),
+        )
+        self.assertTrue(
+            self.database.is_observation_attached(
+                original_profile.id,
+                observation.id,
+            )
+        )
+
+    def test_current_different_review_blocks_legacy_lineage_merge(self) -> None:
+        observation_a = self.observations["a"]
+        observation_b = self.observations["b"]
+        original_profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="original lineage",
+            review_event_key="different-original-profile",
+        )
+        replacement_profile = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="replacement lineage",
+            review_event_key="different-replacement-profile",
+        )
+        for observation in (observation_a, observation_b):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=original_profile.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="original membership",
+                review_event_key=f"different-original-attach:{observation.id}",
+            )
+        record_observation_review(
+            self.database,
+            profile_id=original_profile.id,
+            observation_id=observation_a.id,
+            attach=False,
+            reviewer=SAME_SOURCE_PROFILE_CONSOLIDATION_ACTOR,
+            reason=(
+                "Superseded observation removed from effective profile "
+                "membership; current observation is 999"
+            ),
+            review_event_key="different-legacy-detach",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=replacement_profile.id,
+            observation_id=observation_a.id,
+            reviewer="reviewer",
+            reason="replacement membership",
+            review_event_key="different-replacement-attach",
+        )
+        self._write_fixture("different-lineage", "a", "b", "different_speaker")
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(
+            replacement_profile.id,
+            self.database.resolve_speaker_profile_id(replacement_profile.id),
+        )
+        self.assertFalse(
+            self.database.is_observation_attached(
+                original_profile.id,
+                observation_a.id,
+            )
+        )
+        self.assertTrue(
+            any(
+                "different-speaker constraint" in conflict
+                for conflict in result.conflicts
+            )
+        )
+
     def test_confirmed_bridge_merges_reviewed_profiles_and_reconciles_name(
         self,
     ) -> None:
