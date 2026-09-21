@@ -112,7 +112,7 @@ class ExemplarPreparationStateTests(unittest.TestCase):
             ),
         )
 
-    def test_superseded_profile_member_requires_identity_review(self):
+    def test_assessed_observation_mismatch_requires_identity_review(self):
         self.assertEqual(
             (
                 "human_review_required",
@@ -120,8 +120,8 @@ class ExemplarPreparationStateTests(unittest.TestCase):
                 False,
             ),
             exemplar_failure_policy(
-                "observation_currency",
-                "profile_member_observation_superseded",
+                "observation_consistency",
+                "assessed_observation_mismatch",
             ),
         )
 

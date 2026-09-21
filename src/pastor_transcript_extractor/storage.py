@@ -4798,6 +4798,36 @@ class Database:
             ).fetchone()
         return row is not None and str(row["action"]) == "attach"
 
+    def list_effective_profile_observation_events(
+        self,
+    ) -> list[tuple[int, int, int, str, str, str]]:
+        """Return the latest membership event for every profile/observation pair."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event.id, event.profile_id, event.observation_id,
+                       event.action, event.reviewer, event.reason
+                FROM profile_observation_events event
+                JOIN (
+                    SELECT profile_id, observation_id, MAX(id) AS event_id
+                    FROM profile_observation_events
+                    GROUP BY profile_id, observation_id
+                ) latest ON latest.event_id = event.id
+                ORDER BY event.profile_id, event.observation_id
+                """
+            ).fetchall()
+        return [
+            (
+                int(row["id"]),
+                int(row["profile_id"]),
+                int(row["observation_id"]),
+                str(row["action"]),
+                str(row["reviewer"]),
+                str(row["reason"]),
+            )
+            for row in rows
+        ]
+
     def list_effective_profile_ids_for_observation(
         self, observation_id: int
     ) -> list[int]:

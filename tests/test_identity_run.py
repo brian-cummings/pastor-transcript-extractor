@@ -100,11 +100,11 @@ class IdentityRunTests(unittest.TestCase):
         self.assertIn("skipped_without_observations=1", result.output)
         self.assertIn("scanning 0 video(s)", result.output)
 
-    def test_superseded_profile_member_has_observed_blocker(self) -> None:
+    def test_assessing_a_different_observation_is_a_consistency_error(self) -> None:
         self.assertEqual(
             (
-                "observation_currency",
-                "profile_member_observation_superseded",
+                "observation_consistency",
+                "assessed_observation_mismatch",
             ),
             _exemplar_preparation_initial_blocker(
                 profile_observation_id=93,

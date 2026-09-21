@@ -911,6 +911,12 @@ selection counts at most one observation version per recording, so
 re-extractions do not manufacture independent identity evidence. A provisional
 discovery component's own members still do not count as its independent
 confirmation; they now participate as exemplars used to find that confirmation.
+Registry synchronization also repairs legacy system detach events whose only
+basis was observation supersession. If that old behavior split one recording's
+lineage across two otherwise compatible profiles, synchronization merges those
+profiles back into the original canonical lineage. Explicit observation
+invalidation, incompatible attribution, a different-speaker judgment, or an
+attachment to a non-mergeable identity remains a hard guard.
 A targeted
 `review-next-speaker-pair --selection-objective profile-growth --profile-id ...`
 review can bridge an older named profile to a successor profile already holding
