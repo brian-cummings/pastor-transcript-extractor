@@ -1139,12 +1139,18 @@ Review every current metadata-backed name proposal in one session with:
 
 ```bash
 pte identity review-profile-attribution --all-proposals --reviewer REVIEWER_ID --base-dir /path/to/app-data
+pte identity review-profile-attribution --source-pastor-candidate --reviewer REVIEWER_ID --base-dir /path/to/app-data
 pte identity review-profile-attribution --all-anonymous-profiles --plan-only --reviewer REVIEWER_ID --base-dir /path/to/app-data
 pte identity review-profile-attribution --all-anonymous-profiles --reviewer REVIEWER_ID --base-dir /path/to/app-data
 ```
 
 The batch continues after approvals, corrections, deferrals, and cancellations;
 only an approved name becomes reviewed registry evidence.
+`--source-pastor-candidate` selects the largest unnamed profile only when every
+effective member belongs to one source, that source has a configured pastor,
+and the pastor is not already represented by a profile member on that source.
+The source pastor is shown as a review suggestion, not speaker evidence; the
+reviewer must still confirm the identity from the backing clips.
 
 Rerun only metadata consolidation—without acoustic association or discovery—with:
 

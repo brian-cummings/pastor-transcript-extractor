@@ -370,6 +370,7 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
     list_proposed_profile_attribution_candidates,
+    list_source_pastor_profile_attribution_candidates,
     list_unnamed_profile_attribution_candidates,
     record_profile_attribution_deferral,
     write_profile_attribution_packet,
@@ -5534,6 +5535,14 @@ def review_profile_attribution_command(
         "--all-anonymous-profiles",
         help="Review every current non-deferred, reviewable anonymous profile.",
     ),
+    source_pastor_candidate: bool = typer.Option(
+        False,
+        "--source-pastor-candidate",
+        help=(
+            "Review the largest unnamed single-source profile whose configured "
+            "source pastor is not yet represented on that source."
+        ),
+    ),
     plan_only: bool = typer.Option(
         False,
         "--plan-only",
@@ -5558,10 +5567,17 @@ def review_profile_attribution_command(
         help="Override app data directory.",
     ),
 ) -> None:
-    if sum((profile_id is not None, all_proposals, all_anonymous_profiles)) > 1:
+    if sum(
+        (
+            profile_id is not None,
+            all_proposals,
+            all_anonymous_profiles,
+            source_pastor_candidate,
+        )
+    ) > 1:
         raise typer.BadParameter(
             "Pass at most one of --profile-id, --all-proposals, or "
-            "--all-anonymous-profiles."
+            "--all-anonymous-profiles, or --source-pastor-candidate."
         )
     batch_mode = all_proposals or all_anonymous_profiles
     paths = build_paths(base_dir, remember=not plan_only)
@@ -5586,31 +5602,44 @@ def review_profile_attribution_command(
     try:
         if profile_id is None:
             deferred = load_profile_attribution_deferrals(deferral_root)
-            candidate_source = (
-                list_proposed_profile_attribution_candidates(
+            if all_proposals:
+                candidate_source = list_proposed_profile_attribution_candidates(
                     database,
                     representative_limit=representative_videos,
                     clip_timestamps=clip_timestamps,
                     metadata_attributions=metadata_attributions,
                 )
-                if all_proposals
-                else list_unnamed_profile_attribution_candidates(
+            elif source_pastor_candidate:
+                candidate_source = list_source_pastor_profile_attribution_candidates(
                     database,
                     representative_limit=representative_videos,
                     clip_timestamps=clip_timestamps,
                     metadata_attributions=metadata_attributions,
                 )
-            )
+            else:
+                candidate_source = list_unnamed_profile_attribution_candidates(
+                    database,
+                    representative_limit=representative_videos,
+                    clip_timestamps=clip_timestamps,
+                    metadata_attributions=metadata_attributions,
+                )
             candidates = tuple(
                 candidate
                 for candidate in candidate_source
                 if candidate.membership_fingerprint not in deferred
             )
+            if source_pastor_candidate:
+                candidates = candidates[:1]
             if not candidates:
                 if all_proposals:
                     console.print(
                         "No current non-deferred metadata name proposal "
                         "requires review."
+                    )
+                elif source_pastor_candidate:
+                    console.print(
+                        "No non-deferred unnamed single-source profile has an "
+                        "unrepresented configured source pastor."
                     )
                 else:
                     console.print(
@@ -5642,6 +5671,14 @@ def review_profile_attribution_command(
             f"profiles={len(candidates)} metadata_proposals={proposal_count}; "
             "no packets opened and no review events written."
         )
+        if source_pastor_candidate:
+            candidate = candidates[0]
+            console.print(
+                "Source-pastor suggestion: "
+                f"profile={candidate.profile_id} source={candidate.source_id} "
+                f"pastor={candidate.source_pastor_name!r} "
+                f"members={candidate.member_count}; human confirmation required."
+            )
         return
 
     approved_count = deferred_count = cancelled_count = 0
@@ -5677,16 +5714,24 @@ def review_profile_attribution_command(
         console.print(table)
         console.print(f"Prepared profile attribution packet: {packet_path}")
         metadata_attribution = candidate.metadata_attribution
-        suggested_name = ""
+        suggested_name = candidate.source_pastor_name or ""
+        if candidate.source_pastor_name is not None:
+            console.print(
+                "Source-pastor suggestion: proposed "
+                f"{candidate.source_pastor_name!r} from source "
+                f"{candidate.source_id}; source assignment is context only and "
+                "human confirmation is required."
+            )
         if metadata_attribution is not None:
             if (
                 metadata_attribution.decision == "propose_name"
                 and metadata_attribution.proposed_name
             ):
-                suggested_name = metadata_attribution.proposed_name
+                if not suggested_name:
+                    suggested_name = metadata_attribution.proposed_name
                 console.print(
                     "Metadata attribution: proposed "
-                    f"{suggested_name!r} from "
+                    f"{metadata_attribution.proposed_name!r} from "
                     f"{metadata_attribution.supporting_recording_count} "
                     "recording(s); human confirmation required."
                 )

@@ -17,6 +17,7 @@ from pastor_transcript_extractor.speaker_profile_attribution import (
     load_profile_attribution_clip_timestamps,
     load_profile_attribution_deferrals,
     list_proposed_profile_attribution_candidates,
+    list_source_pastor_profile_attribution_candidates,
     list_unnamed_profile_attribution_candidates,
     record_profile_attribution_deferral,
     write_profile_attribution_packet,
@@ -171,6 +172,166 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
                 clip_timestamps={},
             ),
         )
+
+    def test_source_pastor_candidate_requires_complete_single_source_membership(
+        self,
+    ) -> None:
+        pastor = self.database.add_pastor("curt-dewitt", "Curt DeWitt")
+        self.database.add_source(
+            self.source.url,
+            SourceType.CHANNEL,
+            pastor_id=pastor.id,
+        )
+        ensure_configured_pastor_profile(self.database, pastor)
+
+        candidates = list_source_pastor_profile_attribution_candidates(
+            self.database
+        )
+
+        self.assertEqual(1, len(candidates))
+        self.assertEqual(self.profile.id, candidates[0].profile_id)
+        self.assertEqual(self.source.id, candidates[0].source_id)
+        self.assertEqual("Curt DeWitt", candidates[0].source_pastor_name)
+
+        other_source = self.database.add_source(
+            "https://www.youtube.com/@other-attribution",
+            SourceType.CHANNEL,
+            pastor_id=None,
+        )
+        video = self.database.add_video(
+            source_id=other_source.id,
+            pastor_id=None,
+            youtube_video_id="other-source-video",
+            title="Other source sermon",
+            url="https://www.youtube.com/watch?v=other-source-video",
+            status=VideoStatus.EXTRACTED,
+        )
+        extraction = self.database.add_extraction_result(
+            video_id=video.id,
+            version=1,
+            proposed_text_path="other.md",
+            proposed_json_path="other.json",
+        )
+        observation = self.database.add_speaker_observation(
+            video_id=video.id,
+            extraction_result_id=extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=100.0,
+            end_seconds=1000.0,
+            artifact_path="other.speaker.json",
+            content_sha256="other-content",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="other-fingerprint",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=self.profile.id,
+            observation_id=observation.id,
+            reviewer="Brian Cummings",
+            reason="Cross-source reviewed evidence",
+            review_event_key="cross-source-reviewed-evidence",
+        )
+
+        self.assertEqual(
+            (),
+            list_source_pastor_profile_attribution_candidates(self.database),
+        )
+
+    def test_source_pastor_candidate_excludes_already_represented_source(
+        self,
+    ) -> None:
+        pastor = self.database.add_pastor("curt-dewitt", "Curt DeWitt")
+        self.database.add_source(
+            self.source.url,
+            SourceType.CHANNEL,
+            pastor_id=pastor.id,
+        )
+        configured = ensure_configured_pastor_profile(self.database, pastor)
+        video = self.database.add_video(
+            source_id=self.source.id,
+            pastor_id=pastor.id,
+            youtube_video_id="represented-video",
+            title="Represented sermon",
+            url="https://www.youtube.com/watch?v=represented-video",
+            status=VideoStatus.EXTRACTED,
+        )
+        extraction = self.database.add_extraction_result(
+            video_id=video.id,
+            version=1,
+            proposed_text_path="represented.md",
+            proposed_json_path="represented.json",
+        )
+        observation = self.database.add_speaker_observation(
+            video_id=video.id,
+            extraction_result_id=extraction.id,
+            role="principal_speaker_candidate",
+            multiplicity_state="unknown",
+            start_seconds=100.0,
+            end_seconds=1000.0,
+            artifact_path="represented.speaker.json",
+            content_sha256="represented-content",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="represented-fingerprint",
+        )
+        attach_reviewed_observation(
+            self.database,
+            profile_id=configured.id,
+            observation_id=observation.id,
+            reviewer="Brian Cummings",
+            reason="Existing source representation",
+            review_event_key="existing-source-representation",
+        )
+
+        self.assertEqual(
+            (),
+            list_source_pastor_profile_attribution_candidates(self.database),
+        )
+
+    def test_source_pastor_cli_uses_review_suggestion_as_prompt_default(
+        self,
+    ) -> None:
+        pastor = self.database.add_pastor("curt-dewitt", "Curt DeWitt")
+        self.database.add_source(
+            self.source.url,
+            SourceType.CHANNEL,
+            pastor_id=pastor.id,
+        )
+        ensure_configured_pastor_profile(self.database, pastor)
+        timestamps = {
+            observation.input_fingerprint: int(observation.start_seconds)
+            for observation in self.observations
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.cli."
+                "load_profile_attribution_clip_timestamps",
+                return_value=timestamps,
+            ),
+            patch(
+                "pastor_transcript_extractor.cli.typer.prompt",
+                return_value="skip",
+            ) as prompt,
+        ):
+            result = CliRunner().invoke(
+                app,
+                [
+                    "identity",
+                    "review-profile-attribution",
+                    "--source-pastor-candidate",
+                    "--reviewer",
+                    "Brian Cummings",
+                    "--no-open-packet",
+                    "--base-dir",
+                    str(self.paths.root),
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, result.output)
+        self.assertEqual("Curt DeWitt", prompt.call_args.kwargs["default"])
+        self.assertIn("Source-pastor suggestion", result.output)
+        self.assertIn("human confirmation is required", result.output)
 
     def test_metadata_proposal_flows_into_attribution_packet(self) -> None:
         initial = list_unnamed_profile_attribution_candidates(self.database)[0]
