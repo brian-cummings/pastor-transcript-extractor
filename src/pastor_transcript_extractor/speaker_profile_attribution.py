@@ -45,6 +45,8 @@ class ProfileAttributionCandidate:
     evidence: tuple[ProfileAttributionEvidence, ...]
     membership_fingerprint: str
     metadata_attribution: ProfileMetadataAttribution | None = None
+    source_id: int | None = None
+    source_pastor_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +133,78 @@ def list_proposed_profile_attribution_candidates(
     )
 
 
+def list_source_pastor_profile_attribution_candidates(
+    database: Database,
+    *,
+    representative_limit: int = 6,
+    clip_timestamps: Mapping[str, int] | None = None,
+    metadata_attributions: Mapping[
+        str, ProfileMetadataAttribution
+    ] | None = None,
+) -> tuple[ProfileAttributionCandidate, ...]:
+    """Return unnamed single-source profiles whose source pastor needs review.
+
+    Source assignment is retrieval context only. The returned pastor name is a
+    human-review suggestion and does not become identity evidence by selection.
+    """
+    candidates: list[ProfileAttributionCandidate] = []
+    for candidate in list_unnamed_profile_attribution_candidates(
+        database,
+        representative_limit=representative_limit,
+        clip_timestamps=clip_timestamps,
+        metadata_attributions=metadata_attributions,
+    ):
+        source_ids: set[int] = set()
+        complete_membership = True
+        for observation_id in database.list_effective_observation_ids_for_profile(
+            candidate.profile_id
+        ):
+            observation = database.get_speaker_observation(observation_id)
+            video = (
+                database.get_video_by_id(observation.video_id)
+                if observation is not None
+                else None
+            )
+            if video is None:
+                complete_membership = False
+                break
+            source_ids.add(video.source_id)
+        if not complete_membership or len(source_ids) != 1:
+            continue
+        source_id = next(iter(source_ids))
+        source = database.get_source_by_id(source_id)
+        pastor = (
+            database.get_pastor_by_id(source.pastor_id)
+            if source is not None and source.pastor_id is not None
+            else None
+        )
+        if pastor is None:
+            continue
+        configured_profile_id = database.get_pastor_speaker_profile_id(pastor.id)
+        if configured_profile_id is not None:
+            canonical_profile_id = database.resolve_speaker_profile_id(
+                configured_profile_id
+            )
+            if _profile_has_member_from_source(
+                database,
+                profile_id=canonical_profile_id,
+                source_id=source_id,
+            ):
+                continue
+        candidates.append(
+            ProfileAttributionCandidate(
+                profile_id=candidate.profile_id,
+                member_count=candidate.member_count,
+                evidence=candidate.evidence,
+                membership_fingerprint=candidate.membership_fingerprint,
+                metadata_attribution=candidate.metadata_attribution,
+                source_id=source_id,
+                source_pastor_name=pastor.display_name,
+            )
+        )
+    return tuple(candidates)
+
+
 def get_profile_attribution_candidate(
     database: Database,
     profile_id: int,
@@ -161,16 +235,36 @@ def get_profile_attribution_candidate(
         database, profile_id, member_ids
     )
     return ProfileAttributionCandidate(
-        profile_id,
-        len(member_ids),
-        evidence,
-        membership_fingerprint,
-        (
+        profile_id=profile_id,
+        member_count=len(member_ids),
+        evidence=evidence,
+        membership_fingerprint=membership_fingerprint,
+        metadata_attribution=(
             metadata_attributions.get(membership_fingerprint)
             if metadata_attributions is not None
             else None
         ),
     )
+
+
+def _profile_has_member_from_source(
+    database: Database,
+    *,
+    profile_id: int,
+    source_id: int,
+) -> bool:
+    for observation_id in database.list_effective_observation_ids_for_profile(
+        profile_id
+    ):
+        observation = database.get_speaker_observation(observation_id)
+        video = (
+            database.get_video_by_id(observation.video_id)
+            if observation is not None
+            else None
+        )
+        if video is not None and video.source_id == source_id:
+            return True
+    return False
 
 
 def load_profile_attribution_deferrals(root: Path) -> frozenset[str]:
@@ -353,6 +447,17 @@ def write_profile_attribution_packet(
                 f"{html.escape(metadata.decision.replace('_', ' '))}; "
                 "human review required.</aside>"
             )
+    source_pastor_summary = ""
+    if (
+        candidate.source_pastor_name is not None
+        and candidate.source_id is not None
+    ):
+        source_pastor_summary = (
+            "<aside><strong>Source-pastor suggestion:</strong> "
+            f"{html.escape(candidate.source_pastor_name)} from source "
+            f"{candidate.source_id}. Source assignment is context only, not "
+            "speaker verification; confirm against the identity clips.</aside>"
+        )
     document = """<!doctype html><html><head><meta charset="utf-8">
 <title>Speaker profile attribution</title><style>
 body{font-family:system-ui;margin:2rem auto;max-width:1100px;padding:0 1rem}
@@ -366,6 +471,7 @@ background:#c00;color:#fff;padding:.8rem 1.1rem;border-radius:.5rem;font-weight:
         f"<p>{candidate.member_count} member recordings. Each link opens at a "
         "persisted speech-qualified identity clip. Use the terminal prompt to "
         "choose the evidence video and enter the speaker name.</p>"
+        + source_pastor_summary
         + metadata_summary
         + "".join(cards)
         + "</body></html>"
