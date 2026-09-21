@@ -951,7 +951,11 @@ def consolidate_same_source_attributed_profiles(
         if profile.created_reason in _MERGEABLE_PROFILE_REASONS
         and database.resolve_speaker_profile_id(profile.id) == profile.id
     ]
-    profile_facts: dict[int, tuple[str, frozenset[int]]] = {}
+    canonical_profile_ids = {profile.id for profile in canonical_profiles}
+    profile_facts: dict[
+        int,
+        tuple[str, frozenset[int], frozenset[int]],
+    ] = {}
     for profile in canonical_profiles:
         member_ids = set(
             database.list_effective_observation_ids_for_profile(profile.id)
@@ -964,17 +968,24 @@ def consolidate_same_source_attributed_profiles(
         names = {claim.normalized_name.strip() for claim in member_claims}
         if len(names) != 1:
             continue
-        if any(
-            review is not None
-            and (
-                review[0] != "attach"
-                or review[1] is None
-                or database.resolve_speaker_profile_id(review[1]) != profile.id
+        reviewed_target_ids: set[int] = set()
+        review_blocks_profile = False
+        for claim in member_claims:
+            review = database.get_effective_name_claim_review(claim.id)
+            if review is None:
+                continue
+            action, attached_profile_id = review
+            if action != "attach" or attached_profile_id is None:
+                review_blocks_profile = True
+                break
+            target_id = database.resolve_speaker_profile_id(
+                attached_profile_id
             )
-            for claim in member_claims
-            if (review := database.get_effective_name_claim_review(claim.id))
-            is not None
-        ):
+            if target_id not in canonical_profile_ids:
+                review_blocks_profile = True
+                break
+            reviewed_target_ids.add(target_id)
+        if review_blocks_profile:
             continue
         source_ids = frozenset(
             videos_by_id[observation.video_id].source_id
@@ -986,16 +997,22 @@ def consolidate_same_source_attributed_profiles(
             and observation.video_id in videos_by_id
         )
         if source_ids:
-            profile_facts[profile.id] = (next(iter(names)), source_ids)
+            profile_facts[profile.id] = (
+                next(iter(names)),
+                source_ids,
+                frozenset(reviewed_target_ids),
+            )
 
     adjacency: dict[int, set[int]] = {
         profile_id: set() for profile_id in profile_facts
     }
     ordered_ids = sorted(profile_facts)
     for index, left_id in enumerate(ordered_ids):
-        left_name, left_sources = profile_facts[left_id]
+        left_name, left_sources, _left_review_targets = profile_facts[left_id]
         for right_id in ordered_ids[index + 1 :]:
-            right_name, right_sources = profile_facts[right_id]
+            right_name, right_sources, _right_review_targets = profile_facts[
+                right_id
+            ]
             if left_name == right_name and left_sources & right_sources:
                 adjacency[left_id].add(right_id)
                 adjacency[right_id].add(left_id)
@@ -1015,6 +1032,13 @@ def consolidate_same_source_attributed_profiles(
             stack.extend(adjacency[profile_id] - component)
         visited.update(component)
         if len(component) < 2:
+            continue
+        reviewed_target_ids = {
+            target_id
+            for profile_id in component
+            for target_id in profile_facts[profile_id][2]
+        }
+        if not reviewed_target_ids.issubset(component):
             continue
         names = {profile_facts[value][0] for value in component}
         component_source_ids = {
