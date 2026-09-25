@@ -9,9 +9,9 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 4 — separate catalog commands from acquisition
   workflows.
-- Next action: move source and video catalog commands into
-  `commands/catalog.py`; leave source discovery, transcription, and sync
-  orchestration in `cli.py` for the workflow milestone.
+- Next action: move the remaining source catalog commands into
+  `commands/catalog.py` without absorbing the pre-existing source-list count
+  changes; leave discovery, transcription, and sync orchestration in `cli.py`.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -244,6 +244,16 @@ pastor error constructor to `commands/common.py` so remaining workflows and the
 catalog adapter share the same error text without importing `cli.py`.
 
 `cli.py` is now 13,871 lines, down 4,246 lines from baseline.
+
+### 2026-09-25 — Milestone 4.4: video and source-deletion extraction
+
+Moved source deletion plus video listing, exclusion, unexclusion, and excluded-
+video listing into `commands/catalog.py`, together with their artifact-tree
+deletion helpers. `cli.py` temporarily re-exports `delete_source_service`
+because the top-level replace-existing workflow still calls and patches that
+seam; Milestone 5 will move the workflow and remove the compatibility import.
+
+`cli.py` is now 13,647 lines, down 4,470 lines from baseline.
 
 ## Validation log
 
@@ -526,6 +536,25 @@ Ran 7 tests in 0.288s — OK
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/commands/common.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Video and source-deletion extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_sources.CliTests.test_video_list_shows_discovered_videos tests.test_sources.CliTests.test_video_list_filters_by_status tests.test_sources.CliTests.test_video_exclude_deletes_local_artifacts_and_persists_exclusion tests.test_sources.CliTests.test_run_replace_existing_deletes_source_before_pipeline -q
+Ran 10 tests in 0.408s — OK
+
+.venv/bin/python -m pastor_transcript_extractor video --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor source delete --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
