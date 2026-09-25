@@ -8,8 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: map the analysis command dependencies and extract the content
-  analysis slice into `commands/analysis/content.py` with focused tests.
+- Next action: extract the remaining Scripture content inspection, profile
+  summary, and evaluation commands into `commands/analysis/scripture.py`, then
+  remove their now-unused imports from `cli.py`.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -124,6 +125,18 @@ compatibility re-exports or patch shims were required. `cli.py` decreased from
 18,117 baseline lines to 17,752 lines; the cohesive benchmark adapter is 388
 lines.
 
+### 2026-09-24 — Milestone 3.2a: content-analysis operations extraction
+
+Moved analysis readiness/status, deterministic backfill, profile refresh,
+population build/show, and sermon analysis execution into
+`commands/analysis/content.py`. The module is 517 lines and owns six commands,
+their rendering helpers, database opening, and scope selection.
+
+The structure commands still use the shared `_analysis_videos` selector through
+a temporary explicit import in `cli.py`. Move that selector into the analysis
+common boundary when structure commands are extracted; do not leave the
+temporary reverse dependency in the final architecture.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -174,6 +187,25 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/benchmark.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-24 — Content-analysis operations extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_analysis_readiness.py tests/test_population_analysis.py tests/test_sermon_analysis.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_analysis_readiness tests.test_population_analysis tests.test_sermon_analysis -q
+Ran 34 tests in 6.561s — OK
+
+.venv/bin/python -m pastor_transcript_extractor analysis --help
+PASS
+
+.venv/bin/pte analysis --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/analysis src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
