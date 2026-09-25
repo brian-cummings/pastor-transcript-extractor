@@ -35,6 +35,18 @@ from pastor_transcript_extractor.church_database_import import (
     import_church_sources,
     imported_source_ids,
 )
+from pastor_transcript_extractor.commands.apps import (
+    analysis_app,
+    attach_command_groups,
+    benchmark_app,
+    identity_app,
+    media_app,
+    organization_app,
+    pastor_app,
+    source_app,
+    source_ownership_app,
+    video_app,
+)
 from pastor_transcript_extractor.config import (
     AppPaths,
     build_llm_config,
@@ -485,24 +497,7 @@ from pastor_transcript_extractor.transcription import (
 )
 
 app = typer.Typer(help="Pastor Transcript Extractor CLI")
-pastor_app = typer.Typer(help="Manage pastors.")
-organization_app = typer.Typer(help="Manage publishing organizations.")
-source_app = typer.Typer(help="Manage queued sources.")
-video_app = typer.Typer(help="Manage discovered videos.")
-identity_app = typer.Typer(help="Manage speaker identity shadow artifacts.")
-media_app = typer.Typer(help="Manage transcript-independent local media artifacts.")
-analysis_app = typer.Typer(help="Analyze already-identified sermon content.")
-source_ownership_app = typer.Typer(help="Migrate and audit source ownership data.")
-benchmark_app = typer.Typer(help="Manage reviewed profile reference panels.")
-app.add_typer(pastor_app, name="pastor")
-app.add_typer(organization_app, name="organization")
-app.add_typer(source_app, name="source")
-app.add_typer(video_app, name="video")
-app.add_typer(identity_app, name="identity")
-app.add_typer(media_app, name="media")
-app.add_typer(analysis_app, name="analysis")
-app.add_typer(source_ownership_app, name="source-ownership")
-app.add_typer(benchmark_app, name="benchmark")
+attach_command_groups(app)
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
