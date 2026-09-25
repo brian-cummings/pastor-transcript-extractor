@@ -7,10 +7,11 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 5 — extract the top-level pipeline.
-- Next action: create the pipeline workflow boundary, beginning with the
-  top-level `run` request/result contract and stage orchestration while
-  preserving the existing service seams and tests.
+- Active milestone: Milestone 4 — separate catalog commands from acquisition
+  workflows.
+- Next action: extract caption acquisition and transcription into typed,
+  presentation-independent workflows, then move imported-source sync before
+  advancing to the top-level pipeline milestone.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -60,7 +61,7 @@ these changes.
   - [x] Analysis: style.
   - [x] Media.
   - [x] Evaluation, fixtures, and diagnostics.
-- [x] 4. Separate catalog commands from acquisition workflows.
+- [ ] 4. Separate catalog commands from acquisition workflows.
 - [ ] 5. Extract the top-level pipeline.
 - [ ] 6. Split identity by capability.
 - [ ] 7. Decompose oversized identity workflows.
@@ -267,6 +268,21 @@ commit boundary; it is reapplied as an unstaged change in the new owner module.
 No catalog group decorators remain in `cli.py`.
 
 `cli.py` is now 13,243 lines, down 4,874 lines from baseline.
+
+### 2026-09-25 — Milestone 4.6: source-discovery workflow extraction
+
+Added `workflows/source_discovery.py` with a typed `DiscoveryRequest`, a
+structured `DiscoveryServiceResult` containing selection and outcome counts,
+and callback-based progress. The core workflow accepts explicit database,
+paths, tool configuration, and discovery-function boundaries and imports no
+Typer, Rich, or `cli.py`. The CLI retains a thin compatibility/rendering wrapper
+while the top-level pipeline still patches that seam.
+
+Corrected the Milestone 4 status: catalog command extraction was complete, but
+the plan also requires discovery, caption, transcription, and imported-source
+workflows before Milestone 4 can close.
+
+`cli.py` is now 12,966 lines, down 5,151 lines from baseline.
 
 ## Validation log
 
@@ -590,6 +606,22 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Source-discovery workflow extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract plus eleven focused discovery tests
+Ran 17 tests — OK
+
+.venv/bin/python -m pastor_transcript_extractor discover --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/workflows src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
