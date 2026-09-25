@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: extract semantic style commands and renderers into
-  `commands/analysis/style.py`, update tests that patch their owning
-  dependencies, and remove the final analysis decorators from `cli.py`.
+- Next action: extract the ten media commands into `commands/media.py`, update
+  media test patch targets to the owning module, and preserve any CLI-level
+  compatibility imports still required by other workflows.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -57,7 +57,7 @@ these changes.
   - [x] Benchmark.
   - [x] Analysis: content.
   - [x] Analysis: structure.
-  - [ ] Analysis: style.
+  - [x] Analysis: style.
   - [ ] Media.
   - [ ] Evaluation, fixtures, and diagnostics.
 - [ ] 4. Separate catalog commands from acquisition workflows.
@@ -158,6 +158,16 @@ database opening and video/profile scope selection into the neutral
 from `cli.py` and `scripture.py` on `content.py` internals.
 
 `cli.py` is now 16,558 lines, down 1,559 lines from baseline.
+
+### 2026-09-24 — Milestone 3.4: style analysis extraction
+
+Moved all seven semantic style commands and their sermon/profile renderers into
+`commands/analysis/style.py` (462 lines). The module owns LLM-backed style
+execution, inspection, profile summaries, review packet lifecycle, and the two
+style evaluators. No analysis decorators remain in `cli.py`; all 25 commands are
+registered by the four analysis capability modules.
+
+`cli.py` is now 16,120 lines, down 1,997 lines from baseline.
 
 ## Validation log
 
@@ -266,6 +276,25 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/analysis src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-24 — Style analysis extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_style_analysis.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_style_analysis -q
+Ran 15 tests in 1.461s — OK
+
+.venv/bin/python -m pastor_transcript_extractor analysis --help
+PASS
+
+.venv/bin/pte analysis --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/analysis/style.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
