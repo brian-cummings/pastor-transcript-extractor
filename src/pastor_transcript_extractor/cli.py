@@ -42,7 +42,6 @@ from pastor_transcript_extractor.commands.apps import (
     pastor_app,
     source_app,
     source_ownership_app,
-    video_app,
     root_app,
 )
 from pastor_transcript_extractor.commands.analysis import content as _analysis_content_commands
@@ -51,6 +50,7 @@ from pastor_transcript_extractor.commands.analysis import structure as _analysis
 from pastor_transcript_extractor.commands.analysis import style as _analysis_style_commands
 from pastor_transcript_extractor.commands import benchmark as _benchmark_commands
 from pastor_transcript_extractor.commands import catalog as _catalog_commands
+from pastor_transcript_extractor.commands.catalog import delete_source_service
 from pastor_transcript_extractor.commands import diagnostics as _diagnostic_commands
 from pastor_transcript_extractor.commands import media as _media_commands
 from pastor_transcript_extractor.commands import media_archive as _media_archive_commands
@@ -10376,36 +10376,6 @@ def _build_live_transcription_stage_callback(
 
     return stage_callback
 
-
-def _delete_video_tree(database: Database, paths: Path, video_id: int) -> None:
-    video = database.get_video_by_id(video_id)
-    if video is None:
-        raise typer.BadParameter(f"Unknown video id: {video_id}")
-
-    video_paths = resolve_video_artifact_paths(database, paths, video)
-    if video_paths.root.exists():
-        shutil.rmtree(video_paths.root)
-    database.delete_video(video.id)
-
-
-def _delete_source_tree(database: Database, paths: Path, source_id: int) -> int:
-    source = database.get_source_by_id(source_id)
-    if source is None:
-        raise typer.BadParameter(f"Unknown source id: {source_id}")
-
-    videos = database.list_videos_by_source_id(source_id)
-    deleted_count = 0
-    for video in videos:
-        video_paths = resolve_video_artifact_paths(database, paths, video)
-        if video_paths.root.exists():
-            shutil.rmtree(video_paths.root)
-        database.delete_video(video.id)
-        deleted_count += 1
-
-    database.delete_source(source_id)
-    return deleted_count
-
-
 @app.command(
     "import-church-db",
     help="Import complete pastor/channel pairs from church-youtube-finder with stable provenance.",
@@ -11099,200 +11069,6 @@ def source_list(
             source.source_type.value,
             "enabled" if source.processing_enabled else "disabled",
             source.url,
-        )
-    console.print(table)
-
-
-def delete_source_service(
-    source_id: int,
-    force: bool = False,
-    base_dir: Path | None = None,
-) -> None:
-    database = get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
-    source = database.get_source_by_id(source_id)
-    if source is None:
-        raise ValueError(f"Unknown source id: {source_id}")
-
-    videos = database.list_videos_by_source_id(source_id)
-    if videos and not force:
-        raise ValueError(
-            f"Source #{source_id} has {len(videos)} linked video(s). Use --force to delete them too."
-        )
-
-    deleted_videos = _delete_source_tree(database, paths, source_id)
-    console.print(
-        f"Deleted source #{source_id} ({source.url}); removed {deleted_videos} linked video(s) and artifacts."
-    )
-
-
-@source_app.command("delete", help="Delete a source and optionally all dependent videos and artifacts.")
-def source_delete(
-    source_id: int = typer.Argument(..., help="Source id to delete."),
-    force: bool = typer.Option(False, "--force", help="Delete dependent videos and all related artifacts."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    try:
-        delete_source_service(source_id, force, base_dir)
-    except ValueError as error:
-        raise typer.BadParameter(str(error)) from error
-
-
-@video_app.command("list", help="List discovered videos.")
-def video_list(
-    pastor: str | None = typer.Option(None, help="Filter by pastor slug."),
-    organization: str | None = typer.Option(
-        None,
-        help="Filter by publishing organization slug.",
-    ),
-    source_id: int | None = typer.Option(None, help="Filter by source id."),
-    status: VideoStatus | None = typer.Option(None, help="Filter by video status."),
-    limit: int = typer.Option(50, min=1, help="Maximum number of videos to show."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    videos = database.list_videos()
-
-    if pastor is not None:
-        pastor_record = database.get_pastor_by_slug(pastor)
-        if pastor_record is None:
-            raise _unknown_pastor_error(pastor, base_dir)
-        target_video_ids = database.list_video_ids_for_target_pastor(
-            pastor_record.id
-        )
-        videos = [video for video in videos if video.id in target_video_ids]
-
-    if organization is not None:
-        organization_record = database.get_organization_by_slug(organization)
-        if organization_record is None:
-            raise typer.BadParameter(
-                f"Unknown organization slug: {organization}"
-            )
-        source_ids = {
-            source.id
-            for source in database.list_sources()
-            if source.organization_id == organization_record.id
-        }
-        videos = [video for video in videos if video.source_id in source_ids]
-
-    if source_id is not None:
-        videos = [video for video in videos if video.source_id == source_id]
-
-    if status is not None:
-        videos = [video for video in videos if video.status == status]
-
-    if not videos:
-        console.print("No videos matched.")
-        return
-
-    videos = videos[:limit]
-    table = Table(title="Videos")
-    table.add_column("ID", justify="right")
-    table.add_column("Publisher")
-    table.add_column("Target Pastor")
-    table.add_column("Status")
-    table.add_column("Title")
-    table.add_column("YouTube ID")
-
-    for video in videos:
-        source = database.get_source_by_id(video.source_id)
-        publisher_name = "-"
-        if source is not None and source.organization_id is not None:
-            organization_record = database.get_organization_by_id(
-                source.organization_id
-            )
-            publisher_name = (
-                organization_record.slug
-                if organization_record is not None
-                else str(source.organization_id)
-            )
-        pastor_name = "-"
-        if video.pastor_id is not None:
-            pastor_record = database.get_pastor_by_id(video.pastor_id)
-            pastor_name = pastor_record.slug if pastor_record is not None else str(video.pastor_id)
-        table.add_row(
-            str(video.id),
-            publisher_name,
-            pastor_name,
-            video.status.value,
-            video.title,
-            video.youtube_video_id,
-        )
-
-    console.print(table)
-
-
-@video_app.command("exclude", help="Delete a video's local artifacts and prevent it from being rediscovered.")
-def video_exclude(
-    video_id: int = typer.Argument(..., help="Video id to exclude."),
-    notes: str | None = typer.Option(None, help="Optional exclusion notes."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    paths = build_paths(base_dir)
-    video = database.get_video_by_id(video_id)
-    if video is None:
-        raise typer.BadParameter(f"Unknown video id: {video_id}")
-
-    database.add_excluded_video(
-        pastor_id=video.pastor_id,
-        source_id=video.source_id,
-        youtube_video_id=video.youtube_video_id,
-        title=video.title,
-        url=video.url,
-        notes=notes,
-    )
-    _delete_video_tree(database, paths, video.id)
-    console.print(f"Excluded video #{video_id}: {video.title} ({video.youtube_video_id})")
-
-
-@video_app.command("unexclude", help="Allow an excluded YouTube video to be rediscovered again.")
-def video_unexclude(
-    youtube_video_id: str = typer.Argument(..., help="YouTube video id to remove from the exclusion list."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    excluded = database.get_excluded_video_by_youtube_id(youtube_video_id)
-    if excluded is None:
-        raise typer.BadParameter(f"Unknown excluded video id: {youtube_video_id}")
-    database.delete_excluded_video(youtube_video_id)
-    console.print(f"Removed exclusion for {youtube_video_id}: {excluded.title}")
-
-
-@video_app.command("excluded", help="List excluded YouTube videos.")
-def video_excluded(
-    pastor: str | None = typer.Option(None, help="Filter by pastor slug."),
-    limit: int = typer.Option(50, min=1, help="Maximum number of excluded videos to show."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = get_database(base_dir)
-    excluded_videos = database.list_excluded_videos()
-
-    if pastor is not None:
-        pastor_record = database.get_pastor_by_slug(pastor)
-        if pastor_record is None:
-            raise _unknown_pastor_error(pastor, base_dir)
-        excluded_videos = [video for video in excluded_videos if video.pastor_id == pastor_record.id]
-
-    if not excluded_videos:
-        console.print("No excluded videos matched.")
-        return
-
-    table = Table(title="Excluded Videos")
-    table.add_column("Pastor")
-    table.add_column("Excluded")
-    table.add_column("Title")
-    table.add_column("YouTube ID")
-    for video in excluded_videos[:limit]:
-        pastor_name = "-"
-        if video.pastor_id is not None:
-            pastor_record = database.get_pastor_by_id(video.pastor_id)
-            pastor_name = pastor_record.slug if pastor_record is not None else str(video.pastor_id)
-        table.add_row(
-            pastor_name,
-            video.excluded_at.date().isoformat(),
-            video.title,
-            video.youtube_video_id,
         )
     console.print(table)
 
