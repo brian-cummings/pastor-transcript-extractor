@@ -9,9 +9,9 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 4 — separate catalog commands from acquisition
   workflows.
-- Next action: extract the low-coupling pastor, organization, source, video,
-  and source-ownership commands into a catalog command module; leave discovery,
-  transcription, and sync orchestration in place for the workflow milestone.
+- Next action: move pastor, organization, source, and video catalog commands
+  into `commands/catalog.py`; leave source discovery, transcription, and sync
+  orchestration in `cli.py` for the workflow milestone.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -220,6 +220,15 @@ imports and rendering now live with the commands, while top-level command names
 and read-only behavior remain unchanged.
 
 `cli.py` is now 14,240 lines, down 3,877 lines from baseline.
+
+### 2026-09-25 — Milestone 4.1: initialization and source-ownership extraction
+
+Moved the top-level `init` command plus source-ownership `migrate` and `audit`
+commands into `commands/catalog.py`. The catalog adapter owns its database
+initialization, savepoint migration, ownership audit rendering, and strict exit
+semantics; `cli.py` retains only app assembly and unrelated workflows.
+
+`cli.py` is now 14,157 lines, down 3,960 lines from baseline.
 
 ## Validation log
 
@@ -451,6 +460,25 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/diagnostics.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Initialization and source-ownership extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract -q
+Ran 6 tests in 0.228s — OK
+
+.venv/bin/python -m pastor_transcript_extractor init --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor source-ownership migrate --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
