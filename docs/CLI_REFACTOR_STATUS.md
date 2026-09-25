@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: extract the remaining Scripture content inspection, profile
-  summary, and evaluation commands into `commands/analysis/scripture.py`, then
-  remove their now-unused imports from `cli.py`.
+- Next action: extract structure analysis commands into
+  `commands/analysis/structure.py` and move the shared database/scope helpers
+  from `content.py` into an analysis common boundary.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -55,7 +55,7 @@ these changes.
 - [x] 2. Introduce the composition structure.
 - [ ] 3. Extract lower-coupling command groups.
   - [x] Benchmark.
-  - [ ] Analysis: content.
+  - [x] Analysis: content.
   - [ ] Analysis: structure.
   - [ ] Analysis: style.
   - [ ] Media.
@@ -137,6 +137,18 @@ a temporary explicit import in `cli.py`. Move that selector into the analysis
 common boundary when structure commands are extracted; do not leave the
 temporary reverse dependency in the final architecture.
 
+### 2026-09-24 — Milestone 3.2b: Scripture analysis command extraction
+
+Moved sermon-analysis inspection, profile Scripture summaries, and the two
+reviewed Scripture evaluator commands into `commands/analysis/scripture.py`.
+The 465-line module owns five commands and their detailed Rich renderers. It
+currently shares database opening and analysis scope selection through the
+content module; Milestone 3.3 will move those helpers to a neutral analysis
+common module.
+
+The content-analysis checklist item is complete across `content.py` and
+`scripture.py`. `cli.py` is now 16,834 lines, down 1,283 lines from baseline.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -206,6 +218,25 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/analysis src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-24 — Scripture analysis command extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_sermon_analysis.py tests/test_scripture_reference_detection.py tests/test_scripture_alignment.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_sermon_analysis tests.test_scripture_reference_detection tests.test_scripture_alignment -q
+Ran 29 tests in 2.258s — OK
+
+.venv/bin/python -m pastor_transcript_extractor analysis --help
+PASS
+
+.venv/bin/pte analysis --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/analysis/scripture.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
