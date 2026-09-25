@@ -7,10 +7,11 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: move the remaining read-only system, comparison, interaction,
-  and recording-verifier diagnostics into `commands/diagnostics.py`, then
-  update their focused test seams.
+- Active milestone: Milestone 4 — separate catalog commands from acquisition
+  workflows.
+- Next action: extract the low-coupling pastor, organization, source, video,
+  and source-ownership commands into a catalog command module; leave discovery,
+  transcription, and sync orchestration in place for the workflow milestone.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -53,13 +54,13 @@ these changes.
 
 - [x] 1. Freeze the CLI contract.
 - [x] 2. Introduce the composition structure.
-- [ ] 3. Extract lower-coupling command groups.
+- [x] 3. Extract lower-coupling command groups.
   - [x] Benchmark.
   - [x] Analysis: content.
   - [x] Analysis: structure.
   - [x] Analysis: style.
   - [x] Media.
-  - [ ] Evaluation, fixtures, and diagnostics.
+  - [x] Evaluation, fixtures, and diagnostics.
 - [ ] 4. Separate catalog commands from acquisition workflows.
 - [ ] 5. Extract the top-level pipeline.
 - [ ] 6. Split identity by capability.
@@ -210,11 +211,15 @@ stable public object and attaches the existing group apps as before.
 The extracted commands continue to use existing artifacts only; no corpus
 classification or evaluation job was run during this slice.
 
-### 2026-09-25 — Milestone 3.6b (in progress): diagnostic command extraction
+### 2026-09-25 — Milestone 3.6b: diagnostic command extraction
 
-Moved the single-video `diagnose` command and its fixture/identity outcome
-helpers into `commands/diagnostics.py`. The remaining diagnostic commands share
-these domain dependencies and will follow in the next bounded slice.
+Moved all five read-only diagnostics commands into `commands/diagnostics.py`:
+single-video and systemic pipeline diagnostics, diagnostic comparison,
+interaction diagnostics, and recording-verifier diagnostics. Their domain
+imports and rendering now live with the commands, while top-level command names
+and read-only behavior remain unchanged.
+
+`cli.py` is now 14,240 lines, down 3,877 lines from baseline.
 
 ## Validation log
 
@@ -418,6 +423,34 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/apps.py src/pastor_transcript_extractor/commands/evaluation.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Diagnostic command extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract -q
+Ran 6 tests in 0.222s — OK
+
+.venv/bin/python -m pastor_transcript_extractor diagnose-system --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor diagnose-compare --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor diagnose-interaction --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor diagnose-recording-verifier --help
+PASS
+
+.venv/bin/pte diagnose-system --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/diagnostics.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
