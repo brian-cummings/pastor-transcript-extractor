@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: extract the ten media commands into `commands/media.py`, update
-  media test patch targets to the owning module, and preserve any CLI-level
-  compatibility imports still required by other workflows.
+- Next action: extract normalized-audio provenance audit and repair into
+  `commands/media_provenance.py`, retaining identity cleanup and fingerprint
+  regeneration behavior exactly.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -169,6 +169,16 @@ registered by the four analysis capability modules.
 
 `cli.py` is now 16,120 lines, down 1,997 lines from baseline.
 
+### 2026-09-24 — Milestone 3.5a: media acquisition extraction
+
+Moved media `backfill`, `ensure-audio`, and coverage `audit` into
+`commands/media.py` (177 lines). Added `commands/common.py` as the neutral CLI
+database-opening boundary for non-analysis command modules. Media artifact
+functions still needed by top-level and identity workflows remain imported by
+`cli.py`; only command-specific ownership moved.
+
+`cli.py` is now 15,967 lines, down 2,150 lines from baseline.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -295,6 +305,25 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/analysis/style.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-24 — Media acquisition extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_media_artifacts.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_media_artifacts -q
+Ran 46 tests in 2.426s — OK
+
+.venv/bin/python -m pastor_transcript_extractor media --help
+PASS
+
+.venv/bin/pte media --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/common.py src/pastor_transcript_extractor/commands/media.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
