@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: extract structure analysis commands into
-  `commands/analysis/structure.py` and move the shared database/scope helpers
-  from `content.py` into an analysis common boundary.
+- Next action: extract semantic style commands and renderers into
+  `commands/analysis/style.py`, update tests that patch their owning
+  dependencies, and remove the final analysis decorators from `cli.py`.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -56,7 +56,7 @@ these changes.
 - [ ] 3. Extract lower-coupling command groups.
   - [x] Benchmark.
   - [x] Analysis: content.
-  - [ ] Analysis: structure.
+  - [x] Analysis: structure.
   - [ ] Analysis: style.
   - [ ] Media.
   - [ ] Evaluation, fixtures, and diagnostics.
@@ -149,6 +149,16 @@ common module.
 The content-analysis checklist item is complete across `content.py` and
 `scripture.py`. `cli.py` is now 16,834 lines, down 1,283 lines from baseline.
 
+### 2026-09-24 — Milestone 3.3: structure analysis extraction
+
+Moved all seven deterministic structure commands and their readiness/population
+renderers into `commands/analysis/structure.py` (296 lines). Moved shared
+database opening and video/profile scope selection into the neutral
+`commands/analysis/common.py` (72 lines), removing the temporary dependency
+from `cli.py` and `scripture.py` on `content.py` internals.
+
+`cli.py` is now 16,558 lines, down 1,559 lines from baseline.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -237,6 +247,25 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/analysis/scripture.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-24 — Structure analysis extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_sermon_analysis.py tests/test_structure_population_analysis.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_sermon_analysis tests.test_structure_population_analysis -q
+Ran 21 tests in 3.513s — OK
+
+.venv/bin/python -m pastor_transcript_extractor analysis --help
+PASS
+
+.venv/bin/pte analysis --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/analysis src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
