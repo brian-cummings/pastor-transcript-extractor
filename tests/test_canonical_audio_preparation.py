@@ -537,15 +537,15 @@ class CanonicalAudioPreparationTests(unittest.TestCase):
         )
         with (
             patch(
-                "pastor_transcript_extractor.cli.get_database",
+                "pastor_transcript_extractor.commands.media_archive.get_database",
                 return_value=self.database,
             ),
             patch(
-                "pastor_transcript_extractor.cli.build_paths",
+                "pastor_transcript_extractor.commands.media_archive.build_paths",
                 return_value=self.paths,
             ),
             patch(
-                "pastor_transcript_extractor.cli.prepare_canonical_audio",
+                "pastor_transcript_extractor.commands.media_archive.prepare_canonical_audio",
                 return_value=result_payload,
             ),
         ):
