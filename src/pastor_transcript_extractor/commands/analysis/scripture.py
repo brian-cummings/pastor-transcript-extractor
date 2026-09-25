@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from pastor_transcript_extractor.commands.analysis.content import (
+from pastor_transcript_extractor.commands.analysis.common import (
     _analysis_videos,
     get_database,
 )
