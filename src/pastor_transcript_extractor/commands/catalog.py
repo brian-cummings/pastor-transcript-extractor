@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 
 import typer
 from rich.console import Console
@@ -22,6 +23,10 @@ from pastor_transcript_extractor.commands.common import get_database, unknown_pa
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.exporting import export_organization_review_markdown
 from pastor_transcript_extractor.models import VideoStatus
+from pastor_transcript_extractor.source_processing_report import (
+    generate_source_processing_report,
+)
+from pastor_transcript_extractor.sources import UnsupportedSourceError, detect_source_type
 from pastor_transcript_extractor.source_ownership import (
     apply_source_ownership_schema,
     audit_source_ownership,
@@ -126,9 +131,405 @@ def source_ownership_audit(
     for label, value in values.items():
         table.add_row(label, str(value))
     console.print(table)
-    console.print("Source ownership audit passed." if report.ok else "Source ownership audit failed.")
+    console.print(
+        "Source ownership audit passed."
+        if report.ok
+        else "Source ownership audit failed."
+    )
     if strict and not report.ok:
         raise typer.Exit(code=1)
+
+
+def add_source_service(
+    url: str,
+    pastor: str | None,
+    notes: str | None = None,
+    base_dir: Path | None = None,
+    organization: str | None = None,
+) -> None:
+    database = get_database(base_dir)
+    try:
+        source_type = detect_source_type(url)
+    except UnsupportedSourceError as error:
+        raise ValueError(str(error)) from error
+
+    pastor_record = database.get_pastor_by_slug(pastor) if pastor is not None else None
+    if pastor is not None and pastor_record is None:
+        raise ValueError(
+            f"Unknown pastor slug: {pastor} (app root: {build_paths(base_dir).root})"
+        )
+    organization_record = (
+        database.get_organization_by_slug(organization)
+        if organization is not None
+        else None
+    )
+    if organization is not None and organization_record is None:
+        raise ValueError(f"Unknown organization slug: {organization}")
+
+    source = database.add_source(
+        url=url,
+        source_type=source_type,
+        pastor_id=pastor_record.id if pastor_record is not None else None,
+        organization_id=(
+            organization_record.id if organization_record is not None else None
+        ),
+        notes=notes,
+    )
+    if organization_record is not None:
+        if (
+            source.organization_id is not None
+            and source.organization_id != organization_record.id
+        ):
+            current = database.get_organization_by_id(source.organization_id)
+            current_label = current.slug if current is not None else source.organization_id
+            raise ValueError(
+                f"Source #{source.id} is already attached to organization "
+                f"{current_label}; use 'pte source set-organization' to correct it"
+            )
+        database.set_source_organization(
+            source.id,
+            organization_record.id,
+            actor="manual",
+            reason="Organization selected while adding source",
+            event_key=f"source-add:{source.id}:{organization_record.id}",
+        )
+        source = database.get_source_by_id(source.id) or source
+    context = []
+    if organization_record is not None:
+        context.append(f"organization: {organization_record.slug}")
+    if pastor_record is not None:
+        context.append(f"target pastor: {pastor_record.slug}")
+    suffix = f" ({', '.join(context)})" if context else " (organization unknown)"
+    console.print(
+        f"Added source #{source.id}: {source.source_type.value} -> {source.url}{suffix}"
+    )
+
+
+@root_app.command(help="Add a YouTube video, playlist, or channel source for a pastor.")
+def add(
+    url: str = typer.Argument(..., help="YouTube video, playlist, or channel URL."),
+    pastor: str = typer.Option(..., help="Pastor slug to associate with this source."),
+    notes: str | None = typer.Option(None, help="Optional notes for this source."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        add_source_service(url, pastor, notes, base_dir)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@source_app.command(
+    "add",
+    help="Add a source with an optional publisher and optional target pastor.",
+)
+def source_add(
+    url: str = typer.Argument(..., help="YouTube video, playlist, or channel URL."),
+    organization: str | None = typer.Option(
+        None,
+        help="Publishing organization slug; omit when unknown.",
+    ),
+    target_pastor: str | None = typer.Option(
+        None,
+        "--target-pastor",
+        help="Optional pastor query target; this is not source ownership.",
+    ),
+    notes: str | None = typer.Option(None, help="Optional source notes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    try:
+        add_source_service(
+            url,
+            target_pastor,
+            notes,
+            base_dir,
+            organization=organization,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@source_app.command(
+    "set-organization",
+    help="Attach or correct a source's current publishing organization.",
+)
+def source_set_organization(
+    source_id: int = typer.Argument(..., help="Source id to update."),
+    organization: str = typer.Argument(..., help="Publishing organization slug."),
+    reason: str = typer.Option(
+        "Manual publisher correction",
+        help="Audit reason for the association.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organization_record = database.get_organization_by_slug(organization)
+    if organization_record is None:
+        raise typer.BadParameter(f"Unknown organization slug: {organization}")
+    try:
+        database.set_source_organization(
+            source_id,
+            organization_record.id,
+            actor="manual",
+            reason=reason,
+            event_key=f"manual-attach:{source_id}:{organization_record.id}:{reason}",
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Attached source #{source_id} to organization {organization_record.slug}."
+    )
+
+
+@source_app.command(
+    "clear-organization",
+    help="Mark a source's current publishing organization as unknown.",
+)
+def source_clear_organization(
+    source_id: int = typer.Argument(..., help="Source id to update."),
+    reason: str = typer.Option(
+        "Manual publisher correction",
+        help="Audit reason for clearing the association.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        database.set_source_organization(
+            source_id,
+            None,
+            actor="manual",
+            reason=reason,
+            event_key=f"manual-detach:{source_id}:{reason}",
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Cleared the publishing organization for source #{source_id}.")
+
+
+def _set_source_processing_enabled(
+    source_id: int,
+    enabled: bool,
+    base_dir: Path | None,
+) -> None:
+    database = get_database(base_dir)
+    try:
+        source = database.set_source_processing_enabled(source_id, enabled)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    state = "enabled" if enabled else "disabled"
+    scope = "included in" if enabled else "excluded from"
+    console.print(
+        f"Source #{source.id} is {state} and will be {scope} all-source processing: "
+        f"{source.url}"
+    )
+
+
+@source_app.command(
+    "disable",
+    help="Exclude a source from all-source processing such as `pte run --all`.",
+)
+def source_disable(
+    source_id: int = typer.Argument(..., help="Source id to disable."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    _set_source_processing_enabled(source_id, False, base_dir)
+
+
+@source_app.command(
+    "enable",
+    help="Include a source in all-source processing such as `pte run --all`.",
+)
+def source_enable(
+    source_id: int = typer.Argument(..., help="Source id to enable."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    _set_source_processing_enabled(source_id, True, base_dir)
+
+
+@root_app.command(help="Show database counts and queued sources.")
+def status(
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    counts = database.counts_by_table()
+    sources = database.list_sources()
+
+    summary = Table(title="Pastor Transcript Extractor")
+    summary.add_column("Metric")
+    summary.add_column("Value", justify="right")
+    summary.add_row("Organizations", str(counts["organizations"]))
+    summary.add_row(
+        "Imported Affiliation Claims",
+        str(counts["organization_affiliation_claims"]),
+    )
+    summary.add_row(
+        "Pastor Affiliations",
+        str(counts["pastor_organization_affiliations"]),
+    )
+    summary.add_row(
+        "Affiliation Claim Reviews",
+        str(counts["affiliation_claim_review_events"]),
+    )
+    summary.add_row("Sources", str(counts["sources"]))
+    summary.add_row(
+        "Processing-enabled Sources",
+        str(sum(source.processing_enabled for source in sources)),
+    )
+    summary.add_row(
+        "Processing-disabled Sources",
+        str(sum(not source.processing_enabled for source in sources)),
+    )
+    summary.add_row("Imported Source References", str(counts["source_import_refs"]))
+    summary.add_row("Pastors", str(counts["pastors"]))
+    summary.add_row("Videos", str(counts["videos"]))
+    summary.add_row("Transcripts", str(counts["transcript_artifacts"]))
+    summary.add_row("Media Artifacts", str(counts["media_artifacts"]))
+    summary.add_row("Media Acquisition Attempts", str(counts["media_acquisition_attempts"]))
+    summary.add_row("Media Archive Entries", str(counts["media_archive_entries"]))
+    summary.add_row("Media Archive Attempts", str(counts["media_archive_attempts"]))
+    summary.add_row("Segments", str(counts["transcript_segments"]))
+    summary.add_row("Extraction", str(counts["extraction_results"]))
+    summary.add_row("Metadata Snapshots", str(counts["metadata_artifacts"]))
+    summary.add_row("Identity Evidence", str(counts["identity_evidence"]))
+    summary.add_row("Identity Assessments", str(counts["identity_assessments"]))
+    summary.add_row("Speaker Profiles", str(counts["speaker_profiles"]))
+    summary.add_row("Speaker Observations", str(counts["speaker_observations"]))
+    summary.add_row("Speaker Name Claims", str(counts["speaker_name_claims"]))
+    summary.add_row("Excluded", str(counts["excluded_videos"]))
+    console.print(summary)
+
+    if not sources:
+        console.print("No sources queued.")
+        return
+
+    table = Table(title="Queued Sources")
+    table.add_column("ID", justify="right")
+    table.add_column("Organization")
+    table.add_column("Target Pastor")
+    table.add_column("Type")
+    table.add_column("Processing")
+    table.add_column("URL")
+    for source in sources:
+        organization_name = "-"
+        if source.organization_id is not None:
+            organization_record = database.get_organization_by_id(
+                source.organization_id
+            )
+            organization_name = (
+                organization_record.slug
+                if organization_record is not None
+                else str(source.organization_id)
+            )
+        pastor_name = "-"
+        if source.pastor_id is not None:
+            pastor_record = database.get_pastor_by_id(source.pastor_id)
+            if pastor_record is not None:
+                pastor_name = pastor_record.slug
+            else:
+                pastor_name = str(source.pastor_id)
+        table.add_row(
+            str(source.id),
+            organization_name,
+            pastor_name,
+            source.source_type.value,
+            "enabled" if source.processing_enabled else "disabled",
+            source.url,
+        )
+    console.print(table)
+
+
+@root_app.command(
+    "source-processing-report",
+    help="Write read-only per-source processing reports as Markdown and JSON.",
+)
+def source_processing_report(
+    database_path: Path | None = typer.Option(
+        None,
+        "--database",
+        help="Explicit application database path; defaults to the configured app database.",
+    ),
+    markdown_path: Path = typer.Option(
+        Path("source_processing_report.md"),
+        "--markdown",
+        help="Markdown report output path.",
+    ),
+    json_path: Path = typer.Option(
+        Path("source_processing_report.json"),
+        "--json",
+        help="JSON report output path.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory when --database is not supplied.",
+    ),
+) -> None:
+    if database_path is not None and base_dir is not None:
+        raise typer.BadParameter("use either --database or --base-dir, not both")
+    resolved_database = (
+        database_path.expanduser().resolve()
+        if database_path is not None
+        else build_paths(base_dir).database
+    )
+    try:
+        report = generate_source_processing_report(
+            resolved_database,
+            markdown_path=markdown_path,
+            json_path=json_path,
+        )
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    summary = report["summary"]
+    console.print(f"Wrote Markdown report to {markdown_path.expanduser().resolve()}")
+    console.print(f"Wrote JSON report to {json_path.expanduser().resolve()}")
+    console.print(
+        f"Reported {summary['total_sources']} source(s) and "
+        f"{summary['total_cataloged_videos']} cataloged video(s)."
+    )
+
+
+@source_app.command("list", help="List configured sources.")
+def source_list(
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    sources = database.list_sources()
+
+    if not sources:
+        console.print("No sources configured.")
+        return
+
+    table = Table(title="Sources")
+    table.add_column("ID", justify="right")
+    table.add_column("Organization")
+    table.add_column("Target Pastor")
+    table.add_column("Type")
+    table.add_column("Processing")
+    table.add_column("URL")
+    for source in sources:
+        organization_name = "-"
+        if source.organization_id is not None:
+            organization_record = database.get_organization_by_id(
+                source.organization_id
+            )
+            organization_name = (
+                organization_record.slug
+                if organization_record is not None
+                else str(source.organization_id)
+            )
+        pastor_name = "-"
+        if source.pastor_id is not None:
+            pastor_record = database.get_pastor_by_id(source.pastor_id)
+            pastor_name = pastor_record.slug if pastor_record is not None else str(source.pastor_id)
+        table.add_row(
+            str(source.id),
+            organization_name,
+            pastor_name,
+            source.source_type.value,
+            "enabled" if source.processing_enabled else "disabled",
+            source.url,
+        )
+    console.print(table)
 
 
 @organization_app.command("add", help="Create a publishing organization.")

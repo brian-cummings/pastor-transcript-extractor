@@ -7,11 +7,10 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 4 — separate catalog commands from acquisition
-  workflows.
-- Next action: move the remaining source catalog commands into
-  `commands/catalog.py` without absorbing the pre-existing source-list count
-  changes; leave discovery, transcription, and sync orchestration in `cli.py`.
+- Active milestone: Milestone 5 — extract the top-level pipeline.
+- Next action: create the pipeline workflow boundary, beginning with the
+  top-level `run` request/result contract and stage orchestration while
+  preserving the existing service seams and tests.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -61,7 +60,7 @@ these changes.
   - [x] Analysis: style.
   - [x] Media.
   - [x] Evaluation, fixtures, and diagnostics.
-- [ ] 4. Separate catalog commands from acquisition workflows.
+- [x] 4. Separate catalog commands from acquisition workflows.
 - [ ] 5. Extract the top-level pipeline.
 - [ ] 6. Split identity by capability.
 - [ ] 7. Decompose oversized identity workflows.
@@ -254,6 +253,20 @@ because the top-level replace-existing workflow still calls and patches that
 seam; Milestone 5 will move the workflow and remove the compatibility import.
 
 `cli.py` is now 13,647 lines, down 4,470 lines from baseline.
+
+### 2026-09-25 — Milestone 4.5: source catalog extraction
+
+Moved top-level source addition, source-group add/ownership/enablement/listing,
+catalog status, and read-only source-processing reporting into
+`commands/catalog.py`. The acquisition workflows retain temporary imports of
+`add_source_service` and `delete_source_service`; these compatibility seams are
+explicitly scheduled for removal with the pipeline workflow extraction.
+
+The pre-existing recording-count enhancement was not included in this slice's
+commit boundary; it is reapplied as an unstaged change in the new owner module.
+No catalog group decorators remain in `cli.py`.
+
+`cli.py` is now 13,243 lines, down 4,874 lines from baseline.
 
 ## Validation log
 
@@ -552,6 +565,28 @@ Ran 10 tests in 0.408s — OK
 PASS
 
 .venv/bin/python -m pastor_transcript_extractor source delete --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Source catalog extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_sources.CliTests.test_pastor_add_and_add_source_flow tests.test_sources.CliTests.test_run_replace_existing_deletes_source_before_pipeline -q
+Ran 8 tests in 0.343s — OK
+
+.venv/bin/python -m pastor_transcript_extractor source --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor status --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor source-processing-report --help
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
