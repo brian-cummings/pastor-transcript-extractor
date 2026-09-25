@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import typer
 
 
+root_app = typer.Typer(help="Pastor Transcript Extractor CLI")
 pastor_app = typer.Typer(help="Manage pastors.")
 organization_app = typer.Typer(help="Manage publishing organizations.")
 source_app = typer.Typer(help="Manage queued sources.")

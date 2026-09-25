@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: extract normalized-audio provenance audit and repair into
-  `commands/media_provenance.py`, retaining identity cleanup and fingerprint
-  regeneration behavior exactly.
+- Next action: move the remaining read-only system, comparison, interaction,
+  and recording-verifier diagnostics into `commands/diagnostics.py`, then
+  update their focused test seams.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -58,7 +58,7 @@ these changes.
   - [x] Analysis: content.
   - [x] Analysis: structure.
   - [x] Analysis: style.
-  - [ ] Media.
+  - [x] Media.
   - [ ] Evaluation, fixtures, and diagnostics.
 - [ ] 4. Separate catalog commands from acquisition workflows.
 - [ ] 5. Extract the top-level pipeline.
@@ -178,6 +178,43 @@ functions still needed by top-level and identity workflows remain imported by
 `cli.py`; only command-specific ownership moved.
 
 `cli.py` is now 15,967 lines, down 2,150 lines from baseline.
+
+### 2026-09-24 — Milestone 3.5b: media provenance extraction
+
+Moved normalized-provenance audit and repair into
+`commands/media_provenance.py` (276 lines). The extraction preserves the
+all-video availability preflight before identity invalidation, append-only
+review cleanup, optional audio-bound fingerprint regeneration, retry command
+construction, and old-artifact preservation.
+
+`cli.py` is now 15,718 lines, down 2,399 lines from baseline.
+
+### 2026-09-25 — Milestone 3.5c: media archive extraction
+
+Moved source and normalized archive, canonical-audio preparation, archive
+status, and local-audio sweep commands into `commands/media_archive.py`.
+The module now owns all ten media decorators and the command-only byte display
+helper. The command contract stays registered through the shared `media_app`.
+The canonical-audio CLI retry test now patches the owning module rather than
+`cli.py`.
+
+`cli.py` is now 15,255 lines, down 2,862 lines from baseline.
+
+### 2026-09-25 — Milestone 3.6a: evaluation and fixture command extraction
+
+Moved the five top-level fixture validation, source-family, and existing-output
+evaluation commands into `commands/evaluation.py`. The root Typer app now has
+one shared definition in `commands/apps.py`, while `cli.py:app` remains the
+stable public object and attaches the existing group apps as before.
+
+The extracted commands continue to use existing artifacts only; no corpus
+classification or evaluation job was run during this slice.
+
+### 2026-09-25 — Milestone 3.6b (in progress): diagnostic command extraction
+
+Moved the single-video `diagnose` command and its fixture/identity outcome
+helpers into `commands/diagnostics.py`. The remaining diagnostic commands share
+these domain dependencies and will follow in the next bounded slice.
 
 ## Validation log
 
@@ -324,6 +361,63 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/common.py src/pastor_transcript_extractor/commands/media.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-24 — Media provenance extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_media_artifacts.py tests/test_identity.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_media_artifacts tests.test_identity -q
+Ran 55 tests in 2.521s — OK
+
+.venv/bin/python -m pastor_transcript_extractor media --help
+PASS
+
+.venv/bin/pte media --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/media_provenance.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Media archive extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_canonical_audio_preparation.py tests/test_media_artifacts.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_canonical_audio_preparation tests.test_media_artifacts -q
+Ran 58 tests in 1.819s — OK
+
+.venv/bin/python -m pastor_transcript_extractor media --help
+PASS
+
+.venv/bin/pte media --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/cli.py src/pastor_transcript_extractor/commands/media_archive.py src/pastor_transcript_extractor/commands/media_provenance.py tests/test_canonical_audio_preparation.py
+PASS
+```
+
+### 2026-09-25 — Evaluation and fixture command extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_fixture_validation -q
+Ran 24 tests in 0.399s — OK
+
+.venv/bin/python -m pastor_transcript_extractor --help
+PASS
+
+.venv/bin/pte --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/apps.py src/pastor_transcript_extractor/commands/evaluation.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
