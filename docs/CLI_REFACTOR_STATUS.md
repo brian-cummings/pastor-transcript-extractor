@@ -8,9 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 3 — extract lower-coupling command groups.
-- Next action: extract the benchmark command group into
-  `commands/benchmark.py`, move its tests to the owning patch boundaries, and
-  preserve temporary direct imports from `cli.py` only where required.
+- Next action: map the analysis command dependencies and extract the content
+  analysis slice into `commands/analysis/content.py` with focused tests.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -54,7 +53,7 @@ these changes.
 - [x] 1. Freeze the CLI contract.
 - [x] 2. Introduce the composition structure.
 - [ ] 3. Extract lower-coupling command groups.
-  - [ ] Benchmark.
+  - [x] Benchmark.
   - [ ] Analysis: content.
   - [ ] Analysis: structure.
   - [ ] Analysis: style.
@@ -113,6 +112,18 @@ attaches those shared groups before registering the existing commands.
 No command implementation moved and the frozen topology, help surfaces, and
 entry points remained unchanged.
 
+### 2026-09-24 — Milestone 3.1: benchmark command extraction
+
+Moved all eight benchmark commands and their private membership/database helper
+from `cli.py` into `commands/benchmark.py`. The new module owns its Typer
+decorators, benchmark-domain imports, database opening, and Rich rendering.
+`cli.py` imports the module only to register the shared benchmark app.
+
+No benchmark command functions were direct test imports or patch targets, so no
+compatibility re-exports or patch shims were required. `cli.py` decreased from
+18,117 baseline lines to 17,752 lines; the cohesive benchmark adapter is 388
+lines.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -144,6 +155,25 @@ PASS
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-24 — Benchmark command extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_benchmark.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_benchmark -q
+Ran 26 tests in 1.559s — OK
+
+.venv/bin/python -m pastor_transcript_extractor benchmark --help
+PASS
+
+.venv/bin/pte benchmark --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/benchmark.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
