@@ -7,10 +7,10 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 2 — introduce the composition structure.
-- Next action: create the minimal `commands/` package and root app-assembly
-  pattern without moving behavior yet, then prove the frozen command topology
-  and entry points are unchanged.
+- Active milestone: Milestone 3 — extract lower-coupling command groups.
+- Next action: extract the benchmark command group into
+  `commands/benchmark.py`, move its tests to the owning patch boundaries, and
+  preserve temporary direct imports from `cli.py` only where required.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -52,7 +52,7 @@ these changes.
 ## Milestone checklist
 
 - [x] 1. Freeze the CLI contract.
-- [ ] 2. Introduce the composition structure.
+- [x] 2. Introduce the composition structure.
 - [ ] 3. Extract lower-coupling command groups.
   - [ ] Benchmark.
   - [ ] Analysis: content.
@@ -103,6 +103,16 @@ entry-point assertions.
 
 No production code changed in this slice.
 
+### 2026-09-24 — Milestone 2: command composition seam
+
+Added the `pastor_transcript_extractor.commands` package and centralized the
+nine Typer group instances plus their public attachment order in
+`commands/apps.py`. The stable `cli.py` entry point now creates the root app and
+attaches those shared groups before registering the existing commands.
+
+No command implementation moved and the frozen topology, help surfaces, and
+entry points remained unchanged.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -115,6 +125,25 @@ PASS
 Ran 29 tests in 1.994s — OK
 
 git diff --check -- tests/test_cli_contract.py docs/CLI_REFACTOR_PLAN.md docs/CLI_REFACTOR_STATUS.md
+PASS
+```
+
+### 2026-09-24 — Command composition seam
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_benchmark tests.test_source_processing_enablement -q
+Ran 29 tests in 2.098s — OK
+
+.venv/bin/python -m pastor_transcript_extractor --help
+PASS
+
+.venv/bin/pte --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
