@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
+import re
 
 import typer
 from rich.console import Console
@@ -8,10 +10,11 @@ from rich.table import Table
 
 from pastor_transcript_extractor.commands.apps import (
     organization_app,
+    pastor_app,
     root_app,
     source_ownership_app,
 )
-from pastor_transcript_extractor.commands.common import get_database
+from pastor_transcript_extractor.commands.common import get_database, unknown_pastor_error
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.exporting import export_organization_review_markdown
 from pastor_transcript_extractor.source_ownership import (
@@ -259,3 +262,144 @@ def organization_reject_affiliation_claim(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     console.print(f"Recorded affiliation claim rejection event #{event_id}.")
+
+
+@pastor_app.command("add", help="Create a pastor profile and folder namespace.")
+def pastor_add(
+    slug: str = typer.Argument(..., help="Slug for this pastor, used in folder paths."),
+    display_name: str = typer.Argument(..., help="Human-readable pastor name."),
+    notes: str | None = typer.Option(None, help="Optional notes for this pastor."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    pastor = database.add_pastor(slug=slug, display_name=display_name, notes=notes)
+    console.print(f"Added pastor #{pastor.id}: {pastor.slug} -> {pastor.display_name}")
+
+
+@pastor_app.command("list", help="List configured pastors.")
+def pastor_list(
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    pastors = database.list_pastors()
+
+    if not pastors:
+        console.print("No pastors configured.")
+        return
+
+    table = Table(title="Pastors")
+    table.add_column("ID", justify="right")
+    table.add_column("Slug")
+    table.add_column("Display Name")
+    for pastor in pastors:
+        table.add_row(str(pastor.id), pastor.slug, pastor.display_name)
+    console.print(table)
+
+
+@pastor_app.command(
+    "affiliate",
+    help="Record a reviewed or manually grounded organization affiliation.",
+)
+def pastor_affiliate(
+    pastor: str = typer.Argument(..., help="Pastor slug."),
+    organization: str = typer.Argument(..., help="Organization slug."),
+    role: str = typer.Option("pastor", help="Role held at the organization."),
+    started_on: str | None = typer.Option(
+        None,
+        "--from",
+        help="Inclusive start date in YYYY-MM-DD format.",
+    ),
+    ended_on: str | None = typer.Option(
+        None,
+        "--to",
+        help="Exclusive end date in YYYY-MM-DD format.",
+    ),
+    temporal_status: str | None = typer.Option(
+        None,
+        "--status",
+        help="Temporal status: current, former, bounded, or unknown.",
+    ),
+    notes: str | None = typer.Option(None, help="Optional affiliation notes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    pastor_record = database.get_pastor_by_slug(pastor)
+    if pastor_record is None:
+        raise unknown_pastor_error(pastor, base_dir)
+    organization_record = database.get_organization_by_slug(organization)
+    if organization_record is None:
+        raise typer.BadParameter(f"Unknown organization slug: {organization}")
+    try:
+        start_date = date.fromisoformat(started_on) if started_on is not None else None
+        end_date = date.fromisoformat(ended_on) if ended_on is not None else None
+    except ValueError as error:
+        raise typer.BadParameter("Affiliation dates must use YYYY-MM-DD.") from error
+    if start_date is not None and end_date is not None and end_date <= start_date:
+        raise typer.BadParameter("--to must be later than --from.")
+    inferred_status = (
+        "bounded"
+        if end_date is not None and start_date is not None
+        else "former"
+        if end_date is not None
+        else "current"
+        if start_date is not None
+        else "unknown"
+    )
+    resolved_status = temporal_status or inferred_status
+    if resolved_status not in {"current", "former", "bounded", "unknown"}:
+        raise typer.BadParameter(
+            "--status must be current, former, bounded, or unknown."
+        )
+    role_label = role.strip()
+    if not role_label:
+        raise typer.BadParameter("--role cannot be empty.")
+    role_key = re.sub(r"[^a-z0-9]+", "_", role_label.lower()).strip("_")
+    affiliation = database.add_pastor_organization_affiliation(
+        pastor_id=pastor_record.id,
+        organization_id=organization_record.id,
+        role_key=role_key,
+        role_label=role_label,
+        started_on=started_on,
+        ended_on=ended_on,
+        temporal_status=resolved_status,
+        provenance_kind="manual",
+        notes=notes,
+    )
+    console.print(
+        f"Recorded affiliation #{affiliation.id}: {pastor_record.slug} -> "
+        f"{organization_record.slug} ({role_label}, {resolved_status})."
+    )
+
+
+@pastor_app.command(
+    "affiliate-claim",
+    help="Explicitly attach an imported affiliation claim to a selected pastor.",
+)
+def pastor_affiliate_claim(
+    pastor: str = typer.Argument(..., help="Existing curated pastor slug."),
+    claim_id: int = typer.Argument(..., help="Imported affiliation claim id."),
+    reviewer: str = typer.Option(..., help="Reviewer name."),
+    reason: str = typer.Option(..., help="Grounded reason for the attachment."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    pastor_record = database.get_pastor_by_slug(pastor)
+    if pastor_record is None:
+        raise unknown_pastor_error(pastor, base_dir)
+    try:
+        event_id = database.review_organization_affiliation_claim(
+            claim_id=claim_id,
+            pastor_id=pastor_record.id,
+            attach=True,
+            reviewer=reviewer,
+            reason=reason,
+            review_event_key=(
+                f"attach:{claim_id}:{pastor_record.id}:{reviewer}:{reason}"
+            ),
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"Attached affiliation claim #{claim_id} to pastor "
+        f"{pastor_record.slug} with review event #{event_id}."
+    )
