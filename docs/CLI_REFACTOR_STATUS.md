@@ -9,7 +9,7 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 4 — separate catalog commands from acquisition
   workflows.
-- Next action: move pastor, source, and video catalog commands into
+- Next action: move source and video catalog commands into
   `commands/catalog.py`; leave source discovery, transcription, and sync
   orchestration in `cli.py` for the workflow milestone.
 - Dataset validation: not needed for the current milestone.
@@ -235,6 +235,15 @@ semantics; `cli.py` retains only app assembly and unrelated workflows.
 Moved organization creation, listing, review export, affiliation-claim listing,
 and rejection commands into `commands/catalog.py`. The catalog module now owns
 organization-specific persistence validation and Rich output.
+
+### 2026-09-25 — Milestone 4.3: pastor catalog extraction
+
+Moved pastor creation, listing, manual affiliation, and reviewed claim
+attachment commands into `commands/catalog.py`. Promoted the reusable unknown-
+pastor error constructor to `commands/common.py` so remaining workflows and the
+catalog adapter share the same error text without importing `cli.py`.
+
+`cli.py` is now 13,871 lines, down 4,246 lines from baseline.
 
 ## Validation log
 
@@ -501,6 +510,22 @@ Ran 6 tests in 0.233s — OK
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Pastor catalog extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_sources.CliTests.test_pastor_add_and_add_source_flow -q
+Ran 7 tests in 0.288s — OK
+
+.venv/bin/python -m pastor_transcript_extractor pastor --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/commands/common.py src/pastor_transcript_extractor/cli.py
 PASS
 ```
 
