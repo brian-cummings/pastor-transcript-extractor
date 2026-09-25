@@ -6,9 +6,14 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from pastor_transcript_extractor.commands.apps import root_app, source_ownership_app
+from pastor_transcript_extractor.commands.apps import (
+    organization_app,
+    root_app,
+    source_ownership_app,
+)
 from pastor_transcript_extractor.commands.common import get_database
 from pastor_transcript_extractor.config import build_paths, ensure_directories
+from pastor_transcript_extractor.exporting import export_organization_review_markdown
 from pastor_transcript_extractor.source_ownership import (
     apply_source_ownership_schema,
     audit_source_ownership,
@@ -116,3 +121,141 @@ def source_ownership_audit(
     console.print("Source ownership audit passed." if report.ok else "Source ownership audit failed.")
     if strict and not report.ok:
         raise typer.Exit(code=1)
+
+
+@organization_app.command("add", help="Create a publishing organization.")
+def organization_add(
+    slug: str = typer.Argument(..., help="Stable organization slug."),
+    display_name: str = typer.Argument(..., help="Human-readable organization name."),
+    organization_type: str = typer.Option(
+        "church",
+        "--type",
+        help="Organization type, such as church, conference, ministry, school, or network.",
+    ),
+    notes: str | None = typer.Option(None, help="Optional organization notes."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organization = database.add_organization(
+        slug=slug,
+        display_name=display_name,
+        organization_type=organization_type,
+        notes=notes,
+    )
+    console.print(
+        f"Added organization #{organization.id}: {organization.slug} -> "
+        f"{organization.display_name} ({organization.organization_type})"
+    )
+
+
+@organization_app.command("list", help="List publishing organizations.")
+def organization_list(
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organizations = database.list_organizations()
+    if not organizations:
+        console.print("No organizations configured.")
+        return
+    table = Table(title="Organizations")
+    table.add_column("ID", justify="right")
+    table.add_column("Slug")
+    table.add_column("Type")
+    table.add_column("Display Name")
+    for organization in organizations:
+        table.add_row(
+            str(organization.id),
+            organization.slug,
+            organization.organization_type,
+            organization.display_name,
+        )
+    console.print(table)
+
+
+@organization_app.command(
+    "review",
+    help="Build a publisher-scoped review without asserting speaker identity.",
+)
+def organization_review(
+    organization: str = typer.Argument(..., help="Organization slug."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    paths = build_paths(base_dir, remember=True)
+    try:
+        result = export_organization_review_markdown(
+            database,
+            paths,
+            organization,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Wrote organization review markdown to {result.export_path}")
+    console.print(f"Wrote organization review manifest to {result.manifest_path}")
+    console.print(
+        f"Included {result.video_count} video(s); skipped {result.skipped_count}."
+    )
+
+
+@organization_app.command(
+    "claims",
+    help="List imported affiliation claims without linking people by name.",
+)
+def organization_claims(
+    organization: str | None = typer.Option(
+        None,
+        help="Only show claims for one organization slug.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    organization_id = None
+    if organization is not None:
+        organization_record = database.get_organization_by_slug(organization)
+        if organization_record is None:
+            raise typer.BadParameter(f"Unknown organization slug: {organization}")
+        organization_id = organization_record.id
+    claims = database.list_organization_affiliation_claims(organization_id)
+    if not claims:
+        console.print("No affiliation claims matched.")
+        return
+    table = Table(title="Organization Affiliation Claims")
+    table.add_column("ID", justify="right")
+    table.add_column("Organization")
+    table.add_column("Claimed Name")
+    table.add_column("Role")
+    table.add_column("Review")
+    for claim in claims:
+        table.add_row(
+            str(claim["id"]),
+            str(claim["organization_slug"]),
+            str(claim["claimed_person_name"]),
+            str(claim["claimed_role"]),
+            str(claim["review_status"] or "unreviewed"),
+        )
+    console.print(table)
+
+
+@organization_app.command(
+    "reject-affiliation-claim",
+    help="Append a reviewed rejection without creating or linking a person.",
+)
+def organization_reject_affiliation_claim(
+    claim_id: int = typer.Argument(..., help="Affiliation claim id."),
+    reviewer: str = typer.Option(..., help="Reviewer name."),
+    reason: str = typer.Option(..., help="Reason for rejection."),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        event_id = database.review_organization_affiliation_claim(
+            claim_id=claim_id,
+            pastor_id=None,
+            attach=False,
+            reviewer=reviewer,
+            reason=reason,
+            review_event_key=f"reject:{claim_id}:{reviewer}:{reason}",
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Recorded affiliation claim rejection event #{event_id}.")

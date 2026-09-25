@@ -9,8 +9,8 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 4 — separate catalog commands from acquisition
   workflows.
-- Next action: move pastor, organization, source, and video catalog commands
-  into `commands/catalog.py`; leave source discovery, transcription, and sync
+- Next action: move pastor, source, and video catalog commands into
+  `commands/catalog.py`; leave source discovery, transcription, and sync
   orchestration in `cli.py` for the workflow milestone.
 - Dataset validation: not needed for the current milestone.
 
@@ -229,6 +229,12 @@ initialization, savepoint migration, ownership audit rendering, and strict exit
 semantics; `cli.py` retains only app assembly and unrelated workflows.
 
 `cli.py` is now 14,157 lines, down 3,960 lines from baseline.
+
+### 2026-09-25 — Milestone 4.2: organization catalog extraction
+
+Moved organization creation, listing, review export, affiliation-claim listing,
+and rejection commands into `commands/catalog.py`. The catalog module now owns
+organization-specific persistence validation and Rich output.
 
 ## Validation log
 
@@ -476,6 +482,22 @@ Ran 6 tests in 0.228s — OK
 PASS
 
 .venv/bin/python -m pastor_transcript_extractor source-ownership migrate --help
+PASS
+
+git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Organization catalog extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_cli_contract.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract -q
+Ran 6 tests in 0.233s — OK
+
+.venv/bin/python -m pastor_transcript_extractor organization --help
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/commands/catalog.py src/pastor_transcript_extractor/cli.py
