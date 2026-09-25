@@ -9,9 +9,9 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 4 — separate catalog commands from acquisition
   workflows.
-- Next action: extract caption acquisition and transcription into typed,
-  presentation-independent workflows, then move imported-source sync before
-  advancing to the top-level pipeline milestone.
+- Next action: extract transcription into a typed, presentation-independent
+  workflow, then move imported-source sync before advancing to the top-level
+  pipeline milestone.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -283,6 +283,22 @@ the plan also requires discovery, caption, transcription, and imported-source
 workflows before Milestone 4 can close.
 
 `cli.py` is now 12,966 lines, down 5,151 lines from baseline.
+
+### 2026-09-25 — Milestone 4.7: caption-acquisition workflow extraction
+
+Added `workflows/caption_acquisition.py` with typed request/result objects,
+explicit database, path, tool, fetcher, clock, sleeper, and progress boundaries,
+plus named selection, request-scheduling, per-video acquisition, and queue
+stages. The workflow imports no Typer, Rich, or `cli.py`; direct workflow tests
+exercise its structured counts and retry behavior without a CLI runner.
+
+The stable `cli.fetch_captions_service` symbol is now a thin rendering and
+compatibility wrapper. It explicitly passes the existing CLI fetcher and clock
+seams so pipeline and command tests retain their current patch behavior until
+Milestone 5 removes that migration scaffolding. Rate-limit and authentication
+stops retain the same exception identity through a compatibility re-export.
+
+`cli.py` is now 12,804 lines, down 5,313 lines from baseline.
 
 ## Validation log
 
@@ -622,6 +638,22 @@ Ran 17 tests — OK
 PASS
 
 git diff --check -- src/pastor_transcript_extractor/workflows src/pastor_transcript_extractor/cli.py
+PASS
+```
+
+### 2026-09-25 — Caption-acquisition workflow extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_caption_acquisition_workflow.py
+PASS
+
+.venv/bin/python -m unittest -q tests.test_caption_acquisition_workflow tests.test_cli_contract plus thirteen focused caption CLI tests
+Ran 21 tests in 0.793s — OK
+
+.venv/bin/python -m pastor_transcript_extractor fetch --help
+PASS
+
+git diff --check
 PASS
 ```
 

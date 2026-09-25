@@ -147,14 +147,6 @@ from pastor_transcript_extractor.models import (
     Video,
     VideoStatus,
 )
-from pastor_transcript_extractor.media import (
-    NoCaptionsAvailableError,
-    VideoNotYetAvailableError,
-    VideoUnavailableError,
-    YtDlpAuthenticationRequiredError,
-    YtDlpConfigurationError,
-    YtDlpRateLimitError,
-)
 from pastor_transcript_extractor.metadata_enrichment import (
     MetadataEnrichmentResult,
     enrich_metadata,
@@ -384,6 +376,11 @@ from pastor_transcript_extractor.workflows.source_discovery import (
     DiscoveryServiceResult,
     discover_sources_service as _discover_sources_service,
 )
+from pastor_transcript_extractor.workflows.caption_acquisition import (
+    CaptionAcquisitionBlockedError,
+    CaptionAcquisitionResult,
+    fetch_captions_service as _fetch_captions_service,
+)
 
 app = root_app
 attach_command_groups(app)
@@ -392,7 +389,6 @@ DEFAULT_DISCOVER_LIMIT = 26
 DEFAULT_TRANSCRIBE_JOBS = 2
 DEFAULT_PREP_WORKERS = 2
 CAPTION_BATCH_REQUEST_INTERVAL_SECONDS = 5.0
-CAPTION_RATE_LIMIT_BACKOFF_SECONDS = (15.0, 30.0, 60.0)
 MIN_SYNC_FREE_DISK_FRACTION = 0.20
 SYNC_ARCHIVE_WAIT_INITIAL_SECONDS = 1.0
 SYNC_ARCHIVE_WAIT_MAX_SECONDS = 30.0
@@ -405,10 +401,6 @@ STAGE_QUEUED_TRANSCRIBE = "q-xcribe"
 STAGE_TRANSCRIBING = "xcribe"
 STAGE_DONE = "done"
 STAGE_FAILED = "failed"
-
-
-class CaptionAcquisitionBlockedError(ValueError):
-    """A batch-wide YouTube condition makes further caption requests unsafe."""
 
 
 STAGE_LABELS = {
@@ -11093,172 +11085,18 @@ def fetch_captions_service(
     request_interval_seconds: float = 0.0,
     cookies_from_browser: str | None = None,
     cookies: Path | None = None,
-) -> None:
-    database = get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
-    tools = build_tool_config()
-    if cookies_from_browser is not None or cookies is not None:
-        tools = replace(
-            tools,
-            yt_dlp_cookies_from_browser=cookies_from_browser,
-            yt_dlp_cookies_path=cookies,
-        )
-    if (
-        tools.yt_dlp_cookies_from_browser is not None
-        and tools.yt_dlp_cookies_path is not None
-    ):
-        raise ValueError(
-            "Use either --cookies-from-browser or --cookies for YouTube, not both."
-        )
-    videos = list(database.list_videos())
-    if source_id is not None:
-        videos = [video for video in videos if video.source_id == source_id]
-    if video_ids is not None:
-        videos = [video for video in videos if video.id in video_ids]
-    if not videos:
-        console.print("No videos queued.")
-        return
-
-    minimum_duration = minimum_sermon_duration_seconds()
-    maximum_duration = maximum_sermon_duration_seconds()
-    future_events = sum(
-        1 for video in videos if not publication_is_not_future(video.published_at)
-    )
-    below_minimum = sum(
-        1
-        for video in videos
-        if not duration_meets_sermon_minimum(
-            video.duration_seconds,
-            minimum_seconds=minimum_duration,
-        )
-        and publication_is_not_future(video.published_at)
-    )
-    above_maximum = sum(
-        1
-        for video in videos
-        if not duration_within_sermon_maximum(
-            video.duration_seconds,
-            maximum_seconds=maximum_duration,
-        )
-        and publication_is_not_future(video.published_at)
-    )
-    if below_minimum:
-        console.print(
-            f"Bypassing {below_minimum} video(s) below the configured "
-            f"{minimum_duration:g}-second sermon minimum."
-        )
-    if above_maximum:
-        console.print(
-            f"Bypassing {above_maximum} video(s) above the configured "
-            f"{maximum_duration:g}-second sermon-video maximum."
-        )
-    if future_events:
-        console.print(f"Bypassing {future_events} future event(s).")
-
-    processed = 0
-    skipped = below_minimum + above_maximum + future_events
-    unavailable = 0
-    deferred = 0
-    failed = 0
-    last_request_started: float | None = None
-    caption_attempts: dict[int, int] = {}
-
-    def fetch_with_rate_limit_retry(video):
-        nonlocal last_request_started
-        for attempt in range(len(CAPTION_RATE_LIMIT_BACKOFF_SECONDS) + 1):
-            if last_request_started is not None and request_interval_seconds > 0:
-                elapsed = time.monotonic() - last_request_started
-                remaining = request_interval_seconds - elapsed
-                if remaining > 0:
-                    time.sleep(remaining)
-            last_request_started = time.monotonic()
-            try:
-                return fetch_captions_video(database, paths, tools, video.id)
-            except YtDlpRateLimitError:
-                if attempt >= len(CAPTION_RATE_LIMIT_BACKOFF_SECONDS):
-                    raise
-                backoff = CAPTION_RATE_LIMIT_BACKOFF_SECONDS[attempt]
-                console.print(
-                    f"Caption request rate limited for video #{video.id}; "
-                    f"retrying in {backoff:g}s."
-                )
-                time.sleep(backoff)
-        raise AssertionError("unreachable caption retry state")
-
-    for video in videos:
-        caption_attempts[video.id] = caption_attempts.get(video.id, 0) + 1
-        retrying = caption_attempts[video.id] > 1
-        if not _catalog_video_is_sermon_eligible(
-            database,
-            video,
-            minimum_seconds=minimum_duration,
-            maximum_seconds=maximum_duration,
-        ):
-            continue
-        transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
-        if any(artifact.source_kind == TranscriptSourceKind.CAPTIONS for artifact in transcript_artifacts):
-            skipped += 1
-            continue
-
-        try:
-            action = "Retrying captions" if retrying else "Fetching captions"
-            console.print(f"{action} for video #{video.id}: {video.title}")
-            result = fetch_with_rate_limit_retry(video)
-        except NoCaptionsAvailableError:
-            if _is_terminal_unavailable(video.status, video.failure_reason) or _is_retryable_fetch_failure(
-                video.status, video.failure_reason
-            ):
-                database.update_video_status(video.id, VideoStatus.DISCOVERED)
-            console.print(f"No captions for video #{video.id}; leaving it for local transcription.")
-            unavailable += 1
-            continue
-        except VideoNotYetAvailableError as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            console.print(f"Video #{video.id} has not started yet; deferring it.")
-            deferred += 1
-            continue
-        except YtDlpConfigurationError as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            console.print(f"[red]yt-dlp configuration error[/red] for video #{video.id}: {error}")
-            failed += 1
-            continue
-        except YtDlpRateLimitError as error:
-            raise CaptionAcquisitionBlockedError(
-                "YouTube repeatedly rate limited caption acquisition after retries. "
-                "Wait for the limit to clear and rerun the same command; captions "
-                "already persisted will be skipped."
-            ) from error
-        except YtDlpAuthenticationRequiredError as error:
-            raise CaptionAcquisitionBlockedError(
-                "YouTube requested authentication while acquiring captions. Stopped "
-                "further caption requests; captions already persisted will be skipped "
-                "on retry, and staged audio remains available for local transcription."
-            ) from error
-        except VideoUnavailableError as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            console.print(f"Video unavailable for video #{video.id}; skipping it.")
-            failed += 1
-            continue
-        except Exception as error:
-            database.update_video_status(video.id, VideoStatus.FAILED, str(error))
-            if not retrying:
-                console.print(
-                    f"[red]Failed to fetch captions[/red] video #{video.id}: "
-                    f"{error}; deferred for retry after the first pass"
-                )
-                videos.append(video)
-            else:
-                console.print(
-                    f"[red]Failed caption retry[/red] video #{video.id}: {error}"
-                )
-                failed += 1
-            continue
-        console.print(f"Fetched captions for video #{video.id}: {result.raw_text_path}")
-        processed += 1
-
-    console.print(
-        f"Fetched captions for {processed} video(s); skipped {skipped}; unavailable {unavailable}; "
-        f"deferred {deferred}; failed {failed}."
+) -> CaptionAcquisitionResult:
+    return _fetch_captions_service(
+        source_id=source_id,
+        base_dir=base_dir,
+        video_ids=video_ids,
+        request_interval_seconds=request_interval_seconds,
+        cookies_from_browser=cookies_from_browser,
+        cookies=cookies,
+        progress_callback=console.print,
+        fetch_captions=fetch_captions_video,
+        monotonic=time.monotonic,
+        sleeper=time.sleep,
     )
 
 
