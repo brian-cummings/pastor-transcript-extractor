@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import DEFAULT, patch
+from unittest.mock import DEFAULT, Mock, patch
 from typer.testing import CliRunner
 
 from pastor_transcript_extractor.cli import (
@@ -344,6 +344,23 @@ class IdentityRunTests(unittest.TestCase):
                 exports=root / "exports",
                 pastors=root / "pastors",
             )
+            reviewed_renderer = Mock()
+            backfill = Mock()
+            associate = Mock()
+            confirm = Mock()
+            discover = Mock()
+            promote = Mock()
+            coordinate = Mock()
+            prewarm = Mock(
+                return_value=ActionableReviewAudioPreparation(
+                    requested=4,
+                    prepared=2,
+                    already_cached=2,
+                    excluded=0,
+                    failed=0,
+                )
+            )
+            archive_normalized = Mock()
             with (
                 patch(
                     "pastor_transcript_extractor.config.build_paths",
@@ -358,12 +375,6 @@ class IdentityRunTests(unittest.TestCase):
                     load_reviewed_speaker_evidence=DEFAULT,
                     sync_reviewed_speaker_evidence=DEFAULT,
                 ) as evidence_mocks,
-                patch(
-                    "pastor_transcript_extractor.cli._print_reviewed_evidence_summary"
-                ),
-                patch(
-                    "pastor_transcript_extractor.cli.identity_backfill"
-                ) as backfill,
                 patch(
                     "pastor_transcript_extractor.cli."
                     "profile_leverage_snapshot_command",
@@ -387,9 +398,6 @@ class IdentityRunTests(unittest.TestCase):
                     "ExemplarPreparationStateCache.record_repair_attempt"
                 ) as record_repair,
                 patch(
-                    "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
-                ) as associate,
-                patch(
                     "pastor_transcript_extractor.workflows.identity.run."
                     "plan_machine_assignments",
                     return_value=SimpleNamespace(
@@ -408,31 +416,6 @@ class IdentityRunTests(unittest.TestCase):
                         activation_blocked=0,
                     ),
                 ) as apply_machine,
-                patch(
-                    "pastor_transcript_extractor.cli.confirm_discovered_profiles_command"
-                ) as confirm,
-                patch(
-                    "pastor_transcript_extractor.cli.shadow_discover_profiles_command"
-                ) as discover,
-                patch(
-                    "pastor_transcript_extractor.cli.promote_discovered_profiles_command"
-                ) as promote,
-                patch(
-                    "pastor_transcript_extractor.cli.coordinate_identity_command"
-                ) as coordinate,
-                patch(
-                    "pastor_transcript_extractor.cli._prepare_actionable_review_audio",
-                    return_value=ActionableReviewAudioPreparation(
-                        requested=4,
-                        prepared=2,
-                        already_cached=2,
-                        excluded=0,
-                        failed=0,
-                    ),
-                ) as prewarm,
-                patch(
-                    "pastor_transcript_extractor.cli._archive_normalized_after_identity"
-                ) as archive_normalized,
                 patch.object(Path, "glob", return_value=[]),
             ):
                 current_report = Path(tempdir) / "current-association.json"
@@ -447,6 +430,15 @@ class IdentityRunTests(unittest.TestCase):
                     apply_promotions=False,
                     base_dir=Path(tempdir),
                     jobs=3,
+                    associator=associate,
+                    discoverer=discover,
+                    confirmer=confirm,
+                    promoter=promote,
+                    coordinator=coordinate,
+                    archiver=archive_normalized,
+                    backfiller=backfill,
+                    reviewed_evidence_renderer=reviewed_renderer,
+                    review_prewarmer=prewarm,
                 )
 
         backfill.assert_called_once_with(
@@ -987,6 +979,13 @@ class IdentityRunTests(unittest.TestCase):
                 database=database_path,
                 logs=Path(tempdir) / "logs",
             )
+            reviewed_renderer = Mock()
+            backfill = Mock()
+            associate = Mock(return_value=())
+            confirm = Mock()
+            discover = Mock(return_value=discovery_path)
+            promote = Mock()
+            coordinate = Mock()
             with (
                 patch(
                     "pastor_transcript_extractor.config.build_paths",
@@ -1000,13 +999,6 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.workflows.identity.run",
                     load_reviewed_speaker_evidence=DEFAULT,
                     sync_reviewed_speaker_evidence=DEFAULT,
-                ),
-                patch(
-                    "pastor_transcript_extractor.cli._print_reviewed_evidence_summary"
-                ),
-                patch("pastor_transcript_extractor.cli.identity_backfill"),
-                patch(
-                    "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
                 ),
                 patch(
                     "pastor_transcript_extractor.workflows.identity.run."
@@ -1027,18 +1019,6 @@ class IdentityRunTests(unittest.TestCase):
                         activation_blocked=0,
                     ),
                 ) as apply_machine,
-                patch(
-                    "pastor_transcript_extractor.cli.confirm_discovered_profiles_command"
-                ) as confirm,
-                patch(
-                    "pastor_transcript_extractor.cli.shadow_discover_profiles_command"
-                ),
-                patch(
-                    "pastor_transcript_extractor.cli.promote_discovered_profiles_command"
-                ) as promote,
-                patch(
-                    "pastor_transcript_extractor.cli.coordinate_identity_command"
-                ),
                 patch.object(Path, "glob", return_value=[discovery_path]),
             ):
                 run_identity_workflow_service(
@@ -1051,6 +1031,13 @@ class IdentityRunTests(unittest.TestCase):
                     apply_promotions=False,
                     review_prewarm_limit=0,
                     base_dir=Path(tempdir),
+                    associator=associate,
+                    discoverer=discover,
+                    confirmer=confirm,
+                    promoter=promote,
+                    coordinator=coordinate,
+                    backfiller=backfill,
+                    reviewed_evidence_renderer=reviewed_renderer,
                 )
 
         self.assertTrue(confirm.call_args.kwargs["apply"])
