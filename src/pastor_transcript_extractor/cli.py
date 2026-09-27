@@ -173,7 +173,6 @@ from pastor_transcript_extractor.media_artifacts import (
     ensure_audio_for_video,
     get_verified_normalized_media_artifact,
     get_authoritative_normalized_media_artifact,
-    StageSourceAudioResult,
     stage_source_audio_for_video,
     resolve_normalized_audio_path,
     video_has_isolated_sermon,
@@ -387,6 +386,11 @@ from pastor_transcript_extractor.workflows.run_media import (
     RunMediaDependencies,
     RunMediaRequest,
     ensure_and_archive_run_media as _ensure_and_archive_run_media_workflow,
+)
+from pastor_transcript_extractor.workflows.audio_stage import (
+    AudioStageDependencies,
+    AudioStageRequest,
+    stage_audio_inputs,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -11569,110 +11573,26 @@ def run_workflow_service(
             console.print("No videos selected for audio staging.")
             return
         paths = build_paths(base_dir, remember=True)
-        tools = build_tool_config()
-        verification_cache = MediaVerificationCache(
-            paths.logs / "source-audio-verification"
+        stage_audio_inputs(
+            database,
+            paths,
+            build_tool_config(),
+            AudioStageRequest(
+                video_ids=frozenset(selected_video_ids),
+                download_jobs=download_jobs,
+                resume_jobs=jobs,
+                base_dir=base_dir,
+                caption_request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
+                cookies_from_browser=cookies_from_browser,
+                cookies=cookies,
+            ),
+            progress_callback=lambda message: console.print(message, markup=False),
+            dependencies=AudioStageDependencies(
+                stage_video=stage_source_audio_for_video,
+                write_manifest=write_audio_stage_manifest,
+                fetch_captions=fetch_captions_service,
+            ),
         )
-        workers = min(download_jobs, len(selected_video_ids))
-        console.print(f"Staging source audio for {len(selected_video_ids)} video(s) with {workers} worker(s).")
-        def stage_pass(target_video_ids: set[int], *, retry: bool = False):
-            pass_results = []
-            retry_video_ids: set[int] = set()
-            pass_label = "retry " if retry else ""
-            with ThreadPoolExecutor(
-                max_workers=min(workers, len(target_video_ids))
-            ) as executor:
-                futures = {
-                    executor.submit(
-                        stage_source_audio_for_video,
-                        database,
-                        paths,
-                        tools,
-                        video_id=video_id,
-                        verification_cache=verification_cache,
-                    ): video_id
-                    for video_id in target_video_ids
-                }
-                for index, future in enumerate(as_completed(futures), start=1):
-                    video_id = futures[future]
-                    try:
-                        result = future.result()
-                    except Exception as error:
-                        video = database.get_video_by_id(video_id)
-                        result = StageSourceAudioResult(
-                            video_id=video_id,
-                            youtube_video_id=(
-                                video.youtube_video_id
-                                if video is not None
-                                else f"video-{video_id}"
-                            ),
-                            outcome="failed",
-                            reason_code=(
-                                "unexpected_source_audio_stage_error: "
-                                f"{type(error).__name__}: {error}"
-                            ),
-                            artifact=None,
-                            attempt=None,
-                            downloaded=False,
-                        )
-                    if result.outcome == "failed" and not retry:
-                        retry_video_ids.add(video_id)
-                        suffix = "; deferred for retry after the first pass"
-                    else:
-                        suffix = ""
-                    pass_results.append(result)
-                    console.print(
-                        f"Audio stage {pass_label}[{index}/{len(futures)}] "
-                        f"{result.youtube_video_id}: {result.outcome} "
-                        f"({result.reason_code}){suffix}",
-                        markup=False,
-                    )
-            return pass_results, retry_video_ids
-
-        results, retry_video_ids = stage_pass(set(selected_video_ids))
-        results_by_video_id = {result.video_id: result for result in results}
-        if retry_video_ids:
-            console.print(
-                f"Retrying {len(retry_video_ids)} source-audio staging "
-                "failure(s) after the first pass."
-            )
-            retry_results, _ = stage_pass(retry_video_ids, retry=True)
-            results_by_video_id.update(
-                (result.video_id, result) for result in retry_results
-            )
-        results = list(results_by_video_id.values())
-        manifest = write_audio_stage_manifest(paths.logs, results)
-        verified = sum(result.outcome == "verified" for result in results)
-        verified_video_ids = {
-            result.video_id for result in results if result.outcome == "verified"
-        }
-        console.print(f"Audio stage complete: verified={verified}, failed={len(results) - verified}.")
-        console.print(f"Manifest: {manifest}")
-        console.print(
-            "Offline resume: pte run "
-            f"--resume-stage {shlex.quote(str(manifest))} --jobs {jobs} "
-            f"--base-dir {shlex.quote(str(paths.root))}"
-        )
-        if verified_video_ids:
-            console.print(
-                f"Fetching available captions for {len(verified_video_ids)} "
-                "verified staged video(s)."
-            )
-            try:
-                fetch_captions_service(
-                    base_dir=base_dir,
-                    video_ids=verified_video_ids,
-                    request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
-                    **caption_auth_options,
-                )
-            except CaptionAcquisitionBlockedError as error:
-                console.print(
-                    f"[yellow]Caption acquisition stopped[/yellow]: {error}"
-                )
-                console.print(
-                    "The audio stage is complete. Use the offline resume command "
-                    "above; caption misses will use local transcription."
-                )
         return
     if failed_only:
         if url is not None:
