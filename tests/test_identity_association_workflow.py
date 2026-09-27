@@ -13,6 +13,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     AssociationSpanInput,
     ShadowAssociationRequest,
     assess_association_candidate,
+    load_association_corpus_inventory,
     plan_association_profile_route,
     plan_pending_confirmation_routing,
     prepare_association_centroids,
@@ -94,6 +95,46 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
         self.assertEqual(2, result.database_video_count)
         self.assertEqual(1, result.observed_video_count)
         self.assertTrue(result.inventory_reported)
+
+    def test_corpus_inventory_keeps_latest_observation_and_explicit_names(
+        self,
+    ) -> None:
+        videos = (
+            SimpleNamespace(id=1, source_id=10),
+            SimpleNamespace(id=2, source_id=20),
+        )
+        observations = (
+            SimpleNamespace(id=3, video_id=1),
+            SimpleNamespace(id=5, video_id=1),
+            SimpleNamespace(id=4, video_id=2),
+        )
+        claims = (
+            SimpleNamespace(
+                observation_id=5,
+                explicit_speaker_attribution=True,
+                normalized_name=" pastor ",
+            ),
+            SimpleNamespace(
+                observation_id=4,
+                explicit_speaker_attribution=False,
+                normalized_name="ignored",
+            ),
+        )
+        database = SimpleNamespace(
+            list_videos=lambda: videos,
+            list_speaker_observations=lambda: observations,
+            list_speaker_name_claims=lambda: claims,
+        )
+
+        inventory = load_association_corpus_inventory(database)
+
+        self.assertEqual(5, inventory.current_observation_by_video_id[1].id)
+        self.assertEqual({1: 10, 2: 20}, inventory.source_id_by_video_id)
+        self.assertEqual(
+            frozenset({"pastor"}),
+            inventory.candidate_names_by_observation[5],
+        )
+        self.assertNotIn(4, inventory.candidate_names_by_observation)
 
     def test_neighborhood_scope_preserves_resolver_order(self) -> None:
         videos = {

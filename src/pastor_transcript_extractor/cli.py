@@ -400,6 +400,7 @@ from pastor_transcript_extractor.workflows.identity.finalization import (
 from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
     assess_association_candidate,
+    load_association_corpus_inventory,
     plan_association_profile_route,
     plan_pending_confirmation_routing,
     resolve_association_scope,
@@ -4082,30 +4083,16 @@ def shadow_associate_speakers_service(
         }
         return qualified.span_specs, selection
 
-    videos_by_id = {video.id: video for video in database.list_videos()}
-    observations_by_id = {
-        observation.id: observation
-        for observation in database.list_speaker_observations()
-    }
-    current_observation_by_video_id: dict[int, SpeakerObservation] = {}
-    for observation in observations_by_id.values():
-        current = current_observation_by_video_id.get(observation.video_id)
-        if current is None or observation.id > current.id:
-            current_observation_by_video_id[observation.video_id] = observation
-    source_id_by_video_id = {
-        video_id: video.source_id for video_id, video in videos_by_id.items()
-    }
-    candidate_names_by_observation: dict[int, set[str]] = {}
-    for claim in database.list_speaker_name_claims():
-        if (
-            claim.observation_id is not None
-            and claim.explicit_speaker_attribution
-            and claim.normalized_name.strip()
-        ):
-            candidate_names_by_observation.setdefault(
-                claim.observation_id,
-                set(),
-            ).add(claim.normalized_name.strip())
+    corpus_inventory = load_association_corpus_inventory(database)
+    videos_by_id = corpus_inventory.videos_by_id
+    observations_by_id = corpus_inventory.observations_by_id
+    current_observation_by_video_id = (
+        corpus_inventory.current_observation_by_video_id
+    )
+    source_id_by_video_id = corpus_inventory.source_id_by_video_id
+    candidate_names_by_observation = (
+        corpus_inventory.candidate_names_by_observation
+    )
     exemplar_state_cache = ExemplarPreparationStateCache(cache_root)
     review_ready_profiles = [
         profile for profile in readiness if profile.review_ready
