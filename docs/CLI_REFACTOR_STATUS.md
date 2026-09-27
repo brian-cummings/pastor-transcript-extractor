@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract exemplar repair and association checkpoint persistence
-  into named stages, preserving current refresh choices, held-out exclusion,
-  order, and plan-only non-mutation.
+- Next action: extract exemplar repair execution and association checkpoint
+  persistence into named stages, preserving current refresh choices, held-out
+  exclusion, order, and plan-only non-mutation.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -649,6 +649,13 @@ explicit callable boundary. Cached reports bypass acoustic execution entirely;
 cache misses forward the selected incremental/full mode plus the unchanged
 model, policy, concurrency, scope, and artifact paths. The workflow module
 remains independent of Typer and Rich.
+
+### 2026-09-27 — Milestone 6.5i: exemplar repair selection
+
+Moved pending exemplar-repair selection into the workflow boundary. A
+single-video run selects only its own blocked media state, while plan-only mode
+does not even read the repair-state cache. This makes the non-mutation boundary
+independent of the later repair executor.
 
 ## Validation log
 
@@ -1415,6 +1422,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 32 tests in 0.819s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Exemplar repair selection
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 34 tests in 0.800s — OK
 
 git diff --check
 PASS

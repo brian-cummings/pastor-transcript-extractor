@@ -17,6 +17,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
+    select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
 )
@@ -88,6 +89,37 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertEqual(
             Path("policy.json"), associator.call_args.kwargs["policy_path"]
         )
+
+    def test_exemplar_repair_selection_is_scoped_to_video(self) -> None:
+        states = (
+            SimpleNamespace(video_id=7),
+            SimpleNamespace(video_id=8),
+        )
+        cache = SimpleNamespace(pending_automatic_repairs=lambda: states)
+
+        selected = select_pending_exemplar_repairs(
+            cache,
+            database_video_id=8,
+            plan_only=False,
+        )
+
+        self.assertEqual((states[1],), selected)
+
+    def test_plan_only_does_not_read_pending_exemplar_repairs(self) -> None:
+        cache = SimpleNamespace(
+            pending_automatic_repairs=Mock(
+                side_effect=AssertionError("must not read repair state")
+            )
+        )
+
+        selected = select_pending_exemplar_repairs(
+            cache,
+            database_video_id=None,
+            plan_only=True,
+        )
+
+        self.assertEqual((), selected)
+        cache.pending_automatic_repairs.assert_not_called()
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(
