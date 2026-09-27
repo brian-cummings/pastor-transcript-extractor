@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract the per-candidate association evaluation sequence,
-  preserving isolated initial/fallback failures, exhaustive propagation,
-  comparison accounting, persistence order, and progress evidence.
+- Next action: extract shadow-association setup and exemplar preparation,
+  preserving policy/model/cache initialization, readiness evidence, durable
+  exemplar funnel artifacts, and plan-only behavior.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -891,6 +891,19 @@ human-readable per-candidate and terminal rendering.
 Focused tests cover cached artifact preservation, boundary evidence, new
 artifact writes, proposal counting, and quality-flag aggregation. `cli.py` is
 now 7,662 lines, down 10,455 lines from baseline.
+
+### 2026-09-27 — Milestone 7.12: per-candidate evaluation sequence
+
+Moved the initial, weak-local fallback, exhaustive validation, and final
+persistence sequence into one typed workflow outcome. Expected initial and
+fallback I/O/runtime/value failures retain their exact isolated admission
+codes and accumulated comparison counts; exhaustive validation failures still
+propagate. Only the final pass is persisted.
+
+Focused tests cover initial failure, partial accounting before fallback
+failure, final exhaustive persistence, and pass ordering. `cli.py` is now
+7,604 lines, down 10,513 lines from baseline; the evaluation workflow remains
+cohesive at 487 lines.
 
 ## Validation log
 
@@ -1959,6 +1972,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 33 tests in 0.230s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Per-candidate evaluation sequence
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association_evaluation.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_evaluation_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 36 tests in 0.227s — OK
 
 git diff --check
 PASS

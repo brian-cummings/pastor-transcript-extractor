@@ -88,6 +88,19 @@ class AssociationResultAccumulator:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class AssociationCandidateEvaluationOutcome:
+    result: PersistedAssociationResult | None
+    detailed_profile_comparisons: int
+    failure: Exception | None = None
+    failure_stage: str | None = None
+    admission_reason_code: str | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.result is not None
+
+
 class AssociationEvaluator:
     """Evaluate candidates with verified cache reuse and one shared executor."""
 
@@ -216,6 +229,111 @@ def persist_association_result(
         routing_route=str(report["routing"]["route"]),
         proposed_profile_id=proposed_profile_id,
         sermon_window_quality_flags=tuple(window_flags),
+    )
+
+
+def evaluate_association_candidate(
+    evaluator: AssociationEvaluator,
+    database: Database,
+    *,
+    output_root: Path,
+    candidate: SpeakerObservation,
+    candidate_audio_path: Path,
+    candidate_audio_sha256: str,
+    candidate_normalized_names: Sequence[str],
+    route_plan: AssociationProfileRoutePlan,
+    pending_confirmation_profile_ids: frozenset[int],
+    maximum_global_profiles: int,
+) -> AssociationCandidateEvaluationOutcome:
+    """Run one candidate's staged evaluation and persist its final report."""
+    profiles = route_plan.routing.profiles
+    detailed_profile_comparisons = 0
+    try:
+        evaluation = evaluator.evaluate(
+            candidate=candidate,
+            candidate_audio_path=candidate_audio_path,
+            candidate_audio_sha256=candidate_audio_sha256,
+            candidate_normalized_names=candidate_normalized_names,
+            profiles=profiles,
+            routing_payload=route_plan.routing_payload,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        return AssociationCandidateEvaluationOutcome(
+            result=None,
+            detailed_profile_comparisons=0,
+            failure=error,
+            failure_stage="initial",
+            admission_reason_code=(
+                f"association_evaluation_failed:{type(error).__name__}"
+            ),
+        )
+    if evaluation.reusable_path is None:
+        detailed_profile_comparisons += len(profiles)
+
+    fallback_pass = plan_cross_source_fallback(
+        evaluation.report,
+        route_plan.routing,
+        profiles,
+        route_plan.routing_payload,
+    )
+    if fallback_pass is not None:
+        try:
+            evaluation = evaluator.evaluate(
+                candidate=candidate,
+                candidate_audio_path=candidate_audio_path,
+                candidate_audio_sha256=candidate_audio_sha256,
+                candidate_normalized_names=candidate_normalized_names,
+                profiles=fallback_pass.profiles,
+                routing_payload=fallback_pass.routing_payload,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            return AssociationCandidateEvaluationOutcome(
+                result=None,
+                detailed_profile_comparisons=detailed_profile_comparisons,
+                failure=error,
+                failure_stage="cross_source_fallback",
+                admission_reason_code=(
+                    "association_cross_source_fallback_failed:"
+                    f"{type(error).__name__}"
+                ),
+            )
+        if evaluation.reusable_path is None:
+            detailed_profile_comparisons += (
+                fallback_pass.additional_profile_comparisons
+            )
+
+    exhaustive_pass = plan_exhaustive_validation(
+        evaluation.report,
+        route_plan,
+        pending_confirmation_profile_ids=(
+            pending_confirmation_profile_ids
+        ),
+        maximum_global_profiles=maximum_global_profiles,
+    )
+    if exhaustive_pass is not None:
+        evaluation = evaluator.evaluate(
+            candidate=candidate,
+            candidate_audio_path=candidate_audio_path,
+            candidate_audio_sha256=candidate_audio_sha256,
+            candidate_normalized_names=candidate_normalized_names,
+            profiles=exhaustive_pass.profiles,
+            routing_payload=exhaustive_pass.routing_payload,
+        )
+        if evaluation.reusable_path is None:
+            detailed_profile_comparisons += (
+                exhaustive_pass.additional_profile_comparisons
+            )
+
+    persisted = persist_association_result(
+        database,
+        output_root=output_root,
+        observation=candidate,
+        report=evaluation.report,
+        reusable_path=evaluation.reusable_path,
+    )
+    return AssociationCandidateEvaluationOutcome(
+        result=persisted,
+        detailed_profile_comparisons=detailed_profile_comparisons,
     )
 
 

@@ -416,9 +416,7 @@ from pastor_transcript_extractor.workflows.identity.association_preparation impo
 from pastor_transcript_extractor.workflows.identity.association_evaluation import (
     AssociationEvaluator,
     AssociationResultAccumulator,
-    persist_association_result,
-    plan_cross_source_fallback,
-    plan_exhaustive_validation,
+    evaluate_association_candidate,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -4906,109 +4904,53 @@ def shadow_associate_speakers_service(
             confirmation_profile_ids=confirmation_priority_profile_ids,
         )
         explicit_candidate_names = route_plan.explicit_candidate_names
-        routing = route_plan.routing
-        candidate_profiles = routing.profiles
         exhaustive_profile_comparisons += (
             route_plan.exhaustive_profile_comparison_count
         )
-        initial_routing_payload = dict(route_plan.routing_payload)
-
-        try:
-            evaluation_result = association_evaluator.evaluate(
-                candidate=observation,
-                candidate_audio_path=Path(media_artifact.artifact_path),
-                candidate_audio_sha256=media_artifact.content_sha256,
-                candidate_normalized_names=explicit_candidate_names,
-                profiles=candidate_profiles,
-                routing_payload=initial_routing_payload,
-            )
-            report = evaluation_result.report
-            reusable_path = evaluation_result.reusable_path
-        except (OSError, RuntimeError, ValueError) as error:
-            persist_admission(
-                video,
-                observation,
-                stage="technical_failure",
-                reason_code=f"association_evaluation_failed:{type(error).__name__}",
-                media_sha256=media_artifact.content_sha256,
-            )
-            console.print(
-                f"Association {index}/{len(candidates)} failed in isolation: "
-                f"{video.youtube_video_id} {type(error).__name__}: {error}"
-            )
-            continue
-        if reusable_path is None:
-            detailed_profile_comparisons += len(candidate_profiles)
-        fallback_pass = plan_cross_source_fallback(
-            report,
-            routing,
-            candidate_profiles,
-            initial_routing_payload,
-        )
-        if fallback_pass is not None:
-            try:
-                evaluation_result = association_evaluator.evaluate(
-                    candidate=observation,
-                    candidate_audio_path=Path(media_artifact.artifact_path),
-                    candidate_audio_sha256=media_artifact.content_sha256,
-                    candidate_normalized_names=explicit_candidate_names,
-                    profiles=fallback_pass.profiles,
-                    routing_payload=fallback_pass.routing_payload,
-                )
-                report = evaluation_result.report
-                reusable_path = evaluation_result.reusable_path
-            except (OSError, RuntimeError, ValueError) as error:
-                persist_admission(
-                    video,
-                    observation,
-                    stage="technical_failure",
-                    reason_code=(
-                        "association_cross_source_fallback_failed:"
-                        f"{type(error).__name__}"
-                    ),
-                    media_sha256=media_artifact.content_sha256,
-                )
-                console.print(
-                    f"Association {index}/{len(candidates)} cross-source "
-                    f"fallback failed in isolation: {video.youtube_video_id} "
-                    f"{type(error).__name__}: {error}"
-                )
-                continue
-            if reusable_path is None:
-                detailed_profile_comparisons += (
-                    fallback_pass.additional_profile_comparisons
-                )
-        exhaustive_pass = plan_exhaustive_validation(
-            report,
-            route_plan,
+        candidate_outcome = evaluate_association_candidate(
+            association_evaluator,
+            database,
+            output_root=output_root,
+            candidate=observation,
+            candidate_audio_path=Path(media_artifact.artifact_path),
+            candidate_audio_sha256=media_artifact.content_sha256,
+            candidate_normalized_names=explicit_candidate_names,
+            route_plan=route_plan,
             pending_confirmation_profile_ids=(
                 pending_confirmation_profile_ids
             ),
             maximum_global_profiles=maximum_global_profiles,
         )
-        if exhaustive_pass is not None:
-            evaluation_result = association_evaluator.evaluate(
-                candidate=observation,
-                candidate_audio_path=Path(media_artifact.artifact_path),
-                candidate_audio_sha256=media_artifact.content_sha256,
-                candidate_normalized_names=explicit_candidate_names,
-                profiles=exhaustive_pass.profiles,
-                routing_payload=exhaustive_pass.routing_payload,
-            )
-            report = evaluation_result.report
-            reusable_path = evaluation_result.reusable_path
-            if reusable_path is None:
-                detailed_profile_comparisons += (
-                    exhaustive_pass.additional_profile_comparisons
-                )
-        persisted_result = persist_association_result(
-            database,
-            output_root=output_root,
-            observation=observation,
-            report=report,
-            reusable_path=reusable_path,
+        detailed_profile_comparisons += (
+            candidate_outcome.detailed_profile_comparisons
         )
+        if candidate_outcome.failure is not None:
+            error = candidate_outcome.failure
+            persist_admission(
+                video,
+                observation,
+                stage="technical_failure",
+                reason_code=candidate_outcome.admission_reason_code,
+                media_sha256=media_artifact.content_sha256,
+            )
+            if candidate_outcome.failure_stage == "cross_source_fallback":
+                console.print(
+                    f"Association {index}/{len(candidates)} cross-source "
+                    f"fallback failed in isolation: {video.youtube_video_id} "
+                    f"{type(error).__name__}: {error}"
+                )
+            else:
+                console.print(
+                    f"Association {index}/{len(candidates)} failed in isolation: "
+                    f"{video.youtube_video_id} "
+                    f"{type(error).__name__}: {error}"
+                )
+            continue
+        persisted_result = candidate_outcome.result
+        if persisted_result is None:
+            raise RuntimeError("Successful association evaluation has no result.")
         result_accumulator.record(persisted_result)
+        report = persisted_result.report
         outcome = persisted_result.outcome
         window_flags = persisted_result.sermon_window_quality_flags
         window_flag_text = (
