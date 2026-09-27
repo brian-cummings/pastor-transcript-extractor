@@ -118,6 +118,22 @@ class MachineAssignmentStageResult:
     applied: MachineAssignmentApplyResult | None
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveryExecutionDecision:
+    """Corpus discovery action after scope, skip, and cache checks."""
+
+    mode: str
+    cached_reports: tuple[Path, ...] | None
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryReportSelection:
+    """Available discovery reports and the newest promotion candidate."""
+
+    reports: tuple[Path, ...]
+    latest: Path | None
+
+
 def validate_identity_workflow_request(
     request: IdentityWorkflowRequest,
 ) -> IdentityWorkflowPolicy:
@@ -417,3 +433,43 @@ def run_machine_assignment_stage(
         plan=plan,
         applied=applied,
     )
+
+
+def decide_discovery_execution(
+    *,
+    all_extractions: bool,
+    skip_discovery: bool,
+    cached_reports: Sequence[Path] | None,
+) -> DiscoveryExecutionDecision:
+    """Choose deferred, skipped, cached, or executing corpus discovery."""
+    cached = tuple(cached_reports) if cached_reports is not None else None
+    if not all_extractions:
+        mode = "deferred"
+    elif skip_discovery:
+        mode = "skipped"
+    elif cached is not None:
+        mode = "cached"
+    else:
+        mode = "execute"
+    return DiscoveryExecutionDecision(mode=mode, cached_reports=cached)
+
+
+def select_discovery_reports(
+    *,
+    cached_reports: Sequence[Path] | None,
+    generated_report: Path | None,
+    discovery_root: Path,
+) -> DiscoveryReportSelection:
+    """Select available reports and their deterministic newest artifact."""
+    if cached_reports is not None:
+        reports = tuple(cached_reports)
+    elif generated_report is not None:
+        reports = (generated_report,)
+    else:
+        reports = tuple(discovery_root.resolve().glob("*/*.json"))
+    latest = (
+        max(reports, key=lambda path: (path.stat().st_mtime_ns, str(path)))
+        if reports
+        else None
+    )
+    return DiscoveryReportSelection(reports=reports, latest=latest)
