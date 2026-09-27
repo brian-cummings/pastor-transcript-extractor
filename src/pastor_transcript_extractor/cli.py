@@ -387,6 +387,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
+    repair_association_stage,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -3116,18 +3117,20 @@ def run_identity_workflow_service(
         database_video_id=database_video_id,
         plan_only=plan_only,
     )
-    if pending_exemplar_repairs:
+    repair_stage = repair_association_stage(
+        pending_repairs=pending_exemplar_repairs,
+        current_reports=current_association_reports,
+        youtube_video_id=youtube_video_id,
+        all_extractions=all_extractions,
+        paths=paths,
+        base_dir=base_dir,
+        state_cache=exemplar_state_cache,
+        jobs=jobs,
+        repairer=_repair_exemplars_and_retry_association,
+    )
+    current_association_reports = repair_stage.reports
+    if repair_stage.checkpoint_needs_refresh:
         association_checkpoint_needs_refresh = True
-        current_association_reports = _repair_exemplars_and_retry_association(
-            pending_exemplar_repairs=pending_exemplar_repairs,
-            current_association_reports=current_association_reports,
-            youtube_video_id=youtube_video_id,
-            all_extractions=all_extractions,
-            paths=paths,
-            base_dir=base_dir,
-            state_cache=exemplar_state_cache,
-            jobs=jobs,
-        )
 
     # Assignment planning is a projection of every current association result,
     # not merely the artifacts produced by this invocation. Superseded evidence

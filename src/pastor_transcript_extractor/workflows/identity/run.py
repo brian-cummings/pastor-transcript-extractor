@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
+from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedEvidenceSyncResult,
     ReviewedSpeakerEvidence,
@@ -86,6 +87,15 @@ class AssociationExecutionRequest:
     cache_dir: Path
     output_root: Path
     base_dir: Path | None
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationRepairStageResult:
+    """Association reports plus whether repair invalidated the checkpoint."""
+
+    reports: tuple[Path, ...]
+    checkpoint_needs_refresh: bool
+    repair_attempted: bool
 
 
 def validate_identity_workflow_request(
@@ -277,4 +287,40 @@ def select_pending_exemplar_repairs(
         state
         for state in state_cache.pending_automatic_repairs()
         if database_video_id is None or state.video_id == database_video_id
+    )
+
+
+def repair_association_stage(
+    *,
+    pending_repairs: Sequence[ExemplarPreparationState],
+    current_reports: Sequence[Path],
+    youtube_video_id: str | None,
+    all_extractions: bool,
+    paths: AppPaths,
+    base_dir: Path | None,
+    state_cache: ExemplarPreparationStateCache,
+    jobs: int,
+    repairer: Callable[..., Sequence[Path]],
+) -> AssociationRepairStageResult:
+    """Run one bounded repair/retry pass and invalidate its old checkpoint."""
+    if not pending_repairs:
+        return AssociationRepairStageResult(
+            reports=tuple(current_reports),
+            checkpoint_needs_refresh=False,
+            repair_attempted=False,
+        )
+    repaired_reports = repairer(
+        pending_exemplar_repairs=pending_repairs,
+        current_association_reports=tuple(current_reports),
+        youtube_video_id=youtube_video_id,
+        all_extractions=all_extractions,
+        paths=paths,
+        base_dir=base_dir,
+        state_cache=state_cache,
+        jobs=jobs,
+    )
+    return AssociationRepairStageResult(
+        reports=tuple(repaired_reports),
+        checkpoint_needs_refresh=True,
+        repair_attempted=True,
     )
