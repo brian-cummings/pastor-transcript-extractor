@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.models import SpeakerObservation
+from pastor_transcript_extractor.identity_boundary_review import (
+    persist_association_boundary_evidence,
+)
 from pastor_transcript_extractor.speaker_profile_discovery import (
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
 )
@@ -18,7 +21,9 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     evaluate_shadow_association,
     load_reusable_shadow_association,
     should_activate_cross_source_fallback,
+    write_shadow_association,
 )
+from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.identity.association import (
     AssociationProfileRoutePlan,
 )
@@ -40,6 +45,47 @@ class AssociationEvaluationPass:
 class AssociationEvaluationResult:
     report: Mapping[str, Any]
     reusable_path: Path | None
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedAssociationResult:
+    report: Mapping[str, Any]
+    destination: Path
+    reused: bool
+    outcome: str
+    routing_route: str
+    proposed_profile_id: Any
+    sermon_window_quality_flags: tuple[Mapping[str, Any], ...]
+
+
+@dataclass(slots=True)
+class AssociationResultAccumulator:
+    outcome_counts: dict[str, int] = field(default_factory=dict)
+    routing_counts: dict[str, int] = field(default_factory=dict)
+    proposal_targets: dict[int, int] = field(default_factory=dict)
+    reused_associations: int = 0
+    sermon_window_quality_flag_count: int = 0
+    written_reports: list[Path] = field(default_factory=list)
+
+    def record(self, result: PersistedAssociationResult) -> None:
+        self.routing_counts[result.routing_route] = (
+            self.routing_counts.get(result.routing_route, 0) + 1
+        )
+        self.outcome_counts[result.outcome] = (
+            self.outcome_counts.get(result.outcome, 0) + 1
+        )
+        self.reused_associations += int(result.reused)
+        self.sermon_window_quality_flag_count += len(
+            result.sermon_window_quality_flags
+        )
+        self.written_reports.append(result.destination)
+        if (
+            result.outcome == "proposed_match"
+            and isinstance(result.proposed_profile_id, int)
+        ):
+            self.proposal_targets[result.proposed_profile_id] = (
+                self.proposal_targets.get(result.proposed_profile_id, 0) + 1
+            )
 
 
 class AssociationEvaluator:
@@ -140,6 +186,37 @@ class AssociationEvaluator:
             cancel_futures=cancel_futures,
         )
         self._executor = None
+
+
+def persist_association_result(
+    database: Database,
+    *,
+    output_root: Path,
+    observation: SpeakerObservation,
+    report: Mapping[str, Any],
+    reusable_path: Path | None,
+) -> PersistedAssociationResult:
+    """Persist one result and mirror its evidence onto extraction output."""
+    destination = reusable_path or write_shadow_association(output_root, report)
+    extraction = database.get_latest_extraction_result_for_video(
+        observation.video_id
+    )
+    if extraction is not None and extraction.proposed_json_path:
+        persist_association_boundary_evidence(
+            extraction.proposed_json_path,
+            report,
+        )
+    proposed_profile_id = report.get("proposed_profile_id")
+    window_flags = report["sermon_window_quality_flags"]
+    return PersistedAssociationResult(
+        report=report,
+        destination=destination,
+        reused=reusable_path is not None,
+        outcome=str(report["outcome"]),
+        routing_route=str(report["routing"]["route"]),
+        proposed_profile_id=proposed_profile_id,
+        sermon_window_quality_flags=tuple(window_flags),
+    )
 
 
 def build_span_selection_payload(

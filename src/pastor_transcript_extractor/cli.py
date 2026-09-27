@@ -197,9 +197,6 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
     load_identity_association_attempts,
 )
 from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
-from pastor_transcript_extractor.identity_boundary_review import (
-    persist_association_boundary_evidence,
-)
 from pastor_transcript_extractor.identity_leverage import (
     build_profile_leverage_snapshot,
     compare_profile_leverage_snapshots,
@@ -320,7 +317,6 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     load_shadow_policy,
     select_profile_exemplars,
     summarize_shadow_associations,
-    write_shadow_association,
     write_shadow_association_admission,
 )
 from pastor_transcript_extractor.speaker_registry import (
@@ -419,6 +415,8 @@ from pastor_transcript_extractor.workflows.identity.association_preparation impo
 )
 from pastor_transcript_extractor.workflows.identity.association_evaluation import (
     AssociationEvaluator,
+    AssociationResultAccumulator,
+    persist_association_result,
     plan_cross_source_fallback,
     plan_exhaustive_validation,
 )
@@ -4872,14 +4870,9 @@ def shadow_associate_speakers_service(
             pair_diagnostic_cache=pair_diagnostic_cache,
         )
 
-    outcome_counts: dict[str, int] = {}
-    routing_counts: dict[str, int] = {}
+    result_accumulator = AssociationResultAccumulator()
     detailed_profile_comparisons = 0
     exhaustive_profile_comparisons = 0
-    reused_associations = 0
-    sermon_window_quality_flag_count = 0
-    proposal_targets: dict[int, int] = {}
-    written_reports: list[Path] = []
     for index, (video, eligibility, _span_specs) in enumerate(
         candidates,
         start=1,
@@ -5008,33 +5001,16 @@ def shadow_associate_speakers_service(
                 detailed_profile_comparisons += (
                     exhaustive_pass.additional_profile_comparisons
                 )
-        final_routing = report["routing"]
-        routing_route = str(final_routing["route"])
-        routing_counts[routing_route] = routing_counts.get(routing_route, 0) + 1
-        destination = reusable_path or write_shadow_association(
-            output_root, report
+        persisted_result = persist_association_result(
+            database,
+            output_root=output_root,
+            observation=observation,
+            report=report,
+            reusable_path=reusable_path,
         )
-        reused_associations += int(reusable_path is not None)
-        written_reports.append(destination)
-        extraction = database.get_latest_extraction_result_for_video(
-            observation.video_id
-        )
-        if extraction is not None and extraction.proposed_json_path:
-            persist_association_boundary_evidence(
-                extraction.proposed_json_path,
-                report,
-            )
-        outcome = str(report["outcome"])
-        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
-        proposed_profile_id = report.get("proposed_profile_id")
-        if outcome == "proposed_match" and isinstance(
-            proposed_profile_id, int
-        ):
-            proposal_targets[proposed_profile_id] = (
-                proposal_targets.get(proposed_profile_id, 0) + 1
-            )
-        window_flags = report["sermon_window_quality_flags"]
-        sermon_window_quality_flag_count += len(window_flags)
+        result_accumulator.record(persisted_result)
+        outcome = persisted_result.outcome
+        window_flags = persisted_result.sermon_window_quality_flags
         window_flag_text = (
             " window_flags="
             + ",".join(
@@ -5047,10 +5023,10 @@ def shadow_associate_speakers_service(
         console.print(
             f"Association {index}/{len(candidates)}: "
             f"{video.youtube_video_id} "
-            f"{outcome} profile={report['proposed_profile_id']} "
+            f"{outcome} profile={persisted_result.proposed_profile_id} "
             f"reason={report['reason']} "
-            f"artifact={destination}"
-            f" reused={reusable_path is not None}"
+            f"artifact={persisted_result.destination}"
+            f" reused={persisted_result.reused}"
             f"{window_flag_text}"
         )
     association_evaluator.close()
@@ -5058,18 +5034,22 @@ def shadow_associate_speakers_service(
         "Shadow association complete: "
         + " ".join(
             f"{outcome}={count}"
-            for outcome, count in sorted(outcome_counts.items())
+            for outcome, count in sorted(
+                result_accumulator.outcome_counts.items()
+            )
         )
     )
     console.print(
         "Association routing: "
         + " ".join(
             f"{route}={count}"
-            for route, count in sorted(routing_counts.items())
+            for route, count in sorted(
+                result_accumulator.routing_counts.items()
+            )
         )
         + f" detailed_profiles={detailed_profile_comparisons} "
         f"exhaustive_profiles={exhaustive_profile_comparisons} "
-        f"reused_associations={reused_associations} "
+        f"reused_associations={result_accumulator.reused_associations} "
         f"pair_cache_hits={pair_diagnostic_cache.hits} "
         f"pair_cache_misses={pair_diagnostic_cache.misses} "
         f"selection_cache_hits={activity_selection_cache.hits} "
@@ -5086,9 +5066,11 @@ def shadow_associate_speakers_service(
                     if profile_id in pending_confirmation_profile_ids
                     else ""
                 )
-                for profile_id, count in sorted(proposal_targets.items())
+                for profile_id, count in sorted(
+                    result_accumulator.proposal_targets.items()
+                )
             )
-            if proposal_targets
+            if result_accumulator.proposal_targets
             else "none"
         )
     )
@@ -5097,10 +5079,11 @@ def shadow_associate_speakers_service(
     )
     console.print(
         "Sermon-window quality flags: "
-        f"speaker_inconsistent_edge={sermon_window_quality_flag_count}; "
+        "speaker_inconsistent_edge="
+        f"{result_accumulator.sermon_window_quality_flag_count}; "
         "automatic boundary changes=0."
     )
-    return tuple(written_reports)
+    return tuple(result_accumulator.written_reports)
 
 
 def _invoke_shadow_association_request(

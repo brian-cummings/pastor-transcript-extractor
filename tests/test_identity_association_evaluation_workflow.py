@@ -8,9 +8,11 @@ from unittest.mock import Mock, patch
 from pastor_transcript_extractor.workflows.identity import association_evaluation
 from pastor_transcript_extractor.workflows.identity.association_evaluation import (
     AssociationEvaluator,
+    AssociationResultAccumulator,
     build_span_selection_payload,
     plan_cross_source_fallback,
     plan_exhaustive_validation,
+    persist_association_result,
 )
 
 
@@ -300,6 +302,77 @@ class IdentityAssociationEvaluationWorkflowTests(unittest.TestCase):
             wait=True,
             cancel_futures=True,
         )
+
+    def test_persisted_result_reuses_artifact_and_mirrors_boundary(self) -> None:
+        report = {
+            "outcome": "proposed_match",
+            "proposed_profile_id": 8,
+            "routing": {"route": "global_shortlist"},
+            "sermon_window_quality_flags": ({"flag": "quality"},),
+        }
+        database = SimpleNamespace(
+            get_latest_extraction_result_for_video=lambda _id: SimpleNamespace(
+                proposed_json_path="proposed.json"
+            )
+        )
+        with (
+            patch.object(
+                association_evaluation,
+                "write_shadow_association",
+            ) as write,
+            patch.object(
+                association_evaluation,
+                "persist_association_boundary_evidence",
+            ) as persist_boundary,
+        ):
+            result = persist_association_result(
+                database,
+                output_root=Path("output"),
+                observation=SimpleNamespace(video_id=7),
+                report=report,
+                reusable_path=Path("cached.json"),
+            )
+
+        write.assert_not_called()
+        persist_boundary.assert_called_once_with("proposed.json", report)
+        self.assertTrue(result.reused)
+        self.assertEqual(Path("cached.json"), result.destination)
+        self.assertEqual("global_shortlist", result.routing_route)
+
+    def test_result_accumulator_counts_outcomes_and_proposals(self) -> None:
+        database = SimpleNamespace(
+            get_latest_extraction_result_for_video=lambda _id: None
+        )
+        report = {
+            "outcome": "proposed_match",
+            "proposed_profile_id": 8,
+            "routing": {"route": "global_shortlist"},
+            "sermon_window_quality_flags": (
+                {"flag": "one"},
+                {"flag": "two"},
+            ),
+        }
+        with patch.object(
+            association_evaluation,
+            "write_shadow_association",
+            return_value=Path("written.json"),
+        ):
+            result = persist_association_result(
+                database,
+                output_root=Path("output"),
+                observation=SimpleNamespace(video_id=7),
+                report=report,
+                reusable_path=None,
+            )
+        accumulator = AssociationResultAccumulator()
+        accumulator.record(result)
+
+        self.assertEqual({"proposed_match": 1}, accumulator.outcome_counts)
+        self.assertEqual({"global_shortlist": 1}, accumulator.routing_counts)
+        self.assertEqual({8: 1}, accumulator.proposal_targets)
+        self.assertEqual(0, accumulator.reused_associations)
+        self.assertEqual(2, accumulator.sermon_window_quality_flag_count)
+        self.assertEqual([Path("written.json")], accumulator.written_reports)
 
 
 if __name__ == "__main__":
