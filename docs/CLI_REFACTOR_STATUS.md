@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract identity metadata and profile commands into capability
-  modules, beginning with reviewed evidence sync/export/status.
+- Next action: continue identity metadata/profile extraction with reviewed
+  profile attribution, metadata enrichment, and cached metadata analysis.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -497,6 +497,19 @@ Interactive identity review extraction is complete across observation, pair,
 and speaker-negative review paths.
 
 `cli.py` is now 10,258 lines, down 7,859 lines from baseline.
+
+### 2026-09-27 — Milestone 6.3a: core profile command extraction
+
+Added `commands/identity/profiles.py` and moved reviewed-evidence sync, profile
+transcript export, and read-only identity profile status into it. The module
+owns database opening, profile/discovery status assembly, action guidance,
+assignment summaries, and Rich rendering. Shared summary helpers remain as
+temporary CLI compatibility seams for the still-unmoved identity workflow.
+
+Focused tests verify dry-run sync does not open the database and canonical
+profile redirects are rendered during export.
+
+`cli.py` is now 9,873 lines, down 8,244 lines from baseline.
 
 ## Validation log
 
@@ -1053,6 +1066,28 @@ PASS
 
 .venv/bin/python -m unittest tests.test_speaker_pair_review tests.test_cli_contract tests.test_sources.CliTests.test_negative_window_review_reuses_existing_continuous_fixture
 Ran 30 tests in 0.352s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Core profile command extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/profiles.py src/pastor_transcript_extractor/cli.py tests/test_identity_profile_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_profile_commands tests.test_cli_contract
+Ran 8 tests in 0.228s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity profile-status --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor identity sync-reviewed-speaker-evidence --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor identity export-profile --help
+PASS
 
 git diff --check
 PASS
