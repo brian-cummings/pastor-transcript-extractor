@@ -25,16 +25,19 @@ from rich.table import Table
 
 from pastor_transcript_extractor import (
     application,
+    artifact_namespace,
     audio_staging,
     config,
     extraction as extraction_service,
+    ground_truth_review,
+    identity as identity_domain,
     local_llm,
     media_archive,
     media_artifacts,
+    speaker_pair_eligibility,
     speaker_pair_review,
 )
 from pastor_transcript_extractor.application import ReviewBatchResult
-from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.church_database_import import (
     ChurchDatabaseImportError,
     import_church_sources,
@@ -125,7 +128,6 @@ from pastor_transcript_extractor.ground_truth_review import (
     approved_fixture_payload,
     draft_payload,
     format_timestamp,
-    open_video_url,
     parse_interruptions,
     parse_timestamp,
     suggested_envelope,
@@ -144,9 +146,7 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
 )
 from pastor_transcript_extractor.identity import (
     backfill_shadow_identity_assessments,
-    latest_metadata_live_status,
     persist_metadata_snapshot,
-    record_neutral_speaker_evidence,
 )
 from pastor_transcript_extractor.identity_attribution import (
     configured_target_title_selection_hint,
@@ -225,10 +225,7 @@ from pastor_transcript_extractor.speaker_pair_diagnostics import (
 from pastor_transcript_extractor.speaker_association_audit import (
     audit_speaker_association_coverage,
 )
-from pastor_transcript_extractor.speaker_pair_eligibility import (
-    assess_automatic_speaker_observation,
-    select_verified_automatic_speaker_pair,
-)
+from pastor_transcript_extractor.speaker_pair_eligibility import select_verified_automatic_speaker_pair
 from pastor_transcript_extractor.speaker_pair_review import (
     CLIP_ACTIVITY_POLICY_VERSION,
     InsufficientSpeechActivityError,
@@ -442,7 +439,7 @@ def _select_existing_stage_video_ids(
         source_ids,
         limit=limit,
         all_videos=all_videos,
-        latest_live_status=latest_metadata_live_status,
+        latest_live_status=identity_domain.latest_metadata_live_status,
     )
 
 def _prompt_failure_mode(*, contains_sermon: bool) -> str:
@@ -535,7 +532,7 @@ def review_ground_truth(
     console.print(f"Wrote unreviewed detector-assisted draft to {draft_path}")
     console.print(f"Video: {video.title}")
     if open_video:
-        open_video_url(youtube_timestamp_url(video.url, suggested_start))
+        ground_truth_review.open_video_url(youtube_timestamp_url(video.url, suggested_start))
 
     def review_boundary(label: str, initial: float) -> float:
         current = initial
@@ -1160,7 +1157,7 @@ def consolidate_source_profiles_command(
         if observation is None:
             preparation_failures.append((observation_id, "observation_missing"))
             return False
-        eligibility = assess_automatic_speaker_observation(
+        eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
             database,
             observation.video_id,
             observation_id=observation.id,
@@ -1173,7 +1170,7 @@ def consolidate_source_profiles_command(
             # Archival finalization deliberately preserves immutable,
             # checksum-bound canonical clips. Prefer those cached acoustic
             # inputs over reopening a complete archived recording.
-            cached_eligibility = assess_automatic_speaker_observation(
+            cached_eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
                 database,
                 observation.video_id,
                 observation_id=observation.id,
@@ -1727,7 +1724,7 @@ def shadow_discover_profiles_command(
     candidates: list[DiscoveryCandidate] = []
     excluded_reasons: dict[str, int] = {}
     for video in database.list_videos():
-        eligibility = assess_automatic_speaker_observation(
+        eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
             database,
             video.id,
             verification_cache=verification_cache,
@@ -1811,7 +1808,7 @@ def shadow_discover_profiles_command(
                     + 1
                 )
                 continue
-        verified_eligibility = assess_automatic_speaker_observation(
+        verified_eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
             database,
             video.id,
             verification_cache=verification_cache,
@@ -2504,7 +2501,7 @@ def _prepare_actionable_review_audio(
                 preflight_rejection_counts.get(reason, 0) + 1
             )
             continue
-        eligibility = assess_automatic_speaker_observation(
+        eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
             database,
             video.id,
             verify_media=False,
@@ -2594,7 +2591,7 @@ def _prepare_actionable_review_audio(
             f"Review prewarm [{index}/{len(fingerprints)}] "
             f"{video.youtube_video_id}: verifying current media"
         )
-        eligibility = assess_automatic_speaker_observation(
+        eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
             database,
             video.id,
             verification_cache=verification_cache,
@@ -4832,7 +4829,7 @@ def prepare_speaker_review_audio(
                 and family.partition.value != evaluation_scope
             ):
                 continue
-            eligibility = assess_automatic_speaker_observation(
+            eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
                 database,
                 video.id,
                 verification_cache=verification_cache,
@@ -5396,7 +5393,7 @@ def review_next_speaker_pair(
                 and family.partition.value != evaluation_scope
             ):
                 continue
-            eligibility = assess_automatic_speaker_observation(
+            eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(
                 database,
                 video.id,
                 verification_cache=verification_cache,
@@ -6147,7 +6144,7 @@ def apply_fixture_correction(
             f"Video {youtube_video_id} has no reusable extraction segments"
         )
 
-    video_paths = resolve_video_artifact_paths(database, paths, video)
+    video_paths = artifact_namespace.resolve_video_artifact_paths(database, paths, video)
     override_path = video_paths.review / "window_override.json"
     previous_observation = database.get_latest_speaker_observation_for_video(
         video.id
@@ -6234,7 +6231,7 @@ def apply_fixture_correction(
             if video.pastor_id is not None
             else None
         )
-        speaker_record = record_neutral_speaker_evidence(
+        speaker_record = identity_domain.record_neutral_speaker_evidence(
             database,
             paths,
             video=video,
@@ -6270,7 +6267,7 @@ def apply_fixture_correction(
         if previous_fingerprint == observation.input_fingerprint
         else "regenerated"
     )
-    eligibility = assess_automatic_speaker_observation(database, video.id)
+    eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(database, video.id)
     disposition = proposed.get("final_disposition")
     disposition_status = (
         disposition.get("status")

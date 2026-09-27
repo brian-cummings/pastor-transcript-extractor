@@ -613,7 +613,7 @@ class IdentityRunTests(unittest.TestCase):
                 return_value=("current", "stale"),
             ),
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.speaker_pair_eligibility."
                 "assess_automatic_speaker_observation",
                 side_effect=eligibility,
             ),
@@ -726,7 +726,7 @@ class IdentityRunTests(unittest.TestCase):
                 return_value=("replacement", "useful"),
             ),
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.speaker_pair_eligibility."
                 "assess_automatic_speaker_observation",
                 side_effect=eligibility,
             ),

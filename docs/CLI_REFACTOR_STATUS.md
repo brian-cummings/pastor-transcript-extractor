@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the remaining single-use domain patches
-  (`resolve_video_artifact_paths`, speaker evidence/eligibility, metadata live
-  status, and video opening) to their actual owners.
+- Next action: resolve the remaining composition/presentation patches
+  (`_run_post_content_identity`, review rendering, catalog service wiring, and
+  Typer prompts), then perform the Milestone 8 acceptance audit.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1122,6 +1122,13 @@ tests now pass direct mocks for orchestration actions rather than patching CLI
 globals. A focused module run exposed and fixed an empty-corpus regression by
 initializing the extracted association span-selection map before merging
 exemplar selections.
+
+### 2026-09-27 — Milestone 8.20: single-use domain owner seams
+
+Changed artifact path resolution, neutral speaker evidence, automatic speaker
+eligibility, metadata live-status lookup, and ground-truth URL opening to
+resolve from their domain modules. Focused tests now patch those owners; no
+single-use domain behavior is mocked through `cli.py`.
 
 ## Validation log
 
@@ -2581,6 +2588,22 @@ PASS
 Ran 30 tests in 0.766s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(shadow_discover_profiles_command|shadow_associate_speakers_command|promote_discovered_profiles_command|identity_backfill|coordinate_identity_command|confirm_discovered_profiles_command|_print_reviewed_evidence_summary|_prepare_actionable_review_audio|_archive_normalized_after_identity)" tests/test_identity_run.py
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Single-use domain owner seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_identity_run.py tests/test_fixture_correction.py tests/test_ground_truth_review.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run tests.test_fixture_correction tests.test_ground_truth_review tests.test_sources.CliTests.test_skip_discovery_selects_newest_eligible_existing_videos_per_source tests.test_cli_contract
+Ran 51 tests in 0.806s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(resolve_video_artifact_paths|record_neutral_speaker_evidence|open_video_url|latest_metadata_live_status|assess_automatic_speaker_observation)" tests
 No matches
 
 git diff --check
