@@ -10,7 +10,6 @@ from typer.testing import CliRunner
 
 from pastor_transcript_extractor.cli import (
     ActionableReviewAudioPreparation,
-    DISCOVERY_PROFILE_REASON,
     _association_admission_is_actionable,
     _actionable_review_fingerprints,
     _archive_normalized_after_identity,
@@ -25,13 +24,16 @@ from pastor_transcript_extractor.cli import (
     app,
     review_next_speaker_pair,
     run_identity_workflow_service,
-    validate_source_families,
 )
+from pastor_transcript_extractor.commands.evaluation import validate_source_families
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.models import SourceType
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.speaker_shadow_association import (
     DISCOVERY_PROFILE_REASON as SHARED_DISCOVERY_PROFILE_REASON,
+)
+from pastor_transcript_extractor.workflows.identity.association import (
+    DISCOVERY_PROFILE_REASON,
 )
 
 
@@ -881,10 +883,13 @@ class IdentityRunTests(unittest.TestCase):
             return archive_result
 
         with (
-            patch("pastor_transcript_extractor.cli.get_database", return_value=object()),
-            patch("pastor_transcript_extractor.cli.build_paths", return_value=paths),
+            patch("pastor_transcript_extractor.commands.common.get_database", return_value=object()),
             patch(
-                "pastor_transcript_extractor.cli.archive_normalized_media",
+                "pastor_transcript_extractor.commands.media_archive.build_paths",
+                return_value=paths,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.media_archive.archive_normalized_media",
                 side_effect=fake_archive,
             ),
         ):

@@ -188,7 +188,7 @@ class FixtureCorrectionCliTests(unittest.TestCase):
                 return SimpleNamespace(proposed_json_path=proposed_path)
 
             with patch(
-                "pastor_transcript_extractor.cli.get_database",
+                "pastor_transcript_extractor.commands.common.get_database",
                 return_value=database,
             ), patch(
                 "pastor_transcript_extractor.cli.resolve_video_artifact_paths",

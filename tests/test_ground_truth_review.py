@@ -78,7 +78,7 @@ class GroundTruthReviewTests(unittest.TestCase):
                     ),
                 )
                 with (
-                    patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                    patch("pastor_transcript_extractor.commands.common.get_database", return_value=database),
                     patch("pastor_transcript_extractor.cli.open_video_url") as open_url,
                     patch("pastor_transcript_extractor.cli.typer.confirm", side_effect=RuntimeError("stop")),
                     self.assertRaisesRegex(RuntimeError, "stop"),
@@ -221,7 +221,7 @@ class GroundTruthReviewTests(unittest.TestCase):
                 ),
             )
             with (
-                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch("pastor_transcript_extractor.commands.common.get_database", return_value=database),
                 patch(
                     "pastor_transcript_extractor.cli.typer.prompt",
                     side_effect=["0:00:10", "0:01:40", "", "unknown", ""],
@@ -279,7 +279,7 @@ class GroundTruthReviewTests(unittest.TestCase):
                 ),
             )
             with (
-                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch("pastor_transcript_extractor.commands.common.get_database", return_value=database),
                 patch(
                     "pastor_transcript_extractor.cli.typer.prompt",
                     side_effect=["non_sermon_event", "No worship-service sermon found."],
@@ -380,7 +380,7 @@ class GroundTruthReviewTests(unittest.TestCase):
             )
 
             with (
-                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch("pastor_transcript_extractor.commands.common.get_database", return_value=database),
                 patch("pastor_transcript_extractor.cli.review_ground_truth") as review,
             ):
                 review_next_ground_truth(
@@ -432,7 +432,7 @@ class GroundTruthReviewTests(unittest.TestCase):
                 ),
             )
             with (
-                patch("pastor_transcript_extractor.cli.get_database", return_value=database),
+                patch("pastor_transcript_extractor.commands.common.get_database", return_value=database),
                 patch("pastor_transcript_extractor.cli.typer.confirm", side_effect=RuntimeError("stop")),
                 self.assertRaisesRegex(RuntimeError, "stop"),
             ):
