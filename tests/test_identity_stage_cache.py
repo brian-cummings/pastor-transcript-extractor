@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from pastor_transcript_extractor.cli import run_identity_workflow_service
 from pastor_transcript_extractor.identity_stage_cache import (
@@ -283,6 +283,8 @@ class IdentityStageCacheTests(unittest.TestCase):
                 assignments_activated=0,
                 activation_blocked=0,
             )
+            associate = Mock(return_value=(association_report,))
+            discover = Mock(return_value=discovery_report)
             with (
                 patch(
                     "pastor_transcript_extractor.workflows.identity.run."
@@ -299,10 +301,6 @@ class IdentityStageCacheTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.reconcile_machine_assignments",
                     return_value=reconciliation,
                 ),
-                patch(
-                    "pastor_transcript_extractor.cli.shadow_associate_speakers_command",
-                    return_value=(association_report,),
-                ) as associate,
                 patch(
                     "pastor_transcript_extractor.cli.latest_association_reports",
                     return_value=(association_report,),
@@ -328,10 +326,6 @@ class IdentityStageCacheTests(unittest.TestCase):
                     return_value=machine_apply,
                 ),
                 patch("pastor_transcript_extractor.cli.confirm_discovered_profiles_command"),
-                patch(
-                    "pastor_transcript_extractor.cli.shadow_discover_profiles_command",
-                    return_value=discovery_report,
-                ) as discover,
                 patch("pastor_transcript_extractor.cli.promote_discovered_profiles_command"),
                 patch("pastor_transcript_extractor.cli.coordinate_identity_command"),
                 patch("pastor_transcript_extractor.cli._archive_normalized_after_identity"),
@@ -348,6 +342,8 @@ class IdentityStageCacheTests(unittest.TestCase):
                         review_prewarm_limit=0,
                         base_dir=root,
                         jobs=2,
+                        associator=associate,
+                        discoverer=discover,
                     )
                 source = database.add_source(
                     "https://www.youtube.com/@new-identity-input",
@@ -372,6 +368,8 @@ class IdentityStageCacheTests(unittest.TestCase):
                     review_prewarm_limit=0,
                     base_dir=root,
                     jobs=2,
+                    associator=associate,
+                    discoverer=discover,
                 )
 
         self.assertEqual(2, associate.call_count)

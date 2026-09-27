@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate identity-run stage-cache tests away from incidental
-  `cli.py` patches by exposing explicit workflow execution dependencies at the
-  identity service boundary.
+- Next action: migrate the remaining identity-run confirmation, promotion,
+  coordination, archival, and repair seams from incidental `cli.py` patches to
+  explicit narrow service dependencies.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -980,6 +980,14 @@ All identity workflow modules compile without importing Typer, Rich, or
 abstentions, partial failures, shadow-only behavior, and human-review safety.
 Milestone 7 is complete; Milestone 8 now targets remaining incidental test
 patch locations.
+
+### 2026-09-27 — Milestone 8.1: association/discovery execution seams
+
+Added explicit optional associator and discoverer boundaries to the identity
+service, with unchanged production defaults. The stage-cache regression test
+now supplies direct mocks through those boundaries instead of patching imported
+`cli.py` command globals, so it observes orchestration behavior without relying
+on implementation location.
 
 ## Validation log
 
@@ -2139,6 +2147,19 @@ No matches
 
 .venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity src/pastor_transcript_extractor/commands/identity src/pastor_transcript_extractor/cli.py
 PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association/discovery execution seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_identity_stage_cache.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_stage_cache tests.test_cli_contract
+Ran 13 tests in 0.949s — OK
 
 git diff --check
 PASS
