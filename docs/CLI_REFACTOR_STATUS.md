@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract interactive identity review commands, separating prompt
-  and rendering helpers from review policy where the current handlers mix them.
+- Next action: finish interactive identity review extraction by moving the
+  speaker-negative window audit/review pair and its ground-truth callback seam.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -471,6 +471,19 @@ Added focused tests for evaluation partition policy and empty fixture-directory
 validation. No acoustic model, fixture corpus, or evaluation job was run.
 
 `cli.py` is now 10,854 lines, down 7,263 lines from baseline.
+
+### 2026-09-27 — Milestone 6.2a: observation and pair review extraction
+
+Added `commands/identity/review.py` and moved observation packet preparation,
+exact speaker-pair adjudication, terminal normalization, prompt/rendering
+helpers, and deferred reviewed-evidence sync command rendering. The module owns
+its interactive Typer and Rich surface while keeping review-domain operations
+in the existing plain modules.
+
+Speaker-pair tests now import and patch the owning review module rather than
+`cli.py`; all focused review and contract tests pass.
+
+`cli.py` is now 10,420 lines, down 7,697 lines from baseline.
 
 ## Validation log
 
@@ -1001,6 +1014,19 @@ PASS
 
 .venv/bin/python -m pastor_transcript_extractor identity validate-pair-fixtures --help
 PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Observation and pair review extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/review.py src/pastor_transcript_extractor/cli.py tests/test_speaker_pair_review.py
+PASS
+
+.venv/bin/python -m unittest tests.test_speaker_pair_review tests.test_cli_contract tests.test_sources.CliTests.test_negative_window_review_reuses_existing_continuous_fixture
+Ran 30 tests in 0.354s — OK
 
 git diff --check
 PASS

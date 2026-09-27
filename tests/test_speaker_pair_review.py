@@ -11,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from pastor_transcript_extractor.cli import (
+from pastor_transcript_extractor.commands.identity.review import (
     _normalize_review_terminal_input,
     _reviewed_evidence_sync_command,
     review_speaker_pair,
@@ -143,8 +143,8 @@ class SpeakerPairReviewTests(unittest.TestCase):
         attributes = [termios.IGNCR | termios.INLCR, 0, 0, 0, 0, 0, []]
         stdin = SimpleNamespace(fileno=lambda: 42)
         with (
-            patch("pastor_transcript_extractor.cli.sys.stdin", stdin),
-            patch("pastor_transcript_extractor.cli.os.isatty", return_value=True),
+            patch("pastor_transcript_extractor.commands.identity.review.sys.stdin", stdin),
+            patch("pastor_transcript_extractor.commands.identity.review.os.isatty", return_value=True),
             patch("termios.tcgetattr", return_value=attributes),
             patch("termios.tcsetattr") as set_attributes,
         ):
@@ -818,32 +818,32 @@ class SpeakerPairReviewTests(unittest.TestCase):
         )
         with (
             patch(
-                "pastor_transcript_extractor.cli.build_paths",
+                "pastor_transcript_extractor.commands.identity.review.build_paths",
                 return_value=SimpleNamespace(
                     root=self.root,
                     database=self.root / "database.sqlite3",
                 ),
             ),
-            patch("pastor_transcript_extractor.cli.Path.exists", return_value=True),
-            patch("pastor_transcript_extractor.cli.Database", return_value=database),
+            patch("pastor_transcript_extractor.commands.identity.review.Path.exists", return_value=True),
+            patch("pastor_transcript_extractor.commands.identity.review.Database", return_value=database),
             patch(
-                "pastor_transcript_extractor.cli.resolve_normalized_audio_path",
+                "pastor_transcript_extractor.commands.identity.review.resolve_normalized_audio_path",
                 return_value=self.root / "audio.wav",
             ),
-            patch("pastor_transcript_extractor.cli.create_review_draft", return_value=draft),
+            patch("pastor_transcript_extractor.commands.identity.review.create_review_draft", return_value=draft),
             patch(
-                "pastor_transcript_extractor.cli.typer.prompt",
+                "pastor_transcript_extractor.commands.identity.review.typer.prompt",
                 side_effect=["single", "single", "same", "", ""],
             ),
             patch(
-                "pastor_transcript_extractor.cli.typer.confirm",
+                "pastor_transcript_extractor.commands.identity.review.typer.confirm",
                 return_value=False,
             ) as confirm,
             patch(
-                "pastor_transcript_extractor.cli.submit_review",
+                "pastor_transcript_extractor.commands.identity.review.submit_review",
                 return_value=submission,
             ),
-            patch("pastor_transcript_extractor.cli.console.print") as output,
+            patch("pastor_transcript_extractor.commands.identity.review.console.print") as output,
         ):
             review_speaker_pair(
                 "video-a",
@@ -925,25 +925,25 @@ class SpeakerPairReviewTests(unittest.TestCase):
         }
         with (
             patch(
-                "pastor_transcript_extractor.cli.build_paths",
+                "pastor_transcript_extractor.commands.identity.review.build_paths",
                 return_value=SimpleNamespace(
                     database=self.root / "database.sqlite3"
                 ),
             ),
             patch(
-                "pastor_transcript_extractor.cli.Path.exists",
+                "pastor_transcript_extractor.commands.identity.review.Path.exists",
                 return_value=True,
             ),
             patch(
-                "pastor_transcript_extractor.cli.Database",
+                "pastor_transcript_extractor.commands.identity.review.Database",
                 return_value=database,
             ),
             patch(
-                "pastor_transcript_extractor.cli.resolve_normalized_audio_path",
+                "pastor_transcript_extractor.commands.identity.review.resolve_normalized_audio_path",
                 return_value=self.root / "audio.wav",
             ),
             patch(
-                "pastor_transcript_extractor.cli.create_review_draft",
+                "pastor_transcript_extractor.commands.identity.review.create_review_draft",
                 return_value=draft,
             ) as create,
         ):
