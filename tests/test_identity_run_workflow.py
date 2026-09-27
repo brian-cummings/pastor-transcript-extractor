@@ -11,10 +11,13 @@ from pastor_transcript_extractor.workflows.identity import run as identity_run
 from pastor_transcript_extractor.workflows.identity.run import (
     AssociationCacheDecision,
     AssociationExecutionRequest,
+    DiscoveryExecutionDecision,
+    DiscoveryExecutionRequest,
     IdentityWorkflowRequest,
     decide_association_cache,
     decide_discovery_execution,
     execute_association_stage,
+    execute_discovery_stage,
     index_current_association_results,
     persist_association_checkpoint_stage,
     reconcile_current_assignment_results_stage,
@@ -53,6 +56,19 @@ class IdentityRunWorkflowTests(unittest.TestCase):
             jobs=3,
             model_sha256="model-sha",
             policy_path=Path("policy.json"),
+            evaluation_root=Path("evaluation"),
+            cache_dir=Path("cache"),
+            output_root=Path("output"),
+            base_dir=Path("app-data"),
+        )
+
+    def _discovery_request(self) -> DiscoveryExecutionRequest:
+        return DiscoveryExecutionRequest(
+            plan_only=False,
+            jobs=4,
+            model_sha256="model-sha",
+            consistency_policy_path=Path("consistency.json"),
+            association_policy_path=Path("association.json"),
             evaluation_root=Path("evaluation"),
             cache_dir=Path("cache"),
             output_root=Path("output"),
@@ -352,6 +368,40 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertEqual(cached, cached_selection.latest)
         self.assertEqual((generated,), generated_selection.reports)
         self.assertEqual(generated, generated_selection.latest)
+
+    def test_discovery_non_execute_modes_bypass_discoverer(self) -> None:
+        for mode in ("deferred", "skipped", "cached"):
+            with self.subTest(mode=mode):
+                discoverer = Mock()
+                result = execute_discovery_stage(
+                    self._discovery_request(),
+                    DiscoveryExecutionDecision(
+                        mode=mode,
+                        cached_reports=(Path("cached.json"),)
+                        if mode == "cached"
+                        else None,
+                    ),
+                    discoverer=discoverer,
+                )
+                self.assertIsNone(result)
+                discoverer.assert_not_called()
+
+    def test_discovery_execution_forwards_pinned_parameters(self) -> None:
+        report = Path("report.json")
+        discoverer = Mock(return_value=report)
+        result = execute_discovery_stage(
+            self._discovery_request(),
+            DiscoveryExecutionDecision(mode="execute", cached_reports=None),
+            discoverer=discoverer,
+        )
+
+        self.assertEqual(report, result)
+        options = discoverer.call_args.kwargs
+        self.assertEqual(4, options["jobs"])
+        self.assertEqual(8, options["nearest_neighbors"])
+        self.assertEqual(0.50, options["borderline_deferred_minimum"])
+        self.assertEqual(Path("consistency.json"), options["consistency_policy"])
+        self.assertFalse(options["include_deferred"])
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(
