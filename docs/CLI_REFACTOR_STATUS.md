@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract association execution/checkpoint reuse and current-result
-  machine-assignment reconciliation/planning into named stages, preserving
-  refresh selection, held-out exclusion, order, and plan-only non-mutation.
+- Next action: extract association executor invocation, exemplar repair, and
+  checkpoint persistence into named stages, preserving current refresh choices,
+  held-out exclusion, order, and plan-only non-mutation.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -633,6 +633,14 @@ Moved post-association reconciliation behind a second explicit workflow stage.
 It receives the exact current-result index, remains a no-op in plan-only mode,
 and preserves the required order between persisted association selection and
 machine-assignment planning.
+
+### 2026-09-27 — Milestone 6.5g: association cache decision
+
+Extracted checkpoint reuse and refresh-mode selection into an immutable
+workflow decision. Tests cover ordinary reuse, legacy checkpoints missing prior
+input state, corpus-level incremental refresh, and mandatory full refresh for a
+single-video run. Rendering and acoustic execution consume the decision without
+reimplementing its boolean policy.
 
 ## Validation log
 
@@ -1373,6 +1381,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 26 tests in 0.831s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association cache decision
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 30 tests in 0.848s — OK
 
 git diff --check
 PASS

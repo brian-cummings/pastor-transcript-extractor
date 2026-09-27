@@ -12,6 +12,7 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
+from pastor_transcript_extractor.identity_stage_cache import association_refresh_mode
 from pastor_transcript_extractor.speaker_machine_assignment import (
     MachineAssignmentReconciliationResult,
     reconcile_machine_assignments,
@@ -52,6 +53,19 @@ class ReviewedEvidenceStageResult:
 
     evidence: ReviewedSpeakerEvidence
     sync: ReviewedEvidenceSyncResult | None
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationCacheDecision:
+    """Whether association can reuse a checkpoint or must execute."""
+
+    cached_reports: tuple[Path, ...] | None
+    refresh_mode: str
+    checkpoint_needs_refresh: bool
+
+    @property
+    def incremental(self) -> bool:
+        return self.refresh_mode == "incremental"
 
 
 def validate_identity_workflow_request(
@@ -163,4 +177,32 @@ def reconcile_current_assignment_results_stage(
         current_association_result_sha256_by_observation=(
             result_sha256_by_observation
         ),
+    )
+
+
+def decide_association_cache(
+    *,
+    cached_reports: Sequence[Path] | None,
+    previous_input_state: Mapping[str, object] | None,
+    current_input_state: Mapping[str, object] | None,
+    all_extractions: bool,
+) -> AssociationCacheDecision:
+    """Choose checkpoint reuse, incremental execution, or a full refresh."""
+    cached = tuple(cached_reports) if cached_reports is not None else None
+    checkpoint_needs_refresh = cached is None or (
+        current_input_state is not None and previous_input_state is None
+    )
+    if cached is not None:
+        refresh_mode = "cached"
+    elif all_extractions:
+        refresh_mode = association_refresh_mode(
+            previous_input_state,
+            current_input_state,
+        )
+    else:
+        refresh_mode = "full"
+    return AssociationCacheDecision(
+        cached_reports=cached,
+        refresh_mode=refresh_mode,
+        checkpoint_needs_refresh=checkpoint_needs_refresh,
     )
