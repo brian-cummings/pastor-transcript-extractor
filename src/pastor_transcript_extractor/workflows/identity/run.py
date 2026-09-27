@@ -10,6 +10,11 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     load_reviewed_speaker_evidence,
     sync_reviewed_speaker_evidence,
 )
+from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
+from pastor_transcript_extractor.speaker_machine_assignment import (
+    MachineAssignmentReconciliationResult,
+    reconcile_machine_assignments,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -102,3 +107,18 @@ def synchronize_reviewed_evidence_stage(
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise ValueError(f"reviewed-evidence sync failed: {error}") from error
     return ReviewedEvidenceStageResult(evidence=evidence, sync=sync_result)
+
+
+def reconcile_machine_assignments_stage(
+    database_path: Path,
+    *,
+    verification_cache: MediaVerificationCache,
+    plan_only: bool,
+) -> MachineAssignmentReconciliationResult | None:
+    """Reconcile durable assignment evidence unless the run is plan-only."""
+    if plan_only:
+        return None
+    return reconcile_machine_assignments(
+        Database(database_path),
+        verification_cache=verification_cache,
+    )
