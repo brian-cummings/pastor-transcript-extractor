@@ -2970,7 +2970,11 @@ def run_identity_workflow_service(
     review_prewarm_limit: int = 24,
     base_dir: Path | None,
     jobs: int = 2,
+    associator=None,
+    discoverer=None,
 ) -> None:
+    associator = associator or shadow_associate_speakers_command
+    discoverer = discoverer or shadow_discover_profiles_command
     request = IdentityWorkflowRequest(
         youtube_video_id=youtube_video_id,
         all_extractions=all_extractions,
@@ -3143,7 +3147,7 @@ def run_identity_workflow_service(
             base_dir=base_dir,
         ),
         association_cache,
-        associator=shadow_associate_speakers_command,
+        associator=associator,
     )
     exemplar_state_cache = ExemplarPreparationStateCache(
         Path("evaluation/speaker-pairs/cache").resolve()
@@ -3353,7 +3357,7 @@ def run_identity_workflow_service(
             base_dir=base_dir,
         ),
         discovery_decision,
-        discoverer=shadow_discover_profiles_command,
+        discoverer=discoverer,
     )
 
     discovery_selection = select_discovery_reports(
