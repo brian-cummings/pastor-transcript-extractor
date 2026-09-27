@@ -387,6 +387,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     decide_discovery_execution,
     execute_association_stage,
     execute_discovery_stage,
+    finalize_discovery_stage,
     index_current_association_results,
     persist_association_checkpoint_stage,
     reconcile_current_assignment_results_stage,
@@ -3336,26 +3337,27 @@ def run_identity_workflow_service(
         discovery_root=discovery_root,
     )
     latest_discovery = discovery_selection.latest
-    if (
-        all_extractions
-        and not skip_discovery
-        and not plan_only
-        and cached_discovery_reports is None
-    ):
-        if discovery_fingerprint is not None:
+    discovery_finalization = finalize_discovery_stage(
+        decision=discovery_decision,
+        plan_only=plan_only,
+        fingerprint=discovery_fingerprint,
+        latest_report=latest_discovery,
+        apply_promotions=effective_apply_promotions,
+        checkpoint_writer=lambda fingerprint, outputs: (
             _write_identity_stage_checkpoint_best_effort(
                 identity_stage_cache_root,
                 stage="discovery",
-                input_fingerprint=discovery_fingerprint,
-                outputs=(latest_discovery,) if latest_discovery is not None else (),
+                input_fingerprint=fingerprint,
+                outputs=outputs,
             )
-    if all_extractions and latest_discovery is not None:
-        promote_discovered_profiles_command(
-            discovery_report=latest_discovery,
-            apply=effective_apply_promotions and not plan_only,
+        ),
+        promoter=lambda report, apply: promote_discovered_profiles_command(
+            discovery_report=report,
+            apply=apply,
             base_dir=base_dir,
-        )
-    elif all_extractions:
+        ),
+    )
+    if discovery_decision.mode != "deferred" and not discovery_finalization.promotion_attempted:
         console.print("Discovery promotion: no completed report available.")
 
     metadata_attribution_root = paths.logs / "profile-metadata-attribution"
