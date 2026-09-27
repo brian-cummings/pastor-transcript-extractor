@@ -2977,6 +2977,8 @@ def run_identity_workflow_service(
     coordinator=None,
     archiver=None,
     current_reports_loader=None,
+    backfiller=None,
+    reviewed_evidence_renderer=None,
 ) -> None:
     associator = associator or shadow_associate_speakers_command
     discoverer = discoverer or shadow_discover_profiles_command
@@ -2985,6 +2987,10 @@ def run_identity_workflow_service(
     coordinator = coordinator or coordinate_identity_command
     archiver = archiver or _archive_normalized_after_identity
     current_reports_loader = current_reports_loader or latest_association_reports
+    backfiller = backfiller or identity_backfill
+    reviewed_evidence_renderer = (
+        reviewed_evidence_renderer or _print_reviewed_evidence_summary
+    )
     request = IdentityWorkflowRequest(
         youtube_video_id=youtube_video_id,
         all_extractions=all_extractions,
@@ -3024,7 +3030,7 @@ def run_identity_workflow_service(
         plan_only=plan_only,
     )
     reviewed_evidence = reviewed_stage.evidence
-    _print_reviewed_evidence_summary(reviewed_evidence, reviewed_stage.sync)
+    reviewed_evidence_renderer(reviewed_evidence, reviewed_stage.sync)
     if plan_only:
         console.print(
             "Reviewed-evidence sync: plan-only; registry was not mutated."
@@ -3032,7 +3038,7 @@ def run_identity_workflow_service(
     if plan_only:
         console.print("Backfill: plan-only; no identity artifacts were written.")
     else:
-        identity_backfill(video_id=database_video_id, base_dir=base_dir)
+        backfiller(video_id=database_video_id, base_dir=base_dir)
 
     machine_cache = MediaVerificationCache(
         Path("evaluation/speaker-pairs/cache/media-verification").resolve()
