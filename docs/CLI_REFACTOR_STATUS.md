@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract the identity workflow command and orchestration into a
-  capability module, preserving stage order, plan-only behavior, and explicit
-  apply gates.
+- Next action: decompose `run_identity_workflow_service` behind the typed
+  request boundary into named stages, preserving order, plan-only behavior,
+  explicit apply gates, checkpoint reuse, and partial-failure reporting.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -567,6 +567,22 @@ corpus-wide shadow execution. The identity coordination domain tests and frozen
 CLI contract remain green.
 
 `cli.py` is now 8,387 lines, down 9,730 lines from baseline.
+
+### 2026-09-27 — Milestone 6.5a: typed identity workflow command adapter
+
+Moved the `identity run` Typer adapter into
+`commands/identity/workflow.py` and introduced the immutable
+`IdentityWorkflowRequest` boundary in `workflows/identity/run.py`. The command
+now owns parsing and error translation while composition explicitly binds the
+existing workflow service.
+
+This slice does not claim the identity workflow decomposition: the 679-line
+service remains in `cli.py` and is the next bounded task. Its decomposition
+must name and test reviewed-evidence sync, association/assignment, discovery,
+metadata attribution, coordination/review prewarm, and archival stages before
+the service moves.
+
+`cli.py` is now 8,309 lines, down 9,808 lines from baseline.
 
 ## Validation log
 
@@ -1217,6 +1233,22 @@ PASS
 Ran 31 tests in 0.254s — OK
 
 .venv/bin/python -m pastor_transcript_extractor identity coordinate --help
+PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Typed identity workflow command adapter
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/workflow.py src/pastor_transcript_extractor/workflows/identity src/pastor_transcript_extractor/cli.py tests/test_identity_workflow_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_workflow_commands tests.test_cli_contract
+Ran 8 tests in 0.244s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity run --help
 PASS
 
 git diff --check

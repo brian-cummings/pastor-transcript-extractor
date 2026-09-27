@@ -68,6 +68,8 @@ from pastor_transcript_extractor.commands.identity.coordination import (
     coordinate_identity_command,
 )
 from pastor_transcript_extractor.commands.identity import assignments as _identity_assignment_commands
+from pastor_transcript_extractor.commands.identity import workflow as _identity_workflow_commands
+from pastor_transcript_extractor.commands.identity.workflow import identity_run_command
 from pastor_transcript_extractor.commands.identity.common import (
     _held_out_speaker_fixture_fingerprints,
 )
@@ -377,6 +379,9 @@ from pastor_transcript_extractor.workflows.run import (
     RunWorkflowDependencies,
     RunWorkflowRequest,
     run_workflow,
+)
+from pastor_transcript_extractor.workflows.identity.run import (
+    IdentityWorkflowRequest,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -3585,6 +3590,23 @@ def run_identity_workflow_service(
     )
 
 
+def _invoke_identity_workflow_request(request: IdentityWorkflowRequest) -> None:
+    run_identity_workflow_service(
+        youtube_video_id=request.youtube_video_id,
+        all_extractions=request.all_extractions,
+        plan_only=request.plan_only,
+        skip_discovery=request.skip_discovery,
+        apply_automatic=request.apply_automatic,
+        apply_confirmations=request.apply_confirmations,
+        apply_promotions=request.apply_promotions,
+        apply_machine_canary=request.apply_machine_canary,
+        machine_assignment_policy_path=request.machine_assignment_policy_path,
+        review_prewarm_limit=request.review_prewarm_limit,
+        base_dir=request.base_dir,
+        jobs=request.jobs,
+    )
+
+
 def _archive_normalized_after_identity(
     database: Database,
     paths: AppPaths,
@@ -3710,109 +3732,6 @@ def _archive_normalized_after_identity(
         f"already_archived={counts['already_archived']}; deferred={deferred}; "
         f"failed={counts['failed']}; blocked={blocked}."
     )
-
-
-@identity_app.command(
-    "run",
-    help=(
-        "Sync reviewed evidence, then run backfill, shadow association, "
-        "discovery, final coordination, and eligible normalized archival."
-    ),
-)
-def identity_run_command(
-    youtube_video_id: str | None = typer.Argument(
-        None,
-        help="One YouTube video ID; omit when using --all.",
-    ),
-    all_extractions: bool = typer.Option(
-        False,
-        "--all",
-        help="Run across all current extractions and include corpus discovery.",
-    ),
-    plan_only: bool = typer.Option(
-        False,
-        "--plan-only",
-        help="Show all stages without acoustic execution or registry mutation.",
-    ),
-    skip_discovery: bool = typer.Option(
-        False,
-        "--skip-discovery",
-        help="Skip corpus profile discovery during an --all run.",
-    ),
-    apply_automatic: bool = typer.Option(
-        False,
-        "--apply-automatic",
-        help=(
-            "Apply validated confirmations, promotions, and policy-gated "
-            "human-on-loop provisional assignments. Requires --all."
-        ),
-    ),
-    apply_confirmations: bool = typer.Option(
-        False,
-        "--apply-confirmations",
-        help="Apply validated independent provisional-profile confirmations.",
-    ),
-    apply_promotions: bool = typer.Option(
-        False,
-        "--apply-promotions",
-        help="Promote verified discovery components into provisional profiles.",
-    ),
-    apply_machine_canary: bool = typer.Option(
-        False,
-        "--apply-machine-canary",
-        help=(
-            "Activate only eligible reversible machine assignments without "
-            "also applying profile confirmations or promotions. Requires --all."
-        ),
-    ),
-    machine_assignment_policy: Path | None = typer.Option(
-        None,
-        "--machine-assignment-policy",
-        help=(
-            "Use a versioned machine-assignment policy artifact. The default "
-            "checked-in policy is shadow-only."
-        ),
-    ),
-    review_prewarm_limit: int = typer.Option(
-        24,
-        "--review-prewarm-limit",
-        min=0,
-        help=(
-            "Precompute exact clips for this many current actionable review "
-            "observations during an --all run; use 0 to disable."
-        ),
-    ),
-    jobs: int = typer.Option(
-        2,
-        "--jobs",
-        min=1,
-        help=(
-            "Concurrent acoustic comparison jobs; registry mutations and "
-            "artifact aggregation remain serialized."
-        ),
-    ),
-    base_dir: Path | None = typer.Option(
-        None,
-        help="Override app data directory.",
-    ),
-) -> None:
-    try:
-        run_identity_workflow_service(
-            youtube_video_id=youtube_video_id,
-            all_extractions=all_extractions,
-            plan_only=plan_only,
-            skip_discovery=skip_discovery,
-            apply_automatic=apply_automatic,
-            apply_confirmations=apply_confirmations,
-            apply_promotions=apply_promotions,
-            apply_machine_canary=apply_machine_canary,
-            machine_assignment_policy_path=machine_assignment_policy,
-            review_prewarm_limit=review_prewarm_limit,
-            base_dir=base_dir,
-            jobs=jobs,
-        )
-    except ValueError as error:
-        raise typer.BadParameter(str(error)) from error
 
 
 @identity_app.command(
@@ -8373,6 +8292,9 @@ def _print_review_batch(batch: ReviewBatchResult) -> None:
 _identity_review_commands.configure_ground_truth_reviewer(review_ground_truth)
 _identity_coordination_commands.configure_shadow_associator(
     shadow_associate_speakers_command
+)
+_identity_workflow_commands.configure_identity_workflow(
+    _invoke_identity_workflow_request
 )
 _pipeline_commands.configure_run_command(_invoke_run_request)
 
