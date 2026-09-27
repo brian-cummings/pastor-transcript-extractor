@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: decompose `run_identity_workflow_service` behind the typed
-  request boundary into named stages, preserving order, plan-only behavior,
-  explicit apply gates, checkpoint reuse, and partial-failure reporting.
+- Next action: extract reviewed-evidence synchronization and identity backfill
+  as the next named identity-run stage, preserving plan-only non-mutation and
+  the current error boundary.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -583,6 +583,18 @@ metadata attribution, coordination/review prewarm, and archival stages before
 the service moves.
 
 `cli.py` is now 8,309 lines, down 9,808 lines from baseline.
+
+### 2026-09-27 — Milestone 6.5b: identity request validation stage
+
+Added a pure workflow validation stage that checks scope, mutation-flag
+compatibility, corpus-only apply gates, and resource limits before storage is
+opened. It returns an immutable policy containing the three effective mutation
+gates, replacing duplicated boolean derivation inside the orchestration
+service.
+
+Focused tests cover every mutation flag under plan-only mode, aggregate
+automatic apply behavior, single-video restrictions, scope, and resource
+limits. The module imports neither Typer nor Rich.
 
 ## Validation log
 
@@ -1250,6 +1262,19 @@ Ran 8 tests in 0.244s — OK
 
 .venv/bin/python -m pastor_transcript_extractor identity run --help
 PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Identity request validation stage
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_workflow_commands tests.test_cli_contract
+Ran 12 tests in 0.238s — OK
 
 git diff --check
 PASS

@@ -382,6 +382,7 @@ from pastor_transcript_extractor.workflows.run import (
 )
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    validate_identity_workflow_request,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -2926,28 +2927,24 @@ def run_identity_workflow_service(
     base_dir: Path | None,
     jobs: int = 2,
 ) -> None:
-    if (youtube_video_id is None) == (not all_extractions):
-        raise ValueError("Pass exactly one YouTube video ID or --all.")
-    effective_apply_confirmations = apply_automatic or apply_confirmations
-    effective_apply_promotions = apply_automatic or apply_promotions
-    effective_apply_machine = apply_automatic or apply_machine_canary
-    if plan_only and (
-        apply_automatic
-        or apply_confirmations
-        or apply_promotions
-        or apply_machine_canary
-    ):
-        raise ValueError(
-            "--plan-only cannot be combined with registry mutation flags"
-        )
-    if not all_extractions and effective_apply_promotions:
-        raise ValueError("automatic profile promotion requires --all")
-    if not all_extractions and apply_machine_canary:
-        raise ValueError("machine canary activation requires --all")
-    if review_prewarm_limit < 0:
-        raise ValueError("review prewarm limit cannot be negative")
-    if jobs < 1:
-        raise ValueError("identity jobs must be at least one")
+    request = IdentityWorkflowRequest(
+        youtube_video_id=youtube_video_id,
+        all_extractions=all_extractions,
+        plan_only=plan_only,
+        skip_discovery=skip_discovery,
+        apply_automatic=apply_automatic,
+        apply_confirmations=apply_confirmations,
+        apply_promotions=apply_promotions,
+        apply_machine_canary=apply_machine_canary,
+        machine_assignment_policy_path=machine_assignment_policy_path,
+        review_prewarm_limit=review_prewarm_limit,
+        base_dir=base_dir,
+        jobs=jobs,
+    )
+    policy = validate_identity_workflow_request(request)
+    effective_apply_confirmations = policy.apply_confirmations
+    effective_apply_promotions = policy.apply_promotions
+    effective_apply_machine = policy.apply_machine_assignments
     paths = build_paths(base_dir, remember=not plan_only)
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
