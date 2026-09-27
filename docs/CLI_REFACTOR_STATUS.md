@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the remaining identity-run confirmation, promotion,
-  coordination, archival, and repair seams from incidental `cli.py` patches to
-  explicit narrow service dependencies.
+- Next action: migrate identity-run backfill, reconciliation, current-report,
+  and exemplar-repair seams from incidental `cli.py` patches to explicit narrow
+  service dependencies.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -988,6 +988,13 @@ service, with unchanged production defaults. The stage-cache regression test
 now supplies direct mocks through those boundaries instead of patching imported
 `cli.py` command globals, so it observes orchestration behavior without relying
 on implementation location.
+
+### 2026-09-27 — Milestone 8.2: terminal identity action seams
+
+Added explicit confirmer, promoter, coordinator, and archiver boundaries with
+unchanged production defaults. The stage-cache test supplies direct mocks for
+all four actions, eliminating patches of their imported `cli.py` bindings while
+retaining exact stage invocation behavior.
 
 ## Validation log
 
@@ -2160,6 +2167,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_stage_cache tests.test_cli_contract
 Ran 13 tests in 0.949s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Terminal identity action seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_identity_stage_cache.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_stage_cache tests.test_cli_contract
+Ran 13 tests in 0.791s — OK
 
 git diff --check
 PASS

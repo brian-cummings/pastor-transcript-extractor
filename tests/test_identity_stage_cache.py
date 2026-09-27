@@ -285,6 +285,10 @@ class IdentityStageCacheTests(unittest.TestCase):
             )
             associate = Mock(return_value=(association_report,))
             discover = Mock(return_value=discovery_report)
+            confirmer = Mock()
+            promoter = Mock()
+            coordinator = Mock()
+            archiver = Mock()
             with (
                 patch(
                     "pastor_transcript_extractor.workflows.identity.run."
@@ -325,10 +329,6 @@ class IdentityStageCacheTests(unittest.TestCase):
                     "apply_machine_assignment_plan",
                     return_value=machine_apply,
                 ),
-                patch("pastor_transcript_extractor.cli.confirm_discovered_profiles_command"),
-                patch("pastor_transcript_extractor.cli.promote_discovered_profiles_command"),
-                patch("pastor_transcript_extractor.cli.coordinate_identity_command"),
-                patch("pastor_transcript_extractor.cli._archive_normalized_after_identity"),
             ):
                 for _ in range(2):
                     run_identity_workflow_service(
@@ -344,6 +344,10 @@ class IdentityStageCacheTests(unittest.TestCase):
                         jobs=2,
                         associator=associate,
                         discoverer=discover,
+                        confirmer=confirmer,
+                        promoter=promoter,
+                        coordinator=coordinator,
+                        archiver=archiver,
                     )
                 source = database.add_source(
                     "https://www.youtube.com/@new-identity-input",
@@ -370,6 +374,10 @@ class IdentityStageCacheTests(unittest.TestCase):
                     jobs=2,
                     associator=associate,
                     discoverer=discover,
+                    confirmer=confirmer,
+                    promoter=promoter,
+                    coordinator=coordinator,
+                    archiver=archiver,
                 )
 
         self.assertEqual(2, associate.call_count)
