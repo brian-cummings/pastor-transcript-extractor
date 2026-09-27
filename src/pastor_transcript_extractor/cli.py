@@ -400,6 +400,10 @@ from pastor_transcript_extractor.workflows.identity.run import (
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
 )
+from pastor_transcript_extractor.workflows.identity.finalization import (
+    CoordinationStageRequest,
+    run_coordination_stage,
+)
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
     CaptionAcquisitionResult,
@@ -3413,28 +3417,16 @@ def run_identity_workflow_service(
                 "analyze-profile-metadata --all --details "
                 f"--base-dir {paths.root}`."
             )
-    coordinate_identity_command(
-        youtube_video_id=youtube_video_id,
-        all_extractions=all_extractions,
-        execute_shadow=False,
-        discovery_report=latest_discovery,
-        discovery_root=discovery_root,
-        model_path=Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+    run_coordination_stage(
+        CoordinationStageRequest(
+            youtube_video_id=youtube_video_id,
+            all_extractions=all_extractions,
+            discovery_report=latest_discovery,
+            discovery_root=discovery_root,
+            model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
+            base_dir=base_dir,
         ),
-        model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
-        policy_path=Path(
-            "evaluation/speaker-pairs/policies/"
-            "campplus-development-candidate-v1.json"
-        ),
-        evaluation_root=Path("evaluation/speaker-pairs"),
-        cache_dir=Path("evaluation/speaker-pairs/cache"),
-        association_root=Path(
-            "evaluation/speaker-associations/shadow-runs"
-        ),
-        output_root=None,
-        base_dir=base_dir,
+        coordinator=coordinate_identity_command,
     )
     if plan_only:
         console.print(
