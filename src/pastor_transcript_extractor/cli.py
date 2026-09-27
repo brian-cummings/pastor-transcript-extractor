@@ -410,6 +410,7 @@ from pastor_transcript_extractor.workflows.identity.association_preparation impo
     AssociationCentroidCandidateInput,
     AssociationSpanExclusion,
     AssociationSpanInput,
+    TranscriptGroundedSpanProvider,
     _exemplar_preparation_initial_blocker,
     prepare_association_candidate_spans,
     prepare_association_centroids,
@@ -4026,62 +4027,15 @@ def shadow_associate_speakers_service(
     span_selection_by_observation_id: dict[int, Mapping[str, Any]] = {}
     activity_selection_cache = ActivityQualifiedSelectionCache(cache_root)
 
-    def transcript_grounded_spans(
-        video_id: int,
-        observation: SpeakerObservation,
-        audio_path: Path,
-        source_audio_sha256: str,
-        *,
-        acoustic_backend=None,
-    ) -> tuple[tuple[SpanSpec, ...], Mapping[str, Any] | None]:
-        extraction = database.get_extraction_result(
-            observation.extraction_result_id
-        )
-        if extraction is None or not extraction.proposed_json_path:
-            return (), None
-        try:
-            payload = json.loads(
-                Path(extraction.proposed_json_path).read_text(encoding="utf-8")
-            )
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            return (), None
-        if not isinstance(payload, dict):
-            return (), None
-        candidates = select_transcript_grounded_span_candidates(
-            payload,
-            observation,
-        )
-        if not candidates or plan_only:
-            return candidates, None
-        assert backend is not None
-        assert embedding_cache is not None
-        selected_backend = acoustic_backend or backend
-        qualified = activity_selection_cache.get_or_prepare(
-            observation=observation,
-            source_audio_sha256=source_audio_sha256,
-            audio_path=audio_path,
-            span_cache=span_cache,
-            candidate_specs=candidates,
-            embedding_cache=embedding_cache,
-            backend=selected_backend,
-            policy=policy_spec.policy,
-        )
-        selection = {
-            **qualified.selection,
-            "coherent_sermon_speaker_spans": [
-                {
-                    "start_seconds": spec.start_seconds,
-                    "end_seconds": spec.end_seconds,
-                    "speaker_key": (
-                        "sermon_speaker_candidate:"
-                        f"{observation.input_fingerprint}"
-                    ),
-                    "relationship": "coherent_sermon_speaker",
-                }
-                for spec in qualified.span_specs
-            ],
-        }
-        return qualified.span_specs, selection
+    transcript_grounded_spans = TranscriptGroundedSpanProvider(
+        database,
+        plan_only=plan_only,
+        span_cache=span_cache,
+        activity_selection_cache=activity_selection_cache,
+        embedding_cache=embedding_cache,
+        backend=backend,
+        policy_spec=policy_spec,
+    )
 
     corpus_inventory = load_association_corpus_inventory(database)
     videos_by_id = corpus_inventory.videos_by_id

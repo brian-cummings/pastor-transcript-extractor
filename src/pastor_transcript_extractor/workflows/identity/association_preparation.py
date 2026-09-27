@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -12,6 +13,7 @@ from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.models import SpeakerObservation, Video
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     AudioSpanCache,
+    EmbeddingCache,
     SpanSpec,
 )
 from pastor_transcript_extractor.speaker_pair_eligibility import (
@@ -21,10 +23,13 @@ from pastor_transcript_extractor.speaker_pair_eligibility import (
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
     ShadowExemplar,
+    ShadowPolicySpec,
     select_profile_exemplars,
 )
 from pastor_transcript_extractor.speaker_profile_discovery import (
+    ActivityQualifiedSelectionCache,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
+    select_transcript_grounded_span_candidates,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -103,6 +108,87 @@ class AssociationExemplarPreparationResult:
     span_selections_by_observation_id: Mapping[int, Mapping[str, Any]]
     counts: Mapping[str, int]
     counts_by_profile: Mapping[int, Mapping[str, int]]
+
+
+class TranscriptGroundedSpanProvider:
+    """Load transcript candidates and optionally qualify coherent speech spans."""
+
+    def __init__(
+        self,
+        database: Database,
+        *,
+        plan_only: bool,
+        span_cache: AudioSpanCache,
+        activity_selection_cache: ActivityQualifiedSelectionCache,
+        embedding_cache: EmbeddingCache | None,
+        backend: Any | None,
+        policy_spec: ShadowPolicySpec,
+    ) -> None:
+        self._database = database
+        self._plan_only = plan_only
+        self._span_cache = span_cache
+        self._activity_selection_cache = activity_selection_cache
+        self._embedding_cache = embedding_cache
+        self._backend = backend
+        self._policy_spec = policy_spec
+
+    def __call__(
+        self,
+        video_id: int,
+        observation: SpeakerObservation,
+        audio_path: Path,
+        source_audio_sha256: str,
+        *,
+        acoustic_backend: Any | None = None,
+    ) -> tuple[tuple[SpanSpec, ...], Mapping[str, Any] | None]:
+        del video_id
+        extraction = self._database.get_extraction_result(
+            observation.extraction_result_id
+        )
+        if extraction is None or not extraction.proposed_json_path:
+            return (), None
+        try:
+            payload = json.loads(
+                Path(extraction.proposed_json_path).read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return (), None
+        if not isinstance(payload, dict):
+            return (), None
+        candidates = select_transcript_grounded_span_candidates(
+            payload, observation
+        )
+        if not candidates or self._plan_only:
+            return candidates, None
+        if self._backend is None or self._embedding_cache is None:
+            raise RuntimeError("Acoustic span qualification is not initialized.")
+        selected_backend = acoustic_backend or self._backend
+        qualified = self._activity_selection_cache.get_or_prepare(
+            observation=observation,
+            source_audio_sha256=source_audio_sha256,
+            audio_path=audio_path,
+            span_cache=self._span_cache,
+            candidate_specs=candidates,
+            embedding_cache=self._embedding_cache,
+            backend=selected_backend,
+            policy=self._policy_spec.policy,
+        )
+        selection = {
+            **qualified.selection,
+            "coherent_sermon_speaker_spans": [
+                {
+                    "start_seconds": spec.start_seconds,
+                    "end_seconds": spec.end_seconds,
+                    "speaker_key": (
+                        "sermon_speaker_candidate:"
+                        f"{observation.input_fingerprint}"
+                    ),
+                    "relationship": "coherent_sermon_speaker",
+                }
+                for spec in qualified.span_specs
+            ],
+        }
+        return qualified.span_specs, selection
 
 
 def prepare_association_candidate_spans(
