@@ -23,12 +23,8 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from pastor_transcript_extractor import application, config
+from pastor_transcript_extractor import application, audio_staging, config, media_artifacts
 from pastor_transcript_extractor.application import ReviewBatchResult
-from pastor_transcript_extractor.audio_staging import (
-    load_and_verify_audio_stage_manifest,
-    write_audio_stage_manifest,
-)
 from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.church_database_import import (
     ChurchDatabaseImportError,
@@ -183,7 +179,6 @@ from pastor_transcript_extractor.media_artifacts import (
     ensure_audio_for_video,
     get_verified_normalized_media_artifact,
     get_authoritative_normalized_media_artifact,
-    stage_source_audio_for_video,
     resolve_normalized_audio_path,
     video_has_isolated_sermon,
 )
@@ -6623,53 +6618,7 @@ def review(
         subprocess.run([editor, str(review_path)], check=True)
 
 
-def _verify_audio_stage_manifest(
-    database: Database,
-    paths: AppPaths,
-    manifest_path: Path,
-) -> set[int]:
-    with Progress(
-        TextColumn("{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        verification_task = progress.add_task(
-            "Reading audio-stage manifest",
-            total=None,
-        )
-
-        def report_stage_verification(
-            index: int,
-            total: int,
-            youtube_video_id: str,
-        ) -> None:
-            progress.update(
-                verification_task,
-                total=total,
-                completed=index - 1,
-                description=(
-                    f"Verifying staged source [{index}/{total}] "
-                    f"{youtube_video_id}"
-                ),
-            )
-
-        video_ids = load_and_verify_audio_stage_manifest(
-            database,
-            manifest_path,
-            progress_callback=report_stage_verification,
-            verification_cache=MediaVerificationCache(
-                paths.logs / "source-audio-verification"
-            ),
-        )
-        progress.update(
-            verification_task,
-            total=len(video_ids),
-            completed=len(video_ids),
-            description=f"Verified {len(video_ids)} staged source artifact(s)",
-        )
-    return video_ids
+_verify_audio_stage_manifest = _pipeline_commands.verify_audio_stage_manifest
 
 
 def _invoke_run_request(request: RunWorkflowRequest) -> None:
@@ -6686,7 +6635,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
             get_database=command_common.get_database,
             build_paths=config.build_paths,
             build_tools=config.build_tool_config,
-            verify_manifest=_verify_audio_stage_manifest,
+            verify_manifest=_pipeline_commands.verify_audio_stage_manifest,
             audio_scope=AudioStageScopeDependencies(
                 get_database=command_common.get_database,
                 add_source=add_source_service,
@@ -6695,8 +6644,8 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 select_existing=_select_existing_stage_video_ids,
             ),
             audio_stage=AudioStageDependencies(
-                stage_video=stage_source_audio_for_video,
-                write_manifest=write_audio_stage_manifest,
+                stage_video=media_artifacts.stage_source_audio_for_video,
+                write_manifest=audio_staging.write_audio_stage_manifest,
                 fetch_captions=acquisition.fetch_captions_service,
             ),
             resume_pipeline=ResumePipelineDependencies(
