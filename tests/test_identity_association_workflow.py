@@ -14,6 +14,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
     assess_association_candidate,
     plan_association_profile_route,
+    plan_pending_confirmation_routing,
     prepare_association_centroids,
     prepare_association_candidate_spans,
     resolve_association_scope,
@@ -566,6 +567,61 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
         build_candidate.assert_not_called()
         self.assertIsNone(result.candidate_outcomes[0].observation_id)
         self.assertIsNone(result.candidate_outcomes[0].failure)
+
+    def test_pending_confirmation_routing_requires_persisted_promotion(
+        self,
+    ) -> None:
+        eligible = SimpleNamespace(
+            profile_id=8,
+            automatic_blockers=("discovery_candidate_unconfirmed",),
+        )
+        wrong_reason = SimpleNamespace(
+            profile_id=9,
+            automatic_blockers=("discovery_candidate_unconfirmed",),
+        )
+        already_confirmed = SimpleNamespace(
+            profile_id=10,
+            automatic_blockers=(),
+        )
+        usable_profiles = (
+            (eligible, ("eligible-exemplar",)),
+            (wrong_reason, ("wrong-exemplar",)),
+            (already_confirmed, ("confirmed-exemplar",)),
+        )
+        database = SimpleNamespace(
+            get_speaker_profile=lambda profile_id: SimpleNamespace(
+                created_reason=(
+                    association.DISCOVERY_PROFILE_REASON
+                    if profile_id == 8
+                    else "manual"
+                )
+            ),
+            get_speaker_profile_discovery_promotion=lambda profile_id: (
+                object() if profile_id == 8 else None
+            ),
+        )
+        with patch.object(
+            association,
+            "plan_pending_discovery_confirmation_routes",
+            return_value={21: (8,), 22: (8,)},
+        ) as plan_routes:
+            plan = plan_pending_confirmation_routing(
+                database,
+                usable_profiles,
+                candidate_centroids={21: (1.0,)},
+                candidate_video_ids={21: 210},
+                exemplar_centroids={80: (1.0,)},
+                candidates_per_profile=2,
+            )
+
+        self.assertEqual(((eligible, ("eligible-exemplar",)),), plan.profiles)
+        self.assertEqual(frozenset({8}), plan.pending_profile_ids)
+        self.assertEqual(frozenset({8}), plan.routed_profile_ids)
+        self.assertEqual(2, plan.route_count)
+        self.assertEqual(plan.profiles, plan_routes.call_args.args[0])
+        self.assertEqual(
+            2, plan_routes.call_args.kwargs["candidates_per_profile"]
+        )
 
 
 if __name__ == "__main__":

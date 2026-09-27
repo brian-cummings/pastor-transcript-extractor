@@ -314,7 +314,6 @@ from pastor_transcript_extractor.source_profile_consolidation import (
     write_source_profile_consolidation_packet,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
-    DISCOVERY_PROFILE_REASON,
     SHADOW_ASSOCIATION_VERSION,
     ShadowExemplar,
     assess_profile_association_readiness,
@@ -322,7 +321,6 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     evaluate_shadow_association,
     load_reusable_shadow_association,
     load_shadow_policy,
-    plan_pending_discovery_confirmation_routes,
     select_profile_exemplars,
     should_activate_cross_source_fallback,
     summarize_shadow_associations,
@@ -415,6 +413,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
     assess_association_candidate,
     plan_association_profile_route,
+    plan_pending_confirmation_routing,
     prepare_association_centroids,
     prepare_association_candidate_spans,
     resolve_association_scope,
@@ -4819,49 +4818,22 @@ def shadow_associate_speakers_service(
         ):
             candidate_centroids[observation_id] = centroid
             candidate_video_ids[observation_id] = video_id
-    pending_confirmation_profiles = tuple(
-        (profile, exemplars)
-        for profile, exemplars in usable_profiles
-        if (
-            "discovery_candidate_unconfirmed"
-            in profile.automatic_blockers
-            and (
-                registry_profile := database.get_speaker_profile(
-                    profile.profile_id
-                )
-            )
-            is not None
-            and registry_profile.created_reason
-            == DISCOVERY_PROFILE_REASON
-            and database.get_speaker_profile_discovery_promotion(
-                profile.profile_id
-            )
-            is not None
-        )
-    )
-    confirmation_routes = plan_pending_discovery_confirmation_routes(
-        pending_confirmation_profiles,
+    confirmation_plan = plan_pending_confirmation_routing(
+        database,
+        usable_profiles,
         candidate_centroids=candidate_centroids,
         candidate_video_ids=candidate_video_ids,
         exemplar_centroids=exemplar_centroids,
         candidates_per_profile=2,
     )
-    pending_confirmation_profile_ids = {
-        profile.profile_id
-        for profile, _exemplars in pending_confirmation_profiles
-    }
-    routed_pending_profile_ids = {
-        profile_id
-        for profile_ids in confirmation_routes.values()
-        for profile_id in profile_ids
-    }
+    confirmation_routes = confirmation_plan.routes
+    pending_confirmation_profile_ids = confirmation_plan.pending_profile_ids
     console.print(
         "Pending discovery confirmation routing: "
         f"profiles={len(pending_confirmation_profile_ids)} "
-        f"profiles_routed={len(routed_pending_profile_ids)} "
+        f"profiles_routed={len(confirmation_plan.routed_profile_ids)} "
         f"candidate_observations={len(confirmation_routes)} "
-        f"profile_candidate_routes="
-        f"{sum(len(profile_ids) for profile_ids in confirmation_routes.values())}"
+        f"profile_candidate_routes={confirmation_plan.route_count}"
     )
     def compare(
         candidate: SpeakerObservation,
