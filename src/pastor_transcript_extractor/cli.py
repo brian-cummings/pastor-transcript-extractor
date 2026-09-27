@@ -20,7 +20,7 @@ import webbrowser
 
 import typer
 from rich.console import Console
-from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from pastor_transcript_extractor import application
@@ -330,11 +330,6 @@ from pastor_transcript_extractor.sermon_fixture_selector import (
     sermon_duration_bucket,
 )
 from pastor_transcript_extractor.storage import Database
-from pastor_transcript_extractor.transcription import (
-    PreparedTranscriptInput,
-    complete_transcription_video,
-    prepare_transcription_input,
-)
 from pastor_transcript_extractor.workflows.source_sync import (
     SourceSyncConfigurationError,
     SourceSyncDependencies,
@@ -430,27 +425,6 @@ from pastor_transcript_extractor.workflows.transcription import (
     default_transcribe_jobs as _workflow_default_transcribe_jobs,
     recover_stale_transcribing_videos as _recover_stale_transcribing_videos,
     should_transcribe_video as _should_transcribe_video,
-    transcribe_videos_service as _transcribe_videos_service,
-)
-from pastor_transcript_extractor.workflows.transcription_events import (
-    STAGE_DONE,
-    STAGE_DOWNLOADING,
-    STAGE_FAILED,
-    STAGE_NORMALIZING,
-    STAGE_QUEUED_PREP,
-    STAGE_QUEUED_TRANSCRIBE,
-    STAGE_TRANSCRIBING,
-    TranscriptionBatchFinished,
-    TranscriptionBatchStarted,
-    TranscriptionEvent,
-    TranscriptionMessage,
-    TranscriptionProgressed,
-    TranscriptionResult,
-    TranscriptionRetrying,
-    TranscriptionStageChanged,
-    TranscriptionTaskSubmitted,
-    TranscriptionVideoFinished,
-    TranscriptionVideoQueued,
 )
 
 app = root_app
@@ -5856,198 +5830,6 @@ def _default_transcribe_jobs() -> int:
     return _workflow_default_transcribe_jobs()
 
 
-def _prepare_transcription_task(
-    database: Database,
-    paths,
-    tools,
-    video_id: int,
-    stage_callback=None,
-    allow_network: bool = True,
-) -> PreparedTranscriptInput:
-    return prepare_transcription_input(
-        database,
-        paths,
-        tools,
-        video_id,
-        stage_callback=stage_callback,
-        allow_network=allow_network,
-    )
-
-
-def _complete_transcription_task(
-    database: Database,
-    tools,
-    prepared: PreparedTranscriptInput,
-    progress_callback=None,
-    stage_callback=None,
-) -> None:
-    complete_transcription_video(
-        database,
-        tools,
-        prepared,
-        progress_callback=progress_callback,
-        stage_callback=stage_callback,
-    )
-
-
-class _TranscriptionRenderer:
-    def __init__(self) -> None:
-        self._terminal = console.is_terminal
-        self._lock = Lock()
-        self._progress: Progress | None = None
-        self._task_ids: dict[int, TaskID] = {}
-        self._started_video_ids: set[int] = set()
-
-    def close(self) -> None:
-        with self._lock:
-            if self._progress is not None:
-                self._progress.__exit__(None, None, None)
-                self._progress = None
-                self._task_ids.clear()
-                self._started_video_ids.clear()
-
-    def __call__(self, event: TranscriptionEvent) -> None:
-        if isinstance(event, TranscriptionMessage):
-            console.print(event.text)
-        elif isinstance(event, TranscriptionBatchStarted):
-            console.print(
-                f"Transcribing {event.total} video(s) with {event.workers} worker(s)."
-            )
-            if self._terminal:
-                self._start_progress()
-        elif isinstance(event, TranscriptionVideoQueued):
-            if not self._terminal:
-                console.print(
-                    f"[{event.index}/{event.total} queued] Transcribing video "
-                    f"#{event.video_id}: {event.title}",
-                    markup=False,
-                )
-        elif isinstance(event, TranscriptionTaskSubmitted):
-            if self._terminal:
-                self._add_task(event)
-        elif isinstance(event, TranscriptionStageChanged):
-            self._render_stage(event)
-        elif isinstance(event, TranscriptionProgressed):
-            self._render_progress(event)
-        elif isinstance(event, TranscriptionVideoFinished):
-            self._render_finished(event)
-        elif isinstance(event, TranscriptionBatchFinished):
-            self.close()
-            result = event.result
-            console.print(
-                f"Transcribed {result.processed_count} video(s); "
-                f"skipped {result.skipped_count}; failed {result.failed_count}."
-            )
-        elif isinstance(event, TranscriptionRetrying):
-            console.print(
-                f"Retrying {event.count} transcription failure(s) after the first pass."
-            )
-
-    def _start_progress(self) -> None:
-        self.close()
-        self._progress = Progress(
-            TextColumn("{task.fields[status]:>7}", justify="right"),
-            TextColumn("video #{task.fields[video_id]}"),
-            TextColumn("{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            console=console,
-            transient=False,
-        )
-        self._progress.__enter__()
-
-    def _add_task(self, event: TranscriptionTaskSubmitted) -> None:
-        with self._lock:
-            if self._progress is None:
-                return
-            self._task_ids[event.video_id] = self._progress.add_task(
-                event.title,
-                total=100,
-                completed=0,
-                status=STAGE_QUEUED_PREP,
-                video_id=event.video_id,
-                start=False,
-            )
-
-    def _render_stage(self, event: TranscriptionStageChanged) -> None:
-        if not self._terminal:
-            console.print(
-                f"[video #{event.video_id} stage] {event.stage}",
-                markup=False,
-            )
-            return
-        valid = {
-            STAGE_QUEUED_PREP,
-            STAGE_DOWNLOADING,
-            STAGE_NORMALIZING,
-            STAGE_QUEUED_TRANSCRIBE,
-            STAGE_TRANSCRIBING,
-            STAGE_DONE,
-            STAGE_FAILED,
-        }
-        with self._lock:
-            task_id = self._task_ids.get(event.video_id)
-            if self._progress is None or task_id is None or event.stage not in valid:
-                return
-            if event.video_id not in self._started_video_ids:
-                self._progress.start_task(task_id)
-                self._started_video_ids.add(event.video_id)
-            if event.stage == STAGE_TRANSCRIBING:
-                self._progress.update(task_id, status=event.stage, completed=0)
-            elif event.stage == STAGE_DONE:
-                self._progress.update(task_id, status=event.stage, completed=100)
-            else:
-                self._progress.update(task_id, status=event.stage)
-
-    def _render_progress(self, event: TranscriptionProgressed) -> None:
-        if not self._terminal:
-            console.print(
-                f"[video #{event.video_id} progress] {event.percent}%",
-                markup=False,
-            )
-            return
-        with self._lock:
-            task_id = self._task_ids.get(event.video_id)
-            if self._progress is None or task_id is None:
-                return
-            update_kwargs: dict[str, object] = {"completed": event.percent}
-            if event.video_id not in self._started_video_ids:
-                update_kwargs["fields"] = {"status": "running"}
-                self._started_video_ids.add(event.video_id)
-            self._progress.update(task_id, **update_kwargs)
-
-    def _render_finished(self, event: TranscriptionVideoFinished) -> None:
-        if self._terminal:
-            with self._lock:
-                task_id = self._task_ids.pop(event.video_id, None)
-                self._started_video_ids.discard(event.video_id)
-                if self._progress is not None and task_id is not None:
-                    self._progress.update(
-                        task_id,
-                        status=STAGE_FAILED if event.error else STAGE_DONE,
-                        completed=100,
-                    )
-                    self._progress.remove_task(task_id)
-            title = f" {event.title}" if event.error else f": {event.title}"
-        else:
-            title = ""
-        if event.error:
-            console.print(
-                f"[{event.finished}/{event.total} finished] Failed to transcribe "
-                f"video #{event.video_id}{title}: {event.error}",
-                style="red",
-                markup=False,
-                highlight=False,
-            )
-        else:
-            console.print(
-                f"[{event.finished}/{event.total} finished] Transcribed "
-                f"video #{event.video_id}{title}",
-                markup=False,
-                highlight=False,
-            )
-
 @app.command(
     "import-church-db",
     help="Import complete pastor/channel pairs from church-youtube-finder with stable provenance.",
@@ -6150,7 +5932,7 @@ def sync_imported_sources(
                 list_imported_sources=imported_source_ids,
                 discover=acquisition.discover_sources_service,
                 fetch_captions=acquisition.fetch_captions_service,
-                transcribe=transcribe_videos_service,
+                transcribe=acquisition.transcribe_videos_service,
                 extract=application.extract_batch,
                 register_media=backfill_existing_media_artifacts,
                 archive_source=archive_source_media,
@@ -6261,40 +6043,7 @@ def discover(
     acquisition.discover_sources_service(limit, all_videos, source_id, base_dir)
 
 
-def transcribe_videos_service(
-    missing_only: bool = False,
-    captions_missing_only: bool = True,
-    jobs: int = DEFAULT_TRANSCRIBE_JOBS,
-    source_id: int | None = None,
-    base_dir: Path | None = None,
-    prep_jobs: int = DEFAULT_PREP_WORKERS,
-    video_ids: set[int] | None = None,
-    allow_network: bool = True,
-    _retry_failed_once: bool = True,
-) -> TranscriptionResult:
-    database = get_database(base_dir)
-    app_paths = build_paths(base_dir, remember=True)
-    renderer = _TranscriptionRenderer()
-    try:
-        return _transcribe_videos_service(
-            missing_only=missing_only,
-            captions_missing_only=captions_missing_only,
-            jobs=jobs,
-            source_id=source_id,
-            base_dir=base_dir,
-            prep_jobs=prep_jobs,
-            video_ids=video_ids,
-            allow_network=allow_network,
-            _retry_failed_once=_retry_failed_once,
-            event_callback=renderer,
-            database=database,
-            app_paths=app_paths,
-            tool_config=build_tool_config(),
-            prepare=_prepare_transcription_task,
-            complete=_complete_transcription_task,
-        )
-    finally:
-        renderer.close()
+transcribe_videos_service = acquisition.transcribe_videos_service
 @app.command(help="Download or prepare local ASR transcripts for discovered videos.")
 def transcribe(
     missing_only: bool = typer.Option(False, "--missing-only", help="Only transcribe videos without a local ASR artifact."),
@@ -6312,7 +6061,13 @@ def transcribe(
     source_id: int | None = typer.Option(None, help="Only transcribe videos from a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    transcribe_videos_service(missing_only, captions_missing_only, jobs, source_id, base_dir)
+    acquisition.transcribe_videos_service(
+        missing_only,
+        captions_missing_only,
+        jobs,
+        source_id,
+        base_dir,
+    )
 
 
 @app.command(help="Fetch YouTube captions when available and persist them as transcript artifacts.")
@@ -7050,7 +6805,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
             ),
             resume_pipeline=ResumePipelineDependencies(
                 fetch_captions=acquisition.fetch_captions_service,
-                transcribe=transcribe_videos_service,
+                transcribe=acquisition.transcribe_videos_service,
                 extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,
@@ -7063,7 +6818,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 delete_source=delete_source_service,
                 discover=acquisition.discover_sources_service,
                 fetch_captions=acquisition.fetch_captions_service,
-                transcribe=transcribe_videos_service,
+                transcribe=acquisition.transcribe_videos_service,
                 extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,

@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Lock
 import time
 
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from pastor_transcript_extractor import discovery, transcription
+from pastor_transcript_extractor.config import (
+    build_paths,
+    build_tool_config,
+    ensure_directories,
+)
+from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionResult,
     fetch_captions_service as _fetch_captions_service,
@@ -13,6 +28,32 @@ from pastor_transcript_extractor.workflows.caption_acquisition import (
 from pastor_transcript_extractor.workflows.source_discovery import (
     DiscoveryServiceResult,
     discover_sources_service as _discover_sources_service,
+)
+from pastor_transcript_extractor.workflows.transcription import (
+    DEFAULT_PREP_WORKERS,
+    DEFAULT_TRANSCRIBE_JOBS,
+    default_transcribe_jobs,
+    transcribe_videos_service as _transcribe_videos_service,
+)
+from pastor_transcript_extractor.workflows.transcription_events import (
+    STAGE_DONE,
+    STAGE_DOWNLOADING,
+    STAGE_FAILED,
+    STAGE_NORMALIZING,
+    STAGE_QUEUED_PREP,
+    STAGE_QUEUED_TRANSCRIBE,
+    STAGE_TRANSCRIBING,
+    TranscriptionBatchFinished,
+    TranscriptionBatchStarted,
+    TranscriptionEvent,
+    TranscriptionMessage,
+    TranscriptionProgressed,
+    TranscriptionResult,
+    TranscriptionRetrying,
+    TranscriptionStageChanged,
+    TranscriptionTaskSubmitted,
+    TranscriptionVideoFinished,
+    TranscriptionVideoQueued,
 )
 
 
@@ -58,3 +99,239 @@ def fetch_captions_service(
         monotonic=time.monotonic,
         sleeper=time.sleep,
     )
+
+
+def get_database(base_dir: Path | None = None) -> Database:
+    paths = build_paths(base_dir, remember=True)
+    ensure_directories(paths)
+    database = Database(paths.database)
+    database.initialize()
+    return database
+
+
+def _prepare_transcription_task(
+    database,
+    paths,
+    tools,
+    video_id,
+    stage_callback=None,
+    allow_network=True,
+):
+    return transcription.prepare_transcription_input(
+        database,
+        paths,
+        tools,
+        video_id,
+        stage_callback=stage_callback,
+        allow_network=allow_network,
+    )
+
+
+def _complete_transcription_task(
+    database,
+    tools,
+    prepared,
+    progress_callback=None,
+    stage_callback=None,
+) -> None:
+    transcription.complete_transcription_video(
+        database,
+        tools,
+        prepared,
+        progress_callback=progress_callback,
+        stage_callback=stage_callback,
+    )
+
+
+class TranscriptionRenderer:
+    def __init__(self) -> None:
+        self._terminal = console.is_terminal
+        self._lock = Lock()
+        self._progress: Progress | None = None
+        self._task_ids: dict[int, TaskID] = {}
+        self._started_video_ids: set[int] = set()
+
+    def close(self) -> None:
+        with self._lock:
+            if self._progress is not None:
+                self._progress.__exit__(None, None, None)
+                self._progress = None
+                self._task_ids.clear()
+                self._started_video_ids.clear()
+
+    def __call__(self, event: TranscriptionEvent) -> None:
+        if isinstance(event, TranscriptionMessage):
+            console.print(event.text)
+        elif isinstance(event, TranscriptionBatchStarted):
+            console.print(
+                f"Transcribing {event.total} video(s) with {event.workers} worker(s)."
+            )
+            if self._terminal:
+                self._start_progress()
+        elif isinstance(event, TranscriptionVideoQueued):
+            if not self._terminal:
+                console.print(
+                    f"[{event.index}/{event.total} queued] Transcribing video "
+                    f"#{event.video_id}: {event.title}",
+                    markup=False,
+                )
+        elif isinstance(event, TranscriptionTaskSubmitted):
+            if self._terminal:
+                self._add_task(event)
+        elif isinstance(event, TranscriptionStageChanged):
+            self._render_stage(event)
+        elif isinstance(event, TranscriptionProgressed):
+            self._render_progress(event)
+        elif isinstance(event, TranscriptionVideoFinished):
+            self._render_finished(event)
+        elif isinstance(event, TranscriptionBatchFinished):
+            self.close()
+            result = event.result
+            console.print(
+                f"Transcribed {result.processed_count} video(s); "
+                f"skipped {result.skipped_count}; failed {result.failed_count}."
+            )
+        elif isinstance(event, TranscriptionRetrying):
+            console.print(
+                f"Retrying {event.count} transcription failure(s) after the first pass."
+            )
+
+    def _start_progress(self) -> None:
+        self.close()
+        self._progress = Progress(
+            TextColumn("{task.fields[status]:>7}", justify="right"),
+            TextColumn("video #{task.fields[video_id]}"),
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+        )
+        self._progress.__enter__()
+
+    def _add_task(self, event: TranscriptionTaskSubmitted) -> None:
+        with self._lock:
+            if self._progress is None:
+                return
+            self._task_ids[event.video_id] = self._progress.add_task(
+                event.title,
+                total=100,
+                completed=0,
+                status=STAGE_QUEUED_PREP,
+                video_id=event.video_id,
+                start=False,
+            )
+
+    def _render_stage(self, event: TranscriptionStageChanged) -> None:
+        if not self._terminal:
+            console.print(f"[video #{event.video_id} stage] {event.stage}", markup=False)
+            return
+        valid = {
+            STAGE_QUEUED_PREP,
+            STAGE_DOWNLOADING,
+            STAGE_NORMALIZING,
+            STAGE_QUEUED_TRANSCRIBE,
+            STAGE_TRANSCRIBING,
+            STAGE_DONE,
+            STAGE_FAILED,
+        }
+        with self._lock:
+            task_id = self._task_ids.get(event.video_id)
+            if self._progress is None or task_id is None or event.stage not in valid:
+                return
+            if event.video_id not in self._started_video_ids:
+                self._progress.start_task(task_id)
+                self._started_video_ids.add(event.video_id)
+            completed = None
+            if event.stage == STAGE_DONE:
+                completed = 100
+            elif event.stage == STAGE_TRANSCRIBING:
+                completed = 0
+            if completed is None:
+                self._progress.update(task_id, status=event.stage)
+            else:
+                self._progress.update(task_id, status=event.stage, completed=completed)
+
+    def _render_progress(self, event: TranscriptionProgressed) -> None:
+        if not self._terminal:
+            console.print(
+                f"[video #{event.video_id} progress] {event.percent}%", markup=False
+            )
+            return
+        with self._lock:
+            task_id = self._task_ids.get(event.video_id)
+            if self._progress is None or task_id is None:
+                return
+            update_kwargs: dict[str, object] = {"completed": event.percent}
+            if event.video_id not in self._started_video_ids:
+                update_kwargs["fields"] = {"status": "running"}
+                self._started_video_ids.add(event.video_id)
+            self._progress.update(task_id, **update_kwargs)
+
+    def _render_finished(self, event: TranscriptionVideoFinished) -> None:
+        if self._terminal:
+            with self._lock:
+                task_id = self._task_ids.pop(event.video_id, None)
+                self._started_video_ids.discard(event.video_id)
+                if self._progress is not None and task_id is not None:
+                    self._progress.update(
+                        task_id,
+                        status=STAGE_FAILED if event.error else STAGE_DONE,
+                        completed=100,
+                    )
+                    self._progress.remove_task(task_id)
+            title = f" {event.title}" if event.error else f": {event.title}"
+        else:
+            title = ""
+        if event.error:
+            console.print(
+                f"[{event.finished}/{event.total} finished] Failed to transcribe "
+                f"video #{event.video_id}{title}: {event.error}",
+                style="red",
+                markup=False,
+                highlight=False,
+            )
+        else:
+            console.print(
+                f"[{event.finished}/{event.total} finished] Transcribed "
+                f"video #{event.video_id}{title}",
+                markup=False,
+                highlight=False,
+            )
+
+
+def transcribe_videos_service(
+    missing_only: bool = False,
+    captions_missing_only: bool = True,
+    jobs: int = DEFAULT_TRANSCRIBE_JOBS,
+    source_id: int | None = None,
+    base_dir: Path | None = None,
+    prep_jobs: int = DEFAULT_PREP_WORKERS,
+    video_ids: set[int] | None = None,
+    allow_network: bool = True,
+    _retry_failed_once: bool = True,
+) -> TranscriptionResult:
+    database = get_database(base_dir)
+    app_paths = build_paths(base_dir, remember=True)
+    renderer = TranscriptionRenderer()
+    try:
+        return _transcribe_videos_service(
+            missing_only=missing_only,
+            captions_missing_only=captions_missing_only,
+            jobs=jobs,
+            source_id=source_id,
+            base_dir=base_dir,
+            prep_jobs=prep_jobs,
+            video_ids=video_ids,
+            allow_network=allow_network,
+            _retry_failed_once=_retry_failed_once,
+            event_callback=renderer,
+            database=database,
+            app_paths=app_paths,
+            tool_config=build_tool_config(),
+            prepare=_prepare_transcription_task,
+            complete=_complete_transcription_task,
+        )
+    finally:
+        renderer.close()
