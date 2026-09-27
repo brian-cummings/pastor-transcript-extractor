@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: inventory remaining repository-wide `cli.py` test patches by
-  symbol and migrate the next cohesive owner cluster without touching the
+- Next action: migrate the `fetch_captions_video` test seam to its owning
+  transcription module, preserving the current CLI adapter and avoiding the
   unrelated source-processing worktree changes.
 - Dataset validation: not needed for the current milestone.
 
@@ -1009,6 +1009,13 @@ Added explicit backfill and reviewed-evidence rendering dependencies and
 migrated the final local patches in `test_identity_stage_cache.py`. That module
 now contains zero `pastor_transcript_extractor.cli` patches; orchestration fakes
 are passed directly and domain behavior is patched at its owning modules.
+
+### 2026-09-27 — Milestone 8.5: discovery extractor owner seam
+
+Changed the CLI discovery adapter to resolve `extract_discovered_videos` from
+the discovery module that owns it. Discovery tests now patch that owner instead
+of the incidental `cli.py` import location, while production behavior and the
+public command surface remain unchanged.
 
 ## Validation log
 
@@ -2228,6 +2235,22 @@ git diff --check
 PASS
 ```
 
+### 2026-09-27 — Discovery extractor owner seam
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_sources.py tests/test_source_ownership.py
+PASS
+
+.venv/bin/python -m unittest <16 affected discovery tests> tests.test_cli_contract
+Ran 22 tests in 15.311s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.extract_discovered_videos" tests
+No matches
+
+git diff --check
+PASS
+```
+
 ## Known risks
 
 - Existing tests rely heavily on `cli.py` import and patch locations. Every
@@ -2239,6 +2262,10 @@ PASS
   safety boundaries.
 - Pre-existing edits overlap `cli.py`, so the relevant diff must be inspected
   before the first code change.
+- The broader source/CLI test run currently has four failures unrelated to the
+  discovery seam: two caption-fetch fake signature mismatches, one stale
+  classifier-version expectation, and one rejected-video disposition
+  expectation. Focused discovery and CLI-contract coverage passes.
 
 ## Resume checklist
 

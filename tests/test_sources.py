@@ -758,7 +758,7 @@ class SegmentationTests(unittest.TestCase):
                 ),
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -810,7 +810,7 @@ class SegmentationTests(unittest.TestCase):
                 ),
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--all", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -860,9 +860,9 @@ class SegmentationTests(unittest.TestCase):
                 ),
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=first_discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=first_discovered):
                 first_result = runner.invoke(app, ["discover", "--all", "--base-dir", str(base_dir)])
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=second_discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=second_discovered):
                 second_result = runner.invoke(app, ["discover", "--all", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, first_result.exit_code, msg=first_result.output)
@@ -904,7 +904,7 @@ class SegmentationTests(unittest.TestCase):
                 ),
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--limit", "1", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -967,7 +967,7 @@ class SegmentationTests(unittest.TestCase):
             ]
 
             with patch(
-                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                "pastor_transcript_extractor.discovery.extract_discovered_videos",
                 return_value=discovered,
             ):
                 result = discover_sources_service(
@@ -1007,7 +1007,7 @@ class SegmentationTests(unittest.TestCase):
                 )
             ]
             with patch(
-                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                "pastor_transcript_extractor.discovery.extract_discovered_videos",
                 side_effect=[RuntimeError("temporary"), discovered],
             ) as extract:
                 result = discover_sources_service(
@@ -1053,7 +1053,7 @@ class SegmentationTests(unittest.TestCase):
                 ),
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--limit", "1", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -1131,7 +1131,7 @@ class SegmentationTests(unittest.TestCase):
                 status=VideoStatus.DISCOVERED,
             )
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--limit", "1", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -1168,7 +1168,7 @@ class SegmentationTests(unittest.TestCase):
                 for i in range(30)
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -1231,7 +1231,7 @@ class SegmentationTests(unittest.TestCase):
             ]
 
             with patch(
-                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                "pastor_transcript_extractor.discovery.extract_discovered_videos",
                 return_value=discovered,
             ):
                 result = discover_sources_service(
@@ -1271,7 +1271,7 @@ class SegmentationTests(unittest.TestCase):
                 for i in range(30)
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--all", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -1302,7 +1302,7 @@ class SegmentationTests(unittest.TestCase):
                 )
             ]
 
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered):
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered):
                 result = runner.invoke(app, ["discover", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -1403,7 +1403,7 @@ class CliTests(unittest.TestCase):
             )]
 
             with patch.dict(os.environ, {"PTE_LLM_ENABLED": "1", "PTE_LLM_MODEL": "fixture-model"}, clear=False), patch(
-                "pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered
+                "pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered
             ), patch(
                 "pastor_transcript_extractor.cli.fetch_captions_video", side_effect=self._fake_caption_fetch
             ), patch("pastor_transcript_extractor.application.OllamaClient", FakeOllamaClient):
@@ -1517,7 +1517,7 @@ class CliTests(unittest.TestCase):
                 published_at=None,
                 duration_seconds=900,
             )]
-            with patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=discovered), patch(
+            with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered), patch(
                 "pastor_transcript_extractor.cli.fetch_captions_video", side_effect=self._fake_caption_fetch
             ), patch("pastor_transcript_extractor.application.OllamaClient", side_effect=AssertionError("rules called Ollama")):
                 result = runner.invoke(app, [
@@ -1572,7 +1572,7 @@ class CliTests(unittest.TestCase):
                 ]
 
             with patch(
-                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                "pastor_transcript_extractor.discovery.extract_discovered_videos",
                 side_effect=lambda url, *_: discovered_by_url[url],
             ):
                 result = runner.invoke(app, [
@@ -1803,7 +1803,7 @@ class CliTests(unittest.TestCase):
                 "discover",
                 ["discover", "--all"],
                 setup_source,
-                [patch("pastor_transcript_extractor.cli.extract_discovered_videos", return_value=[])],
+                [patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=[])],
             ),
             ("video-list", ["video", "list"], setup_video, None),
             ("source-delete", ["source", "delete", "1", "--force"], setup_source, None),

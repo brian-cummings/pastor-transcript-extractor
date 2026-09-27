@@ -91,7 +91,7 @@ from pastor_transcript_extractor.config import (
     build_tool_config,
     ensure_directories,
 )
-from pastor_transcript_extractor.discovery import extract_discovered_videos
+from pastor_transcript_extractor import discovery
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
@@ -6260,7 +6260,7 @@ def discover_sources_service(
         source_id,
         base_dir,
         progress_callback=lambda message: console.print(message, markup=False),
-        extract_videos=extract_discovered_videos,
+        extract_videos=discovery.extract_discovered_videos,
     )
 
 
