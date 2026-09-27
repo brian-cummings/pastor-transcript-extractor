@@ -626,7 +626,7 @@ class IdentityRunTests(unittest.TestCase):
                 side_effect=eligibility,
             ),
             patch(
-                "pastor_transcript_extractor.cli.prepare_review_observation",
+                "pastor_transcript_extractor.speaker_pair_review.prepare_review_observation",
                 return_value=prepared,
             ) as prepare,
             patch(
@@ -719,6 +719,14 @@ class IdentityRunTests(unittest.TestCase):
             )
         )
 
+        def eligibility(_database, video_id, **_kwargs):
+            self.assertEqual(2, video_id)
+            return SimpleNamespace(
+                eligible=True,
+                observation=observations["useful"],
+                media_artifact=media,
+            )
+
         with (
             patch(
                 "pastor_transcript_extractor.cli."
@@ -731,7 +739,7 @@ class IdentityRunTests(unittest.TestCase):
                 side_effect=eligibility,
             ),
             patch(
-                "pastor_transcript_extractor.cli.prepare_review_observation",
+                "pastor_transcript_extractor.speaker_pair_review.prepare_review_observation",
                 return_value=prepared,
             ),
             patch(
