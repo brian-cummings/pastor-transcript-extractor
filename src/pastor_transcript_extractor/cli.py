@@ -380,8 +380,10 @@ from pastor_transcript_extractor.workflows.run import (
     run_workflow,
 )
 from pastor_transcript_extractor.workflows.identity.run import (
+    AssociationExecutionRequest,
     IdentityWorkflowRequest,
     decide_association_cache,
+    execute_association_stage,
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
@@ -3074,14 +3076,12 @@ def run_identity_workflow_service(
         association_cache.checkpoint_needs_refresh
     )
     if association_cache.cached_reports is not None:
-        current_association_reports = association_cache.cached_reports
         console.print(
             "Association stage: unchanged inputs; reused completed stage "
-            f"with {len(current_association_reports)} report(s)."
+            f"with {len(association_cache.cached_reports)} report(s)."
         )
     else:
-        incremental_association = association_cache.incremental
-        if incremental_association:
+        if association_cache.incremental:
             console.print(
                 "Association stage: only new observation-local inputs changed; "
                 "evaluating unattempted observations."
@@ -3091,30 +3091,22 @@ def run_identity_workflow_service(
                 "Association stage: global or ambiguous inputs changed; "
                 "running conservative full refresh."
             )
-        current_association_reports = shadow_associate_speakers_command(
+    current_association_reports = execute_association_stage(
+        AssociationExecutionRequest(
             youtube_video_id=youtube_video_id,
-            all_eligible=all_extractions,
-            unattempted_only=incremental_association,
-            neighborhood_profile_id=[],
-            include_profiled=False,
-            limit=None,
+            all_extractions=all_extractions,
             plan_only=plan_only,
-            minimum_profile_members=3,
-            maximum_exemplars=3,
-            minimum_same_exemplars=2,
-            maximum_global_profiles=1,
             jobs=jobs,
-            model_path=Path(
-                "evaluation/speaker-pairs/models/"
-                "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-            ),
             model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
             policy_path=association_policy_path,
             evaluation_root=speaker_evaluation_root,
             cache_dir=Path("evaluation/speaker-pairs/cache"),
             output_root=Path("evaluation/speaker-associations/shadow-runs"),
             base_dir=base_dir,
-        )
+        ),
+        association_cache,
+        associator=shadow_associate_speakers_command,
+    )
     exemplar_state_cache = ExemplarPreparationStateCache(
         Path("evaluation/speaker-pairs/cache").resolve()
     )

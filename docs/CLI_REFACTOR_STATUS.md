@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract association executor invocation, exemplar repair, and
-  checkpoint persistence into named stages, preserving current refresh choices,
-  held-out exclusion, order, and plan-only non-mutation.
+- Next action: extract exemplar repair and association checkpoint persistence
+  into named stages, preserving current refresh choices, held-out exclusion,
+  order, and plan-only non-mutation.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -641,6 +641,14 @@ workflow decision. Tests cover ordinary reuse, legacy checkpoints missing prior
 input state, corpus-level incremental refresh, and mandatory full refresh for a
 single-video run. Rendering and acoustic execution consume the decision without
 reimplementing its boolean policy.
+
+### 2026-09-27 — Milestone 6.5h: association execution boundary
+
+Moved the pinned shadow-association invocation behind a typed request and an
+explicit callable boundary. Cached reports bypass acoustic execution entirely;
+cache misses forward the selected incremental/full mode plus the unchanged
+model, policy, concurrency, scope, and artifact paths. The workflow module
+remains independent of Typer and Rich.
 
 ## Validation log
 
@@ -1394,6 +1402,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 30 tests in 0.848s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association execution boundary
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 32 tests in 0.819s — OK
 
 git diff --check
 PASS
