@@ -4,15 +4,17 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from pastor_transcript_extractor.workflows.identity import association
 from pastor_transcript_extractor.workflows.identity.association import (
+    AssociationCentroidCandidateInput,
     AssociationSpanExclusion,
     AssociationSpanInput,
     ShadowAssociationRequest,
     assess_association_candidate,
     plan_association_profile_route,
+    prepare_association_centroids,
     prepare_association_candidate_spans,
     resolve_association_scope,
     validate_shadow_association_request,
@@ -490,6 +492,80 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
                 "retrospective_evaluation"
             ],
         )
+
+    def test_centroid_preparation_deduplicates_and_isolates_failures(self) -> None:
+        exemplar_one = SimpleNamespace(
+            observation=SimpleNamespace(id=80),
+        )
+        exemplar_one_duplicate = SimpleNamespace(
+            observation=SimpleNamespace(id=80),
+        )
+        exemplar_two = SimpleNamespace(
+            observation=SimpleNamespace(id=81),
+        )
+        candidates = tuple(
+            AssociationCentroidCandidateInput(
+                SimpleNamespace(id=value),
+                SimpleNamespace(
+                    observation=SimpleNamespace(id=value, video_id=value * 10),
+                    media_artifact=SimpleNamespace(),
+                ),
+            )
+            for value in (1, 2, 3)
+        )
+        progress = []
+
+        def build_candidate(candidate):
+            if candidate.video.id == 2:
+                raise ValueError("bad centroid")
+            return (float(candidate.video.id),)
+
+        result = prepare_association_centroids(
+            (exemplar_one, exemplar_one_duplicate, exemplar_two),
+            candidates,
+            jobs=2,
+            build_exemplar_centroid=lambda exemplar: (
+                float(exemplar.observation.id),
+            ),
+            build_candidate_centroid=build_candidate,
+            candidate_progress=lambda index, total: progress.append(
+                (index, total)
+            ),
+        )
+
+        self.assertEqual(
+            {80: (80.0,), 81: (81.0,)},
+            result.exemplar_centroids,
+        )
+        self.assertEqual(
+            [1, 2, 3],
+            [outcome.observation_id for outcome in result.candidate_outcomes],
+        )
+        self.assertEqual(
+            [None, "ValueError:bad centroid", None],
+            [outcome.failure for outcome in result.candidate_outcomes],
+        )
+        self.assertEqual((3.0,), result.candidate_outcomes[2].centroid)
+        self.assertEqual([(1, 3), (2, 3), (3, 3)], progress)
+
+    def test_centroid_preparation_skips_incomplete_candidate(self) -> None:
+        candidate = AssociationCentroidCandidateInput(
+            SimpleNamespace(id=1),
+            SimpleNamespace(observation=None, media_artifact=None),
+        )
+        build_candidate = Mock()
+
+        result = prepare_association_centroids(
+            (),
+            (candidate,),
+            jobs=1,
+            build_exemplar_centroid=lambda _exemplar: (),
+            build_candidate_centroid=build_candidate,
+        )
+
+        build_candidate.assert_not_called()
+        self.assertIsNone(result.candidate_outcomes[0].observation_id)
+        self.assertIsNone(result.candidate_outcomes[0].failure)
 
 
 if __name__ == "__main__":

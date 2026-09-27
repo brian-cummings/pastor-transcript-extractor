@@ -145,6 +145,27 @@ class AssociationProfileRoutePlan:
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class AssociationCentroidCandidateInput:
+    video: Video
+    eligibility: AutomaticSpeakerObservationEligibility
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationCandidateCentroidOutcome:
+    candidate: AssociationCentroidCandidateInput
+    observation_id: int | None
+    video_id: int | None
+    centroid: tuple[float, ...] | None
+    failure: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationCentroidPreparationResult:
+    exemplar_centroids: Mapping[int, tuple[float, ...]]
+    candidate_outcomes: tuple[AssociationCandidateCentroidOutcome, ...]
+
+
 def validate_shadow_association_request(
     request: ShadowAssociationRequest,
 ) -> None:
@@ -593,4 +614,96 @@ def plan_association_profile_route(
         exhaustive_profile_comparison_count=len(legacy_routed_profiles),
         candidate_usable_profiles=tuple(candidate_usable_profiles),
         legacy_routed_profiles=legacy_routed_profiles,
+    )
+
+
+def prepare_association_centroids(
+    exemplars: Sequence[ShadowExemplar],
+    candidates: Sequence[AssociationCentroidCandidateInput],
+    *,
+    jobs: int,
+    build_exemplar_centroid: Callable[
+        [ShadowExemplar], Sequence[float]
+    ],
+    build_candidate_centroid: Callable[
+        [AssociationCentroidCandidateInput], Sequence[float]
+    ],
+    candidate_progress: Callable[[int, int], None] | None = None,
+) -> AssociationCentroidPreparationResult:
+    """Build stable retrieval centroids while isolating candidate failures."""
+
+    def ordered_map(function, items, *, thread_name_prefix):
+        if jobs == 1 or len(items) < 2:
+            return tuple(map(function, items))
+        with ThreadPoolExecutor(
+            max_workers=min(jobs, len(items)),
+            thread_name_prefix=thread_name_prefix,
+        ) as executor:
+            return tuple(executor.map(function, items))
+
+    unique_exemplars = tuple(
+        {
+            exemplar.observation.id: exemplar
+            for exemplar in exemplars
+        }.values()
+    )
+
+    def prepare_exemplar(exemplar: ShadowExemplar):
+        return (
+            exemplar.observation.id,
+            tuple(build_exemplar_centroid(exemplar)),
+        )
+
+    exemplar_centroids = dict(
+        ordered_map(
+            prepare_exemplar,
+            unique_exemplars,
+            thread_name_prefix="identity-exemplar-centroid",
+        )
+    )
+
+    def prepare_candidate(
+        indexed_candidate: tuple[int, AssociationCentroidCandidateInput],
+    ) -> tuple[int, AssociationCandidateCentroidOutcome]:
+        index, candidate = indexed_candidate
+        observation = candidate.eligibility.observation
+        if (
+            observation is None
+            or candidate.eligibility.media_artifact is None
+        ):
+            return index, AssociationCandidateCentroidOutcome(
+                candidate, None, None, None, None
+            )
+        try:
+            centroid = tuple(build_candidate_centroid(candidate))
+        except Exception as error:
+            return index, AssociationCandidateCentroidOutcome(
+                candidate,
+                observation.id,
+                observation.video_id,
+                None,
+                f"{type(error).__name__}:{error}",
+            )
+        return index, AssociationCandidateCentroidOutcome(
+            candidate,
+            observation.id,
+            observation.video_id,
+            centroid,
+            None,
+        )
+
+    indexed_candidates = tuple(enumerate(candidates, start=1))
+    prepared_candidates = ordered_map(
+        prepare_candidate,
+        indexed_candidates,
+        thread_name_prefix="identity-candidate-centroid",
+    )
+    outcomes: list[AssociationCandidateCentroidOutcome] = []
+    for index, outcome in prepared_candidates:
+        if candidate_progress is not None:
+            candidate_progress(index, len(candidates))
+        outcomes.append(outcome)
+    return AssociationCentroidPreparationResult(
+        exemplar_centroids=exemplar_centroids,
+        candidate_outcomes=tuple(outcomes),
     )
