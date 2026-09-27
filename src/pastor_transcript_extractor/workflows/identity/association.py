@@ -27,3 +27,27 @@ class ShadowAssociationRequest:
     cache_dir: Path
     output_root: Path
     base_dir: Path | None
+
+
+def validate_shadow_association_request(
+    request: ShadowAssociationRequest,
+) -> None:
+    """Validate selection-mode invariants before any external access."""
+    selection_modes = sum(
+        (
+            request.youtube_video_id is not None,
+            request.all_eligible,
+            bool(request.neighborhood_profile_ids),
+        )
+    )
+    if selection_modes != 1:
+        raise ValueError(
+            "Pass exactly one of --youtube-video-id, --all-eligible, or "
+            "--neighborhood-profile-id."
+        )
+    if request.unattempted_only and not request.all_eligible:
+        raise ValueError("--unattempted-only requires --all-eligible.")
+    if request.minimum_same_exemplars > request.maximum_exemplars:
+        raise ValueError(
+            "--minimum-same-exemplars cannot exceed --maximum-exemplars."
+        )
