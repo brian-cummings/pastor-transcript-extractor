@@ -8,8 +8,11 @@ from unittest.mock import patch
 
 from pastor_transcript_extractor.workflows.identity import association
 from pastor_transcript_extractor.workflows.identity.association import (
+    AssociationSpanExclusion,
+    AssociationSpanInput,
     ShadowAssociationRequest,
     assess_association_candidate,
+    prepare_association_candidate_spans,
     resolve_association_scope,
     validate_shadow_association_request,
 )
@@ -235,6 +238,78 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
         self.assertEqual(2, assess.call_count)
         self.assertFalse(assess.call_args_list[0].kwargs["verify_media"])
         self.assertTrue(assess.call_args_list[1].kwargs["verify_media"])
+
+    def test_span_preparation_preserves_order_and_target_limit(self) -> None:
+        inputs = tuple(
+            AssociationSpanInput(
+                SimpleNamespace(id=value),
+                SimpleNamespace(observation=SimpleNamespace(id=value)),
+                Path(f"{value}.wav"),
+            )
+            for value in (1, 2, 3)
+        )
+        progress = []
+        result = prepare_association_candidate_spans(
+            inputs,
+            jobs=2,
+            target_count=2,
+            prepare_spans=lambda item: ((f"span-{item.video.id}",), None),
+            progress_callback=lambda completed, total, eligible: progress.append(
+                (completed, total, eligible)
+            ),
+        )
+
+        self.assertEqual(
+            [1, 2],
+            [candidate.input.video.id for candidate in result.candidates],
+        )
+        self.assertEqual([], list(result.exclusions))
+        self.assertEqual([(2, 3, 2)], progress)
+
+    def test_span_preparation_keeps_failure_reasons_and_order(self) -> None:
+        inputs = tuple(
+            AssociationSpanInput(
+                SimpleNamespace(id=value),
+                SimpleNamespace(observation=SimpleNamespace(id=value)),
+                Path(f"{value}.wav"),
+            )
+            for value in (1, 2, 3)
+        )
+
+        def prepare(item):
+            if item.video.id == 1:
+                return (), None
+            if item.video.id == 2:
+                raise RuntimeError("activity failed")
+            return (("span-3",), {"selected": True})
+
+        result = prepare_association_candidate_spans(
+            inputs,
+            jobs=3,
+            target_count=None,
+            prepare_spans=prepare,
+        )
+
+        self.assertEqual(
+            ["speech_grounded_spans_unavailable", "activity failed"],
+            [exclusion.reason for exclusion in result.exclusions],
+        )
+        self.assertEqual(
+            [3], [candidate.input.video.id for candidate in result.candidates]
+        )
+        self.assertEqual(
+            [1, 2, 3], [outcome.input.video.id for outcome in result.outcomes]
+        )
+        self.assertEqual(
+            [True, True, False],
+            [
+                isinstance(outcome, AssociationSpanExclusion)
+                for outcome in result.outcomes
+            ],
+        )
+        self.assertEqual(
+            {"selected": True}, result.candidates[0].span_selection
+        )
 
 
 if __name__ == "__main__":

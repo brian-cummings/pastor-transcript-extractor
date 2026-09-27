@@ -412,8 +412,11 @@ from pastor_transcript_extractor.workflows.identity.finalization import (
     run_review_prewarm_stage,
 )
 from pastor_transcript_extractor.workflows.identity.association import (
+    AssociationSpanExclusion,
+    AssociationSpanInput,
     ShadowAssociationRequest,
     assess_association_candidate,
+    prepare_association_candidate_spans,
     resolve_association_scope,
     validate_shadow_association_request,
 )
@@ -4605,7 +4608,9 @@ def shadow_associate_speakers_service(
             audio_path,
             eligibility.media_artifact.content_sha256,
         )
-        span_preparation_inputs.append((video, eligibility, audio_path))
+        span_preparation_inputs.append(
+            AssociationSpanInput(video, eligibility, audio_path)
+        )
 
     console.print(
         "Association span preparation: "
@@ -4627,87 +4632,78 @@ def shadow_associate_speakers_service(
             worker_state.backend = worker_backend
         return worker_backend
 
-    def prepare_candidate_spans(item):
-        video, eligibility, audio_path = item
-        assert eligibility.observation is not None
-        assert eligibility.media_artifact is not None
-        try:
-            span_specs, span_selection = transcript_grounded_spans(
-                video.id,
-                eligibility.observation,
-                audio_path,
-                eligibility.media_artifact.content_sha256,
-                acoustic_backend=(
-                    None if plan_only else span_preparation_backend()
-                ),
+    def prepare_candidate_spans(item: AssociationSpanInput):
+        observation = item.eligibility.observation
+        media_artifact = item.eligibility.media_artifact
+        if observation is None or media_artifact is None:
+            raise RuntimeError("Span preparation input is incomplete.")
+        return transcript_grounded_spans(
+            item.video.id,
+            observation,
+            item.audio_path,
+            media_artifact.content_sha256,
+            acoustic_backend=(
+                None if plan_only else span_preparation_backend()
+            ),
+        )
+
+    next_progress = 25
+
+    def report_span_progress(completed: int, total: int, eligible: int) -> None:
+        nonlocal next_progress
+        if completed >= next_progress or completed == total:
+            console.print(
+                "Association span preparation: "
+                f"processed={completed}/{total} "
+                f"eligible={eligible} "
+                f"cache_hits={activity_selection_cache.hits} "
+                f"cache_misses={activity_selection_cache.misses}"
             )
-        except Exception as error:
-            return item, (), None, (
-                str(error) or "activity_qualified_spans_unavailable"
-            )
-        if not span_specs:
-            return item, (), None, "speech_grounded_spans_unavailable"
-        return item, span_specs, span_selection, None
+            while next_progress <= completed:
+                next_progress += 25
 
     target_count = limit if all_eligible and limit is not None else None
-    batch_size = max(1, jobs)
-    next_progress = 25
-    with ThreadPoolExecutor(max_workers=jobs) as span_executor:
-        for batch_start in range(0, len(span_preparation_inputs), batch_size):
-            if target_count is not None and len(candidates) >= target_count:
-                break
-            batch = span_preparation_inputs[
-                batch_start : batch_start + batch_size
-            ]
-            results = span_executor.map(prepare_candidate_spans, batch)
-            for item, span_specs, span_selection, reason in results:
-                video, eligibility, _audio_path = item
-                assert eligibility.observation is not None
-                assert eligibility.media_artifact is not None
-                if target_count is not None and len(candidates) >= target_count:
-                    break
-                if reason is not None:
-                    ineligible_reasons[reason] = (
-                        ineligible_reasons.get(reason, 0) + 1
-                    )
-                    persist_admission(
-                        video,
-                        eligibility.observation,
-                        stage=(
-                            "transcript_span_selection"
-                            if reason == "speech_grounded_spans_unavailable"
-                            else "activity_span_selection"
-                        ),
-                        reason_code=reason,
-                        media_sha256=(
-                            eligibility.media_artifact.content_sha256
-                        ),
-                    )
-                    continue
-                span_specs_by_observation_id[
-                    eligibility.observation.id
-                ] = span_specs
-                if span_selection is not None:
-                    span_selection_by_observation_id[
-                        eligibility.observation.id
-                    ] = span_selection
-                candidates.append((video, eligibility, span_specs))
-            completed = min(
-                batch_start + len(batch), len(span_preparation_inputs)
+    span_preparation = prepare_association_candidate_spans(
+        span_preparation_inputs,
+        jobs=jobs,
+        target_count=target_count,
+        prepare_spans=prepare_candidate_spans,
+        progress_callback=report_span_progress,
+    )
+    for outcome in span_preparation.outcomes:
+        if isinstance(outcome, AssociationSpanExclusion):
+            eligibility = outcome.input.eligibility
+            observation = eligibility.observation
+            media_artifact = eligibility.media_artifact
+            if observation is None or media_artifact is None:
+                raise RuntimeError("Span exclusion input is incomplete.")
+            reason = outcome.reason
+            ineligible_reasons[reason] = ineligible_reasons.get(reason, 0) + 1
+            persist_admission(
+                outcome.input.video,
+                observation,
+                stage=(
+                    "transcript_span_selection"
+                    if reason == "speech_grounded_spans_unavailable"
+                    else "activity_span_selection"
+                ),
+                reason_code=reason,
+                media_sha256=media_artifact.content_sha256,
             )
-            if completed >= next_progress or completed == len(
-                span_preparation_inputs
-            ):
-                console.print(
-                    "Association span preparation: "
-                    f"processed={completed}/{len(span_preparation_inputs)} "
-                    f"eligible={len(candidates)} "
-                    f"cache_hits={activity_selection_cache.hits} "
-                    f"cache_misses={activity_selection_cache.misses}"
-                )
-                while next_progress <= completed:
-                    next_progress += 25
-
+            continue
+        prepared = outcome
+        eligibility = prepared.input.eligibility
+        observation = eligibility.observation
+        if observation is None:
+            raise RuntimeError("Prepared candidate has no observation.")
+        span_specs_by_observation_id[observation.id] = prepared.span_specs
+        if prepared.span_selection is not None:
+            span_selection_by_observation_id[
+                observation.id
+            ] = prepared.span_selection
+        candidates.append(
+            (prepared.input.video, eligibility, prepared.span_specs)
+        )
     shadow_ready_count = sum(profile.shadow_ready for profile in readiness)
     review_ready_count = sum(profile.review_ready for profile in readiness)
     automatic_profile_ready_count = sum(

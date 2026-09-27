@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract shadow-association span preparation and profile-route
-  planning, preserving concurrency, every skip/abstention reason, and durable
-  admission evidence.
+- Next action: extract shadow-association profile-route planning, preserving
+  profile readiness policy, candidate order, every abstention reason, and
+  plan-only behavior.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -796,6 +796,19 @@ evidence, remembers verified media, and queues successful span preparation.
 Tests prove already-attempted candidates bypass eligibility work, reviewed
 exclusions retain their exact stage/media evidence, and admission requires the
 second byte-verifying eligibility pass.
+
+### 2026-09-27 — Milestone 7.4: candidate span preparation
+
+Extracted concurrent span preparation into a typed workflow stage with stable
+batch and outcome ordering, the existing all-eligible target cap, exact
+activity/transcript failure reasons, and a narrow progress callback. The CLI
+retains backend creation, rendering, and durable admission persistence while
+consuming one ordered stream, so accepted and excluded candidate side effects
+remain interleaved exactly as before.
+
+Focused tests cover stable ordering, target-limit batching, empty-span and
+exception reasons, span-selection evidence, and the ordered mixed outcome
+stream. `cli.py` is now 7,999 lines, down 10,118 lines from baseline.
 
 ## Validation log
 
@@ -1760,6 +1773,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 16 tests in 0.228s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Candidate span preparation
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 18 tests in 0.233s — OK
 
 git diff --check
 PASS
