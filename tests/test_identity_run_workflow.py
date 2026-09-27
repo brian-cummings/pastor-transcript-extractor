@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
 from pastor_transcript_extractor.workflows.identity import run as identity_run
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    index_current_association_results,
     reconcile_machine_assignments_stage,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -166,6 +168,42 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertIs(expected, result)
         database_factory.assert_called_once_with(Path("app.db"))
         reconcile.assert_called_once_with(database, verification_cache=cache)
+
+    def test_association_result_index_skips_malformed_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            valid = root / "valid.json"
+            valid.write_text(
+                '{"candidate":{"observation_id":7},"result_sha256":"sha-7"}',
+                encoding="utf-8",
+            )
+            malformed = root / "malformed.json"
+            malformed.write_text("{", encoding="utf-8")
+            missing = root / "missing.json"
+
+            result = index_current_association_results(
+                (malformed, missing, valid)
+            )
+
+        self.assertEqual({7: "sha-7"}, result)
+
+    def test_association_result_index_uses_last_current_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first.json"
+            second = root / "second.json"
+            first.write_text(
+                '{"candidate":{"observation_id":7},"result_sha256":"old"}',
+                encoding="utf-8",
+            )
+            second.write_text(
+                '{"candidate":{"observation_id":7},"result_sha256":"current"}',
+                encoding="utf-8",
+            )
+
+            result = index_current_association_results((first, second))
+
+        self.assertEqual({7: "current"}, result)
 
 
 if __name__ == "__main__":

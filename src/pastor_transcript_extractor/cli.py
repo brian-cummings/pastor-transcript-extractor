@@ -382,6 +382,7 @@ from pastor_transcript_extractor.workflows.run import (
 )
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    index_current_association_results,
     reconcile_machine_assignments_stage,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -3174,23 +3175,9 @@ def run_identity_workflow_service(
                 outputs=current_association_reports,
                 input_state=association_input_state,
             )
-    current_result_sha256_by_observation: dict[int, str] = {}
-    for report_path in current_association_reports:
-        try:
-            association_payload = json.loads(
-                report_path.read_text(encoding="utf-8")
-            )
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
-        candidate_payload = association_payload.get("candidate")
-        observation_id = (
-            candidate_payload.get("observation_id")
-            if isinstance(candidate_payload, Mapping)
-            else None
-        )
-        result_sha256 = association_payload.get("result_sha256")
-        if isinstance(observation_id, int) and isinstance(result_sha256, str):
-            current_result_sha256_by_observation[observation_id] = result_sha256
+    current_result_sha256_by_observation = index_current_association_results(
+        current_association_reports
+    )
     if not plan_only:
         current_reconciliation = reconcile_machine_assignments(
             Database(paths.database),

@@ -9,8 +9,8 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
 - Next action: extract association execution/checkpoint reuse and current-result
-  machine-assignment planning into named stages, preserving refresh selection,
-  held-out exclusion, reconciliation order, and plan-only non-mutation.
+  machine-assignment reconciliation/planning into named stages, preserving
+  refresh selection, held-out exclusion, order, and plan-only non-mutation.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -619,6 +619,13 @@ reconciliation before association begins.
 
 Focused workflow and checkpoint-cache coverage verifies the non-mutation gate
 and preserves the existing stage order.
+
+### 2026-09-27 — Milestone 6.5e: current association result index
+
+Extracted durable association artifact parsing into a presentation-independent
+workflow function. It ignores unreadable and malformed artifacts, accepts only
+typed observation/result pairs, and deterministically lets the last current
+artifact win before assignment reconciliation.
 
 ## Validation log
 
@@ -1333,6 +1340,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_workflow_commands tests.test_identity_stage_cache tests.test_cli_contract
 Ran 24 tests in 0.842s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Current association result index
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 24 tests in 0.847s — OK
 
 git diff --check
 PASS
