@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate remaining media-archive command patches
-  (`prepare_canonical_audio` and `archive_normalized_media`) to their command or
-  domain owners without touching unrelated source-processing changes.
+- Next action: migrate the remaining identity command-function patches to their
+  command owners or explicit workflow dependencies, without touching unrelated
+  source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1100,6 +1100,12 @@ reclassification calls to resolve from `config`, `local_llm`, and `extraction`.
 Fixture correction and reclassification tests patch those owners. Validation
 also migrated two stale metadata-command patches that referenced CLI exports
 removed during earlier command extraction.
+
+### 2026-09-27 — Milestone 8.17: identity media-archive owner seams
+
+Changed identity finalization and exemplar-repair helpers to resolve canonical
+audio preparation and normalized archival from `media_archive`. The affected
+identity tests now patch that domain owner rather than the CLI import location.
 
 ## Validation log
 
@@ -2511,6 +2517,22 @@ PASS
 Ran 38 tests in 0.838s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(build_llm_config|OllamaClient|reclassify_video)" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Identity media-archive owner seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_identity_run.py
+PASS
+
+.venv/bin/python -m unittest <3 affected identity media tests> tests.test_cli_contract
+Ran 9 tests in 0.386s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(prepare_canonical_audio|archive_normalized_media)" tests
 No matches
 
 git diff --check

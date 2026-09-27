@@ -29,6 +29,7 @@ from pastor_transcript_extractor import (
     config,
     extraction as extraction_service,
     local_llm,
+    media_archive,
     media_artifacts,
 )
 from pastor_transcript_extractor.application import ReviewBatchResult
@@ -173,8 +174,6 @@ from pastor_transcript_extractor.media_archive import (
     ArchiveProgressEvent,
     ArchiveRunResult,
     CanonicalAudioPreparationProgressEvent,
-    archive_normalized_media,
-    prepare_canonical_audio,
     load_verified_canonical_clips,
     write_canonical_clip_preparation_manifest,
 )
@@ -2718,7 +2717,7 @@ def _repair_exemplars_and_retry_association(
     )
     retry_association = False
     try:
-        repair_result = prepare_canonical_audio(
+        repair_result = media_archive.prepare_canonical_audio(
             Database(paths.database),
             paths,
             cache_root=Path("evaluation/speaker-pairs/cache"),
@@ -3508,7 +3507,7 @@ def _archive_normalized_after_identity(
                 markup=False,
             )
 
-    preparation = prepare_canonical_audio(
+    preparation = media_archive.prepare_canonical_audio(
         database,
         paths,
         cache_root=Path("evaluation/speaker-pairs/cache"),
@@ -3588,7 +3587,7 @@ def _archive_normalized_after_identity(
                 ),
             )
 
-        archive = archive_normalized_media(
+        archive = media_archive.archive_normalized_media(
             database,
             paths,
             video_ids=video_ids,
