@@ -4,16 +4,23 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 import shlex
-from typing import Callable
+from typing import Callable, Sequence
 
 from pastor_transcript_extractor.audio_staging import write_audio_stage_manifest
 from pastor_transcript_extractor.config import AppPaths, ToolConfig
+from pastor_transcript_extractor.identity import latest_metadata_live_status
 from pastor_transcript_extractor.media_artifacts import (
     MediaVerificationCache,
     StageSourceAudioResult,
     stage_source_audio_for_video,
 )
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.sermon_policy import (
+    live_status_is_sermon_eligible,
+    maximum_sermon_duration_seconds,
+    minimum_sermon_duration_seconds,
+    video_is_sermon_eligible,
+)
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
     fetch_captions_service,
@@ -49,6 +56,64 @@ class AudioStageDependencies:
     stage_video: AudioStageOperation = stage_source_audio_for_video
     write_manifest: AudioStageOperation = write_audio_stage_manifest
     fetch_captions: AudioStageOperation = fetch_captions_service
+
+
+def _has_registered_source_audio(database: Database, video_id: int) -> bool:
+    return any(
+        artifact.artifact_kind == "source_audio"
+        and artifact.provenance_kind == "original_download"
+        for artifact in database.list_media_artifacts_for_video(video_id)
+    )
+
+
+def select_existing_stage_video_ids(
+    database: Database,
+    source_ids: Sequence[int],
+    *,
+    limit: int | None,
+    all_videos: bool,
+    latest_live_status: AudioStageOperation = latest_metadata_live_status,
+    has_registered_source_audio: AudioStageOperation = _has_registered_source_audio,
+) -> set[int]:
+    """Select newest eligible catalog videos without contacting source feeds."""
+
+    excluded_ids = {
+        video.youtube_video_id for video in database.list_excluded_videos()
+    }
+    minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
+    selected: set[int] = set()
+    for source_id in source_ids:
+        candidates = [
+            video
+            for video in database.list_videos_by_source_id(source_id)
+            if video.youtube_video_id not in excluded_ids
+            and video_is_sermon_eligible(
+                video.duration_seconds,
+                video.published_at,
+                minimum_seconds=minimum_duration,
+                maximum_seconds=maximum_duration,
+            )
+            and (
+                live_status_is_sermon_eligible(
+                    latest_live_status(database, video.id)
+                )
+                or has_registered_source_audio(database, video.id)
+            )
+        ]
+        candidates.sort(
+            key=lambda video: (
+                video.published_at is not None,
+                video.published_at.isoformat()
+                if hasattr(video.published_at, "isoformat")
+                else str(video.published_at or ""),
+                video.id,
+            ),
+            reverse=True,
+        )
+        chosen = candidates if all_videos or limit is None else candidates[:limit]
+        selected.update(video.id for video in chosen)
+    return selected
 
 
 def _failed_stage_result(

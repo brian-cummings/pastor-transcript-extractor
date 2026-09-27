@@ -73,7 +73,6 @@ from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
     duration_within_sermon_maximum,
-    live_status_is_sermon_eligible,
     maximum_sermon_duration_seconds,
     minimum_sermon_duration_seconds,
     publication_is_not_future,
@@ -390,6 +389,7 @@ from pastor_transcript_extractor.workflows.run_media import (
 from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageDependencies,
     AudioStageRequest,
+    select_existing_stage_video_ids as _select_existing_stage_video_ids_workflow,
     stage_audio_inputs,
 )
 from pastor_transcript_extractor.workflows.resume_pipeline import (
@@ -471,17 +471,6 @@ def _catalog_video_is_sermon_eligible(
     )
 
 
-def _catalog_video_has_registered_source_audio(
-    database: Database,
-    video_id: int,
-) -> bool:
-    return any(
-        artifact.artifact_kind == "source_audio"
-        and artifact.provenance_kind == "original_download"
-        for artifact in database.list_media_artifacts_for_video(video_id)
-    )
-
-
 def _select_existing_stage_video_ids(
     database: Database,
     source_ids: Sequence[int],
@@ -489,45 +478,13 @@ def _select_existing_stage_video_ids(
     limit: int | None,
     all_videos: bool,
 ) -> set[int]:
-    """Select the newest eligible cataloged videos without source discovery."""
-    excluded_ids = {
-        video.youtube_video_id for video in database.list_excluded_videos()
-    }
-    minimum_duration = minimum_sermon_duration_seconds()
-    maximum_duration = maximum_sermon_duration_seconds()
-    selected: set[int] = set()
-    for source_id in source_ids:
-        candidates = [
-            video
-            for video in database.list_videos_by_source_id(source_id)
-            if video.youtube_video_id not in excluded_ids
-            and _catalog_video_is_sermon_eligible(
-                database,
-                video,
-                minimum_seconds=minimum_duration,
-                maximum_seconds=maximum_duration,
-            )
-            and (
-                live_status_is_sermon_eligible(
-                    latest_metadata_live_status(database, video.id)
-                )
-                or _catalog_video_has_registered_source_audio(database, video.id)
-            )
-        ]
-        candidates.sort(
-            key=lambda video: (
-                video.published_at is not None,
-                video.published_at.isoformat()
-                if hasattr(video.published_at, "isoformat")
-                else str(video.published_at or ""),
-                video.id,
-            ),
-            reverse=True,
-        )
-        if not all_videos and limit is not None:
-            candidates = candidates[:limit]
-        selected.update(video.id for video in candidates)
-    return selected
+    return _select_existing_stage_video_ids_workflow(
+        database,
+        source_ids,
+        limit=limit,
+        all_videos=all_videos,
+        latest_live_status=latest_metadata_live_status,
+    )
 
 def _prompt_failure_mode(*, contains_sermon: bool) -> str:
     options = POSITIVE_FAILURE_MODES if contains_sermon else NEGATIVE_FAILURE_MODES

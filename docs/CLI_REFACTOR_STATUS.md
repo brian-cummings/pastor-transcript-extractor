@@ -379,6 +379,15 @@ review ordering.
 
 `cli.py` is now 12,082 lines, down 6,035 lines from baseline.
 
+### 2026-09-26 — Milestone 5.4: offline catalog selection ownership
+
+Moved newest-first, sermon-eligible, exclusion-aware offline catalog selection
+into `workflows/audio_stage.py`. The CLI keeps the directly imported helper as
+a thin compatibility adapter and explicitly passes its metadata-live-status
+seam for existing tests.
+
+`cli.py` is now 12,039 lines, down 6,078 lines from baseline.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -802,6 +811,19 @@ PASS
 
 .venv/bin/python -m unittest -q tests.test_resume_pipeline_workflow tests.test_cli_contract plus four focused resume CLI tests
 Ran 11 tests in 0.307s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Offline catalog selection ownership
+
+```text
+.venv/bin/python -m unittest -q tests.test_sources.CliTests.test_skip_discovery_selects_newest_eligible_existing_videos_per_source tests.test_sources.CliTests.test_audio_stage_skip_discovery_never_contacts_source_feeds tests.test_cli_contract
+Ran 8 tests in 0.324s — OK
+
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor
+PASS
 
 git diff --check
 PASS
