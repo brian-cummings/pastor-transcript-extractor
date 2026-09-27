@@ -19,6 +19,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
     repair_association_stage,
+    run_machine_assignment_stage,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -227,6 +228,87 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertFalse(written)
         input_state.assert_not_called()
         writer.assert_not_called()
+
+    def test_machine_assignment_plan_only_never_applies(self) -> None:
+        database = SimpleNamespace()
+        policy = SimpleNamespace(mode="shadow")
+        plan = SimpleNamespace(candidates=(), skipped_counts={})
+        with patch.object(
+            identity_run, "Database", return_value=database
+        ) as database_factory, patch.object(
+            identity_run, "load_machine_assignment_policy", return_value=policy
+        ), patch.object(
+            identity_run, "assess_profile_association_readiness", return_value=[]
+        ), patch.object(
+            identity_run, "plan_machine_assignments", return_value=plan
+        ), patch.object(
+            identity_run, "apply_machine_assignment_plan"
+        ) as apply_plan:
+            result = run_machine_assignment_stage(
+                Path("app.db"),
+                reports=(),
+                reviewed_evidence=object(),
+                policy_path=Path("policy.json"),
+                verification_cache=object(),
+                excluded_observation_fingerprints=frozenset({"held-out"}),
+                database_video_id=None,
+                plan_only=True,
+                activate_canary=False,
+            )
+
+        self.assertIsNone(result.applied)
+        database_factory.assert_called_once_with(Path("app.db"), readonly=True)
+        apply_plan.assert_not_called()
+
+    def test_machine_assignment_single_video_scopes_and_applies(self) -> None:
+        observation = SimpleNamespace(id=19)
+        readonly = SimpleNamespace(
+            get_latest_speaker_observation_for_video=lambda _video_id: observation
+        )
+        writable = object()
+        policy = SimpleNamespace(mode="canary")
+        readiness = [SimpleNamespace(profile_id=3)]
+        plan = SimpleNamespace(candidates=(), skipped_counts={})
+        applied = object()
+        with patch.object(
+            identity_run, "Database", side_effect=[readonly, writable]
+        ), patch.object(
+            identity_run, "load_machine_assignment_policy", return_value=policy
+        ), patch.object(
+            identity_run,
+            "assess_profile_association_readiness",
+            return_value=readiness,
+        ), patch.object(
+            identity_run, "plan_machine_assignments", return_value=plan
+        ) as plan_assignments, patch.object(
+            identity_run, "apply_machine_assignment_plan", return_value=applied
+        ) as apply_plan:
+            result = run_machine_assignment_stage(
+                Path("app.db"),
+                reports=(Path("report.json"),),
+                reviewed_evidence=object(),
+                policy_path=Path("policy.json"),
+                verification_cache=object(),
+                excluded_observation_fingerprints=frozenset({"held-out"}),
+                database_video_id=7,
+                plan_only=False,
+                activate_canary=True,
+            )
+
+        self.assertIs(applied, result.applied)
+        self.assertEqual(
+            frozenset({19}),
+            plan_assignments.call_args.kwargs["included_observation_ids"],
+        )
+        self.assertEqual(
+            frozenset({"held-out"}),
+            plan_assignments.call_args.kwargs[
+                "excluded_observation_fingerprints"
+            ],
+        )
+        apply_plan.assert_called_once_with(
+            writable, plan, activate_canary=True
+        )
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(

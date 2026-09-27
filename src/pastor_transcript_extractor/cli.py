@@ -389,6 +389,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
     repair_association_stage,
+    run_machine_assignment_stage,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -3186,43 +3187,28 @@ def run_identity_workflow_service(
             f"unchanged={current_reconciliation.unchanged}."
         )
 
-    machine_policy = load_machine_assignment_policy(
-        machine_assignment_policy_path
+    machine_stage = run_machine_assignment_stage(
+        paths.database,
+        reports=current_association_reports,
+        reviewed_evidence=reviewed_evidence,
+        policy_path=machine_assignment_policy_path
         or Path(
             "evaluation/speaker-associations/policies/"
             "machine-assignment-human-on-loop-v1.json"
-        )
-    )
-    machine_database = Database(paths.database, readonly=True)
-    machine_readiness = assess_profile_association_readiness(
-        machine_database,
-        reviewed_evidence,
-    )
-    scoped_observation_ids = None
-    if database_video_id is not None:
-        scoped_observation = (
-            machine_database.get_latest_speaker_observation_for_video(
-                database_video_id
-            )
-        )
-        scoped_observation_ids = frozenset(
-            (scoped_observation.id,)
-            if scoped_observation is not None
-            else ()
-        )
-    machine_plan = plan_machine_assignments(
-        machine_database,
-        current_association_reports,
-        readiness=machine_readiness,
-        policy=machine_policy,
+        ),
         verification_cache=machine_cache,
         excluded_observation_fingerprints=(
             _held_out_speaker_fixture_fingerprints(
                 Path("evaluation/speaker-pairs/fixtures").resolve()
             )
         ),
-        included_observation_ids=scoped_observation_ids,
+        database_video_id=database_video_id,
+        plan_only=plan_only,
+        activate_canary=effective_apply_machine,
     )
+    machine_policy = machine_stage.policy
+    machine_readiness = machine_stage.readiness
+    machine_plan = machine_stage.plan
     console.print(
         "Machine assignment plan: "
         f"mode={machine_policy.mode} "
@@ -3238,17 +3224,13 @@ def run_identity_workflow_service(
                 for reason, count in machine_plan.skipped_counts.items()
             )
         )
-    if plan_only:
+    if machine_stage.applied is None:
         console.print(
             "Machine assignment evidence: plan-only; no ledger rows or "
             "provisional assignments were written."
         )
     else:
-        machine_apply = apply_machine_assignment_plan(
-            Database(paths.database),
-            machine_plan,
-            activate_canary=effective_apply_machine,
-        )
+        machine_apply = machine_stage.applied
         console.print(
             "Machine assignment evidence: "
             f"recorded={machine_apply.evidence_recorded} "

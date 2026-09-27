@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract machine-assignment planning/application into a named
-  stage, preserving held-out exclusion, single-video scope, policy gates,
-  reconciliation order, and plan-only non-mutation.
+- Next action: extract discovery checkpoint/execution/promotion into named
+  identity-run stages, preserving corpus-only scope, skip behavior, apply gates,
+  and checkpoint reuse.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -671,6 +671,20 @@ and write ordering behind a workflow function. Plan-only and unchanged runs do
 no checkpoint work; eligible runs recompute fingerprint before input state and
 write only when a fingerprint is available, retaining best-effort behavior in
 the supplied CLI boundaries.
+
+### 2026-09-27 — Milestone 6.5l: machine-assignment plan/apply stage
+
+Moved policy loading, profile-readiness assessment, single-video observation
+scoping, held-out exclusion, assignment planning, and optional reversible
+application into one structured workflow stage. The stage always returns its
+policy/readiness/plan and returns no application result in plan-only mode.
+
+Migrated checkpoint and identity-run mocks to the workflow owner. Existing
+machine-assignment persistence tests remain green alongside the workflow and
+CLI contract coverage.
+
+`cli.py` is now 8,261 lines, down 9,856 lines from baseline; the typed identity
+run workflow module is 419 lines.
 
 ## Validation log
 
@@ -1476,6 +1490,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 39 tests in 0.723s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Machine-assignment plan/apply stage
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py tests/test_identity_run.py tests/test_identity_stage_cache.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_speaker_machine_assignment tests.test_cli_contract
+Ran 60 tests in 2.507s — OK
 
 git diff --check
 PASS
