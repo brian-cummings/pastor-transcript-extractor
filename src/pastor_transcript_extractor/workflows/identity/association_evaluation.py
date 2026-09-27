@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from pathlib import Path
+from typing import Any, Callable, Mapping, Sequence
 
+from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_profile_discovery import (
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
 )
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
+    ShadowPolicySpec,
     ShadowExemplar,
     StagedAssociationRouting,
+    build_shadow_association_input_fingerprint,
+    evaluate_shadow_association,
+    load_reusable_shadow_association,
     should_activate_cross_source_fallback,
 )
 from pastor_transcript_extractor.workflows.identity.association import (
@@ -27,6 +34,112 @@ class AssociationEvaluationPass:
     profiles: AssociationProfiles
     routing_payload: Mapping[str, Any]
     additional_profile_comparisons: int
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationEvaluationResult:
+    report: Mapping[str, Any]
+    reusable_path: Path | None
+
+
+class AssociationEvaluator:
+    """Evaluate candidates with verified cache reuse and one shared executor."""
+
+    def __init__(
+        self,
+        *,
+        output_root: Path,
+        jobs: int,
+        policy_spec: ShadowPolicySpec,
+        model_fingerprint: str,
+        minimum_same_exemplars: int,
+        selections_by_observation_id: Mapping[int, Mapping[str, Any]],
+        reviewed_difference_pairs: Callable[
+            [], Sequence[tuple[int, int]]
+        ],
+        compare: Callable[..., Mapping[str, Any]],
+    ) -> None:
+        self._output_root = output_root
+        self._jobs = jobs
+        self._policy_spec = policy_spec
+        self._model_fingerprint = model_fingerprint
+        self._minimum_same_exemplars = minimum_same_exemplars
+        self._selections_by_observation_id = selections_by_observation_id
+        self._reviewed_difference_pairs = reviewed_difference_pairs
+        self._compare = compare
+        self._executor: ThreadPoolExecutor | None = None
+
+    def evaluate(
+        self,
+        *,
+        candidate: SpeakerObservation,
+        candidate_audio_path: Path,
+        candidate_audio_sha256: str,
+        candidate_normalized_names: Sequence[str],
+        profiles: AssociationProfiles,
+        routing_payload: Mapping[str, Any],
+    ) -> AssociationEvaluationResult:
+        span_selection = build_span_selection_payload(
+            candidate.id,
+            profiles,
+            selections_by_observation_id=(
+                self._selections_by_observation_id
+            ),
+        )
+        input_fingerprint = build_shadow_association_input_fingerprint(
+            candidate=candidate,
+            candidate_audio_sha256=candidate_audio_sha256,
+            candidate_normalized_names=candidate_normalized_names,
+            profiles=profiles,
+            policy_spec=self._policy_spec,
+            model_fingerprint=self._model_fingerprint,
+            minimum_same_exemplars=self._minimum_same_exemplars,
+            reviewed_difference_pairs=self._reviewed_difference_pairs(),
+            routing=routing_payload,
+            span_selection=span_selection,
+        )
+        reusable = load_reusable_shadow_association(
+            self._output_root,
+            candidate_fingerprint=candidate.input_fingerprint,
+            input_fingerprint=input_fingerprint,
+        )
+        if reusable is not None:
+            return AssociationEvaluationResult(reusable[1], reusable[0])
+        if self._jobs > 1 and self._executor is None:
+            self._executor = ThreadPoolExecutor(
+                max_workers=self._jobs,
+                thread_name_prefix="identity-association",
+            )
+        try:
+            report = evaluate_shadow_association(
+                candidate=candidate,
+                candidate_audio_path=candidate_audio_path,
+                candidate_audio_sha256=candidate_audio_sha256,
+                candidate_normalized_names=candidate_normalized_names,
+                profiles=profiles,
+                compare=self._compare,
+                policy_spec=self._policy_spec,
+                model_fingerprint=self._model_fingerprint,
+                minimum_same_exemplars=self._minimum_same_exemplars,
+                reviewed_difference_pairs=self._reviewed_difference_pairs(),
+                routing=routing_payload,
+                span_selection=span_selection,
+                jobs=self._jobs,
+                executor=self._executor,
+            )
+        except BaseException:
+            self.close(cancel_futures=True)
+            raise
+        return AssociationEvaluationResult(report, None)
+
+    def close(self, *, cancel_futures: bool = False) -> None:
+        if self._executor is None:
+            return
+        self._executor.shutdown(
+            wait=True,
+            cancel_futures=cancel_futures,
+        )
+        self._executor = None
 
 
 def build_span_selection_payload(
