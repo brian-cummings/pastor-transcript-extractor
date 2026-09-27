@@ -383,6 +383,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     AssociationExecutionRequest,
     IdentityWorkflowRequest,
     decide_association_cache,
+    decide_discovery_execution,
     execute_association_stage,
     index_current_association_results,
     persist_association_checkpoint_stage,
@@ -390,6 +391,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     reconcile_machine_assignments_stage,
     repair_association_stage,
     run_machine_assignment_stage,
+    select_discovery_reports,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -3290,11 +3292,16 @@ def run_identity_workflow_service(
                 stage="discovery",
                 input_fingerprint=discovery_fingerprint,
             )
-    if all_extractions and not skip_discovery:
-        if cached_discovery_reports is not None:
+    discovery_decision = decide_discovery_execution(
+        all_extractions=all_extractions,
+        skip_discovery=skip_discovery,
+        cached_reports=cached_discovery_reports,
+    )
+    if discovery_decision.mode in {"cached", "execute"}:
+        if discovery_decision.mode == "cached":
             console.print(
                 "Discovery stage: unchanged inputs; reused completed stage "
-                f"with {len(cached_discovery_reports)} report(s)."
+                f"with {len(discovery_decision.cached_reports or ())} report(s)."
             )
         else:
             generated_discovery_report = shadow_discover_profiles_command(
@@ -3327,28 +3334,21 @@ def run_identity_workflow_service(
                 output_root=discovery_root,
                 base_dir=base_dir,
             )
-    elif all_extractions:
+    elif discovery_decision.mode == "skipped":
         console.print("Discovery: skipped by --skip-discovery.")
     else:
         console.print("Discovery: deferred to a corpus-wide identity run.")
 
-    discovery_reports = (
-        list(cached_discovery_reports)
-        if cached_discovery_reports is not None
-        else (
-            [generated_discovery_report]
+    discovery_selection = select_discovery_reports(
+        cached_reports=cached_discovery_reports,
+        generated_report=(
+            generated_discovery_report
             if isinstance(generated_discovery_report, Path)
-            else list(discovery_root.resolve().glob("*/*.json"))
-        )
+            else None
+        ),
+        discovery_root=discovery_root,
     )
-    latest_discovery = (
-        max(
-            discovery_reports,
-            key=lambda path: (path.stat().st_mtime_ns, str(path)),
-        )
-        if discovery_reports
-        else None
-    )
+    latest_discovery = discovery_selection.latest
     if (
         all_extractions
         and not skip_discovery

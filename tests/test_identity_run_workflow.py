@@ -13,6 +13,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     AssociationExecutionRequest,
     IdentityWorkflowRequest,
     decide_association_cache,
+    decide_discovery_execution,
     execute_association_stage,
     index_current_association_results,
     persist_association_checkpoint_stage,
@@ -20,6 +21,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     reconcile_machine_assignments_stage,
     repair_association_stage,
     run_machine_assignment_stage,
+    select_discovery_reports,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -309,6 +311,47 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         apply_plan.assert_called_once_with(
             writable, plan, activate_canary=True
         )
+
+    def test_discovery_decision_orders_scope_skip_and_cache(self) -> None:
+        cached = (Path("cached.json"),)
+        cases = (
+            (False, False, cached, "deferred"),
+            (True, True, cached, "skipped"),
+            (True, False, cached, "cached"),
+            (True, False, None, "execute"),
+        )
+        for all_extractions, skip, reports, expected in cases:
+            with self.subTest(expected=expected):
+                decision = decide_discovery_execution(
+                    all_extractions=all_extractions,
+                    skip_discovery=skip,
+                    cached_reports=reports,
+                )
+                self.assertEqual(expected, decision.mode)
+
+    def test_discovery_report_selection_prefers_explicit_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cached = root / "cached.json"
+            generated = root / "generated.json"
+            cached.touch()
+            generated.touch()
+
+            cached_selection = select_discovery_reports(
+                cached_reports=(cached,),
+                generated_report=generated,
+                discovery_root=root,
+            )
+            generated_selection = select_discovery_reports(
+                cached_reports=None,
+                generated_report=generated,
+                discovery_root=root,
+            )
+
+        self.assertEqual((cached,), cached_selection.reports)
+        self.assertEqual(cached, cached_selection.latest)
+        self.assertEqual((generated,), generated_selection.reports)
+        self.assertEqual(generated, generated_selection.latest)
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(
