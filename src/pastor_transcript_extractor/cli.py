@@ -409,11 +409,13 @@ from pastor_transcript_extractor.workflows.identity.finalization import (
     run_review_prewarm_stage,
 )
 from pastor_transcript_extractor.workflows.identity.association import (
+    AssociationCentroidCandidateInput,
     AssociationSpanExclusion,
     AssociationSpanInput,
     ShadowAssociationRequest,
     assess_association_candidate,
     plan_association_profile_route,
+    prepare_association_centroids,
     prepare_association_candidate_spans,
     resolve_association_scope,
     validate_shadow_association_request,
@@ -4724,16 +4726,6 @@ def shadow_associate_speakers_service(
     assert embedding_cache is not None
     assert pair_diagnostic_cache is not None
 
-    def ordered_acoustic_map(function, items, *, thread_name_prefix):
-        if jobs == 1 or len(items) < 2:
-            return tuple(map(function, items))
-        with ThreadPoolExecutor(
-            max_workers=min(jobs, len(items)),
-            thread_name_prefix=thread_name_prefix,
-        ) as executor:
-            return tuple(executor.map(function, items))
-
-    exemplar_centroids: dict[int, tuple[float, ...]] = {}
     unique_exemplars = tuple(
         {
             exemplar.observation.id: exemplar
@@ -4746,7 +4738,7 @@ def shadow_associate_speakers_service(
     )
 
     def build_exemplar_centroid(exemplar):
-        return exemplar.observation.id, build_embedding_centroid(
+        return build_embedding_centroid(
             observation=exemplar.observation,
             audio_path=exemplar.audio_path,
             span_specs=span_specs_by_observation_id[
@@ -4757,13 +4749,6 @@ def shadow_associate_speakers_service(
             backend=backend,
         )
 
-    exemplar_centroids.update(
-        ordered_acoustic_map(
-            build_exemplar_centroid,
-            unique_exemplars,
-            thread_name_prefix="identity-exemplar-centroid",
-        )
-    )
     candidate_centroids: dict[int, tuple[float, ...]] = {}
     candidate_video_ids: dict[int, int] = {}
     console.print(
@@ -4771,50 +4756,47 @@ def shadow_associate_speakers_service(
         f"{len(candidates)} candidate observation(s) with {jobs} job(s)."
     )
 
-    def build_candidate_centroid(indexed_candidate):
-        candidate_index, (_video, eligibility, _span_specs) = indexed_candidate
-        observation = eligibility.observation
-        media_artifact = eligibility.media_artifact
-        if observation is None or media_artifact is None:
-            return candidate_index, None, None, None
-        try:
-            centroid = build_embedding_centroid(
-                observation=observation,
-                audio_path=Path(media_artifact.artifact_path),
-                span_specs=span_specs_by_observation_id[observation.id],
-                span_cache=span_cache,
-                embedding_cache=embedding_cache,
-                backend=backend,
-            )
-        except Exception as error:
-            return (
-                candidate_index,
-                observation.id,
-                observation.video_id,
-                None,
-                f"{type(error).__name__}:{error}",
-            )
-        return candidate_index, observation.id, observation.video_id, centroid, None
-
-    indexed_candidates = tuple(enumerate(candidates, start=1))
-    candidate_centroid_results = ordered_acoustic_map(
-        build_candidate_centroid,
-        indexed_candidates,
-        thread_name_prefix="identity-candidate-centroid",
+    centroid_candidate_inputs = tuple(
+        AssociationCentroidCandidateInput(video, eligibility)
+        for video, eligibility, _span_specs in candidates
     )
-    failed_candidate_observation_ids: set[int] = set()
-    for candidate_index, observation_id, video_id, centroid, failure in (
-        candidate_centroid_results
-    ):
-        if (
-            candidate_index == 1
-            or candidate_index == len(candidates)
-            or candidate_index % 25 == 0
-        ):
+
+    def build_candidate_centroid(candidate):
+        observation = candidate.eligibility.observation
+        media_artifact = candidate.eligibility.media_artifact
+        if observation is None or media_artifact is None:
+            raise RuntimeError("Candidate centroid input is incomplete.")
+        return build_embedding_centroid(
+            observation=observation,
+            audio_path=Path(media_artifact.artifact_path),
+            span_specs=span_specs_by_observation_id[observation.id],
+            span_cache=span_cache,
+            embedding_cache=embedding_cache,
+            backend=backend,
+        )
+
+    def report_candidate_centroid_progress(index: int, total: int) -> None:
+        if index == 1 or index == total or index % 25 == 0:
             console.print(
                 "Association preprocessing: candidate centroid "
-                f"{candidate_index}/{len(candidates)}"
+                f"{index}/{total}"
             )
+
+    centroid_preparation = prepare_association_centroids(
+        eligible_exemplars,
+        centroid_candidate_inputs,
+        jobs=jobs,
+        build_exemplar_centroid=build_exemplar_centroid,
+        build_candidate_centroid=build_candidate_centroid,
+        candidate_progress=report_candidate_centroid_progress,
+    )
+    exemplar_centroids = centroid_preparation.exemplar_centroids
+    failed_candidate_observation_ids: set[int] = set()
+    for outcome in centroid_preparation.candidate_outcomes:
+        observation_id = outcome.observation_id
+        video_id = outcome.video_id
+        centroid = outcome.centroid
+        failure = outcome.failure
         if failure is not None and observation_id is not None:
             failed_candidate_observation_ids.add(observation_id)
             video = videos_by_id.get(video_id) if video_id is not None else None

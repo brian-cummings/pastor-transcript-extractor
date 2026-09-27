@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract shadow-association centroid preprocessing, preserving
-  stable concurrency, isolated candidate failures, durable technical-failure
-  admissions, and progress output.
+- Next action: extract pending-discovery confirmation routing and candidate
+  evaluation preparation, preserving database qualification, route counts,
+  cache reuse, fallback behavior, and durable technical-failure admissions.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -821,6 +821,19 @@ and exhaustive validation without retaining route-policy closure state.
 Focused tests cover normalized-name and title-hint routing, confirmation
 priority evidence, hidden effective memberships, and leave-one-out exemplar
 reselection. `cli.py` is now 7,849 lines, down 10,268 lines from baseline.
+
+### 2026-09-27 — Milestone 7.6: association centroid preprocessing
+
+Moved unique-exemplar and candidate retrieval-centroid scheduling into a typed
+workflow stage. It retains stable ordered concurrency and exemplar failure
+propagation, while candidate exceptions remain isolated with their exact typed
+diagnostic strings; structurally incomplete candidates continue to be skipped.
+Backend/cache construction, progress rendering, and durable technical-failure
+admissions remain explicit service-boundary responsibilities.
+
+Focused tests cover exemplar deduplication, stable candidate order, isolated
+failures, progress events, and incomplete candidates. `cli.py` is now 7,831
+lines, down 10,286 lines from baseline.
 
 ## Validation log
 
@@ -1811,6 +1824,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 20 tests in 0.223s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association centroid preprocessing
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 22 tests in 0.224s — OK
 
 git diff --check
 PASS
