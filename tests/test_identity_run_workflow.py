@@ -15,6 +15,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     decide_association_cache,
     execute_association_stage,
     index_current_association_results,
+    persist_association_checkpoint_stage,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
     repair_association_stage,
@@ -165,6 +166,67 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertEqual(
             pending, repairer.call_args.kwargs["pending_exemplar_repairs"]
         )
+
+    def test_checkpoint_stage_skips_plan_and_unchanged_runs(self) -> None:
+        for plan_only, needs_refresh in ((True, True), (False, False)):
+            with self.subTest(
+                plan_only=plan_only, needs_refresh=needs_refresh
+            ):
+                fingerprint = Mock()
+                input_state = Mock()
+                writer = Mock()
+                written = persist_association_checkpoint_stage(
+                    plan_only=plan_only,
+                    checkpoint_needs_refresh=needs_refresh,
+                    all_extractions=True,
+                    reports=(Path("report.json"),),
+                    fingerprint_factory=fingerprint,
+                    input_state_factory=input_state,
+                    checkpoint_writer=writer,
+                )
+                self.assertFalse(written)
+                fingerprint.assert_not_called()
+                input_state.assert_not_called()
+                writer.assert_not_called()
+
+    def test_checkpoint_stage_recomputes_before_write(self) -> None:
+        events: list[str] = []
+        writer = Mock(side_effect=lambda *_args: events.append("write"))
+        written = persist_association_checkpoint_stage(
+            plan_only=False,
+            checkpoint_needs_refresh=True,
+            all_extractions=True,
+            reports=(Path("report.json"),),
+            fingerprint_factory=lambda: (events.append("fingerprint"), "sha")[1],
+            input_state_factory=lambda: (
+                events.append("input_state"),
+                {"state": True},
+            )[1],
+            checkpoint_writer=writer,
+        )
+
+        self.assertTrue(written)
+        self.assertEqual(["fingerprint", "input_state", "write"], events)
+        writer.assert_called_once_with(
+            "sha", (Path("report.json"),), {"state": True}
+        )
+
+    def test_checkpoint_stage_does_not_write_without_fingerprint(self) -> None:
+        input_state = Mock(return_value={"state": True})
+        writer = Mock()
+        written = persist_association_checkpoint_stage(
+            plan_only=False,
+            checkpoint_needs_refresh=True,
+            all_extractions=False,
+            reports=(),
+            fingerprint_factory=lambda: None,
+            input_state_factory=input_state,
+            checkpoint_writer=writer,
+        )
+
+        self.assertFalse(written)
+        input_state.assert_not_called()
+        writer.assert_not_called()
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(

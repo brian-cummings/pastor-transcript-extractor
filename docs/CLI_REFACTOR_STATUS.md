@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract association checkpoint persistence and machine-assignment
-  planning/application into named stages, preserving current refresh choices,
-  held-out exclusion, order, and plan-only non-mutation.
+- Next action: extract machine-assignment planning/application into a named
+  stage, preserving held-out exclusion, single-video scope, policy gates,
+  reconciliation order, and plan-only non-mutation.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -663,6 +663,14 @@ Wrapped the existing bounded repair/retry implementation with a structured
 workflow result. An empty queue preserves reports and checkpoint validity
 without invoking the repairer; any attempted repair atomically replaces the
 report set and marks the association checkpoint for refresh.
+
+### 2026-09-27 — Milestone 6.5k: association checkpoint persistence
+
+Moved refreshed checkpoint eligibility, fingerprint/input-state recomputation,
+and write ordering behind a workflow function. Plan-only and unchanged runs do
+no checkpoint work; eligible runs recompute fingerprint before input state and
+write only when a fingerprint is available, retaining best-effort behavior in
+the supplied CLI boundaries.
 
 ## Validation log
 
@@ -1455,6 +1463,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 36 tests in 0.722s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association checkpoint persistence
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 39 tests in 0.723s — OK
 
 git diff --check
 PASS
