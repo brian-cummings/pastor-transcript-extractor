@@ -401,8 +401,10 @@ from pastor_transcript_extractor.workflows.identity.run import (
     validate_identity_workflow_request,
 )
 from pastor_transcript_extractor.workflows.identity.finalization import (
+    ActionableReviewAudioPreparation,
     CoordinationStageRequest,
     run_coordination_stage,
+    run_review_prewarm_stage,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -2398,16 +2400,6 @@ def confirm_discovered_profiles_command(
 
 
 
-@dataclass(frozen=True, slots=True)
-class ActionableReviewAudioPreparation:
-    requested: int
-    prepared: int
-    already_cached: int
-    excluded: int
-    failed: int
-    ready_fingerprints: tuple[str, ...] = ()
-
-
 ACTIONABLE_REVIEW_PREWARM_VERSION = "actionable_review_prewarm_v2"
 
 
@@ -3428,44 +3420,45 @@ def run_identity_workflow_service(
         ),
         coordinator=coordinate_identity_command,
     )
-    if plan_only:
+    prewarm_stage = run_review_prewarm_stage(
+        paths.database,
+        paths,
+        plan_only=plan_only,
+        all_extractions=all_extractions,
+        limit=review_prewarm_limit,
+        discovery_report=latest_discovery,
+        association_reports=current_association_reports,
+        automatic_profile_ready_ids=frozenset(
+            item.profile_id
+            for item in machine_readiness
+            if item.automatic_profile_ready
+        ),
+        prewarmer=_prepare_actionable_review_audio,
+    )
+    if prewarm_stage.status == "plan_only":
         console.print(
             "Review audio prewarm: plan-only; actionable review clips were "
             "not prepared."
         )
-    elif all_extractions and review_prewarm_limit:
-        try:
-            review_preparation = _prepare_actionable_review_audio(
-                Database(paths.database, readonly=True),
-                paths,
-                discovery_report=latest_discovery,
-                association_reports=current_association_reports,
-                limit=review_prewarm_limit,
-                automatic_profile_ready_ids=frozenset(
-                    item.profile_id
-                    for item in machine_readiness
-                    if item.automatic_profile_ready
-                ),
-            )
-        except (OSError, ValueError, json.JSONDecodeError) as error:
-            console.print(
-                "Review audio prewarm: skipped — "
-                f"{type(error).__name__}: {error}"
-            )
-        else:
-            console.print(
-                "Review audio prewarm: "
-                f"requested={review_preparation.requested} "
-                f"prepared={review_preparation.prepared} "
-                f"cached={review_preparation.already_cached} "
-                f"excluded={review_preparation.excluded} "
-                f"failed={review_preparation.failed}."
-            )
-    elif all_extractions:
-        console.print("Review audio prewarm: disabled by limit=0.")
-    else:
+    elif prewarm_stage.status == "deferred":
         console.print(
             "Review audio prewarm: deferred to a corpus-wide identity run."
+        )
+    elif prewarm_stage.status == "disabled":
+        console.print("Review audio prewarm: disabled by limit=0.")
+    elif prewarm_stage.status == "failed":
+        console.print(f"Review audio prewarm: skipped — {prewarm_stage.error}")
+    else:
+        review_preparation = prewarm_stage.preparation
+        if review_preparation is None:
+            raise RuntimeError("Executed prewarm stage returned no result.")
+        console.print(
+            "Review audio prewarm: "
+            f"requested={review_preparation.requested} "
+            f"prepared={review_preparation.prepared} "
+            f"cached={review_preparation.already_cached} "
+            f"excluded={review_preparation.excluded} "
+            f"failed={review_preparation.failed}."
         )
     if plan_only:
         console.print(
