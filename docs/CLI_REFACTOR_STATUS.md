@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: move the remaining acquisition pipeline adapters behind an
-  explicit non-CLI ownership boundary so discovery, caption, and transcription
-  tests no longer patch composition-root globals.
+- Next action: move the transcription adapter and renderer behind the new
+  acquisition command boundary, including its prepare/complete dependency
+  seams, without touching unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1038,6 +1038,14 @@ Changed review command and pipeline composition to resolve
 `prepare_review_exports` from its owning application module. The three affected
 pipeline tests now patch that owner, completing migration of application-owned
 operations away from incidental `cli.py` bindings.
+
+### 2026-09-27 — Milestone 8.9: discovery and caption command adapters
+
+Moved the discovery and caption-acquisition adapters into
+`commands/acquisition.py`. CLI commands and workflow composition now resolve
+those adapters from their owner, while temporary aliases preserve direct
+imports until migration scaffolding is removed. Tests patch the adapter owner,
+and fetch scheduling tests patch the owner's clock boundary.
 
 ## Validation log
 
@@ -2318,6 +2326,25 @@ PASS
 Ran 9 tests in 0.322s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.prepare_review_exports" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Discovery and caption command adapters
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/acquisition.py src/pastor_transcript_extractor/cli.py tests/test_sources.py tests/test_church_database_import.py
+PASS
+
+.venv/bin/python -m unittest <26 affected adapter-composition tests> tests.test_cli_contract
+Ran 32 tests in 1.302s — OK
+
+.venv/bin/python -m unittest <29 discovery/caption owner tests excluding the known stale classifier-version assertion> tests.test_cli_contract
+Ran 35 tests in 15.206s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(discover_sources_service|fetch_captions_service)" tests
 No matches
 
 git diff --check

@@ -23,7 +23,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from pastor_transcript_extractor import application, discovery, transcription
+from pastor_transcript_extractor import application
 from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.audio_staging import (
     load_and_verify_audio_stage_manifest,
@@ -84,6 +84,7 @@ from pastor_transcript_extractor.commands.identity.review import (
     review_speaker_pair,
 )
 from pastor_transcript_extractor.commands.common import unknown_pastor_error as _unknown_pastor_error
+from pastor_transcript_extractor.commands import acquisition
 from pastor_transcript_extractor.config import (
     AppPaths,
     build_llm_config,
@@ -334,10 +335,6 @@ from pastor_transcript_extractor.transcription import (
     complete_transcription_video,
     prepare_transcription_input,
 )
-from pastor_transcript_extractor.workflows.source_discovery import (
-    DiscoveryServiceResult,
-    discover_sources_service as _discover_sources_service,
-)
 from pastor_transcript_extractor.workflows.source_sync import (
     SourceSyncConfigurationError,
     SourceSyncDependencies,
@@ -426,8 +423,6 @@ from pastor_transcript_extractor.workflows.identity.association_evaluation impor
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
-    CaptionAcquisitionResult,
-    fetch_captions_service as _fetch_captions_service,
 )
 from pastor_transcript_extractor.workflows.transcription import (
     DEFAULT_PREP_WORKERS,
@@ -6153,8 +6148,8 @@ def sync_imported_sources(
             progress_callback=lambda message: console.print(message, markup=False),
             dependencies=SourceSyncDependencies(
                 list_imported_sources=imported_source_ids,
-                discover=discover_sources_service,
-                fetch_captions=fetch_captions_service,
+                discover=acquisition.discover_sources_service,
+                fetch_captions=acquisition.fetch_captions_service,
                 transcribe=transcribe_videos_service,
                 extract=application.extract_batch,
                 register_media=backfill_existing_media_artifacts,
@@ -6247,20 +6242,8 @@ def doctor(
     console.print(table)
 
 
-def discover_sources_service(
-    limit: int | None = DEFAULT_DISCOVER_LIMIT,
-    all_videos: bool = False,
-    source_id: int | None = None,
-    base_dir: Path | None = None,
-) -> DiscoveryServiceResult:
-    return _discover_sources_service(
-        limit,
-        all_videos,
-        source_id,
-        base_dir,
-        progress_callback=lambda message: console.print(message, markup=False),
-        extract_videos=discovery.extract_discovered_videos,
-    )
+discover_sources_service = acquisition.discover_sources_service
+fetch_captions_service = acquisition.fetch_captions_service
 
 
 @app.command(help="Discover videos from queued sources with yt-dlp metadata.")
@@ -6275,7 +6258,7 @@ def discover(
     source_id: int | None = typer.Option(None, help="Only discover videos for a specific source id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    discover_sources_service(limit, all_videos, source_id, base_dir)
+    acquisition.discover_sources_service(limit, all_videos, source_id, base_dir)
 
 
 def transcribe_videos_service(
@@ -6332,28 +6315,6 @@ def transcribe(
     transcribe_videos_service(missing_only, captions_missing_only, jobs, source_id, base_dir)
 
 
-def fetch_captions_service(
-    source_id: int | None = None,
-    base_dir: Path | None = None,
-    video_ids: set[int] | None = None,
-    request_interval_seconds: float = 0.0,
-    cookies_from_browser: str | None = None,
-    cookies: Path | None = None,
-) -> CaptionAcquisitionResult:
-    return _fetch_captions_service(
-        source_id=source_id,
-        base_dir=base_dir,
-        video_ids=video_ids,
-        request_interval_seconds=request_interval_seconds,
-        cookies_from_browser=cookies_from_browser,
-        cookies=cookies,
-        progress_callback=console.print,
-        fetch_captions=transcription.fetch_captions_video,
-        monotonic=time.monotonic,
-        sleeper=time.sleep,
-    )
-
-
 @app.command(help="Fetch YouTube captions when available and persist them as transcript artifacts.")
 def fetch(
     source_id: int | None = typer.Option(None, help="Only fetch captions for videos from a specific source id."),
@@ -6372,7 +6333,7 @@ def fetch(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     try:
-        fetch_captions_service(
+        acquisition.fetch_captions_service(
             source_id,
             base_dir,
             cookies_from_browser=cookies_from_browser,
@@ -7079,16 +7040,16 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 get_database=get_database,
                 add_source=add_source_service,
                 delete_source=delete_source_service,
-                discover=discover_sources_service,
+                discover=acquisition.discover_sources_service,
                 select_existing=_select_existing_stage_video_ids,
             ),
             audio_stage=AudioStageDependencies(
                 stage_video=stage_source_audio_for_video,
                 write_manifest=write_audio_stage_manifest,
-                fetch_captions=fetch_captions_service,
+                fetch_captions=acquisition.fetch_captions_service,
             ),
             resume_pipeline=ResumePipelineDependencies(
-                fetch_captions=fetch_captions_service,
+                fetch_captions=acquisition.fetch_captions_service,
                 transcribe=transcribe_videos_service,
                 extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
@@ -7100,8 +7061,8 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 build_paths=build_paths,
                 add_source=add_source_service,
                 delete_source=delete_source_service,
-                discover=discover_sources_service,
-                fetch_captions=fetch_captions_service,
+                discover=acquisition.discover_sources_service,
+                fetch_captions=acquisition.fetch_captions_service,
                 transcribe=transcribe_videos_service,
                 extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
