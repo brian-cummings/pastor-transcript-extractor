@@ -389,6 +389,9 @@ from pastor_transcript_extractor.workflows.run_media import (
 from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageDependencies,
     AudioStageRequest,
+    AudioStageScopeDependencies,
+    AudioStageScopeRequest,
+    resolve_audio_stage_scope,
     select_existing_stage_video_ids as _select_existing_stage_video_ids_workflow,
     stage_audio_inputs,
 )
@@ -445,20 +448,6 @@ MIN_SYNC_FREE_DISK_FRACTION = 0.20
 SYNC_ARCHIVE_WAIT_INITIAL_SECONDS = 1.0
 SYNC_ARCHIVE_WAIT_MAX_SECONDS = 30.0
 DEFAULT_SPEAKER_MODEL_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
-
-
-def _selected_discovery_video_ids(
-    discovery: DiscoveryServiceResult | object | None,
-    source_ids: Sequence[int],
-) -> set[int]:
-    selected_by_source = getattr(discovery, "selected_video_ids_by_source", {})
-    if not isinstance(selected_by_source, Mapping):
-        return set()
-    return {
-        video_id
-        for source_id in source_ids
-        for video_id in selected_by_source.get(source_id, ())
-    }
 
 
 def _catalog_video_is_sermon_eligible(
@@ -11386,86 +11375,36 @@ def run_workflow_service(
         return
 
     if stage_audio_only:
-        if failed_only:
-            raise ValueError("--stage-audio-only requires a source scope, not --failed-only.")
         if captions_only:
             raise ValueError("--captions-only is not meaningful with --stage-audio-only.")
         if run_identity:
             raise ValueError("--identity runs during --resume-stage, not audio staging.")
-        database = get_database(base_dir)
-        if selected_source_ids:
-            if url is not None or pastor is not None or all_sources:
-                raise ValueError("Use only one source scope with --stage-audio-only.")
-            unknown = [value for value in selected_source_ids if database.get_source_by_id(value) is None]
-            if unknown:
-                raise ValueError("Unknown source id(s): " + ", ".join(map(str, unknown)))
-            if skip_discovery:
-                selected_video_ids = _select_existing_stage_video_ids(
-                    database,
-                    selected_source_ids,
-                    limit=limit,
-                    all_videos=all_videos,
-                )
-            else:
-                selected_video_ids = set()
-                for source_id in selected_source_ids:
-                    discovery = discover_sources_service(
-                        limit, all_videos, source_id, base_dir
-                    )
-                    selected_video_ids.update(
-                        _selected_discovery_video_ids(discovery, (source_id,))
-                    )
-        elif all_sources:
-            if url is not None or pastor is not None:
-                raise ValueError("Do not pass a URL or pastor when using --all.")
-            enabled_source_ids = {
-                source.id for source in database.list_processing_enabled_sources()
-            }
-            if not enabled_source_ids:
-                console.print("No processing-enabled sources configured.")
-                return
-            if skip_discovery:
-                selected_video_ids = _select_existing_stage_video_ids(
-                    database,
-                    tuple(enabled_source_ids),
-                    limit=limit,
-                    all_videos=all_videos,
-                )
-            else:
-                discovery = discover_sources_service(
-                    limit, all_videos, None, base_dir
-                )
-                selected_video_ids = _selected_discovery_video_ids(
-                    discovery, tuple(enabled_source_ids)
-                )
-        else:
-            if skip_discovery:
-                raise ValueError(
-                    "--skip-discovery requires --all or at least one --source-id."
-                )
-            if url is None or pastor is None:
-                raise ValueError("Audio staging requires URL plus --pastor, --source-id, or --all.")
-            if replace_existing:
-                existing_source = database.get_source_by_url(url)
-                if existing_source is not None:
-                    delete_source_service(existing_source.id, True, base_dir)
-                    database = get_database(base_dir)
-            add_source_service(url, pastor, None, base_dir)
-            source = database.get_source_by_url(url)
-            if source is None:
-                raise RuntimeError("Added source could not be reloaded.")
-            discovery = discover_sources_service(limit, all_videos, source.id, base_dir)
-            selected_video_ids = _selected_discovery_video_ids(
-                discovery, (source.id,)
-            )
-        if skip_discovery:
-            console.print(
-                f"Selected {len(selected_video_ids)} eligible existing catalog "
-                "video(s) without source discovery."
-            )
-        if not selected_video_ids:
-            console.print("No videos selected for audio staging.")
+        selection = resolve_audio_stage_scope(
+            AudioStageScopeRequest(
+                url=url,
+                pastor=pastor,
+                all_sources=all_sources,
+                failed_only=failed_only,
+                replace_existing=replace_existing,
+                limit=limit,
+                all_videos=all_videos,
+                source_ids=selected_source_ids,
+                skip_discovery=skip_discovery,
+                base_dir=base_dir,
+            ),
+            progress_callback=lambda message: console.print(message, markup=False),
+            dependencies=AudioStageScopeDependencies(
+                get_database=get_database,
+                add_source=add_source_service,
+                delete_source=delete_source_service,
+                discover=discover_sources_service,
+                select_existing=_select_existing_stage_video_ids,
+            ),
+        )
+        if selection.skip_reason is not None:
             return
+        database = selection.database
+        selected_video_ids = set(selection.video_ids)
         paths = build_paths(base_dir, remember=True)
         stage_audio_inputs(
             database,

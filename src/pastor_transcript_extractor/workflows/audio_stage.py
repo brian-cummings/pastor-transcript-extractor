@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 import shlex
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.audio_staging import write_audio_stage_manifest
 from pastor_transcript_extractor.config import AppPaths, ToolConfig
@@ -56,6 +56,36 @@ class AudioStageDependencies:
     stage_video: AudioStageOperation = stage_source_audio_for_video
     write_manifest: AudioStageOperation = write_audio_stage_manifest
     fetch_captions: AudioStageOperation = fetch_captions_service
+
+
+@dataclass(frozen=True, slots=True)
+class AudioStageScopeRequest:
+    url: str | None = None
+    pastor: str | None = None
+    all_sources: bool = False
+    failed_only: bool = False
+    replace_existing: bool = False
+    limit: int | None = 26
+    all_videos: bool = False
+    source_ids: tuple[int, ...] = ()
+    skip_discovery: bool = False
+    base_dir: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AudioStageScopeResult:
+    database: Database
+    video_ids: frozenset[int]
+    skip_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AudioStageScopeDependencies:
+    get_database: AudioStageOperation
+    add_source: AudioStageOperation
+    delete_source: AudioStageOperation
+    discover: AudioStageOperation
+    select_existing: AudioStageOperation
 
 
 def _has_registered_source_audio(database: Database, video_id: int) -> bool:
@@ -114,6 +144,141 @@ def select_existing_stage_video_ids(
         chosen = candidates if all_videos or limit is None else candidates[:limit]
         selected.update(video.id for video in chosen)
     return selected
+
+
+def _selected_discovery_video_ids(
+    discovery: object,
+    source_ids: Sequence[int],
+) -> set[int]:
+    selected_by_source = getattr(discovery, "selected_video_ids_by_source", {})
+    if not isinstance(selected_by_source, Mapping):
+        return set()
+    return {
+        video_id
+        for source_id in source_ids
+        for video_id in selected_by_source.get(source_id, ())
+    }
+
+
+def resolve_audio_stage_scope(
+    request: AudioStageScopeRequest,
+    *,
+    progress_callback: AudioStageProgressCallback | None = None,
+    dependencies: AudioStageScopeDependencies,
+) -> AudioStageScopeResult:
+    """Validate and resolve an audio-stage source scope to exact video ids."""
+    def report(message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(message)
+
+    if request.failed_only:
+        raise ValueError(
+            "--stage-audio-only requires a source scope, not --failed-only."
+        )
+    database = dependencies.get_database(request.base_dir)
+    if request.source_ids:
+        if request.url is not None or request.pastor is not None or request.all_sources:
+            raise ValueError("Use only one source scope with --stage-audio-only.")
+        unknown = [
+            source_id
+            for source_id in request.source_ids
+            if database.get_source_by_id(source_id) is None
+        ]
+        if unknown:
+            raise ValueError("Unknown source id(s): " + ", ".join(map(str, unknown)))
+        if request.skip_discovery:
+            selected = dependencies.select_existing(
+                database,
+                request.source_ids,
+                limit=request.limit,
+                all_videos=request.all_videos,
+            )
+        else:
+            selected = set()
+            for source_id in request.source_ids:
+                discovery = dependencies.discover(
+                    request.limit,
+                    request.all_videos,
+                    source_id,
+                    request.base_dir,
+                )
+                selected.update(
+                    _selected_discovery_video_ids(discovery, (source_id,))
+                )
+    elif request.all_sources:
+        if request.url is not None or request.pastor is not None:
+            raise ValueError("Do not pass a URL or pastor when using --all.")
+        enabled_source_ids = tuple(
+            source.id for source in database.list_processing_enabled_sources()
+        )
+        if not enabled_source_ids:
+            reason = "No processing-enabled sources configured."
+            report(reason)
+            return AudioStageScopeResult(database, frozenset(), reason)
+        if request.skip_discovery:
+            selected = dependencies.select_existing(
+                database,
+                enabled_source_ids,
+                limit=request.limit,
+                all_videos=request.all_videos,
+            )
+        else:
+            discovery = dependencies.discover(
+                request.limit,
+                request.all_videos,
+                None,
+                request.base_dir,
+            )
+            selected = _selected_discovery_video_ids(
+                discovery,
+                enabled_source_ids,
+            )
+    else:
+        if request.skip_discovery:
+            raise ValueError(
+                "--skip-discovery requires --all or at least one --source-id."
+            )
+        if request.url is None or request.pastor is None:
+            raise ValueError(
+                "Audio staging requires URL plus --pastor, --source-id, or --all."
+            )
+        if request.replace_existing:
+            existing_source = database.get_source_by_url(request.url)
+            if existing_source is not None:
+                dependencies.delete_source(
+                    existing_source.id,
+                    True,
+                    request.base_dir,
+                )
+                database = dependencies.get_database(request.base_dir)
+        dependencies.add_source(
+            request.url,
+            request.pastor,
+            None,
+            request.base_dir,
+        )
+        source = database.get_source_by_url(request.url)
+        if source is None:
+            raise RuntimeError("Added source could not be reloaded.")
+        discovery = dependencies.discover(
+            request.limit,
+            request.all_videos,
+            source.id,
+            request.base_dir,
+        )
+        selected = _selected_discovery_video_ids(discovery, (source.id,))
+
+    video_ids = frozenset(selected)
+    if request.skip_discovery:
+        report(
+            f"Selected {len(video_ids)} eligible existing catalog video(s) "
+            "without source discovery."
+        )
+    if not video_ids:
+        reason = "No videos selected for audio staging."
+        report(reason)
+        return AudioStageScopeResult(database, video_ids, reason)
+    return AudioStageScopeResult(database, video_ids)
 
 
 def _failed_stage_result(

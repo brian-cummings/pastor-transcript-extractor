@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 5 — extract the top-level pipeline.
-- Next action: move offline mode validation and scope resolution behind the
-  typed pipeline boundary, then reduce the top-level command to one
-  request/invocation/rendering path.
+- Next action: move resume-manifest verification and top-level mode dispatch
+  behind one typed request/result boundary, then reduce the run command to one
+  invocation and event renderer.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -404,6 +404,20 @@ top-level migration. Removed the four duplicated online branches from
 `run_workflow_service`.
 
 `cli.py` is now 11,764 lines, down 6,353 lines from baseline.
+
+### 2026-09-26 — Milestone 5.6: offline audio scope extraction
+
+Added typed audio-stage scope request, result, and dependency boundaries to
+`workflows/audio_stage.py`. Source-id, all-enabled-source, and single-URL
+selection now share workflow-owned validation, discovery or catalog-only
+selection, replacement, and explained empty-scope handling. Direct tests cover
+selected-source isolation and the no-enabled-source result.
+
+The CLI now supplies its existing source/catalog seams and only renders scope
+events before invoking audio staging. Removed its duplicate discovery-result
+selector and 80 lines of scope policy.
+
+`cli.py` is now 11,702 lines, down 6,415 lines from baseline.
 
 ## Validation log
 
@@ -857,6 +871,19 @@ Ran 20 tests in 0.780s — OK
 
 .venv/bin/python -m unittest tests.test_cli_contract tests.test_sources.CliTests.test_run_audio_stage_options_are_forwarded tests.test_resume_pipeline_workflow tests.test_audio_stage_workflow tests.test_run_media_workflow
 Ran 10 tests in 0.366s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Offline audio scope extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/audio_stage.py src/pastor_transcript_extractor/cli.py tests/test_audio_stage_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_audio_stage_workflow plus six focused audio-stage CLI tests and tests.test_cli_contract
+Ran 15 tests — OK
 
 git diff --check
 PASS
