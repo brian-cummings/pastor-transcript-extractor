@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: inventory identity evaluation and fixture commands, then move
-  the first cohesive low-coupling group with its direct tests and patch targets.
+- Next action: extract interactive identity review commands, separating prompt
+  and rendering helpers from review policy where the current handlers mix them.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -457,6 +457,20 @@ patch seams, while workflow policy, mode dispatch, stage orchestration, and the
 public command handler all have their target owners. Milestone 5 is complete.
 
 `cli.py` is now 11,469 lines, down 6,648 lines from baseline.
+
+### 2026-09-27 — Milestone 6.1: identity evaluation extraction
+
+Added `commands/identity/evaluation.py` and moved the seven acoustic comparison,
+observation-consistency, speaker-model bake-off, experimental-policy replay,
+fixture validation, review-selection audit, and pair-result evaluation commands
+with their bake-off validation helpers. The cohesive module is 679 lines and
+owns its domain imports, read-only database opening, file validation, and Rich
+rendering.
+
+Added focused tests for evaluation partition policy and empty fixture-directory
+validation. No acoustic model, fixture corpus, or evaluation job was run.
+
+`cli.py` is now 10,854 lines, down 7,263 lines from baseline.
 
 ## Validation log
 
@@ -965,6 +979,28 @@ PASS
 
 .venv/bin/python -m unittest tests.test_run_workflow tests.test_pipeline_workflow tests.test_audio_stage_workflow tests.test_resume_pipeline_workflow tests.test_cli_contract plus twenty-four focused run CLI tests
 Ran 44 tests in 0.902s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Identity evaluation extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity src/pastor_transcript_extractor/cli.py tests/test_identity_evaluation_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_evaluation_commands tests.test_cli_contract
+Ran 9 tests in 0.261s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity compare-speakers --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor identity run-speaker-model-bakeoff --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor identity validate-pair-fixtures --help
+PASS
 
 git diff --check
 PASS
