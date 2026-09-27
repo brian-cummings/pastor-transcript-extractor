@@ -413,6 +413,7 @@ from pastor_transcript_extractor.workflows.identity.finalization import (
 )
 from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
+    resolve_association_scope,
     validate_shadow_association_request,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
@@ -4492,62 +4493,27 @@ def shadow_associate_speakers_service(
         readiness, usable_profiles
     )
 
-    requested_videos = []
-    if youtube_video_id is not None:
-        video = database.get_video_by_youtube_id(youtube_video_id)
-        if video is None:
-            raise typer.BadParameter(
-                f"Unknown YouTube video ID: {youtube_video_id}"
-            )
-        requested_videos = [video]
-    elif neighborhood_profile_id:
-        try:
-            neighborhood_video_ids = profile_neighborhood_video_ids(
-                database,
-                association_root=output_root,
-                profile_ids=neighborhood_profile_id,
-            )
-        except ValueError as error:
-            raise typer.BadParameter(str(error)) from error
-        requested_videos = [
-            videos_by_id[video_id]
-            for video_id in neighborhood_video_ids
-            if video_id in videos_by_id
-        ]
-        if not requested_videos:
-            raise typer.BadParameter(
-                "No persisted affected neighborhood was found for the requested "
-                "profile id(s)."
-            )
-    else:
-        requested_videos = [
-            video
-            for video in videos_by_id.values()
-            if video.id in current_observation_by_video_id
-        ]
+    try:
+        association_scope = resolve_association_scope(
+            request,
+            database=database,
+            videos_by_id=videos_by_id,
+            current_observation_by_video_id=current_observation_by_video_id,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    requested_videos = association_scope.videos
+    attempted_observation_fingerprints = (
+        association_scope.attempted_observation_fingerprints
+    )
+    if association_scope.inventory_reported:
         console.print(
             "Association candidate inventory: "
-            f"database_videos={len(videos_by_id)} "
-            f"videos_with_observations={len(requested_videos)} "
+            f"database_videos={association_scope.database_video_count} "
+            f"videos_with_observations={association_scope.observed_video_count} "
             f"skipped_without_observations="
-            f"{len(videos_by_id) - len(requested_videos)}."
+            f"{association_scope.database_video_count - association_scope.observed_video_count}."
         )
-
-    attempted_observation_fingerprints: set[str] = set()
-    if unattempted_only:
-        persisted_attempts = load_identity_association_attempts(
-            output_root,
-            database_video_ids={video.id for video in requested_videos},
-        )
-        attempted_observation_fingerprints = {
-            fingerprint
-            for attempts in persisted_attempts.values()
-            for attempt in attempts
-            if isinstance(
-                fingerprint := attempt.get("observation_fingerprint"), str
-            )
-        }
-
     admission_paths: set[Path] = set()
     def persist_admission(
         video,
