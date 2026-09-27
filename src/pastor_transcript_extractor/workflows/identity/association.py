@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.identity_leverage import (
     profile_neighborhood_video_ids,
@@ -12,6 +13,7 @@ from pastor_transcript_extractor.models import SpeakerObservation, Video
 from pastor_transcript_extractor.pipeline_diagnostics import (
     load_identity_association_attempts,
 )
+from pastor_transcript_extractor.speaker_pair_diagnostics import SpanSpec
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     AutomaticSpeakerObservationEligibility,
@@ -70,6 +72,49 @@ class AssociationCandidateAssessment:
     @property
     def admitted(self) -> bool:
         return self.exclusion_reason is None
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationSpanInput:
+    video: Video
+    eligibility: AutomaticSpeakerObservationEligibility
+    audio_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedAssociationCandidate:
+    input: AssociationSpanInput
+    span_specs: tuple[SpanSpec, ...]
+    span_selection: Mapping[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationSpanExclusion:
+    input: AssociationSpanInput
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationSpanPreparationResult:
+    outcomes: tuple[
+        PreparedAssociationCandidate | AssociationSpanExclusion, ...
+    ]
+
+    @property
+    def candidates(self) -> tuple[PreparedAssociationCandidate, ...]:
+        return tuple(
+            outcome
+            for outcome in self.outcomes
+            if isinstance(outcome, PreparedAssociationCandidate)
+        )
+
+    @property
+    def exclusions(self) -> tuple[AssociationSpanExclusion, ...]:
+        return tuple(
+            outcome
+            for outcome in self.outcomes
+            if isinstance(outcome, AssociationSpanExclusion)
+        )
 
 
 def validate_shadow_association_request(
@@ -274,3 +319,59 @@ def assess_association_candidate(
         None,
         verified.media_artifact.content_sha256,
     )
+
+
+def prepare_association_candidate_spans(
+    inputs: Sequence[AssociationSpanInput],
+    *,
+    jobs: int,
+    target_count: int | None,
+    prepare_spans: Callable[
+        [AssociationSpanInput],
+        tuple[tuple[SpanSpec, ...], Mapping[str, Any] | None],
+    ],
+    progress_callback: Callable[[int, int, int], None] | None = None,
+) -> AssociationSpanPreparationResult:
+    """Prepare spans concurrently in stable batches with an admission cap."""
+    outcomes: list[PreparedAssociationCandidate | AssociationSpanExclusion] = []
+    candidate_count = 0
+    batch_size = max(1, jobs)
+
+    def prepare(item: AssociationSpanInput):
+        try:
+            span_specs, span_selection = prepare_spans(item)
+        except Exception as error:
+            reason = str(error) or "activity_qualified_spans_unavailable"
+            return item, (), None, reason
+        if not span_specs:
+            return item, (), None, "speech_grounded_spans_unavailable"
+        return item, span_specs, span_selection, None
+
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        for batch_start in range(0, len(inputs), batch_size):
+            if target_count is not None and candidate_count >= target_count:
+                break
+            batch = inputs[batch_start : batch_start + batch_size]
+            for item, span_specs, span_selection, reason in executor.map(
+                prepare, batch
+            ):
+                if target_count is not None and candidate_count >= target_count:
+                    break
+                if reason is not None:
+                    outcomes.append(AssociationSpanExclusion(item, reason))
+                else:
+                    outcomes.append(
+                        PreparedAssociationCandidate(
+                            item,
+                            tuple(span_specs),
+                            span_selection,
+                        )
+                    )
+                    candidate_count += 1
+            if progress_callback is not None:
+                progress_callback(
+                    min(batch_start + len(batch), len(inputs)),
+                    len(inputs),
+                    candidate_count,
+                )
+    return AssociationSpanPreparationResult(outcomes=tuple(outcomes))
