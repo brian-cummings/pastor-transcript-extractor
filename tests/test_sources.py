@@ -2028,7 +2028,7 @@ class CliTests(unittest.TestCase):
             ), patch(
                 "pastor_transcript_extractor.application.extract_batch", side_effect=fake_stage("extract")
             ), patch(
-                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
                 side_effect=fake_stage("media"),
             ):
                 result = runner.invoke(
@@ -2077,7 +2077,7 @@ class CliTests(unittest.TestCase):
             ), patch(
                 "pastor_transcript_extractor.application.extract_batch", side_effect=fake_stage("extract")
             ), patch(
-                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
                 side_effect=fake_stage("media"),
             ):
                 result = runner.invoke(
@@ -2153,7 +2153,7 @@ class CliTests(unittest.TestCase):
             ), patch(
                 "pastor_transcript_extractor.application.extract_batch", side_effect=fake_stage("extract")
             ), patch(
-                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
                 side_effect=fake_stage("media"),
             ):
                 result = runner.invoke(
@@ -2223,7 +2223,7 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.application.extract_batch",
                 return_value=ExtractionBatchResult(1, 0, 0),
             ), patch(
-                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
                 side_effect=lambda *args, **kwargs: calls.append("media"),
             ), patch(
                 "pastor_transcript_extractor.cli._run_post_content_identity",
@@ -2269,7 +2269,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.application.extract_batch",
             return_value=ExtractionBatchResult(1, 0, 0),
         ), patch(
-            "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+            "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media"
         ), patch(
             "pastor_transcript_extractor.cli._run_post_content_identity"
         ) as identity, patch(
@@ -2352,7 +2352,7 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.application.extract_batch",
                 return_value=ExtractionBatchResult(0, 2, 0),
             ) as extract, patch(
-                "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+                "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media"
             ) as media:
                 result = runner.invoke(
                     app,
@@ -2743,7 +2743,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.application.extract_batch",
             return_value=ExtractionBatchResult(2, 0, 0),
         ), patch(
-            "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+            "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media"
         ) as media:
             run_workflow_service(
                 resume_stage=Path("stage.json"),
@@ -2781,7 +2781,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.application.extract_batch",
             return_value=ExtractionBatchResult(1, 0, 0),
         ), patch(
-            "pastor_transcript_extractor.cli._ensure_and_archive_run_media"
+            "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media"
         ):
             run_workflow_service(
                 resume_stage=Path("stage.json"),
@@ -2814,7 +2814,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.application.extract_batch",
             return_value=ExtractionBatchResult(1, 0, 0),
         ), patch(
-            "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+            "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
             side_effect=lambda *args, **kwargs: calls.append("media"),
         ), patch(
             "pastor_transcript_extractor.cli._run_post_content_identity",
@@ -2953,7 +2953,7 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.application.extract_batch",
                 side_effect=fake_extract,
             ), patch(
-                "pastor_transcript_extractor.cli._ensure_and_archive_run_media",
+                "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
                 side_effect=fake_media,
             ):
                 result = runner.invoke(
@@ -3011,19 +3011,19 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.video_has_isolated_sermon",
+                "pastor_transcript_extractor.media_artifacts.video_has_isolated_sermon",
                 return_value=(True, "isolated_sermon"),
             ), patch(
-                "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
+                "pastor_transcript_extractor.media_artifacts.get_verified_normalized_media_artifact",
                 return_value=None,
             ), patch(
                 "pastor_transcript_extractor.config.build_tool_config",
                 return_value=SimpleNamespace(),
             ), patch(
-                "pastor_transcript_extractor.cli.ensure_audio_for_video",
+                "pastor_transcript_extractor.media_artifacts.ensure_audio_for_video",
                 return_value=ensure_result,
             ) as ensure_audio, patch(
-                "pastor_transcript_extractor.cli.archive_source_media",
+                "pastor_transcript_extractor.media_archive.archive_source_media",
                 return_value=archive_result,
             ) as archive:
                 _ensure_and_archive_run_media(
@@ -3051,16 +3051,16 @@ class CliTests(unittest.TestCase):
             reason_code="downloaded_and_normalized",
         )
         with patch(
-            "pastor_transcript_extractor.cli.video_has_isolated_sermon",
+            "pastor_transcript_extractor.media_artifacts.video_has_isolated_sermon",
             return_value=(True, "isolated_sermon"),
         ), patch(
-            "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
+            "pastor_transcript_extractor.media_artifacts.get_verified_normalized_media_artifact",
             return_value=None,
         ), patch(
             "pastor_transcript_extractor.config.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
-            "pastor_transcript_extractor.cli.ensure_audio_for_video",
+            "pastor_transcript_extractor.media_artifacts.ensure_audio_for_video",
             side_effect=[ValueError("manifest collision"), successful],
         ) as ensure_audio:
             _ensure_and_archive_run_media(
@@ -3091,16 +3091,16 @@ class CliTests(unittest.TestCase):
             reason_code="downloaded_and_normalized",
         )
         with patch(
-            "pastor_transcript_extractor.cli.video_has_isolated_sermon",
+            "pastor_transcript_extractor.media_artifacts.video_has_isolated_sermon",
             return_value=(True, "isolated_sermon"),
         ), patch(
-            "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
+            "pastor_transcript_extractor.media_artifacts.get_verified_normalized_media_artifact",
             return_value=None,
         ), patch(
             "pastor_transcript_extractor.config.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
-            "pastor_transcript_extractor.cli.ensure_audio_for_video",
+            "pastor_transcript_extractor.media_artifacts.ensure_audio_for_video",
             side_effect=[failed, verified, verified],
         ) as ensure_audio:
             _ensure_and_archive_run_media(
@@ -3137,7 +3137,7 @@ class CliTests(unittest.TestCase):
             },
         )
         with patch(
-            "pastor_transcript_extractor.cli.archive_source_media",
+            "pastor_transcript_extractor.media_archive.archive_source_media",
             side_effect=[failed_archive, recovered_archive],
         ) as archive:
             _ensure_and_archive_run_media(database, SimpleNamespace())

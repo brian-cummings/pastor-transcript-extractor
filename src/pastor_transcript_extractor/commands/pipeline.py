@@ -6,8 +6,16 @@ from typing import Callable
 import typer
 from rich.console import Console
 
+from pastor_transcript_extractor import config, media_archive, media_artifacts
 from pastor_transcript_extractor.commands.apps import root_app
+from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.run import RunWorkflowRequest
+from pastor_transcript_extractor.workflows.run_media import (
+    RunMediaDependencies,
+    RunMediaRequest,
+    ensure_and_archive_run_media as ensure_and_archive_run_media_workflow,
+)
 from pastor_transcript_extractor.workflows.transcription import (
     DEFAULT_PREP_WORKERS,
     default_transcribe_jobs,
@@ -24,6 +32,36 @@ def configure_run_command(invoker: RunInvoker) -> None:
     """Bind the application workflow at composition time."""
     global _run_invoker
     _run_invoker = invoker
+
+
+def ensure_and_archive_run_media(
+    database: Database,
+    paths: AppPaths,
+    *,
+    video_ids: set[int] | None = None,
+    allow_download: bool = True,
+) -> None:
+    """Render media-assurance progress for the top-level run workflow."""
+    ensure_and_archive_run_media_workflow(
+        database,
+        paths,
+        RunMediaRequest(
+            video_ids=None if video_ids is None else frozenset(video_ids),
+            allow_download=allow_download,
+        ),
+        progress_callback=lambda message, style: console.print(
+            message,
+            style=style,
+            markup=False,
+        ),
+        dependencies=RunMediaDependencies(
+            has_isolated_sermon=media_artifacts.video_has_isolated_sermon,
+            get_verified_media=media_artifacts.get_verified_normalized_media_artifact,
+            build_tools=config.build_tool_config,
+            ensure_audio=media_artifacts.ensure_audio_for_video,
+            archive_source=media_archive.archive_source_media,
+        ),
+    )
 
 
 def _render_run_plan(request: RunWorkflowRequest) -> None:

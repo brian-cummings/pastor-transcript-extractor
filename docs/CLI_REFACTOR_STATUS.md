@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the run-media adapter cluster (`_ensure_and_archive_run_media`
-  and its media operations) to explicit workflow or command-owner seams,
-  without touching unrelated source-processing changes.
+- Next action: migrate the imported-source synchronization seams
+  (`imported_source_ids`, source archival, and related adapter dependencies) to
+  their owning modules without touching unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1069,6 +1069,14 @@ media-archive test's already-moved command-owner patches.
 Changed CLI path and tool configuration calls—including workflow dependency
 composition—to resolve from the owning `config` module. All remaining tests now
 patch those owner functions rather than imported CLI bindings.
+
+### 2026-09-27 — Milestone 8.13: run-media command adapter
+
+Moved the run-media presentation adapter into `commands/pipeline.py`. Pipeline
+composition now resolves that owner directly, while a temporary CLI alias
+preserves direct test imports. Adapter dependencies are assembled from the
+configuration, media-artifact, and media-archive owners, so tests patch real
+boundaries instead of CLI imports.
 
 ## Validation log
 
@@ -2416,6 +2424,22 @@ PASS
 Ran 18 tests in 0.682s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(build_paths|build_tool_config)" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Run-media command adapter
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/pipeline.py src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest <14 affected run-media tests> tests.test_cli_contract
+Ran 20 tests in 0.549s — OK
+
+rg -n "pastor_transcript_extractor\.cli\._ensure_and_archive_run_media" tests
 No matches
 
 git diff --check
