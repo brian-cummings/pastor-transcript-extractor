@@ -8,8 +8,11 @@ from unittest.mock import Mock, patch
 from pastor_transcript_extractor.workflows.identity import association_evaluation
 from pastor_transcript_extractor.workflows.identity.association_evaluation import (
     AssociationEvaluator,
+    AssociationEvaluationPass,
+    AssociationEvaluationResult,
     AssociationResultAccumulator,
     build_span_selection_payload,
+    evaluate_association_candidate,
     plan_cross_source_fallback,
     plan_exhaustive_validation,
     persist_association_result,
@@ -373,6 +376,131 @@ class IdentityAssociationEvaluationWorkflowTests(unittest.TestCase):
         self.assertEqual(0, accumulator.reused_associations)
         self.assertEqual(2, accumulator.sermon_window_quality_flag_count)
         self.assertEqual([Path("written.json")], accumulator.written_reports)
+
+    def test_candidate_evaluation_returns_isolated_initial_failure(self) -> None:
+        evaluator = Mock()
+        evaluator.evaluate.side_effect = OSError("unavailable")
+        route_plan = SimpleNamespace(
+            routing=SimpleNamespace(profiles=((object(), ()),)),
+            routing_payload={"route": "local"},
+        )
+
+        outcome = evaluate_association_candidate(
+            evaluator,
+            SimpleNamespace(),
+            output_root=Path("output"),
+            candidate=SimpleNamespace(id=11),
+            candidate_audio_path=Path("candidate.wav"),
+            candidate_audio_sha256="audio-sha",
+            candidate_normalized_names=(),
+            route_plan=route_plan,
+            pending_confirmation_profile_ids=frozenset(),
+            maximum_global_profiles=1,
+        )
+
+        self.assertFalse(outcome.succeeded)
+        self.assertEqual("initial", outcome.failure_stage)
+        self.assertEqual(
+            "association_evaluation_failed:OSError",
+            outcome.admission_reason_code,
+        )
+        self.assertEqual(0, outcome.detailed_profile_comparisons)
+
+    def test_candidate_evaluation_accounts_before_fallback_failure(self) -> None:
+        evaluator = Mock()
+        evaluator.evaluate.side_effect = (
+            AssociationEvaluationResult({"outcome": "no_match"}, None),
+            ValueError("fallback failed"),
+        )
+        route_plan = SimpleNamespace(
+            routing=SimpleNamespace(profiles=((object(), ()),)),
+            routing_payload={"route": "local"},
+        )
+        fallback_pass = AssociationEvaluationPass(
+            profiles=((object(), ()), (object(), ())),
+            routing_payload={"route": "fallback"},
+            additional_profile_comparisons=1,
+        )
+        with patch.object(
+            association_evaluation,
+            "plan_cross_source_fallback",
+            return_value=fallback_pass,
+        ):
+            outcome = evaluate_association_candidate(
+                evaluator,
+                SimpleNamespace(),
+                output_root=Path("output"),
+                candidate=SimpleNamespace(id=11),
+                candidate_audio_path=Path("candidate.wav"),
+                candidate_audio_sha256="audio-sha",
+                candidate_normalized_names=(),
+                route_plan=route_plan,
+                pending_confirmation_profile_ids=frozenset(),
+                maximum_global_profiles=1,
+            )
+
+        self.assertEqual("cross_source_fallback", outcome.failure_stage)
+        self.assertEqual(
+            "association_cross_source_fallback_failed:ValueError",
+            outcome.admission_reason_code,
+        )
+        self.assertEqual(1, outcome.detailed_profile_comparisons)
+
+    def test_candidate_evaluation_persists_final_exhaustive_result(self) -> None:
+        evaluator = Mock()
+        evaluator.evaluate.side_effect = (
+            AssociationEvaluationResult(
+                {"outcome": "proposed_match", "proposed_profile_id": 8},
+                None,
+            ),
+            AssociationEvaluationResult({"outcome": "no_match"}, None),
+        )
+        route_plan = SimpleNamespace(
+            routing=SimpleNamespace(profiles=((object(), ()),)),
+            routing_payload={"route": "shortlist"},
+        )
+        exhaustive_pass = AssociationEvaluationPass(
+            profiles=((object(), ()), (object(), ())),
+            routing_payload={"route": "exhaustive"},
+            additional_profile_comparisons=2,
+        )
+        persisted = SimpleNamespace(outcome="no_match")
+        with (
+            patch.object(
+                association_evaluation,
+                "plan_cross_source_fallback",
+                return_value=None,
+            ),
+            patch.object(
+                association_evaluation,
+                "plan_exhaustive_validation",
+                return_value=exhaustive_pass,
+            ),
+            patch.object(
+                association_evaluation,
+                "persist_association_result",
+                return_value=persisted,
+            ) as persist,
+        ):
+            outcome = evaluate_association_candidate(
+                evaluator,
+                SimpleNamespace(),
+                output_root=Path("output"),
+                candidate=SimpleNamespace(id=11),
+                candidate_audio_path=Path("candidate.wav"),
+                candidate_audio_sha256="audio-sha",
+                candidate_normalized_names=(),
+                route_plan=route_plan,
+                pending_confirmation_profile_ids=frozenset(),
+                maximum_global_profiles=1,
+            )
+
+        self.assertTrue(outcome.succeeded)
+        self.assertIs(persisted, outcome.result)
+        self.assertEqual(3, outcome.detailed_profile_comparisons)
+        self.assertEqual(
+            {"outcome": "no_match"}, persist.call_args.kwargs["report"]
+        )
 
 
 if __name__ == "__main__":
