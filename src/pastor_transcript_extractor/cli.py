@@ -317,9 +317,6 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     SHADOW_ASSOCIATION_VERSION,
     ShadowExemplar,
     assess_profile_association_readiness,
-    build_shadow_association_input_fingerprint,
-    evaluate_shadow_association,
-    load_reusable_shadow_association,
     load_shadow_policy,
     select_profile_exemplars,
     summarize_shadow_associations,
@@ -421,7 +418,7 @@ from pastor_transcript_extractor.workflows.identity.association_preparation impo
     prepare_association_centroids,
 )
 from pastor_transcript_extractor.workflows.identity.association_evaluation import (
-    build_span_selection_payload,
+    AssociationEvaluator,
     plan_cross_source_fallback,
     plan_exhaustive_validation,
 )
@@ -2091,6 +2088,19 @@ def shadow_discover_profiles_command(
             span_specs_are_activity_qualified=True,
             pair_diagnostic_cache=pair_diagnostic_cache,
         )
+
+    association_evaluator = AssociationEvaluator(
+        output_root=output_root,
+        jobs=jobs,
+        policy_spec=policy_spec,
+        model_fingerprint=backend.spec.fingerprint,
+        minimum_same_exemplars=minimum_same_exemplars,
+        selections_by_observation_id=span_selection_by_observation_id,
+        reviewed_difference_pairs=(
+            database.list_effective_observation_difference_pairs
+        ),
+        compare=compare,
+    )
 
     report = evaluate_shadow_profile_discovery(
         signatures=signatures,
@@ -4870,7 +4880,6 @@ def shadow_associate_speakers_service(
     sermon_window_quality_flag_count = 0
     proposal_targets: dict[int, int] = {}
     written_reports: list[Path] = []
-    comparison_executor: ThreadPoolExecutor | None = None
     for index, (video, eligibility, _span_specs) in enumerate(
         candidates,
         start=1,
@@ -4911,77 +4920,17 @@ def shadow_associate_speakers_service(
         )
         initial_routing_payload = dict(route_plan.routing_payload)
 
-        def evaluate_profiles(
-            selected_profiles,
-            routing_payload,
-        ):
-            nonlocal comparison_executor
-            span_selection_payload = build_span_selection_payload(
-                observation.id,
-                selected_profiles,
-                selections_by_observation_id=(
-                    span_selection_by_observation_id
-                ),
-            )
-            input_fingerprint = build_shadow_association_input_fingerprint(
-                candidate=observation,
-                candidate_audio_sha256=media_artifact.content_sha256,
-                candidate_normalized_names=sorted(explicit_candidate_names),
-                profiles=selected_profiles,
-                policy_spec=policy_spec,
-                model_fingerprint=backend.spec.fingerprint,
-                minimum_same_exemplars=minimum_same_exemplars,
-                reviewed_difference_pairs=(
-                    database.list_effective_observation_difference_pairs()
-                ),
-                routing=routing_payload,
-                span_selection=span_selection_payload,
-            )
-            reusable = load_reusable_shadow_association(
-                output_root,
-                candidate_fingerprint=observation.input_fingerprint,
-                input_fingerprint=input_fingerprint,
-            )
-            if reusable is not None:
-                return reusable[1], reusable[0]
-            if jobs > 1 and comparison_executor is None:
-                comparison_executor = ThreadPoolExecutor(
-                    max_workers=jobs,
-                    thread_name_prefix="identity-association",
-                )
-            try:
-                report = evaluate_shadow_association(
-                    candidate=observation,
-                    candidate_audio_path=Path(media_artifact.artifact_path),
-                    candidate_audio_sha256=media_artifact.content_sha256,
-                    candidate_normalized_names=sorted(explicit_candidate_names),
-                    profiles=selected_profiles,
-                    compare=compare,
-                    policy_spec=policy_spec,
-                    model_fingerprint=backend.spec.fingerprint,
-                    minimum_same_exemplars=minimum_same_exemplars,
-                    reviewed_difference_pairs=(
-                        database.list_effective_observation_difference_pairs()
-                    ),
-                    routing=routing_payload,
-                    span_selection=span_selection_payload,
-                    jobs=jobs,
-                    executor=comparison_executor,
-                )
-            except BaseException:
-                if comparison_executor is not None:
-                    comparison_executor.shutdown(
-                        wait=True,
-                        cancel_futures=True,
-                    )
-                    comparison_executor = None
-                raise
-            return report, None
-
         try:
-            report, reusable_path = evaluate_profiles(
-                candidate_profiles, initial_routing_payload
+            evaluation_result = association_evaluator.evaluate(
+                candidate=observation,
+                candidate_audio_path=Path(media_artifact.artifact_path),
+                candidate_audio_sha256=media_artifact.content_sha256,
+                candidate_normalized_names=explicit_candidate_names,
+                profiles=candidate_profiles,
+                routing_payload=initial_routing_payload,
             )
+            report = evaluation_result.report
+            reusable_path = evaluation_result.reusable_path
         except (OSError, RuntimeError, ValueError) as error:
             persist_admission(
                 video,
@@ -5005,10 +4954,16 @@ def shadow_associate_speakers_service(
         )
         if fallback_pass is not None:
             try:
-                report, reusable_path = evaluate_profiles(
-                    fallback_pass.profiles,
-                    fallback_pass.routing_payload,
+                evaluation_result = association_evaluator.evaluate(
+                    candidate=observation,
+                    candidate_audio_path=Path(media_artifact.artifact_path),
+                    candidate_audio_sha256=media_artifact.content_sha256,
+                    candidate_normalized_names=explicit_candidate_names,
+                    profiles=fallback_pass.profiles,
+                    routing_payload=fallback_pass.routing_payload,
                 )
+                report = evaluation_result.report
+                reusable_path = evaluation_result.reusable_path
             except (OSError, RuntimeError, ValueError) as error:
                 persist_admission(
                     video,
@@ -5039,10 +4994,16 @@ def shadow_associate_speakers_service(
             maximum_global_profiles=maximum_global_profiles,
         )
         if exhaustive_pass is not None:
-            report, reusable_path = evaluate_profiles(
-                exhaustive_pass.profiles,
-                exhaustive_pass.routing_payload,
+            evaluation_result = association_evaluator.evaluate(
+                candidate=observation,
+                candidate_audio_path=Path(media_artifact.artifact_path),
+                candidate_audio_sha256=media_artifact.content_sha256,
+                candidate_normalized_names=explicit_candidate_names,
+                profiles=exhaustive_pass.profiles,
+                routing_payload=exhaustive_pass.routing_payload,
             )
+            report = evaluation_result.report
+            reusable_path = evaluation_result.reusable_path
             if reusable_path is None:
                 detailed_profile_comparisons += (
                     exhaustive_pass.additional_profile_comparisons
@@ -5092,8 +5053,7 @@ def shadow_associate_speakers_service(
             f" reused={reusable_path is not None}"
             f"{window_flag_text}"
         )
-    if comparison_executor is not None:
-        comparison_executor.shutdown(wait=True)
+    association_evaluator.close()
     console.print(
         "Shadow association complete: "
         + " ".join(

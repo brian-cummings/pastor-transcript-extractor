@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract candidate association evaluation and cache reuse,
-  preserving input fingerprints, comparison concurrency and executor cleanup,
-  reviewed-difference evidence, and exact reusable-artifact semantics.
+- Next action: extract association result persistence and summary aggregation,
+  preserving artifact reuse/writes, extraction-boundary evidence, proposal
+  targets, routing/outcome counts, and sermon-window quality flags.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -867,6 +867,18 @@ versus legacy exhaustive validation policy and complete routing evidence.
 Focused tests cover candidate/exemplar span selections, fallback activation
 and bypass, pending-confirmation exhaustive selection, and terminal-route
 bypass. `cli.py` is now 7,719 lines, down 10,398 lines from baseline.
+
+### 2026-09-27 — Milestone 7.10: cached association evaluator
+
+Introduced `AssociationEvaluator` as the shared execution boundary for input
+fingerprints, verified reusable artifacts, live acoustic evaluation, reviewed-
+difference evidence, and the lazily created comparison executor. Cache hits do
+not create workers; live passes reuse one bounded executor; any base exception
+cancels pending futures and clears the executor before propagating.
+
+Focused tests cover verified cache reuse, span evidence forwarding, live
+executor reuse/normal shutdown, and failure cancellation. `cli.py` is now
+7,679 lines, down 10,438 lines from baseline.
 
 ## Validation log
 
@@ -1909,6 +1921,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 28 tests in 0.225s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Cached association evaluator
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association_evaluation.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_evaluation_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 31 tests in 0.228s — OK
 
 git diff --check
 PASS
