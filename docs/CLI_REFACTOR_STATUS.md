@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: split association preparation/routing stages into a cohesive
-  workflow submodule before extracting candidate evaluation, keeping modules
-  within the plan's readability range without changing public imports.
+- Next action: extract candidate association evaluation and cache reuse,
+  preserving comparison concurrency, weak-local fallback, exhaustive
+  validation, every isolated failure, and durable report payloads.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -845,6 +845,16 @@ persisted promotion record are admitted.
 
 Focused tests cover each qualification gate and the complete route-summary
 evidence. `cli.py` is now 7,803 lines, down 10,314 lines from baseline.
+
+### 2026-09-27 — Milestone 7.8: association preparation module split
+
+Moved span and centroid input/result types plus their concurrent preparation
+stages into `workflows/identity/association_preparation.py`. The CLI imports
+from the owning module, while `workflows.identity.association` retains explicit
+compatibility exports for current callers and tests.
+
+The policy/routing module is now 575 lines and the preparation module 225
+lines, both within the plan's readability range; no behavior changed.
 
 ## Validation log
 
@@ -1861,6 +1871,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 23 tests in 0.227s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association preparation module split
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/workflows/identity/association_preparation.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 23 tests in 0.224s — OK
 
 git diff --check
 PASS

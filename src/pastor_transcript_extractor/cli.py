@@ -407,17 +407,19 @@ from pastor_transcript_extractor.workflows.identity.finalization import (
     run_review_prewarm_stage,
 )
 from pastor_transcript_extractor.workflows.identity.association import (
-    AssociationCentroidCandidateInput,
-    AssociationSpanExclusion,
-    AssociationSpanInput,
     ShadowAssociationRequest,
     assess_association_candidate,
     plan_association_profile_route,
     plan_pending_confirmation_routing,
-    prepare_association_centroids,
-    prepare_association_candidate_spans,
     resolve_association_scope,
     validate_shadow_association_request,
+)
+from pastor_transcript_extractor.workflows.identity.association_preparation import (
+    AssociationCentroidCandidateInput,
+    AssociationSpanExclusion,
+    AssociationSpanInput,
+    prepare_association_candidate_spans,
+    prepare_association_centroids,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
