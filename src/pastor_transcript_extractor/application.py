@@ -33,6 +33,9 @@ class ExtractionBatchResult:
     failed_video_ids: tuple[int, ...] = ()
 
 
+ExtractionBatchOperation = Callable[..., ExtractionBatchResult]
+
+
 @dataclass(frozen=True, slots=True)
 class PastorReviewResult:
     pastor_slug: str
@@ -301,6 +304,7 @@ def prepare_review_exports(
     llm_model: str | None = None,
     event_callback: EventCallback | None = None,
     progress_callback: ProgressCallback | None = None,
+    extractor: ExtractionBatchOperation = extract_batch,
 ) -> ReviewBatchResult:
     """Adaptively prepare missing extractions and build disposition-aware exports."""
     if all_pastors and pastor_slug is not None:
@@ -318,7 +322,7 @@ def prepare_review_exports(
 
     results: list[PastorReviewResult] = []
     for pastor in pastors:
-        prepared = extract_batch(
+        prepared = extractor(
             database,
             paths,
             missing_only=True,

@@ -454,7 +454,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.transcribe_videos_service",
                     side_effect=transcribe,
                 ),
-                patch("pastor_transcript_extractor.cli.extract_batch", side_effect=extraction),
+                patch("pastor_transcript_extractor.application.extract_batch", side_effect=extraction),
                 patch(
                     "pastor_transcript_extractor.cli.backfill_existing_media_artifacts",
                     side_effect=registration,
@@ -620,7 +620,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                 patch("pastor_transcript_extractor.cli.fetch_captions_service"),
                 patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
                 patch(
-                    "pastor_transcript_extractor.cli.extract_batch",
+                    "pastor_transcript_extractor.application.extract_batch",
                     return_value=no_extraction,
                 ),
                 patch(
@@ -775,7 +775,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                 patch("pastor_transcript_extractor.cli.fetch_captions_service"),
                 patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
                 patch(
-                    "pastor_transcript_extractor.cli.extract_batch",
+                    "pastor_transcript_extractor.application.extract_batch",
                     return_value=no_extraction,
                 ),
                 patch(
