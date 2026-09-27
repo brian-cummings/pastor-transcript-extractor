@@ -2263,7 +2263,7 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"
         ), patch(
-            "pastor_transcript_extractor.cli.build_paths",
+            "pastor_transcript_extractor.config.build_paths",
             return_value=SimpleNamespace(logs=Path("logs")),
         ), patch(
             "pastor_transcript_extractor.application.extract_batch",
@@ -2568,10 +2568,10 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.commands.common.get_database",
             return_value=database,
         ), patch(
-            "pastor_transcript_extractor.cli.build_paths",
+            "pastor_transcript_extractor.config.build_paths",
             return_value=SimpleNamespace(logs=Path("logs"), root=Path("data")),
         ), patch(
-            "pastor_transcript_extractor.cli.build_tool_config",
+            "pastor_transcript_extractor.config.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.discover_sources_service"
@@ -2628,10 +2628,10 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.commands.common.get_database",
             return_value=database,
         ), patch(
-            "pastor_transcript_extractor.cli.build_paths",
+            "pastor_transcript_extractor.config.build_paths",
             return_value=paths,
         ), patch(
-            "pastor_transcript_extractor.cli.build_tool_config",
+            "pastor_transcript_extractor.config.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
@@ -2693,10 +2693,10 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.commands.common.get_database",
             return_value=database,
         ), patch(
-            "pastor_transcript_extractor.cli.build_paths",
+            "pastor_transcript_extractor.config.build_paths",
             return_value=paths,
         ), patch(
-            "pastor_transcript_extractor.cli.build_tool_config",
+            "pastor_transcript_extractor.config.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
@@ -2731,7 +2731,7 @@ class CliTests(unittest.TestCase):
         with patch(
             "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
-            "pastor_transcript_extractor.cli.build_paths", return_value=paths
+            "pastor_transcript_extractor.config.build_paths", return_value=paths
         ), patch(
             "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
             return_value={11, 12},
@@ -2766,7 +2766,7 @@ class CliTests(unittest.TestCase):
         with patch(
             "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
-            "pastor_transcript_extractor.cli.build_paths", return_value=paths
+            "pastor_transcript_extractor.config.build_paths", return_value=paths
         ), patch(
             "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
             return_value={11},
@@ -2803,7 +2803,7 @@ class CliTests(unittest.TestCase):
         with patch(
             "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
-            "pastor_transcript_extractor.cli.build_paths",
+            "pastor_transcript_extractor.config.build_paths",
             return_value=SimpleNamespace(logs=Path("logs")),
         ), patch(
             "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
@@ -3017,7 +3017,7 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
                 return_value=None,
             ), patch(
-                "pastor_transcript_extractor.cli.build_tool_config",
+                "pastor_transcript_extractor.config.build_tool_config",
                 return_value=SimpleNamespace(),
             ), patch(
                 "pastor_transcript_extractor.cli.ensure_audio_for_video",
@@ -3057,7 +3057,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
             return_value=None,
         ), patch(
-            "pastor_transcript_extractor.cli.build_tool_config",
+            "pastor_transcript_extractor.config.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
             "pastor_transcript_extractor.cli.ensure_audio_for_video",
@@ -3097,7 +3097,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.get_verified_normalized_media_artifact",
             return_value=None,
         ), patch(
-            "pastor_transcript_extractor.cli.build_tool_config",
+            "pastor_transcript_extractor.config.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
             "pastor_transcript_extractor.cli.ensure_audio_for_video",

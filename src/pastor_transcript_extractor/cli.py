@@ -23,7 +23,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from pastor_transcript_extractor import application
+from pastor_transcript_extractor import application, config
 from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.audio_staging import (
     load_and_verify_audio_stage_manifest,
@@ -88,9 +88,7 @@ from pastor_transcript_extractor.commands.common import unknown_pastor_error as 
 from pastor_transcript_extractor.config import (
     AppPaths,
     build_llm_config,
-    build_paths,
     build_pastor_paths,
-    build_tool_config,
     ensure_directories,
 )
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
@@ -931,7 +929,7 @@ def association_audit_command(
         help="Override app data directory.",
     ),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -1069,7 +1067,7 @@ def consolidate_source_profiles_command(
         raise typer.BadParameter("--plan-only cannot be combined with --apply")
     if apply and not (reviewer or "").strip():
         raise typer.BadParameter("--apply requires --reviewer")
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=not apply)
@@ -1697,7 +1695,7 @@ def shadow_discover_profiles_command(
         raise typer.BadParameter(
             "--minimum-consistency-score requires --consistency-report"
         )
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -2257,7 +2255,7 @@ def promote_discovered_profiles_command(
         help="Override app data directory.",
     ),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -2333,7 +2331,7 @@ def confirm_discovered_profiles_command(
         help="Override app data directory.",
     ),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -2972,7 +2970,7 @@ def run_identity_workflow_service(
     effective_apply_confirmations = policy.apply_confirmations
     effective_apply_promotions = policy.apply_promotions
     effective_apply_machine = policy.apply_machine_assignments
-    paths = build_paths(base_dir, remember=not plan_only)
+    paths = config.build_paths(base_dir, remember=not plan_only)
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -3677,7 +3675,7 @@ def profile_leverage_snapshot_command(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> Path:
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -3955,7 +3953,7 @@ def shadow_associate_speakers_service(
     cache_dir = request.cache_dir
     output_root = request.output_root
     base_dir = request.base_dir
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -4648,7 +4646,7 @@ def shadow_association_status_command(
         help="Override app data directory.",
     ),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -4823,7 +4821,7 @@ def prepare_speaker_review_audio(
         raise typer.BadParameter(
             "evaluation scope must be one of: all, development, validation, held_out"
         )
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -4954,7 +4952,7 @@ def prepare_actionable_review_audio_command(
         help="Override app data directory.",
     ),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -5101,7 +5099,7 @@ def review_next_speaker_pair(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    paths = build_paths(base_dir)
+    paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -5907,7 +5905,7 @@ def sync_imported_sources(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = command_common.get_database(base_dir)
-    app_paths = build_paths(base_dir, remember=True)
+    app_paths = config.build_paths(base_dir, remember=True)
     try:
         sync_imported_sources_workflow(
             database,
@@ -5954,7 +5952,7 @@ def identity_backfill(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = command_common.get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
+    paths = config.build_paths(base_dir, remember=True)
     result = backfill_shadow_identity_assessments(database, paths, video_id=video_id)
     console.print(
         "Identity shadow backfill: "
@@ -5967,8 +5965,8 @@ def identity_backfill(
 def doctor(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    paths = build_paths(base_dir, remember=True)
-    tools = build_tool_config()
+    paths = config.build_paths(base_dir, remember=True)
+    tools = config.build_tool_config()
     llm = build_llm_config()
     sermon_minimum = minimum_sermon_duration_seconds()
     sermon_maximum = maximum_sermon_duration_seconds()
@@ -6121,7 +6119,7 @@ def extract(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = command_common.get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
+    paths = config.build_paths(base_dir, remember=True)
     try:
         result = application.extract_batch(
             database,
@@ -6227,7 +6225,7 @@ def apply_fixture_correction(
         raise typer.BadParameter(str(error)) from error
 
     database = command_common.get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
+    paths = config.build_paths(base_dir, remember=True)
     video = database.get_video_by_youtube_id(youtube_video_id)
     if video is None:
         raise typer.BadParameter(
@@ -6435,7 +6433,7 @@ def reclassify(
             "--review-required, or --all."
         )
     database = command_common.get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
+    paths = config.build_paths(base_dir, remember=True)
     if video_id is not None:
         video = database.get_video_by_id(video_id)
         videos = [video] if video is not None else []
@@ -6675,7 +6673,7 @@ def review(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = command_common.get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
+    paths = config.build_paths(base_dir, remember=True)
     if all_pastors and pastor is not None:
         raise typer.BadParameter("Do not pass a pastor slug when using --all.")
     if not all_pastors and pastor is None:
@@ -6783,8 +6781,8 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
         event_callback=render_event,
         dependencies=RunWorkflowDependencies(
             get_database=command_common.get_database,
-            build_paths=build_paths,
-            build_tools=build_tool_config,
+            build_paths=config.build_paths,
+            build_tools=config.build_tool_config,
             verify_manifest=_verify_audio_stage_manifest,
             audio_scope=AudioStageScopeDependencies(
                 get_database=command_common.get_database,
@@ -6808,7 +6806,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
             ),
             online_pipeline=PipelineDependencies(
                 get_database=command_common.get_database,
-                build_paths=build_paths,
+                build_paths=config.build_paths,
                 add_source=add_source_service,
                 delete_source=delete_source_service,
                 discover=acquisition.discover_sources_service,
@@ -6912,7 +6910,7 @@ def _ensure_and_archive_run_media(
         dependencies=RunMediaDependencies(
             has_isolated_sermon=video_has_isolated_sermon,
             get_verified_media=get_verified_normalized_media_artifact,
-            build_tools=build_tool_config,
+            build_tools=config.build_tool_config,
             ensure_audio=ensure_audio_for_video,
             archive_source=archive_source_media,
         ),
