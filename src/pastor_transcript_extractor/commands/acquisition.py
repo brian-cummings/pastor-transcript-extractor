@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 from threading import Lock
 import time
 
+import typer
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -14,7 +16,15 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
-from pastor_transcript_extractor import discovery, transcription
+from pastor_transcript_extractor import (
+    application,
+    church_database_import,
+    discovery,
+    media_archive,
+    media_artifacts,
+    transcription,
+)
+from pastor_transcript_extractor.commands.apps import root_app
 from pastor_transcript_extractor.config import (
     build_paths,
     build_tool_config,
@@ -28,6 +38,13 @@ from pastor_transcript_extractor.workflows.caption_acquisition import (
 from pastor_transcript_extractor.workflows.source_discovery import (
     DiscoveryServiceResult,
     discover_sources_service as _discover_sources_service,
+)
+from pastor_transcript_extractor.workflows.source_sync import (
+    SourceSyncConfigurationError,
+    SourceSyncDependencies,
+    SourceSyncDiskReserveError,
+    SourceSyncRequest,
+    sync_imported_sources_workflow,
 )
 from pastor_transcript_extractor.workflows.transcription import (
     DEFAULT_PREP_WORKERS,
@@ -58,6 +75,9 @@ from pastor_transcript_extractor.workflows.transcription_events import (
 
 
 DEFAULT_DISCOVER_LIMIT = 26
+MIN_SYNC_FREE_DISK_FRACTION = 0.20
+SYNC_ARCHIVE_WAIT_INITIAL_SECONDS = 1.0
+SYNC_ARCHIVE_WAIT_MAX_SECONDS = 30.0
 console = Console()
 
 
@@ -335,3 +355,83 @@ def transcribe_videos_service(
         )
     finally:
         renderer.close()
+
+
+@root_app.command(
+    "sync-imported-sources",
+    help="Acquire recent transcripts and fallback audio for provenance-imported sources.",
+)
+def sync_imported_sources(
+    provider: str = typer.Option(
+        church_database_import.IMPORT_PROVIDER,
+        help="Import provider to synchronize.",
+    ),
+    latest: int = typer.Option(6, min=1, help="Newest videos to retain per imported source."),
+    jobs: int = typer.Option(
+        default_transcribe_jobs(),
+        min=1,
+        help="Concurrent local ASR and video extraction jobs.",
+    ),
+    download_jobs: int = typer.Option(
+        DEFAULT_PREP_WORKERS,
+        "--download-jobs",
+        min=1,
+        help="Concurrent audio download and normalization workers.",
+    ),
+    all_audio: bool = typer.Option(
+        False,
+        "--all-audio",
+        help="Download and locally transcribe every eligible video, including captioned videos.",
+    ),
+    extract_new: bool = typer.Option(
+        False,
+        "--extract/--no-extract",
+        help="Also create missing sermon extraction proposals for synchronized sources.",
+    ),
+    archive_sources: bool = typer.Option(
+        False,
+        "--archive-sources/--no-archive-sources",
+        help=(
+            "Register audio and queue verified source files to a background archive "
+            "worker at the configured destination. Requires --extract."
+        ),
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+) -> None:
+    database = get_database(base_dir)
+    app_paths = build_paths(base_dir, remember=True)
+    try:
+        sync_imported_sources_workflow(
+            database,
+            app_paths,
+            SourceSyncRequest(
+                provider=provider,
+                latest=latest,
+                jobs=jobs,
+                download_jobs=download_jobs,
+                all_audio=all_audio,
+                extract_new=extract_new,
+                archive_sources=archive_sources,
+            ),
+            base_dir=base_dir,
+            progress_callback=lambda message: console.print(message, markup=False),
+            dependencies=SourceSyncDependencies(
+                list_imported_sources=church_database_import.imported_source_ids,
+                discover=discover_sources_service,
+                fetch_captions=fetch_captions_service,
+                transcribe=transcribe_videos_service,
+                extract=application.extract_batch,
+                register_media=media_artifacts.backfill_existing_media_artifacts,
+                archive_source=media_archive.archive_source_media,
+                archive_lock_held=media_archive.media_archive_lock_held,
+                disk_usage=shutil.disk_usage,
+                sleeper=time.sleep,
+                minimum_free_fraction=MIN_SYNC_FREE_DISK_FRACTION,
+                initial_wait_seconds=SYNC_ARCHIVE_WAIT_INITIAL_SECONDS,
+                maximum_wait_seconds=SYNC_ARCHIVE_WAIT_MAX_SECONDS,
+            ),
+        )
+    except SourceSyncConfigurationError as error:
+        raise typer.BadParameter(str(error)) from error
+    except SourceSyncDiskReserveError as error:
+        raise typer.Exit(code=1) from error

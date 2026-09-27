@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the imported-source synchronization seams
-  (`imported_source_ids`, source archival, and related adapter dependencies) to
-  their owning modules without touching unrelated source-processing changes.
+- Next action: migrate the audio-stage adapter seams (manifest verification,
+  source-audio staging, and manifest writing) to their workflow/domain owners
+  without touching unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1077,6 +1077,14 @@ composition now resolves that owner directly, while a temporary CLI alias
 preserves direct test imports. Adapter dependencies are assembled from the
 configuration, media-artifact, and media-archive owners, so tests patch real
 boundaries instead of CLI imports.
+
+### 2026-09-27 — Milestone 8.14: imported-source synchronization command
+
+Moved the `sync-imported-sources` command and its dependency composition into
+`commands/acquisition.py`. Source inventory, media registration and archival,
+archive locking, disk usage, sleep, and wait-policy tests now patch their
+actual owner modules. The command contract and source-sync workflow behavior
+remain unchanged; `cli.py` is now 6,826 lines.
 
 ## Validation log
 
@@ -2440,6 +2448,22 @@ PASS
 Ran 20 tests in 0.549s — OK
 
 rg -n "pastor_transcript_extractor\.cli\._ensure_and_archive_run_media" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Imported-source synchronization command
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/acquisition.py src/pastor_transcript_extractor/cli.py tests/test_church_database_import.py
+PASS
+
+.venv/bin/python -m unittest tests.test_church_database_import tests.test_source_sync_workflow tests.test_cli_contract
+Ran 22 tests in 0.707s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(imported_source_ids|archive_source_media|backfill_existing_media_artifacts|media_archive_lock_held|shutil\.disk_usage|time\.sleep|SYNC_ARCHIVE)" tests
 No matches
 
 git diff --check

@@ -31,10 +31,8 @@ from pastor_transcript_extractor.audio_staging import (
 )
 from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.church_database_import import (
-    IMPORT_PROVIDER,
     ChurchDatabaseImportError,
     import_church_sources,
-    imported_source_ids,
 )
 from pastor_transcript_extractor.commands.apps import (
     attach_command_groups,
@@ -175,8 +173,6 @@ from pastor_transcript_extractor.media_archive import (
     ArchiveRunResult,
     CanonicalAudioPreparationProgressEvent,
     archive_normalized_media,
-    archive_source_media,
-    media_archive_lock_held,
     prepare_canonical_audio,
     load_verified_canonical_clips,
     write_canonical_clip_preparation_manifest,
@@ -184,7 +180,6 @@ from pastor_transcript_extractor.media_archive import (
 from pastor_transcript_extractor.media_artifacts import (
     ArchivedMediaUnavailableError,
     MediaVerificationCache,
-    backfill_existing_media_artifacts,
     ensure_audio_for_video,
     get_verified_normalized_media_artifact,
     get_authoritative_normalized_media_artifact,
@@ -328,13 +323,6 @@ from pastor_transcript_extractor.sermon_fixture_selector import (
     sermon_duration_bucket,
 )
 from pastor_transcript_extractor.storage import Database
-from pastor_transcript_extractor.workflows.source_sync import (
-    SourceSyncConfigurationError,
-    SourceSyncDependencies,
-    SourceSyncDiskReserveError,
-    SourceSyncRequest,
-    sync_imported_sources_workflow,
-)
 from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageDependencies,
     AudioStageScopeDependencies,
@@ -425,9 +413,6 @@ attach_command_groups(app)
 console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 CAPTION_BATCH_REQUEST_INTERVAL_SECONDS = 5.0
-MIN_SYNC_FREE_DISK_FRACTION = 0.20
-SYNC_ARCHIVE_WAIT_INITIAL_SECONDS = 1.0
-SYNC_ARCHIVE_WAIT_MAX_SECONDS = 30.0
 DEFAULT_SPEAKER_MODEL_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
 
 
@@ -5859,83 +5844,6 @@ def import_church_db(
         f"{status}={count}" for status, count in sorted(result.counts.items())
     )
     console.print(f"Church import complete: {counts or 'no complete records'}.")
-
-
-@app.command(
-    "sync-imported-sources",
-    help="Acquire recent transcripts and fallback audio for provenance-imported sources.",
-)
-def sync_imported_sources(
-    provider: str = typer.Option(IMPORT_PROVIDER, help="Import provider to synchronize."),
-    latest: int = typer.Option(6, min=1, help="Newest videos to retain per imported source."),
-    jobs: int = typer.Option(
-        _default_transcribe_jobs(),
-        min=1,
-        help="Concurrent local ASR and video extraction jobs.",
-    ),
-    download_jobs: int = typer.Option(
-        DEFAULT_PREP_WORKERS,
-        "--download-jobs",
-        min=1,
-        help="Concurrent audio download and normalization workers.",
-    ),
-    all_audio: bool = typer.Option(
-        False,
-        "--all-audio",
-        help="Download and locally transcribe every eligible video, including captioned videos.",
-    ),
-    extract_new: bool = typer.Option(
-        False,
-        "--extract/--no-extract",
-        help="Also create missing sermon extraction proposals for synchronized sources.",
-    ),
-    archive_sources: bool = typer.Option(
-        False,
-        "--archive-sources/--no-archive-sources",
-        help=(
-            "Register audio and queue verified source files to a background archive "
-            "worker at the configured destination. Requires --extract."
-        ),
-    ),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = command_common.get_database(base_dir)
-    app_paths = config.build_paths(base_dir, remember=True)
-    try:
-        sync_imported_sources_workflow(
-            database,
-            app_paths,
-            SourceSyncRequest(
-                provider=provider,
-                latest=latest,
-                jobs=jobs,
-                download_jobs=download_jobs,
-                all_audio=all_audio,
-                extract_new=extract_new,
-                archive_sources=archive_sources,
-            ),
-            base_dir=base_dir,
-            progress_callback=lambda message: console.print(message, markup=False),
-            dependencies=SourceSyncDependencies(
-                list_imported_sources=imported_source_ids,
-                discover=acquisition.discover_sources_service,
-                fetch_captions=acquisition.fetch_captions_service,
-                transcribe=acquisition.transcribe_videos_service,
-                extract=application.extract_batch,
-                register_media=backfill_existing_media_artifacts,
-                archive_source=archive_source_media,
-                archive_lock_held=media_archive_lock_held,
-                disk_usage=shutil.disk_usage,
-                sleeper=time.sleep,
-                minimum_free_fraction=MIN_SYNC_FREE_DISK_FRACTION,
-                initial_wait_seconds=SYNC_ARCHIVE_WAIT_INITIAL_SECONDS,
-                maximum_wait_seconds=SYNC_ARCHIVE_WAIT_MAX_SECONDS,
-            ),
-        )
-    except SourceSyncConfigurationError as error:
-        raise typer.BadParameter(str(error)) from error
-    except SourceSyncDiskReserveError as error:
-        raise typer.Exit(code=1) from error
 
 
 @identity_app.command(
