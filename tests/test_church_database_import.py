@@ -451,7 +451,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     side_effect=captions,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.transcribe_videos_service",
+                    "pastor_transcript_extractor.commands.acquisition.transcribe_videos_service",
                     side_effect=transcribe,
                 ),
                 patch("pastor_transcript_extractor.application.extract_batch", side_effect=extraction),
@@ -618,7 +618,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     side_effect=discover,
                 ),
                 patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
-                patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
+                patch("pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"),
                 patch(
                     "pastor_transcript_extractor.application.extract_batch",
                     return_value=no_extraction,
@@ -675,7 +675,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                 ),
                 patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
                 patch(
-                    "pastor_transcript_extractor.cli.transcribe_videos_service"
+                    "pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"
                 ) as transcribe,
             ):
                 result = CliRunner().invoke(
@@ -773,7 +773,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     ),
                 ),
                 patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
-                patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
+                patch("pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"),
                 patch(
                     "pastor_transcript_extractor.application.extract_batch",
                     return_value=no_extraction,
@@ -851,7 +851,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     ),
                 ),
                 patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
-                patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
+                patch("pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"),
             ):
                 result = CliRunner().invoke(
                     app,

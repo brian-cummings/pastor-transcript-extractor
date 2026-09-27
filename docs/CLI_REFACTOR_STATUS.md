@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: move the transcription adapter and renderer behind the new
-  acquisition command boundary, including its prepare/complete dependency
-  seams, without touching unrelated source-processing changes.
+- Next action: replace the broad `get_database`, `build_paths`, and
+  `build_tool_config` CLI patch cluster with command-owner or explicit
+  dependency seams, without touching unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1046,6 +1046,15 @@ Moved the discovery and caption-acquisition adapters into
 those adapters from their owner, while temporary aliases preserve direct
 imports until migration scaffolding is removed. Tests patch the adapter owner,
 and fetch scheduling tests patch the owner's clock boundary.
+
+### 2026-09-27 — Milestone 8.10: transcription command adapter
+
+Moved transcription adaptation, Rich progress rendering, and prepare/complete
+boundaries into `commands/acquisition.py`. CLI commands and pipeline composition
+resolve the service from that owner; tests patch transcription domain functions
+at their owner and terminal presentation objects at the command adapter. The
+dead CLI renderer and helper copies were removed, reducing `cli.py` to 6,956
+lines.
 
 ## Validation log
 
@@ -2345,6 +2354,22 @@ Ran 32 tests in 1.302s — OK
 Ran 35 tests in 15.206s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(discover_sources_service|fetch_captions_service)" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Transcription command adapter
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/acquisition.py src/pastor_transcript_extractor/cli.py tests/test_sources.py tests/test_church_database_import.py
+PASS
+
+.venv/bin/python -m unittest <26 affected transcription adapter tests> tests.test_cli_contract
+Ran 32 tests in 1.465s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(transcribe_videos_service|prepare_transcription_input|complete_transcription_video)" tests
 No matches
 
 git diff --check
