@@ -8,12 +8,24 @@ from typing import Any, Callable, Mapping, Sequence
 from pastor_transcript_extractor.identity_leverage import (
     profile_neighborhood_video_ids,
 )
+from pastor_transcript_extractor.identity_attribution import (
+    title_byline_selection_hint,
+)
 from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.models import SpeakerObservation, Video
 from pastor_transcript_extractor.pipeline_diagnostics import (
     load_identity_association_attempts,
 )
 from pastor_transcript_extractor.speaker_pair_diagnostics import SpanSpec
+from pastor_transcript_extractor.speaker_shadow_association import (
+    ProfileAssociationReadiness,
+    ShadowExemplar,
+    StagedAssociationRouting,
+    leave_one_out_profile_readiness,
+    select_profile_exemplars,
+    select_routed_association_profiles,
+    select_staged_association_profiles,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     AutomaticSpeakerObservationEligibility,
@@ -115,6 +127,22 @@ class AssociationSpanPreparationResult:
             for outcome in self.outcomes
             if isinstance(outcome, AssociationSpanExclusion)
         )
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationProfileRoutePlan:
+    """Candidate-specific profile selection and durable routing evidence."""
+
+    routing: StagedAssociationRouting
+    routing_payload: Mapping[str, Any]
+    explicit_candidate_names: tuple[str, ...]
+    exhaustive_profile_comparison_count: int
+    candidate_usable_profiles: tuple[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
+    ]
+    legacy_routed_profiles: tuple[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
+    ]
 
 
 def validate_shadow_association_request(
@@ -375,3 +403,194 @@ def prepare_association_candidate_spans(
                     candidate_count,
                 )
     return AssociationSpanPreparationResult(outcomes=tuple(outcomes))
+
+
+def _profile_readiness_funnel_payload(
+    profile_readiness: Sequence[ProfileAssociationReadiness],
+    comparison_profiles: Sequence[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+    ],
+    *,
+    eligible_exemplars: Sequence[ShadowExemplar],
+    minimum_same_exemplars: int,
+    leave_one_out_observation_id: int | None = None,
+) -> dict[str, Any]:
+    comparison_profile_ids = {
+        profile.profile_id for profile, _exemplars in comparison_profiles
+    }
+    return {
+        "canonical_profile_ids": sorted(
+            profile.profile_id for profile in profile_readiness
+        ),
+        "review_ready_profile_ids": sorted(
+            profile.profile_id
+            for profile in profile_readiness
+            if profile.review_ready
+        ),
+        "comparison_eligible_profile_ids": sorted(comparison_profile_ids),
+        "leave_one_out_observation_id": leave_one_out_observation_id,
+        "excluded_profiles": [
+            {
+                "profile_id": profile.profile_id,
+                "stage": (
+                    "profile_readiness"
+                    if not profile.review_ready
+                    else "acoustic_exemplar_availability"
+                ),
+                "reason_codes": (
+                    list(profile.shadow_blockers)
+                    if not profile.review_ready
+                    else ["fewer_than_required_eligible_acoustic_exemplars"]
+                ),
+                "eligible_exemplar_count": sum(
+                    exemplar.profile_id == profile.profile_id
+                    and exemplar.observation.id != leave_one_out_observation_id
+                    for exemplar in eligible_exemplars
+                ),
+                "required_exemplar_count": minimum_same_exemplars,
+            }
+            for profile in profile_readiness
+            if profile.profile_id not in comparison_profile_ids
+        ],
+    }
+
+
+def plan_association_profile_route(
+    database: Database,
+    *,
+    video: Video,
+    observation: SpeakerObservation,
+    readiness: Sequence[ProfileAssociationReadiness],
+    usable_profiles: Sequence[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+    ],
+    eligible_exemplars: Sequence[ShadowExemplar],
+    videos_by_id: Mapping[int, Video],
+    observations_by_id: Mapping[int, SpeakerObservation],
+    source_id_by_video_id: Mapping[int, int],
+    candidate_names_by_observation: Mapping[int, Sequence[str]],
+    minimum_profile_members: int,
+    maximum_exemplars: int,
+    minimum_same_exemplars: int,
+    maximum_global_profiles: int,
+    candidate_centroid: Sequence[float],
+    exemplar_centroids: Mapping[int, Sequence[float]],
+    confirmation_profile_ids: frozenset[int] = frozenset(),
+) -> AssociationProfileRoutePlan:
+    """Plan one candidate's profile route without acoustic comparisons."""
+    explicit_candidate_names = tuple(
+        sorted(set(candidate_names_by_observation.get(observation.id, ())))
+    )
+    title_hint = title_byline_selection_hint(video.title)
+    routing_names = set(explicit_candidate_names)
+    if title_hint:
+        routing_names.add(title_hint)
+    effective_candidate_profile_ids = {
+        database.resolve_speaker_profile_id(profile_id)
+        for profile_id in database.list_effective_profile_ids_for_observation(
+            observation.id
+        )
+    }
+    leave_one_out_applied = bool(effective_candidate_profile_ids)
+    if leave_one_out_applied:
+        candidate_readiness = tuple(
+            leave_one_out_profile_readiness(
+                profile,
+                candidate=observation,
+                observations_by_id=observations_by_id,
+                source_id_by_video_id=source_id_by_video_id,
+                normalized_names_by_observation_id=(
+                    candidate_names_by_observation
+                ),
+                minimum_members=minimum_profile_members,
+            )
+            for profile in readiness
+        )
+        candidate_usable_profiles: list[
+            tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+        ] = []
+        for profile in candidate_readiness:
+            if not profile.review_ready:
+                continue
+            exemplars = select_profile_exemplars(
+                profile,
+                eligible_exemplars,
+                videos_by_id=videos_by_id,
+                maximum_exemplars=maximum_exemplars,
+            )
+            if len(exemplars) >= minimum_same_exemplars:
+                candidate_usable_profiles.append((profile, exemplars))
+        readiness_funnel = _profile_readiness_funnel_payload(
+            candidate_readiness,
+            candidate_usable_profiles,
+            eligible_exemplars=eligible_exemplars,
+            minimum_same_exemplars=minimum_same_exemplars,
+            leave_one_out_observation_id=observation.id,
+        )
+    else:
+        candidate_usable_profiles = list(usable_profiles)
+        readiness_funnel = _profile_readiness_funnel_payload(
+            readiness,
+            candidate_usable_profiles,
+            eligible_exemplars=eligible_exemplars,
+            minimum_same_exemplars=minimum_same_exemplars,
+        )
+
+    legacy_routed_profiles = select_routed_association_profiles(
+        candidate_usable_profiles,
+        candidate_source_id=video.source_id,
+        candidate_normalized_names=sorted(routing_names),
+        source_id_by_video_id=source_id_by_video_id,
+    )
+    routing = select_staged_association_profiles(
+        candidate_usable_profiles,
+        candidate_source_id=video.source_id,
+        candidate_normalized_names=sorted(routing_names),
+        source_id_by_video_id=source_id_by_video_id,
+        candidate_centroid=candidate_centroid,
+        exemplar_centroids=exemplar_centroids,
+        maximum_global_profiles=maximum_global_profiles,
+        confirmation_priority_profile_ids=confirmation_profile_ids,
+    )
+    payload: dict[str, Any] = {
+        "route": routing.route,
+        "exhaustive": routing.exhaustive,
+        "priority_profile_ids": list(routing.priority_profile_ids),
+        "shortlisted_profile_ids": list(routing.shortlisted_profile_ids),
+        "total_routable_profiles": routing.total_routable_profiles,
+        "maximum_global_profiles": maximum_global_profiles,
+        "retrieval_evidence_only": True,
+        "candidate_funnel": {
+            **dict(routing.candidate_funnel or {}),
+            **readiness_funnel,
+            "retrospective_evaluation": {
+                "leave_one_out_applied": leave_one_out_applied,
+                "hidden_effective_profile_ids": sorted(
+                    effective_candidate_profile_ids
+                ),
+                "membership_used_as_routing_evidence": False,
+            },
+            "candidate_routing_inputs": {
+                "source_id": video.source_id,
+                "explicit_normalized_names": list(explicit_candidate_names),
+                "title_byline_normalized_name": title_hint,
+                "routing_normalized_names": sorted(routing_names),
+            },
+            "profiles_actually_compared": sorted(
+                profile.profile_id
+                for profile, _exemplars in routing.profiles
+            ),
+        },
+    }
+    if routing.confirmation_priority_profile_ids:
+        payload["confirmation_priority_profile_ids"] = list(
+            routing.confirmation_priority_profile_ids
+        )
+    return AssociationProfileRoutePlan(
+        routing=routing,
+        routing_payload=payload,
+        explicit_candidate_names=explicit_candidate_names,
+        exhaustive_profile_comparison_count=len(legacy_routed_profiles),
+        candidate_usable_profiles=tuple(candidate_usable_profiles),
+        legacy_routed_profiles=legacy_routed_profiles,
+    )

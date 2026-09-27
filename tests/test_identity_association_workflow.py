@@ -12,6 +12,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     AssociationSpanInput,
     ShadowAssociationRequest,
     assess_association_candidate,
+    plan_association_profile_route,
     prepare_association_candidate_spans,
     resolve_association_scope,
     validate_shadow_association_request,
@@ -309,6 +310,185 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(
             {"selected": True}, result.candidates[0].span_selection
+        )
+
+    def test_profile_route_plan_preserves_inputs_and_evidence(self) -> None:
+        profile = SimpleNamespace(
+            profile_id=8,
+            review_ready=True,
+            shadow_blockers=(),
+        )
+        exemplar = SimpleNamespace(
+            profile_id=8,
+            observation=SimpleNamespace(id=80, video_id=800),
+        )
+        usable_profiles = ((profile, (exemplar,)),)
+        routing = SimpleNamespace(
+            profiles=usable_profiles,
+            route="source_local",
+            exhaustive=False,
+            priority_profile_ids=(8,),
+            shortlisted_profile_ids=(8,),
+            total_routable_profiles=1,
+            confirmation_priority_profile_ids=(8,),
+            candidate_funnel={"retrieval_candidates": []},
+        )
+        database = SimpleNamespace(
+            list_effective_profile_ids_for_observation=lambda _id: (),
+            resolve_speaker_profile_id=lambda profile_id: profile_id,
+        )
+        video = SimpleNamespace(id=7, source_id=3, title="A title")
+        observation = SimpleNamespace(id=11)
+
+        with (
+            patch.object(
+                association,
+                "title_byline_selection_hint",
+                return_value="title name",
+            ),
+            patch.object(
+                association,
+                "select_routed_association_profiles",
+                return_value=usable_profiles,
+            ) as legacy_route,
+            patch.object(
+                association,
+                "select_staged_association_profiles",
+                return_value=routing,
+            ) as staged_route,
+        ):
+            plan = plan_association_profile_route(
+                database,
+                video=video,
+                observation=observation,
+                readiness=(profile,),
+                usable_profiles=usable_profiles,
+                eligible_exemplars=(exemplar,),
+                videos_by_id={7: video},
+                observations_by_id={11: observation},
+                source_id_by_video_id={800: 3},
+                candidate_names_by_observation={11: ("zeta", "alpha")},
+                minimum_profile_members=3,
+                maximum_exemplars=3,
+                minimum_same_exemplars=2,
+                maximum_global_profiles=1,
+                candidate_centroid=(1.0,),
+                exemplar_centroids={80: (1.0,)},
+                confirmation_profile_ids=frozenset({8}),
+            )
+
+        self.assertEqual(("alpha", "zeta"), plan.explicit_candidate_names)
+        self.assertEqual(1, plan.exhaustive_profile_comparison_count)
+        self.assertEqual(usable_profiles, plan.candidate_usable_profiles)
+        legacy_route.assert_called_once()
+        self.assertEqual(
+            ["alpha", "title name", "zeta"],
+            legacy_route.call_args.kwargs["candidate_normalized_names"],
+        )
+        self.assertEqual(
+            frozenset({8}),
+            staged_route.call_args.kwargs[
+                "confirmation_priority_profile_ids"
+            ],
+        )
+        payload = plan.routing_payload
+        self.assertEqual([8], payload["confirmation_priority_profile_ids"])
+        self.assertEqual(
+            {
+                "leave_one_out_applied": False,
+                "hidden_effective_profile_ids": [],
+                "membership_used_as_routing_evidence": False,
+            },
+            payload["candidate_funnel"]["retrospective_evaluation"],
+        )
+        self.assertEqual(
+            ["alpha", "zeta"],
+            payload["candidate_funnel"]["candidate_routing_inputs"][
+                "explicit_normalized_names"
+            ],
+        )
+
+    def test_profile_route_plan_reselects_leave_one_out_exemplars(self) -> None:
+        profile = SimpleNamespace(profile_id=8, review_ready=True)
+        adjusted = SimpleNamespace(
+            profile_id=8,
+            review_ready=True,
+            shadow_blockers=(),
+        )
+        exemplar = SimpleNamespace(
+            profile_id=8,
+            observation=SimpleNamespace(id=80, video_id=800),
+        )
+        routing = SimpleNamespace(
+            profiles=((adjusted, (exemplar,)),),
+            route="global",
+            exhaustive=True,
+            priority_profile_ids=(),
+            shortlisted_profile_ids=(8,),
+            total_routable_profiles=1,
+            confirmation_priority_profile_ids=(),
+            candidate_funnel=None,
+        )
+        database = SimpleNamespace(
+            list_effective_profile_ids_for_observation=lambda _id: (18,),
+            resolve_speaker_profile_id=lambda _id: 8,
+        )
+        with (
+            patch.object(
+                association,
+                "leave_one_out_profile_readiness",
+                return_value=adjusted,
+            ) as leave_one_out,
+            patch.object(
+                association,
+                "select_profile_exemplars",
+                return_value=(exemplar, exemplar),
+            ) as select_exemplars,
+            patch.object(
+                association,
+                "select_routed_association_profiles",
+                return_value=(),
+            ),
+            patch.object(
+                association,
+                "select_staged_association_profiles",
+                return_value=routing,
+            ),
+        ):
+            plan = plan_association_profile_route(
+                database,
+                video=SimpleNamespace(id=7, source_id=3, title="Title"),
+                observation=SimpleNamespace(id=11),
+                readiness=(profile,),
+                usable_profiles=(),
+                eligible_exemplars=(exemplar,),
+                videos_by_id={},
+                observations_by_id={},
+                source_id_by_video_id={},
+                candidate_names_by_observation={},
+                minimum_profile_members=3,
+                maximum_exemplars=3,
+                minimum_same_exemplars=2,
+                maximum_global_profiles=1,
+                candidate_centroid=(1.0,),
+                exemplar_centroids={80: (1.0,)},
+            )
+
+        leave_one_out.assert_called_once()
+        select_exemplars.assert_called_once()
+        self.assertEqual(
+            ((adjusted, (exemplar, exemplar)),),
+            plan.candidate_usable_profiles,
+        )
+        self.assertEqual(
+            {
+                "leave_one_out_applied": True,
+                "hidden_effective_profile_ids": [8],
+                "membership_used_as_routing_evidence": False,
+            },
+            plan.routing_payload["candidate_funnel"][
+                "retrospective_evaluation"
+            ],
         )
 
 
