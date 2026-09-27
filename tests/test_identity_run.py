@@ -370,7 +370,7 @@ class IdentityRunTests(unittest.TestCase):
                     side_effect=(Path("baseline.json"), Path("after.json")),
                 ) as leverage_snapshot,
                 patch(
-                    "pastor_transcript_extractor.cli.prepare_canonical_audio",
+                    "pastor_transcript_extractor.media_archive.prepare_canonical_audio",
                     return_value=SimpleNamespace(
                         items=(
                             SimpleNamespace(
@@ -781,7 +781,7 @@ class IdentityRunTests(unittest.TestCase):
         )
         with (
             patch(
-                "pastor_transcript_extractor.cli.prepare_canonical_audio",
+                "pastor_transcript_extractor.media_archive.prepare_canonical_audio",
                 return_value=SimpleNamespace(
                     items=(),
                     counts={
@@ -795,7 +795,7 @@ class IdentityRunTests(unittest.TestCase):
                 ),
             ) as prepare,
             patch(
-                "pastor_transcript_extractor.cli.archive_normalized_media",
+                "pastor_transcript_extractor.media_archive.archive_normalized_media",
                 return_value=archive_result,
             ) as archive,
             patch("pastor_transcript_extractor.cli.console.print") as output,
@@ -936,11 +936,11 @@ class IdentityRunTests(unittest.TestCase):
         )
         with (
             patch(
-                "pastor_transcript_extractor.cli.prepare_canonical_audio",
+                "pastor_transcript_extractor.media_archive.prepare_canonical_audio",
                 return_value=preparation,
             ),
             patch(
-                "pastor_transcript_extractor.cli.archive_normalized_media"
+                "pastor_transcript_extractor.media_archive.archive_normalized_media"
             ) as archive,
         ):
             with self.assertRaisesRegex(
