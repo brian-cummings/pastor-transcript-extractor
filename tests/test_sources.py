@@ -2229,7 +2229,7 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.cli._run_post_content_identity",
                 side_effect=apply_identity,
             ), patch(
-                "pastor_transcript_extractor.cli.prepare_review_exports",
+                "pastor_transcript_extractor.application.prepare_review_exports",
                 side_effect=export_review,
             ), patch(
                 "pastor_transcript_extractor.cli._print_review_batch"
@@ -2273,7 +2273,7 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.cli._run_post_content_identity"
         ) as identity, patch(
-            "pastor_transcript_extractor.cli.prepare_review_exports"
+            "pastor_transcript_extractor.application.prepare_review_exports"
         ) as review:
             run_workflow_service(
                 all_sources=True,
@@ -2820,7 +2820,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli._run_post_content_identity",
             side_effect=lambda *args, **kwargs: calls.append("identity"),
         ), patch(
-            "pastor_transcript_extractor.cli.prepare_review_exports",
+            "pastor_transcript_extractor.application.prepare_review_exports",
             side_effect=lambda *args, **kwargs: (
                 calls.append("review") or SimpleNamespace()
             ),
