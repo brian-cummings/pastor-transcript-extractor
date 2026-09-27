@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: inventory the remaining pipeline-stage `cli.py` patches and
-  replace the next cohesive cluster with explicit workflow dependencies or
-  owner-module patches, avoiding unrelated source-processing changes.
+- Next action: move the remaining acquisition pipeline adapters behind an
+  explicit non-CLI ownership boundary so discovery, caption, and transcription
+  tests no longer patch composition-root globals.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1031,6 +1031,13 @@ application module and migrated the affected patches. Review preparation now
 has an explicit default-bound extractor dependency, preventing an owner patch
 for a composed pipeline stage from also intercepting review preparation's
 separate extraction pass.
+
+### 2026-09-27 — Milestone 8.8: review export owner seam
+
+Changed review command and pipeline composition to resolve
+`prepare_review_exports` from its owning application module. The three affected
+pipeline tests now patch that owner, completing migration of application-owned
+operations away from incidental `cli.py` bindings.
 
 ## Validation log
 
@@ -2295,6 +2302,22 @@ Ran 22 tests in 0.931s — OK
 Ran 6 tests in 0.004s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.extract_batch" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Review export owner seam
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest <3 affected review-export tests> tests.test_cli_contract
+Ran 9 tests in 0.322s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.prepare_review_exports" tests
 No matches
 
 git diff --check

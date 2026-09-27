@@ -24,7 +24,7 @@ from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextC
 from rich.table import Table
 
 from pastor_transcript_extractor import application, discovery, transcription
-from pastor_transcript_extractor.application import ReviewBatchResult, prepare_review_exports
+from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.audio_staging import (
     load_and_verify_audio_stage_manifest,
     write_audio_stage_manifest,
@@ -6973,7 +6973,7 @@ def review(
     if pastor is not None and database.get_pastor_by_slug(pastor) is None:
         raise _unknown_pastor_error(pastor, base_dir)
     try:
-        batch = prepare_review_exports(
+        batch = application.prepare_review_exports(
             database,
             paths,
             pastor_slug=pastor,
@@ -7093,7 +7093,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,
-                prepare_reviews=prepare_review_exports,
+                prepare_reviews=application.prepare_review_exports,
             ),
             online_pipeline=PipelineDependencies(
                 get_database=get_database,
@@ -7106,7 +7106,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,
-                prepare_reviews=prepare_review_exports,
+                prepare_reviews=application.prepare_review_exports,
             ),
         ),
     )
