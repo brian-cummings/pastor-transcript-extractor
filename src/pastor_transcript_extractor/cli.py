@@ -322,7 +322,6 @@ from pastor_transcript_extractor.speaker_shadow_association import (
     load_reusable_shadow_association,
     load_shadow_policy,
     select_profile_exemplars,
-    should_activate_cross_source_fallback,
     summarize_shadow_associations,
     write_shadow_association,
     write_shadow_association_admission,
@@ -420,6 +419,11 @@ from pastor_transcript_extractor.workflows.identity.association_preparation impo
     AssociationSpanInput,
     prepare_association_candidate_spans,
     prepare_association_centroids,
+)
+from pastor_transcript_extractor.workflows.identity.association_evaluation import (
+    build_span_selection_payload,
+    plan_cross_source_fallback,
+    plan_exhaustive_validation,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -4912,30 +4916,13 @@ def shadow_associate_speakers_service(
             routing_payload,
         ):
             nonlocal comparison_executor
-            span_selection_payload = {
-                "version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
-                "required_label": "sermon",
-                "span_count": 5,
-                "duration_seconds": 12.0,
-                "minimum_words": 8,
-                "minimum_unique_words": 4,
-                "candidate_multiplier": 3,
-                "activity_qualified": True,
-                "distributed_first": True,
-                "within_observation_consistency_fallback": True,
-                "candidate_selection": (
-                    span_selection_by_observation_id.get(observation.id)
+            span_selection_payload = build_span_selection_payload(
+                observation.id,
+                selected_profiles,
+                selections_by_observation_id=(
+                    span_selection_by_observation_id
                 ),
-                "exemplar_selections": {
-                    str(exemplar.observation.id): (
-                        span_selection_by_observation_id.get(
-                            exemplar.observation.id
-                        )
-                    )
-                    for _profile, exemplars in selected_profiles
-                    for exemplar in exemplars
-                },
-            }
+            )
             input_fingerprint = build_shadow_association_input_fingerprint(
                 candidate=observation,
                 candidate_audio_sha256=media_artifact.content_sha256,
@@ -5010,60 +4997,17 @@ def shadow_associate_speakers_service(
             continue
         if reusable_path is None:
             detailed_profile_comparisons += len(candidate_profiles)
-        if should_activate_cross_source_fallback(
-            str(report["outcome"]), routing
-        ):
-            fallback_profiles = tuple(
-                (*candidate_profiles, *routing.fallback_profiles)
-            )
-            fallback_profile_ids = [
-                profile.profile_id
-                for profile, _exemplars in routing.fallback_profiles
-            ]
-            initial_candidate_funnel = dict(
-                initial_routing_payload.get("candidate_funnel") or {}
-            )
-            activated_retrieval_candidates = [
-                {
-                    **entry,
-                    "routing_policy_eligible": True,
-                    "selected_for_comparison": True,
-                    "passed_shortlist_cutoff": True,
-                    "weak_local_fallback_activated": True,
-                }
-                if isinstance(entry, Mapping)
-                and entry.get("profile_id") in fallback_profile_ids
-                else entry
-                for entry in initial_candidate_funnel.get(
-                    "retrieval_candidates", []
-                )
-            ]
-            fallback_routing_payload = {
-                **initial_routing_payload,
-                "route": "source_local_then_bounded_cross_source_fallback",
-                "initial_local_outcome": report["outcome"],
-                "weak_local_fallback_activated": True,
-                "fallback_profile_ids": fallback_profile_ids,
-                "profiles_actually_compared": sorted(
-                    profile.profile_id
-                    for profile, _exemplars in fallback_profiles
-                ),
-                "candidate_funnel": {
-                    **initial_candidate_funnel,
-                    "retrieval_candidates": (
-                        activated_retrieval_candidates
-                    ),
-                    "weak_local_fallback_activated": True,
-                    "initial_local_outcome": report["outcome"],
-                    "profiles_actually_compared": sorted(
-                        profile.profile_id
-                        for profile, _exemplars in fallback_profiles
-                    ),
-                },
-            }
+        fallback_pass = plan_cross_source_fallback(
+            report,
+            routing,
+            candidate_profiles,
+            initial_routing_payload,
+        )
+        if fallback_pass is not None:
             try:
                 report, reusable_path = evaluate_profiles(
-                    fallback_profiles, fallback_routing_payload
+                    fallback_pass.profiles,
+                    fallback_pass.routing_payload,
                 )
             except (OSError, RuntimeError, ValueError) as error:
                 persist_admission(
@@ -5083,56 +5027,26 @@ def shadow_associate_speakers_service(
                 )
                 continue
             if reusable_path is None:
-                detailed_profile_comparisons += len(
-                    routing.fallback_profiles
+                detailed_profile_comparisons += (
+                    fallback_pass.additional_profile_comparisons
                 )
-        if report["outcome"] == "proposed_match" and not routing.exhaustive:
-            proposed_profile_id = report.get("proposed_profile_id")
-            exhaustive_profiles = (
-                route_plan.candidate_usable_profiles
-                if proposed_profile_id in pending_confirmation_profile_ids
-                else route_plan.legacy_routed_profiles
-            )
-            initial_candidate_funnel = dict(
-                initial_routing_payload.get("candidate_funnel") or {}
-            )
-            exhaustive_routing_payload = {
-                "route": (
-                    "exhaustive_pending_discovery_confirmation_validation"
-                    if proposed_profile_id
-                    in pending_confirmation_profile_ids
-                    else "exhaustive_validation_after_shortlist_proposal"
-                ),
-                "exhaustive": True,
-                "priority_profile_ids": list(
-                    routing.priority_profile_ids
-                ),
-                "shortlisted_profile_ids": list(
-                    routing.shortlisted_profile_ids
-                ),
-                "total_routable_profiles": len(exhaustive_profiles),
-                "maximum_global_profiles": maximum_global_profiles,
-                "retrieval_evidence_only": False,
-                "initial_shortlist_result": "proposed_match",
-                "candidate_funnel": {
-                    **initial_candidate_funnel,
-                    "profiles_actually_compared": sorted(
-                        profile.profile_id
-                        for profile, _exemplars in exhaustive_profiles
-                    ),
-                    "exhaustive_validation_after_shortlist": True,
-                },
-            }
-            if routing.confirmation_priority_profile_ids:
-                exhaustive_routing_payload[
-                    "confirmation_priority_profile_ids"
-                ] = list(routing.confirmation_priority_profile_ids)
+        exhaustive_pass = plan_exhaustive_validation(
+            report,
+            route_plan,
+            pending_confirmation_profile_ids=(
+                pending_confirmation_profile_ids
+            ),
+            maximum_global_profiles=maximum_global_profiles,
+        )
+        if exhaustive_pass is not None:
             report, reusable_path = evaluate_profiles(
-                exhaustive_profiles,
-                exhaustive_routing_payload,
+                exhaustive_pass.profiles,
+                exhaustive_pass.routing_payload,
             )
             if reusable_path is None:
-                detailed_profile_comparisons += len(exhaustive_profiles)
+                detailed_profile_comparisons += (
+                    exhaustive_pass.additional_profile_comparisons
+                )
         final_routing = report["routing"]
         routing_route = str(final_routing["route"])
         routing_counts[routing_route] = routing_counts.get(routing_route, 0) + 1

@@ -9,8 +9,8 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
 - Next action: extract candidate association evaluation and cache reuse,
-  preserving comparison concurrency, weak-local fallback, exhaustive
-  validation, every isolated failure, and durable report payloads.
+  preserving input fingerprints, comparison concurrency and executor cleanup,
+  reviewed-difference evidence, and exact reusable-artifact semantics.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -855,6 +855,18 @@ compatibility exports for current callers and tests.
 
 The policy/routing module is now 575 lines and the preparation module 225
 lines, both within the plan's readability range; no behavior changed.
+
+### 2026-09-27 — Milestone 7.9: association evaluation route transitions
+
+Added `workflows/identity/association_evaluation.py` for versioned span-
+selection evidence and the two conditional evaluation transitions. Weak-local
+cross-source fallback retains retrieval-candidate activation evidence and its
+incremental comparison count; shortlisted proposals retain pending-discovery
+versus legacy exhaustive validation policy and complete routing evidence.
+
+Focused tests cover candidate/exemplar span selections, fallback activation
+and bypass, pending-confirmation exhaustive selection, and terminal-route
+bypass. `cli.py` is now 7,719 lines, down 10,398 lines from baseline.
 
 ## Validation log
 
@@ -1884,6 +1896,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 23 tests in 0.224s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association evaluation route transitions
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association_evaluation.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_evaluation_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 28 tests in 0.225s — OK
 
 git diff --check
 PASS
