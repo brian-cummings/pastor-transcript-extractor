@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract shadow-association setup and exemplar preparation,
-  preserving policy/model/cache initialization, readiness evidence, durable
-  exemplar funnel artifacts, and plan-only behavior.
+- Next action: extract shadow-association initialization and corpus inventory,
+  preserving database/policy/model errors, cache priming, current-observation
+  selection, explicit-name evidence, and plan-only resource boundaries.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -904,6 +904,20 @@ Focused tests cover initial failure, partial accounting before fallback
 failure, final exhaustive persistence, and pass ordering. `cli.py` is now
 7,604 lines, down 10,513 lines from baseline; the evaluation workflow remains
 cohesive at 487 lines.
+
+### 2026-09-27 — Milestone 7.13: exemplar preparation workflow
+
+Moved exemplar evidence fingerprints, deterministic-failure reuse, two-phase
+media eligibility, verified-source registration, activity-qualified span
+selection, durable funnel records, and usable-profile thresholding into
+`association_preparation.py`. The stage returns typed exemplars, span evidence,
+global/profile reason counts, and comparison-ready profiles; the CLI only
+renders progress and funnel summaries.
+
+Focused tests cover verified-media admission, span evidence, plan-only no-write
+behavior, profile progress, usable thresholds, and cached deterministic
+failures. `cli.py` is now 7,322 lines, down 10,795 lines from baseline; the
+shadow-association service is 806 lines and the preparation module is 585.
 
 ## Validation log
 
@@ -1985,6 +1999,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 36 tests in 0.227s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Exemplar preparation workflow
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association_preparation.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_preparation_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 38 tests in 0.228s — OK
 
 git diff --check
 PASS
