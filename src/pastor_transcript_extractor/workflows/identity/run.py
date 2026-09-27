@@ -134,6 +134,21 @@ class DiscoveryReportSelection:
     latest: Path | None
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveryExecutionRequest:
+    """Inputs needed to invoke the pinned shadow-discovery adapter."""
+
+    plan_only: bool
+    jobs: int
+    model_sha256: str
+    consistency_policy_path: Path
+    association_policy_path: Path
+    evaluation_root: Path
+    cache_dir: Path
+    output_root: Path
+    base_dir: Path | None
+
+
 def validate_identity_workflow_request(
     request: IdentityWorkflowRequest,
 ) -> IdentityWorkflowPolicy:
@@ -473,3 +488,44 @@ def select_discovery_reports(
         else None
     )
     return DiscoveryReportSelection(reports=reports, latest=latest)
+
+
+def execute_discovery_stage(
+    request: DiscoveryExecutionRequest,
+    decision: DiscoveryExecutionDecision,
+    *,
+    discoverer: Callable[..., Path | None],
+) -> Path | None:
+    """Invoke corpus discovery only for an uncached executable decision."""
+    if decision.mode != "execute":
+        return None
+    return discoverer(
+        plan_only=request.plan_only,
+        limit=None,
+        nearest_neighbors=8,
+        maximum_pairs=None,
+        closure_candidates_per_same_pair=8,
+        source_complete_link_limit=12,
+        source_nearest_neighbors=4,
+        borderline_deferred_minimum=0.50,
+        borderline_deferred_maximum=0.60,
+        borderline_deferred_candidates_per_same_pair=4,
+        staged_review_candidates_per_component=2,
+        staged_review_maximum_same_boundary_distance=0.15,
+        jobs=request.jobs,
+        minimum_component_members=3,
+        consistency_report=None,
+        minimum_consistency_score=None,
+        consistency_policy=request.consistency_policy_path,
+        include_deferred=False,
+        model_path=Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        model_sha256=request.model_sha256,
+        policy_path=request.association_policy_path,
+        evaluation_root=request.evaluation_root,
+        cache_dir=request.cache_dir,
+        output_root=request.output_root,
+        base_dir=request.base_dir,
+    )
