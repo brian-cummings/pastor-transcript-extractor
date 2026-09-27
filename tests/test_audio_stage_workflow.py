@@ -8,11 +8,59 @@ from pastor_transcript_extractor.media_artifacts import StageSourceAudioResult
 from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageDependencies,
     AudioStageRequest,
+    AudioStageScopeDependencies,
+    AudioStageScopeRequest,
+    resolve_audio_stage_scope,
     stage_audio_inputs,
 )
 
 
 class AudioStageWorkflowTests(unittest.TestCase):
+    def test_resolves_selected_sources_without_contacting_unselected_sources(self) -> None:
+        calls = []
+        database = SimpleNamespace(
+            get_source_by_id=lambda source_id: SimpleNamespace(id=source_id)
+        )
+
+        def discover(limit, all_videos, source_id, base_dir):
+            calls.append(source_id)
+            return SimpleNamespace(
+                selected_video_ids_by_source={source_id: (source_id * 10,)}
+            )
+
+        result = resolve_audio_stage_scope(
+            AudioStageScopeRequest(source_ids=(2, 4), limit=3),
+            dependencies=AudioStageScopeDependencies(
+                get_database=lambda base_dir: database,
+                add_source=lambda *args, **kwargs: None,
+                delete_source=lambda *args, **kwargs: None,
+                discover=discover,
+                select_existing=lambda *args, **kwargs: set(),
+            ),
+        )
+
+        self.assertEqual([2, 4], calls)
+        self.assertEqual(frozenset({20, 40}), result.video_ids)
+
+    def test_empty_all_scope_returns_explained_skip(self) -> None:
+        events = []
+        database = SimpleNamespace(list_processing_enabled_sources=lambda: [])
+
+        result = resolve_audio_stage_scope(
+            AudioStageScopeRequest(all_sources=True),
+            progress_callback=events.append,
+            dependencies=AudioStageScopeDependencies(
+                get_database=lambda base_dir: database,
+                add_source=lambda *args, **kwargs: None,
+                delete_source=lambda *args, **kwargs: None,
+                discover=lambda *args, **kwargs: None,
+                select_existing=lambda *args, **kwargs: set(),
+            ),
+        )
+
+        self.assertEqual("No processing-enabled sources configured.", result.skip_reason)
+        self.assertEqual([result.skip_reason], events)
+
     def test_retries_worker_failure_and_returns_verified_manifest_scope(self) -> None:
         attempts = 0
         caption_video_ids: list[set[int]] = []
