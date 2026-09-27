@@ -1848,8 +1848,8 @@ class CliTests(unittest.TestCase):
                 calls.append(("stage", args, kwargs))
                 return ExtractionBatchResult(0, 0, 0)
 
-            with patch("pastor_transcript_extractor.cli.delete_source_service", side_effect=fake_source_delete), patch(
-                "pastor_transcript_extractor.cli.add_source_service", side_effect=fake_add
+            with patch("pastor_transcript_extractor.commands.catalog.delete_source_service", side_effect=fake_source_delete), patch(
+                "pastor_transcript_extractor.commands.catalog.add_source_service", side_effect=fake_add
             ), patch("pastor_transcript_extractor.commands.acquisition.discover_sources_service", side_effect=fake_stage), patch(
                 "pastor_transcript_extractor.commands.acquisition.fetch_captions_service", side_effect=fake_stage
             ), patch("pastor_transcript_extractor.commands.acquisition.transcribe_videos_service", side_effect=fake_stage), patch(

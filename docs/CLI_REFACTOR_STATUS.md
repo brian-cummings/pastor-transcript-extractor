@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: resolve the remaining composition/presentation patches
-  (`_run_post_content_identity`, review rendering, catalog service wiring, and
-  Typer prompts), then perform the Milestone 8 acceptance audit.
+- Next action: move `_run_post_content_identity` and review-batch rendering
+  behind the pipeline command boundary, then audit the remaining CLI patches as
+  intentional presentation tests or migrate them.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1129,6 +1129,12 @@ Changed artifact path resolution, neutral speaker evidence, automatic speaker
 eligibility, metadata live-status lookup, and ground-truth URL opening to
 resolve from their domain modules. Focused tests now patch those owners; no
 single-use domain behavior is mocked through `cli.py`.
+
+### 2026-09-27 — Milestone 8.21: catalog composition owner seam
+
+Changed run-workflow source creation and deletion dependencies to resolve from
+`commands.catalog`, and migrated the affected orchestration test to patch that
+owner rather than CLI imports.
 
 ## Validation log
 
@@ -2605,6 +2611,19 @@ Ran 51 tests in 0.806s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(resolve_video_artifact_paths|record_neutral_speaker_evidence|open_video_url|latest_metadata_live_status|assess_automatic_speaker_observation)" tests
 No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Catalog composition owner seam
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest <1 affected catalog-composition test> tests.test_cli_contract
+Ran 7 tests in 0.269s — OK
 
 git diff --check
 PASS

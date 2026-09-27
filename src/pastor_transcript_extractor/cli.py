@@ -56,10 +56,6 @@ from pastor_transcript_extractor.commands.analysis import structure as _analysis
 from pastor_transcript_extractor.commands.analysis import style as _analysis_style_commands
 from pastor_transcript_extractor.commands import benchmark as _benchmark_commands
 from pastor_transcript_extractor.commands import catalog as _catalog_commands
-from pastor_transcript_extractor.commands.catalog import (
-    add_source_service,
-    delete_source_service,
-)
 from pastor_transcript_extractor.commands import diagnostics as _diagnostic_commands
 from pastor_transcript_extractor.commands import media as _media_commands
 from pastor_transcript_extractor.commands import media_archive as _media_archive_commands
@@ -6647,8 +6643,8 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
             verify_manifest=_pipeline_commands.verify_audio_stage_manifest,
             audio_scope=AudioStageScopeDependencies(
                 get_database=command_common.get_database,
-                add_source=add_source_service,
-                delete_source=delete_source_service,
+                add_source=_catalog_commands.add_source_service,
+                delete_source=_catalog_commands.delete_source_service,
                 discover=acquisition.discover_sources_service,
                 select_existing=_select_existing_stage_video_ids,
             ),
@@ -6668,8 +6664,8 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
             online_pipeline=PipelineDependencies(
                 get_database=command_common.get_database,
                 build_paths=config.build_paths,
-                add_source=add_source_service,
-                delete_source=delete_source_service,
+                add_source=_catalog_commands.add_source_service,
+                delete_source=_catalog_commands.delete_source_service,
                 discover=acquisition.discover_sources_service,
                 fetch_captions=acquisition.fetch_captions_service,
                 transcribe=acquisition.transcribe_videos_service,
