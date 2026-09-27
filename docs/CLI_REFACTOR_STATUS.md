@@ -9,9 +9,9 @@ context compaction or a new session.
 - Status: in progress.
 - Active milestone: Milestone 4 — separate catalog commands from acquisition
   workflows.
-- Next action: extract transcription into a typed, presentation-independent
-  workflow, then move imported-source sync before advancing to the top-level
-  pipeline milestone.
+- Next action: extract imported-source synchronization into a typed,
+  presentation-independent workflow before advancing to the top-level pipeline
+  milestone.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -299,6 +299,23 @@ Milestone 5 removes that migration scaffolding. Rate-limit and authentication
 stops retain the same exception identity through a compatibility re-export.
 
 `cli.py` is now 12,804 lines, down 5,313 lines from baseline.
+
+### 2026-09-26 — Milestone 4.8: transcription workflow extraction
+
+Added `workflows/transcription.py` with typed request/result boundaries and
+named selection, stale-recovery, claim, preparation, completion, bounded
+pipeline, and one-retry stages. Added `workflows/transcription_events.py` as the
+small presentation-neutral event contract for queue, stage, progress,
+completion, and retry reporting. Neither workflow module imports Typer, Rich,
+or `cli.py`.
+
+The CLI now retains only a Rich event renderer and a thin compatibility
+wrapper. Explicit preparation and completion dependencies preserve existing
+`cli.prepare_transcription_input` and `cli.complete_transcription_video` patch
+seams until Milestone 5, while direct workflow tests exercise structured
+counts, progress events, and retry results without Typer or Rich.
+
+`cli.py` is now 12,512 lines, down 5,605 lines from baseline.
 
 ## Validation log
 
@@ -651,6 +668,22 @@ PASS
 Ran 21 tests in 0.793s — OK
 
 .venv/bin/python -m pastor_transcript_extractor fetch --help
+PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Transcription workflow extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_transcription_workflow.py tests/test_cli_contract.py tests/test_sources.py tests/test_church_database_import.py
+PASS
+
+.venv/bin/python -m unittest -q tests.test_transcription_workflow tests.test_cli_contract tests.test_church_database_import plus eleven focused transcription CLI tests
+Ran 33 tests in 1.845s — OK
+
+.venv/bin/python -m pastor_transcript_extractor transcribe --help
 PASS
 
 git diff --check
