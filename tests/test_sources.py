@@ -2576,7 +2576,7 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.discover_sources_service"
         ) as discover, patch(
-            "pastor_transcript_extractor.cli.stage_source_audio_for_video",
+            "pastor_transcript_extractor.media_artifacts.stage_source_audio_for_video",
             return_value=StageSourceAudioResult(
                 11,
                 "existing-newer",
@@ -2587,7 +2587,7 @@ class CliTests(unittest.TestCase):
                 False,
             ),
         ) as stage, patch(
-            "pastor_transcript_extractor.cli.write_audio_stage_manifest",
+            "pastor_transcript_extractor.audio_staging.write_audio_stage_manifest",
             return_value=Path("stage.json"),
         ):
             run_workflow_service(
@@ -2639,10 +2639,10 @@ class CliTests(unittest.TestCase):
                 selected_video_ids_by_source={1: (11, 12)}
             ),
         ), patch(
-            "pastor_transcript_extractor.cli.stage_source_audio_for_video",
+            "pastor_transcript_extractor.media_artifacts.stage_source_audio_for_video",
             side_effect=staged_result,
         ), patch(
-            "pastor_transcript_extractor.cli.write_audio_stage_manifest",
+            "pastor_transcript_extractor.audio_staging.write_audio_stage_manifest",
             return_value=Path("stage.json"),
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
@@ -2704,10 +2704,10 @@ class CliTests(unittest.TestCase):
                 selected_video_ids_by_source={1: (11, 12)}
             ),
         ), patch(
-            "pastor_transcript_extractor.cli.stage_source_audio_for_video",
+            "pastor_transcript_extractor.media_artifacts.stage_source_audio_for_video",
             side_effect=stage_result,
         ), patch(
-            "pastor_transcript_extractor.cli.write_audio_stage_manifest",
+            "pastor_transcript_extractor.audio_staging.write_audio_stage_manifest",
             return_value=Path("stage.json"),
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
@@ -2733,7 +2733,7 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.config.build_paths", return_value=paths
         ), patch(
-            "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
+            "pastor_transcript_extractor.audio_staging.load_and_verify_audio_stage_manifest",
             return_value={11, 12},
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"
@@ -2768,7 +2768,7 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.config.build_paths", return_value=paths
         ), patch(
-            "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
+            "pastor_transcript_extractor.audio_staging.load_and_verify_audio_stage_manifest",
             return_value={11},
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.fetch_captions_service",
@@ -2806,7 +2806,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.config.build_paths",
             return_value=SimpleNamespace(logs=Path("logs")),
         ), patch(
-            "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
+            "pastor_transcript_extractor.audio_staging.load_and_verify_audio_stage_manifest",
             return_value={11},
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"

@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the audio-stage adapter seams (manifest verification,
-  source-audio staging, and manifest writing) to their workflow/domain owners
-  without touching unrelated source-processing changes.
+- Next action: migrate the reclassification command seams (`reclassify_video`,
+  `OllamaClient`, and LLM configuration) to their owning modules without
+  touching unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1085,6 +1085,13 @@ Moved the `sync-imported-sources` command and its dependency composition into
 archive locking, disk usage, sleep, and wait-policy tests now patch their
 actual owner modules. The command contract and source-sync workflow behavior
 remain unchanged; `cli.py` is now 6,826 lines.
+
+### 2026-09-27 — Milestone 8.15: audio-stage owner seams
+
+Moved resume-manifest verification rendering into `commands/pipeline.py` and
+routed audio staging and manifest writing through `media_artifacts` and
+`audio_staging`. A temporary CLI alias preserves direct verification imports;
+workflow composition and tests now resolve the actual owners.
 
 ## Validation log
 
@@ -2464,6 +2471,22 @@ PASS
 Ran 22 tests in 0.707s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(imported_source_ids|archive_source_media|backfill_existing_media_artifacts|media_archive_lock_held|shutil\.disk_usage|time\.sleep|SYNC_ARCHIVE)" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Audio-stage owner seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/pipeline.py src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest <6 affected audio-stage tests> tests.test_cli_contract
+Ran 12 tests in 0.234s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(stage_source_audio_for_video|write_audio_stage_manifest|load_and_verify_audio_stage_manifest)" tests
 No matches
 
 git diff --check

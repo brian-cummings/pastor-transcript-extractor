@@ -5,8 +5,14 @@ from typing import Callable
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 
-from pastor_transcript_extractor import config, media_archive, media_artifacts
+from pastor_transcript_extractor import (
+    audio_staging,
+    config,
+    media_archive,
+    media_artifacts,
+)
 from pastor_transcript_extractor.commands.apps import root_app
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.storage import Database
@@ -62,6 +68,56 @@ def ensure_and_archive_run_media(
             archive_source=media_archive.archive_source_media,
         ),
     )
+
+
+def verify_audio_stage_manifest(
+    database: Database,
+    paths: AppPaths,
+    manifest_path: Path,
+) -> set[int]:
+    """Verify a resume manifest while rendering bounded command progress."""
+    with Progress(
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        verification_task = progress.add_task(
+            "Reading audio-stage manifest",
+            total=None,
+        )
+
+        def report_stage_verification(
+            index: int,
+            total: int,
+            youtube_video_id: str,
+        ) -> None:
+            progress.update(
+                verification_task,
+                total=total,
+                completed=index - 1,
+                description=(
+                    f"Verifying staged source [{index}/{total}] "
+                    f"{youtube_video_id}"
+                ),
+            )
+
+        video_ids = audio_staging.load_and_verify_audio_stage_manifest(
+            database,
+            manifest_path,
+            progress_callback=report_stage_verification,
+            verification_cache=media_artifacts.MediaVerificationCache(
+                paths.logs / "source-audio-verification"
+            ),
+        )
+        progress.update(
+            verification_task,
+            total=len(video_ids),
+            completed=len(video_ids),
+            description=f"Verified {len(video_ids)} staged source artifact(s)",
+        )
+    return video_ids
 
 
 def _render_run_plan(request: RunWorkflowRequest) -> None:
