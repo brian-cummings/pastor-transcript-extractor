@@ -416,6 +416,9 @@ from pastor_transcript_extractor.workflows.identity.association_preparation impo
     prepare_association_centroids,
     prepare_association_exemplars,
 )
+from pastor_transcript_extractor.workflows.identity.association_setup import (
+    initialize_shadow_association,
+)
 from pastor_transcript_extractor.workflows.identity.association_evaluation import (
     AssociationEvaluator,
     AssociationResultAccumulator,
@@ -3973,59 +3976,36 @@ def shadow_associate_speakers_service(
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
         )
-    database = Database(paths.database, readonly=True)
-    cache_root = cache_dir.expanduser().resolve()
-    verification_cache = MediaVerificationCache(
-        cache_root / "media-verification"
-    )
-    span_cache = AudioSpanCache(cache_root)
-    try:
-        evidence = load_reviewed_speaker_evidence(
-            evaluation_root.expanduser().resolve()
-        )
-        policy_spec = load_shadow_policy(policy_path)
-        readiness = assess_profile_association_readiness(
-            database,
-            evidence,
-            minimum_members=minimum_profile_members,
-        )
-    except (OSError, ValueError, json.JSONDecodeError) as error:
-        raise typer.BadParameter(str(error)) from error
-
-    backend = None
-    embedding_cache = None
-    pair_diagnostic_cache = None
-    if not plan_only:
-        try:
-            backend = SherpaOnnxEmbeddingBackend(
-                model_path.expanduser().resolve(),
-                expected_sha256=model_sha256,
-            )
-        except (OSError, RuntimeError, ValueError) as error:
-            raise typer.BadParameter(str(error)) from error
-        embedding_cache = EmbeddingCache(cache_root)
-        pair_diagnostic_cache = PairDiagnosticCache(cache_root)
-        pair_cache_root = cache_root / "pair-diagnostics"
-        if not pair_cache_root.is_dir() or not next(
-            pair_cache_root.glob("*.json"), None
-        ):
-            association_reports = tuple(
-                output_root.expanduser().resolve().glob("*/*.json")
-            )
+    def report_pair_cache_progress(stage: str, count: int) -> None:
+        if stage == "starting":
             console.print(
                 "Association preprocessing: priming pair diagnostics from "
-                f"{len(association_reports)} existing association artifact(s)."
+                f"{count} existing association artifact(s)."
             )
-            pair_diagnostic_cache.prime_from_shadow_associations(
-                association_reports
-            )
+        else:
             console.print(
                 "Association preprocessing: pair diagnostic cache primed "
-                f"from {pair_diagnostic_cache.primed} comparison result(s)."
+                f"from {count} comparison result(s)."
             )
 
-    span_selection_by_observation_id: dict[int, Mapping[str, Any]] = {}
-    activity_selection_cache = ActivityQualifiedSelectionCache(cache_root)
+    try:
+        setup = initialize_shadow_association(
+            request,
+            database_path=paths.database,
+            pair_cache_progress=report_pair_cache_progress,
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    database = setup.database
+    cache_root = setup.cache_root
+    verification_cache = setup.verification_cache
+    span_cache = setup.span_cache
+    policy_spec = setup.policy_spec
+    readiness = setup.readiness
+    backend = setup.backend
+    embedding_cache = setup.embedding_cache
+    pair_diagnostic_cache = setup.pair_diagnostic_cache
+    activity_selection_cache = setup.activity_selection_cache
 
     transcript_grounded_spans = TranscriptGroundedSpanProvider(
         database,
