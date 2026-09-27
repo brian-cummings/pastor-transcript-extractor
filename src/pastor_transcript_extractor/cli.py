@@ -397,6 +397,11 @@ from pastor_transcript_extractor.workflows.resume_pipeline import (
     ResumePipelineRequest,
     resume_staged_pipeline,
 )
+from pastor_transcript_extractor.workflows.pipeline import (
+    PipelineDependencies,
+    PipelineRequest,
+    run_pipeline,
+)
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
     CaptionAcquisitionResult,
@@ -11282,11 +11287,6 @@ def run_workflow_service(
     cookies: Path | None = None,
 ) -> None:
     selected_source_ids = tuple(dict.fromkeys(source_ids or ()))
-    caption_auth_options: dict[str, object] = {}
-    if cookies_from_browser is not None:
-        caption_auth_options["cookies_from_browser"] = cookies_from_browser
-    if cookies is not None:
-        caption_auth_options["cookies"] = cookies
     if cookies_from_browser is not None and cookies is not None:
         raise ValueError(
             "Use either --cookies-from-browser or --cookies for YouTube, not both."
@@ -11488,327 +11488,51 @@ def run_workflow_service(
             ),
         )
         return
-    if failed_only:
-        if url is not None:
-            raise ValueError("Do not pass a URL when using --failed-only.")
-        if pastor is not None:
-            raise ValueError("Do not pass --pastor when using --failed-only.")
-        if all_sources:
-            raise ValueError("Use either --all or --failed-only, not both.")
-        if selected_source_ids:
-            raise ValueError("Use either --source-id or --failed-only, not both.")
-        if replace_existing:
-            raise ValueError("--replace-existing is not valid with --failed-only.")
-        database = get_database(base_dir)
-        paths = build_paths(base_dir, remember=True)
-        failed_videos = [video for video in database.list_videos() if video.status is VideoStatus.FAILED]
-        failed_video_ids = {video.id for video in failed_videos}
-        if not failed_video_ids:
-            console.print("No failed videos to reprocess.")
-            return
 
-        console.print(f"Reprocessing {len(failed_video_ids)} failed video(s) systemwide.")
-        fetch_captions_service(
-            base_dir=base_dir,
-            video_ids=failed_video_ids,
-            **caption_auth_options,
-        )
-        if not captions_only:
-            transcribe_videos_service(
-                missing_only=True,
-                captions_missing_only=transcribe_missing,
-                jobs=jobs,
-                base_dir=base_dir,
-                video_ids=failed_video_ids,
-            )
-        extraction = extract_batch(
-            database,
-            paths,
-            missing_only=True,
-            video_ids=failed_video_ids,
-            classifier=classifier,
-            llm_model=llm_model,
-            workers=jobs,
-            event_callback=lambda message: console.print(message, markup=False),
-            progress_callback=lambda stage, current, total: console.print(
-                f"  {stage} block {current}/{total}"
-            ),
-        )
-        console.print(
-            f"Extracted {extraction.processed} video(s); "
-            f"skipped {extraction.skipped}; failed {extraction.failed}."
-        )
-        _ensure_and_archive_run_media(
-            database,
-            paths,
-            video_ids=failed_video_ids,
-        )
-        if run_identity:
-            _run_post_content_identity(base_dir, jobs=jobs)
-        if not skip_review:
-            pastor_slugs = {
-                pastor_record.slug
-                for video in failed_videos
-                if video.pastor_id is not None
-                for pastor_record in [database.get_pastor_by_id(video.pastor_id)]
-                if pastor_record is not None
-            }
-            for pastor_slug in sorted(pastor_slugs):
-                reviews = prepare_review_exports(
-                    database,
-                    paths,
-                    pastor_slug=pastor_slug,
-                    classifier=classifier,
-                    llm_model=llm_model,
-                    event_callback=lambda message: console.print(message, markup=False),
-                )
-                _print_review_batch(reviews)
-        return
+    def render_pipeline_event(event: object) -> None:
+        if isinstance(event, str):
+            console.print(event, markup=False)
+        else:
+            _print_review_batch(event)
 
-    if selected_source_ids:
-        if url is not None:
-            raise ValueError("Do not pass a URL when using --source-id.")
-        if pastor is not None:
-            raise ValueError("Do not pass --pastor when using --source-id.")
-        if all_sources:
-            raise ValueError("Use either --all or --source-id, not both.")
-        if replace_existing:
-            raise ValueError("--replace-existing is only valid for URL runs.")
-        database = get_database(base_dir)
-        unknown_source_ids = [
-            source_id
-            for source_id in selected_source_ids
-            if database.get_source_by_id(source_id) is None
-        ]
-        if unknown_source_ids:
-            rendered = ", ".join(str(source_id) for source_id in unknown_source_ids)
-            raise ValueError(f"Unknown source id(s): {rendered}")
-
-        console.print(
-            f"Running {len(selected_source_ids)} selected source(s): "
-            f"{', '.join(str(source_id) for source_id in selected_source_ids)}."
-        )
-        selected_video_ids: set[int] = set()
-        for source_id in selected_source_ids:
-            discovery = discover_sources_service(
-                limit=limit,
-                all_videos=all_videos,
-                source_id=source_id,
-                base_dir=base_dir,
-            )
-            selected_video_ids.update(
-                _selected_discovery_video_ids(discovery, (source_id,))
-            )
-        fetch_captions_service(
-            base_dir=base_dir,
-            video_ids=selected_video_ids,
-            **caption_auth_options,
-        )
-        if not captions_only:
-            transcribe_videos_service(
-                missing_only=False,
-                captions_missing_only=transcribe_missing,
-                jobs=jobs,
-                base_dir=base_dir,
-                video_ids=selected_video_ids,
-            )
-        paths = build_paths(base_dir, remember=True)
-        extraction = extract_batch(
-            database,
-            paths,
-            video_ids=selected_video_ids,
-            classifier=classifier,
-            llm_model=llm_model,
-            event_callback=lambda message: console.print(message, markup=False),
-            progress_callback=lambda stage, current, total: console.print(
-                f"  {stage} block {current}/{total}"
-            ),
-        )
-        console.print(
-            f"Extracted {extraction.processed} video(s); "
-            f"skipped {extraction.skipped}; failed {extraction.failed}."
-        )
-        _ensure_and_archive_run_media(
-            database,
-            paths,
-            video_ids=selected_video_ids,
-        )
-        if run_identity:
-            _run_post_content_identity(base_dir, jobs=jobs)
-        if not skip_review:
-            pastor_slugs = {
-                pastor_record.slug
-                for video_id in selected_video_ids
-                for video in [database.get_video_by_id(video_id)]
-                if video is not None and video.pastor_id is not None
-                for pastor_record in [database.get_pastor_by_id(video.pastor_id)]
-                if pastor_record is not None
-            }
-            for pastor_slug in sorted(pastor_slugs):
-                reviews = prepare_review_exports(
-                    database,
-                    paths,
-                    pastor_slug=pastor_slug,
-                    classifier=classifier,
-                    llm_model=llm_model,
-                    event_callback=lambda message: console.print(
-                        message, markup=False
-                    ),
-                )
-                _print_review_batch(reviews)
-        return
-
-    if all_sources:
-        if url is not None:
-            raise ValueError("Do not pass a URL when using --all. Run either a global sync or a single-source workflow.")
-        if pastor is not None:
-            raise ValueError("Do not pass --pastor when using --all.")
-        if replace_existing:
-            raise ValueError("--replace-existing is only valid for single-source runs.")
-        database = get_database(base_dir)
-        enabled_sources = database.list_processing_enabled_sources()
-        if not enabled_sources:
-            console.print("No processing-enabled sources configured.")
-            return
-        enabled_source_ids = {source.id for source in enabled_sources}
-        disabled_count = len(database.list_sources()) - len(enabled_sources)
-        console.print(
-            f"Running all {len(enabled_sources)} processing-enabled source(s); "
-            f"skipping {disabled_count} disabled source(s)."
-        )
-        discovery = discover_sources_service(
+    run_pipeline(
+        PipelineRequest(
+            url=url,
+            pastor=pastor,
+            all_sources=all_sources,
+            failed_only=failed_only,
+            replace_existing=replace_existing,
             limit=limit,
             all_videos=all_videos,
-            source_id=None,
-            base_dir=base_dir,
-        )
-        selected_video_ids = _selected_discovery_video_ids(
-            discovery, tuple(enabled_source_ids)
-        )
-        fetch_captions_service(
-            base_dir=base_dir,
-            video_ids=selected_video_ids,
-            **caption_auth_options,
-        )
-        if not captions_only and transcribe_missing:
-            transcribe_videos_service(
-                missing_only=False,
-                captions_missing_only=True,
-                jobs=jobs,
-                base_dir=base_dir,
-                video_ids=selected_video_ids,
-            )
-        elif not captions_only:
-            transcribe_videos_service(
-                missing_only=False,
-                captions_missing_only=False,
-                jobs=jobs,
-                base_dir=base_dir,
-                video_ids=selected_video_ids,
-            )
-        paths = build_paths(base_dir, remember=True)
-        extraction = extract_batch(
-            database,
-            paths,
-            video_ids=selected_video_ids,
+            captions_only=captions_only,
+            transcribe_missing=transcribe_missing,
+            jobs=jobs,
             classifier=classifier,
             llm_model=llm_model,
-            event_callback=lambda message: console.print(message, markup=False),
-            progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
-        )
-        console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
-        _ensure_and_archive_run_media(database, paths, video_ids=selected_video_ids)
-        if run_identity:
-            _run_post_content_identity(base_dir, jobs=jobs)
-        if not skip_review:
-            pastor_slugs = {
-                pastor_record.slug
-                for video_id in selected_video_ids
-                for video in [database.get_video_by_id(video_id)]
-                if video is not None and video.pastor_id is not None
-                for pastor_record in [database.get_pastor_by_id(video.pastor_id)]
-                if pastor_record is not None
-            }
-            for pastor_slug in sorted(pastor_slugs):
-                reviews = prepare_review_exports(
-                    database,
-                    paths,
-                    pastor_slug=pastor_slug,
-                    video_ids=selected_video_ids,
-                    classifier=classifier,
-                    llm_model=llm_model,
-                    event_callback=lambda message: console.print(
-                        message, markup=False
-                    ),
-                )
-                _print_review_batch(reviews)
-        return
+            skip_review=skip_review,
+            run_identity=run_identity,
+            base_dir=base_dir,
+            source_ids=selected_source_ids,
+            cookies_from_browser=cookies_from_browser,
+            cookies=cookies,
+        ),
+        event_callback=render_pipeline_event,
+        dependencies=PipelineDependencies(
+            get_database=get_database,
+            build_paths=build_paths,
+            add_source=add_source_service,
+            delete_source=delete_source_service,
+            discover=discover_sources_service,
+            fetch_captions=fetch_captions_service,
+            transcribe=transcribe_videos_service,
+            extract=extract_batch,
+            ensure_media=_ensure_and_archive_run_media,
+            run_identity=_run_post_content_identity,
+            prepare_reviews=prepare_review_exports,
+        ),
+    )
+    return
 
-    if url is None:
-        raise ValueError(
-            "A URL is required unless you use --all, --source-id, or --failed-only."
-        )
-    if pastor is None:
-        raise ValueError("--pastor is required unless you use --all.")
-
-    database = get_database(base_dir)
-    if replace_existing:
-        existing_source = database.get_source_by_url(url)
-        if existing_source is not None:
-            delete_source_service(source_id=existing_source.id, force=True, base_dir=base_dir)
-            database = get_database(base_dir)
-    add_source_service(url=url, pastor=pastor, notes=None, base_dir=base_dir)
-    source = database.get_source_by_url(url)
-    source_id = source.id if source is not None else None
-    discovery = discover_sources_service(
-        limit=limit,
-        all_videos=all_videos,
-        source_id=source_id,
-        base_dir=base_dir,
-    )
-    selected_video_ids = _selected_discovery_video_ids(
-        discovery,
-        (source_id,) if source_id is not None else (),
-    )
-    fetch_captions_service(
-        source_id=source_id,
-        base_dir=base_dir,
-        video_ids=selected_video_ids,
-        **caption_auth_options,
-    )
-    if not captions_only and transcribe_missing:
-        transcribe_videos_service(missing_only=False, captions_missing_only=True, jobs=jobs, source_id=source_id, base_dir=base_dir, video_ids=selected_video_ids)
-    elif not captions_only:
-        transcribe_videos_service(missing_only=False, captions_missing_only=False, jobs=jobs, source_id=source_id, base_dir=base_dir, video_ids=selected_video_ids)
-    paths = build_paths(base_dir, remember=True)
-    extraction = extract_batch(
-        database,
-        paths,
-        source_id=source_id,
-        video_ids=selected_video_ids,
-        classifier=classifier,
-        llm_model=llm_model,
-        event_callback=lambda message: console.print(message, markup=False),
-        progress_callback=lambda stage, current, total: console.print(f"  {stage} block {current}/{total}"),
-    )
-    console.print(f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; failed {extraction.failed}.")
-    _ensure_and_archive_run_media(
-        database,
-        paths,
-        video_ids=selected_video_ids,
-    )
-    if run_identity:
-        _run_post_content_identity(base_dir, jobs=jobs)
-    if not skip_review:
-        reviews = prepare_review_exports(
-            database,
-            paths,
-            pastor_slug=pastor,
-            classifier=classifier,
-            llm_model=llm_model,
-            event_callback=lambda message: console.print(message, markup=False),
-        )
-        _print_review_batch(reviews)
 
 
 def _run_post_content_identity(
