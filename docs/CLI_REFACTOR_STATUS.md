@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract identity coordination and machine-assignment commands,
-  preserving plan/apply/rollback boundaries and append-only event semantics.
+- Next action: extract identity machine-assignment commands, preserving
+  reconcile/status/rollback boundaries and append-only event semantics.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -523,6 +523,21 @@ metadata-analysis plan mode does not construct the LLM client. Identity
 metadata/profile command extraction is complete.
 
 `cli.py` is now 9,267 lines, down 8,850 lines from baseline.
+
+### 2026-09-27 — Milestone 6.4a: identity work coordination extraction
+
+Moved association work planning/status, superseded-member review selection,
+bounded association dispatch, and prerequisite repair into
+`commands/identity/coordination.py` (338 lines). A composition-time callback
+keeps the bounded dispatcher independent of the still-local shadow association
+command while preserving per-observation failure isolation and durable work
+events.
+
+Added focused command tests for dry-run safety, isolated dispatch failure
+recording, and the empty superseded-review queue. The frozen command topology
+and all five moved help surfaces remain unchanged.
+
+`cli.py` is now 8,978 lines, down 9,139 lines from baseline.
 
 ## Validation log
 
@@ -1123,6 +1138,24 @@ PASS
 
 .venv/bin/python -m pastor_transcript_extractor identity analyze-profile-metadata --help
 PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Identity work coordination extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/coordination.py src/pastor_transcript_extractor/cli.py tests/test_identity_coordination_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_coordination_commands tests.test_cli_contract
+Ran 9 tests in 0.244s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity <moved-command> --help
+PASS for association-work-plan, association-work-status,
+review-next-superseded-profile-member, dispatch-associations, and
+repair-association-prerequisites
 
 git diff --check
 PASS
