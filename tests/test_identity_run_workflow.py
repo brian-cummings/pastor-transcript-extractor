@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 
+from pastor_transcript_extractor.workflows.identity import run as identity_run
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
 )
 
@@ -75,6 +80,58 @@ class IdentityRunWorkflowTests(unittest.TestCase):
                 ValueError, message
             ):
                 validate_identity_workflow_request(request)
+
+    def test_reviewed_evidence_plan_does_not_open_writable_database(self) -> None:
+        evidence = object()
+        with patch.object(
+            identity_run, "load_reviewed_speaker_evidence", return_value=evidence
+        ), patch.object(identity_run, "Database") as database_factory, patch.object(
+            identity_run, "sync_reviewed_speaker_evidence"
+        ) as sync:
+            result = synchronize_reviewed_evidence_stage(
+                Path("app.db"), plan_only=True
+            )
+
+        self.assertIs(evidence, result.evidence)
+        self.assertIsNone(result.sync)
+        database_factory.assert_not_called()
+        sync.assert_not_called()
+
+    def test_reviewed_evidence_execute_initializes_before_sync(self) -> None:
+        events: list[str] = []
+        evidence = object()
+        database = SimpleNamespace(initialize=lambda: events.append("initialize"))
+        sync_result = object()
+        sync = Mock(
+            side_effect=lambda _database, _evidence: (
+                events.append("sync"),
+                sync_result,
+            )[1]
+        )
+        with patch.object(
+            identity_run, "load_reviewed_speaker_evidence", return_value=evidence
+        ), patch.object(identity_run, "Database", return_value=database), patch.object(
+            identity_run, "sync_reviewed_speaker_evidence", sync
+        ):
+            result = synchronize_reviewed_evidence_stage(
+                Path("app.db"), plan_only=False
+            )
+
+        self.assertEqual(["initialize", "sync"], events)
+        self.assertIs(sync_result, result.sync)
+
+    def test_reviewed_evidence_errors_keep_stage_context(self) -> None:
+        with patch.object(
+            identity_run,
+            "load_reviewed_speaker_evidence",
+            side_effect=OSError("unreadable"),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "reviewed-evidence sync failed: unreadable"
+            ):
+                synchronize_reviewed_evidence_stage(
+                    Path("app.db"), plan_only=False
+                )
 
 
 if __name__ == "__main__":

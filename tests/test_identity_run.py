@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import DEFAULT, patch
 from typer.testing import CliRunner
 
 from pastor_transcript_extractor.cli import (
@@ -349,11 +349,13 @@ class IdentityRunTests(unittest.TestCase):
                 ),
                 patch("pastor_transcript_extractor.cli.Database"),
                 patch(
-                    "pastor_transcript_extractor.cli.load_reviewed_speaker_evidence"
-                ) as load_evidence,
-                patch(
-                    "pastor_transcript_extractor.cli.sync_reviewed_speaker_evidence"
-                ) as sync_evidence,
+                    "pastor_transcript_extractor.workflows.identity.run.Database"
+                ),
+                patch.multiple(
+                    "pastor_transcript_extractor.workflows.identity.run",
+                    load_reviewed_speaker_evidence=DEFAULT,
+                    sync_reviewed_speaker_evidence=DEFAULT,
+                ) as evidence_mocks,
                 patch(
                     "pastor_transcript_extractor.cli._print_reviewed_evidence_summary"
                 ),
@@ -447,8 +449,8 @@ class IdentityRunTests(unittest.TestCase):
             video_id=None,
             base_dir=Path(tempdir),
         )
-        load_evidence.assert_called_once()
-        sync_evidence.assert_called_once()
+        evidence_mocks["load_reviewed_speaker_evidence"].assert_called_once()
+        evidence_mocks["sync_reviewed_speaker_evidence"].assert_called_once()
         prepare_canonical.assert_called_once()
         record_repair.assert_called_once_with(
             pending_state,
@@ -977,10 +979,12 @@ class IdentityRunTests(unittest.TestCase):
                 ),
                 patch("pastor_transcript_extractor.cli.Database"),
                 patch(
-                    "pastor_transcript_extractor.cli.load_reviewed_speaker_evidence"
+                    "pastor_transcript_extractor.workflows.identity.run.Database"
                 ),
-                patch(
-                    "pastor_transcript_extractor.cli.sync_reviewed_speaker_evidence"
+                patch.multiple(
+                    "pastor_transcript_extractor.workflows.identity.run",
+                    load_reviewed_speaker_evidence=DEFAULT,
+                    sync_reviewed_speaker_evidence=DEFAULT,
                 ),
                 patch(
                     "pastor_transcript_extractor.cli._print_reviewed_evidence_summary"
