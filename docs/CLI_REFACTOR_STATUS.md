@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the remaining identity command-function patches to their
-  command owners or explicit workflow dependencies, without touching unrelated
-  source-processing changes.
+- Next action: migrate the two broad identity-workflow tests from CLI command
+  patches to the service's explicit dependency arguments, adding only missing
+  explicit seams required by those tests.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1106,6 +1106,13 @@ removed during earlier command extraction.
 Changed identity finalization and exemplar-repair helpers to resolve canonical
 audio preparation and normalized archival from `media_archive`. The affected
 identity tests now patch that domain owner rather than the CLI import location.
+
+### 2026-09-27 — Milestone 8.18: review-observation owner seam
+
+Changed actionable-review audio preparation to resolve
+`prepare_review_observation` from `speaker_pair_review`; the two focused tests
+now patch that owner. Focused execution also exposed and repaired a missing
+local eligibility fake in the ready-lineage regression test.
 
 ## Validation log
 
@@ -2533,6 +2540,22 @@ PASS
 Ran 9 tests in 0.386s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(prepare_canonical_audio|archive_normalized_media)" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Review-observation owner seam
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_identity_run.py
+PASS
+
+.venv/bin/python -m unittest <2 affected review-observation tests> tests.test_cli_contract
+Ran 8 tests in 0.220s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.prepare_review_observation" tests
 No matches
 
 git diff --check

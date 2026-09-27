@@ -31,6 +31,7 @@ from pastor_transcript_extractor import (
     local_llm,
     media_archive,
     media_artifacts,
+    speaker_pair_review,
 )
 from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
@@ -233,7 +234,6 @@ from pastor_transcript_extractor.speaker_pair_review import (
     InsufficientSpeechActivityError,
     ObservationQualification,
     PairJudgment,
-    prepare_review_observation,
 )
 from pastor_transcript_extractor.speaker_observation_consistency import (
     load_consistency_score_index,
@@ -2622,7 +2622,7 @@ def _prepare_actionable_review_audio(
                 f"Review prewarm [{index}/{len(fingerprints)}] "
                 f"{video.youtube_video_id}: preparing review clips"
             )
-            result = prepare_review_observation(
+            result = speaker_pair_review.prepare_review_observation(
                 observation=observation,
                 audio_path=Path(eligibility.media_artifact.artifact_path),
                 span_cache=span_cache,
@@ -4857,7 +4857,7 @@ def prepare_speaker_review_audio(
         start=1,
     ):
         try:
-            prepared = prepare_review_observation(
+            prepared = speaker_pair_review.prepare_review_observation(
                 observation=observation,
                 audio_path=audio_path,
                 span_cache=span_cache,
