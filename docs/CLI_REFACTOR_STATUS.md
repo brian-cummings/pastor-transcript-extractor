@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 5 — extract the top-level pipeline.
-- Next action: inventory `run_workflow_service` and its post-content identity,
-  review, and media-archive coordination seams, then introduce a typed staged
-  pipeline workflow without changing ordering or retry policy.
+- Next action: extract the remaining post-content identity and review-export
+  stages, then introduce the typed top-level pipeline request and scope-specific
+  stage decomposition without changing ordering or retry policy.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -334,6 +334,21 @@ caption, transcription, and imported-source synchronization workflows, and all
 four workflows are callable without Typer or Rich.
 
 `cli.py` is now 12,332 lines, down 5,785 lines from baseline.
+
+### 2026-09-26 — Milestone 5.1: run media coordination extraction
+
+Added `workflows/run_media.py` with typed request/result and dependency
+boundaries plus named eligibility, audio assurance/retry, and source
+archive/retry stages. The workflow imports no Typer, Rich, or `cli.py` and
+returns audio and archive outcome counts.
+
+`cli._ensure_and_archive_run_media` remains as a thin compatibility and console
+adapter because current pipeline tests patch that symbol. Direct workflow tests
+exercise structured results without CLI presentation, while existing tests
+continue to verify unexpected per-video failures, one-pass audio retry, archive
+retry, and the existing patch seams.
+
+`cli.py` is now 12,225 lines, down 5,892 lines from baseline.
 
 ## Validation log
 
@@ -719,6 +734,19 @@ Ran 22 tests in 0.960s — OK
 
 .venv/bin/python -m pastor_transcript_extractor sync-imported-sources --help
 PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Run media coordination extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_run_media_workflow.py
+PASS
+
+.venv/bin/python -m unittest -q tests.test_run_media_workflow tests.test_cli_contract plus four focused run-media CLI tests
+Ran 11 tests in 0.369s — OK
 
 git diff --check
 PASS

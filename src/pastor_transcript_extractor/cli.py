@@ -383,6 +383,11 @@ from pastor_transcript_extractor.workflows.source_sync import (
     SourceSyncRequest,
     sync_imported_sources_workflow,
 )
+from pastor_transcript_extractor.workflows.run_media import (
+    RunMediaDependencies,
+    RunMediaRequest,
+    ensure_and_archive_run_media as _ensure_and_archive_run_media_workflow,
+)
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
     CaptionAcquisitionResult,
@@ -12021,138 +12026,26 @@ def _ensure_and_archive_run_media(
     video_ids: set[int] | None = None,
     allow_download: bool = True,
 ) -> None:
-    videos = [
-        video
-        for video in database.list_videos()
-        if video_ids is None or video.id in video_ids
-    ]
-    eligible = [
-        video
-        for video in videos
-        if video_has_isolated_sermon(database, video.id)[0]
-        and get_verified_normalized_media_artifact(database, video.id) is None
-    ]
-    tools = build_tool_config() if eligible else None
-    counts = {"verified": 0, "unavailable": 0, "failed": 0, "skipped": 0}
-    downloaded = 0
-
-    def ensure_pass(targets, *, retry: bool = False):
-        pass_results = []
-        retry_videos = []
-        pass_label = "retry " if retry else ""
-        for index, video in enumerate(targets, start=1):
-            assert tools is not None
-            try:
-                result = ensure_audio_for_video(
-                    database,
-                    paths,
-                    tools,
-                    video_id=video.id,
-                    allow_download=allow_download,
-                )
-            except Exception as error:
-                result = None
-                detail = f"unexpected_media_error: {type(error).__name__}: {error}"
-            else:
-                detail = result.reason_code
-            should_retry = result is None or result.outcome == "failed"
-            if should_retry and not retry:
-                retry_videos.append(video)
-                suffix = "; deferred for retry after the first pass"
-            else:
-                suffix = ""
-            outcome = result.outcome if result is not None else "failed"
-            console.print(
-                f"Run audio {pass_label}[{index}/{len(targets)}] "
-                f"{video.youtube_video_id}: {outcome} ({detail}){suffix}",
-                style="red" if outcome == "failed" else None,
-                markup=False,
-            )
-            pass_results.append((video, result))
-        return pass_results, retry_videos
-
-    initial_results, retry_videos = ensure_pass(eligible)
-    final_results = {video.id: result for video, result in initial_results}
-    if retry_videos:
-        console.print(
-            f"Retrying {len(retry_videos)} normalized-audio failure(s) after "
-            "the first pass."
-        )
-        retry_results, _ = ensure_pass(retry_videos, retry=True)
-        final_results.update(
-            (video.id, result) for video, result in retry_results
-        )
-
-    for video in eligible:
-        assert tools is not None
-        result = final_results[video.id]
-        if result is None:
-            counts["failed"] += 1
-            continue
-        counts[result.outcome] += 1
-        downloaded += int(result.downloaded)
-    console.print(
-        "Run audio ensure complete: "
-        f"eligible={len(eligible)}, verified={counts['verified']} "
-        f"(downloaded={downloaded}), unavailable={counts['unavailable']}, "
-        f"failed={counts['failed']}, skipped={counts['skipped']}."
-    )
-
-    if database.get_active_media_archive_destination() is None:
-        console.print("Run media archive skipped: no archive destination is configured.")
-        return
-
-    def report_preflight(event: ArchivePreflightEvent) -> None:
-        console.print(
-            f"Run archive preflight {event.check}: {event.status} — {event.detail}",
-            markup=False,
-        )
-
-    def report_progress(event: ArchiveProgressEvent) -> None:
-        if event.stage == "complete":
-            detail = f" ({event.detail})" if event.detail else ""
-            console.print(
-                f"Run archive [{event.index}/{event.total}] artifact "
-                f"#{event.media_artifact_id}: {event.outcome}{detail}",
-                markup=False,
-            )
-            return
-        console.print(
-            f"Run archive [{event.index}/{event.total}] "
-            f"{event.source_path.name}: {event.stage}",
-            markup=False,
-        )
-
-    archive = archive_source_media(
+    _ensure_and_archive_run_media_workflow(
         database,
         paths,
-        video_ids=video_ids,
-        wait_for_lock=True,
-        progress_callback=report_progress,
-        preflight_callback=report_preflight,
+        RunMediaRequest(
+            video_ids=None if video_ids is None else frozenset(video_ids),
+            allow_download=allow_download,
+        ),
+        progress_callback=lambda message, style: console.print(
+            message,
+            style=style,
+            markup=False,
+        ),
+        dependencies=RunMediaDependencies(
+            has_isolated_sermon=video_has_isolated_sermon,
+            get_verified_media=get_verified_normalized_media_artifact,
+            build_tools=build_tool_config,
+            ensure_audio=ensure_audio_for_video,
+            archive_source=archive_source_media,
+        ),
     )
-    if archive.counts["failed"]:
-        console.print(
-            f"Retrying source archival after {archive.counts['failed']} "
-            "artifact failure(s) in the first pass."
-        )
-        archive = archive_source_media(
-            database,
-            paths,
-            video_ids=video_ids,
-            wait_for_lock=True,
-            progress_callback=report_progress,
-            preflight_callback=report_preflight,
-        )
-    archive_counts = archive.counts
-    console.print(
-        f"Run media archive complete: eligible={archive.eligible}, "
-        f"archived={archive_counts['archived']}, "
-        f"already_archived={archive_counts['already_archived']}, "
-        f"unavailable={archive_counts['destination_unavailable']}, "
-        f"failed={archive_counts['failed']}."
-    )
-
 
 def _print_review_batch(batch: ReviewBatchResult) -> None:
     for pastor_result in batch.pastors:
