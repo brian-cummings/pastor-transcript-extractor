@@ -413,6 +413,7 @@ from pastor_transcript_extractor.workflows.identity.finalization import (
 )
 from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
+    assess_association_candidate,
     resolve_association_scope,
     validate_shadow_association_request,
 )
@@ -4567,113 +4568,39 @@ def shadow_associate_speakers_service(
                 f"admitted_for_span_prep={len(span_preparation_inputs)} "
                 f"excluded_so_far={sum(ineligible_reasons.values())}"
             )
-        latest_observation = (
-            database.get_latest_speaker_observation_for_video(video.id)
-            if unattempted_only
-            else None
-        )
-        if unattempted_only:
-            if (
-                latest_observation is not None
-                and latest_observation.input_fingerprint
-                in attempted_observation_fingerprints
-            ):
-                ineligible_reasons["association_already_attempted"] = (
-                    ineligible_reasons.get(
-                        "association_already_attempted", 0
-                    )
-                    + 1
-                )
-                continue
-        eligibility = assess_automatic_speaker_observation(
+        assessment = assess_association_candidate(
             database,
-            video.id,
+            video,
+            unattempted_only=unattempted_only,
+            attempted_observation_fingerprints=(
+                attempted_observation_fingerprints
+            ),
+            include_profiled=include_profiled,
             verification_cache=verification_cache,
-            verify_media=False,
         )
-        if not eligibility.eligible or eligibility.observation is None:
-            ineligible_reasons[eligibility.reason_code] = (
-                ineligible_reasons.get(eligibility.reason_code, 0) + 1
-            )
-            persist_admission(
-                video,
-                latest_observation,
-                stage="metadata_eligibility",
-                reason_code=eligibility.reason_code,
-            )
-            continue
-        if (
-            not include_profiled
-            and database.list_effective_profile_ids_for_observation(
-                eligibility.observation.id
-            )
-        ):
-            ineligible_reasons["already_profiled"] = (
-                ineligible_reasons.get("already_profiled", 0) + 1
-            )
-            persist_admission(
-                video,
-                eligibility.observation,
-                stage="membership_filter",
-                reason_code="already_profiled",
-                media_sha256=(
-                    eligibility.media_artifact.content_sha256
-                    if eligibility.media_artifact is not None
-                    else None
-                ),
-            )
-            continue
-        review_action = database.get_effective_observation_review_action(
-            eligibility.observation.id
-        )
-        if review_action not in {None, "qualified_single_speaker"}:
-            reason = f"reviewed_{review_action}"
+        if not assessment.admitted:
+            reason = assessment.exclusion_reason
+            if reason is None:
+                raise RuntimeError("Excluded association candidate has no reason.")
             ineligible_reasons[reason] = ineligible_reasons.get(reason, 0) + 1
-            persist_admission(
-                video,
-                eligibility.observation,
-                stage="observation_review_filter",
-                reason_code=reason,
-                media_sha256=(
-                    eligibility.media_artifact.content_sha256
-                    if eligibility.media_artifact is not None
-                    else None
-                ),
-            )
-            continue
-        eligibility = assess_automatic_speaker_observation(
-            database,
-            video.id,
-            verification_cache=verification_cache,
-            verify_media=True,
-        )
-        if not eligibility.eligible or eligibility.observation is None:
-            ineligible_reasons[eligibility.reason_code] = (
-                ineligible_reasons.get(eligibility.reason_code, 0) + 1
-            )
-            persist_admission(
-                video,
-                latest_observation,
-                stage="verified_media_eligibility",
-                reason_code=eligibility.reason_code,
-            )
-            continue
-        if eligibility.media_artifact is None:
-            ineligible_reasons["verified_normalized_media_unavailable"] = (
-                ineligible_reasons.get(
-                    "verified_normalized_media_unavailable",
-                    0,
+            if assessment.admission_stage is not None:
+                persist_admission(
+                    video,
+                    assessment.admission_observation,
+                    stage=assessment.admission_stage,
+                    reason_code=reason,
+                    media_sha256=assessment.admission_media_sha256,
                 )
-                + 1
-            )
-            persist_admission(
-                video,
-                eligibility.observation,
-                stage="verified_media_eligibility",
-                reason_code="verified_normalized_media_unavailable",
-            )
             continue
-        audio_path = Path(eligibility.media_artifact.artifact_path)
+        eligibility = assessment.eligibility
+        audio_path = assessment.audio_path
+        if (
+            eligibility is None
+            or eligibility.observation is None
+            or eligibility.media_artifact is None
+            or audio_path is None
+        ):
+            raise RuntimeError("Admitted association candidate is incomplete.")
         span_cache.remember_verified_source(
             audio_path,
             eligibility.media_artifact.content_sha256,
