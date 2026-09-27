@@ -17,6 +17,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
+    repair_association_stage,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -120,6 +121,50 @@ class IdentityRunWorkflowTests(unittest.TestCase):
 
         self.assertEqual((), selected)
         cache.pending_automatic_repairs.assert_not_called()
+
+    def test_empty_repair_stage_preserves_reports_and_checkpoint(self) -> None:
+        repairer = Mock()
+        reports = (Path("current.json"),)
+
+        result = repair_association_stage(
+            pending_repairs=(),
+            current_reports=reports,
+            youtube_video_id=None,
+            all_extractions=True,
+            paths=SimpleNamespace(),
+            base_dir=None,
+            state_cache=SimpleNamespace(),
+            jobs=2,
+            repairer=repairer,
+        )
+
+        self.assertEqual(reports, result.reports)
+        self.assertFalse(result.checkpoint_needs_refresh)
+        self.assertFalse(result.repair_attempted)
+        repairer.assert_not_called()
+
+    def test_repair_stage_replaces_reports_and_invalidates_checkpoint(self) -> None:
+        pending = (SimpleNamespace(video_id=7),)
+        repairer = Mock(return_value=[Path("repaired.json")])
+
+        result = repair_association_stage(
+            pending_repairs=pending,
+            current_reports=(Path("old.json"),),
+            youtube_video_id="video-7",
+            all_extractions=False,
+            paths=SimpleNamespace(),
+            base_dir=Path("app-data"),
+            state_cache=SimpleNamespace(),
+            jobs=3,
+            repairer=repairer,
+        )
+
+        self.assertEqual((Path("repaired.json"),), result.reports)
+        self.assertTrue(result.checkpoint_needs_refresh)
+        self.assertTrue(result.repair_attempted)
+        self.assertEqual(
+            pending, repairer.call_args.kwargs["pending_exemplar_repairs"]
+        )
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(
