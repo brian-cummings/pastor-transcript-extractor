@@ -8,8 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract shadow-association profile-route planning and candidate
-  eligibility preparation, preserving every skip, abstention, and reason code.
+- Next action: extract shadow-association span preparation and profile-route
+  planning, preserving concurrency, every skip/abstention reason, and durable
+  admission evidence.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -784,6 +785,17 @@ neighborhoods, and resolver failures retain the same usage-error boundary.
 
 Focused tests cover corpus inventory, deterministic neighborhood ordering, and
 persisted-attempt exclusion without acoustic execution.
+
+### 2026-09-27 — Milestone 7.3: candidate eligibility assessment
+
+Extracted each video's attempted-observation, metadata, existing-membership,
+human-review, verified-media, and normalized-media gates into a typed assessment.
+The CLI loop now only counts exclusions, writes the returned durable admission
+evidence, remembers verified media, and queues successful span preparation.
+
+Tests prove already-attempted candidates bypass eligibility work, reviewed
+exclusions retain their exact stage/media evidence, and admission requires the
+second byte-verifying eligibility pass.
 
 ## Validation log
 
@@ -1735,6 +1747,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 13 tests in 0.227s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Candidate eligibility assessment
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 16 tests in 0.228s — OK
 
 git diff --check
 PASS

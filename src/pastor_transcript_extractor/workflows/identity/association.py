@@ -7,11 +7,16 @@ from typing import Mapping
 from pastor_transcript_extractor.identity_leverage import (
     profile_neighborhood_video_ids,
 )
+from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.models import SpeakerObservation, Video
 from pastor_transcript_extractor.pipeline_diagnostics import (
     load_identity_association_attempts,
 )
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.speaker_pair_eligibility import (
+    AutomaticSpeakerObservationEligibility,
+    assess_automatic_speaker_observation,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +53,23 @@ class AssociationScopeResult:
     database_video_count: int
     observed_video_count: int
     inventory_reported: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationCandidateAssessment:
+    """One video's terminal eligibility or span-preparation admission."""
+
+    video: Video
+    eligibility: AutomaticSpeakerObservationEligibility | None
+    audio_path: Path | None
+    exclusion_reason: str | None
+    admission_observation: SpeakerObservation | None
+    admission_stage: str | None
+    admission_media_sha256: str | None = None
+
+    @property
+    def admitted(self) -> bool:
+        return self.exclusion_reason is None
 
 
 def validate_shadow_association_request(
@@ -140,4 +162,115 @@ def resolve_association_scope(
             }
         ),
         inventory_reported=inventory_reported,
+    )
+
+
+def assess_association_candidate(
+    database: Database,
+    video: Video,
+    *,
+    unattempted_only: bool,
+    attempted_observation_fingerprints: frozenset[str],
+    include_profiled: bool,
+    verification_cache: MediaVerificationCache,
+) -> AssociationCandidateAssessment:
+    """Apply metadata, membership, review, and verified-media admission gates."""
+    latest_observation = (
+        database.get_latest_speaker_observation_for_video(video.id)
+        if unattempted_only
+        else None
+    )
+    if (
+        latest_observation is not None
+        and latest_observation.input_fingerprint
+        in attempted_observation_fingerprints
+    ):
+        return AssociationCandidateAssessment(
+            video,
+            None,
+            None,
+            "association_already_attempted",
+            None,
+            None,
+        )
+
+    eligibility = assess_automatic_speaker_observation(
+        database,
+        video.id,
+        verification_cache=verification_cache,
+        verify_media=False,
+    )
+    if not eligibility.eligible or eligibility.observation is None:
+        return AssociationCandidateAssessment(
+            video,
+            eligibility,
+            None,
+            eligibility.reason_code,
+            latest_observation,
+            "metadata_eligibility",
+        )
+    observation = eligibility.observation
+    media_sha256 = (
+        eligibility.media_artifact.content_sha256
+        if eligibility.media_artifact is not None
+        else None
+    )
+    if (
+        not include_profiled
+        and database.list_effective_profile_ids_for_observation(observation.id)
+    ):
+        return AssociationCandidateAssessment(
+            video,
+            eligibility,
+            None,
+            "already_profiled",
+            observation,
+            "membership_filter",
+            media_sha256,
+        )
+    review_action = database.get_effective_observation_review_action(observation.id)
+    if review_action not in {None, "qualified_single_speaker"}:
+        reason = f"reviewed_{review_action}"
+        return AssociationCandidateAssessment(
+            video,
+            eligibility,
+            None,
+            reason,
+            observation,
+            "observation_review_filter",
+            media_sha256,
+        )
+
+    verified = assess_automatic_speaker_observation(
+        database,
+        video.id,
+        verification_cache=verification_cache,
+        verify_media=True,
+    )
+    if not verified.eligible or verified.observation is None:
+        return AssociationCandidateAssessment(
+            video,
+            verified,
+            None,
+            verified.reason_code,
+            latest_observation,
+            "verified_media_eligibility",
+        )
+    if verified.media_artifact is None:
+        return AssociationCandidateAssessment(
+            video,
+            verified,
+            None,
+            "verified_normalized_media_unavailable",
+            verified.observation,
+            "verified_media_eligibility",
+        )
+    return AssociationCandidateAssessment(
+        video,
+        verified,
+        Path(verified.media_artifact.artifact_path),
+        None,
+        None,
+        None,
+        verified.media_artifact.content_sha256,
     )

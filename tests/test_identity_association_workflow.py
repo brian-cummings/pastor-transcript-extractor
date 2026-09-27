@@ -9,6 +9,7 @@ from unittest.mock import patch
 from pastor_transcript_extractor.workflows.identity import association
 from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
+    assess_association_candidate,
     resolve_association_scope,
     validate_shadow_association_request,
 )
@@ -140,6 +141,100 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
             frozenset({"attempted"}),
             result.attempted_observation_fingerprints,
         )
+
+    def test_attempted_candidate_is_excluded_before_eligibility(self) -> None:
+        observation = SimpleNamespace(input_fingerprint="attempted")
+        database = SimpleNamespace(
+            get_latest_speaker_observation_for_video=lambda _id: observation
+        )
+        with patch.object(
+            association, "assess_automatic_speaker_observation"
+        ) as assess:
+            result = assess_association_candidate(
+                database,
+                SimpleNamespace(id=7),
+                unattempted_only=True,
+                attempted_observation_fingerprints=frozenset({"attempted"}),
+                include_profiled=False,
+                verification_cache=object(),
+            )
+
+        self.assertEqual("association_already_attempted", result.exclusion_reason)
+        self.assertIsNone(result.admission_stage)
+        assess.assert_not_called()
+
+    def test_reviewed_exclusion_retains_admission_evidence(self) -> None:
+        observation = SimpleNamespace(id=11)
+        media = SimpleNamespace(content_sha256="media-sha")
+        eligibility = SimpleNamespace(
+            eligible=True,
+            observation=observation,
+            media_artifact=media,
+            reason_code="eligible",
+        )
+        database = SimpleNamespace(
+            list_effective_profile_ids_for_observation=lambda _id: (),
+            get_effective_observation_review_action=lambda _id: "multi_speaker",
+        )
+        with patch.object(
+            association,
+            "assess_automatic_speaker_observation",
+            return_value=eligibility,
+        ):
+            result = assess_association_candidate(
+                database,
+                SimpleNamespace(id=7),
+                unattempted_only=False,
+                attempted_observation_fingerprints=frozenset(),
+                include_profiled=False,
+                verification_cache=object(),
+            )
+
+        self.assertEqual("reviewed_multi_speaker", result.exclusion_reason)
+        self.assertEqual("observation_review_filter", result.admission_stage)
+        self.assertEqual("media-sha", result.admission_media_sha256)
+
+    def test_candidate_requires_second_verified_media_assessment(self) -> None:
+        observation = SimpleNamespace(id=11)
+        media = SimpleNamespace(
+            content_sha256="verified-sha",
+            artifact_path="audio.wav",
+        )
+        metadata = SimpleNamespace(
+            eligible=True,
+            observation=observation,
+            media_artifact=None,
+            reason_code="eligible",
+        )
+        verified = SimpleNamespace(
+            eligible=True,
+            observation=observation,
+            media_artifact=media,
+            reason_code="eligible",
+        )
+        database = SimpleNamespace(
+            list_effective_profile_ids_for_observation=lambda _id: (),
+            get_effective_observation_review_action=lambda _id: None,
+        )
+        with patch.object(
+            association,
+            "assess_automatic_speaker_observation",
+            side_effect=(metadata, verified),
+        ) as assess:
+            result = assess_association_candidate(
+                database,
+                SimpleNamespace(id=7),
+                unattempted_only=False,
+                attempted_observation_fingerprints=frozenset(),
+                include_profiled=False,
+                verification_cache=object(),
+            )
+
+        self.assertTrue(result.admitted)
+        self.assertEqual(Path("audio.wav"), result.audio_path)
+        self.assertEqual(2, assess.call_count)
+        self.assertFalse(assess.call_args_list[0].kwargs["verify_media"])
+        self.assertTrue(assess.call_args_list[1].kwargs["verify_media"])
 
 
 if __name__ == "__main__":
