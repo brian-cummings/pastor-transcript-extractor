@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the remaining `build_paths` and `build_tool_config` CLI
-  patch clusters to their configuration or command owners, without touching
-  unrelated source-processing changes.
+- Next action: migrate the run-media adapter cluster (`_ensure_and_archive_run_media`
+  and its media operations) to explicit workflow or command-owner seams,
+  without touching unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1063,6 +1063,12 @@ composition through `commands.common.get_database`, retaining only a temporary
 CLI alias for direct imports. Migrated all 20 tests to patch the shared owner.
 While validating the cluster, also corrected stale identity-test imports and a
 media-archive test's already-moved command-owner patches.
+
+### 2026-09-27 — Milestone 8.12: configuration owner seams
+
+Changed CLI path and tool configuration calls—including workflow dependency
+composition—to resolve from the owning `config` module. All remaining tests now
+patch those owner functions rather than imported CLI bindings.
 
 ## Validation log
 
@@ -2394,6 +2400,22 @@ PASS
 Ran 26 tests in 0.443s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.get_database" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Configuration owner seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_sources.py tests/test_identity_run.py
+PASS
+
+.venv/bin/python -m unittest <12 affected configuration-owner tests> tests.test_cli_contract
+Ran 18 tests in 0.682s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(build_paths|build_tool_config)" tests
 No matches
 
 git diff --check
