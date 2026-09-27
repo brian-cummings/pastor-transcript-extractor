@@ -11,6 +11,7 @@ from pastor_transcript_extractor.workflows.identity import run as identity_run
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
     index_current_association_results,
+    reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -204,6 +205,45 @@ class IdentityRunWorkflowTests(unittest.TestCase):
             result = index_current_association_results((first, second))
 
         self.assertEqual({7: "current"}, result)
+
+    def test_current_result_reconciliation_forwards_exact_index(self) -> None:
+        database = object()
+        expected = object()
+        cache = object()
+        result_index = {7: "sha-7"}
+        with patch.object(
+            identity_run, "Database", return_value=database
+        ), patch.object(
+            identity_run, "reconcile_machine_assignments", return_value=expected
+        ) as reconcile:
+            result = reconcile_current_assignment_results_stage(
+                Path("app.db"),
+                verification_cache=cache,
+                result_sha256_by_observation=result_index,
+                plan_only=False,
+            )
+
+        self.assertIs(expected, result)
+        reconcile.assert_called_once_with(
+            database,
+            verification_cache=cache,
+            current_association_result_sha256_by_observation=result_index,
+        )
+
+    def test_current_result_reconciliation_plan_is_non_mutating(self) -> None:
+        with patch.object(identity_run, "Database") as database_factory, patch.object(
+            identity_run, "reconcile_machine_assignments"
+        ) as reconcile:
+            result = reconcile_current_assignment_results_stage(
+                Path("app.db"),
+                verification_cache=object(),
+                result_sha256_by_observation={7: "sha-7"},
+                plan_only=True,
+            )
+
+        self.assertIsNone(result)
+        database_factory.assert_not_called()
+        reconcile.assert_not_called()
 
 
 if __name__ == "__main__":
