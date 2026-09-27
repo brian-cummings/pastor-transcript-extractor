@@ -2872,10 +2872,12 @@ class CliTests(unittest.TestCase):
                 reviewed_end_seconds=3600.0,
             )
             with patch(
-                "pastor_transcript_extractor.cli.audit_speaker_negative_windows",
+                "pastor_transcript_extractor.commands.identity.review."
+                "audit_speaker_negative_windows",
                 return_value=SimpleNamespace(actionable=(record,)),
             ), patch(
-                "pastor_transcript_extractor.cli.review_ground_truth"
+                "pastor_transcript_extractor.commands.identity.review."
+                "_ground_truth_reviewer"
             ) as review:
                 result = runner.invoke(
                     app,
