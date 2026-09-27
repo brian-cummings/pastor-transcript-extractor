@@ -145,3 +145,22 @@ def index_current_association_results(
         if isinstance(observation_id, int) and isinstance(result_sha256, str):
             results[observation_id] = result_sha256
     return results
+
+
+def reconcile_current_assignment_results_stage(
+    database_path: Path,
+    *,
+    verification_cache: MediaVerificationCache,
+    result_sha256_by_observation: Mapping[int, str],
+    plan_only: bool,
+) -> MachineAssignmentReconciliationResult | None:
+    """Reconcile assignments against the selected current association results."""
+    if plan_only:
+        return None
+    return reconcile_machine_assignments(
+        Database(database_path),
+        verification_cache=verification_cache,
+        current_association_result_sha256_by_observation=(
+            result_sha256_by_observation
+        ),
+    )

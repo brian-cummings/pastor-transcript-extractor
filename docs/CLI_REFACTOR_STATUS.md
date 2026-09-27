@@ -627,6 +627,13 @@ workflow function. It ignores unreadable and malformed artifacts, accepts only
 typed observation/result pairs, and deterministically lets the last current
 artifact win before assignment reconciliation.
 
+### 2026-09-27 — Milestone 6.5f: current-result reconciliation stage
+
+Moved post-association reconciliation behind a second explicit workflow stage.
+It receives the exact current-result index, remains a no-op in plan-only mode,
+and preserves the required order between persisted association selection and
+machine-assignment planning.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -1353,6 +1360,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 24 tests in 0.847s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Current-result reconciliation stage
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 26 tests in 0.831s — OK
 
 git diff --check
 PASS

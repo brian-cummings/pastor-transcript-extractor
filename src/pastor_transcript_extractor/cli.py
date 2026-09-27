@@ -383,6 +383,7 @@ from pastor_transcript_extractor.workflows.run import (
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
     index_current_association_results,
+    reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
@@ -3178,14 +3179,13 @@ def run_identity_workflow_service(
     current_result_sha256_by_observation = index_current_association_results(
         current_association_reports
     )
-    if not plan_only:
-        current_reconciliation = reconcile_machine_assignments(
-            Database(paths.database),
-            verification_cache=machine_cache,
-            current_association_result_sha256_by_observation=(
-                current_result_sha256_by_observation
-            ),
-        )
+    current_reconciliation = reconcile_current_assignment_results_stage(
+        paths.database,
+        verification_cache=machine_cache,
+        result_sha256_by_observation=current_result_sha256_by_observation,
+        plan_only=plan_only,
+    )
+    if current_reconciliation is not None:
         console.print(
             "Current-result assignment reconciliation: "
             f"confirmed={current_reconciliation.confirmed} "
