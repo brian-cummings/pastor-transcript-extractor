@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 5 — extract the top-level pipeline.
-- Next action: move resume-manifest verification and top-level mode dispatch
-  behind one typed request/result boundary, then reduce the run command to one
-  invocation and event renderer.
+- Next action: move the run command and its presentation/dependency adapters to
+  `commands/pipeline.py`, migrate patch targets to their owners, and remove the
+  remaining pipeline compatibility scaffolding from `cli.py`.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -418,6 +418,22 @@ events before invoking audio staging. Removed its duplicate discovery-result
 selector and 80 lines of scope policy.
 
 `cli.py` is now 11,702 lines, down 6,415 lines from baseline.
+
+### 2026-09-26 — Milestone 5.7: top-level run dispatch extraction
+
+Added `workflows/run.py` with a single typed request/result boundary and named
+online, audio-stage, and staged-resume dispatch paths. Cross-mode validation,
+source-id canonicalization, resume verification sequencing, and construction
+of the existing online/offline workflow requests now live outside the CLI.
+Direct tests cover all three modes and prove invalid combinations stop before
+any dependency is called.
+
+`cli.run_workflow_service` is now a compatibility adapter: it constructs one
+request, injects the existing patch seams, invokes one workflow, and renders
+events. Resume manifest verification remains a narrow Rich progress adapter in
+the CLI pending the command-module move.
+
+`cli.py` is now 11,625 lines, down 6,492 lines from baseline.
 
 ## Validation log
 
@@ -884,6 +900,22 @@ PASS
 
 .venv/bin/python -m unittest tests.test_audio_stage_workflow plus six focused audio-stage CLI tests and tests.test_cli_contract
 Ran 15 tests — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Top-level run dispatch extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/run.py src/pastor_transcript_extractor/cli.py tests/test_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_run_workflow tests.test_pipeline_workflow tests.test_audio_stage_workflow tests.test_resume_pipeline_workflow plus ten focused run-mode CLI tests
+Ran 22 tests in 0.139s — OK
+
+.venv/bin/python -m unittest tests.test_cli_contract plus fourteen focused online and forwarding CLI tests
+Ran 20 tests in 0.938s — OK
 
 git diff --check
 PASS
