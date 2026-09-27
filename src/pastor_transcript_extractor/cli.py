@@ -58,6 +58,7 @@ from pastor_transcript_extractor.commands import media as _media_commands
 from pastor_transcript_extractor.commands import media_archive as _media_archive_commands
 from pastor_transcript_extractor.commands import media_provenance as _media_provenance_commands
 from pastor_transcript_extractor.commands import evaluation as _evaluation_commands
+from pastor_transcript_extractor.commands import pipeline as _pipeline_commands
 from pastor_transcript_extractor.commands.common import unknown_pastor_error as _unknown_pastor_error
 from pastor_transcript_extractor.config import (
     AppPaths,
@@ -11298,31 +11299,7 @@ def _verify_audio_stage_manifest(
     return video_ids
 
 
-def run_workflow_service(
-    url: str | None = None,
-    pastor: str | None = None,
-    all_sources: bool = False,
-    failed_only: bool = False,
-    replace_existing: bool = False,
-    limit: int | None = DEFAULT_DISCOVER_LIMIT,
-    all_videos: bool = False,
-    captions_only: bool = False,
-    transcribe_missing: bool = True,
-    jobs: int = DEFAULT_TRANSCRIBE_JOBS,
-    classifier: str = "auto",
-    llm_model: str | None = None,
-    skip_review: bool = False,
-    run_identity: bool = False,
-    base_dir: Path | None = None,
-    source_ids: Sequence[int] | None = None,
-    stage_audio_only: bool = False,
-    skip_discovery: bool = False,
-    resume_stage: Path | None = None,
-    acquire_captions: bool = False,
-    download_jobs: int = DEFAULT_PREP_WORKERS,
-    cookies_from_browser: str | None = None,
-    cookies: Path | None = None,
-) -> None:
+def _invoke_run_request(request: RunWorkflowRequest) -> None:
     def render_event(event: object) -> None:
         if isinstance(event, str):
             console.print(event, markup="[yellow]" in event)
@@ -11330,34 +11307,7 @@ def run_workflow_service(
             _print_review_batch(event)
 
     run_workflow(
-        RunWorkflowRequest(
-            url=url,
-            pastor=pastor,
-            all_sources=all_sources,
-            failed_only=failed_only,
-            replace_existing=replace_existing,
-            limit=limit,
-            all_videos=all_videos,
-            captions_only=captions_only,
-            transcribe_missing=transcribe_missing,
-            jobs=jobs,
-            classifier=classifier,
-            llm_model=llm_model,
-            skip_review=skip_review,
-            run_identity=run_identity,
-            base_dir=base_dir,
-            source_ids=tuple(source_ids or ()),
-            stage_audio_only=stage_audio_only,
-            skip_discovery=skip_discovery,
-            resume_stage=resume_stage,
-            acquire_captions=acquire_captions,
-            download_jobs=download_jobs,
-            caption_request_interval_seconds=(
-                CAPTION_BATCH_REQUEST_INTERVAL_SECONDS
-            ),
-            cookies_from_browser=cookies_from_browser,
-            cookies=cookies,
-        ),
+        request,
         event_callback=render_event,
         dependencies=RunWorkflowDependencies(
             get_database=get_database,
@@ -11398,6 +11348,63 @@ def run_workflow_service(
                 prepare_reviews=prepare_review_exports,
             ),
         ),
+    )
+
+
+def run_workflow_service(
+    url: str | None = None,
+    pastor: str | None = None,
+    all_sources: bool = False,
+    failed_only: bool = False,
+    replace_existing: bool = False,
+    limit: int | None = DEFAULT_DISCOVER_LIMIT,
+    all_videos: bool = False,
+    captions_only: bool = False,
+    transcribe_missing: bool = True,
+    jobs: int = DEFAULT_TRANSCRIBE_JOBS,
+    classifier: str = "auto",
+    llm_model: str | None = None,
+    skip_review: bool = False,
+    run_identity: bool = False,
+    base_dir: Path | None = None,
+    source_ids: Sequence[int] | None = None,
+    stage_audio_only: bool = False,
+    skip_discovery: bool = False,
+    resume_stage: Path | None = None,
+    acquire_captions: bool = False,
+    download_jobs: int = DEFAULT_PREP_WORKERS,
+    cookies_from_browser: str | None = None,
+    cookies: Path | None = None,
+) -> None:
+    _invoke_run_request(
+        RunWorkflowRequest(
+            url=url,
+            pastor=pastor,
+            all_sources=all_sources,
+            failed_only=failed_only,
+            replace_existing=replace_existing,
+            limit=limit,
+            all_videos=all_videos,
+            captions_only=captions_only,
+            transcribe_missing=transcribe_missing,
+            jobs=jobs,
+            classifier=classifier,
+            llm_model=llm_model,
+            skip_review=skip_review,
+            run_identity=run_identity,
+            base_dir=base_dir,
+            source_ids=tuple(source_ids or ()),
+            stage_audio_only=stage_audio_only,
+            skip_discovery=skip_discovery,
+            resume_stage=resume_stage,
+            acquire_captions=acquire_captions,
+            download_jobs=download_jobs,
+            caption_request_interval_seconds=(
+                CAPTION_BATCH_REQUEST_INTERVAL_SECONDS
+            ),
+            cookies_from_browser=cookies_from_browser,
+            cookies=cookies,
+        )
     )
 def _run_post_content_identity(
     base_dir: Path | None,
@@ -11449,163 +11456,8 @@ def _print_review_batch(batch: ReviewBatchResult) -> None:
         console.print(f"Prepared {batch.prepared} video(s) for review; failed {batch.failed}.")
 
 
-@app.command(
-    help=(
-        "Run intake, extraction, audio assurance, source archival, and "
-        "disposition-aware pastor review export."
-    ),
-    rich_help_panel="Workflows",
-)
-def run(
-    url: str | None = typer.Argument(None, help="YouTube video, playlist, or channel URL."),
-    pastor: str | None = typer.Option(None, help="Pastor slug to associate with this source."),
-    all_sources: bool = typer.Option(
-        False,
-        "--all",
-        help=(
-            "Run the full workflow for every processing-enabled source. This does not "
-            "remove the per-source discovery limit; use --all-videos for that."
-        ),
-    ),
-    source_ids: list[int] | None = typer.Option(
-        None,
-        "--source-id",
-        help="Run one or more existing source ids; repeat this option for each source.",
-    ),
-    failed_only: bool = typer.Option(
-        False,
-        "--failed-only",
-        help="Reprocess only failed videos systemwide without rebuilding successful artifacts.",
-    ),
-    replace_existing: bool = typer.Option(False, "--replace-existing", help="Replace a matching source first."),
-    limit: int | None = typer.Option(DEFAULT_DISCOVER_LIMIT, "--limit", min=1, help="Videos per source; defaults to 26."),
-    all_videos: bool = typer.Option(False, "--all-videos", help="Process all discovered videos."),
-    captions_only: bool = typer.Option(False, "--captions-only", help="Do not run local transcription."),
-    transcribe_missing: bool = typer.Option(True, "--transcribe-missing/--no-transcribe-missing", help="Only transcribe caption misses by default."),
-    jobs: int = typer.Option(_default_transcribe_jobs(), "--jobs", min=1, help="Concurrent transcription jobs."),
-    classifier: str = typer.Option("auto", "--classifier", help="Content classifier: auto, rules, or llm."),
-    llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured Ollama model."),
-    skip_review: bool = typer.Option(
-        False,
-        "--skip-review",
-        help="Skip writing review exports after extraction and media maintenance.",
-    ),
-    run_identity: bool = typer.Option(
-        False,
-        "--identity",
-        "--run-identity",
-        help=(
-            "After content processing, run the guarded automatic identity "
-            "workflow and synchronize boundary feedback before review export."
-        ),
-    ),
-    stage_audio_only: bool = typer.Option(
-        False,
-        "--stage-audio-only",
-        "--stage-offline-inputs",
-        help=(
-            "Discover or select the requested scope, download immutable source "
-            "audio and available captions, write a resume manifest, and stop."
-        ),
-    ),
-    skip_discovery: bool = typer.Option(
-        False,
-        "--skip-discovery",
-        help=(
-            "With --stage-offline-inputs, select eligible videos already in "
-            "the catalog without contacting source feeds."
-        ),
-    ),
-    resume_stage: Path | None = typer.Option(
-        None,
-        "--resume-stage",
-        exists=True,
-        dir_okay=False,
-        help="Process exactly the videos in a verified audio-stage manifest without network downloads.",
-    ),
-    acquire_captions: bool = typer.Option(
-        False,
-        "--acquire-captions",
-        help=(
-            "With --resume-stage, fetch available captions for the verified "
-            "manifest scope before offline-only local transcription."
-        ),
-    ),
-    cookies_from_browser: str | None = typer.Option(
-        None,
-        "--cookies-from-browser",
-        help=(
-            "Use an explicit browser profile for authenticated YouTube caption "
-            "requests, for example chrome or 'chrome:Profile 1'."
-        ),
-    ),
-    cookies: Path | None = typer.Option(
-        None,
-        "--cookies",
-        exists=True,
-        dir_okay=False,
-        help="Use an explicit Netscape-format cookie file for YouTube captions.",
-    ),
-    download_jobs: int = typer.Option(
-        DEFAULT_PREP_WORKERS,
-        "--download-jobs",
-        min=1,
-        help="Concurrent source-audio downloads during --stage-audio-only.",
-    ),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    if stage_audio_only:
-        selection = "select the existing catalog" if skip_discovery else "discover the selected scope"
-        console.print(
-            f"Run will {selection}, stage immutable source audio and available "
-            "captions, write a checksum-pinned resume manifest, and stop."
-        )
-    elif resume_stage is not None:
-        if acquire_captions:
-            console.print(
-                "Run will verify the staged source manifest, acquire available captions, "
-                "then finish local transcription, extraction, media assurance, archival, "
-                "and review without further network downloads."
-            )
-        else:
-            console.print(
-                "Run will verify the staged source manifest and finish transcription, extraction, "
-                "media assurance, archival, and review without network downloads."
-            )
-    else:
-        console.print(
-            "Run adds the source, discovers videos, fetches captions, optionally transcribes, "
-            "extracts, ensures isolated-sermon audio, archives eligible sources when configured, "
-            "and writes disposition-aware pastor review artifacts."
-        )
-    try:
-        run_workflow_service(
-            url=url,
-            pastor=pastor,
-            all_sources=all_sources,
-            source_ids=source_ids,
-            failed_only=failed_only,
-            replace_existing=replace_existing,
-            limit=limit,
-            all_videos=all_videos,
-            captions_only=captions_only,
-            transcribe_missing=transcribe_missing,
-            jobs=jobs,
-            classifier=classifier,
-            llm_model=llm_model,
-            skip_review=skip_review,
-            run_identity=run_identity,
-            base_dir=base_dir,
-            stage_audio_only=stage_audio_only,
-            skip_discovery=skip_discovery,
-            resume_stage=resume_stage,
-            acquire_captions=acquire_captions,
-            download_jobs=download_jobs,
-            cookies_from_browser=cookies_from_browser,
-            cookies=cookies,
-        )
-    except ValueError as error:
-        raise typer.BadParameter(str(error)) from error
+_pipeline_commands.configure_run_command(_invoke_run_request)
+
 
 
 def main() -> int:
