@@ -194,10 +194,10 @@ class FixtureCorrectionCliTests(unittest.TestCase):
                 "pastor_transcript_extractor.cli.resolve_video_artifact_paths",
                 return_value=video_paths,
             ), patch(
-                "pastor_transcript_extractor.cli.OllamaClient",
+                "pastor_transcript_extractor.local_llm.OllamaClient",
                 FakeOllamaClient,
             ), patch(
-                "pastor_transcript_extractor.cli.reclassify_video",
+                "pastor_transcript_extractor.extraction.reclassify_video",
                 side_effect=fake_reclassify,
             ) as reclassify_mock, patch(
                 "pastor_transcript_extractor.cli.record_neutral_speaker_evidence",

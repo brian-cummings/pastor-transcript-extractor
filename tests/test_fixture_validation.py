@@ -204,9 +204,9 @@ class FixtureReclassificationCliTests(unittest.TestCase):
             with patch(
                 "pastor_transcript_extractor.commands.common.get_database", return_value=database
             ), patch(
-                "pastor_transcript_extractor.cli.OllamaClient", FakeOllamaClient
+                "pastor_transcript_extractor.local_llm.OllamaClient", FakeOllamaClient
             ), patch(
-                "pastor_transcript_extractor.cli.reclassify_video",
+                "pastor_transcript_extractor.extraction.reclassify_video",
                 return_value=reclassified,
             ) as reclassify_mock:
                 result = CliRunner().invoke(
@@ -310,9 +310,9 @@ class FixtureReclassificationCliTests(unittest.TestCase):
             with patch(
                 "pastor_transcript_extractor.commands.common.get_database", return_value=database
             ), patch(
-                "pastor_transcript_extractor.cli.OllamaClient", FakeOllamaClient
+                "pastor_transcript_extractor.local_llm.OllamaClient", FakeOllamaClient
             ), patch(
-                "pastor_transcript_extractor.cli.reclassify_video",
+                "pastor_transcript_extractor.extraction.reclassify_video",
                 side_effect=reclassify,
             ) as reclassify_mock:
                 result = CliRunner().invoke(
@@ -386,9 +386,9 @@ class FixtureReclassificationCliTests(unittest.TestCase):
             with patch(
                 "pastor_transcript_extractor.commands.common.get_database", return_value=database
             ), patch(
-                "pastor_transcript_extractor.cli.OllamaClient", FakeOllamaClient
+                "pastor_transcript_extractor.local_llm.OllamaClient", FakeOllamaClient
             ), patch(
-                "pastor_transcript_extractor.cli.reclassify_video",
+                "pastor_transcript_extractor.extraction.reclassify_video",
                 return_value=result_payload,
             ) as reclassify_mock:
                 result = CliRunner().invoke(
@@ -421,7 +421,7 @@ class FixtureReclassificationCliTests(unittest.TestCase):
             database = SimpleNamespace(get_video_by_youtube_id=lambda _: None)
             with patch(
                 "pastor_transcript_extractor.commands.common.get_database", return_value=database
-            ), patch("pastor_transcript_extractor.cli.OllamaClient") as client_mock:
+            ), patch("pastor_transcript_extractor.local_llm.OllamaClient") as client_mock:
                 result = CliRunner().invoke(
                     app,
                     [
@@ -478,9 +478,9 @@ class FixtureReclassificationCliTests(unittest.TestCase):
             with patch(
                 "pastor_transcript_extractor.commands.common.get_database", return_value=database
             ), patch(
-                "pastor_transcript_extractor.cli.OllamaClient", FakeOllamaClient
+                "pastor_transcript_extractor.local_llm.OllamaClient", FakeOllamaClient
             ), patch(
-                "pastor_transcript_extractor.cli.reclassify_video",
+                "pastor_transcript_extractor.extraction.reclassify_video",
                 side_effect=reclassify,
             ):
                 result = CliRunner().invoke(
