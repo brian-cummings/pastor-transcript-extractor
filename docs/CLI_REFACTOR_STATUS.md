@@ -8,9 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract review prewarm and archival into named identity-run
-  stages, preserving optional-service failure handling, plan-only behavior,
-  and terminal ordering.
+- Next action: extract normalized archival into a named identity-run stage,
+  preserving plan-only behavior, single-video scope, and terminal ordering.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -726,6 +725,14 @@ Created `workflows/identity/finalization.py` for terminal identity-run stages an
 moved final coordination behind a typed request/callable boundary. The stage
 pins the same model and policy inputs, forces `execute_shadow=False`, and keeps
 coordination report output separate from registry mutation.
+
+### 2026-09-27 — Milestone 6.5r: actionable review prewarm stage
+
+Moved the preparation result type and review-audio prewarm orchestration into
+the finalization workflow module. The stage now returns explicit plan-only,
+deferred, disabled, failed, and executed outcomes; expected media/artifact
+failures remain non-fatal. Plan-only mode does not open the database, and
+single-video runs remain deferred to corpus review preparation.
 
 ## Validation log
 
@@ -1609,6 +1616,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_finalization_workflow tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 52 tests in 0.730s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Actionable review prewarm stage
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/finalization.py src/pastor_transcript_extractor/cli.py tests/test_identity_finalization_workflow.py tests/test_identity_run.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_finalization_workflow tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 55 tests in 0.828s — OK
 
 git diff --check
 PASS

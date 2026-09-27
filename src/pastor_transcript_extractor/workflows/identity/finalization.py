@@ -1,8 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
+
+from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.storage import Database
+
+
+@dataclass(frozen=True, slots=True)
+class ActionableReviewAudioPreparation:
+    requested: int
+    prepared: int
+    already_cached: int
+    excluded: int
+    failed: int
+    ready_fingerprints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +29,15 @@ class CoordinationStageRequest:
     discovery_root: Path
     model_sha256: str
     base_dir: Path | None
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewPrewarmStageResult:
+    """One terminal review-audio prewarm outcome."""
+
+    status: str
+    preparation: ActionableReviewAudioPreparation | None = None
+    error: str | None = None
 
 
 def run_coordination_stage(
@@ -44,3 +67,38 @@ def run_coordination_stage(
         output_root=None,
         base_dir=request.base_dir,
     )
+
+
+def run_review_prewarm_stage(
+    database_path: Path,
+    paths: AppPaths,
+    *,
+    plan_only: bool,
+    all_extractions: bool,
+    limit: int,
+    discovery_report: Path | None,
+    association_reports: Sequence[Path],
+    automatic_profile_ready_ids: frozenset[int],
+    prewarmer: Callable[..., ActionableReviewAudioPreparation],
+) -> ReviewPrewarmStageResult:
+    """Prepare actionable review audio only for an executing corpus run."""
+    if plan_only:
+        return ReviewPrewarmStageResult("plan_only")
+    if not all_extractions:
+        return ReviewPrewarmStageResult("deferred")
+    if not limit:
+        return ReviewPrewarmStageResult("disabled")
+    try:
+        preparation = prewarmer(
+            Database(database_path, readonly=True),
+            paths,
+            discovery_report=discovery_report,
+            association_reports=tuple(association_reports),
+            limit=limit,
+            automatic_profile_ready_ids=automatic_profile_ready_ids,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        return ReviewPrewarmStageResult(
+            "failed", error=f"{type(error).__name__}: {error}"
+        )
+    return ReviewPrewarmStageResult("executed", preparation=preparation)
