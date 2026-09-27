@@ -7,11 +7,10 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 4 — separate catalog commands from acquisition
-  workflows.
-- Next action: extract imported-source synchronization into a typed,
-  presentation-independent workflow before advancing to the top-level pipeline
-  milestone.
+- Active milestone: Milestone 5 — extract the top-level pipeline.
+- Next action: inventory `run_workflow_service` and its post-content identity,
+  review, and media-archive coordination seams, then introduce a typed staged
+  pipeline workflow without changing ordering or retry policy.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -61,7 +60,7 @@ these changes.
   - [x] Analysis: style.
   - [x] Media.
   - [x] Evaluation, fixtures, and diagnostics.
-- [ ] 4. Separate catalog commands from acquisition workflows.
+- [x] 4. Separate catalog commands from acquisition workflows.
 - [ ] 5. Extract the top-level pipeline.
 - [ ] 6. Split identity by capability.
 - [ ] 7. Decompose oversized identity workflows.
@@ -316,6 +315,25 @@ seams until Milestone 5, while direct workflow tests exercise structured
 counts, progress events, and retry results without Typer or Rich.
 
 `cli.py` is now 12,512 lines, down 5,605 lines from baseline.
+
+### 2026-09-26 — Milestone 4.9: imported-source sync workflow extraction
+
+Added `workflows/source_sync.py` with typed request/result and dependency
+boundaries plus named source acquisition, extraction/registration, disk
+admission, and asynchronous archive-coordination stages. The workflow imports
+no Typer, Rich, or `cli.py`; configuration and disk-reserve failures are domain
+errors translated by the thin CLI handler.
+
+Existing CLI patch seams are passed explicitly through `SourceSyncDependencies`
+until the top-level pipeline migration removes them. Direct workflow tests now
+cover stage order, structured aggregate counts, and the pre-discovery disk
+reserve stop without a CLI runner.
+
+Milestone 4 is complete: catalog commands are separated from discovery,
+caption, transcription, and imported-source synchronization workflows, and all
+four workflows are callable without Typer or Rich.
+
+`cli.py` is now 12,332 lines, down 5,785 lines from baseline.
 
 ## Validation log
 
@@ -684,6 +702,22 @@ PASS
 Ran 33 tests in 1.845s — OK
 
 .venv/bin/python -m pastor_transcript_extractor transcribe --help
+PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Imported-source sync workflow extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_source_sync_workflow.py tests/test_church_database_import.py tests/test_cli_contract.py
+PASS
+
+.venv/bin/python -m unittest -q tests.test_source_sync_workflow tests.test_church_database_import tests.test_cli_contract
+Ran 22 tests in 0.960s — OK
+
+.venv/bin/python -m pastor_transcript_extractor sync-imported-sources --help
 PASS
 
 git diff --check

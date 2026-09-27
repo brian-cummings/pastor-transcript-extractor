@@ -376,6 +376,13 @@ from pastor_transcript_extractor.workflows.source_discovery import (
     DiscoveryServiceResult,
     discover_sources_service as _discover_sources_service,
 )
+from pastor_transcript_extractor.workflows.source_sync import (
+    SourceSyncConfigurationError,
+    SourceSyncDependencies,
+    SourceSyncDiskReserveError,
+    SourceSyncRequest,
+    sync_imported_sources_workflow,
+)
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
     CaptionAcquisitionResult,
@@ -418,8 +425,6 @@ CAPTION_BATCH_REQUEST_INTERVAL_SECONDS = 5.0
 MIN_SYNC_FREE_DISK_FRACTION = 0.20
 SYNC_ARCHIVE_WAIT_INITIAL_SECONDS = 1.0
 SYNC_ARCHIVE_WAIT_MAX_SECONDS = 30.0
-SYNC_AUDIO_RESERVATION_BYTES_PER_SECOND = 250_000
-SYNC_UNKNOWN_VIDEO_DURATION_SECONDS = 2 * 60 * 60
 DEFAULT_SPEAKER_MODEL_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
 
 
@@ -10404,227 +10409,42 @@ def sync_imported_sources(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
-    paths = build_paths(base_dir, remember=True)
-    if archive_sources and not extract_new:
-        raise typer.BadParameter("--archive-sources requires --extract.")
-    if archive_sources and database.get_active_media_archive_destination() is None:
-        raise typer.BadParameter(
-            "No media archive destination is configured. Run "
-            "'pte media archive-sources --archive-root PATH' first."
-        )
-    source_ids = imported_source_ids(database, provider)
-    if not source_ids:
-        raise typer.BadParameter(f"No imported sources found for provider {provider!r}.")
-    archive_executor = ThreadPoolExecutor(max_workers=1) if archive_sources else None
-    pending_archives: list[tuple[int, Future[ArchiveRunResult]]] = []
-
-    def finish_archive(source_id: int, future: Future[ArchiveRunResult]) -> None:
-        try:
-            archive = future.result()
-        except (OSError, RuntimeError, ValueError) as error:
-            console.print(f"Archive worker failed for source #{source_id}: {error}")
-            return
-        counts = archive.counts
-        console.print(
-            f"Archived source #{source_id}: archived={counts['archived']}, "
-            f"already_archived={counts['already_archived']}, "
-            f"unavailable={counts['destination_unavailable']}, failed={counts['failed']}."
-        )
-        if counts["destination_unavailable"] or counts["failed"]:
-            console.print(
-                "Some source audio remains local and will be retried by the next "
-                "archive run; download admission remains governed by disk reserve."
-            )
-
-    def reap_archives(*, block_one: bool = False) -> None:
-        if block_one and pending_archives:
-            source_id, future = pending_archives.pop(0)
-            finish_archive(source_id, future)
-        completed = [item for item in pending_archives if item[1].done()]
-        for source_id, future in completed:
-            pending_archives.remove((source_id, future))
-            finish_archive(source_id, future)
-
-    def require_disk_reserve(source_id: int, projected_bytes: int) -> None:
-        reap_archives()
-        wait_seconds = SYNC_ARCHIVE_WAIT_INITIAL_SECONDS
-        while True:
-            disk = shutil.disk_usage(paths.root)
-            required_free = int(disk.total * MIN_SYNC_FREE_DISK_FRACTION)
-            projected_free = disk.free - projected_bytes
-            if projected_free >= required_free:
-                console.print(
-                    f"Disk admission for source #{source_id}: "
-                    f"{disk.free / disk.total:.1%} free, "
-                    f"reserving {_format_sync_bytes(projected_bytes)}, "
-                    f"projected={projected_free / disk.total:.1%}."
-                )
-                return
-            archive_active = bool(pending_archives) or media_archive_lock_held(paths.root)
-            if archive_active:
-                console.print(
-                    f"Waiting for archival before source #{source_id}: projected local "
-                    f"free space would be {projected_free / disk.total:.1%}; "
-                    f"checking again in {wait_seconds:g}s."
-                )
-                if pending_archives:
-                    wait(
-                        {future for _, future in pending_archives},
-                        timeout=wait_seconds,
-                        return_when=FIRST_COMPLETED,
-                    )
-                    reap_archives()
-                else:
-                    time.sleep(wait_seconds)
-                wait_seconds = min(
-                    wait_seconds * 2,
-                    SYNC_ARCHIVE_WAIT_MAX_SECONDS,
-                )
-                continue
-            console.print(
-                f"Stopping before audio download for source #{source_id}: projected "
-                f"local free space would be {projected_free / disk.total:.1%}; "
-                f"synchronization requires at least "
-                f"{MIN_SYNC_FREE_DISK_FRACTION:.1%}."
-            )
-            raise typer.Exit(code=1)
-
+    app_paths = build_paths(base_dir, remember=True)
     try:
-        for index, source_id in enumerate(source_ids, start=1):
-            reap_archives()
-            require_disk_reserve(source_id, 0)
-            console.print(
-                f"[{index}/{len(source_ids)}] Synchronizing imported source #{source_id}"
-            )
-            _recover_stale_transcribing_videos(
-                database, database.list_videos_by_source_id(source_id)
-            )
-            discovery = discover_sources_service(
-                limit=latest, source_id=source_id, base_dir=base_dir
-            )
-            selected_video_ids = set(
-                discovery.selected_video_ids_by_source.get(source_id, ())
-            )
-            if not selected_video_ids:
-                console.print(
-                    f"No videos selected in the current latest-{latest} window for "
-                    f"source #{source_id}; skipping downstream processing."
-                )
-                continue
-            console.print(
-                f"Selected {len(selected_video_ids)} video(s) for downstream processing "
-                f"from source #{source_id}."
-            )
-            fetch_captions_service(
-                source_id=source_id,
-                base_dir=base_dir,
-                video_ids=selected_video_ids,
-            )
-            projected_bytes = _projected_transcription_disk_bytes(
-                database,
-                source_id=source_id,
-                captions_missing_only=not all_audio,
-                video_ids=selected_video_ids,
-            )
-            require_disk_reserve(source_id, projected_bytes)
-            transcribe_videos_service(
-                missing_only=False,
-                captions_missing_only=not all_audio,
-                jobs=jobs,
-                prep_jobs=download_jobs,
-                source_id=source_id,
-                base_dir=base_dir,
-                video_ids=selected_video_ids,
-            )
-            if extract_new:
-                extraction = extract_batch(
-                    database,
-                    paths,
-                    source_id=source_id,
-                    video_ids=selected_video_ids,
-                    classifier="auto",
-                    llm_model=None,
-                    workers=jobs,
-                    event_callback=lambda message: console.print(message, markup=False),
-                    progress_callback=lambda stage, current, total: console.print(
-                        f"  {stage} block {current}/{total}"
-                    ),
-                )
-                console.print(
-                    f"Extracted {extraction.processed} video(s); "
-                    f"skipped {extraction.skipped}; failed {extraction.failed}."
-                )
-            source_videos = [
-                video
-                for video in database.list_videos_by_source_id(source_id)
-                if video.id in selected_video_ids
-            ]
-            registration = [
-                backfill_existing_media_artifacts(database, paths, video_id=video.id)
-                for video in source_videos
-            ]
-            console.print(
-                f"Registered {sum(item.artifacts_registered for item in registration)} "
-                f"media artifact(s) for source #{source_id}; "
-                f"missing paths={sum(item.missing_paths for item in registration)}."
-            )
-            if archive_executor is not None:
-                video_ids = {video.id for video in source_videos}
-                future = archive_executor.submit(
-                    archive_source_media,
-                    database,
-                    paths,
-                    video_ids=video_ids,
-                    wait_for_lock=True,
-                )
-                pending_archives.append((source_id, future))
-                console.print(
-                    f"Queued source #{source_id} for archival "
-                    f"({len(pending_archives)} pending)."
-                )
-    finally:
-        while pending_archives:
-            reap_archives(block_one=True)
-        if archive_executor is not None:
-            archive_executor.shutdown(wait=True)
-    console.print(
-        f"Synchronized {len(source_ids)} imported source(s); latest={latest}, "
-        f"download_jobs={download_jobs}, transcription_jobs={jobs}, "
-        f"extraction_jobs={jobs}, all_audio={all_audio}, extract={extract_new}, "
-        f"archive_sources={archive_sources}."
-    )
-
-
-def _projected_transcription_disk_bytes(
-    database: Database,
-    *,
-    source_id: int,
-    captions_missing_only: bool,
-    video_ids: set[int] | None = None,
-) -> int:
-    projected = 0
-    for video in database.list_videos_by_source_id(source_id):
-        if video_ids is not None and video.id not in video_ids:
-            continue
-        if not _should_transcribe_video(
+        sync_imported_sources_workflow(
             database,
-            video.id,
-            missing_only=False,
-            captions_missing_only=captions_missing_only,
-        ):
-            continue
-        duration = video.duration_seconds or SYNC_UNKNOWN_VIDEO_DURATION_SECONDS
-        projected += int(duration * SYNC_AUDIO_RESERVATION_BYTES_PER_SECOND)
-    return projected
-
-
-def _format_sync_bytes(value: int) -> str:
-    amount = float(max(0, value))
-    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
-        if amount < 1024 or unit == "TiB":
-            return f"{amount:.1f} {unit}"
-        amount /= 1024
-    return f"{amount:.1f} TiB"
+            app_paths,
+            SourceSyncRequest(
+                provider=provider,
+                latest=latest,
+                jobs=jobs,
+                download_jobs=download_jobs,
+                all_audio=all_audio,
+                extract_new=extract_new,
+                archive_sources=archive_sources,
+            ),
+            base_dir=base_dir,
+            progress_callback=lambda message: console.print(message, markup=False),
+            dependencies=SourceSyncDependencies(
+                list_imported_sources=imported_source_ids,
+                discover=discover_sources_service,
+                fetch_captions=fetch_captions_service,
+                transcribe=transcribe_videos_service,
+                extract=extract_batch,
+                register_media=backfill_existing_media_artifacts,
+                archive_source=archive_source_media,
+                archive_lock_held=media_archive_lock_held,
+                disk_usage=shutil.disk_usage,
+                sleeper=time.sleep,
+                minimum_free_fraction=MIN_SYNC_FREE_DISK_FRACTION,
+                initial_wait_seconds=SYNC_ARCHIVE_WAIT_INITIAL_SECONDS,
+                maximum_wait_seconds=SYNC_ARCHIVE_WAIT_MAX_SECONDS,
+            ),
+        )
+    except SourceSyncConfigurationError as error:
+        raise typer.BadParameter(str(error)) from error
+    except SourceSyncDiskReserveError as error:
+        raise typer.Exit(code=1) from error
 
 
 @identity_app.command(
