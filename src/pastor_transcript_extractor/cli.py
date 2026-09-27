@@ -387,6 +387,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
+    select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
 )
@@ -3110,14 +3111,10 @@ def run_identity_workflow_service(
     exemplar_state_cache = ExemplarPreparationStateCache(
         Path("evaluation/speaker-pairs/cache").resolve()
     )
-    pending_exemplar_repairs = (
-        tuple(
-            state
-            for state in exemplar_state_cache.pending_automatic_repairs()
-            if database_video_id is None or state.video_id == database_video_id
-        )
-        if not plan_only
-        else ()
+    pending_exemplar_repairs = select_pending_exemplar_repairs(
+        exemplar_state_cache,
+        database_video_id=database_video_id,
+        plan_only=plan_only,
     )
     if pending_exemplar_repairs:
         association_checkpoint_needs_refresh = True

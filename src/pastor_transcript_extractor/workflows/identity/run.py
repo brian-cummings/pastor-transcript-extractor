@@ -13,6 +13,10 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
 )
 from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.identity_stage_cache import association_refresh_mode
+from pastor_transcript_extractor.identity_exemplar_preparation import (
+    ExemplarPreparationState,
+    ExemplarPreparationStateCache,
+)
 from pastor_transcript_extractor.speaker_machine_assignment import (
     MachineAssignmentReconciliationResult,
     reconcile_machine_assignments,
@@ -258,3 +262,19 @@ def execute_association_stage(
         base_dir=request.base_dir,
     )
     return tuple(reports)
+
+
+def select_pending_exemplar_repairs(
+    state_cache: ExemplarPreparationStateCache,
+    *,
+    database_video_id: int | None,
+    plan_only: bool,
+) -> tuple[ExemplarPreparationState, ...]:
+    """Select pending repairs in scope without reading them during plan-only runs."""
+    if plan_only:
+        return ()
+    return tuple(
+        state
+        for state in state_cache.pending_automatic_repairs()
+        if database_video_id is None or state.video_id == database_video_id
+    )
