@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: finish interactive identity review extraction by moving the
-  speaker-negative window audit/review pair and its ground-truth callback seam.
+- Next action: extract identity metadata and profile commands into capability
+  modules, beginning with reviewed evidence sync/export/status.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -484,6 +484,19 @@ Speaker-pair tests now import and patch the owning review module rather than
 `cli.py`; all focused review and contract tests pass.
 
 `cli.py` is now 10,420 lines, down 7,697 lines from baseline.
+
+### 2026-09-27 — Milestone 6.2b: speaker-negative review extraction
+
+Moved speaker-negative window audit and next-review commands plus their
+formatting and continuous-fixture checks into `commands/identity/review.py`.
+The module receives the existing sermon ground-truth reviewer through an
+explicit composition-time callback, avoiding a reverse dependency on `cli.py`.
+The focused correction-reuse test now patches that owning callback seam.
+
+Interactive identity review extraction is complete across observation, pair,
+and speaker-negative review paths.
+
+`cli.py` is now 10,258 lines, down 7,859 lines from baseline.
 
 ## Validation log
 
@@ -1027,6 +1040,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_speaker_pair_review tests.test_cli_contract tests.test_sources.CliTests.test_negative_window_review_reuses_existing_continuous_fixture
 Ran 30 tests in 0.354s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Speaker-negative review extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/review.py src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest tests.test_speaker_pair_review tests.test_cli_contract tests.test_sources.CliTests.test_negative_window_review_reuses_existing_continuous_fixture
+Ran 30 tests in 0.352s — OK
 
 git diff --check
 PASS
