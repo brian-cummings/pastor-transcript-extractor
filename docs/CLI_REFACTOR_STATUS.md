@@ -7,10 +7,10 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract the shadow-association command adapter behind a typed
-  request boundary, then decompose its oversized orchestration into the stage
-  sequence required by Milestone 7.
+- Active milestone: Milestone 7 — decompose oversized identity workflows.
+- Next action: decompose `shadow_associate_speakers_service` behind its typed
+  request boundary, beginning with validation/scope selection and profile-route
+  planning while preserving every abstention and reason code.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -62,7 +62,7 @@ these changes.
   - [x] Evaluation, fixtures, and diagnostics.
 - [x] 4. Separate catalog commands from acquisition workflows.
 - [x] 5. Extract the top-level pipeline.
-- [ ] 6. Split identity by capability.
+- [x] 6. Split identity by capability.
 - [ ] 7. Decompose oversized identity workflows.
 - [ ] 8. Replace incidental test seams.
 - [ ] 9. Remove migration scaffolding and verify the final architecture.
@@ -747,6 +747,22 @@ The identity run's policy-bearing decisions and side-effect dispatches are now
 callable through Typer/Rich-free workflow functions. Its remaining CLI service
 body primarily computes fingerprints, invokes stages, and renders structured
 outcomes; deeper extraction of that presentation is tracked under Milestone 7.
+
+### 2026-09-27 — Milestone 6.6: shadow-association command adapter
+
+Moved the `shadow-associate-speakers` Typer surface into
+`commands/identity/association.py` and introduced an immutable
+`ShadowAssociationRequest` in `workflows/identity/association.py`. Composition
+binds the unchanged large service explicitly, while direct CLI compatibility
+imports and all internal replay/coordination callers remain stable.
+
+Milestone 6 is complete: identity command ownership is split by user-visible
+capability, and both large identity paths now have typed workflow boundaries
+plus persisted stage-decomposition plans. The 1,600-line association service is
+intentionally still in `cli.py`; moving it unchanged would not satisfy the plan,
+so its staged decomposition begins in Milestone 7.
+
+`cli.py` is 8,229 lines, down 9,888 lines from baseline.
 
 ## Validation log
 
@@ -1656,6 +1672,22 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_finalization_workflow tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 57 tests in 0.804s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Shadow-association command adapter
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/association.py src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_commands tests.test_identity_stage_cache tests.test_cli_contract
+Ran 14 tests in 0.793s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity shadow-associate-speakers --help
+PASS
 
 git diff --check
 PASS
