@@ -2972,9 +2972,17 @@ def run_identity_workflow_service(
     jobs: int = 2,
     associator=None,
     discoverer=None,
+    confirmer=None,
+    promoter=None,
+    coordinator=None,
+    archiver=None,
 ) -> None:
     associator = associator or shadow_associate_speakers_command
     discoverer = discoverer or shadow_discover_profiles_command
+    confirmer = confirmer or confirm_discovered_profiles_command
+    promoter = promoter or promote_discovered_profiles_command
+    coordinator = coordinator or coordinate_identity_command
+    archiver = archiver or _archive_normalized_after_identity
     request = IdentityWorkflowRequest(
         youtube_video_id=youtube_video_id,
         all_extractions=all_extractions,
@@ -3277,7 +3285,7 @@ def run_identity_workflow_service(
             f"blocked={machine_apply.activation_blocked}."
         )
 
-    confirm_discovered_profiles_command(
+    confirmer(
         input_root=Path("evaluation/speaker-associations/shadow-runs"),
         apply=effective_apply_confirmations and not plan_only,
         base_dir=base_dir,
@@ -3384,7 +3392,7 @@ def run_identity_workflow_service(
                 outputs=outputs,
             )
         ),
-        promoter=lambda report, apply: promote_discovered_profiles_command(
+        promoter=lambda report, apply: promoter(
             discovery_report=report,
             apply=apply,
             base_dir=base_dir,
@@ -3454,7 +3462,7 @@ def run_identity_workflow_service(
             model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
             base_dir=base_dir,
         ),
-        coordinator=coordinate_identity_command,
+        coordinator=coordinator,
     )
     prewarm_stage = run_review_prewarm_stage(
         paths.database,
@@ -3501,7 +3509,7 @@ def run_identity_workflow_service(
         plan_only=plan_only,
         database_video_id=database_video_id,
         all_extractions=all_extractions,
-        archiver=_archive_normalized_after_identity,
+        archiver=archiver,
     )
     if archive_stage.status == "plan_only":
         console.print(
