@@ -8,9 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract shadow-association candidate scope selection and inventory
-  results, then profile-route planning, preserving every skip, abstention, and
-  reason code.
+- Next action: extract shadow-association profile-route planning and candidate
+  eligibility preparation, preserving every skip, abstention, and reason code.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -775,6 +774,16 @@ opening storage or caches.
 Focused tests cover zero/multiple selection modes, incompatible unattempted
 selection, and impossible exemplar thresholds. `cli.py` is now 8,110 lines,
 down 10,007 lines from baseline.
+
+### 2026-09-27 — Milestone 7.2: shadow-association scope resolution
+
+Moved one-video lookup, persisted profile-neighborhood replay, observed-corpus
+inventory, and unattempted-fingerprint loading into a typed workflow result.
+The CLI now renders inventory counts from that result; unknown videos, empty
+neighborhoods, and resolver failures retain the same usage-error boundary.
+
+Focused tests cover corpus inventory, deterministic neighborhood ordering, and
+persisted-attempt exclusion without acoustic execution.
 
 ## Validation log
 
@@ -1713,6 +1722,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 10 tests in 0.211s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Shadow-association scope resolution
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 13 tests in 0.227s — OK
 
 git diff --check
 PASS
