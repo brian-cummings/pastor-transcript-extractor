@@ -2,16 +2,111 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
 from pastor_transcript_extractor.workflows.identity import association_preparation
 from pastor_transcript_extractor.workflows.identity.association_preparation import (
+    TranscriptGroundedSpanProvider,
     prepare_association_exemplars,
 )
 
 
 class IdentityAssociationPreparationWorkflowTests(unittest.TestCase):
+    def test_span_provider_returns_transcript_candidates_in_plan_only_mode(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "transcript.json"
+            transcript.write_text("{}", encoding="utf-8")
+            database = SimpleNamespace(
+                get_extraction_result=lambda _id: SimpleNamespace(
+                    proposed_json_path=str(transcript)
+                )
+            )
+            activity_cache = Mock()
+            with patch.object(
+                association_preparation,
+                "select_transcript_grounded_span_candidates",
+                return_value=("candidate",),
+            ):
+                provider = TranscriptGroundedSpanProvider(
+                    database,
+                    plan_only=True,
+                    span_cache=Mock(),
+                    activity_selection_cache=activity_cache,
+                    embedding_cache=None,
+                    backend=None,
+                    policy_spec=SimpleNamespace(policy=object()),
+                )
+                spans, selection = provider(
+                    7,
+                    SimpleNamespace(
+                        extraction_result_id=5,
+                        input_fingerprint="fingerprint",
+                    ),
+                    Path("audio.wav"),
+                    "audio-sha",
+                )
+
+        self.assertEqual(("candidate",), spans)
+        self.assertIsNone(selection)
+        activity_cache.get_or_prepare.assert_not_called()
+
+    def test_span_provider_records_coherent_qualified_spans(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "transcript.json"
+            transcript.write_text("{}", encoding="utf-8")
+            database = SimpleNamespace(
+                get_extraction_result=lambda _id: SimpleNamespace(
+                    proposed_json_path=str(transcript)
+                )
+            )
+            qualified_span = SimpleNamespace(
+                start_seconds=1.0, end_seconds=2.0
+            )
+            activity_cache = Mock()
+            activity_cache.get_or_prepare.return_value = SimpleNamespace(
+                span_specs=(qualified_span,),
+                selection={"selected": True},
+            )
+            observation = SimpleNamespace(
+                extraction_result_id=5,
+                input_fingerprint="fingerprint",
+            )
+            with patch.object(
+                association_preparation,
+                "select_transcript_grounded_span_candidates",
+                return_value=("candidate",),
+            ):
+                provider = TranscriptGroundedSpanProvider(
+                    database,
+                    plan_only=False,
+                    span_cache=Mock(),
+                    activity_selection_cache=activity_cache,
+                    embedding_cache=object(),
+                    backend="default-backend",
+                    policy_spec=SimpleNamespace(policy="policy"),
+                )
+                spans, selection = provider(
+                    7,
+                    observation,
+                    Path("audio.wav"),
+                    "audio-sha",
+                    acoustic_backend="worker-backend",
+                )
+
+        self.assertEqual((qualified_span,), spans)
+        self.assertEqual(
+            "worker-backend",
+            activity_cache.get_or_prepare.call_args.kwargs["backend"],
+        )
+        self.assertEqual(
+            "sermon_speaker_candidate:fingerprint",
+            selection["coherent_sermon_speaker_spans"][0]["speaker_key"],
+        )
+
     def test_exemplar_preparation_verifies_media_and_admits_spans(self) -> None:
         observation = SimpleNamespace(
             id=11,

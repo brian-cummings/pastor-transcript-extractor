@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract shadow-association initialization, cache priming, and
-  transcript-grounded span provision, preserving error translation, plan-only
-  resource boundaries, cache evidence, and acoustic backend selection.
+- Next action: extract shadow-association initialization and pair-cache priming,
+  preserving error translation, plan-only resource boundaries, artifact
+  inventory, and priming progress evidence.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -929,6 +929,18 @@ attributed names become routing evidence.
 Focused tests cover latest-observation selection, source lookup, name trimming,
 and exclusion of implicit claims. `cli.py` is now 7,309 lines, down 10,808
 lines from baseline; the shadow-association service is 792 lines.
+
+### 2026-09-27 — Milestone 7.15: transcript-grounded span provider
+
+Moved transcript artifact loading, deterministic candidate selection, plan-only
+bypass, activity-qualified cache access, backend selection, and coherent-
+speaker span evidence into a stateful callable workflow dependency. Both
+exemplar and candidate preparation now share that explicit boundary.
+
+Focused tests cover plan-only operation without acoustic resources and live
+qualification with a worker-backend override and exact coherent-span evidence.
+`cli.py` is now 7,263 lines, down 10,854 lines from baseline; the association
+service is 745 lines and the preparation module remains within range at 671.
 
 ## Validation log
 
@@ -2036,6 +2048,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 39 tests in 0.228s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Transcript-grounded span provider
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association_preparation.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_preparation_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 41 tests in 0.229s — OK
 
 git diff --check
 PASS
