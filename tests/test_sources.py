@@ -2417,7 +2417,7 @@ class CliTests(unittest.TestCase):
 
     def test_run_identity_flag_enables_integrated_identity_stage(self) -> None:
         with patch(
-            "pastor_transcript_extractor.cli.run_workflow_service"
+            "pastor_transcript_extractor.commands.pipeline._run_invoker"
         ) as workflow:
             result = CliRunner().invoke(
                 app,
@@ -2431,7 +2431,7 @@ class CliTests(unittest.TestCase):
             )
 
         self.assertEqual(0, result.exit_code, msg=result.output)
-        self.assertTrue(workflow.call_args.kwargs["run_identity"])
+        self.assertTrue(workflow.call_args.args[0].run_identity)
 
     def test_integrated_identity_uses_conservative_automatic_policy(self) -> None:
         with patch(
@@ -2445,7 +2445,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(3, identity.call_args.kwargs["jobs"])
 
     def test_run_audio_stage_options_are_forwarded(self) -> None:
-        with patch("pastor_transcript_extractor.cli.run_workflow_service") as workflow:
+        with patch(
+            "pastor_transcript_extractor.commands.pipeline._run_invoker"
+        ) as workflow:
             result = CliRunner().invoke(
                 app,
                 [
@@ -2455,9 +2457,10 @@ class CliTests(unittest.TestCase):
             )
 
         self.assertEqual(0, result.exit_code, msg=result.output)
-        self.assertTrue(workflow.call_args.kwargs["stage_audio_only"])
-        self.assertTrue(workflow.call_args.kwargs["skip_discovery"])
-        self.assertEqual(7, workflow.call_args.kwargs["download_jobs"])
+        request = workflow.call_args.args[0]
+        self.assertTrue(request.stage_audio_only)
+        self.assertTrue(request.skip_discovery)
+        self.assertEqual(7, request.download_jobs)
 
     def test_skip_discovery_selects_newest_eligible_existing_videos_per_source(self) -> None:
         videos = {

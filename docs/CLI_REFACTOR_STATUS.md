@@ -7,10 +7,9 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 5 — extract the top-level pipeline.
-- Next action: move the run command and its presentation/dependency adapters to
-  `commands/pipeline.py`, migrate patch targets to their owners, and remove the
-  remaining pipeline compatibility scaffolding from `cli.py`.
+- Active milestone: Milestone 6 — split identity by capability.
+- Next action: inventory identity evaluation and fixture commands, then move
+  the first cohesive low-coupling group with its direct tests and patch targets.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -61,7 +60,7 @@ these changes.
   - [x] Media.
   - [x] Evaluation, fixtures, and diagnostics.
 - [x] 4. Separate catalog commands from acquisition workflows.
-- [ ] 5. Extract the top-level pipeline.
+- [x] 5. Extract the top-level pipeline.
 - [ ] 6. Split identity by capability.
 - [ ] 7. Decompose oversized identity workflows.
 - [ ] 8. Replace incidental test seams.
@@ -444,6 +443,20 @@ service and renders its event. Direct coverage verifies the automatic,
 all-extractions, non-plan policy and job forwarding.
 
 `cli.py` is now 11,617 lines, down 6,500 lines from baseline.
+
+### 2026-09-27 — Milestone 5.9: run command extraction
+
+Moved the root `run` command, its Typer option surface, and its preflight
+rendering into `commands/pipeline.py`. The handler now constructs one typed
+`RunWorkflowRequest` and invokes one explicitly configured workflow boundary.
+The two command-forwarding tests now patch the owning command module instead
+of the incidental `cli.run_workflow_service` symbol.
+
+`cli.py` retains narrow compatibility adapters for direct imports and legacy
+patch seams, while workflow policy, mode dispatch, stage orchestration, and the
+public command handler all have their target owners. Milestone 5 is complete.
+
+`cli.py` is now 11,469 lines, down 6,648 lines from baseline.
 
 ## Validation log
 
@@ -939,6 +952,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_pipeline_workflow plus three focused integrated-identity CLI tests
 Ran 8 tests in 0.069s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Run command extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/pipeline.py src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest tests.test_run_workflow tests.test_pipeline_workflow tests.test_audio_stage_workflow tests.test_resume_pipeline_workflow tests.test_cli_contract plus twenty-four focused run CLI tests
+Ran 44 tests in 0.902s — OK
 
 git diff --check
 PASS
