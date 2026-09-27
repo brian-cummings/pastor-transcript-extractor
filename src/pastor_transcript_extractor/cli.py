@@ -2976,6 +2976,7 @@ def run_identity_workflow_service(
     promoter=None,
     coordinator=None,
     archiver=None,
+    current_reports_loader=None,
 ) -> None:
     associator = associator or shadow_associate_speakers_command
     discoverer = discoverer or shadow_discover_profiles_command
@@ -2983,6 +2984,7 @@ def run_identity_workflow_service(
     promoter = promoter or promote_discovered_profiles_command
     coordinator = coordinator or coordinate_identity_command
     archiver = archiver or _archive_normalized_after_identity
+    current_reports_loader = current_reports_loader or latest_association_reports
     request = IdentityWorkflowRequest(
         youtube_video_id=youtube_video_id,
         all_extractions=all_extractions,
@@ -3184,7 +3186,7 @@ def run_identity_workflow_service(
     # not merely the artifacts produced by this invocation. Superseded evidence
     # is explicitly revoked before the current proposal is planned.
     association_root = Path("evaluation/speaker-associations/shadow-runs")
-    persisted_current_reports = latest_association_reports(association_root)
+    persisted_current_reports = current_reports_loader(association_root)
     if persisted_current_reports:
         current_association_reports = persisted_current_reports
     persist_association_checkpoint_stage(

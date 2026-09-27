@@ -302,15 +302,12 @@ class IdentityStageCacheTests(unittest.TestCase):
                 patch("pastor_transcript_extractor.cli._print_reviewed_evidence_summary"),
                 patch("pastor_transcript_extractor.cli.identity_backfill"),
                 patch(
-                    "pastor_transcript_extractor.cli.reconcile_machine_assignments",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "reconcile_machine_assignments",
                     return_value=reconciliation,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.latest_association_reports",
-                    return_value=(association_report,),
-                ),
-                patch(
-                    "pastor_transcript_extractor.cli."
+                    "pastor_transcript_extractor.identity_exemplar_preparation."
                     "ExemplarPreparationStateCache.pending_automatic_repairs",
                     return_value=(),
                 ),
@@ -348,6 +345,9 @@ class IdentityStageCacheTests(unittest.TestCase):
                         promoter=promoter,
                         coordinator=coordinator,
                         archiver=archiver,
+                        current_reports_loader=(
+                            lambda _root: (association_report,)
+                        ),
                     )
                 source = database.add_source(
                     "https://www.youtube.com/@new-identity-input",
@@ -378,6 +378,7 @@ class IdentityStageCacheTests(unittest.TestCase):
                     promoter=promoter,
                     coordinator=coordinator,
                     archiver=archiver,
+                    current_reports_loader=lambda _root: (association_report,),
                 )
 
         self.assertEqual(2, associate.call_count)
