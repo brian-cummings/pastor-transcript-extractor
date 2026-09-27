@@ -19,6 +19,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     prepare_association_centroids,
     prepare_association_candidate_spans,
     resolve_association_scope,
+    scan_association_candidates,
     validate_shadow_association_request,
 )
 
@@ -283,6 +284,58 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
         self.assertEqual(2, assess.call_count)
         self.assertFalse(assess.call_args_list[0].kwargs["verify_media"])
         self.assertTrue(assess.call_args_list[1].kwargs["verify_media"])
+
+    def test_candidate_scan_preserves_order_reasons_and_progress(self) -> None:
+        videos = tuple(SimpleNamespace(id=value) for value in (1, 2, 3))
+        excluded = association.AssociationCandidateAssessment(
+            videos[0], None, None, "reviewed_multi_speaker", None, None
+        )
+        eligibility_two = SimpleNamespace(
+            observation=SimpleNamespace(id=2),
+            media_artifact=SimpleNamespace(content_sha256="sha-2"),
+        )
+        eligibility_three = SimpleNamespace(
+            observation=SimpleNamespace(id=3),
+            media_artifact=SimpleNamespace(content_sha256="sha-3"),
+        )
+        admitted = (
+            association.AssociationCandidateAssessment(
+                videos[1], eligibility_two, Path("2.wav"), None, None, None
+            ),
+            association.AssociationCandidateAssessment(
+                videos[2], eligibility_three, Path("3.wav"), None, None, None
+            ),
+        )
+        exclusions = []
+        remembered = []
+        progress = []
+        with patch.object(
+            association,
+            "assess_association_candidate",
+            side_effect=(excluded, *admitted),
+        ):
+            result = scan_association_candidates(
+                SimpleNamespace(),
+                videos,
+                unattempted_only=False,
+                attempted_observation_fingerprints=frozenset(),
+                include_profiled=False,
+                verification_cache=object(),
+                remember_verified_source=lambda path, sha: remembered.append(
+                    (path, sha)
+                ),
+                exclusion_callback=exclusions.append,
+                progress_callback=lambda *values: progress.append(values),
+            )
+
+        self.assertEqual([2, 3], [item.video.id for item in result.span_inputs])
+        self.assertEqual({"reviewed_multi_speaker": 1}, result.exclusion_counts)
+        self.assertEqual([excluded], exclusions)
+        self.assertEqual(
+            [(Path("2.wav"), "sha-2"), (Path("3.wav"), "sha-3")],
+            remembered,
+        )
+        self.assertEqual([(1, 3, 0, 0), (3, 3, 1, 1)], progress)
 
     def test_span_preparation_preserves_order_and_target_limit(self) -> None:
         inputs = tuple(

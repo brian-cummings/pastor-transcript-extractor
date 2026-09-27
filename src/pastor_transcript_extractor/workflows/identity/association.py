@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.identity_leverage import (
     profile_neighborhood_video_ids,
@@ -104,6 +104,12 @@ class AssociationCandidateAssessment:
     @property
     def admitted(self) -> bool:
         return self.exclusion_reason is None
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationCandidateScanResult:
+    span_inputs: tuple[AssociationSpanInput, ...]
+    exclusion_counts: Mapping[str, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,6 +382,67 @@ def assess_association_candidate(
         None,
         None,
         verified.media_artifact.content_sha256,
+    )
+
+
+def scan_association_candidates(
+    database: Database,
+    videos: Sequence[Video],
+    *,
+    unattempted_only: bool,
+    attempted_observation_fingerprints: frozenset[str],
+    include_profiled: bool,
+    verification_cache: MediaVerificationCache,
+    remember_verified_source: Callable[[Path, str], None],
+    exclusion_callback: Callable[[AssociationCandidateAssessment], None],
+    progress_callback: Callable[[int, int, int, int], None] | None = None,
+) -> AssociationCandidateScanResult:
+    """Assess candidates in stable order and queue verified span inputs."""
+    span_inputs: list[AssociationSpanInput] = []
+    exclusion_counts: dict[str, int] = {}
+    for index, video in enumerate(videos, start=1):
+        if progress_callback is not None and (
+            index == 1 or index == len(videos) or index % 25 == 0
+        ):
+            progress_callback(
+                index,
+                len(videos),
+                len(span_inputs),
+                sum(exclusion_counts.values()),
+            )
+        assessment = assess_association_candidate(
+            database,
+            video,
+            unattempted_only=unattempted_only,
+            attempted_observation_fingerprints=(
+                attempted_observation_fingerprints
+            ),
+            include_profiled=include_profiled,
+            verification_cache=verification_cache,
+        )
+        if not assessment.admitted:
+            reason = assessment.exclusion_reason
+            if reason is None:
+                raise RuntimeError("Excluded association candidate has no reason.")
+            exclusion_counts[reason] = exclusion_counts.get(reason, 0) + 1
+            exclusion_callback(assessment)
+            continue
+        eligibility = assessment.eligibility
+        audio_path = assessment.audio_path
+        if (
+            eligibility is None
+            or eligibility.observation is None
+            or eligibility.media_artifact is None
+            or audio_path is None
+        ):
+            raise RuntimeError("Admitted association candidate is incomplete.")
+        remember_verified_source(
+            audio_path, eligibility.media_artifact.content_sha256
+        )
+        span_inputs.append(AssociationSpanInput(video, eligibility, audio_path))
+    return AssociationCandidateScanResult(
+        span_inputs=tuple(span_inputs),
+        exclusion_counts=exclusion_counts,
     )
 
 

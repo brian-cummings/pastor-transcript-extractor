@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract candidate admission persistence and preparation
-  orchestration, preserving scan progress, all reason counts, plan-only writes,
-  ordered span outcomes, and target-limit behavior.
+- Next action: audit Milestone 7 acceptance and begin Milestone 8 by replacing
+  remaining identity tests that patch incidental `cli.py` globals with patches
+  at their owning command/workflow modules.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -953,6 +953,18 @@ callback while CLI error translation remains unchanged.
 Focused tests cover plan-only resource boundaries and missing-cache priming
 with exact progress events. `cli.py` is now 7,243 lines, down 10,874 lines from
 baseline; the shadow-association service is 722 lines.
+
+### 2026-09-27 — Milestone 7.17: candidate admission scan
+
+Moved ordered candidate eligibility assessment, exclusion-reason accounting,
+verified-source registration, and span-input construction into a typed workflow
+stage. Scan progress and durable admission persistence remain narrow callbacks,
+preserving their original timing and plan-only behavior.
+
+Focused tests cover stable admission order, exact exclusion counts, verified
+media registration, exclusion callbacks, and pre-assessment progress snapshots.
+`cli.py` is now 7,221 lines, down 10,896 lines from baseline; the shadow-
+association service is 699 lines, within the plan's readability range.
 
 ## Validation log
 
@@ -2086,6 +2098,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_setup_workflow tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 43 tests in 0.252s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Candidate admission scan
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_setup_workflow tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 44 tests in 0.249s — OK
 
 git diff --check
 PASS

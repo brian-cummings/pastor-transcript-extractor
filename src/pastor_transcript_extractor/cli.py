@@ -404,6 +404,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
     plan_association_profile_route,
     plan_pending_confirmation_routing,
     resolve_association_scope,
+    scan_association_candidates,
     validate_shadow_association_request,
 )
 from pastor_transcript_extractor.workflows.identity.association_preparation import (
@@ -4149,65 +4150,42 @@ def shadow_associate_speakers_service(
         )
 
     candidates = []
-    span_preparation_inputs = []
-    ineligible_reasons: dict[str, int] = {}
     console.print(
         "Association preprocessing: "
         f"scanning {len(requested_videos)} video(s) for eligible candidates."
     )
-    for video_index, video in enumerate(requested_videos, start=1):
-        if (
-            video_index == 1
-            or video_index == len(requested_videos)
-            or video_index % 25 == 0
-        ):
-            console.print(
-                "Association preprocessing: "
-                f"video={video_index}/{len(requested_videos)} "
-                f"admitted_for_span_prep={len(span_preparation_inputs)} "
-                f"excluded_so_far={sum(ineligible_reasons.values())}"
-            )
-        assessment = assess_association_candidate(
-            database,
-            video,
-            unattempted_only=unattempted_only,
-            attempted_observation_fingerprints=(
-                attempted_observation_fingerprints
-            ),
-            include_profiled=include_profiled,
-            verification_cache=verification_cache,
-        )
-        if not assessment.admitted:
-            reason = assessment.exclusion_reason
-            if reason is None:
-                raise RuntimeError("Excluded association candidate has no reason.")
-            ineligible_reasons[reason] = ineligible_reasons.get(reason, 0) + 1
-            if assessment.admission_stage is not None:
-                persist_admission(
-                    video,
-                    assessment.admission_observation,
-                    stage=assessment.admission_stage,
-                    reason_code=reason,
-                    media_sha256=assessment.admission_media_sha256,
-                )
-            continue
-        eligibility = assessment.eligibility
-        audio_path = assessment.audio_path
-        if (
-            eligibility is None
-            or eligibility.observation is None
-            or eligibility.media_artifact is None
-            or audio_path is None
-        ):
-            raise RuntimeError("Admitted association candidate is incomplete.")
-        span_cache.remember_verified_source(
-            audio_path,
-            eligibility.media_artifact.content_sha256,
-        )
-        span_preparation_inputs.append(
-            AssociationSpanInput(video, eligibility, audio_path)
+
+    def report_candidate_scan(index, total, admitted, excluded):
+        console.print(
+            "Association preprocessing: "
+            f"video={index}/{total} "
+            f"admitted_for_span_prep={admitted} "
+            f"excluded_so_far={excluded}"
         )
 
+    def record_candidate_exclusion(assessment):
+        if assessment.admission_stage is not None:
+            persist_admission(
+                assessment.video,
+                assessment.admission_observation,
+                stage=assessment.admission_stage,
+                reason_code=assessment.exclusion_reason,
+                media_sha256=assessment.admission_media_sha256,
+            )
+
+    candidate_scan = scan_association_candidates(
+        database,
+        requested_videos,
+        unattempted_only=unattempted_only,
+        attempted_observation_fingerprints=attempted_observation_fingerprints,
+        include_profiled=include_profiled,
+        verification_cache=verification_cache,
+        remember_verified_source=span_cache.remember_verified_source,
+        exclusion_callback=record_candidate_exclusion,
+        progress_callback=report_candidate_scan,
+    )
+    span_preparation_inputs = candidate_scan.span_inputs
+    ineligible_reasons = dict(candidate_scan.exclusion_counts)
     console.print(
         "Association span preparation: "
         f"candidates={len(span_preparation_inputs)} jobs={jobs}; "
