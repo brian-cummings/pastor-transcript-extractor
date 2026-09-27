@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract discovery checkpoint persistence and promotion into named
-  identity-run stages, preserving corpus-only scope, skip behavior, apply gates,
-  and checkpoint reuse.
+- Next action: extract metadata attribution, final coordination, review prewarm,
+  and archival into named identity-run stages, preserving optional-service
+  failure handling, plan-only behavior, and terminal ordering.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -700,6 +700,14 @@ Moved the shadow-discovery invocation behind a typed request and explicit
 callable boundary. Deferred, skipped, and cached modes bypass discovery; execute
 mode forwards every existing neighborhood, closure, borderline, staged-review,
 model, policy, cache, and concurrency setting unchanged.
+
+### 2026-09-27 — Milestone 6.5o: discovery finalization
+
+Moved checkpoint persistence and promotion invocation into a structured
+finalization result. Only an executed, non-plan discovery can write a checkpoint;
+corpus runs can still plan or apply promotion from the latest persisted report
+when discovery was explicitly skipped, preserving the prior behavior. Deferred
+single-video runs never promote corpus artifacts.
 
 ## Validation log
 
@@ -1544,6 +1552,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 45 tests in 0.722s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Discovery finalization
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 48 tests in 0.728s — OK
 
 git diff --check
 PASS

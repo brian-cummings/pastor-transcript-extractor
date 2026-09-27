@@ -149,6 +149,14 @@ class DiscoveryExecutionRequest:
     base_dir: Path | None
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveryFinalizationResult:
+    """Observable writes performed after discovery report selection."""
+
+    checkpoint_written: bool
+    promotion_attempted: bool
+
+
 def validate_identity_workflow_request(
     request: IdentityWorkflowRequest,
 ) -> IdentityWorkflowPolicy:
@@ -528,4 +536,33 @@ def execute_discovery_stage(
         cache_dir=request.cache_dir,
         output_root=request.output_root,
         base_dir=request.base_dir,
+    )
+
+
+def finalize_discovery_stage(
+    *,
+    decision: DiscoveryExecutionDecision,
+    plan_only: bool,
+    fingerprint: str | None,
+    latest_report: Path | None,
+    apply_promotions: bool,
+    checkpoint_writer: Callable[[str, tuple[Path, ...]], None],
+    promoter: Callable[[Path, bool], object],
+) -> DiscoveryFinalizationResult:
+    """Persist executed discovery and plan/apply promotion for corpus runs."""
+    checkpoint_written = False
+    if decision.mode == "execute" and not plan_only and fingerprint is not None:
+        checkpoint_writer(
+            fingerprint,
+            (latest_report,) if latest_report is not None else (),
+        )
+        checkpoint_written = True
+
+    promotion_attempted = False
+    if decision.mode != "deferred" and latest_report is not None:
+        promoter(latest_report, apply_promotions and not plan_only)
+        promotion_attempted = True
+    return DiscoveryFinalizationResult(
+        checkpoint_written=checkpoint_written,
+        promotion_attempted=promotion_attempted,
     )

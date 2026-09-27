@@ -18,6 +18,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     decide_discovery_execution,
     execute_association_stage,
     execute_discovery_stage,
+    finalize_discovery_stage,
     index_current_association_results,
     persist_association_checkpoint_stage,
     reconcile_current_assignment_results_stage,
@@ -402,6 +403,67 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertEqual(0.50, options["borderline_deferred_minimum"])
         self.assertEqual(Path("consistency.json"), options["consistency_policy"])
         self.assertFalse(options["include_deferred"])
+
+    def test_executed_discovery_writes_checkpoint_and_plans_promotion(self) -> None:
+        writer = Mock()
+        promoter = Mock()
+        report = Path("report.json")
+        result = finalize_discovery_stage(
+            decision=DiscoveryExecutionDecision(
+                mode="execute", cached_reports=None
+            ),
+            plan_only=False,
+            fingerprint="fingerprint",
+            latest_report=report,
+            apply_promotions=True,
+            checkpoint_writer=writer,
+            promoter=promoter,
+        )
+
+        self.assertTrue(result.checkpoint_written)
+        self.assertTrue(result.promotion_attempted)
+        writer.assert_called_once_with("fingerprint", (report,))
+        promoter.assert_called_once_with(report, True)
+
+    def test_skipped_discovery_can_plan_persisted_report_promotion(self) -> None:
+        writer = Mock()
+        promoter = Mock()
+        report = Path("persisted.json")
+        result = finalize_discovery_stage(
+            decision=DiscoveryExecutionDecision(
+                mode="skipped", cached_reports=None
+            ),
+            plan_only=True,
+            fingerprint="fingerprint",
+            latest_report=report,
+            apply_promotions=True,
+            checkpoint_writer=writer,
+            promoter=promoter,
+        )
+
+        self.assertFalse(result.checkpoint_written)
+        writer.assert_not_called()
+        promoter.assert_called_once_with(report, False)
+
+    def test_deferred_discovery_does_not_promote_persisted_report(self) -> None:
+        writer = Mock()
+        promoter = Mock()
+        result = finalize_discovery_stage(
+            decision=DiscoveryExecutionDecision(
+                mode="deferred", cached_reports=None
+            ),
+            plan_only=False,
+            fingerprint=None,
+            latest_report=Path("persisted.json"),
+            apply_promotions=True,
+            checkpoint_writer=writer,
+            promoter=promoter,
+        )
+
+        self.assertFalse(result.checkpoint_written)
+        self.assertFalse(result.promotion_attempted)
+        writer.assert_not_called()
+        promoter.assert_not_called()
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(
