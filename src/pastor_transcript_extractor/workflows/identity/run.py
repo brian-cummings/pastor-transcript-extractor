@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedEvidenceSyncResult,
@@ -66,6 +66,22 @@ class AssociationCacheDecision:
     @property
     def incremental(self) -> bool:
         return self.refresh_mode == "incremental"
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationExecutionRequest:
+    """Inputs needed to invoke the pinned shadow-association adapter."""
+
+    youtube_video_id: str | None
+    all_extractions: bool
+    plan_only: bool
+    jobs: int
+    model_sha256: str
+    policy_path: Path
+    evaluation_root: Path
+    cache_dir: Path
+    output_root: Path
+    base_dir: Path | None
 
 
 def validate_identity_workflow_request(
@@ -206,3 +222,39 @@ def decide_association_cache(
         refresh_mode=refresh_mode,
         checkpoint_needs_refresh=checkpoint_needs_refresh,
     )
+
+
+def execute_association_stage(
+    request: AssociationExecutionRequest,
+    decision: AssociationCacheDecision,
+    *,
+    associator: Callable[..., Sequence[Path]],
+) -> tuple[Path, ...]:
+    """Reuse cached reports or invoke the shadow associator with pinned policy."""
+    if decision.cached_reports is not None:
+        return decision.cached_reports
+    reports = associator(
+        youtube_video_id=request.youtube_video_id,
+        all_eligible=request.all_extractions,
+        unattempted_only=decision.incremental,
+        neighborhood_profile_id=[],
+        include_profiled=False,
+        limit=None,
+        plan_only=request.plan_only,
+        minimum_profile_members=3,
+        maximum_exemplars=3,
+        minimum_same_exemplars=2,
+        maximum_global_profiles=1,
+        jobs=request.jobs,
+        model_path=Path(
+            "evaluation/speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+        model_sha256=request.model_sha256,
+        policy_path=request.policy_path,
+        evaluation_root=request.evaluation_root,
+        cache_dir=request.cache_dir,
+        output_root=request.output_root,
+        base_dir=request.base_dir,
+    )
+    return tuple(reports)

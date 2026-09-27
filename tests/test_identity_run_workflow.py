@@ -9,8 +9,11 @@ from unittest.mock import Mock, patch
 
 from pastor_transcript_extractor.workflows.identity import run as identity_run
 from pastor_transcript_extractor.workflows.identity.run import (
+    AssociationCacheDecision,
+    AssociationExecutionRequest,
     IdentityWorkflowRequest,
     decide_association_cache,
+    execute_association_stage,
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
@@ -34,6 +37,56 @@ class IdentityRunWorkflowTests(unittest.TestCase):
             review_prewarm_limit=24,
             base_dir=None,
             jobs=2,
+        )
+
+    def _association_request(self) -> AssociationExecutionRequest:
+        return AssociationExecutionRequest(
+            youtube_video_id=None,
+            all_extractions=True,
+            plan_only=False,
+            jobs=3,
+            model_sha256="model-sha",
+            policy_path=Path("policy.json"),
+            evaluation_root=Path("evaluation"),
+            cache_dir=Path("cache"),
+            output_root=Path("output"),
+            base_dir=Path("app-data"),
+        )
+
+    def test_association_execution_reuses_cache_without_invocation(self) -> None:
+        associator = Mock()
+        reports = (Path("cached.json"),)
+        result = execute_association_stage(
+            self._association_request(),
+            AssociationCacheDecision(
+                cached_reports=reports,
+                refresh_mode="cached",
+                checkpoint_needs_refresh=False,
+            ),
+            associator=associator,
+        )
+
+        self.assertEqual(reports, result)
+        associator.assert_not_called()
+
+    def test_association_execution_forwards_incremental_decision(self) -> None:
+        associator = Mock(return_value=[Path("new.json")])
+        result = execute_association_stage(
+            self._association_request(),
+            AssociationCacheDecision(
+                cached_reports=None,
+                refresh_mode="incremental",
+                checkpoint_needs_refresh=True,
+            ),
+            associator=associator,
+        )
+
+        self.assertEqual((Path("new.json"),), result)
+        self.assertTrue(associator.call_args.kwargs["unattempted_only"])
+        self.assertEqual(3, associator.call_args.kwargs["jobs"])
+        self.assertFalse(associator.call_args.kwargs["plan_only"])
+        self.assertEqual(
+            Path("policy.json"), associator.call_args.kwargs["policy_path"]
         )
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
