@@ -1405,7 +1405,7 @@ class CliTests(unittest.TestCase):
             with patch.dict(os.environ, {"PTE_LLM_ENABLED": "1", "PTE_LLM_MODEL": "fixture-model"}, clear=False), patch(
                 "pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered
             ), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video", side_effect=self._fake_caption_fetch
+                "pastor_transcript_extractor.transcription.fetch_captions_video", side_effect=self._fake_caption_fetch
             ), patch("pastor_transcript_extractor.application.OllamaClient", FakeOllamaClient):
                 result = runner.invoke(app, [
                     "run", "https://www.youtube.com/watch?v=reject12345",
@@ -1475,7 +1475,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=self._fake_caption_fetch,
             ) as fetch:
                 result = runner.invoke(
@@ -1518,7 +1518,7 @@ class CliTests(unittest.TestCase):
                 duration_seconds=900,
             )]
             with patch("pastor_transcript_extractor.discovery.extract_discovered_videos", return_value=discovered), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video", side_effect=self._fake_caption_fetch
+                "pastor_transcript_extractor.transcription.fetch_captions_video", side_effect=self._fake_caption_fetch
             ), patch("pastor_transcript_extractor.application.OllamaClient", side_effect=AssertionError("rules called Ollama")):
                 result = runner.invoke(app, [
                     "run", "https://www.youtube.com/watch?v=skip1234567", "--pastor", pastor.slug,
@@ -3255,7 +3255,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=NoCaptionsAvailableError("yt-dlp did not create captions"),
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
@@ -3288,7 +3288,7 @@ class CliTests(unittest.TestCase):
                 status=VideoStatus.DISCOVERED,
             )
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=[
                     RuntimeError("temporary"),
                     SimpleNamespace(raw_text_path=Path("captions.txt")),
@@ -3326,7 +3326,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=NoCaptionsAvailableError("No captions available"),
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
@@ -3357,7 +3357,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=YtDlpConfigurationError("yt-dlp cannot solve YouTube JavaScript challenges"),
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
@@ -3390,7 +3390,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=YtDlpRateLimitError("HTTP Error 429"),
             ) as fetch_captions, patch(
                 "pastor_transcript_extractor.cli.time.sleep"
@@ -3432,7 +3432,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=YtDlpAuthenticationRequiredError(
                     "Sign in to confirm you’re not a bot"
                 ),
@@ -3467,7 +3467,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 return_value=SimpleNamespace(raw_text_path=Path("captions.txt")),
             ) as fetch_captions:
                 result = runner.invoke(
@@ -3507,7 +3507,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=[
                     YtDlpRateLimitError("HTTP Error 429"),
                     SimpleNamespace(raw_text_path=Path("captions.txt")),
@@ -3542,7 +3542,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=VideoNotYetAvailableError("Video has not started yet"),
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
@@ -3576,7 +3576,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=NoCaptionsAvailableError("No captions available"),
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
@@ -3633,7 +3633,7 @@ class CliTests(unittest.TestCase):
                 raw_text_path=str(asr_text_path),
             )
 
-            with patch("pastor_transcript_extractor.cli.fetch_captions_video") as mock_fetch:
+            with patch("pastor_transcript_extractor.transcription.fetch_captions_video") as mock_fetch:
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -4276,7 +4276,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.fetch_captions_video",
+                "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=VideoUnavailableError("Video unavailable for https://www.youtube.com/watch?v=abc123def45"),
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])

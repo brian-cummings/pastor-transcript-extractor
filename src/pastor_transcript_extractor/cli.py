@@ -91,7 +91,7 @@ from pastor_transcript_extractor.config import (
     build_tool_config,
     ensure_directories,
 )
-from pastor_transcript_extractor import discovery
+from pastor_transcript_extractor import discovery, transcription
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
@@ -332,7 +332,6 @@ from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.transcription import (
     PreparedTranscriptInput,
     complete_transcription_video,
-    fetch_captions_video,
     prepare_transcription_input,
 )
 from pastor_transcript_extractor.workflows.source_discovery import (
@@ -6349,7 +6348,7 @@ def fetch_captions_service(
         cookies_from_browser=cookies_from_browser,
         cookies=cookies,
         progress_callback=console.print,
-        fetch_captions=fetch_captions_video,
+        fetch_captions=transcription.fetch_captions_video,
         monotonic=time.monotonic,
         sleeper=time.sleep,
     )
