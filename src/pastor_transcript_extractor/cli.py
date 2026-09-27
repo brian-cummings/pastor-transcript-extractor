@@ -335,11 +335,6 @@ from pastor_transcript_extractor.workflows.source_sync import (
     SourceSyncRequest,
     sync_imported_sources_workflow,
 )
-from pastor_transcript_extractor.workflows.run_media import (
-    RunMediaDependencies,
-    RunMediaRequest,
-    ensure_and_archive_run_media as _ensure_and_archive_run_media_workflow,
-)
 from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageDependencies,
     AudioStageScopeDependencies,
@@ -6800,7 +6795,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 fetch_captions=acquisition.fetch_captions_service,
                 transcribe=acquisition.transcribe_videos_service,
                 extract=application.extract_batch,
-                ensure_media=_ensure_and_archive_run_media,
+                ensure_media=_pipeline_commands.ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,
                 prepare_reviews=application.prepare_review_exports,
             ),
@@ -6813,7 +6808,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 fetch_captions=acquisition.fetch_captions_service,
                 transcribe=acquisition.transcribe_videos_service,
                 extract=application.extract_batch,
-                ensure_media=_ensure_and_archive_run_media,
+                ensure_media=_pipeline_commands.ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,
                 prepare_reviews=application.prepare_review_exports,
             ),
@@ -6888,33 +6883,7 @@ def _run_post_content_identity(
     )
 
 
-def _ensure_and_archive_run_media(
-    database: Database,
-    paths: AppPaths,
-    *,
-    video_ids: set[int] | None = None,
-    allow_download: bool = True,
-) -> None:
-    _ensure_and_archive_run_media_workflow(
-        database,
-        paths,
-        RunMediaRequest(
-            video_ids=None if video_ids is None else frozenset(video_ids),
-            allow_download=allow_download,
-        ),
-        progress_callback=lambda message, style: console.print(
-            message,
-            style=style,
-            markup=False,
-        ),
-        dependencies=RunMediaDependencies(
-            has_isolated_sermon=video_has_isolated_sermon,
-            get_verified_media=get_verified_normalized_media_artifact,
-            build_tools=config.build_tool_config,
-            ensure_audio=ensure_audio_for_video,
-            archive_source=archive_source_media,
-        ),
-    )
+_ensure_and_archive_run_media = _pipeline_commands.ensure_and_archive_run_media
 
 def _print_review_batch(batch: ReviewBatchResult) -> None:
     for pastor_result in batch.pastors:
