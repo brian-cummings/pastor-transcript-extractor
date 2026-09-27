@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the `fetch_captions_video` test seam to its owning
-  transcription module, preserving the current CLI adapter and avoiding the
-  unrelated source-processing worktree changes.
+- Next action: migrate the `extract_batch` test seam to its owning extraction
+  module, preserving the current CLI adapter and avoiding the unrelated
+  source-processing worktree changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1016,6 +1016,13 @@ Changed the CLI discovery adapter to resolve `extract_discovered_videos` from
 the discovery module that owns it. Discovery tests now patch that owner instead
 of the incidental `cli.py` import location, while production behavior and the
 public command surface remain unchanged.
+
+### 2026-09-27 — Milestone 8.6: caption fetcher owner seam
+
+Changed the CLI caption-acquisition adapter to resolve
+`fetch_captions_video` from the transcription module that owns it. Tests now
+patch that owner instead of the incidental `cli.py` binding; direct
+transcription-unit imports and production behavior remain unchanged.
 
 ## Validation log
 
@@ -2245,6 +2252,22 @@ PASS
 Ran 22 tests in 15.311s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.extract_discovered_videos" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Caption fetcher owner seam
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest <14 affected caption-fetch tests excluding the known stale classifier-version assertion> tests.test_cli_contract
+Ran 20 tests in 0.919s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.fetch_captions_video" tests
 No matches
 
 git diff --check
