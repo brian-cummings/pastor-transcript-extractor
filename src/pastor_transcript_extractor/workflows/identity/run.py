@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.config import AppPaths, build_llm_config
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedEvidenceSyncResult,
     ReviewedSpeakerEvidence,
@@ -13,6 +13,7 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
+from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
 from pastor_transcript_extractor.identity_stage_cache import association_refresh_mode
 from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationState,
@@ -31,6 +32,11 @@ from pastor_transcript_extractor.speaker_machine_assignment import (
 from pastor_transcript_extractor.speaker_shadow_association import (
     ProfileAssociationReadiness,
     assess_profile_association_readiness,
+)
+from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
+    ProfileMetadataAttributionRun,
+    profile_metadata_candidate_profile_ids,
+    run_profile_metadata_attribution,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -155,6 +161,16 @@ class DiscoveryFinalizationResult:
 
     checkpoint_written: bool
     promotion_attempted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataAttributionStageResult:
+    """One terminal metadata-attribution stage outcome."""
+
+    status: str
+    candidate_profile_ids: tuple[int, ...]
+    run: ProfileMetadataAttributionRun | None = None
+    error: str | None = None
 
 
 def validate_identity_workflow_request(
@@ -566,3 +582,61 @@ def finalize_discovery_stage(
         checkpoint_written=checkpoint_written,
         promotion_attempted=promotion_attempted,
     )
+
+
+def run_metadata_attribution_stage(
+    database_path: Path,
+    *,
+    output_root: Path,
+    plan_only: bool,
+    database_video_id: int | None,
+    progress_callback: Callable[[int, int, int, str], None] | None = None,
+) -> MetadataAttributionStageResult:
+    """Plan or run optional local-LLM profile metadata attribution."""
+    database = Database(database_path, readonly=True)
+    if plan_only:
+        candidates = tuple(profile_metadata_candidate_profile_ids(database))
+        return MetadataAttributionStageResult("plan_only", candidates)
+
+    config = build_llm_config()
+    if not config.enabled:
+        return MetadataAttributionStageResult("disabled", ())
+
+    scoped_profile_ids = None
+    if database_video_id is not None:
+        observation = database.get_latest_speaker_observation_for_video(
+            database_video_id
+        )
+        scoped_profile_ids = frozenset(
+            database.resolve_speaker_profile_id(profile_id)
+            for profile_id in (
+                database.list_effective_profile_ids_for_observation(observation.id)
+                if observation is not None
+                else ()
+            )
+        )
+    candidates = tuple(
+        profile_metadata_candidate_profile_ids(
+            database,
+            profile_ids=scoped_profile_ids,
+        )
+    )
+    if not candidates:
+        return MetadataAttributionStageResult("empty", ())
+    try:
+        client = OllamaClient(config)
+        run = run_profile_metadata_attribution(
+            database,
+            output_root,
+            client,
+            model_digest=client.model_digest(),
+            profile_ids=frozenset(candidates),
+            progress_callback=progress_callback,
+        )
+    except (LocalLlmError, OSError, ValueError) as error:
+        return MetadataAttributionStageResult(
+            "failed",
+            candidates,
+            error=f"{type(error).__name__}: {error}",
+        )
+    return MetadataAttributionStageResult("executed", candidates, run=run)

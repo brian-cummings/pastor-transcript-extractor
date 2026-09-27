@@ -25,6 +25,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     reconcile_machine_assignments_stage,
     repair_association_stage,
     run_machine_assignment_stage,
+    run_metadata_attribution_stage,
     select_discovery_reports,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
@@ -464,6 +465,67 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertFalse(result.promotion_attempted)
         writer.assert_not_called()
         promoter.assert_not_called()
+
+    def test_metadata_plan_counts_candidates_without_building_llm(self) -> None:
+        with patch.object(identity_run, "Database"), patch.object(
+            identity_run,
+            "profile_metadata_candidate_profile_ids",
+            return_value=(3, 7),
+        ), patch.object(identity_run, "build_llm_config") as build_config:
+            result = run_metadata_attribution_stage(
+                Path("app.db"),
+                output_root=Path("metadata"),
+                plan_only=True,
+                database_video_id=None,
+            )
+
+        self.assertEqual("plan_only", result.status)
+        self.assertEqual((3, 7), result.candidate_profile_ids)
+        build_config.assert_not_called()
+
+    def test_metadata_disabled_does_not_select_candidates(self) -> None:
+        with patch.object(identity_run, "Database"), patch.object(
+            identity_run,
+            "build_llm_config",
+            return_value=SimpleNamespace(enabled=False),
+        ), patch.object(
+            identity_run, "profile_metadata_candidate_profile_ids"
+        ) as candidates:
+            result = run_metadata_attribution_stage(
+                Path("app.db"),
+                output_root=Path("metadata"),
+                plan_only=False,
+                database_video_id=None,
+            )
+
+        self.assertEqual("disabled", result.status)
+        candidates.assert_not_called()
+
+    def test_metadata_llm_failure_becomes_structured_outcome(self) -> None:
+        database = SimpleNamespace()
+        with patch.object(identity_run, "Database", return_value=database), patch.object(
+            identity_run,
+            "build_llm_config",
+            return_value=SimpleNamespace(enabled=True),
+        ), patch.object(
+            identity_run,
+            "profile_metadata_candidate_profile_ids",
+            return_value=(3,),
+        ), patch.object(
+            identity_run.OllamaClient,
+            "__init__",
+            side_effect=OSError("offline"),
+        ):
+            result = run_metadata_attribution_stage(
+                Path("app.db"),
+                output_root=Path("metadata"),
+                plan_only=False,
+                database_video_id=None,
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual((3,), result.candidate_profile_ids)
+        self.assertEqual("OSError: offline", result.error)
 
     def test_automatic_apply_enables_each_guarded_mutation(self) -> None:
         policy = validate_identity_workflow_request(

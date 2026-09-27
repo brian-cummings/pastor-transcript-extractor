@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract metadata attribution, final coordination, review prewarm,
-  and archival into named identity-run stages, preserving optional-service
-  failure handling, plan-only behavior, and terminal ordering.
+- Next action: extract final coordination, review prewarm, and archival into
+  named identity-run stages, preserving optional-service failure handling,
+  plan-only behavior, and terminal ordering.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -708,6 +708,17 @@ finalization result. Only an executed, non-plan discovery can write a checkpoint
 corpus runs can still plan or apply promotion from the latest persisted report
 when discovery was explicitly skipped, preserving the prior behavior. Deferred
 single-video runs never promote corpus artifacts.
+
+### 2026-09-27 — Milestone 6.5p: metadata attribution stage
+
+Moved metadata candidate scoping and optional local-LLM execution into a
+structured workflow outcome with `plan_only`, `disabled`, `empty`, `failed`,
+and `executed` states. Progress remains an injected callback; expected local
+LLM and artifact failures return diagnostic evidence without aborting the
+identity run. Plan-only mode counts candidates without constructing LLM tools.
+
+`cli.py` is now 8,213 lines, down 9,904 lines from baseline. The workflow module
+is 642 lines and remains below the planned readability ceiling.
 
 ## Validation log
 
@@ -1565,6 +1576,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 48 tests in 0.728s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Metadata attribution stage
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 51 tests in 0.727s — OK
 
 git diff --check
 PASS
