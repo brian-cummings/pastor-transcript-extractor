@@ -19,8 +19,18 @@ from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
 from pastor_transcript_extractor.speaker_machine_assignment import (
+    MachineAssignmentApplyResult,
+    MachineAssignmentPlan,
+    MachineAssignmentPolicy,
     MachineAssignmentReconciliationResult,
+    apply_machine_assignment_plan,
+    load_machine_assignment_policy,
+    plan_machine_assignments,
     reconcile_machine_assignments,
+)
+from pastor_transcript_extractor.speaker_shadow_association import (
+    ProfileAssociationReadiness,
+    assess_profile_association_readiness,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -96,6 +106,16 @@ class AssociationRepairStageResult:
     reports: tuple[Path, ...]
     checkpoint_needs_refresh: bool
     repair_attempted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class MachineAssignmentStageResult:
+    """Machine-assignment plan and its optional durable application."""
+
+    policy: MachineAssignmentPolicy
+    readiness: tuple[ProfileAssociationReadiness, ...]
+    plan: MachineAssignmentPlan
+    applied: MachineAssignmentApplyResult | None
 
 
 def validate_identity_workflow_request(
@@ -347,3 +367,53 @@ def persist_association_checkpoint_stage(
         return False
     checkpoint_writer(fingerprint, tuple(reports), input_state)
     return True
+
+
+def run_machine_assignment_stage(
+    database_path: Path,
+    *,
+    reports: Sequence[Path],
+    reviewed_evidence: ReviewedSpeakerEvidence,
+    policy_path: Path,
+    verification_cache: MediaVerificationCache,
+    excluded_observation_fingerprints: frozenset[str],
+    database_video_id: int | None,
+    plan_only: bool,
+    activate_canary: bool,
+) -> MachineAssignmentStageResult:
+    """Plan current evidence and optionally append reversible assignment state."""
+    policy = load_machine_assignment_policy(policy_path)
+    database = Database(database_path, readonly=True)
+    readiness = tuple(
+        assess_profile_association_readiness(database, reviewed_evidence)
+    )
+    included_observation_ids = None
+    if database_video_id is not None:
+        observation = database.get_latest_speaker_observation_for_video(
+            database_video_id
+        )
+        included_observation_ids = frozenset(
+            (observation.id,) if observation is not None else ()
+        )
+    plan = plan_machine_assignments(
+        database,
+        reports,
+        readiness=readiness,
+        policy=policy,
+        verification_cache=verification_cache,
+        excluded_observation_fingerprints=excluded_observation_fingerprints,
+        included_observation_ids=included_observation_ids,
+    )
+    applied = None
+    if not plan_only:
+        applied = apply_machine_assignment_plan(
+            Database(database_path),
+            plan,
+            activate_canary=activate_canary,
+        )
+    return MachineAssignmentStageResult(
+        policy=policy,
+        readiness=readiness,
+        plan=plan,
+        applied=applied,
+    )

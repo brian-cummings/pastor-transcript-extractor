@@ -313,15 +313,18 @@ class IdentityStageCacheTests(unittest.TestCase):
                     return_value=(),
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.assess_profile_association_readiness",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "assess_profile_association_readiness",
                     return_value=(),
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.plan_machine_assignments",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "plan_machine_assignments",
                     return_value=machine_plan,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.apply_machine_assignment_plan",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "apply_machine_assignment_plan",
                     return_value=machine_apply,
                 ),
                 patch("pastor_transcript_extractor.cli.confirm_discovered_profiles_command"),

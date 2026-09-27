@@ -388,7 +388,8 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
                 ) as associate,
                 patch(
-                    "pastor_transcript_extractor.cli.plan_machine_assignments",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "plan_machine_assignments",
                     return_value=SimpleNamespace(
                         candidates=(),
                         skipped_counts={},
@@ -396,7 +397,8 @@ class IdentityRunTests(unittest.TestCase):
                     ),
                 ) as plan_machine,
                 patch(
-                    "pastor_transcript_extractor.cli.apply_machine_assignment_plan",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "apply_machine_assignment_plan",
                     return_value=SimpleNamespace(
                         evidence_recorded=0,
                         evidence_reused=0,
@@ -994,7 +996,8 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.cli.shadow_associate_speakers_command"
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.plan_machine_assignments",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "plan_machine_assignments",
                     return_value=SimpleNamespace(
                         candidates=(),
                         skipped_counts={},
@@ -1002,7 +1005,8 @@ class IdentityRunTests(unittest.TestCase):
                     ),
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.apply_machine_assignment_plan",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "apply_machine_assignment_plan",
                     return_value=SimpleNamespace(
                         evidence_recorded=0,
                         evidence_reused=0,
