@@ -5,11 +5,13 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.workflows.identity import finalization
 from pastor_transcript_extractor.workflows.identity.finalization import (
     ActionableReviewAudioPreparation,
     CoordinationStageRequest,
     run_coordination_stage,
+    run_archive_dispatch_stage,
     run_review_prewarm_stage,
 )
 
@@ -95,6 +97,50 @@ class IdentityFinalizationWorkflowTests(unittest.TestCase):
 
         self.assertEqual("failed", result.status)
         self.assertEqual("OSError: missing media", result.error)
+
+    def test_archive_plan_only_does_not_open_database(self) -> None:
+        archiver = Mock()
+        with patch.object(finalization, "Database") as database_factory:
+            result = run_archive_dispatch_stage(
+                SimpleNamespace(),
+                plan_only=True,
+                database_video_id=7,
+                all_extractions=False,
+                archiver=archiver,
+            )
+
+        self.assertEqual("plan_only", result.status)
+        database_factory.assert_not_called()
+        archiver.assert_not_called()
+
+    def test_archive_dispatch_preserves_single_video_scope(self) -> None:
+        root = Path("app-data")
+        paths = AppPaths(
+            root=root,
+            database=root / "app.db",
+            artifacts=root / "artifacts",
+            logs=root / "logs",
+            exports=root / "exports",
+            pastors=root / "pastors",
+        )
+        database = object()
+        archiver = Mock()
+        with patch.object(finalization, "Database", return_value=database):
+            result = run_archive_dispatch_stage(
+                paths,
+                plan_only=False,
+                database_video_id=7,
+                all_extractions=False,
+                archiver=archiver,
+            )
+
+        self.assertEqual("executed", result.status)
+        archiver.assert_called_once_with(
+            database,
+            paths,
+            video_ids={7},
+            all_eligible=False,
+        )
 
 
 if __name__ == "__main__":
