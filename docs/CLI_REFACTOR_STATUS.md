@@ -7,10 +7,10 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: audit Milestone 7 acceptance and begin Milestone 8 by replacing
-  remaining identity tests that patch incidental `cli.py` globals with patches
-  at their owning command/workflow modules.
+- Active milestone: Milestone 8 — replace incidental test seams.
+- Next action: migrate identity-run stage-cache tests away from incidental
+  `cli.py` patches by exposing explicit workflow execution dependencies at the
+  identity service boundary.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -63,7 +63,7 @@ these changes.
 - [x] 4. Separate catalog commands from acquisition workflows.
 - [x] 5. Extract the top-level pipeline.
 - [x] 6. Split identity by capability.
-- [ ] 7. Decompose oversized identity workflows.
+- [x] 7. Decompose oversized identity workflows.
 - [ ] 8. Replace incidental test seams.
 - [ ] 9. Remove migration scaffolding and verify the final architecture.
 
@@ -965,6 +965,21 @@ Focused tests cover stable admission order, exact exclusion counts, verified
 media registration, exclusion callbacks, and pre-assessment progress snapshots.
 `cli.py` is now 7,221 lines, down 10,896 lines from baseline; the shadow-
 association service is 699 lines, within the plan's readability range.
+
+### 2026-09-27 — Milestone 7 acceptance audit
+
+Completed staged decomposition for the identity run, pair review, profile
+discovery, source consolidation, and shadow association paths. Shadow
+association now has typed validation, setup, inventory, exemplar, candidate,
+routing, centroid, evaluation, persistence, and result boundaries; its service
+body is below the plan's approximate 700-line signal rather than being moved
+unchanged.
+
+All identity workflow modules compile without importing Typer, Rich, or
+`cli.py`. Focused command/workflow tests preserve reason codes, provenance,
+abstentions, partial failures, shadow-only behavior, and human-review safety.
+Milestone 7 is complete; Milestone 8 now targets remaining incidental test
+patch locations.
 
 ## Validation log
 
@@ -2111,6 +2126,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_setup_workflow tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 44 tests in 0.249s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Milestone 7 acceptance audit
+
+```text
+rg -n "^(from|import) (typer|rich|pastor_transcript_extractor\.cli)" src/pastor_transcript_extractor/workflows/identity
+No matches
+
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity src/pastor_transcript_extractor/commands/identity src/pastor_transcript_extractor/cli.py
+PASS
 
 git diff --check
 PASS
