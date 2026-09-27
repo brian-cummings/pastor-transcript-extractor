@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+import typer
+
 from pastor_transcript_extractor.commands.identity import coordination
 from pastor_transcript_extractor.identity_automation import (
     IdentityAssociationWorkItem,
@@ -33,6 +35,48 @@ def _work_item(
 
 
 class IdentityCoordinationCommandTests(unittest.TestCase):
+    def test_coordinate_requires_exactly_one_scope(self) -> None:
+        with patch.object(coordination, "build_paths") as build_paths:
+            with self.assertRaises(typer.BadParameter):
+                coordination.coordinate_identity_command(
+                    youtube_video_id=None,
+                    all_extractions=False,
+                    execute_shadow=False,
+                    discovery_report=None,
+                    discovery_root=Path("discovery"),
+                    model_path=Path("model.onnx"),
+                    model_sha256="checksum",
+                    policy_path=Path("policy.json"),
+                    evaluation_root=Path("evaluation"),
+                    cache_dir=Path("cache"),
+                    association_root=Path("associations"),
+                    output_root=None,
+                    base_dir=None,
+                )
+
+        build_paths.assert_not_called()
+
+    def test_coordinate_rejects_corpus_shadow_execution(self) -> None:
+        with patch.object(coordination, "build_paths") as build_paths:
+            with self.assertRaises(typer.BadParameter):
+                coordination.coordinate_identity_command(
+                    youtube_video_id=None,
+                    all_extractions=True,
+                    execute_shadow=True,
+                    discovery_report=None,
+                    discovery_root=Path("discovery"),
+                    model_path=Path("model.onnx"),
+                    model_sha256="checksum",
+                    policy_path=Path("policy.json"),
+                    evaluation_root=Path("evaluation"),
+                    cache_dir=Path("cache"),
+                    association_root=Path("associations"),
+                    output_root=None,
+                    base_dir=None,
+                )
+
+        build_paths.assert_not_called()
+
     def test_dispatch_dry_run_does_not_invoke_associator(self) -> None:
         plan = IdentityAssociationWorkPlan(items=(_work_item(),), attempt_volume=0)
         associator = Mock()

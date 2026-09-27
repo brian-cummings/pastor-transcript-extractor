@@ -8,8 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract the identity coordination report command, preserving
-  shadow-only execution and its zero-registry-mutation boundary.
+- Next action: extract the identity workflow command and orchestration into a
+  capability module, preserving stage order, plan-only behavior, and explicit
+  apply gates.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -552,6 +553,20 @@ status validation, and held-out fixture exclusion. The existing machine
 assignment persistence suite and all three moved help surfaces remain green.
 
 `cli.py` is now 8,644 lines, down 9,473 lines from baseline.
+
+### 2026-09-27 — Milestone 6.4c: identity coordination report extraction
+
+Moved the `identity coordinate` command into the existing coordination module,
+which is now 615 lines and remains within the planned module-size range. The
+command reuses the composition-time shadow associator while retaining its
+single-video execution restriction, read-only audit/replan flow, and explicit
+zero-registry-mutation report.
+
+Added focused validation tests for the exact-one-scope invariant and the ban on
+corpus-wide shadow execution. The identity coordination domain tests and frozen
+CLI contract remain green.
+
+`cli.py` is now 8,387 lines, down 9,730 lines from baseline.
 
 ## Validation log
 
@@ -1187,6 +1202,22 @@ Ran 29 tests in 2.165s — OK
 .venv/bin/python -m pastor_transcript_extractor identity <moved-command> --help
 PASS for reconcile-current-proposals, machine-assignment-status, and
 rollback-machine-assignments
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Identity coordination report extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/coordination.py src/pastor_transcript_extractor/cli.py tests/test_identity_coordination_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_coordination_commands tests.test_identity_coordination tests.test_cli_contract
+Ran 31 tests in 0.254s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity coordinate --help
+PASS
 
 git diff --check
 PASS
