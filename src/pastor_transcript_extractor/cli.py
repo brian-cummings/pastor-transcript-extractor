@@ -69,6 +69,10 @@ from pastor_transcript_extractor.commands.identity.coordination import (
 )
 from pastor_transcript_extractor.commands.identity import assignments as _identity_assignment_commands
 from pastor_transcript_extractor.commands.identity import workflow as _identity_workflow_commands
+from pastor_transcript_extractor.commands.identity import association as _identity_association_commands
+from pastor_transcript_extractor.commands.identity.association import (
+    shadow_associate_speakers_command,
+)
 from pastor_transcript_extractor.commands.identity.workflow import identity_run_command
 from pastor_transcript_extractor.commands.identity.common import (
     _held_out_speaker_fixture_fingerprints,
@@ -406,6 +410,9 @@ from pastor_transcript_extractor.workflows.identity.finalization import (
     run_archive_dispatch_stage,
     run_coordination_stage,
     run_review_prewarm_stage,
+)
+from pastor_transcript_extractor.workflows.identity.association import (
+    ShadowAssociationRequest,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -4017,11 +4024,7 @@ def _exemplar_preparation_initial_blocker(
     return stage, assessment_reason_code
 
 
-@identity_app.command(
-    "shadow-associate-speakers",
-    help="Propose multi-exemplar profile matches without changing registry membership.",
-)
-def shadow_associate_speakers_command(
+def shadow_associate_speakers_service(
     youtube_video_id: str | None = typer.Option(
         None,
         "--youtube-video-id",
@@ -5628,6 +5631,32 @@ def shadow_associate_speakers_command(
         "automatic boundary changes=0."
     )
     return tuple(written_reports)
+
+
+def _invoke_shadow_association_request(
+    request: ShadowAssociationRequest,
+) -> tuple[Path, ...]:
+    return shadow_associate_speakers_service(
+        youtube_video_id=request.youtube_video_id,
+        all_eligible=request.all_eligible,
+        unattempted_only=request.unattempted_only,
+        neighborhood_profile_id=list(request.neighborhood_profile_ids),
+        include_profiled=request.include_profiled,
+        limit=request.limit,
+        plan_only=request.plan_only,
+        minimum_profile_members=request.minimum_profile_members,
+        maximum_exemplars=request.maximum_exemplars,
+        minimum_same_exemplars=request.minimum_same_exemplars,
+        maximum_global_profiles=request.maximum_global_profiles,
+        jobs=request.jobs,
+        model_path=request.model_path,
+        model_sha256=request.model_sha256,
+        policy_path=request.policy_path,
+        evaluation_root=request.evaluation_root,
+        cache_dir=request.cache_dir,
+        output_root=request.output_root,
+        base_dir=request.base_dir,
+    )
 
 
 @identity_app.command(
@@ -8178,6 +8207,9 @@ def _print_review_batch(batch: ReviewBatchResult) -> None:
 
 
 _identity_review_commands.configure_ground_truth_reviewer(review_ground_truth)
+_identity_association_commands.configure_shadow_association(
+    _invoke_shadow_association_request
+)
 _identity_coordination_commands.configure_shadow_associator(
     shadow_associate_speakers_command
 )
