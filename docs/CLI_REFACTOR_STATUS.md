@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract pending-discovery confirmation routing and candidate
-  evaluation preparation, preserving database qualification, route counts,
-  cache reuse, fallback behavior, and durable technical-failure admissions.
+- Next action: split association preparation/routing stages into a cohesive
+  workflow submodule before extracting candidate evaluation, keeping modules
+  within the plan's readability range without changing public imports.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -834,6 +834,17 @@ admissions remain explicit service-boundary responsibilities.
 Focused tests cover exemplar deduplication, stable candidate order, isolated
 failures, progress events, and incomplete candidates. `cli.py` is now 7,831
 lines, down 10,286 lines from baseline.
+
+### 2026-09-27 — Milestone 7.7: pending confirmation routing
+
+Moved persisted discovery-profile qualification and nearest independent
+candidate routing into a typed workflow result. The stage explicitly reports
+pending profiles, routed profiles, candidate routes, and total route count;
+only profiles with the unconfirmed blocker, discovery creation reason, and a
+persisted promotion record are admitted.
+
+Focused tests cover each qualification gate and the complete route-summary
+evidence. `cli.py` is now 7,803 lines, down 10,314 lines from baseline.
 
 ## Validation log
 
@@ -1837,6 +1848,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 22 tests in 0.224s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Pending confirmation routing
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 23 tests in 0.227s — OK
 
 git diff --check
 PASS

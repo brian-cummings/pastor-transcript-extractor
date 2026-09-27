@@ -18,10 +18,12 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
 )
 from pastor_transcript_extractor.speaker_pair_diagnostics import SpanSpec
 from pastor_transcript_extractor.speaker_shadow_association import (
+    DISCOVERY_PROFILE_REASON,
     ProfileAssociationReadiness,
     ShadowExemplar,
     StagedAssociationRouting,
     leave_one_out_profile_readiness,
+    plan_pending_discovery_confirmation_routes,
     select_profile_exemplars,
     select_routed_association_profiles,
     select_staged_association_profiles,
@@ -164,6 +166,20 @@ class AssociationCandidateCentroidOutcome:
 class AssociationCentroidPreparationResult:
     exemplar_centroids: Mapping[int, tuple[float, ...]]
     candidate_outcomes: tuple[AssociationCandidateCentroidOutcome, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PendingConfirmationRoutePlan:
+    profiles: tuple[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]], ...
+    ]
+    routes: Mapping[int, tuple[int, ...]]
+    pending_profile_ids: frozenset[int]
+    routed_profile_ids: frozenset[int]
+
+    @property
+    def route_count(self) -> int:
+        return sum(len(profile_ids) for profile_ids in self.routes.values())
 
 
 def validate_shadow_association_request(
@@ -706,4 +722,57 @@ def prepare_association_centroids(
     return AssociationCentroidPreparationResult(
         exemplar_centroids=exemplar_centroids,
         candidate_outcomes=tuple(outcomes),
+    )
+
+
+def plan_pending_confirmation_routing(
+    database: Database,
+    usable_profiles: Sequence[
+        tuple[ProfileAssociationReadiness, Sequence[ShadowExemplar]]
+    ],
+    *,
+    candidate_centroids: Mapping[int, Sequence[float]],
+    candidate_video_ids: Mapping[int, int],
+    exemplar_centroids: Mapping[int, Sequence[float]],
+    candidates_per_profile: int = 2,
+) -> PendingConfirmationRoutePlan:
+    """Route candidates only to persisted discovery profiles awaiting proof."""
+    profiles = tuple(
+        (profile, exemplars)
+        for profile, exemplars in usable_profiles
+        if (
+            "discovery_candidate_unconfirmed" in profile.automatic_blockers
+            and (
+                registry_profile := database.get_speaker_profile(
+                    profile.profile_id
+                )
+            )
+            is not None
+            and registry_profile.created_reason == DISCOVERY_PROFILE_REASON
+            and database.get_speaker_profile_discovery_promotion(
+                profile.profile_id
+            )
+            is not None
+        )
+    )
+    routes = plan_pending_discovery_confirmation_routes(
+        profiles,
+        candidate_centroids=candidate_centroids,
+        candidate_video_ids=candidate_video_ids,
+        exemplar_centroids=exemplar_centroids,
+        candidates_per_profile=candidates_per_profile,
+    )
+    pending_profile_ids = frozenset(
+        profile.profile_id for profile, _exemplars in profiles
+    )
+    routed_profile_ids = frozenset(
+        profile_id
+        for profile_ids in routes.values()
+        for profile_id in profile_ids
+    )
+    return PendingConfirmationRoutePlan(
+        profiles=profiles,
+        routes=routes,
+        pending_profile_ids=pending_profile_ids,
+        routed_profile_ids=routed_profile_ids,
     )
