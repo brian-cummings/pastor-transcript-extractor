@@ -2254,7 +2254,7 @@ class CliTests(unittest.TestCase):
             list_sources=lambda: [SimpleNamespace(id=1)],
         )
         with patch(
-            "pastor_transcript_extractor.cli.get_database", return_value=database
+            "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
             return_value=SimpleNamespace(selected_video_ids_by_source={1: (11,)}),
@@ -2565,7 +2565,7 @@ class CliTests(unittest.TestCase):
             ],
         )
         with patch(
-            "pastor_transcript_extractor.cli.get_database",
+            "pastor_transcript_extractor.commands.common.get_database",
             return_value=database,
         ), patch(
             "pastor_transcript_extractor.cli.build_paths",
@@ -2625,7 +2625,7 @@ class CliTests(unittest.TestCase):
             )
 
         with patch(
-            "pastor_transcript_extractor.cli.get_database",
+            "pastor_transcript_extractor.commands.common.get_database",
             return_value=database,
         ), patch(
             "pastor_transcript_extractor.cli.build_paths",
@@ -2690,7 +2690,7 @@ class CliTests(unittest.TestCase):
             )
 
         with patch(
-            "pastor_transcript_extractor.cli.get_database",
+            "pastor_transcript_extractor.commands.common.get_database",
             return_value=database,
         ), patch(
             "pastor_transcript_extractor.cli.build_paths",
@@ -2729,7 +2729,7 @@ class CliTests(unittest.TestCase):
         database = SimpleNamespace()
         paths = SimpleNamespace(logs=Path("logs"))
         with patch(
-            "pastor_transcript_extractor.cli.get_database", return_value=database
+            "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
             "pastor_transcript_extractor.cli.build_paths", return_value=paths
         ), patch(
@@ -2764,7 +2764,7 @@ class CliTests(unittest.TestCase):
         database = SimpleNamespace()
         paths = SimpleNamespace(logs=Path("logs"))
         with patch(
-            "pastor_transcript_extractor.cli.get_database", return_value=database
+            "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
             "pastor_transcript_extractor.cli.build_paths", return_value=paths
         ), patch(
@@ -2801,7 +2801,7 @@ class CliTests(unittest.TestCase):
         )
         calls: list[str] = []
         with patch(
-            "pastor_transcript_extractor.cli.get_database", return_value=database
+            "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
             "pastor_transcript_extractor.cli.build_paths",
             return_value=SimpleNamespace(logs=Path("logs")),

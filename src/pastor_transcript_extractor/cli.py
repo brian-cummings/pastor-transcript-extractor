@@ -83,8 +83,8 @@ from pastor_transcript_extractor.commands.identity.review import (
     _reviewed_evidence_sync_command,
     review_speaker_pair,
 )
+from pastor_transcript_extractor.commands import acquisition, common as command_common
 from pastor_transcript_extractor.commands.common import unknown_pastor_error as _unknown_pastor_error
-from pastor_transcript_extractor.commands import acquisition
 from pastor_transcript_extractor.config import (
     AppPaths,
     build_llm_config,
@@ -497,7 +497,7 @@ def review_ground_truth(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
     selection_manifest_json: str | None = typer.Option(None, hidden=True),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     video = database.get_video_by_youtube_id(youtube_video_id)
     if video is None:
         raise typer.BadParameter(f"Unknown YouTube video ID: {youtube_video_id}")
@@ -659,7 +659,7 @@ def review_next_ground_truth(
     open_video: bool = typer.Option(True, "--open-video/--no-open-video", help="Open the selected video."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     root = evaluation_dir.expanduser().resolve()
     try:
         registry = load_source_family_registry(source_family_registry.expanduser().resolve())
@@ -798,12 +798,7 @@ def review_next_ground_truth(
     )
 
 
-def get_database(base_dir: Path | None = None) -> Database:
-    paths = build_paths(base_dir, remember=True)
-    ensure_directories(paths)
-    database = Database(paths.database)
-    database.initialize()
-    return database
+get_database = command_common.get_database
 
 
 def _association_admission_is_actionable(stage: str, reason_code: str) -> bool:
@@ -4708,7 +4703,7 @@ def detach_speaker_observation(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     video = database.get_video_by_youtube_id(youtube_video_id)
     observation = (
         database.get_latest_speaker_observation_for_video(video.id)
@@ -4760,7 +4755,7 @@ def record_speaker_difference(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     videos = [
         database.get_video_by_youtube_id(value) for value in (video_a, video_b)
     ]
@@ -5840,7 +5835,7 @@ def import_church_db(
     show_all: bool = typer.Option(False, help="Show unchanged records in addition to changes and conflicts."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     try:
         result = import_church_sources(
             database,
@@ -5911,7 +5906,7 @@ def sync_imported_sources(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     app_paths = build_paths(base_dir, remember=True)
     try:
         sync_imported_sources_workflow(
@@ -5958,7 +5953,7 @@ def identity_backfill(
     video_id: int | None = typer.Option(None, "--video-id", help="Only backfill one database video id."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     result = backfill_shadow_identity_assessments(database, paths, video_id=video_id)
     console.print(
@@ -6125,7 +6120,7 @@ def extract(
     jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video extraction jobs."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     try:
         result = application.extract_batch(
@@ -6231,7 +6226,7 @@ def apply_fixture_correction(
     except FixtureValidationError as error:
         raise typer.BadParameter(str(error)) from error
 
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     video = database.get_video_by_youtube_id(youtube_video_id)
     if video is None:
@@ -6439,7 +6434,7 @@ def reclassify(
             "Pass exactly one of --video-id, --source-id, --fixture-dir, "
             "--review-required, or --all."
         )
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     if video_id is not None:
         video = database.get_video_by_id(video_id)
@@ -6679,7 +6674,7 @@ def review(
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
-    database = get_database(base_dir)
+    database = command_common.get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     if all_pastors and pastor is not None:
         raise typer.BadParameter("Do not pass a pastor slug when using --all.")
@@ -6787,12 +6782,12 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
         request,
         event_callback=render_event,
         dependencies=RunWorkflowDependencies(
-            get_database=get_database,
+            get_database=command_common.get_database,
             build_paths=build_paths,
             build_tools=build_tool_config,
             verify_manifest=_verify_audio_stage_manifest,
             audio_scope=AudioStageScopeDependencies(
-                get_database=get_database,
+                get_database=command_common.get_database,
                 add_source=add_source_service,
                 delete_source=delete_source_service,
                 discover=acquisition.discover_sources_service,
@@ -6812,7 +6807,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 prepare_reviews=application.prepare_review_exports,
             ),
             online_pipeline=PipelineDependencies(
-                get_database=get_database,
+                get_database=command_common.get_database,
                 build_paths=build_paths,
                 add_source=add_source_service,
                 delete_source=delete_source_service,

@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: replace the broad `get_database`, `build_paths`, and
-  `build_tool_config` CLI patch cluster with command-owner or explicit
-  dependency seams, without touching unrelated source-processing changes.
+- Next action: migrate the remaining `build_paths` and `build_tool_config` CLI
+  patch clusters to their configuration or command owners, without touching
+  unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1055,6 +1055,14 @@ resolve the service from that owner; tests patch transcription domain functions
 at their owner and terminal presentation objects at the command adapter. The
 dead CLI renderer and helper copies were removed, reducing `cli.py` to 6,956
 lines.
+
+### 2026-09-27 — Milestone 8.11: shared database command boundary
+
+Removed the duplicate CLI database helper and routed command/database
+composition through `commands.common.get_database`, retaining only a temporary
+CLI alias for direct imports. Migrated all 20 tests to patch the shared owner.
+While validating the cluster, also corrected stale identity-test imports and a
+media-archive test's already-moved command-owner patches.
 
 ## Validation log
 
@@ -2370,6 +2378,22 @@ PASS
 Ran 32 tests in 1.465s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(transcribe_videos_service|prepare_transcription_input|complete_transcription_video)" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Shared database command boundary
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py src/pastor_transcript_extractor/commands/common.py tests/test_ground_truth_review.py tests/test_sources.py tests/test_identity_run.py tests/test_fixture_correction.py tests/test_fixture_validation.py
+PASS
+
+.venv/bin/python -m unittest <20 affected database-boundary tests> tests.test_cli_contract
+Ran 26 tests in 0.443s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.get_database" tests
 No matches
 
 git diff --check
