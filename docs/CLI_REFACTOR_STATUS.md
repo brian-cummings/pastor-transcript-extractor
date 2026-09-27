@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: continue identity metadata/profile extraction with reviewed
-  profile attribution, metadata enrichment, and cached metadata analysis.
+- Next action: extract identity coordination and machine-assignment commands,
+  preserving plan/apply/rollback boundaries and append-only event semantics.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -510,6 +510,19 @@ Focused tests verify dry-run sync does not open the database and canonical
 profile redirects are rendered during export.
 
 `cli.py` is now 9,873 lines, down 8,244 lines from baseline.
+
+### 2026-09-27 — Milestone 6.3b: profile attribution and metadata extraction
+
+Added `commands/identity/metadata.py` and moved reviewed profile attribution,
+network metadata enrichment, cached Ollama profile-name analysis, and their
+detailed renderers. The 641-line module owns interactive attribution I/O and
+metadata command policy while reusing the review module's terminal adapter.
+
+Focused tests prove enrichment plan mode does not construct network tools and
+metadata-analysis plan mode does not construct the LLM client. Identity
+metadata/profile command extraction is complete.
+
+`cli.py` is now 9,267 lines, down 8,850 lines from baseline.
 
 ## Validation log
 
@@ -1087,6 +1100,28 @@ PASS
 PASS
 
 .venv/bin/python -m pastor_transcript_extractor identity export-profile --help
+PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Profile attribution and metadata extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/metadata.py src/pastor_transcript_extractor/cli.py tests/test_identity_metadata_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_metadata_commands tests.test_identity_profile_commands tests.test_cli_contract
+Ran 10 tests in 0.246s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity review-profile-attribution --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor identity enrich-metadata --help
+PASS
+
+.venv/bin/python -m pastor_transcript_extractor identity analyze-profile-metadata --help
 PASS
 
 git diff --check
