@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract association result persistence and summary aggregation,
-  preserving artifact reuse/writes, extraction-boundary evidence, proposal
-  targets, routing/outcome counts, and sermon-window quality flags.
+- Next action: extract the per-candidate association evaluation sequence,
+  preserving isolated initial/fallback failures, exhaustive propagation,
+  comparison accounting, persistence order, and progress evidence.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -879,6 +879,18 @@ cancels pending futures and clears the executor before propagating.
 Focused tests cover verified cache reuse, span evidence forwarding, live
 executor reuse/normal shutdown, and failure cancellation. `cli.py` is now
 7,679 lines, down 10,438 lines from baseline.
+
+### 2026-09-27 — Milestone 7.11: association result persistence
+
+Moved artifact reuse/write selection, extraction-boundary evidence mirroring,
+and typed result facts into the evaluation workflow. Added a focused
+accumulator for outcome/route counts, proposal targets, reuse counts,
+sermon-window quality flags, and stable report paths. The CLI retains only the
+human-readable per-candidate and terminal rendering.
+
+Focused tests cover cached artifact preservation, boundary evidence, new
+artifact writes, proposal counting, and quality-flag aggregation. `cli.py` is
+now 7,662 lines, down 10,455 lines from baseline.
 
 ## Validation log
 
@@ -1934,6 +1946,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 31 tests in 0.228s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association result persistence
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association_evaluation.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_evaluation_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 33 tests in 0.230s — OK
 
 git diff --check
 PASS
