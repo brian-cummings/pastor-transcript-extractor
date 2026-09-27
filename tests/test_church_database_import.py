@@ -443,11 +443,11 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     return_value=[source_id],
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                     side_effect=discovery,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.fetch_captions_service",
+                    "pastor_transcript_extractor.commands.acquisition.fetch_captions_service",
                     side_effect=captions,
                 ),
                 patch(
@@ -495,7 +495,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     return_value=[source_id],
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.discover_sources_service"
+                    "pastor_transcript_extractor.commands.acquisition.discover_sources_service"
                 ) as discover,
             ):
                 result = CliRunner().invoke(
@@ -529,7 +529,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     return_value=SimpleNamespace(total=100, used=81, free=19),
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.discover_sources_service"
+                    "pastor_transcript_extractor.commands.acquisition.discover_sources_service"
                 ) as discover,
             ):
                 result = CliRunner().invoke(
@@ -614,10 +614,10 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     return_value=[first_source_id, second_source.id],
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                     side_effect=discover,
                 ),
-                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
                 patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
                 patch(
                     "pastor_transcript_extractor.application.extract_batch",
@@ -668,12 +668,12 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     return_value=constrained_disk,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                     return_value=SimpleNamespace(
                         selected_video_ids_by_source={source_id: (1,)}
                     ),
                 ),
-                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
                 patch(
                     "pastor_transcript_extractor.cli.transcribe_videos_service"
                 ) as transcribe,
@@ -760,7 +760,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     side_effect=disk_usage,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                     side_effect=lambda **kwargs: SimpleNamespace(
                         selected_video_ids_by_source={
                             kwargs["source_id"]: tuple(
@@ -772,7 +772,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
                         }
                     ),
                 ),
-                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
                 patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
                 patch(
                     "pastor_transcript_extractor.application.extract_batch",
@@ -845,12 +845,12 @@ class ImportedSourceSyncTests(unittest.TestCase):
                 ),
                 patch("pastor_transcript_extractor.cli.time.sleep") as sleep,
                 patch(
-                    "pastor_transcript_extractor.cli.discover_sources_service",
+                    "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                     return_value=SimpleNamespace(
                         selected_video_ids_by_source={source_id: (1,)}
                     ),
                 ),
-                patch("pastor_transcript_extractor.cli.fetch_captions_service"),
+                patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service"),
                 patch("pastor_transcript_extractor.cli.transcribe_videos_service"),
             ):
                 result = CliRunner().invoke(

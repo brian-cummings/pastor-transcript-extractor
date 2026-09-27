@@ -1850,8 +1850,8 @@ class CliTests(unittest.TestCase):
 
             with patch("pastor_transcript_extractor.cli.delete_source_service", side_effect=fake_source_delete), patch(
                 "pastor_transcript_extractor.cli.add_source_service", side_effect=fake_add
-            ), patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage
+            ), patch("pastor_transcript_extractor.commands.acquisition.discover_sources_service", side_effect=fake_stage), patch(
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service", side_effect=fake_stage
             ), patch("pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage), patch(
                 "pastor_transcript_extractor.application.extract_batch", side_effect=fake_stage
             ):
@@ -1898,8 +1898,8 @@ class CliTests(unittest.TestCase):
                 calls.append(("extract", args, kwargs))
                 return ExtractionBatchResult(0, 0, 0)
 
-            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_discover), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_fetch
+            with patch("pastor_transcript_extractor.commands.acquisition.discover_sources_service", side_effect=fake_discover), patch(
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service", side_effect=fake_fetch
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_transcribe
             ), patch("pastor_transcript_extractor.application.extract_batch", side_effect=fake_extract):
@@ -2021,8 +2021,8 @@ class CliTests(unittest.TestCase):
                         return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.commands.acquisition.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
             ), patch(
@@ -2070,8 +2070,8 @@ class CliTests(unittest.TestCase):
                         return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.commands.acquisition.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
             ), patch(
@@ -2146,8 +2146,8 @@ class CliTests(unittest.TestCase):
                         return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.commands.acquisition.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
             ), patch(
@@ -2211,12 +2211,12 @@ class CliTests(unittest.TestCase):
                 return SimpleNamespace()
 
             with patch(
-                "pastor_transcript_extractor.cli.discover_sources_service",
+                "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                 return_value=SimpleNamespace(
                     selected_video_ids_by_source={source.id: (video.id,)}
                 ),
             ), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service"
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service"
             ), patch(
@@ -2256,10 +2256,10 @@ class CliTests(unittest.TestCase):
         with patch(
             "pastor_transcript_extractor.cli.get_database", return_value=database
         ), patch(
-            "pastor_transcript_extractor.cli.discover_sources_service",
+            "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
             return_value=SimpleNamespace(selected_video_ids_by_source={1: (11,)}),
         ), patch(
-            "pastor_transcript_extractor.cli.fetch_captions_service"
+            "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
         ), patch(
             "pastor_transcript_extractor.cli.transcribe_videos_service"
         ), patch(
@@ -2342,10 +2342,10 @@ class CliTests(unittest.TestCase):
                 )
 
             with patch(
-                "pastor_transcript_extractor.cli.discover_sources_service",
+                "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                 side_effect=discover_result,
             ) as discover, patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service"
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
             ) as fetch, patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service"
             ) as transcribe, patch(
@@ -2389,7 +2389,7 @@ class CliTests(unittest.TestCase):
             database.initialize()
 
             with patch(
-                "pastor_transcript_extractor.cli.discover_sources_service"
+                "pastor_transcript_extractor.commands.acquisition.discover_sources_service"
             ) as discover:
                 result = runner.invoke(
                     app,
@@ -2574,7 +2574,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
-            "pastor_transcript_extractor.cli.discover_sources_service"
+            "pastor_transcript_extractor.commands.acquisition.discover_sources_service"
         ) as discover, patch(
             "pastor_transcript_extractor.cli.stage_source_audio_for_video",
             return_value=StageSourceAudioResult(
@@ -2634,7 +2634,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
-            "pastor_transcript_extractor.cli.discover_sources_service",
+            "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
             return_value=SimpleNamespace(
                 selected_video_ids_by_source={1: (11, 12)}
             ),
@@ -2645,7 +2645,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.write_audio_stage_manifest",
             return_value=Path("stage.json"),
         ), patch(
-            "pastor_transcript_extractor.cli.fetch_captions_service"
+            "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
         ) as fetch:
             run_workflow_service(
                 all_sources=True,
@@ -2699,7 +2699,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.build_tool_config",
             return_value=SimpleNamespace(),
         ), patch(
-            "pastor_transcript_extractor.cli.discover_sources_service",
+            "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
             return_value=SimpleNamespace(
                 selected_video_ids_by_source={1: (11, 12)}
             ),
@@ -2710,7 +2710,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.write_audio_stage_manifest",
             return_value=Path("stage.json"),
         ), patch(
-            "pastor_transcript_extractor.cli.fetch_captions_service"
+            "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
         ) as fetch:
             run_workflow_service(
                 all_sources=True,
@@ -2738,7 +2738,7 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.cli.transcribe_videos_service"
         ) as transcribe, patch(
-            "pastor_transcript_extractor.cli.fetch_captions_service"
+            "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
         ) as fetch_captions, patch(
             "pastor_transcript_extractor.application.extract_batch",
             return_value=ExtractionBatchResult(2, 0, 0),
@@ -2771,7 +2771,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.cli.load_and_verify_audio_stage_manifest",
             return_value={11},
         ), patch(
-            "pastor_transcript_extractor.cli.fetch_captions_service",
+            "pastor_transcript_extractor.commands.acquisition.fetch_captions_service",
             side_effect=CaptionAcquisitionBlockedError(
                 "YouTube requested authentication"
             ),
@@ -2941,10 +2941,10 @@ class CliTests(unittest.TestCase):
                 calls.append(("media", kwargs))
 
             with patch(
-                "pastor_transcript_extractor.cli.discover_sources_service",
+                "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                 side_effect=AssertionError("failed-only must not discover"),
             ), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service",
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service",
                 side_effect=fake_fetch,
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service",
@@ -3151,7 +3151,7 @@ class CliTests(unittest.TestCase):
             database = Database(base_dir / "app.db")
             database.initialize()
 
-            with patch("pastor_transcript_extractor.cli.fetch_captions_service") as fetch:
+            with patch("pastor_transcript_extractor.commands.acquisition.fetch_captions_service") as fetch:
                 result = runner.invoke(app, ["run", "--failed-only", "--base-dir", str(base_dir)])
 
             self.assertEqual(0, result.exit_code, msg=result.output)
@@ -3211,8 +3211,8 @@ class CliTests(unittest.TestCase):
                         return ExtractionBatchResult(0, 0, 0)
                 return runner
 
-            with patch("pastor_transcript_extractor.cli.discover_sources_service", side_effect=fake_stage("discover")), patch(
-                "pastor_transcript_extractor.cli.fetch_captions_service", side_effect=fake_stage("fetch")
+            with patch("pastor_transcript_extractor.commands.acquisition.discover_sources_service", side_effect=fake_stage("discover")), patch(
+                "pastor_transcript_extractor.commands.acquisition.fetch_captions_service", side_effect=fake_stage("fetch")
             ), patch(
                 "pastor_transcript_extractor.cli.transcribe_videos_service", side_effect=fake_stage("transcribe")
             ), patch("pastor_transcript_extractor.application.extract_batch", side_effect=fake_stage("extract")):
@@ -3393,7 +3393,7 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.transcription.fetch_captions_video",
                 side_effect=YtDlpRateLimitError("HTTP Error 429"),
             ) as fetch_captions, patch(
-                "pastor_transcript_extractor.cli.time.sleep"
+                "pastor_transcript_extractor.commands.acquisition.time.sleep"
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
 
@@ -3513,7 +3513,7 @@ class CliTests(unittest.TestCase):
                     SimpleNamespace(raw_text_path=Path("captions.txt")),
                 ],
             ) as fetch_captions, patch(
-                "pastor_transcript_extractor.cli.time.sleep"
+                "pastor_transcript_extractor.commands.acquisition.time.sleep"
             ):
                 result = runner.invoke(app, ["fetch", "--base-dir", str(base_dir)])
 
