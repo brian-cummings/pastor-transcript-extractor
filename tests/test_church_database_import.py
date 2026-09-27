@@ -439,7 +439,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
 
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    "pastor_transcript_extractor.church_database_import.imported_source_ids",
                     return_value=[source_id],
                 ),
                 patch(
@@ -456,11 +456,11 @@ class ImportedSourceSyncTests(unittest.TestCase):
                 ),
                 patch("pastor_transcript_extractor.application.extract_batch", side_effect=extraction),
                 patch(
-                    "pastor_transcript_extractor.cli.backfill_existing_media_artifacts",
+                    "pastor_transcript_extractor.media_artifacts.backfill_existing_media_artifacts",
                     side_effect=registration,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.archive_source_media",
+                    "pastor_transcript_extractor.media_archive.archive_source_media",
                     side_effect=archival,
                 ),
             ):
@@ -491,7 +491,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
             _, source_id = self._database(root, configure_archive=False)
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    "pastor_transcript_extractor.church_database_import.imported_source_ids",
                     return_value=[source_id],
                 ),
                 patch(
@@ -521,11 +521,11 @@ class ImportedSourceSyncTests(unittest.TestCase):
             _, source_id = self._database(root, configure_archive=True)
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    "pastor_transcript_extractor.church_database_import.imported_source_ids",
                     return_value=[source_id],
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    "pastor_transcript_extractor.commands.acquisition.shutil.disk_usage",
                     return_value=SimpleNamespace(total=100, used=81, free=19),
                 ),
                 patch(
@@ -610,7 +610,7 @@ class ImportedSourceSyncTests(unittest.TestCase):
             no_extraction = SimpleNamespace(processed=0, skipped=1, failed=0)
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    "pastor_transcript_extractor.church_database_import.imported_source_ids",
                     return_value=[first_source_id, second_source.id],
                 ),
                 patch(
@@ -624,11 +624,11 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     return_value=no_extraction,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.backfill_existing_media_artifacts",
+                    "pastor_transcript_extractor.media_artifacts.backfill_existing_media_artifacts",
                     return_value=no_registration,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.archive_source_media",
+                    "pastor_transcript_extractor.media_archive.archive_source_media",
                     side_effect=archival,
                 ),
             ):
@@ -660,11 +660,11 @@ class ImportedSourceSyncTests(unittest.TestCase):
             )
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    "pastor_transcript_extractor.church_database_import.imported_source_ids",
                     return_value=[source_id],
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    "pastor_transcript_extractor.commands.acquisition.shutil.disk_usage",
                     return_value=constrained_disk,
                 ),
                 patch(
@@ -752,11 +752,11 @@ class ImportedSourceSyncTests(unittest.TestCase):
             no_extraction = SimpleNamespace(processed=0, skipped=1, failed=0)
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    "pastor_transcript_extractor.church_database_import.imported_source_ids",
                     return_value=[first_source_id, second_source.id],
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    "pastor_transcript_extractor.commands.acquisition.shutil.disk_usage",
                     side_effect=disk_usage,
                 ),
                 patch(
@@ -779,19 +779,19 @@ class ImportedSourceSyncTests(unittest.TestCase):
                     return_value=no_extraction,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.backfill_existing_media_artifacts",
+                    "pastor_transcript_extractor.media_artifacts.backfill_existing_media_artifacts",
                     return_value=no_registration,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.archive_source_media",
+                    "pastor_transcript_extractor.media_archive.archive_source_media",
                     side_effect=archival,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.SYNC_ARCHIVE_WAIT_INITIAL_SECONDS",
+                    "pastor_transcript_extractor.commands.acquisition.SYNC_ARCHIVE_WAIT_INITIAL_SECONDS",
                     0.01,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.SYNC_ARCHIVE_WAIT_MAX_SECONDS",
+                    "pastor_transcript_extractor.commands.acquisition.SYNC_ARCHIVE_WAIT_MAX_SECONDS",
                     0.02,
                 ),
             ):
@@ -828,22 +828,22 @@ class ImportedSourceSyncTests(unittest.TestCase):
 
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.imported_source_ids",
+                    "pastor_transcript_extractor.church_database_import.imported_source_ids",
                     return_value=[source_id],
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.shutil.disk_usage",
+                    "pastor_transcript_extractor.commands.acquisition.shutil.disk_usage",
                     side_effect=disk_usage,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.media_archive_lock_held",
+                    "pastor_transcript_extractor.media_archive.media_archive_lock_held",
                     return_value=True,
                 ),
                 patch(
-                    "pastor_transcript_extractor.cli.SYNC_ARCHIVE_WAIT_MAX_SECONDS",
+                    "pastor_transcript_extractor.commands.acquisition.SYNC_ARCHIVE_WAIT_MAX_SECONDS",
                     2.0,
                 ),
-                patch("pastor_transcript_extractor.cli.time.sleep") as sleep,
+                patch("pastor_transcript_extractor.commands.acquisition.time.sleep") as sleep,
                 patch(
                     "pastor_transcript_extractor.commands.acquisition.discover_sources_service",
                     return_value=SimpleNamespace(
