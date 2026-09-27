@@ -289,6 +289,8 @@ class IdentityStageCacheTests(unittest.TestCase):
             promoter = Mock()
             coordinator = Mock()
             archiver = Mock()
+            backfiller = Mock()
+            reviewed_evidence_renderer = Mock()
             with (
                 patch(
                     "pastor_transcript_extractor.workflows.identity.run."
@@ -299,8 +301,6 @@ class IdentityStageCacheTests(unittest.TestCase):
                     "pastor_transcript_extractor.workflows.identity.run."
                     "sync_reviewed_speaker_evidence"
                 ),
-                patch("pastor_transcript_extractor.cli._print_reviewed_evidence_summary"),
-                patch("pastor_transcript_extractor.cli.identity_backfill"),
                 patch(
                     "pastor_transcript_extractor.workflows.identity.run."
                     "reconcile_machine_assignments",
@@ -348,6 +348,8 @@ class IdentityStageCacheTests(unittest.TestCase):
                         current_reports_loader=(
                             lambda _root: (association_report,)
                         ),
+                        backfiller=backfiller,
+                        reviewed_evidence_renderer=reviewed_evidence_renderer,
                     )
                 source = database.add_source(
                     "https://www.youtube.com/@new-identity-input",
@@ -379,6 +381,8 @@ class IdentityStageCacheTests(unittest.TestCase):
                     coordinator=coordinator,
                     archiver=archiver,
                     current_reports_loader=lambda _root: (association_report,),
+                    backfiller=backfiller,
+                    reviewed_evidence_renderer=reviewed_evidence_renderer,
                 )
 
         self.assertEqual(2, associate.call_count)
