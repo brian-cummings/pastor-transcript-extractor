@@ -392,6 +392,11 @@ from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageRequest,
     stage_audio_inputs,
 )
+from pastor_transcript_extractor.workflows.resume_pipeline import (
+    ResumePipelineDependencies,
+    ResumePipelineRequest,
+    resume_staged_pipeline,
+)
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
     CaptionAcquisitionResult,
@@ -11385,110 +11390,42 @@ def run_workflow_service(
                 completed=len(video_ids),
                 description=f"Verified {len(video_ids)} staged source artifact(s)",
             )
-        console.print(
-            f"Resuming {len(video_ids)} video(s) from verified audio stage {resume_stage}."
-        )
-        if acquire_captions:
-            console.print(
-                "Resume checkpoint: reconciling requested online captions; "
-                "persisted caption artifacts will be skipped."
-            )
-            try:
-                fetch_captions_service(
-                    base_dir=base_dir,
-                    video_ids=video_ids,
-                    request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
-                    **caption_auth_options,
-                )
-            except CaptionAcquisitionBlockedError as error:
-                console.print(
-                    f"[yellow]Caption acquisition stopped[/yellow]: {error}"
-                )
-                if captions_only:
-                    console.print(
-                        "Remaining caption misses will stay pending because local "
-                        "transcription is disabled by --captions-only."
-                    )
-                else:
-                    console.print(
-                        "Continuing with offline local transcription for remaining "
-                        "caption misses."
-                    )
-        else:
-            console.print(
-                "Resume checkpoint: skipping caption acquisition; persisted captions "
-                "remain available and caption misses will use staged audio."
-            )
-        if not captions_only:
-            console.print(
-                "Resume checkpoint: reconciling local transcripts; completed transcript "
-                "artifacts will be skipped."
-            )
-            transcribe_videos_service(
-                missing_only=False,
-                captions_missing_only=transcribe_missing,
-                jobs=jobs,
-                base_dir=base_dir,
-                video_ids=video_ids,
-                allow_network=False,
-            )
-        else:
-            console.print("Resume checkpoint: local transcription disabled by --captions-only.")
-        console.print(
-            "Resume checkpoint: reconciling sermon extraction; completed extraction "
-            "artifacts will be skipped."
-        )
-        extraction = extract_batch(
+
+        def render_resume_event(event: object) -> None:
+            if isinstance(event, str):
+                console.print(event, markup="[yellow]" in event)
+            else:
+                _print_review_batch(event)
+
+        resume_staged_pipeline(
             database,
             paths,
-            video_ids=video_ids,
-            classifier=classifier,
-            llm_model=llm_model,
-            workers=jobs,
-            event_callback=lambda message: console.print(message, markup=False),
-            progress_callback=lambda stage, current, total: console.print(
-                f"  {stage} block {current}/{total}"
+            ResumePipelineRequest(
+                video_ids=frozenset(video_ids),
+                manifest_path=resume_stage,
+                acquire_captions=acquire_captions,
+                captions_only=captions_only,
+                transcribe_missing=transcribe_missing,
+                jobs=jobs,
+                classifier=classifier,
+                llm_model=llm_model,
+                skip_review=skip_review,
+                run_identity=run_identity,
+                base_dir=base_dir,
+                caption_request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
+                cookies_from_browser=cookies_from_browser,
+                cookies=cookies,
+            ),
+            event_callback=render_resume_event,
+            dependencies=ResumePipelineDependencies(
+                fetch_captions=fetch_captions_service,
+                transcribe=transcribe_videos_service,
+                extract=extract_batch,
+                ensure_media=_ensure_and_archive_run_media,
+                run_identity=_run_post_content_identity,
+                prepare_reviews=prepare_review_exports,
             ),
         )
-        console.print(
-            f"Extracted {extraction.processed} video(s); skipped {extraction.skipped}; "
-            f"failed {extraction.failed}."
-        )
-        console.print(
-            "Resume checkpoint: ensuring normalized audio and archiving eligible "
-            "source artifacts."
-        )
-        _ensure_and_archive_run_media(
-            database, paths, video_ids=video_ids, allow_download=False
-        )
-        if run_identity:
-            console.print("Resume checkpoint: starting the requested identity workflow.")
-            _run_post_content_identity(base_dir, jobs=jobs)
-        if not skip_review:
-            console.print("Resume checkpoint: refreshing review exports.")
-            pastor_slugs = {
-                record.slug
-                for video_id in video_ids
-                for video in [database.get_video_by_id(video_id)]
-                if video is not None and video.pastor_id is not None
-                for record in [database.get_pastor_by_id(video.pastor_id)]
-                if record is not None
-            }
-            for pastor_slug in sorted(pastor_slugs):
-                _print_review_batch(
-                    prepare_review_exports(
-                        database,
-                        paths,
-                        pastor_slug=pastor_slug,
-                        classifier=classifier,
-                        llm_model=llm_model,
-                        event_callback=lambda message: console.print(message, markup=False),
-                    )
-                )
-        else:
-            console.print("Resume checkpoint: review export skipped by --skip-review.")
-        if not run_identity:
-            console.print("Resume complete; identity was not requested.")
         return
 
     if stage_audio_only:
