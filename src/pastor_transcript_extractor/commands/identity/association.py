@@ -8,6 +8,7 @@ import typer
 from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
+    validate_shadow_association_request,
 )
 
 
@@ -137,26 +138,29 @@ def shadow_associate_speakers_command(
 ) -> tuple[Path, ...]:
     if _shadow_association_invoker is None:
         raise RuntimeError("Shadow association workflow was not configured.")
-    return _shadow_association_invoker(
-        ShadowAssociationRequest(
-            youtube_video_id=youtube_video_id,
-            all_eligible=all_eligible,
-            unattempted_only=unattempted_only,
-            neighborhood_profile_ids=tuple(neighborhood_profile_id),
-            include_profiled=include_profiled,
-            limit=limit,
-            plan_only=plan_only,
-            minimum_profile_members=minimum_profile_members,
-            maximum_exemplars=maximum_exemplars,
-            minimum_same_exemplars=minimum_same_exemplars,
-            maximum_global_profiles=maximum_global_profiles,
-            jobs=jobs,
-            model_path=model_path,
-            model_sha256=model_sha256,
-            policy_path=policy_path,
-            evaluation_root=evaluation_root,
-            cache_dir=cache_dir,
-            output_root=output_root,
-            base_dir=base_dir,
-        )
+    request = ShadowAssociationRequest(
+        youtube_video_id=youtube_video_id,
+        all_eligible=all_eligible,
+        unattempted_only=unattempted_only,
+        neighborhood_profile_ids=tuple(neighborhood_profile_id),
+        include_profiled=include_profiled,
+        limit=limit,
+        plan_only=plan_only,
+        minimum_profile_members=minimum_profile_members,
+        maximum_exemplars=maximum_exemplars,
+        minimum_same_exemplars=minimum_same_exemplars,
+        maximum_global_profiles=maximum_global_profiles,
+        jobs=jobs,
+        model_path=model_path,
+        model_sha256=model_sha256,
+        policy_path=policy_path,
+        evaluation_root=evaluation_root,
+        cache_dir=cache_dir,
+        output_root=output_root,
+        base_dir=base_dir,
     )
+    try:
+        validate_shadow_association_request(request)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    return _shadow_association_invoker(request)
