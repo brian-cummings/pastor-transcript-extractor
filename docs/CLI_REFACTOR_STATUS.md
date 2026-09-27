@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 7 — decompose oversized identity workflows.
-- Next action: extract shadow-association initialization and pair-cache priming,
-  preserving error translation, plan-only resource boundaries, artifact
-  inventory, and priming progress evidence.
+- Next action: extract candidate admission persistence and preparation
+  orchestration, preserving scan progress, all reason counts, plan-only writes,
+  ordered span outcomes, and target-limit behavior.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -941,6 +941,18 @@ Focused tests cover plan-only operation without acoustic resources and live
 qualification with a worker-backend override and exact coherent-span evidence.
 `cli.py` is now 7,263 lines, down 10,854 lines from baseline; the association
 service is 745 lines and the preparation module remains within range at 671.
+
+### 2026-09-27 — Milestone 7.16: association resource setup
+
+Added a typed setup workflow for database/cache creation, reviewed-evidence and
+policy loading, profile readiness, acoustic model initialization, and pair-
+diagnostic cache priming. Plan-only mode constructs no acoustic resources;
+live priming reports artifact and imported-comparison counts through a narrow
+callback while CLI error translation remains unchanged.
+
+Focused tests cover plan-only resource boundaries and missing-cache priming
+with exact progress events. `cli.py` is now 7,243 lines, down 10,874 lines from
+baseline; the shadow-association service is 722 lines.
 
 ## Validation log
 
@@ -2061,6 +2073,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
 Ran 41 tests in 0.229s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Association resource setup
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/association_setup.py src/pastor_transcript_extractor/cli.py tests/test_identity_association_setup_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_association_setup_workflow tests.test_identity_association_preparation_workflow tests.test_identity_association_evaluation_workflow tests.test_identity_association_workflow tests.test_identity_association_commands tests.test_cli_contract
+Ran 43 tests in 0.252s — OK
 
 git diff --check
 PASS
