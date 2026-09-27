@@ -81,6 +81,15 @@ class AssociationScopeResult:
 
 
 @dataclass(frozen=True, slots=True)
+class AssociationCorpusInventory:
+    videos_by_id: Mapping[int, Video]
+    observations_by_id: Mapping[int, SpeakerObservation]
+    current_observation_by_video_id: Mapping[int, SpeakerObservation]
+    source_id_by_video_id: Mapping[int, int]
+    candidate_names_by_observation: Mapping[int, frozenset[str]]
+
+
+@dataclass(frozen=True, slots=True)
 class AssociationCandidateAssessment:
     """One video's terminal eligibility or span-preparation admission."""
 
@@ -149,6 +158,45 @@ def validate_shadow_association_request(
         raise ValueError(
             "--minimum-same-exemplars cannot exceed --maximum-exemplars."
         )
+
+
+def load_association_corpus_inventory(
+    database: Database,
+) -> AssociationCorpusInventory:
+    """Load stable lookup maps and explicit routing-name evidence."""
+    videos_by_id = {video.id: video for video in database.list_videos()}
+    observations_by_id = {
+        observation.id: observation
+        for observation in database.list_speaker_observations()
+    }
+    current_observation_by_video_id: dict[int, SpeakerObservation] = {}
+    for observation in observations_by_id.values():
+        current = current_observation_by_video_id.get(observation.video_id)
+        if current is None or observation.id > current.id:
+            current_observation_by_video_id[observation.video_id] = observation
+    names: dict[int, set[str]] = {}
+    for claim in database.list_speaker_name_claims():
+        if (
+            claim.observation_id is not None
+            and claim.explicit_speaker_attribution
+            and claim.normalized_name.strip()
+        ):
+            names.setdefault(claim.observation_id, set()).add(
+                claim.normalized_name.strip()
+            )
+    return AssociationCorpusInventory(
+        videos_by_id=videos_by_id,
+        observations_by_id=observations_by_id,
+        current_observation_by_video_id=current_observation_by_video_id,
+        source_id_by_video_id={
+            video_id: video.source_id
+            for video_id, video in videos_by_id.items()
+        },
+        candidate_names_by_observation={
+            observation_id: frozenset(values)
+            for observation_id, values in names.items()
+        },
+    )
 
 
 def resolve_association_scope(
