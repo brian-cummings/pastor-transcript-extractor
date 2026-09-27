@@ -285,10 +285,14 @@ class IdentityStageCacheTests(unittest.TestCase):
             )
             with (
                 patch(
-                    "pastor_transcript_extractor.cli.load_reviewed_speaker_evidence",
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "load_reviewed_speaker_evidence",
                     return_value=SimpleNamespace(),
                 ),
-                patch("pastor_transcript_extractor.cli.sync_reviewed_speaker_evidence"),
+                patch(
+                    "pastor_transcript_extractor.workflows.identity.run."
+                    "sync_reviewed_speaker_evidence"
+                ),
                 patch("pastor_transcript_extractor.cli._print_reviewed_evidence_summary"),
                 patch("pastor_transcript_extractor.cli.identity_backfill"),
                 patch(

@@ -382,6 +382,7 @@ from pastor_transcript_extractor.workflows.run import (
 )
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
@@ -2961,22 +2962,12 @@ def run_identity_workflow_service(
         f"scope={'all' if all_extractions else youtube_video_id} "
         f"mode={'plan' if plan_only else 'execute'} jobs={jobs}"
     )
-    try:
-        reviewed_evidence = load_reviewed_speaker_evidence(
-            Path("evaluation/speaker-pairs").resolve()
-        )
-        if plan_only:
-            sync_result = None
-        else:
-            writable_database = Database(paths.database)
-            writable_database.initialize()
-            sync_result = sync_reviewed_speaker_evidence(
-                writable_database,
-                reviewed_evidence,
-            )
-    except (OSError, ValueError, json.JSONDecodeError) as error:
-        raise ValueError(f"reviewed-evidence sync failed: {error}") from error
-    _print_reviewed_evidence_summary(reviewed_evidence, sync_result)
+    reviewed_stage = synchronize_reviewed_evidence_stage(
+        paths.database,
+        plan_only=plan_only,
+    )
+    reviewed_evidence = reviewed_stage.evidence
+    _print_reviewed_evidence_summary(reviewed_evidence, reviewed_stage.sync)
     if plan_only:
         console.print(
             "Reviewed-evidence sync: plan-only; registry was not mutated."

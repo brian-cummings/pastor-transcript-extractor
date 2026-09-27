@@ -1,7 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
+
+from pastor_transcript_extractor.reviewed_speaker_evidence import (
+    ReviewedEvidenceSyncResult,
+    ReviewedSpeakerEvidence,
+    load_reviewed_speaker_evidence,
+    sync_reviewed_speaker_evidence,
+)
+from pastor_transcript_extractor.storage import Database
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +38,14 @@ class IdentityWorkflowPolicy:
     apply_confirmations: bool
     apply_promotions: bool
     apply_machine_assignments: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewedEvidenceStageResult:
+    """Reviewed evidence loaded for the run and its optional applied sync."""
+
+    evidence: ReviewedSpeakerEvidence
+    sync: ReviewedEvidenceSyncResult | None
 
 
 def validate_identity_workflow_request(
@@ -66,3 +83,22 @@ def validate_identity_workflow_request(
         apply_promotions=apply_promotions,
         apply_machine_assignments=apply_machine_assignments,
     )
+
+
+def synchronize_reviewed_evidence_stage(
+    database_path: Path,
+    *,
+    plan_only: bool,
+    evaluation_root: Path = Path("evaluation/speaker-pairs"),
+) -> ReviewedEvidenceStageResult:
+    """Load reviewed evidence and apply it only for an executing run."""
+    try:
+        evidence = load_reviewed_speaker_evidence(evaluation_root.resolve())
+        sync_result = None
+        if not plan_only:
+            database = Database(database_path)
+            database.initialize()
+            sync_result = sync_reviewed_speaker_evidence(database, evidence)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError(f"reviewed-evidence sync failed: {error}") from error
+    return ReviewedEvidenceStageResult(evidence=evidence, sync=sync_result)

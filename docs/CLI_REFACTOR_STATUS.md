@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract reviewed-evidence synchronization and identity backfill
-  as the next named identity-run stage, preserving plan-only non-mutation and
-  the current error boundary.
+- Next action: extract the identity run's association and machine-assignment
+  orchestration into named stage functions, preserving checkpoint refresh,
+  held-out exclusion, reconciliation order, and plan-only non-mutation.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -595,6 +595,20 @@ service.
 Focused tests cover every mutation flag under plan-only mode, aggregate
 automatic apply behavior, single-video restrictions, scope, and resource
 limits. The module imports neither Typer nor Rich.
+
+### 2026-09-27 — Milestone 6.5c: reviewed-evidence synchronization stage
+
+Moved reviewed-evidence loading, writable-database initialization, and evidence
+synchronization into a typed workflow stage result. Plan-only runs do not open
+a writable database, execution preserves initialize-before-sync ordering, and
+stage failures retain the existing `reviewed-evidence sync failed` context.
+
+Migrated affected mocks to the workflow owner. The broader
+`tests.test_identity_run` module is temporarily unimportable because unrelated
+catalog WIP removed its expected `cli.validate_source_families` compatibility
+symbol; no catalog or source-processing file was changed by this slice.
+
+`cli.py` is now 8,297 lines, down 9,820 lines from baseline.
 
 ## Validation log
 
@@ -1275,6 +1289,27 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_workflow_commands tests.test_cli_contract
 Ran 12 tests in 0.238s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Reviewed-evidence synchronization stage
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py tests/test_identity_run.py tests/test_identity_stage_cache.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_workflow_commands tests.test_cli_contract
+Ran 15 tests in 0.237s — OK
+
+.venv/bin/python -m unittest tests.test_identity_stage_cache
+Ran 7 tests in 0.665s — OK
+
+.venv/bin/python -m unittest tests.test_identity_run.IdentityRunTests.test_identity_run_executes_full_ordered_workflow
+NOT RUN: module import is blocked by the unrelated catalog WIP removing
+`cli.validate_source_families`; the affected test patches were still migrated
+and compile successfully.
 
 git diff --check
 PASS
