@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the `extract_batch` test seam to its owning extraction
-  module, preserving the current CLI adapter and avoiding the unrelated
-  source-processing worktree changes.
+- Next action: inventory the remaining pipeline-stage `cli.py` patches and
+  replace the next cohesive cluster with explicit workflow dependencies or
+  owner-module patches, avoiding unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1023,6 +1023,14 @@ Changed the CLI caption-acquisition adapter to resolve
 `fetch_captions_video` from the transcription module that owns it. Tests now
 patch that owner instead of the incidental `cli.py` binding; direct
 transcription-unit imports and production behavior remain unchanged.
+
+### 2026-09-27 — Milestone 8.7: extraction batch owner seam
+
+Changed CLI pipeline composition to resolve `extract_batch` from its owning
+application module and migrated the affected patches. Review preparation now
+has an explicit default-bound extractor dependency, preventing an owner patch
+for a composed pipeline stage from also intercepting review preparation's
+separate extraction pass.
 
 ## Validation log
 
@@ -2268,6 +2276,25 @@ PASS
 Ran 20 tests in 0.919s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.fetch_captions_video" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Extraction batch owner seam
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/application.py src/pastor_transcript_extractor/cli.py tests/test_sources.py tests/test_church_database_import.py
+PASS
+
+.venv/bin/python -m unittest <16 affected extraction-stage tests> tests.test_cli_contract
+Ran 22 tests in 0.931s — OK
+
+.venv/bin/python -m unittest tests.test_application
+Ran 6 tests in 0.004s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.extract_batch" tests
 No matches
 
 git diff --check

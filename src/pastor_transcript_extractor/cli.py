@@ -23,7 +23,8 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from pastor_transcript_extractor.application import ReviewBatchResult, extract_batch, prepare_review_exports
+from pastor_transcript_extractor import application, discovery, transcription
+from pastor_transcript_extractor.application import ReviewBatchResult, prepare_review_exports
 from pastor_transcript_extractor.audio_staging import (
     load_and_verify_audio_stage_manifest,
     write_audio_stage_manifest,
@@ -91,7 +92,6 @@ from pastor_transcript_extractor.config import (
     build_tool_config,
     ensure_directories,
 )
-from pastor_transcript_extractor import discovery, transcription
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
@@ -6156,7 +6156,7 @@ def sync_imported_sources(
                 discover=discover_sources_service,
                 fetch_captions=fetch_captions_service,
                 transcribe=transcribe_videos_service,
-                extract=extract_batch,
+                extract=application.extract_batch,
                 register_media=backfill_existing_media_artifacts,
                 archive_source=archive_source_media,
                 archive_lock_held=media_archive_lock_held,
@@ -6412,7 +6412,7 @@ def extract(
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
     try:
-        result = extract_batch(
+        result = application.extract_batch(
             database,
             paths,
             missing_only=missing_only,
@@ -7090,7 +7090,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
             resume_pipeline=ResumePipelineDependencies(
                 fetch_captions=fetch_captions_service,
                 transcribe=transcribe_videos_service,
-                extract=extract_batch,
+                extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,
                 prepare_reviews=prepare_review_exports,
@@ -7103,7 +7103,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 discover=discover_sources_service,
                 fetch_captions=fetch_captions_service,
                 transcribe=transcribe_videos_service,
-                extract=extract_batch,
+                extract=application.extract_batch,
                 ensure_media=_ensure_and_archive_run_media,
                 run_identity=_run_post_content_identity,
                 prepare_reviews=prepare_review_exports,
