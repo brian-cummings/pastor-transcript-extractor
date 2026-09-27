@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import Mapping, Sequence
 
 from pastor_transcript_extractor.reviewed_speaker_evidence import (
     ReviewedEvidenceSyncResult,
@@ -122,3 +123,25 @@ def reconcile_machine_assignments_stage(
         Database(database_path),
         verification_cache=verification_cache,
     )
+
+
+def index_current_association_results(
+    report_paths: Sequence[Path],
+) -> dict[int, str]:
+    """Index valid persisted association results by candidate observation."""
+    results: dict[int, str] = {}
+    for report_path in report_paths:
+        try:
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        candidate = payload.get("candidate")
+        observation_id = (
+            candidate.get("observation_id")
+            if isinstance(candidate, Mapping)
+            else None
+        )
+        result_sha256 = payload.get("result_sha256")
+        if isinstance(observation_id, int) and isinstance(result_sha256, str):
+            results[observation_id] = result_sha256
+    return results
