@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the two broad identity-workflow tests from CLI command
-  patches to the service's explicit dependency arguments, adding only missing
-  explicit seams required by those tests.
+- Next action: migrate the remaining single-use domain patches
+  (`resolve_video_artifact_paths`, speaker evidence/eligibility, metadata live
+  status, and video opening) to their actual owners.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1113,6 +1113,15 @@ Changed actionable-review audio preparation to resolve
 `prepare_review_observation` from `speaker_pair_review`; the two focused tests
 now patch that owner. Focused execution also exposed and repaired a missing
 local eligibility fake in the ready-lineage regression test.
+
+### 2026-09-27 — Milestone 8.19: identity workflow dependency completion
+
+Added an explicit review-prewarmer dependency and threaded the configured
+associator through exemplar repair retries. The two broad identity workflow
+tests now pass direct mocks for orchestration actions rather than patching CLI
+globals. A focused module run exposed and fixed an empty-corpus regression by
+initializing the extracted association span-selection map before merging
+exemplar selections.
 
 ## Validation log
 
@@ -2556,6 +2565,22 @@ PASS
 Ran 8 tests in 0.220s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.prepare_review_observation" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Identity workflow dependency completion
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_identity_run.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run tests.test_cli_contract
+Ran 30 tests in 0.766s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(shadow_discover_profiles_command|shadow_associate_speakers_command|promote_discovered_profiles_command|identity_backfill|coordinate_identity_command|confirm_discovered_profiles_command|_print_reviewed_evidence_summary|_prepare_actionable_review_audio|_archive_normalized_after_identity)" tests/test_identity_run.py
 No matches
 
 git diff --check

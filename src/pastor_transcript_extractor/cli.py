@@ -2683,7 +2683,9 @@ def _repair_exemplars_and_retry_association(
     base_dir: Path | None,
     state_cache: ExemplarPreparationStateCache,
     jobs: int,
+    associator=None,
 ) -> tuple[Path, ...]:
+    associator = associator or shadow_associate_speakers_command
     profile_ids = tuple(
         sorted({state.profile_id for state in pending_exemplar_repairs})
     )
@@ -2759,7 +2761,7 @@ def _repair_exemplars_and_retry_association(
             "Exemplar repair changed canonical inputs; retrying the existing "
             "association pass once in this identity run."
         )
-        retried_reports = shadow_associate_speakers_command(
+        retried_reports = associator(
             youtube_video_id=youtube_video_id,
             all_eligible=all_extractions,
             unattempted_only=False,
@@ -2919,6 +2921,7 @@ def run_identity_workflow_service(
     current_reports_loader=None,
     backfiller=None,
     reviewed_evidence_renderer=None,
+    review_prewarmer=None,
 ) -> None:
     associator = associator or shadow_associate_speakers_command
     discoverer = discoverer or shadow_discover_profiles_command
@@ -2931,6 +2934,7 @@ def run_identity_workflow_service(
     reviewed_evidence_renderer = (
         reviewed_evidence_renderer or _print_reviewed_evidence_summary
     )
+    review_prewarmer = review_prewarmer or _prepare_actionable_review_audio
     request = IdentityWorkflowRequest(
         youtube_video_id=youtube_video_id,
         all_extractions=all_extractions,
@@ -3122,7 +3126,10 @@ def run_identity_workflow_service(
         base_dir=base_dir,
         state_cache=exemplar_state_cache,
         jobs=jobs,
-        repairer=_repair_exemplars_and_retry_association,
+        repairer=lambda **kwargs: _repair_exemplars_and_retry_association(
+            **kwargs,
+            associator=associator,
+        ),
     )
     current_association_reports = repair_stage.reports
     if repair_stage.checkpoint_needs_refresh:
@@ -3425,7 +3432,7 @@ def run_identity_workflow_service(
             for item in machine_readiness
             if item.automatic_profile_ready
         ),
-        prewarmer=_prepare_actionable_review_audio,
+        prewarmer=review_prewarmer,
     )
     if prewarm_stage.status == "plan_only":
         console.print(
@@ -4029,6 +4036,7 @@ def shadow_associate_speakers_service(
     span_specs_by_observation_id = dict(
         exemplar_preparation.span_specs_by_observation_id
     )
+    span_selection_by_observation_id = {}
     span_selection_by_observation_id.update(
         exemplar_preparation.span_selections_by_observation_id
     )
