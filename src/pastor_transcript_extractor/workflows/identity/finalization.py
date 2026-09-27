@@ -40,6 +40,13 @@ class ReviewPrewarmStageResult:
     error: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ArchiveDispatchStageResult:
+    """Whether terminal normalized archival was planned, skipped, or executed."""
+
+    status: str
+
+
 def run_coordination_stage(
     request: CoordinationStageRequest,
     *,
@@ -102,3 +109,25 @@ def run_review_prewarm_stage(
             "failed", error=f"{type(error).__name__}: {error}"
         )
     return ReviewPrewarmStageResult("executed", preparation=preparation)
+
+
+def run_archive_dispatch_stage(
+    paths: object,
+    *,
+    plan_only: bool,
+    database_video_id: int | None,
+    all_extractions: bool,
+    archiver: Callable[..., object],
+) -> ArchiveDispatchStageResult:
+    """Dispatch terminal archival with the exact workflow scope."""
+    if plan_only:
+        return ArchiveDispatchStageResult("plan_only")
+    if not isinstance(paths, AppPaths):
+        return ArchiveDispatchStageResult("unsupported_paths")
+    archiver(
+        Database(paths.database),
+        paths,
+        video_ids={database_video_id} if database_video_id is not None else None,
+        all_eligible=all_extractions,
+    )
+    return ArchiveDispatchStageResult("executed")

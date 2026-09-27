@@ -403,6 +403,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
 from pastor_transcript_extractor.workflows.identity.finalization import (
     ActionableReviewAudioPreparation,
     CoordinationStageRequest,
+    run_archive_dispatch_stage,
     run_coordination_stage,
     run_review_prewarm_stage,
 )
@@ -3460,18 +3461,16 @@ def run_identity_workflow_service(
             f"excluded={review_preparation.excluded} "
             f"failed={review_preparation.failed}."
         )
-    if plan_only:
+    archive_stage = run_archive_dispatch_stage(
+        paths,
+        plan_only=plan_only,
+        database_video_id=database_video_id,
+        all_extractions=all_extractions,
+        archiver=_archive_normalized_after_identity,
+    )
+    if archive_stage.status == "plan_only":
         console.print(
             "Normalized archive: plan-only; canonical manifests and media were not changed."
-        )
-    elif isinstance(paths, AppPaths):
-        _archive_normalized_after_identity(
-            Database(paths.database),
-            paths,
-            video_ids=(
-                {database_video_id} if database_video_id is not None else None
-            ),
-            all_eligible=all_extractions,
         )
     console.print(
         "Identity run complete. Human pair review, attribution, conflict "

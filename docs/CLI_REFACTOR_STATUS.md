@@ -8,8 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract normalized archival into a named identity-run stage,
-  preserving plan-only behavior, single-video scope, and terminal ordering.
+- Next action: extract the shadow-association command adapter behind a typed
+  request boundary, then decompose its oversized orchestration into the stage
+  sequence required by Milestone 7.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -733,6 +734,19 @@ the finalization workflow module. The stage now returns explicit plan-only,
 deferred, disabled, failed, and executed outcomes; expected media/artifact
 failures remain non-fatal. Plan-only mode does not open the database, and
 single-video runs remain deferred to corpus review preparation.
+
+### 2026-09-27 — Milestone 6.5s: terminal archive dispatch
+
+Moved normalized-archive dispatch into the finalization workflow module.
+Plan-only mode opens no database, single-video runs retain an exact one-video
+scope, corpus runs retain all-eligible scope, and archival errors continue to
+propagate from the existing implementation. The final identity-run stage order
+is now explicit from validation through archival.
+
+The identity run's policy-bearing decisions and side-effect dispatches are now
+callable through Typer/Rich-free workflow functions. Its remaining CLI service
+body primarily computes fingerprints, invokes stages, and renders structured
+outcomes; deeper extraction of that presentation is tracked under Milestone 7.
 
 ## Validation log
 
@@ -1629,6 +1643,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_finalization_workflow tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 55 tests in 0.828s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Terminal archive dispatch
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/finalization.py src/pastor_transcript_extractor/cli.py tests/test_identity_finalization_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_finalization_workflow tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 57 tests in 0.804s — OK
 
 git diff --check
 PASS
