@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 5 — extract the top-level pipeline.
-- Next action: extract the offline resume branch and its manifest verification,
-  acquisition, extraction, media, identity, and review stages, then continue
-  consolidating scope-specific paths behind a typed top-level pipeline request.
+- Next action: consolidate failed-only, selected-source, all-source, and
+  single-URL processing behind shared typed pipeline stages, then reduce the
+  top-level command to one request/invocation/rendering path.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -363,6 +363,21 @@ the staging worker, manifest writer, and caption service remain explicit, and
 direct workflow coverage verifies retry and structured manifest results.
 
 `cli.py` is now 12,145 lines, down 5,972 lines from baseline.
+
+### 2026-09-26 — Milestone 5.3: offline resume workflow extraction
+
+Added `workflows/resume_pipeline.py` with typed request/result and dependency
+boundaries for caption reconciliation, network-disabled transcription,
+extraction, media assurance/archive, optional identity, and review refresh. The
+workflow preserves the post-content order and imports no Typer, Rich, or
+`cli.py`; manifest verification progress remains a CLI presentation concern.
+
+The CLI passes its existing service symbols explicitly, preserving current
+patch seams while the remaining scope-specific pipeline paths migrate. Direct
+workflow coverage verifies offline transcription and the media → identity →
+review ordering.
+
+`cli.py` is now 12,082 lines, down 6,035 lines from baseline.
 
 ## Validation log
 
@@ -774,6 +789,19 @@ PASS
 
 .venv/bin/python -m unittest -q tests.test_audio_stage_workflow tests.test_cli_contract plus three focused audio-stage CLI tests
 Ran 10 tests in 0.309s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Offline resume workflow extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor tests/test_resume_pipeline_workflow.py
+PASS
+
+.venv/bin/python -m unittest -q tests.test_resume_pipeline_workflow tests.test_cli_contract plus four focused resume CLI tests
+Ran 11 tests in 0.307s — OK
 
 git diff --check
 PASS
