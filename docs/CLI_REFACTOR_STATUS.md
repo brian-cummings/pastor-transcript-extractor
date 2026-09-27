@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract identity machine-assignment commands, preserving
-  reconcile/status/rollback boundaries and append-only event semantics.
+- Next action: extract the identity coordination report command, preserving
+  shadow-only execution and its zero-registry-mutation boundary.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -538,6 +538,20 @@ recording, and the empty superseded-review queue. The frozen command topology
 and all five moved help surfaces remain unchanged.
 
 `cli.py` is now 8,978 lines, down 9,139 lines from baseline.
+
+### 2026-09-27 — Milestone 6.4b: machine-assignment command extraction
+
+Moved current-proposal reconciliation, machine-assignment status, and
+append-only rollback commands into `commands/identity/assignments.py` (337
+lines). Moved held-out fixture fingerprint selection into the neutral identity
+command helper module so assignment planning and the remaining identity run
+workflow share one implementation while the old CLI import remains compatible.
+
+Added focused safety tests for dry-run reconciliation, plan-only rollback,
+status validation, and held-out fixture exclusion. The existing machine
+assignment persistence suite and all three moved help surfaces remain green.
+
+`cli.py` is now 8,644 lines, down 9,473 lines from baseline.
 
 ## Validation log
 
@@ -1156,6 +1170,23 @@ Ran 9 tests in 0.244s — OK
 PASS for association-work-plan, association-work-status,
 review-next-superseded-profile-member, dispatch-associations, and
 repair-association-prerequisites
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Machine-assignment command extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/common.py src/pastor_transcript_extractor/commands/identity/assignments.py src/pastor_transcript_extractor/cli.py tests/test_identity_assignment_commands.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_assignment_commands tests.test_speaker_machine_assignment tests.test_cli_contract
+Ran 29 tests in 2.165s — OK
+
+.venv/bin/python -m pastor_transcript_extractor identity <moved-command> --help
+PASS for reconcile-current-proposals, machine-assignment-status, and
+rollback-machine-assignments
 
 git diff --check
 PASS
