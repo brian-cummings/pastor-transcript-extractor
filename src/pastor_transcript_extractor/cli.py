@@ -385,6 +385,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     decide_association_cache,
     execute_association_stage,
     index_current_association_results,
+    persist_association_checkpoint_stage,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
     repair_association_stage,
@@ -3139,31 +3140,35 @@ def run_identity_workflow_service(
     persisted_current_reports = latest_association_reports(association_root)
     if persisted_current_reports:
         current_association_reports = persisted_current_reports
-    if not plan_only and association_checkpoint_needs_refresh:
-        association_fingerprint = _identity_stage_fingerprint_or_none(
+    persist_association_checkpoint_stage(
+        plan_only=plan_only,
+        checkpoint_needs_refresh=association_checkpoint_needs_refresh,
+        all_extractions=all_extractions,
+        reports=current_association_reports,
+        fingerprint_factory=lambda: _identity_stage_fingerprint_or_none(
             paths,
             Database(paths.database, readonly=True),
             stage="association",
             parameters=association_parameters,
             additional_paths=association_global_inputs,
-        )
-        association_input_state = (
+        ),
+        input_state_factory=lambda: (
             _association_input_state_or_none(
                 paths,
                 parameters=association_parameters,
                 global_input_paths=association_global_inputs,
             )
-            if all_extractions
-            else None
-        )
-        if association_fingerprint is not None:
+        ),
+        checkpoint_writer=lambda fingerprint, reports, input_state: (
             _write_identity_stage_checkpoint_best_effort(
                 identity_stage_cache_root,
                 stage="association",
-                input_fingerprint=association_fingerprint,
-                outputs=current_association_reports,
-                input_state=association_input_state,
+                input_fingerprint=fingerprint,
+                outputs=reports,
+                input_state=input_state,
             )
+        ),
+    )
     current_result_sha256_by_observation = index_current_association_results(
         current_association_reports
     )

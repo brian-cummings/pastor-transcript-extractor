@@ -324,3 +324,26 @@ def repair_association_stage(
         checkpoint_needs_refresh=True,
         repair_attempted=True,
     )
+
+
+def persist_association_checkpoint_stage(
+    *,
+    plan_only: bool,
+    checkpoint_needs_refresh: bool,
+    all_extractions: bool,
+    reports: Sequence[Path],
+    fingerprint_factory: Callable[[], str | None],
+    input_state_factory: Callable[[], Mapping[str, object] | None],
+    checkpoint_writer: Callable[
+        [str, tuple[Path, ...], Mapping[str, object] | None], None
+    ],
+) -> bool:
+    """Recompute and persist a refreshed association checkpoint when eligible."""
+    if plan_only or not checkpoint_needs_refresh:
+        return False
+    fingerprint = fingerprint_factory()
+    input_state = input_state_factory() if all_extractions else None
+    if fingerprint is None:
+        return False
+    checkpoint_writer(fingerprint, tuple(reports), input_state)
+    return True
