@@ -382,6 +382,7 @@ from pastor_transcript_extractor.workflows.run import (
 )
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    reconcile_machine_assignments_stage,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
 )
@@ -2980,15 +2981,16 @@ def run_identity_workflow_service(
     machine_cache = MediaVerificationCache(
         Path("evaluation/speaker-pairs/cache/media-verification").resolve()
     )
-    if plan_only:
+    reconciliation = reconcile_machine_assignments_stage(
+        paths.database,
+        verification_cache=machine_cache,
+        plan_only=plan_only,
+    )
+    if reconciliation is None:
         console.print(
             "Machine assignment reconciliation: plan-only; no events were written."
         )
     else:
-        reconciliation = reconcile_machine_assignments(
-            Database(paths.database),
-            verification_cache=machine_cache,
-        )
         console.print(
             "Machine assignment reconciliation: "
             f"confirmed={reconciliation.confirmed} "

@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract the identity run's association and machine-assignment
-  orchestration into named stage functions, preserving checkpoint refresh,
+- Next action: extract association execution/checkpoint reuse and current-result
+  machine-assignment planning into named stages, preserving refresh selection,
   held-out exclusion, reconciliation order, and plan-only non-mutation.
 - Dataset validation: not needed for the current milestone.
 
@@ -609,6 +609,16 @@ catalog WIP removed its expected `cli.validate_source_families` compatibility
 symbol; no catalog or source-processing file was changed by this slice.
 
 `cli.py` is now 8,297 lines, down 9,820 lines from baseline.
+
+### 2026-09-27 — Milestone 6.5d: pre-association reconciliation stage
+
+Moved the run's initial machine-assignment reconciliation behind a workflow
+stage boundary. Plan-only mode returns without opening a writable database;
+execution passes the pinned media-verification cache to a writable database
+reconciliation before association begins.
+
+Focused workflow and checkpoint-cache coverage verifies the non-mutation gate
+and preserves the existing stage order.
 
 ## Validation log
 
@@ -1310,6 +1320,19 @@ Ran 7 tests in 0.665s — OK
 NOT RUN: module import is blocked by the unrelated catalog WIP removing
 `cli.validate_source_families`; the affected test patches were still migrated
 and compile successfully.
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Pre-association reconciliation stage
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/run.py src/pastor_transcript_extractor/cli.py tests/test_identity_run_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_workflow_commands tests.test_identity_stage_cache tests.test_cli_contract
+Ran 24 tests in 0.842s — OK
 
 git diff --check
 PASS

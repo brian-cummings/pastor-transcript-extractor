@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from pastor_transcript_extractor.workflows.identity import run as identity_run
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    reconcile_machine_assignments_stage,
     synchronize_reviewed_evidence_stage,
     validate_identity_workflow_request,
 )
@@ -132,6 +133,39 @@ class IdentityRunWorkflowTests(unittest.TestCase):
                 synchronize_reviewed_evidence_stage(
                     Path("app.db"), plan_only=False
                 )
+
+    def test_assignment_reconciliation_plan_does_not_open_database(self) -> None:
+        with patch.object(identity_run, "Database") as database_factory, patch.object(
+            identity_run, "reconcile_machine_assignments"
+        ) as reconcile:
+            result = reconcile_machine_assignments_stage(
+                Path("app.db"),
+                verification_cache=object(),
+                plan_only=True,
+            )
+
+        self.assertIsNone(result)
+        database_factory.assert_not_called()
+        reconcile.assert_not_called()
+
+    def test_assignment_reconciliation_uses_writable_database(self) -> None:
+        database = object()
+        expected = object()
+        cache = object()
+        with patch.object(
+            identity_run, "Database", return_value=database
+        ) as database_factory, patch.object(
+            identity_run, "reconcile_machine_assignments", return_value=expected
+        ) as reconcile:
+            result = reconcile_machine_assignments_stage(
+                Path("app.db"),
+                verification_cache=cache,
+                plan_only=False,
+            )
+
+        self.assertIs(expected, result)
+        database_factory.assert_called_once_with(Path("app.db"))
+        reconcile.assert_called_once_with(database, verification_cache=cache)
 
 
 if __name__ == "__main__":
