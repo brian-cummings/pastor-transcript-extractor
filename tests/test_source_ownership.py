@@ -519,7 +519,7 @@ class SourceOwnershipMigrationTests(unittest.TestCase):
             )
 
             with patch(
-                "pastor_transcript_extractor.cli.extract_discovered_videos",
+                "pastor_transcript_extractor.discovery.extract_discovered_videos",
                 return_value=[discovered],
             ):
                 result = runner.invoke(
