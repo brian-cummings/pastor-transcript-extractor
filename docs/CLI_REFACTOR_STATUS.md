@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 5 — extract the top-level pipeline.
-- Next action: consolidate failed-only, selected-source, all-source, and
-  single-URL processing behind shared typed pipeline stages, then reduce the
-  top-level command to one request/invocation/rendering path.
+- Next action: move offline mode validation and scope resolution behind the
+  typed pipeline boundary, then reduce the top-level command to one
+  request/invocation/rendering path.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -387,6 +387,23 @@ a thin compatibility adapter and explicitly passes its metadata-live-status
 seam for existing tests.
 
 `cli.py` is now 12,039 lines, down 6,078 lines from baseline.
+
+### 2026-09-26 — Milestone 5.5: online pipeline extraction
+
+Added `workflows/pipeline.py` with typed request, scope, result, dependency,
+and event boundaries. Failed-only, selected-source, all-enabled-source, and
+single-URL runs now share named validation, scope resolution, discovery,
+transcript acquisition, extraction, media, identity, and review stages. The
+workflow imports no Typer, Rich, or `cli.py`, and direct tests cover all-source
+ordering, failed-only rebuild policy, URL replacement, and pre-mutation scope
+validation.
+
+The CLI injects its existing service symbols so current tests and external
+callers can continue patching the compatibility seams during the remaining
+top-level migration. Removed the four duplicated online branches from
+`run_workflow_service`.
+
+`cli.py` is now 11,764 lines, down 6,353 lines from baseline.
 
 ## Validation log
 
@@ -824,6 +841,22 @@ Ran 8 tests in 0.324s — OK
 
 .venv/bin/python -m compileall -q src/pastor_transcript_extractor
 PASS
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Online pipeline extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/pipeline.py src/pastor_transcript_extractor/cli.py tests/test_pipeline_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_pipeline_workflow plus sixteen focused run CLI tests
+Ran 20 tests in 0.780s — OK
+
+.venv/bin/python -m unittest tests.test_cli_contract tests.test_sources.CliTests.test_run_audio_stage_options_are_forwarded tests.test_resume_pipeline_workflow tests.test_audio_stage_workflow tests.test_run_media_workflow
+Ran 10 tests in 0.366s — OK
 
 git diff --check
 PASS
