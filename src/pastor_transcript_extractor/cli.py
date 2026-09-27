@@ -394,6 +394,7 @@ from pastor_transcript_extractor.workflows.identity.run import (
     reconcile_machine_assignments_stage,
     repair_association_stage,
     run_machine_assignment_stage,
+    run_metadata_attribution_stage,
     select_discovery_reports,
     select_pending_exemplar_repairs,
     synchronize_reviewed_evidence_stage,
@@ -3360,96 +3361,58 @@ def run_identity_workflow_service(
     if discovery_decision.mode != "deferred" and not discovery_finalization.promotion_attempted:
         console.print("Discovery promotion: no completed report available.")
 
-    metadata_attribution_root = paths.logs / "profile-metadata-attribution"
-    if plan_only:
-        metadata_candidate_count = len(
-            profile_metadata_candidate_profile_ids(
-                Database(paths.database, readonly=True)
+    metadata_stage = run_metadata_attribution_stage(
+        paths.database,
+        output_root=paths.logs / "profile-metadata-attribution",
+        plan_only=plan_only,
+        database_video_id=database_video_id,
+        progress_callback=(
+            lambda index, total, profile_id, outcome: console.print(
+                "Profile metadata attribution "
+                f"[{index}/{total}] profile={profile_id}: {outcome}"
             )
-        )
+        ),
+    )
+    if metadata_stage.status == "plan_only":
         console.print(
             "Profile metadata attribution: plan-only; "
-            f"eligible={metadata_candidate_count}; no Ollama calls or artifacts "
-            "were created."
+            f"eligible={len(metadata_stage.candidate_profile_ids)}; "
+            "no Ollama calls or artifacts were created."
+        )
+    elif metadata_stage.status == "disabled":
+        console.print(
+            "Profile metadata attribution: skipped — local LLM is disabled."
+        )
+    elif metadata_stage.status == "empty":
+        console.print("Profile metadata attribution: eligible=0; no Ollama calls.")
+    elif metadata_stage.status == "failed":
+        console.print(
+            "Profile metadata attribution: skipped — "
+            f"{metadata_stage.error}"
         )
     else:
-        metadata_config = build_llm_config()
-        if not metadata_config.enabled:
+        metadata_run = metadata_stage.run
+        if metadata_run is None:
+            raise RuntimeError("Executed metadata stage returned no result.")
+        console.print(
+            "Profile metadata attribution: "
+            f"eligible={metadata_run.eligible} "
+            f"proposed={metadata_run.proposed} "
+            f"insufficient_evidence={metadata_run.insufficient_evidence} "
+            f"conflicting_evidence={metadata_run.conflicting_evidence} "
+            f"invalid_metadata={metadata_run.invalid_metadata} "
+            f"cache_hits={metadata_run.cache_hits} "
+            f"model_calls={metadata_run.model_calls} "
+            f"failed={metadata_run.failed}."
+        )
+        _print_profile_metadata_proposals(metadata_run)
+        if metadata_run.failed:
             console.print(
-                "Profile metadata attribution: skipped — local LLM is disabled."
+                "Profile metadata diagnostics were persisted. "
+                "Inspect them with `pte identity "
+                "analyze-profile-metadata --all --details "
+                f"--base-dir {paths.root}`."
             )
-        else:
-            metadata_database = Database(paths.database, readonly=True)
-            scoped_profile_ids = None
-            if database_video_id is not None:
-                scoped_observation = (
-                    metadata_database.get_latest_speaker_observation_for_video(
-                        database_video_id
-                    )
-                )
-                scoped_profile_ids = frozenset(
-                    metadata_database.resolve_speaker_profile_id(profile_id)
-                    for profile_id in (
-                        metadata_database.list_effective_profile_ids_for_observation(
-                            scoped_observation.id
-                        )
-                        if scoped_observation is not None
-                        else ()
-                    )
-                )
-            candidate_profile_ids = profile_metadata_candidate_profile_ids(
-                metadata_database,
-                profile_ids=scoped_profile_ids,
-            )
-            if not candidate_profile_ids:
-                console.print(
-                    "Profile metadata attribution: eligible=0; no Ollama calls."
-                )
-            else:
-                try:
-                    metadata_client = OllamaClient(metadata_config)
-                    metadata_run = run_profile_metadata_attribution(
-                        metadata_database,
-                        metadata_attribution_root,
-                        metadata_client,
-                        model_digest=metadata_client.model_digest(),
-                        profile_ids=frozenset(candidate_profile_ids),
-                        progress_callback=(
-                            lambda index, total, profile_id, outcome: console.print(
-                                "Profile metadata attribution "
-                                f"[{index}/{total}] profile={profile_id}: "
-                                f"{outcome}"
-                            )
-                        ),
-                    )
-                except (LocalLlmError, OSError, ValueError) as error:
-                    console.print(
-                        "Profile metadata attribution: skipped — "
-                        f"{type(error).__name__}: {error}"
-                    )
-                else:
-                    console.print(
-                        "Profile metadata attribution: "
-                        f"eligible={metadata_run.eligible} "
-                        f"proposed={metadata_run.proposed} "
-                        f"insufficient_evidence="
-                        f"{metadata_run.insufficient_evidence} "
-                        f"conflicting_evidence="
-                        f"{metadata_run.conflicting_evidence} "
-                        f"invalid_metadata={metadata_run.invalid_metadata} "
-                        f"cache_hits={metadata_run.cache_hits} "
-                        f"model_calls={metadata_run.model_calls} "
-                        f"failed={metadata_run.failed}."
-                    )
-                    _print_profile_metadata_proposals(metadata_run)
-                    if metadata_run.failed:
-                        console.print(
-                            "Profile metadata diagnostics were persisted. "
-                            "Inspect them with `pte identity "
-                            "analyze-profile-metadata --all --details "
-                            f"--base-dir {paths.root}`."
-                        )
-
     coordinate_identity_command(
         youtube_video_id=youtube_video_id,
         all_extractions=all_extractions,
