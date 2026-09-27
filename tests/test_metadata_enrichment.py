@@ -304,7 +304,7 @@ class MetadataEnrichmentTests(unittest.TestCase):
     def test_analyze_all_anonymous_profiles_plan_only_avoids_ollama(self) -> None:
         runner = CliRunner()
         with patch(
-            "pastor_transcript_extractor.cli.build_llm_config"
+            "pastor_transcript_extractor.config.build_llm_config"
         ) as build_llm:
             result = runner.invoke(
                 app,
@@ -332,10 +332,10 @@ class MetadataEnrichmentTests(unittest.TestCase):
         observation_record = self.database.get_speaker_observation(observation)
         assert observation_record is not None
         with patch(
-            "pastor_transcript_extractor.cli.load_profile_attribution_clip_timestamps",
+            "pastor_transcript_extractor.commands.identity.metadata.load_profile_attribution_clip_timestamps",
             return_value={observation_record.input_fingerprint: 10},
         ), patch(
-            "pastor_transcript_extractor.cli.write_profile_attribution_packet"
+            "pastor_transcript_extractor.commands.identity.metadata.write_profile_attribution_packet"
         ) as write_packet:
             result = runner.invoke(
                 app,

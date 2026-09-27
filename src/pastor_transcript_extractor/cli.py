@@ -23,7 +23,14 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from pastor_transcript_extractor import application, audio_staging, config, media_artifacts
+from pastor_transcript_extractor import (
+    application,
+    audio_staging,
+    config,
+    extraction as extraction_service,
+    local_llm,
+    media_artifacts,
+)
 from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
 from pastor_transcript_extractor.church_database_import import (
@@ -81,12 +88,10 @@ from pastor_transcript_extractor.commands import acquisition, common as command_
 from pastor_transcript_extractor.commands.common import unknown_pastor_error as _unknown_pastor_error
 from pastor_transcript_extractor.config import (
     AppPaths,
-    build_llm_config,
     build_pastor_paths,
     ensure_directories,
 )
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
-from pastor_transcript_extractor.extraction import reclassify_video
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
     duration_within_sermon_maximum,
@@ -185,7 +190,7 @@ from pastor_transcript_extractor.media_artifacts import (
 from pastor_transcript_extractor.pipeline_diagnostics import (
     load_identity_association_attempts,
 )
-from pastor_transcript_extractor.local_llm import LocalLlmError, OllamaClient
+from pastor_transcript_extractor.local_llm import LocalLlmError
 from pastor_transcript_extractor.identity_leverage import (
     build_profile_leverage_snapshot,
     compare_profile_leverage_snapshots,
@@ -5865,7 +5870,7 @@ def doctor(
 ) -> None:
     paths = config.build_paths(base_dir, remember=True)
     tools = config.build_tool_config()
-    llm = build_llm_config()
+    llm = config.build_llm_config()
     sermon_minimum = minimum_sermon_duration_seconds()
     sermon_maximum = maximum_sermon_duration_seconds()
 
@@ -5901,7 +5906,7 @@ def doctor(
     rows.append(("local LLM", llm.base_url, "enabled" if llm.enabled else "disabled"))
     rows.append(("local LLM model", llm.model, "configured" if llm.enabled else "inactive"))
     if llm.enabled:
-        health = OllamaClient(llm).check_health()
+        health = local_llm.OllamaClient(llm).check_health()
         rows.append(("Ollama connectivity", health.detail, "ok" if health.reachable else "failed"))
         rows.append(("Ollama model installed", llm.model, "ok" if health.model_available else "failed"))
         rows.append(("Ollama structured output", health.detail, "ok" if health.structured_output else "failed"))
@@ -6153,12 +6158,12 @@ def apply_fixture_correction(
         f"{correction.start_seconds:.3f}-{correction.end_seconds:.3f}s."
     )
 
-    llm_config = build_llm_config()
+    llm_config = config.build_llm_config()
     if llm_model is not None:
         llm_config = replace(llm_config, model=llm_model)
-    client = OllamaClient(llm_config)
+    client = local_llm.OllamaClient(llm_config)
     verifier_config = replace(llm_config, model=recording_verifier_model)
-    verifier_client = OllamaClient(verifier_config)
+    verifier_client = local_llm.OllamaClient(verifier_config)
     resolved_inference_cache_root = (
         inference_cache_root.expanduser().resolve()
         if inference_cache_root is not None
@@ -6170,7 +6175,7 @@ def apply_fixture_correction(
         else None
     )
     try:
-        result = reclassify_video(
+        result = extraction_service.reclassify_video(
             database,
             paths,
             video.id,
@@ -6402,12 +6407,12 @@ def reclassify(
         )
     if not videos:
         raise typer.BadParameter("No matching videos found.")
-    llm_config = build_llm_config()
+    llm_config = config.build_llm_config()
     if llm_model is not None:
         llm_config = replace(llm_config, model=llm_model)
-    client = OllamaClient(llm_config)
+    client = local_llm.OllamaClient(llm_config)
     verifier_config = replace(llm_config, model=recording_verifier_model)
-    raw_verifier_client = OllamaClient(verifier_config)
+    raw_verifier_client = local_llm.OllamaClient(verifier_config)
     verifier_lock = Lock()
 
     class LockedVerifierClient:
@@ -6477,7 +6482,7 @@ def reclassify(
     )
 
     def reclassify_one(video):
-        return reclassify_video(
+        return extraction_service.reclassify_video(
             database,
             paths,
             video.id,

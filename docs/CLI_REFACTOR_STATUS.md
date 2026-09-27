@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate the reclassification command seams (`reclassify_video`,
-  `OllamaClient`, and LLM configuration) to their owning modules without
-  touching unrelated source-processing changes.
+- Next action: migrate remaining media-archive command patches
+  (`prepare_canonical_audio` and `archive_normalized_media`) to their command or
+  domain owners without touching unrelated source-processing changes.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1092,6 +1092,14 @@ Moved resume-manifest verification rendering into `commands/pipeline.py` and
 routed audio staging and manifest writing through `media_artifacts` and
 `audio_staging`. A temporary CLI alias preserves direct verification imports;
 workflow composition and tests now resolve the actual owners.
+
+### 2026-09-27 — Milestone 8.16: reclassification owner seams
+
+Changed LLM configuration, Ollama client construction, and video
+reclassification calls to resolve from `config`, `local_llm`, and `extraction`.
+Fixture correction and reclassification tests patch those owners. Validation
+also migrated two stale metadata-command patches that referenced CLI exports
+removed during earlier command extraction.
 
 ## Validation log
 
@@ -2487,6 +2495,22 @@ PASS
 Ran 12 tests in 0.234s — OK
 
 rg -n "pastor_transcript_extractor\.cli\.(stage_source_audio_for_video|write_audio_stage_manifest|load_and_verify_audio_stage_manifest)" tests
+No matches
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Reclassification owner seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_fixture_validation.py tests/test_fixture_correction.py tests/test_metadata_enrichment.py
+PASS
+
+.venv/bin/python -m unittest tests.test_fixture_validation tests.test_fixture_correction tests.test_metadata_enrichment tests.test_cli_contract
+Ran 38 tests in 0.838s — OK
+
+rg -n "pastor_transcript_extractor\.cli\.(build_llm_config|OllamaClient|reclassify_video)" tests
 No matches
 
 git diff --check
