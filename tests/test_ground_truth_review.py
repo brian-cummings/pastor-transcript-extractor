@@ -79,7 +79,7 @@ class GroundTruthReviewTests(unittest.TestCase):
                 )
                 with (
                     patch("pastor_transcript_extractor.commands.common.get_database", return_value=database),
-                    patch("pastor_transcript_extractor.cli.open_video_url") as open_url,
+                    patch("pastor_transcript_extractor.ground_truth_review.open_video_url") as open_url,
                     patch("pastor_transcript_extractor.cli.typer.confirm", side_effect=RuntimeError("stop")),
                     self.assertRaisesRegex(RuntimeError, "stop"),
                 ):

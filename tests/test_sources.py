@@ -2527,7 +2527,7 @@ class CliTests(unittest.TestCase):
         )
 
         with patch(
-            "pastor_transcript_extractor.cli.latest_metadata_live_status",
+            "pastor_transcript_extractor.identity.latest_metadata_live_status",
             side_effect=lambda _database, video_id: (
                 "is_live" if video_id in {15, 31} else None
             ),

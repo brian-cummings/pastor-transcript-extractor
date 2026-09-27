@@ -191,7 +191,7 @@ class FixtureCorrectionCliTests(unittest.TestCase):
                 "pastor_transcript_extractor.commands.common.get_database",
                 return_value=database,
             ), patch(
-                "pastor_transcript_extractor.cli.resolve_video_artifact_paths",
+                "pastor_transcript_extractor.artifact_namespace.resolve_video_artifact_paths",
                 return_value=video_paths,
             ), patch(
                 "pastor_transcript_extractor.local_llm.OllamaClient",
@@ -200,12 +200,12 @@ class FixtureCorrectionCliTests(unittest.TestCase):
                 "pastor_transcript_extractor.extraction.reclassify_video",
                 side_effect=fake_reclassify,
             ) as reclassify_mock, patch(
-                "pastor_transcript_extractor.cli.record_neutral_speaker_evidence",
+                "pastor_transcript_extractor.identity.record_neutral_speaker_evidence",
                 return_value=SimpleNamespace(
                     neutral_evidence=SimpleNamespace(observation=observation)
                 ),
             ) as evidence_mock, patch(
-                "pastor_transcript_extractor.cli.assess_automatic_speaker_observation",
+                "pastor_transcript_extractor.speaker_pair_eligibility.assess_automatic_speaker_observation",
                 return_value=SimpleNamespace(reason_code="eligible"),
             ):
                 result = CliRunner().invoke(
