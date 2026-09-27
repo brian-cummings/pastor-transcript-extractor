@@ -70,6 +70,37 @@ class PipelineDependencies:
 
 
 @dataclass(frozen=True, slots=True)
+class PostContentIdentityRequest:
+    base_dir: Path | None = None
+    jobs: int = 2
+
+
+def run_post_content_identity(
+    request: PostContentIdentityRequest,
+    *,
+    event_callback: Callable[[str], None] | None = None,
+    identity_runner: PipelineOperation,
+) -> object:
+    """Apply the guarded identity policy after content and media stages."""
+    if event_callback is not None:
+        event_callback(
+            "Run identity stage: refreshing reviewed evidence, profile "
+            "associations, anonymous discovery, and coordination."
+        )
+    return identity_runner(
+        youtube_video_id=None,
+        all_extractions=True,
+        plan_only=False,
+        skip_discovery=False,
+        apply_automatic=True,
+        apply_confirmations=False,
+        apply_promotions=False,
+        base_dir=request.base_dir,
+        jobs=request.jobs,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class _ResolvedScope:
     kind: PipelineScope
     database: Database

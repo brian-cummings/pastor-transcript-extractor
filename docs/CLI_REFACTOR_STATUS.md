@@ -435,6 +435,16 @@ the CLI pending the command-module move.
 
 `cli.py` is now 11,625 lines, down 6,492 lines from baseline.
 
+### 2026-09-26 — Milestone 5.8: post-content identity policy extraction
+
+Moved the integrated identity stage message and guarded automatic-run policy
+into `workflows/pipeline.py` behind a typed request and explicit identity-runner
+boundary. The CLI compatibility function now only injects the existing identity
+service and renders its event. Direct coverage verifies the automatic,
+all-extractions, non-plan policy and job forwarding.
+
+`cli.py` is now 11,617 lines, down 6,500 lines from baseline.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -916,6 +926,19 @@ Ran 22 tests in 0.139s — OK
 
 .venv/bin/python -m unittest tests.test_cli_contract plus fourteen focused online and forwarding CLI tests
 Ran 20 tests in 0.938s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-26 — Post-content identity policy extraction
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/pipeline.py src/pastor_transcript_extractor/cli.py tests/test_pipeline_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_pipeline_workflow plus three focused integrated-identity CLI tests
+Ran 8 tests in 0.069s — OK
 
 git diff --check
 PASS

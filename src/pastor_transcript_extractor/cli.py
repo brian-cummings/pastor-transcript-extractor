@@ -396,6 +396,8 @@ from pastor_transcript_extractor.workflows.resume_pipeline import (
 )
 from pastor_transcript_extractor.workflows.pipeline import (
     PipelineDependencies,
+    PostContentIdentityRequest,
+    run_post_content_identity,
 )
 from pastor_transcript_extractor.workflows.run import (
     RunWorkflowDependencies,
@@ -11402,20 +11404,10 @@ def _run_post_content_identity(
     *,
     jobs: int = 2,
 ) -> None:
-    console.print(
-        "Run identity stage: refreshing reviewed evidence, profile "
-        "associations, anonymous discovery, and coordination."
-    )
-    run_identity_workflow_service(
-        youtube_video_id=None,
-        all_extractions=True,
-        plan_only=False,
-        skip_discovery=False,
-        apply_automatic=True,
-        apply_confirmations=False,
-        apply_promotions=False,
-        base_dir=base_dir,
-        jobs=jobs,
+    run_post_content_identity(
+        PostContentIdentityRequest(base_dir=base_dir, jobs=jobs),
+        event_callback=lambda message: console.print(message, markup=False),
+        identity_runner=run_identity_workflow_service,
     )
 
 

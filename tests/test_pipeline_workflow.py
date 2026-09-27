@@ -10,12 +10,31 @@ from pastor_transcript_extractor.workflows.pipeline import (
     PipelineDependencies,
     PipelineRequest,
     PipelineScope,
+    PostContentIdentityRequest,
     run_pipeline,
+    run_post_content_identity,
     validate_pipeline_request,
 )
 
 
 class PipelineWorkflowTests(unittest.TestCase):
+    def test_post_content_identity_uses_guarded_automatic_policy(self) -> None:
+        calls = []
+        events = []
+
+        run_post_content_identity(
+            PostContentIdentityRequest(base_dir=Path("data"), jobs=3),
+            event_callback=events.append,
+            identity_runner=lambda **kwargs: calls.append(kwargs),
+        )
+
+        self.assertEqual(1, len(calls))
+        self.assertTrue(calls[0]["all_extractions"])
+        self.assertTrue(calls[0]["apply_automatic"])
+        self.assertFalse(calls[0]["plan_only"])
+        self.assertEqual(3, calls[0]["jobs"])
+        self.assertIn("Run identity stage", events[0])
+
     def _dependencies(self, database, calls):
         def record(name, result=None):
             def operation(*args, **kwargs):
