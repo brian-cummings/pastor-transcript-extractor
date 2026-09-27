@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 6 — split identity by capability.
-- Next action: extract final coordination, review prewarm, and archival into
-  named identity-run stages, preserving optional-service failure handling,
-  plan-only behavior, and terminal ordering.
+- Next action: extract review prewarm and archival into named identity-run
+  stages, preserving optional-service failure handling, plan-only behavior,
+  and terminal ordering.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -719,6 +719,13 @@ identity run. Plan-only mode counts candidates without constructing LLM tools.
 
 `cli.py` is now 8,213 lines, down 9,904 lines from baseline. The workflow module
 is 642 lines and remains below the planned readability ceiling.
+
+### 2026-09-27 — Milestone 6.5q: final coordination boundary
+
+Created `workflows/identity/finalization.py` for terminal identity-run stages and
+moved final coordination behind a typed request/callable boundary. The stage
+pins the same model and policy inputs, forces `execute_shadow=False`, and keeps
+coordination report output separate from registry mutation.
 
 ## Validation log
 
@@ -1589,6 +1596,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
 Ran 51 tests in 0.727s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Final coordination boundary
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/identity/finalization.py src/pastor_transcript_extractor/cli.py tests/test_identity_finalization_workflow.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_finalization_workflow tests.test_identity_run_workflow tests.test_identity_stage_cache tests.test_cli_contract
+Ran 52 tests in 0.730s — OK
 
 git diff --check
 PASS
