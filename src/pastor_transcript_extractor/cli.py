@@ -205,7 +205,6 @@ from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
 from pastor_transcript_extractor.identity_stage_cache import (
-    association_refresh_mode,
     build_association_input_state,
     build_identity_stage_fingerprint,
     load_identity_stage_checkpoint,
@@ -382,6 +381,7 @@ from pastor_transcript_extractor.workflows.run import (
 )
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    decide_association_cache,
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
@@ -3064,27 +3064,23 @@ def run_identity_workflow_service(
         if association_fingerprint is not None
         else None
     )
-    association_checkpoint_needs_refresh = (
-        cached_association_reports is None
-        or association_input_state is not None
-        and previous_association_input_state is None
+    association_cache = decide_association_cache(
+        cached_reports=cached_association_reports,
+        previous_input_state=previous_association_input_state,
+        current_input_state=association_input_state,
+        all_extractions=all_extractions,
     )
-    if cached_association_reports is not None:
-        current_association_reports = cached_association_reports
+    association_checkpoint_needs_refresh = (
+        association_cache.checkpoint_needs_refresh
+    )
+    if association_cache.cached_reports is not None:
+        current_association_reports = association_cache.cached_reports
         console.print(
             "Association stage: unchanged inputs; reused completed stage "
             f"with {len(current_association_reports)} report(s)."
         )
     else:
-        refresh_mode = (
-            association_refresh_mode(
-                previous_association_input_state,
-                association_input_state,
-            )
-            if all_extractions
-            else "full"
-        )
-        incremental_association = refresh_mode == "incremental"
+        incremental_association = association_cache.incremental
         if incremental_association:
             console.print(
                 "Association stage: only new observation-local inputs changed; "

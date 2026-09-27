@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from pastor_transcript_extractor.workflows.identity import run as identity_run
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
+    decide_association_cache,
     index_current_association_results,
     reconcile_current_assignment_results_stage,
     reconcile_machine_assignments_stage,
@@ -43,6 +44,61 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertTrue(policy.apply_confirmations)
         self.assertTrue(policy.apply_promotions)
         self.assertTrue(policy.apply_machine_assignments)
+
+    def test_association_cache_reuses_reports_without_refresh(self) -> None:
+        reports = (Path("report.json"),)
+        decision = decide_association_cache(
+            cached_reports=reports,
+            previous_input_state=None,
+            current_input_state=None,
+            all_extractions=True,
+        )
+
+        self.assertEqual(reports, decision.cached_reports)
+        self.assertEqual("cached", decision.refresh_mode)
+        self.assertFalse(decision.checkpoint_needs_refresh)
+        self.assertFalse(decision.incremental)
+
+    def test_missing_prior_state_rewrites_reused_checkpoint(self) -> None:
+        decision = decide_association_cache(
+            cached_reports=(Path("report.json"),),
+            previous_input_state=None,
+            current_input_state={"observations": {}},
+            all_extractions=True,
+        )
+
+        self.assertTrue(decision.checkpoint_needs_refresh)
+
+    def test_corpus_cache_miss_delegates_refresh_mode(self) -> None:
+        previous = {"previous": True}
+        current = {"current": True}
+        with patch.object(
+            identity_run,
+            "association_refresh_mode",
+            return_value="incremental",
+        ) as refresh_mode:
+            decision = decide_association_cache(
+                cached_reports=None,
+                previous_input_state=previous,
+                current_input_state=current,
+                all_extractions=True,
+            )
+
+        self.assertTrue(decision.incremental)
+        self.assertTrue(decision.checkpoint_needs_refresh)
+        refresh_mode.assert_called_once_with(previous, current)
+
+    def test_single_video_cache_miss_forces_full_refresh(self) -> None:
+        with patch.object(identity_run, "association_refresh_mode") as refresh_mode:
+            decision = decide_association_cache(
+                cached_reports=None,
+                previous_input_state=None,
+                current_input_state=None,
+                all_extractions=False,
+            )
+
+        self.assertEqual("full", decision.refresh_mode)
+        refresh_mode.assert_not_called()
 
     def test_plan_only_rejects_every_mutation_flag(self) -> None:
         for field in (
