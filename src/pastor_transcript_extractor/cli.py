@@ -388,22 +388,19 @@ from pastor_transcript_extractor.workflows.run_media import (
 )
 from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageDependencies,
-    AudioStageRequest,
     AudioStageScopeDependencies,
-    AudioStageScopeRequest,
-    resolve_audio_stage_scope,
     select_existing_stage_video_ids as _select_existing_stage_video_ids_workflow,
-    stage_audio_inputs,
 )
 from pastor_transcript_extractor.workflows.resume_pipeline import (
     ResumePipelineDependencies,
-    ResumePipelineRequest,
-    resume_staged_pipeline,
 )
 from pastor_transcript_extractor.workflows.pipeline import (
     PipelineDependencies,
-    PipelineRequest,
-    run_pipeline,
+)
+from pastor_transcript_extractor.workflows.run import (
+    RunWorkflowDependencies,
+    RunWorkflowRequest,
+    run_workflow,
 )
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionBlockedError,
@@ -11250,6 +11247,55 @@ def review(
         subprocess.run([editor, str(review_path)], check=True)
 
 
+def _verify_audio_stage_manifest(
+    database: Database,
+    paths: AppPaths,
+    manifest_path: Path,
+) -> set[int]:
+    with Progress(
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        verification_task = progress.add_task(
+            "Reading audio-stage manifest",
+            total=None,
+        )
+
+        def report_stage_verification(
+            index: int,
+            total: int,
+            youtube_video_id: str,
+        ) -> None:
+            progress.update(
+                verification_task,
+                total=total,
+                completed=index - 1,
+                description=(
+                    f"Verifying staged source [{index}/{total}] "
+                    f"{youtube_video_id}"
+                ),
+            )
+
+        video_ids = load_and_verify_audio_stage_manifest(
+            database,
+            manifest_path,
+            progress_callback=report_stage_verification,
+            verification_cache=MediaVerificationCache(
+                paths.logs / "source-audio-verification"
+            ),
+        )
+        progress.update(
+            verification_task,
+            total=len(video_ids),
+            completed=len(video_ids),
+            description=f"Verified {len(video_ids)} staged source artifact(s)",
+        )
+    return video_ids
+
+
 def run_workflow_service(
     url: str | None = None,
     pastor: str | None = None,
@@ -11275,167 +11321,14 @@ def run_workflow_service(
     cookies_from_browser: str | None = None,
     cookies: Path | None = None,
 ) -> None:
-    selected_source_ids = tuple(dict.fromkeys(source_ids or ()))
-    if cookies_from_browser is not None and cookies is not None:
-        raise ValueError(
-            "Use either --cookies-from-browser or --cookies for YouTube, not both."
-        )
-    if stage_audio_only and resume_stage is not None:
-        raise ValueError("Use either --stage-audio-only or --resume-stage, not both.")
-    if skip_discovery and not stage_audio_only:
-        raise ValueError("--skip-discovery is only valid with --stage-offline-inputs.")
-    if acquire_captions and resume_stage is None:
-        raise ValueError("--acquire-captions is only valid with --resume-stage.")
-    if resume_stage is not None:
-        if url is not None or pastor is not None or all_sources or selected_source_ids or failed_only:
-            raise ValueError("--resume-stage supplies the exact video scope; do not pass another scope.")
-        if replace_existing:
-            raise ValueError("--replace-existing is not valid with --resume-stage.")
-        database = get_database(base_dir)
-        paths = build_paths(base_dir, remember=True)
-        console.print(
-            "Resume checkpoint: verifying every checksum-pinned staged source artifact."
-        )
-        with Progress(
-            TextColumn("{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
-            verification_task = progress.add_task(
-                "Reading audio-stage manifest", total=None
-            )
-
-            def report_stage_verification(
-                index: int,
-                total: int,
-                youtube_video_id: str,
-            ) -> None:
-                progress.update(
-                    verification_task,
-                    total=total,
-                    completed=index - 1,
-                    description=(
-                        f"Verifying staged source [{index}/{total}] "
-                        f"{youtube_video_id}"
-                    ),
-                )
-
-            video_ids = load_and_verify_audio_stage_manifest(
-                database,
-                resume_stage,
-                progress_callback=report_stage_verification,
-                verification_cache=MediaVerificationCache(
-                    paths.logs / "source-audio-verification"
-                ),
-            )
-            progress.update(
-                verification_task,
-                total=len(video_ids),
-                completed=len(video_ids),
-                description=f"Verified {len(video_ids)} staged source artifact(s)",
-            )
-
-        def render_resume_event(event: object) -> None:
-            if isinstance(event, str):
-                console.print(event, markup="[yellow]" in event)
-            else:
-                _print_review_batch(event)
-
-        resume_staged_pipeline(
-            database,
-            paths,
-            ResumePipelineRequest(
-                video_ids=frozenset(video_ids),
-                manifest_path=resume_stage,
-                acquire_captions=acquire_captions,
-                captions_only=captions_only,
-                transcribe_missing=transcribe_missing,
-                jobs=jobs,
-                classifier=classifier,
-                llm_model=llm_model,
-                skip_review=skip_review,
-                run_identity=run_identity,
-                base_dir=base_dir,
-                caption_request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
-                cookies_from_browser=cookies_from_browser,
-                cookies=cookies,
-            ),
-            event_callback=render_resume_event,
-            dependencies=ResumePipelineDependencies(
-                fetch_captions=fetch_captions_service,
-                transcribe=transcribe_videos_service,
-                extract=extract_batch,
-                ensure_media=_ensure_and_archive_run_media,
-                run_identity=_run_post_content_identity,
-                prepare_reviews=prepare_review_exports,
-            ),
-        )
-        return
-
-    if stage_audio_only:
-        if captions_only:
-            raise ValueError("--captions-only is not meaningful with --stage-audio-only.")
-        if run_identity:
-            raise ValueError("--identity runs during --resume-stage, not audio staging.")
-        selection = resolve_audio_stage_scope(
-            AudioStageScopeRequest(
-                url=url,
-                pastor=pastor,
-                all_sources=all_sources,
-                failed_only=failed_only,
-                replace_existing=replace_existing,
-                limit=limit,
-                all_videos=all_videos,
-                source_ids=selected_source_ids,
-                skip_discovery=skip_discovery,
-                base_dir=base_dir,
-            ),
-            progress_callback=lambda message: console.print(message, markup=False),
-            dependencies=AudioStageScopeDependencies(
-                get_database=get_database,
-                add_source=add_source_service,
-                delete_source=delete_source_service,
-                discover=discover_sources_service,
-                select_existing=_select_existing_stage_video_ids,
-            ),
-        )
-        if selection.skip_reason is not None:
-            return
-        database = selection.database
-        selected_video_ids = set(selection.video_ids)
-        paths = build_paths(base_dir, remember=True)
-        stage_audio_inputs(
-            database,
-            paths,
-            build_tool_config(),
-            AudioStageRequest(
-                video_ids=frozenset(selected_video_ids),
-                download_jobs=download_jobs,
-                resume_jobs=jobs,
-                base_dir=base_dir,
-                caption_request_interval_seconds=CAPTION_BATCH_REQUEST_INTERVAL_SECONDS,
-                cookies_from_browser=cookies_from_browser,
-                cookies=cookies,
-            ),
-            progress_callback=lambda message: console.print(message, markup=False),
-            dependencies=AudioStageDependencies(
-                stage_video=stage_source_audio_for_video,
-                write_manifest=write_audio_stage_manifest,
-                fetch_captions=fetch_captions_service,
-            ),
-        )
-        return
-
-    def render_pipeline_event(event: object) -> None:
+    def render_event(event: object) -> None:
         if isinstance(event, str):
-            console.print(event, markup=False)
+            console.print(event, markup="[yellow]" in event)
         else:
             _print_review_batch(event)
 
-    run_pipeline(
-        PipelineRequest(
+    run_workflow(
+        RunWorkflowRequest(
             url=url,
             pastor=pastor,
             all_sources=all_sources,
@@ -11451,29 +11344,59 @@ def run_workflow_service(
             skip_review=skip_review,
             run_identity=run_identity,
             base_dir=base_dir,
-            source_ids=selected_source_ids,
+            source_ids=tuple(source_ids or ()),
+            stage_audio_only=stage_audio_only,
+            skip_discovery=skip_discovery,
+            resume_stage=resume_stage,
+            acquire_captions=acquire_captions,
+            download_jobs=download_jobs,
+            caption_request_interval_seconds=(
+                CAPTION_BATCH_REQUEST_INTERVAL_SECONDS
+            ),
             cookies_from_browser=cookies_from_browser,
             cookies=cookies,
         ),
-        event_callback=render_pipeline_event,
-        dependencies=PipelineDependencies(
+        event_callback=render_event,
+        dependencies=RunWorkflowDependencies(
             get_database=get_database,
             build_paths=build_paths,
-            add_source=add_source_service,
-            delete_source=delete_source_service,
-            discover=discover_sources_service,
-            fetch_captions=fetch_captions_service,
-            transcribe=transcribe_videos_service,
-            extract=extract_batch,
-            ensure_media=_ensure_and_archive_run_media,
-            run_identity=_run_post_content_identity,
-            prepare_reviews=prepare_review_exports,
+            build_tools=build_tool_config,
+            verify_manifest=_verify_audio_stage_manifest,
+            audio_scope=AudioStageScopeDependencies(
+                get_database=get_database,
+                add_source=add_source_service,
+                delete_source=delete_source_service,
+                discover=discover_sources_service,
+                select_existing=_select_existing_stage_video_ids,
+            ),
+            audio_stage=AudioStageDependencies(
+                stage_video=stage_source_audio_for_video,
+                write_manifest=write_audio_stage_manifest,
+                fetch_captions=fetch_captions_service,
+            ),
+            resume_pipeline=ResumePipelineDependencies(
+                fetch_captions=fetch_captions_service,
+                transcribe=transcribe_videos_service,
+                extract=extract_batch,
+                ensure_media=_ensure_and_archive_run_media,
+                run_identity=_run_post_content_identity,
+                prepare_reviews=prepare_review_exports,
+            ),
+            online_pipeline=PipelineDependencies(
+                get_database=get_database,
+                build_paths=build_paths,
+                add_source=add_source_service,
+                delete_source=delete_source_service,
+                discover=discover_sources_service,
+                fetch_captions=fetch_captions_service,
+                transcribe=transcribe_videos_service,
+                extract=extract_batch,
+                ensure_media=_ensure_and_archive_run_media,
+                run_identity=_run_post_content_identity,
+                prepare_reviews=prepare_review_exports,
+            ),
         ),
     )
-    return
-
-
-
 def _run_post_content_identity(
     base_dir: Path | None,
     *,
