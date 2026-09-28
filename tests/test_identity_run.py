@@ -366,7 +366,6 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.config.build_paths",
                     return_value=paths,
                 ),
-                patch("pastor_transcript_extractor.cli.Database"),
                 patch(
                     "pastor_transcript_extractor.workflows.identity.run.Database"
                 ),
@@ -991,7 +990,6 @@ class IdentityRunTests(unittest.TestCase):
                     "pastor_transcript_extractor.config.build_paths",
                     return_value=paths,
                 ),
-                patch("pastor_transcript_extractor.cli.Database"),
                 patch(
                     "pastor_transcript_extractor.workflows.identity.run.Database"
                 ),

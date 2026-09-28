@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: audit the remaining CLI patches (`typer`, `Database`, `console`,
-  and `review_ground_truth`) as intentional presentation/composition tests or
-  migrate them, then close Milestone 8.
+- Next action: migrate remaining identity-workflow tests away from CLI-imported
+  domain bindings, then classify the final command-presentation patches and
+  close Milestone 8.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1142,6 +1142,14 @@ Moved the post-content identity adapter and review-batch rendering behind
 `commands.pipeline`. Run and resume pipeline composition now references that
 owner directly, while temporary CLI aliases preserve compatibility for direct
 imports. Migrated affected orchestration tests to patch the owning module.
+
+### 2026-09-27 — Milestone 8.23: metadata command patch ownership
+
+Migrated profile-attribution command tests from stale CLI re-export patches to
+`commands.identity.metadata`, which owns the command's attribution loaders,
+terminal normalization, and prompt rendering. Removed two redundant
+`cli.Database` patches from identity workflow tests; those tests already patch
+the database constructor at its workflow owner.
 
 ## Validation log
 
@@ -2647,6 +2655,19 @@ Ran 10 tests in 0.379s — OK
 
 rg -o "pastor_transcript_extractor\\.cli\\.[A-Za-z0-9_]+" tests --glob "*.py" | sort | uniq -c | sort -nr
 Only typer, Database, console, and review_ground_truth patches remain for final audit.
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Metadata command patch ownership
+
+```text
+.venv/bin/python -m compileall -q tests/test_speaker_profile_attribution.py tests/test_identity_run.py
+PASS
+
+.venv/bin/python -m unittest tests.test_speaker_profile_attribution tests.test_cli_contract
+Ran 17 tests in 1.645s — OK
 
 git diff --check
 PASS
