@@ -254,6 +254,8 @@ class TranscriptBlockTests(unittest.TestCase):
             [4, 5, 6, 7],
             normalized.diagnostics["normalized_units"][0]["source_segment_indexes"],
         )
+        self.assertEqual("Father in heaven thank you for grace", normalized.units[0].text)
+        self.assertEqual((4, 5, 6, 7), normalized.units[0].source_segment_indexes)
 
     def test_blocks_map_losslessly_to_timestamped_segments(self) -> None:
         drafts = [draft(index * 30.0, (index + 1) * 30.0, f"segment {index}") for index in range(7)]
