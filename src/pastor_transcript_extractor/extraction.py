@@ -129,6 +129,100 @@ def _record_speaker_evidence_safely(
         )
 
 
+def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
+    search = result.search if isinstance(result.search, dict) else {}
+    discovery = search.get("discovery")
+    discovery = discovery if isinstance(discovery, dict) else {}
+    candidates = search.get("candidates")
+    candidates = candidates if isinstance(candidates, list) else []
+    selected_rank = search.get("selected_rank")
+    selected = next(
+        (
+            candidate
+            for candidate in candidates
+            if isinstance(candidate, dict) and candidate.get("rank") == selected_rank
+        ),
+        None,
+    )
+    score_components = (
+        selected.get("score_components")
+        if isinstance(selected, dict)
+        and isinstance(selected.get("score_components"), dict)
+        else {}
+    )
+    reason_codes: list[str] = []
+    if not result.retained_segment_indexes:
+        reason_codes.append("no_supported_principal_sermon_component")
+    if float(discovery.get("competing_component_ratio") or 0.0) >= 0.75:
+        reason_codes.append("competing_sermon_components")
+    if isinstance(selected, dict):
+        duration = float(selected.get("end_seconds") or 0.0) - float(
+            selected.get("start_seconds") or 0.0
+        )
+        if duration < 300.0:
+            reason_codes.append("candidate_duration_below_medium_minimum")
+        if float(score_components.get("mean_sermon_probability") or 0.0) < 0.72:
+            reason_codes.append("weak_mean_sermon_probability")
+        if float(score_components.get("start_transition_strength") or 0.0) < 0.72:
+            reason_codes.append("weak_start_transition")
+        if float(score_components.get("end_transition_strength") or 0.0) < 0.72:
+            reason_codes.append("weak_end_transition")
+    if not reason_codes:
+        reason_codes.append("low_composed_confidence")
+    return {
+        "status": "abstained",
+        "reason_codes": reason_codes,
+        "confidence_tier": result.confidence_tier,
+        "retained_segment_count": len(result.retained_segment_indexes),
+        "warnings": list(result.warnings),
+        "confidence_reasons": list(result.confidence_reasons or []),
+        "discovery": {
+            key: discovery[key]
+            for key in (
+                "selected_mode",
+                "coarse_component_count",
+                "fine_component_count",
+                "competing_component_ratio",
+            )
+            if key in discovery
+        },
+        "selected_candidate": (
+            {
+                "start_seconds": selected.get("start_seconds"),
+                "end_seconds": selected.get("end_seconds"),
+                "score_components": dict(score_components),
+            }
+            if isinstance(selected, dict)
+            else None
+        ),
+    }
+
+
+def _typesafe_first_requires_verification(classification: object) -> bool:
+    if not isinstance(classification, dict):
+        return False
+    search = classification.get("search")
+    if not isinstance(search, dict):
+        return False
+    discovery = search.get("discovery")
+    if not isinstance(discovery, dict):
+        return False
+    attempt = discovery.get("typesafe_first_attempt")
+    if isinstance(attempt, dict):
+        return attempt.get("status") != "accepted"
+    return "typesafe_first_fallback" in discovery
+
+
+def _recording_verification_required(
+    preliminary_disposition: dict[str, Any],
+    classification: object,
+) -> bool:
+    return (
+        preliminary_disposition.get("status") == REVIEW_REQUIRED
+        or _typesafe_first_requires_verification(classification)
+    )
+
+
 def _classify_with_fallback(
     drafts: list[SegmentDraft],
     detected_window: SermonWindowResult,
@@ -176,6 +270,7 @@ def _classify_with_fallback(
     if classifier == "llm" and llm_client is None:
         raise ValueError("LLM classifier requested but no local LLM client is configured")
     typesafe_warning: str | None = None
+    typesafe_attempt: dict[str, Any] | None = None
     if classifier == "typesafe" and semantic_classifier is not None:
         classify_sermon = getattr(semantic_classifier, "classify_sermon", None)
         if callable(classify_sermon):
@@ -197,14 +292,36 @@ def _classify_with_fallback(
                         WINDOW_ARBITRATION_POLICY_VERSION
                     )
                     return result, typesafe_result
-                typesafe_warning = (
-                    "TypeSafe first pass abstained; used the configured fallback"
-                )
+                if isinstance(typesafe_result, HybridSermonResult):
+                    typesafe_attempt = _typesafe_first_attempt(typesafe_result)
+                    reasons = ", ".join(typesafe_attempt["reason_codes"])
+                    typesafe_warning = (
+                        f"TypeSafe first pass abstained ({reasons}); "
+                        "used the configured fallback"
+                    )
+                else:
+                    typesafe_attempt = {
+                        "status": "failed",
+                        "reason_codes": ["invalid_first_pass_result"],
+                    }
+                    typesafe_warning = (
+                        "TypeSafe first pass returned an invalid result; "
+                        "used the configured fallback"
+                    )
             except Exception as error:
+                typesafe_attempt = {
+                    "status": "failed",
+                    "reason_codes": ["first_pass_exception"],
+                    "error": str(error),
+                }
                 typesafe_warning = (
                     f"TypeSafe first pass failed; used the configured fallback: {error}"
                 )
         else:
+            typesafe_attempt = {
+                "status": "unavailable",
+                "reason_codes": ["first_pass_unavailable"],
+            }
             typesafe_warning = (
                 "TypeSafe first pass unavailable; used the configured fallback"
             )
@@ -214,6 +331,10 @@ def _classify_with_fallback(
         classification["warnings"].append(
             typesafe_warning or "TypeSafe first pass is not configured"
         )
+        if typesafe_attempt is not None:
+            classification.setdefault("search", {}).setdefault("discovery", {})[
+                "typesafe_first_attempt"
+            ] = typesafe_attempt
         return classification, None
     if classifier not in {"auto", "llm", "typesafe"} or llm_client is None:
         return classification, None
@@ -247,6 +368,10 @@ def _classify_with_fallback(
         result.setdefault("search", {}).setdefault("discovery", {})[
             "typesafe_first_fallback"
         ] = typesafe_warning
+        if typesafe_attempt is not None:
+            result["search"]["discovery"]["typesafe_first_attempt"] = (
+                typesafe_attempt
+            )
     result["window_arbitration_policy_version"] = WINDOW_ARBITRATION_POLICY_VERSION
     return result, hybrid_result
 
@@ -1404,10 +1529,11 @@ def reclassify_video(
         existing_window,
         guest_speaker_suspected=payload.get("guest_speaker_suspected") is True,
     )
-    if (
-        preliminary_disposition["status"] == REVIEW_REQUIRED
-        and verifier is not None
-    ):
+    verifier_required = _recording_verification_required(
+        preliminary_disposition,
+        classification,
+    )
+    if verifier_required and verifier is not None:
         recording_verification = (
             verifier.reuse_local_artifact(
                 title=video.title,
@@ -1431,7 +1557,7 @@ def reclassify_video(
             "guest_speaker_safeguard"
             if payload.get("guest_speaker_suspected") is True
             else "verifier_unavailable"
-            if preliminary_disposition["status"] == REVIEW_REQUIRED
+            if verifier_required
             else "base_classifier_resolved"
         )
     classification["recording_verifier_policy_version"] = (
@@ -1766,10 +1892,11 @@ def extract_video(
         sermon_window,
         guest_speaker_suspected=guest_flags.suspected,
     )
-    if (
-        preliminary_disposition["status"] == REVIEW_REQUIRED
-        and verifier is not None
-    ):
+    verifier_required = _recording_verification_required(
+        preliminary_disposition,
+        classification,
+    )
+    if verifier_required and verifier is not None:
         recording_verification = verifier.verify(
             title=video.title,
             proposed={
@@ -1785,7 +1912,7 @@ def extract_video(
             "guest_speaker_safeguard"
             if guest_flags.suspected
             else "verifier_unavailable"
-            if preliminary_disposition["status"] == REVIEW_REQUIRED
+            if verifier_required
             else "base_classifier_resolved"
         )
     classification["recording_verifier_policy_version"] = (
