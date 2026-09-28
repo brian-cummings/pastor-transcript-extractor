@@ -31,6 +31,15 @@ from pastor_transcript_extractor.recording_verifier import (
     validate_partition_access,
 )
 from pastor_transcript_extractor.reviewed_speaker_evidence import load_reviewed_speaker_evidence
+from pastor_transcript_extractor.speaker_machine_assignment import (
+    machine_assignment_report,
+)
+from pastor_transcript_extractor.speaker_pair_eligibility import (
+    assess_automatic_speaker_observation,
+)
+from pastor_transcript_extractor.speaker_shadow_association import (
+    assess_profile_association_readiness,
+)
 from pastor_transcript_extractor.fixture_validation import (
     FixtureValidationError,
     ValidatedFixture,

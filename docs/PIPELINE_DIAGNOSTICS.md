@@ -129,6 +129,10 @@ embedding the complete trace evidence. Use `--verbose` only when complete traces
 per-video JSON/Markdown reports are needed. A single-video `diagnose` run is usually the
 more efficient drill-down path.
 
+The systemic identity-blocker analysis is derived from the current reviewed speaker evidence,
+automatic-observation eligibility, and machine-assignment state. It is read-only: these inputs
+are reported as current diagnostic context and are never changed by `diagnose-system`.
+
 ```bash
 pte diagnose-system \
   --verbose \
