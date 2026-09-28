@@ -166,7 +166,29 @@ class FinalDispositionTests(unittest.TestCase):
         )
 
         self.assertEqual("review_required", result["status"])
-        self.assertEqual(["medium_confidence_requires_review"], result["reason_codes"])
+        self.assertEqual(
+            ["recording_verifier_unclear_requires_review"],
+            result["reason_codes"],
+        )
+
+    def test_unclear_recording_verifier_blocks_high_confidence_acceptance(self) -> None:
+        result = build_final_disposition(
+            {"confidence_tier": "high", "retained_segment_indexes": [1, 2]},
+            {"start_seconds": 60.0, "end_seconds": 600.0, "source": "hybrid_llm"},
+            recording_verification={
+                "policy_version": "recording-verifier-typesafe-policy-v5-choice-boundaries",
+                "decision": "unclear",
+                "predicted_outcome": None,
+                "confidence": "low",
+            },
+        )
+
+        self.assertEqual("review_required", result["status"])
+        self.assertEqual(
+            ["recording_verifier_unclear_requires_review"],
+            result["reason_codes"],
+        )
+        self.assertEqual("final_disposition_v3", result["policy_version"])
 
     def test_guest_signal_does_not_override_recording_verifier(self) -> None:
         result = build_final_disposition(
