@@ -21,14 +21,15 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v6"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v7"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
 BLOCK_BUILDER_VERSION = "typesafe-coarse-300s-fine-60s-v1"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v6-edge-neighborhood"
-BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v3-neighborhood"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v7-compact-candidates"
+BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
+BOUNDARY_CANDIDATE_MIN_SPACING_SECONDS = 0.75
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
 # shared state near the size exercised by TypeSafe's large-document cookbook.
 BATCH_SIZE = 6
@@ -365,7 +366,16 @@ def _boundary_candidates(
                     ),
                 )
             )
-    return candidates
+    compact: list[TypeSafeBoundaryCandidate] = []
+    for candidate in candidates:
+        if (
+            compact
+            and candidate.boundary_seconds - compact[-1].boundary_seconds
+            < BOUNDARY_CANDIDATE_MIN_SPACING_SECONDS
+        ):
+            continue
+        compact.append(candidate)
+    return compact
 
 
 def _edge_neighborhood(

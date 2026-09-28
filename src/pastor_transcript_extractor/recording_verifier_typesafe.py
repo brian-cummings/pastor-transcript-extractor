@@ -316,12 +316,8 @@ class TypeSafeSdkAdapter:
         }
         criteria = {
             candidate.candidate_id: {
-                "choose_when": (
-                    f"This cut best shows {expected_order}. Caption fragments may overlap "
-                    "or repeat across the cut; judge the semantic transition."
-                ),
-                "before_boundary": candidate.before_text[-350:],
-                "after_boundary": candidate.after_text[:350],
+                "before_boundary_ends": candidate.before_text[-160:],
+                "after_boundary_begins": candidate.after_text[:160],
             }
             for candidate in candidates
         }
@@ -338,6 +334,10 @@ class TypeSafeSdkAdapter:
                             "worship-service sermon, or `no_clear_boundary`."
                         ),
                         "expected_order": expected_order,
+                        "caption_handling": (
+                            "Caption fragments may overlap or repeat. Choose by the "
+                            "semantic handoff, not a duplicated fragment."
+                        ),
                         "sermon_scope": (
                             "Keep closing or opening prayer, Scripture, appeal, and "
                             "benediction when integrated into the preacher's message."
