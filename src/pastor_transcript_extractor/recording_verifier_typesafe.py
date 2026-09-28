@@ -367,7 +367,37 @@ class TypeSafeSdkAdapter:
         edge: str,
         candidate: TypeSafeBoundaryCandidate,
     ) -> TypeSafeBoundaryAnswer:
-        expected_order = self._boundary_order(edge)
+        if edge == "start":
+            statement = (
+                "`before_boundary` is still a pre-sermon service element, and "
+                "`after_boundary` begins the principal preacher's sustained message "
+                "or its integrated opening Scripture or prayer."
+            )
+            true_criteria = (
+                "The cut keeps welcomes, announcements, music, separate prayer, and "
+                "speaker introduction before the sermon while retaining the beginning "
+                "of the principal message after it."
+            )
+            false_criteria = (
+                "The principal message already begins before the cut, does not begin "
+                "after it, or both excerpts remain the same service element."
+            )
+        else:
+            statement = (
+                "`before_boundary` finishes the principal preacher's same sermon-closing "
+                "prayer, appeal, or benediction, and `after_boundary` begins a distinct "
+                "post-sermon service activity."
+            )
+            true_criteria = (
+                "The cut retains the complete integrated closing material before it and "
+                "places seating instructions, music, announcements, logistics, or another "
+                "new service element after it. A final Amen may be repeated after the cut "
+                "by overlapping captions."
+            )
+            false_criteria = (
+                "The closing prayer, appeal, or benediction continues materially after "
+                "the cut; post-sermon activity begins before it; or no handoff occurs."
+            )
         result = self._client.system_one(
             {
                 "recording_title": title,
@@ -378,25 +408,15 @@ class TypeSafeSdkAdapter:
             {
                 "valid_boundary": self._Noul(
                     instructions={
-                        "statement_to_evaluate": (
-                            "The transcript immediately around this boundary shows "
-                            f"{expected_order}."
-                        ),
+                        "statement_to_evaluate": statement,
                         "caption_handling": (
-                            "Ignore repeated or overlapping caption fragments. A trailing "
-                            "Amen after the cut may echo the completed prayer; use the "
-                            "surrounding activity to identify the semantic handoff."
+                            "Ignore repeated or overlapping caption fragments and judge "
+                            "the semantic handoff between the named excerpts."
                         ),
                     },
                     criteria={
-                        "true": (
-                            "The cut preserves the integrated sermon material and places "
-                            "the separate service activity on the outside."
-                        ),
-                        "false": (
-                            "The cut removes integrated sermon material, retains separate "
-                            "service activity, or lacks a discernible handoff."
-                        ),
+                        "true": true_criteria,
+                        "false": false_criteria,
                     },
                 )
             },
