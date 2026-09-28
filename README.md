@@ -1210,6 +1210,8 @@ pte identity analyze-profile-metadata --all-anonymous-profiles --plan-only --bas
 pte identity analyze-profile-metadata --all-anonymous-profiles --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --profile-id PROFILE_ID --base-dir /path/to/app-data
 pte identity analyze-profile-metadata --all --details --base-dir /path/to/app-data
+pte identity analyze-profile-metadata --backend typesafe --model jev-1.13.0 --profile-id PROFILE_ID --details --base-dir /path/to/app-data
+pte identity analyze-profile-metadata --backend typesafe --model jev-1.13.0 --all --details --base-dir /path/to/app-data
 ```
 
 Metadata enrichment reads each selected video's latest immutable metadata
@@ -1229,6 +1231,18 @@ membership, metadata, prompt version, model, or model digest changes. Name
 support is grounded deterministically against the original fields across
 distinct recordings; the model does not need to reproduce punctuation or the
 supporting excerpt verbatim.
+
+The default backend remains `ollama` for compatibility. The `typesafe` backend
+extracts conservative exact person-name spans in code and asks Jev only to
+classify each occurrence as an explicit sermon-speaker credit, another person,
+or ambiguous. Code owns confidence routing and requires the same normalized
+candidate to have high-confidence speaker credit in at least two distinct
+recordings. Competing supported candidates require human review; missing,
+ambiguous, low-confidence, invalid, or unavailable Jev results fail closed with
+no Ollama fallback. TypeSafe artifacts and per-occurrence judgments are keyed by
+the pinned model identity, question and policy versions, profile membership,
+and exact metadata/candidate state, so legacy Ollama attempts cannot satisfy a
+TypeSafe run.
 Displayed identity proposals omit a leading `Pastor`; other honorifics remain
 visible, while common variants such as `Doctor`/`Dr.` and `Reverend`/`Rev.` are
 removed from the normalized identity used for matching.
