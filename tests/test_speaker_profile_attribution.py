@@ -305,12 +305,12 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
 
         with (
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.commands.identity.metadata."
                 "load_profile_attribution_clip_timestamps",
                 return_value=timestamps,
             ),
             patch(
-                "pastor_transcript_extractor.cli.typer.prompt",
+                "pastor_transcript_extractor.commands.identity.metadata.typer.prompt",
                 return_value="skip",
             ) as prompt,
         ):
@@ -411,12 +411,12 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
 
         with (
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.commands.identity.metadata."
                 "load_profile_metadata_attributions",
                 return_value={initial.membership_fingerprint: proposal},
             ),
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.commands.identity.metadata."
                 "load_profile_attribution_clip_timestamps",
                 return_value=timestamps,
             ),
@@ -450,7 +450,7 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
     def test_review_cli_normalizes_terminal_before_prompting(self) -> None:
         with (
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.commands.identity.metadata."
                 "load_profile_attribution_clip_timestamps",
                 return_value={
                     observation.input_fingerprint: int(
@@ -460,11 +460,11 @@ class SpeakerProfileAttributionTests(unittest.TestCase):
                 },
             ),
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.commands.identity.metadata."
                 "_normalize_review_terminal_input"
             ) as normalize_terminal,
             patch(
-                "pastor_transcript_extractor.cli.typer.prompt",
+                "pastor_transcript_extractor.commands.identity.metadata.typer.prompt",
                 return_value="skip",
             ) as prompt,
         ):
