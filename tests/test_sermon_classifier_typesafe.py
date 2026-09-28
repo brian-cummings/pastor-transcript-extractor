@@ -18,6 +18,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     QUESTION_SET_VERSION,
     ROLE_CHOICES,
     SEARCH_ALGORITHM_VERSION,
+    TypeSafeBoundaryAnswer,
     TypeSafeBlockAnswer,
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
@@ -49,6 +50,17 @@ class FakeBlockClient:
                 "jev-1.13.0",
             )
         return answers
+
+    def assess_boundary_candidates(self, title, edge, candidates):
+        del title, edge
+        self.calls += 1
+        return {
+            candidate.candidate_id: TypeSafeBoundaryAnswer(
+                0.9 if "CLOSING PRAYER" in candidate.before_text else 0.1,
+                "jev-1.13.0",
+            )
+            for candidate in candidates
+        }
 
 
 def drafts() -> list[SegmentDraft]:
@@ -97,7 +109,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
                 cache_dir=Path(tmp),
             )
 
-        self.assertEqual("typesafe_first_v1", result.method)
+        self.assertEqual(SEARCH_ALGORITHM_VERSION, result.method)
         self.assertEqual("high", result.confidence_tier)
         self.assertEqual(list(range(10, 30)), result.retained_segment_indexes)
         candidate = result.search["candidates"][0]
@@ -144,6 +156,71 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(first_call_count + 1, client.calls)
         self.assertEqual(2, cache.hits)
         self.assertEqual(len(blocks), cache.misses)
+
+    def test_refines_weak_end_inside_adjacent_mixed_block_and_caches_it(self) -> None:
+        class MixedEdgeClient(FakeBlockClient):
+            def assess_blocks(self, title, blocks):
+                answers = super().assess_blocks(title, blocks)
+                for block in blocks:
+                    if "CLOSING PRAYER" not in block.text:
+                        continue
+                    probabilities = {role: 0.0 for role in ROLE_CHOICES}
+                    probabilities["principal_sermon"] = 0.4
+                    probabilities["administration_or_transition"] = 0.55
+                    probabilities["unclear"] = 0.05
+                    answers[block.block_id] = TypeSafeBlockAnswer(
+                        "administration_or_transition",
+                        probabilities,
+                        0.4,
+                        "jev-1.13.0",
+                    )
+                return answers
+
+        transcript = drafts()
+        transcript[30] = SegmentDraft(
+            900.0,
+            930.0,
+            "CLOSING PRAYER in your name we pray amen",
+            None,
+            TranscriptSegmentLabel.UNKNOWN,
+            0.5,
+        )
+        transcript[31] = SegmentDraft(
+            930.0,
+            960.0,
+            "SERVICE ADMIN final hymn and luncheon",
+            None,
+            TranscriptSegmentLabel.UNKNOWN,
+            0.5,
+        )
+        client = MixedEdgeClient()
+        classifier = TypeSafeFirstPassSermonClassifier(
+            model="jev-1.13.0", client=client
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            first = classifier.classify_sermon(
+                transcript,
+                rule_window(),
+                title="Worship Service",
+                cache_dir=Path(tmp),
+            )
+            first_calls = client.calls
+            second = classifier.classify_sermon(
+                transcript,
+                rule_window(),
+                title="Worship Service",
+                cache_dir=Path(tmp),
+            )
+
+        candidate = first.search["candidates"][0]
+        refinement = candidate["boundary_recovery"]["end"]["segment_refinement"]
+        self.assertEqual(930.0, candidate["end_seconds"])
+        self.assertIn(30, first.retained_segment_indexes)
+        self.assertNotIn(31, first.retained_segment_indexes)
+        self.assertTrue(refinement["accepted"])
+        self.assertEqual("high", first.confidence_tier)
+        self.assertEqual(first_calls, client.calls)
+        self.assertEqual(0, second.cache_stats["misses"])
 
     def test_currentness_tracks_typesafe_first_versions(self) -> None:
         classification = {

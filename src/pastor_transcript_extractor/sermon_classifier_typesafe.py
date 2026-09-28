@@ -21,11 +21,13 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v1"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v2"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
 BLOCK_BUILDER_VERSION = "typesafe-coarse-300s-fine-60s-v1"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v1"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v2-segment-refinement"
+BOUNDARY_QUESTION_VERSION = "typesafe-segment-boundary-transition-v1"
+BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
 # shared state near the size exercised by TypeSafe's large-document cookbook.
 BATCH_SIZE = 6
@@ -97,12 +99,34 @@ class TypeSafeBlockAnswer:
         return sum(float(self.probabilities.get(role, 0.0)) for role in SERMON_ROLES)
 
 
+@dataclass(frozen=True, slots=True)
+class TypeSafeBoundaryCandidate:
+    candidate_id: str
+    boundary_seconds: float
+    before_text: str
+    after_text: str
+    retained_segment_indexes: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TypeSafeBoundaryAnswer:
+    transition_probability: float
+    resolved_model_id: str
+
+
 class TypeSafeBlockClient(Protocol):
     def assess_blocks(
         self,
         title: str,
         blocks: list[TranscriptBlock],
     ) -> Mapping[int, TypeSafeBlockAnswer]: ...
+
+    def assess_boundary_candidates(
+        self,
+        title: str,
+        edge: str,
+        candidates: list[TypeSafeBoundaryCandidate],
+    ) -> Mapping[str, TypeSafeBoundaryAnswer]: ...
 
 
 def _hash(value: Any) -> str:
@@ -177,6 +201,137 @@ class TypeSafeBlockCache:
                 answers[block.block_id] = answer
                 self.misses += 1
         return answers
+
+    def _boundary_identity(
+        self,
+        title: str,
+        edge: str,
+        candidate: TypeSafeBoundaryCandidate,
+    ) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "question_version": BOUNDARY_QUESTION_VERSION,
+            "recording_title": title,
+            "edge": edge,
+            "candidate": {
+                "boundary_seconds": candidate.boundary_seconds,
+                "before_text": candidate.before_text,
+                "after_text": candidate.after_text,
+            },
+        }
+
+    def assess_boundaries(
+        self,
+        client: TypeSafeBlockClient,
+        title: str,
+        edge: str,
+        candidates: list[TypeSafeBoundaryCandidate],
+    ) -> dict[str, TypeSafeBoundaryAnswer]:
+        """Cache each cut point independently of request batching."""
+        answers: dict[str, TypeSafeBoundaryAnswer] = {}
+        missing: list[tuple[TypeSafeBoundaryCandidate, dict[str, Any], Path]] = []
+        for candidate in candidates:
+            identity = self._boundary_identity(title, edge, candidate)
+            path = self.root / "boundaries" / f"{_hash(identity)}.json"
+            if path.exists():
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    answers[candidate.candidate_id] = TypeSafeBoundaryAnswer(
+                        **payload["answer"]
+                    )
+                    self.hits += 1
+                    continue
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+            missing.append((candidate, identity, path))
+
+        # Candidate excerpts are deliberately short, so all cut points for one
+        # mixed edge fit in a single shared-state request. This keeps refinement
+        # to one Jev round trip while retaining item-level cache files.
+        for batch in [missing] if missing else []:
+            assessed = client.assess_boundary_candidates(
+                title, edge, [item[0] for item in batch]
+            )
+            for candidate, identity, path in batch:
+                answer = assessed.get(candidate.candidate_id)
+                if answer is None:
+                    raise ValueError(
+                        f"TypeSafe omitted boundary judgment {candidate.candidate_id}"
+                    )
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    json.dumps(
+                        {"identity": identity, "answer": asdict(answer)},
+                        indent=2,
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+                answers[candidate.candidate_id] = answer
+                self.misses += 1
+        return answers
+
+
+def _context_text(drafts: list[SegmentDraft], indexes: list[int], *, tail: bool) -> str:
+    text = "\n".join(drafts[index].text for index in indexes)
+    return text[-700:] if tail else text[:700]
+
+
+def _boundary_candidates(
+    drafts: list[SegmentDraft],
+    *,
+    edge: str,
+    selected_indexes: list[int],
+    adjacent_block: TranscriptBlock,
+    selected_edge_block: TranscriptBlock,
+) -> list[TypeSafeBoundaryCandidate]:
+    adjacent = adjacent_block.segment_indexes
+    if len(adjacent) < 2:
+        return []
+    candidates: list[TypeSafeBoundaryCandidate] = []
+    if edge == "end":
+        selected_context = selected_edge_block.segment_indexes
+        for split in range(1, len(adjacent)):
+            before_indexes = adjacent[:split]
+            after_indexes = adjacent[split:]
+            boundary = drafts[before_indexes[-1]].end_seconds
+            if boundary is None:
+                continue
+            candidates.append(
+                TypeSafeBoundaryCandidate(
+                    candidate_id=f"end:{boundary:.3f}",
+                    boundary_seconds=boundary,
+                    before_text=_context_text(
+                        drafts, selected_context + before_indexes, tail=True
+                    ),
+                    after_text=_context_text(drafts, after_indexes, tail=False),
+                    retained_segment_indexes=tuple(
+                        sorted(set(selected_indexes + before_indexes))
+                    ),
+                )
+            )
+    else:
+        selected_context = selected_edge_block.segment_indexes
+        for split in range(1, len(adjacent)):
+            before_indexes = adjacent[:split]
+            after_indexes = adjacent[split:]
+            boundary = drafts[after_indexes[0]].start_seconds
+            if boundary is None:
+                continue
+            candidates.append(
+                TypeSafeBoundaryCandidate(
+                    candidate_id=f"start:{boundary:.3f}",
+                    boundary_seconds=boundary,
+                    before_text=_context_text(drafts, before_indexes, tail=True),
+                    after_text=_context_text(
+                        drafts, after_indexes + selected_context, tail=False
+                    ),
+                    retained_segment_indexes=tuple(
+                        sorted(set(after_indexes + selected_indexes))
+                    ),
+                )
+            )
+    return candidates
 
 
 def _candidate_components(
@@ -356,10 +511,109 @@ class TypeSafeFirstPassSermonClassifier:
         recording_end = raw_fine_blocks[-1].end_seconds
         start_strength = min(first_probability, 1.0 - previous_probability)
         end_strength = min(last_probability, 1.0 - following_probability)
+        refined_edges: dict[str, dict[str, Any]] = {}
+        boundary_client = getattr(self.client, "assess_boundary_candidates", None)
+        boundary_work: list[tuple[str, list[TypeSafeBoundaryCandidate]]] = []
+        if callable(boundary_client):
+            if (
+                start_strength < BOUNDARY_AUTOMATIC_THRESHOLD
+                and start_position > 0
+                and first.start_seconds
+                - fine_blocks[start_position - 1].end_seconds
+                <= 1.0
+            ):
+                boundary_work.append(
+                    (
+                        "start",
+                        _boundary_candidates(
+                            drafts,
+                            edge="start",
+                            selected_indexes=selected_indexes,
+                            adjacent_block=fine_blocks[start_position - 1],
+                            selected_edge_block=first,
+                        ),
+                    )
+                )
+            if (
+                end_strength < BOUNDARY_AUTOMATIC_THRESHOLD
+                and end_position + 1 < len(fine_blocks)
+                and fine_blocks[end_position + 1].start_seconds
+                - last.end_seconds
+                <= 1.0
+            ):
+                boundary_work.append(
+                    (
+                        "end",
+                        _boundary_candidates(
+                            drafts,
+                            edge="end",
+                            selected_indexes=selected_indexes,
+                            adjacent_block=fine_blocks[end_position + 1],
+                            selected_edge_block=last,
+                        ),
+                    )
+                )
+        boundary_candidate_count = sum(len(items) for _, items in boundary_work)
+        if progress is not None and boundary_candidate_count:
+            progress("typesafe-segment-boundary", 0, boundary_candidate_count)
+        for edge, candidates in boundary_work:
+            if not candidates:
+                continue
+            try:
+                with self._lock:
+                    boundary_answers = cache.assess_boundaries(
+                        self.client, title, edge, candidates
+                    )
+            except Exception as error:
+                refined_edges[edge] = {
+                    "algorithm_version": BOUNDARY_QUESTION_VERSION,
+                    "candidate_count": len(candidates),
+                    "accepted": False,
+                    "error": f"{type(error).__name__}: {error}",
+                }
+                continue
+            best = max(
+                candidates,
+                key=lambda item: boundary_answers[item.candidate_id].transition_probability,
+            )
+            probability = boundary_answers[best.candidate_id].transition_probability
+            refinement = {
+                "algorithm_version": BOUNDARY_QUESTION_VERSION,
+                "candidate_count": len(candidates),
+                "selected_candidate_id": best.candidate_id,
+                "boundary_seconds": best.boundary_seconds,
+                "transition_probability": round(probability, 6),
+                "automatic_threshold": BOUNDARY_AUTOMATIC_THRESHOLD,
+                "accepted": probability >= BOUNDARY_AUTOMATIC_THRESHOLD,
+            }
+            refined_edges[edge] = refinement
+            if probability < BOUNDARY_AUTOMATIC_THRESHOLD:
+                continue
+            selected_indexes = list(best.retained_segment_indexes)
+            if edge == "start":
+                start_strength = probability
+            else:
+                end_strength = probability
+        if progress is not None and boundary_candidate_count:
+            progress(
+                "typesafe-segment-boundary",
+                boundary_candidate_count,
+                boundary_candidate_count,
+            )
         mean_probability = sum(
             fine_answers[block.block_id].sermon_probability for block in selected
         ) / len(selected)
-        duration = last.end_seconds - first.start_seconds
+        selected_start = (
+            float(refined_edges["start"]["boundary_seconds"])
+            if refined_edges.get("start", {}).get("accepted")
+            else first.start_seconds
+        )
+        selected_end = (
+            float(refined_edges["end"]["boundary_seconds"])
+            if refined_edges.get("end", {}).get("accepted")
+            else last.end_seconds
+        )
+        duration = selected_end - selected_start
         confidence = (
             "high"
             if mean_probability >= 0.82
@@ -396,10 +650,15 @@ class TypeSafeFirstPassSermonClassifier:
                     if first.start_seconds > recording_start + 1.0
                     else "recording_edge"
                 ),
-                "boundary_seconds": first.start_seconds,
+                "boundary_seconds": selected_start,
                 "inside_probability": round(first_probability, 6),
                 "outside_probability": round(previous_probability, 6),
                 "transition_strength": round(start_strength, 6),
+                **(
+                    {"segment_refinement": refined_edges["start"]}
+                    if "start" in refined_edges
+                    else {}
+                ),
             },
             "end": {
                 "status": (
@@ -412,17 +671,22 @@ class TypeSafeFirstPassSermonClassifier:
                     if last.end_seconds < recording_end - 1.0
                     else "recording_edge"
                 ),
-                "boundary_seconds": last.end_seconds,
+                "boundary_seconds": selected_end,
                 "inside_probability": round(last_probability, 6),
                 "outside_probability": round(following_probability, 6),
                 "transition_strength": round(end_strength, 6),
+                **(
+                    {"segment_refinement": refined_edges["end"]}
+                    if "end" in refined_edges
+                    else {}
+                ),
             },
         }
         candidate = {
             "rank": 1,
             "source": "typesafe_first",
-            "start_seconds": first.start_seconds,
-            "end_seconds": last.end_seconds,
+            "start_seconds": selected_start,
+            "end_seconds": selected_end,
             "included_segment_indexes": selected_indexes,
             "coarse_support_block_ids": [
                 block.block_id
@@ -461,6 +725,10 @@ class TypeSafeFirstPassSermonClassifier:
             warnings.append("TypeSafe boundary map did not meet the automatic threshold")
         if len(fine_components) > 1:
             warnings.append("multiple TypeSafe sermon-like components were found")
+        if any("error" in refinement for refinement in refined_edges.values()):
+            warnings.append(
+                "TypeSafe segment boundary refinement failed; retained block boundary"
+            )
         return HybridSermonResult(
             method=self.method,
             model=self.model,
@@ -490,6 +758,7 @@ class TypeSafeFirstPassSermonClassifier:
                         competing_component_ratio, 6
                     ),
                     "cache_identity": "per_block_question_state",
+                    "segment_boundary_refinement": bool(boundary_candidate_count),
                 },
             },
             confidence_reasons=[
