@@ -2739,6 +2739,27 @@ Ran 6 tests in 0.237s — OK
 PASS — completed an isolated zero-trace diagnostic run without a NameError.
 ```
 
+### 2026-09-28 — Identity metadata-renderer refactor repair
+
+The identity workflow's metadata-attribution summary still called
+`_print_profile_metadata_proposals` as a `cli.py` local after that renderer
+moved to `commands/identity/metadata.py`. An otherwise completed corpus run
+therefore crashed with `NameError` after persisting its metadata-attribution
+diagnostics. The workflow now calls the renderer through the owning metadata
+command module. Cached validation failures remain reported and persisted rather
+than aborting the run.
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run tests.test_identity_run_workflow
+Ran 62 tests in 0.577s — OK
+
+git diff --check
+PASS
+```
+
 ## Known risks
 
 - Existing tests rely heavily on `cli.py` import and patch locations. Every

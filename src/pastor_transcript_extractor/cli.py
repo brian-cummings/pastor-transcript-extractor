@@ -3391,7 +3391,7 @@ def run_identity_workflow_service(
             f"model_calls={metadata_run.model_calls} "
             f"failed={metadata_run.failed}."
         )
-        _print_profile_metadata_proposals(metadata_run)
+        _identity_metadata_commands._print_profile_metadata_proposals(metadata_run)
         if metadata_run.failed:
             console.print(
                 "Profile metadata diagnostics were persisted. "
