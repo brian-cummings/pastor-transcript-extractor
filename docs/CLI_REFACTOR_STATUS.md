@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: move `_run_post_content_identity` and review-batch rendering
-  behind the pipeline command boundary, then audit the remaining CLI patches as
-  intentional presentation tests or migrate them.
+- Next action: audit the remaining CLI patches (`typer`, `Database`, `console`,
+  and `review_ground_truth`) as intentional presentation/composition tests or
+  migrate them, then close Milestone 8.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1135,6 +1135,13 @@ single-use domain behavior is mocked through `cli.py`.
 Changed run-workflow source creation and deletion dependencies to resolve from
 `commands.catalog`, and migrated the affected orchestration test to patch that
 owner rather than CLI imports.
+
+### 2026-09-27 — Milestone 8.22: pipeline identity presentation seams
+
+Moved the post-content identity adapter and review-batch rendering behind
+`commands.pipeline`. Run and resume pipeline composition now references that
+owner directly, while temporary CLI aliases preserve compatibility for direct
+imports. Migrated affected orchestration tests to patch the owning module.
 
 ## Validation log
 
@@ -2624,6 +2631,22 @@ PASS
 
 .venv/bin/python -m unittest <1 affected catalog-composition test> tests.test_cli_contract
 Ran 7 tests in 0.269s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Pipeline identity presentation seams
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/pipeline.py src/pastor_transcript_extractor/cli.py tests/test_sources.py
+PASS
+
+.venv/bin/python -m unittest <4 affected pipeline identity/review tests> tests.test_cli_contract
+Ran 10 tests in 0.379s — OK
+
+rg -o "pastor_transcript_extractor\\.cli\\.[A-Za-z0-9_]+" tests --glob "*.py" | sort | uniq -c | sort -nr
+Only typer, Database, console, and review_ground_truth patches remain for final audit.
 
 git diff --check
 PASS
