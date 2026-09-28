@@ -40,7 +40,7 @@ from pastor_transcript_extractor.workflows.identity.association import (
 class IdentityRunTests(unittest.TestCase):
     def setUp(self) -> None:
         pending_repairs = patch(
-            "pastor_transcript_extractor.cli."
+            "pastor_transcript_extractor.identity_exemplar_preparation."
             "ExemplarPreparationStateCache.pending_automatic_repairs",
             return_value=(),
         )
@@ -212,7 +212,7 @@ class IdentityRunTests(unittest.TestCase):
 
     def test_automatic_impact_replay_uses_bounded_existing_workflow(self) -> None:
         with patch(
-            "pastor_transcript_extractor.cli."
+            "pastor_transcript_extractor.commands.identity.association."
             "shadow_associate_speakers_command",
             return_value=(Path("result.json"),),
         ) as replay:
@@ -393,7 +393,7 @@ class IdentityRunTests(unittest.TestCase):
                     ),
                 ) as prepare_canonical,
                 patch(
-                    "pastor_transcript_extractor.cli."
+                    "pastor_transcript_extractor.identity_exemplar_preparation."
                     "ExemplarPreparationStateCache.record_repair_attempt"
                 ) as record_repair,
                 patch(
@@ -524,17 +524,17 @@ class IdentityRunTests(unittest.TestCase):
 
         with (
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.identity_coordination."
                 "load_shadow_association_confirmation_pairs",
                 return_value=(association, ready_association),
             ),
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.identity_coordination."
                 "load_discovery_resolution_pairs",
                 return_value=(resolution,),
             ),
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.identity_coordination."
                 "load_discovery_acoustic_ranking_pairs",
                 return_value=(acoustic,),
             ),
@@ -621,7 +621,7 @@ class IdentityRunTests(unittest.TestCase):
                 return_value=prepared,
             ) as prepare,
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.media_archive."
                 "write_canonical_clip_preparation_manifest"
             ) as write_manifest,
         ):
@@ -734,7 +734,7 @@ class IdentityRunTests(unittest.TestCase):
                 return_value=prepared,
             ),
             patch(
-                "pastor_transcript_extractor.cli."
+                "pastor_transcript_extractor.media_archive."
                 "write_canonical_clip_preparation_manifest"
             ),
         ):

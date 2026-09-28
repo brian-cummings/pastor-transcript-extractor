@@ -7,10 +7,10 @@ context compaction or a new session.
 ## Current state
 
 - Status: in progress.
-- Active milestone: Milestone 8 — replace incidental test seams.
-- Next action: migrate remaining identity-workflow tests away from CLI-imported
-  domain bindings, then classify the final command-presentation patches and
-  close Milestone 8.
+- Active milestone: Milestone 9 — remove migration scaffolding.
+- Next action: inventory temporary CLI compatibility exports and their direct
+  consumers, then remove the first bounded family while preserving the app and
+  entry-point contract.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1150,6 +1150,15 @@ Migrated profile-attribution command tests from stale CLI re-export patches to
 terminal normalization, and prompt rendering. Removed two redundant
 `cli.Database` patches from identity workflow tests; those tests already patch
 the database constructor at its workflow owner.
+
+### 2026-09-27 — Milestone 8.24: identity domain patch ownership
+
+Changed remaining identity orchestration calls to resolve association,
+coordination loaders, exemplar state, and canonical-clip manifest behavior at
+their owning modules. Migrated the affected tests accordingly. An AST-based
+patch inventory now contains only functions genuinely owned by `cli.py`:
+interactive ground-truth prompt/rendering seams and private identity helpers.
+Milestone 8 is complete.
 
 ## Validation log
 
@@ -2668,6 +2677,22 @@ PASS
 
 .venv/bin/python -m unittest tests.test_speaker_profile_attribution tests.test_cli_contract
 Ran 17 tests in 1.645s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Identity domain patch ownership
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py tests/test_identity_run.py
+PASS
+
+.venv/bin/python -m unittest tests.test_identity_run tests.test_cli_contract
+Ran 30 tests in 0.827s — OK
+
+AST inventory of patch() targets rooted at pastor_transcript_extractor.cli
+Only genuine CLI-owned prompt, rendering, and private helper seams remain.
 
 git diff --check
 PASS

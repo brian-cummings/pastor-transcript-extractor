@@ -194,6 +194,10 @@ from pastor_transcript_extractor.identity_leverage import (
 from pastor_transcript_extractor.identity_exemplar_preparation import (
     ExemplarPreparationStateCache,
 )
+from pastor_transcript_extractor import (
+    identity_coordination as identity_coordination_domain,
+    identity_exemplar_preparation,
+)
 from pastor_transcript_extractor.identity_stage_cache import (
     build_association_input_state,
     build_identity_stage_fingerprint,
@@ -2149,7 +2153,7 @@ def shadow_discover_profiles_command(
         )
     exploratory_rankings = tuple(
         ranking
-        for ranking in load_discovery_acoustic_ranking_pairs(destination)
+        for ranking in identity_coordination_domain.load_discovery_acoustic_ranking_pairs(destination)
         if ranking.outcome == "insufficient_evidence"
     )
     if exploratory_rankings:
@@ -2421,7 +2425,7 @@ def _actionable_review_fingerprints(
     """Order observations by current human-review nomination value."""
     ordered: list[str] = []
     if association_reports:
-        nominations = load_shadow_association_confirmation_pairs(
+        nominations = identity_coordination_domain.load_shadow_association_confirmation_pairs(
             association_reports,
             progress_callback=association_progress_callback,
             cache_path=association_cache_path,
@@ -2436,11 +2440,11 @@ def _actionable_review_fingerprints(
                 )
             )
     if discovery_report is not None:
-        for nomination in load_discovery_resolution_pairs(discovery_report):
+        for nomination in identity_coordination_domain.load_discovery_resolution_pairs(discovery_report):
             ordered.extend(
                 (nomination.fingerprint_a, nomination.fingerprint_b)
             )
-        for nomination in load_discovery_acoustic_ranking_pairs(
+        for nomination in identity_coordination_domain.load_discovery_acoustic_ranking_pairs(
             discovery_report
         ):
             ordered.extend(
@@ -2616,7 +2620,7 @@ def _prepare_actionable_review_audio(
                 span_cache=span_cache,
             )
             cache_hits = sum(span.cache_hit for span in result.spans)
-            write_canonical_clip_preparation_manifest(
+            media_archive.write_canonical_clip_preparation_manifest(
                 paths,
                 eligibility.media_artifact,
                 observation,
@@ -2673,7 +2677,7 @@ def _repair_exemplars_and_retry_association(
     jobs: int,
     associator=None,
 ) -> tuple[Path, ...]:
-    associator = associator or shadow_associate_speakers_command
+    associator = associator or _identity_association_commands.shadow_associate_speakers_command
     profile_ids = tuple(
         sorted({state.profile_id for state in pending_exemplar_repairs})
     )
@@ -2911,7 +2915,7 @@ def run_identity_workflow_service(
     reviewed_evidence_renderer=None,
     review_prewarmer=None,
 ) -> None:
-    associator = associator or shadow_associate_speakers_command
+    associator = associator or _identity_association_commands.shadow_associate_speakers_command
     discoverer = discoverer or shadow_discover_profiles_command
     confirmer = confirmer or confirm_discovered_profiles_command
     promoter = promoter or promote_discovered_profiles_command
@@ -3097,7 +3101,7 @@ def run_identity_workflow_service(
         association_cache,
         associator=associator,
     )
-    exemplar_state_cache = ExemplarPreparationStateCache(
+    exemplar_state_cache = identity_exemplar_preparation.ExemplarPreparationStateCache(
         Path("evaluation/speaker-pairs/cache").resolve()
     )
     pending_exemplar_repairs = select_pending_exemplar_repairs(
@@ -3872,7 +3876,7 @@ def _replay_profile_association_neighborhood(
     requested_profile_ids = sorted(set(profile_ids))
     if not requested_profile_ids:
         raise ValueError("profile neighborhood replay requires a profile id")
-    return shadow_associate_speakers_command(
+    return _identity_association_commands.shadow_associate_speakers_command(
         youtube_video_id=None,
         all_eligible=False,
         unattempted_only=False,
@@ -3983,7 +3987,7 @@ def shadow_associate_speakers_service(
     candidate_names_by_observation = (
         corpus_inventory.candidate_names_by_observation
     )
-    exemplar_state_cache = ExemplarPreparationStateCache(cache_root)
+    exemplar_state_cache = identity_exemplar_preparation.ExemplarPreparationStateCache(cache_root)
     review_ready_profiles = [
         profile for profile in readiness if profile.review_ready
     ]
@@ -4858,7 +4862,7 @@ def prepare_speaker_review_audio(
                 audio_path=audio_path,
                 span_cache=span_cache,
             )
-            write_canonical_clip_preparation_manifest(
+            media_archive.write_canonical_clip_preparation_manifest(
                 paths,
                 media,
                 observation,
@@ -5187,7 +5191,7 @@ def review_next_speaker_pair(
                     key=lambda path: (path.stat().st_mtime_ns, str(path)),
                 )
         discovery_resolution_pairs = (
-            load_discovery_resolution_pairs(effective_discovery_report)
+            identity_coordination_domain.load_discovery_resolution_pairs(effective_discovery_report)
             if (
                 selection_objective == SelectionGoal.AUTOMATION_READINESS
                 and effective_discovery_report is not None
@@ -5195,7 +5199,7 @@ def review_next_speaker_pair(
             else ()
         )
         profile_growth_acoustic_pairs = (
-            load_discovery_acoustic_ranking_pairs(
+            identity_coordination_domain.load_discovery_acoustic_ranking_pairs(
                 effective_discovery_report
             )
             if (
@@ -5279,7 +5283,7 @@ def review_next_speaker_pair(
             nominations = (
                 prepared_nominations
                 if use_prewarmed_pool
-                else load_shadow_association_confirmation_pairs(
+                else identity_coordination_domain.load_shadow_association_confirmation_pairs(
                     association_paths,
                     cache_path=association_cache_path,
                     progress_callback=(
