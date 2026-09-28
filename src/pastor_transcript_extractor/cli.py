@@ -394,7 +394,6 @@ from pastor_transcript_extractor.workflows.caption_acquisition import (
 from pastor_transcript_extractor.workflows.transcription import (
     DEFAULT_PREP_WORKERS,
     DEFAULT_TRANSCRIBE_JOBS,
-    default_transcribe_jobs as _workflow_default_transcribe_jobs,
     recover_stale_transcribing_videos as _recover_stale_transcribing_videos,
     should_transcribe_video as _should_transcribe_video,
 )
@@ -5798,10 +5797,6 @@ def _package_status(distribution: str) -> tuple[str, str]:
         return ("not installed", "missing")
 
 
-def _default_transcribe_jobs() -> int:
-    return _workflow_default_transcribe_jobs()
-
-
 @app.command(
     "import-church-db",
     help="Import complete pastor/channel pairs from church-youtube-finder with stable provenance.",
@@ -5921,76 +5916,7 @@ def doctor(
 
 discover_sources_service = acquisition.discover_sources_service
 fetch_captions_service = acquisition.fetch_captions_service
-
-
-@app.command(help="Discover videos from queued sources with yt-dlp metadata.")
-def discover(
-    limit: int | None = typer.Option(
-        DEFAULT_DISCOVER_LIMIT,
-        "--limit",
-        min=1,
-        help="Only persist the first N discovered videos per source. Defaults to 26.",
-    ),
-    all_videos: bool = typer.Option(False, "--all", help="Persist all discovered videos for each source."),
-    source_id: int | None = typer.Option(None, help="Only discover videos for a specific source id."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    acquisition.discover_sources_service(limit, all_videos, source_id, base_dir)
-
-
 transcribe_videos_service = acquisition.transcribe_videos_service
-@app.command(help="Download or prepare local ASR transcripts for discovered videos.")
-def transcribe(
-    missing_only: bool = typer.Option(False, "--missing-only", help="Only transcribe videos without a local ASR artifact."),
-    captions_missing_only: bool = typer.Option(
-        True,
-        "--captions-missing-only/--all-eligible",
-        help="By default, only transcribe videos that do not already have a captions artifact. Use --all-eligible to transcribe all eligible videos.",
-    ),
-    jobs: int = typer.Option(
-        _default_transcribe_jobs(),
-        "--jobs",
-        min=1,
-        help="Number of videos to transcribe concurrently. Defaults to 2.",
-    ),
-    source_id: int | None = typer.Option(None, help="Only transcribe videos from a specific source id."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    acquisition.transcribe_videos_service(
-        missing_only,
-        captions_missing_only,
-        jobs,
-        source_id,
-        base_dir,
-    )
-
-
-@app.command(help="Fetch YouTube captions when available and persist them as transcript artifacts.")
-def fetch(
-    source_id: int | None = typer.Option(None, help="Only fetch captions for videos from a specific source id."),
-    cookies_from_browser: str | None = typer.Option(
-        None,
-        "--cookies-from-browser",
-        help="Pass an explicit browser profile to yt-dlp for YouTube authentication.",
-    ),
-    cookies: Path | None = typer.Option(
-        None,
-        "--cookies",
-        exists=True,
-        dir_okay=False,
-        help="Pass an explicit Netscape-format cookie file to yt-dlp.",
-    ),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    try:
-        acquisition.fetch_captions_service(
-            source_id,
-            base_dir,
-            cookies_from_browser=cookies_from_browser,
-            cookies=cookies,
-        )
-    except ValueError as error:
-        raise typer.BadParameter(str(error)) from error
 
 
 @app.command(help="Chunk transcript artifacts into reviewable segments and proposed Markdown.")

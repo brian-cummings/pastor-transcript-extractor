@@ -6,11 +6,10 @@ context compaction or a new session.
 
 ## Current state
 
-- Status: in progress.
+- Status: paused at a committed boundary by user request.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action: inventory temporary CLI compatibility exports and their direct
-  consumers, then remove the first bounded family while preserving the app and
-  entry-point contract.
+- Next action when resumed: move the next bounded root-command family out of
+  `cli.py`; `extract` and review/reclassification commands remain candidates.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1159,6 +1158,14 @@ their owning modules. Migrated the affected tests accordingly. An AST-based
 patch inventory now contains only functions genuinely owned by `cli.py`:
 interactive ground-truth prompt/rendering seams and private identity helpers.
 Milestone 8 is complete.
+
+### 2026-09-27 — Milestone 9.1: acquisition command ownership
+
+Moved the root `discover`, `fetch`, and `transcribe` Typer handlers into
+`commands.acquisition`, beside their command adapters. Removed the duplicate
+handlers and now-unused transcription-default shim from `cli.py`. Command
+names, options, defaults, error translation, and service compatibility exports
+remain unchanged. Paused after this committed slice at the user's request.
 
 ## Validation log
 
@@ -2693,6 +2700,19 @@ Ran 30 tests in 0.827s — OK
 
 AST inventory of patch() targets rooted at pastor_transcript_extractor.cli
 Only genuine CLI-owned prompt, rendering, and private helper seams remain.
+
+git diff --check
+PASS
+```
+
+### 2026-09-27 — Acquisition command ownership
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/acquisition.py src/pastor_transcript_extractor/cli.py
+PASS
+
+.venv/bin/python -m unittest <3 representative acquisition command tests> tests.test_cli_contract
+Ran 9 tests in 0.670s — OK
 
 git diff --check
 PASS
