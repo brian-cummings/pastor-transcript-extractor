@@ -72,6 +72,7 @@ GROUP_COMMANDS = {
     "benchmark": {
         "add-profile",
         "build",
+        "recording-verifier-typesafe",
         "compare",
         "create",
         "list",

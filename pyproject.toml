@@ -23,6 +23,9 @@ acoustic-experiment = [
   "numpy>=1.26,<3.0",
   "sherpa-onnx==1.13.1",
 ]
+typesafe-experiment = [
+  "typesafe-sdk>=0.7.2,<1.0",
+]
 
 [project.scripts]
 pte = "pastor_transcript_extractor.cli:app"
