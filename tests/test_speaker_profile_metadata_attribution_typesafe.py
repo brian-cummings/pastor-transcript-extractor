@@ -12,6 +12,7 @@ from pastor_transcript_extractor.speaker_profile_metadata_attribution_typesafe i
     _aggregate,
     run_typesafe_profile_metadata_attribution,
 )
+from pastor_transcript_extractor.identity_attribution import extract_person_name_spans
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
     create_anonymous_profile,
@@ -62,6 +63,27 @@ def judgment(
 
 
 class AggregationPolicyTests(unittest.TestCase):
+    def test_unicode_and_coordinated_name_spans_are_exact(self) -> None:
+        spans = extract_person_name_spans(
+            "Bible Answers Live | Pastor Jëan Ross and Alden Ho (06/22/2025)"
+        )
+        self.assertEqual(
+            ("Jëan Ross", "Alden Ho"),
+            tuple(item.exact_text for item in spans),
+        )
+
+    def test_bare_name_extraction_is_opt_in(self) -> None:
+        self.assertEqual((), extract_person_name_spans("Bruce Hehn"))
+        spans = extract_person_name_spans("Bruce Hehn", include_bare=True)
+        self.assertEqual(("Bruce Hehn",), tuple(item.exact_text for item in spans))
+        self.assertEqual("bruce hehn", spans[0].normalized_name)
+
+    def test_sermon_title_conjunction_is_not_a_name(self) -> None:
+        self.assertEqual(
+            (),
+            extract_person_name_spans("When Justice and Mercy Meet"),
+        )
+
     def test_two_independent_speaker_credits_propose_exact_name(self) -> None:
         items = (
             occurrence("a", "Curt DeWitt", "v1"),

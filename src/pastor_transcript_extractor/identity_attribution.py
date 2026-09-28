@@ -11,8 +11,9 @@ ATTRIBUTION_EXTRACTOR_VERSION = "grounded_attribution_v3"
 INTRO_CONTEXT_BEFORE_SECONDS = 300.0
 INTRO_CONTEXT_AFTER_SECONDS = 180.0
 _HONORIFIC_PATTERN = r"Pastor|Elder|Sis\.?|Sister|Dr\.?|Pr\.?"
+_PERSON_WORD_PATTERN = r"[^\W\d_][^\W\d_'’\-]*"
 _PERSON_NAME_PATTERN = (
-    r"[A-Z][A-Za-z'’-]+(?:\s+[A-Z]\.)?\s+[A-Z][A-Za-z'’-]+"
+    rf"{_PERSON_WORD_PATTERN}(?:\s+[A-Z]\.)?\s+{_PERSON_WORD_PATTERN}"
 )
 
 _HONORIFIC_RE = re.compile(
@@ -43,6 +44,12 @@ _TITLE_TRAILING_NAME_RE = re.compile(
     rf"\|\s*(?:(?:{_HONORIFIC_PATTERN})\s+)?"
     rf"(?P<name>{_PERSON_NAME_PATTERN})\s*$"
 )
+_COORDINATED_NAME_RE = re.compile(
+    rf"\b(?:{_HONORIFIC_PATTERN})\s+{_PERSON_NAME_PATTERN}\s+and\s+"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})"
+    r"(?=\s*(?:[([]|\||$))"
+)
+_BARE_PERSON_NAME_RE = re.compile(rf"^\s*(?P<name>{_PERSON_NAME_PATTERN})\s*$")
 _NON_PERSON_TITLE_BYLINES = frozenset(
     {
         "divine service",
@@ -106,7 +113,7 @@ def _canonical_hash(value: object) -> str:
 
 
 def _normalized_person(value: str) -> str:
-    tokens = re.findall(r"[a-z]+", value.lower())
+    tokens = re.findall(r"[^\W\d_]+", value.lower())
     while tokens and tokens[0] in _HONORIFICS:
         tokens.pop(0)
     return " ".join(tokens)
@@ -149,22 +156,33 @@ def _metadata_fields(payload: dict[str, Any]) -> Iterable[tuple[str, str]]:
 def _candidate_mentions(
     text: str,
     target_name: str | None,
+    *,
+    include_bare: bool = False,
 ) -> list[tuple[str, int, int]]:
     candidates: list[tuple[str, int, int]] = []
     target_pattern = _target_pattern(target_name) if target_name else None
     if target_pattern is not None:
         for match in target_pattern.finditer(text):
             candidates.append((match.group(0), match.start(), match.end()))
-    for pattern in (
+    patterns = [
         _HONORIFIC_RE,
         _SPEAKER_IS_RE,
         _MESSAGE_BY_RE,
         _TITLE_BYLINE_RE,
         _TITLE_LEADING_NAME_RE,
         _TITLE_TRAILING_NAME_RE,
-    ):
+        _COORDINATED_NAME_RE,
+    ]
+    if include_bare:
+        patterns.append(_BARE_PERSON_NAME_RE)
+    for pattern in patterns:
         for match in pattern.finditer(text):
             name = match.group("name")
+            if not all(
+                token[0].isupper()
+                for token in re.findall(r"[^\W\d_]+", name)
+            ):
+                continue
             start, end = match.span("name")
             cleaned_name = _MONTH_SUFFIX_RE.sub("", name)
             if cleaned_name != name:
@@ -175,7 +193,11 @@ def _candidate_mentions(
     return sorted(candidates, key=lambda item: (item[1], item[2]))
 
 
-def extract_person_name_spans(text: str) -> tuple[PersonNameSpan, ...]:
+def extract_person_name_spans(
+    text: str,
+    *,
+    include_bare: bool = False,
+) -> tuple[PersonNameSpan, ...]:
     """Return conservative exact name spans; semantic role is deliberately unset."""
     return tuple(
         PersonNameSpan(
@@ -185,7 +207,11 @@ def extract_person_name_spans(text: str) -> tuple[PersonNameSpan, ...]:
             end=end,
             context=_exact_excerpt(text, start, end),
         )
-        for name, start, end in _candidate_mentions(text, None)
+        for name, start, end in _candidate_mentions(
+            text,
+            None,
+            include_bare=include_bare,
+        )
         if _normalized_person(name)
     )
 

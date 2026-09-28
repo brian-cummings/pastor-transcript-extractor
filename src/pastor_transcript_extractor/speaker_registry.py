@@ -90,7 +90,7 @@ def _sha256(value: object) -> str:
 
 
 def normalize_person_name(value: str) -> str:
-    tokens = re.findall(r"[a-z]+", value.lower())
+    tokens = re.findall(r"[^\W\d_]+", value.lower())
     while tokens and tokens[0] in _HONORIFICS:
         tokens.pop(0)
     return " ".join(tokens)

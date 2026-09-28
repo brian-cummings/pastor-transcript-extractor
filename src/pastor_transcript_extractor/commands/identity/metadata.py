@@ -653,11 +653,12 @@ def _print_profile_metadata_details(
                 markup=False,
             )
         console.print(f"    artifact={item.artifact_path}", markup=False)
-        console.print(
-            "    diagnostic_artifact="
-            f"{item.artifact_path.with_suffix('.attempt.json')}",
-            markup=False,
-        )
+        diagnostic_path = item.artifact_path.with_suffix(".attempt.json")
+        if diagnostic_path.is_file():
+            console.print(
+                f"    diagnostic_artifact={diagnostic_path}",
+                markup=False,
+            )
     for failure in result.failures:
         console.print(
             f"  profile={failure.profile_id} decision=failed "
