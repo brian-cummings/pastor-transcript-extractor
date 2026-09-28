@@ -25,14 +25,15 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v9"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v10"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
 BLOCK_BUILDER_VERSION = "typesafe-deduplicated-coarse-300s-fine-60s-v2"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v9-temporal-neighborhood"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v10-mixed-edge-refinement"
 BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
+BOUNDARY_MIXED_OUTSIDE_MINIMUM = 0.1
 BOUNDARY_CANDIDATE_MIN_SPACING_SECONDS = 0.75
 BOUNDARY_NEIGHBORHOOD_SECONDS = 180.0
 BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
@@ -756,7 +757,10 @@ class TypeSafeFirstPassSermonClassifier:
         boundary_work: list[tuple[str, list[TypeSafeBoundaryCandidate]]] = []
         if callable(boundary_selector) and callable(boundary_validator):
             if (
-                start_strength < BOUNDARY_AUTOMATIC_THRESHOLD
+                (
+                    start_strength < BOUNDARY_AUTOMATIC_THRESHOLD
+                    or previous_probability >= BOUNDARY_MIXED_OUTSIDE_MINIMUM
+                )
                 and start_position > 0
                 and first.start_seconds
                 - fine_blocks[start_position - 1].end_seconds
@@ -776,7 +780,10 @@ class TypeSafeFirstPassSermonClassifier:
                     )
                 )
             if (
-                end_strength < BOUNDARY_AUTOMATIC_THRESHOLD
+                (
+                    end_strength < BOUNDARY_AUTOMATIC_THRESHOLD
+                    or following_probability >= BOUNDARY_MIXED_OUTSIDE_MINIMUM
+                )
                 and end_position + 1 < len(fine_blocks)
                 and fine_blocks[end_position + 1].start_seconds
                 - last.end_seconds
