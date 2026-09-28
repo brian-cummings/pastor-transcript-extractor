@@ -246,6 +246,60 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(first_calls, client.calls)
         self.assertEqual(0, second.cache_stats["misses"])
 
+    def test_refines_high_strength_edge_when_outside_block_is_mixed(self) -> None:
+        class MixedOutsideClient(FakeBlockClient):
+            def assess_blocks(self, title, blocks):
+                answers = super().assess_blocks(title, blocks)
+                for block in blocks:
+                    if "CLOSING PRAYER" not in block.text:
+                        continue
+                    probabilities = {role: 0.0 for role in ROLE_CHOICES}
+                    probabilities["principal_sermon"] = 0.2
+                    probabilities["administration_or_transition"] = 0.75
+                    probabilities["unclear"] = 0.05
+                    answers[block.block_id] = TypeSafeBlockAnswer(
+                        "administration_or_transition",
+                        probabilities,
+                        0.6,
+                        "jev-1.13.0",
+                    )
+                return answers
+
+        transcript = drafts()
+        transcript[30] = SegmentDraft(
+            900.0,
+            930.0,
+            "CLOSING PRAYER in your name we pray amen",
+            None,
+            TranscriptSegmentLabel.UNKNOWN,
+            0.5,
+        )
+        transcript[31] = SegmentDraft(
+            930.0,
+            960.0,
+            "SERVICE ADMIN final hymn and luncheon",
+            None,
+            TranscriptSegmentLabel.UNKNOWN,
+            0.5,
+        )
+        classifier = TypeSafeFirstPassSermonClassifier(
+            model="jev-1.13.0", client=MixedOutsideClient()
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = classifier.classify_sermon(
+                transcript,
+                rule_window(),
+                title="Worship Service",
+                cache_dir=Path(tmp),
+            )
+
+        candidate = result.search["candidates"][0]
+        edge = candidate["boundary_recovery"]["end"]
+        self.assertEqual(0.2, edge["outside_probability"])
+        self.assertEqual(930.0, candidate["end_seconds"])
+        self.assertTrue(edge["segment_refinement"]["accepted"])
+
     def test_boundary_candidates_can_move_inside_selected_or_into_outside_block(self) -> None:
         transcript = [
             SegmentDraft(
