@@ -11,30 +11,37 @@ ATTRIBUTION_EXTRACTOR_VERSION = "grounded_attribution_v3"
 INTRO_CONTEXT_BEFORE_SECONDS = 300.0
 INTRO_CONTEXT_AFTER_SECONDS = 180.0
 _HONORIFIC_PATTERN = r"Pastor|Elder|Sis\.?|Sister|Dr\.?|Pr\.?"
+_PERSON_NAME_PATTERN = (
+    r"[A-Z][A-Za-z'’-]+(?:\s+[A-Z]\.)?\s+[A-Z][A-Za-z'’-]+"
+)
 
 _HONORIFIC_RE = re.compile(
     rf"\b(?P<honorific>{_HONORIFIC_PATTERN})\s+"
-    r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})\b"
 )
 _SPEAKER_IS_RE = re.compile(
     r"\b(?:our|the)?\s*(?:first |second |final )?(?:speaker|preacher)"
     r"(?:\s+for\s+today|\s+today|\s+this\s+(?:morning|evening))?\s+is\s+"
     rf"(?:(?:{_HONORIFIC_PATTERN})\s+)?"
-    r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})\b"
 )
 _MESSAGE_BY_RE = re.compile(
     r"(?i:\b(?:message|sermon|word)(?:\s+for\s+today)?[^.!?\n]{0,80}?\bby\s+)"
     rf"(?:(?:{_HONORIFIC_PATTERN})\s+)?"
-    r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})\b"
 )
 _TITLE_BYLINE_RE = re.compile(
     rf"\bby\s+(?:(?:{_HONORIFIC_PATTERN})\s+)?"
-    r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\b"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})\b"
 )
 _TITLE_LEADING_NAME_RE = re.compile(
     rf"^\s*(?:(?P<honorific>{_HONORIFIC_PATTERN})\s+)?"
-    r"(?P<name>[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})"
     r"\s+(?:[-|–—:])\s+\S"
+)
+_TITLE_TRAILING_NAME_RE = re.compile(
+    rf"\|\s*(?:(?:{_HONORIFIC_PATTERN})\s+)?"
+    rf"(?P<name>{_PERSON_NAME_PATTERN})\s*$"
 )
 _NON_PERSON_TITLE_BYLINES = frozenset(
     {
@@ -80,6 +87,17 @@ class AttributionResult:
             "correlation_groups": list(self.correlation_groups),
             "independent_attribution_group_count": len(self.correlation_groups),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class PersonNameSpan:
+    """A code-extracted person-name span with its exact source context."""
+
+    exact_text: str
+    normalized_name: str
+    start: int
+    end: int
+    context: str
 
 
 def _canonical_hash(value: object) -> str:
@@ -137,7 +155,14 @@ def _candidate_mentions(
     if target_pattern is not None:
         for match in target_pattern.finditer(text):
             candidates.append((match.group(0), match.start(), match.end()))
-    for pattern in (_HONORIFIC_RE, _SPEAKER_IS_RE, _MESSAGE_BY_RE, _TITLE_BYLINE_RE):
+    for pattern in (
+        _HONORIFIC_RE,
+        _SPEAKER_IS_RE,
+        _MESSAGE_BY_RE,
+        _TITLE_BYLINE_RE,
+        _TITLE_LEADING_NAME_RE,
+        _TITLE_TRAILING_NAME_RE,
+    ):
         for match in pattern.finditer(text):
             name = match.group("name")
             start, end = match.span("name")
@@ -148,6 +173,21 @@ def _candidate_mentions(
             if not any(existing_start == start and existing_end == end for _, existing_start, existing_end in candidates):
                 candidates.append((name, start, end))
     return sorted(candidates, key=lambda item: (item[1], item[2]))
+
+
+def extract_person_name_spans(text: str) -> tuple[PersonNameSpan, ...]:
+    """Return conservative exact name spans; semantic role is deliberately unset."""
+    return tuple(
+        PersonNameSpan(
+            exact_text=name,
+            normalized_name=_normalized_person(name),
+            start=start,
+            end=end,
+            context=_exact_excerpt(text, start, end),
+        )
+        for name, start, end in _candidate_mentions(text, None)
+        if _normalized_person(name)
+    )
 
 
 def title_byline_selection_hint(title: str) -> str | None:

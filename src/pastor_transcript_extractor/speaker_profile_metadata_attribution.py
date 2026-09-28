@@ -19,6 +19,7 @@ _SUPPORTED_ATTRIBUTION_VERSIONS = {
     "profile_metadata_attribution_v2",
     "profile_metadata_attribution_v3",
     PROFILE_METADATA_ATTRIBUTION_VERSION,
+    "profile_metadata_attribution_typesafe_v1",
 }
 PROFILE_METADATA_OUTPUT_TOKEN_BUDGET = 768
 PROFILE_METADATA_TEXT_LIMIT = 800
@@ -137,6 +138,8 @@ class ProfileMetadataAttributionRun:
     failed: int
     results: tuple[ProfileMetadataAttribution, ...]
     failures: tuple[ProfileMetadataFailure, ...]
+    abstentions: int = 0
+    cache_misses: int = 0
 
 
 def profile_metadata_schema() -> dict[str, Any]:

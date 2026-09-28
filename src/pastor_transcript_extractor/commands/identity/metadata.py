@@ -45,6 +45,11 @@ from pastor_transcript_extractor.speaker_profile_metadata_attribution import (
     profile_metadata_candidate_profile_ids,
     run_profile_metadata_attribution,
 )
+from pastor_transcript_extractor.speaker_profile_metadata_attribution_typesafe import (
+    DEFAULT_TYPESAFE_MODEL,
+    TypeSafeSdkNameAttributionProvider,
+    run_typesafe_profile_metadata_attribution,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -480,7 +485,7 @@ def enrich_metadata_command(
 @identity_app.command(
     "analyze-profile-metadata",
     help=(
-        "Run only cached Ollama metadata-name consolidation for unnamed profiles."
+        "Run cached, grounded metadata-name attribution for unnamed profiles."
     ),
 )
 def analyze_profile_metadata_command(
@@ -498,7 +503,12 @@ def analyze_profile_metadata_command(
     model: str | None = typer.Option(
         None,
         "--model",
-        help="Override the configured Ollama model.",
+        help="Override the selected backend's model.",
+    ),
+    backend: str = typer.Option(
+        "ollama",
+        "--backend",
+        help="Attribution backend: ollama or typesafe.",
     ),
     details: bool = typer.Option(
         False,
@@ -508,13 +518,16 @@ def analyze_profile_metadata_command(
     plan_only: bool = typer.Option(
         False,
         "--plan-only",
-        help="Show eligible profiles without Ollama calls or artifact writes.",
+        help="Show eligible profiles without model calls or artifact writes.",
     ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
     ),
 ) -> None:
+    backend = backend.strip().lower()
+    if backend not in {"ollama", "typesafe"}:
+        raise typer.BadParameter("--backend must be ollama or typesafe")
     if all_profiles == (profile_id is not None):
         raise typer.BadParameter(
             "Pass exactly one of --all-anonymous-profiles (or --all) or "
@@ -534,35 +547,54 @@ def analyze_profile_metadata_command(
         profile_ids=selected_ids,
     )
     if not candidate_ids:
-        console.print("Profile metadata attribution: eligible=0; no Ollama calls.")
+        console.print("Profile metadata attribution: eligible=0; no model calls.")
         return
     if plan_only:
+        no_calls = (
+            "no Ollama calls or artifact writes"
+            if backend == "ollama"
+            else "no TypeSafe calls or artifact writes"
+        )
         console.print(
             "Profile metadata attribution plan: "
-            f"eligible={len(candidate_ids)}; no Ollama calls or artifact writes."
+            f"backend={backend} eligible={len(candidate_ids)}; "
+            f"{no_calls}."
         )
         return
-    config = build_llm_config()
-    if model is not None:
-        config = replace(config, model=model)
-    if not config.enabled:
-        raise typer.BadParameter("Local LLM is disabled by PTE_LLM_ENABLED.")
     try:
-        client = OllamaClient(config)
-        result = run_profile_metadata_attribution(
-            database,
-            paths.logs / "profile-metadata-attribution",
-            client,
-            model_digest=client.model_digest(),
-            profile_ids=frozenset(candidate_ids),
-            progress_callback=(
-                lambda index, total, current_profile_id, outcome: console.print(
-                    "Profile metadata attribution "
-                    f"[{index}/{total}] profile={current_profile_id}: {outcome}"
-                )
-            ),
+        progress = (
+            lambda index, total, current_profile_id, outcome: console.print(
+                "Profile metadata attribution "
+                f"[{index}/{total}] profile={current_profile_id}: {outcome}"
+            )
         )
-    except (LocalLlmError, OSError, ValueError) as error:
+        if backend == "typesafe":
+            provider = TypeSafeSdkNameAttributionProvider(
+                model=model or DEFAULT_TYPESAFE_MODEL
+            )
+            result = run_typesafe_profile_metadata_attribution(
+                database,
+                paths.logs / "profile-metadata-attribution",
+                provider,
+                profile_ids=frozenset(candidate_ids),
+                progress_callback=progress,
+            )
+        else:
+            config = build_llm_config()
+            if model is not None:
+                config = replace(config, model=model)
+            if not config.enabled:
+                raise typer.BadParameter("Local LLM is disabled by PTE_LLM_ENABLED.")
+            client = OllamaClient(config)
+            result = run_profile_metadata_attribution(
+                database,
+                paths.logs / "profile-metadata-attribution",
+                client,
+                model_digest=client.model_digest(),
+                profile_ids=frozenset(candidate_ids),
+                progress_callback=progress,
+            )
+    except (LocalLlmError, OSError, RuntimeError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print(
         "Profile metadata attribution complete: "
@@ -570,7 +602,8 @@ def analyze_profile_metadata_command(
         f"insufficient_evidence={result.insufficient_evidence} "
         f"conflicting_evidence={result.conflicting_evidence} "
         f"invalid_metadata={result.invalid_metadata} "
-        f"cache_hits={result.cache_hits} model_calls={result.model_calls} "
+        f"abstentions={result.abstentions} cache_hits={result.cache_hits} "
+        f"cache_misses={result.cache_misses} model_calls={result.model_calls} "
         f"failed={result.failed}."
     )
     _print_profile_metadata_proposals(result)
