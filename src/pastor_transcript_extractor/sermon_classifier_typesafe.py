@@ -21,13 +21,13 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v4"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v5"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
 BLOCK_BUILDER_VERSION = "typesafe-coarse-300s-fine-60s-v1"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v4-literal-validation"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v5-general-validation"
 BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v2"
-BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v3-literal"
+BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
 # shared state near the size exercised by TypeSafe's large-document cookbook.
