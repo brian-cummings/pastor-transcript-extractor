@@ -5,7 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from pastor_transcript_extractor.config import build_paths, build_video_artifact_paths, ensure_directories
 from pastor_transcript_extractor.caption_normalization import (
@@ -18,6 +18,8 @@ from pastor_transcript_extractor.extraction import (
     _baseline_window_payload,
     _classification_is_current,
     _classify_with_fallback,
+    _recording_verification_required,
+    _typesafe_first_attempt,
     reclassify_video,
 )
 from pastor_transcript_extractor.identity_boundary_review import (
@@ -1786,6 +1788,129 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual("rule_based_fallback", classification["method"])
         self.assertEqual("low", classification["confidence_tier"])
         self.assertIn("offline", classification["warnings"][0])
+
+    def test_typesafe_abstention_is_audited_and_forces_recording_verification(self) -> None:
+        typesafe_result = HybridSermonResult(
+            method="typesafe_first_v11",
+            model="jev-1.13.0",
+            prompt_version="typesafe-test-v1",
+            confidence_tier="low",
+            retained_segment_indexes=[0],
+            excluded_segment_indexes=[],
+            uncertain_block_ids=[],
+            warnings=["multiple TypeSafe sermon-like components were found"],
+            blocks=[],
+            classifications=[],
+            search={
+                "candidates": [
+                    {
+                        "rank": 1,
+                        "start_seconds": 100.0,
+                        "end_seconds": 350.0,
+                        "score_components": {
+                            "mean_sermon_probability": 0.9,
+                            "start_transition_strength": 0.8,
+                            "end_transition_strength": 0.6,
+                        },
+                    }
+                ],
+                "selected_rank": 1,
+                "discovery": {"competing_component_ratio": 0.91},
+            },
+            confidence_reasons=[{"code": "typesafe_probability_map", "tier": "low"}],
+        )
+        fallback_result = HybridSermonResult(
+            method=SEARCH_ALGORITHM_VERSION,
+            model="fake-sermon-model",
+            prompt_version="test-v1",
+            confidence_tier="high",
+            retained_segment_indexes=[0],
+            excluded_segment_indexes=[],
+            uncertain_block_ids=[],
+            warnings=[],
+            blocks=[],
+            classifications=[],
+            search={"candidates": [], "selected_rank": None, "discovery": {}},
+        )
+        semantic_classifier = MagicMock()
+        semantic_classifier.classify_sermon.return_value = typesafe_result
+        rule_window = SermonWindowResult(
+            0.0, 350.0, 0.8, [], "rule_based_v1", [0], [], False, []
+        )
+
+        with patch(
+            "pastor_transcript_extractor.extraction.classify_sermon_content_adaptive",
+            return_value=fallback_result,
+        ):
+            classification, hybrid = _classify_with_fallback(
+                [draft(0.0, 350.0, "sermon")],
+                rule_window,
+                classifier="typesafe",
+                llm_client=FakeAdaptiveLlmClient(),
+                prompt_version="test-v1",
+                semantic_classifier=semantic_classifier,
+            )
+
+        self.assertIs(fallback_result, hybrid)
+        attempt = classification["search"]["discovery"]["typesafe_first_attempt"]
+        self.assertEqual("abstained", attempt["status"])
+        self.assertEqual(
+            [
+                "competing_sermon_components",
+                "candidate_duration_below_medium_minimum",
+                "weak_end_transition",
+            ],
+            attempt["reason_codes"],
+        )
+        self.assertTrue(
+            _recording_verification_required(
+                {"status": "accepted_sermon"}, classification
+            )
+        )
+
+    def test_successful_typesafe_first_pass_does_not_force_verifier(self) -> None:
+        classification = {
+            "search": {
+                "discovery": {
+                    "typesafe_first_attempt": {
+                        "status": "accepted",
+                        "reason_codes": [],
+                    }
+                }
+            }
+        }
+
+        self.assertFalse(
+            _recording_verification_required(
+                {"status": "accepted_sermon"}, classification
+            )
+        )
+        self.assertTrue(
+            _recording_verification_required(
+                {"status": "review_required"}, classification
+            )
+        )
+
+    def test_typesafe_attempt_explains_no_candidate_abstention(self) -> None:
+        attempt = _typesafe_first_attempt(
+            HybridSermonResult(
+                method="typesafe_first_v11",
+                model="jev-1.13.0",
+                prompt_version="typesafe-test-v1",
+                confidence_tier="low",
+                retained_segment_indexes=[],
+                excluded_segment_indexes=[0],
+                uncertain_block_ids=[],
+                warnings=[],
+                blocks=[],
+                classifications=[],
+                search={"candidates": [], "selected_rank": None, "discovery": {}},
+            )
+        )
+
+        self.assertEqual(
+            ["no_supported_principal_sermon_component"], attempt["reason_codes"]
+        )
 
     def test_strict_llm_mode_propagates_failure(self) -> None:
         drafts = [draft(0.0, 120.0, "sermon")]

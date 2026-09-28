@@ -25,7 +25,7 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v10"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v11"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
 BLOCK_BUILDER_VERSION = "typesafe-deduplicated-coarse-300s-fine-60s-v2"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
