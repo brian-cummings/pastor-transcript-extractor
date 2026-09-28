@@ -37,6 +37,8 @@ class PipelineRequest:
     jobs: int = 2
     classifier: str = "auto"
     llm_model: str | None = None
+    recording_verifier_backend: str = "ollama"
+    recording_verifier_model: str | None = None
     skip_review: bool = False
     run_identity: bool = False
     base_dir: Path | None = None
@@ -368,6 +370,8 @@ def _extract_sermons(
         "video_ids": set(scope.video_ids),
         "classifier": request.classifier,
         "llm_model": request.llm_model,
+        "recording_verifier_backend": request.recording_verifier_backend,
+        "recording_verifier_model": request.recording_verifier_model,
         "event_callback": lambda message: emit(str(message)),
         "progress_callback": lambda stage, current, total: emit(
             f"  {stage} block {current}/{total}"

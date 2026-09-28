@@ -10,6 +10,13 @@ from pastor_transcript_extractor.exporting import PastorReviewMarkdownResult, ex
 from pastor_transcript_extractor.extraction import extract_video
 from pastor_transcript_extractor.local_llm import LocalLlmClient, OllamaClient
 from pastor_transcript_extractor.models import VideoStatus
+from pastor_transcript_extractor.recording_verifier import (
+    OllamaRecordingVerifierRunner,
+    RecordingVerifierRunner,
+)
+from pastor_transcript_extractor.recording_verifier_typesafe import (
+    TypeSafeProductionRecordingVerifier,
+)
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
     duration_within_sermon_maximum,
@@ -87,6 +94,38 @@ def _classifier_summary(classifier: str, llm_config: LlmConfig, llm_client: Loca
     return f"Classifier: {classifier} -> Ollama {llm_config.model} ({fallback})."
 
 
+def build_recording_verifier_runner(
+    *,
+    backend: str,
+    model: str | None,
+    llm_config: LlmConfig,
+) -> RecordingVerifierRunner | None:
+    """Construct an opt-in provider behind the production verifier contract."""
+    normalized = backend.strip().casefold()
+    if normalized == "none":
+        return None
+    if normalized == "typesafe":
+        return TypeSafeProductionRecordingVerifier(
+            model=model or "jev-1.13.0",
+        )
+    if normalized != "ollama":
+        raise ValueError("Recording verifier backend must be one of: ollama, typesafe, none")
+    raw_client = OllamaClient(
+        replace(llm_config, model=model or "gemma3:12b")
+    )
+    model_digest = raw_client.model_digest()
+    lock = Lock()
+
+    class LockedVerifierClient:
+        model = raw_client.model
+
+        def generate_json(self, prompt, schema):
+            with lock:
+                return raw_client.generate_json(prompt, schema)
+
+    return OllamaRecordingVerifierRunner(LockedVerifierClient(), model_digest)
+
+
 def extract_batch(
     database: Database,
     paths: AppPaths,
@@ -98,7 +137,8 @@ def extract_batch(
     video_ids: set[int] | None = None,
     classifier: str = "auto",
     llm_model: str | None = None,
-    recording_verifier_model: str = "gemma3:12b",
+    recording_verifier_backend: str = "ollama",
+    recording_verifier_model: str | None = None,
     workers: int = 1,
     event_callback: EventCallback | None = None,
     progress_callback: ProgressCallback | None = None,
@@ -106,6 +146,14 @@ def extract_batch(
     """Extract eligible videos through the adaptive production path."""
     if workers < 1:
         raise ValueError("Extraction workers must be at least 1")
+    if recording_verifier_backend.strip().casefold() not in {
+        "ollama",
+        "typesafe",
+        "none",
+    }:
+        raise ValueError(
+            "Recording verifier backend must be one of: ollama, typesafe, none"
+        )
     llm_config, llm_client = _build_classifier_client(classifier, llm_model)
     _emit(event_callback, _classifier_summary(classifier, llm_config, llm_client))
     videos = database.list_videos()
@@ -180,35 +228,23 @@ def extract_batch(
     if future_events:
         _emit(event_callback, f"Bypassing {future_events} future event(s).")
 
-    raw_verifier_client = None
-    verifier_digest = None
-    if llm_client is not None and eligible_videos:
-        candidate_verifier = OllamaClient(
-            replace(llm_config, model=recording_verifier_model)
-        )
+    verifier: RecordingVerifierRunner | None = None
+    verifier_enabled = (
+        recording_verifier_backend != "ollama" or llm_client is not None
+    )
+    if verifier_enabled and eligible_videos:
         try:
-            verifier_digest = candidate_verifier.model_digest()
+            verifier = build_recording_verifier_runner(
+                backend=recording_verifier_backend,
+                model=recording_verifier_model,
+                llm_config=llm_config,
+            )
         except Exception as error:
             _emit(
                 event_callback,
                 "Recording verifier unavailable; ambiguous videos will remain "
                 f"review-required: {error}",
             )
-        else:
-            raw_verifier_client = candidate_verifier
-    verifier_lock = Lock()
-
-    class LockedVerifierClient:
-        model = raw_verifier_client.model if raw_verifier_client is not None else ""
-
-        def generate_json(self, prompt, schema):
-            assert raw_verifier_client is not None
-            with verifier_lock:
-                return raw_verifier_client.generate_json(prompt, schema)
-
-    verifier_client = (
-        LockedVerifierClient() if raw_verifier_client is not None else None
-    )
 
     def extract_one(video) -> None:
         _emit(event_callback, f"Extracting video #{video.id}: {video.title}")
@@ -228,8 +264,7 @@ def extract_batch(
             prompt_version=llm_config.prompt_version,
             context_size=llm_config.context_size,
             progress=video_progress,
-            recording_verifier_client=verifier_client,
-            recording_verifier_model_digest=verifier_digest,
+            recording_verifier=verifier,
         )
 
     def run_pass(targets) -> tuple[int, list]:

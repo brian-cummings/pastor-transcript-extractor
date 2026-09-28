@@ -28,6 +28,8 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
             calls.append("transcribe")
 
         def extract(*args, **kwargs):
+            self.assertEqual("typesafe", kwargs["recording_verifier_backend"])
+            self.assertEqual("jev-1.13.0", kwargs["recording_verifier_model"])
             calls.append("extract")
             return ExtractionBatchResult(1, 0, 0)
 
@@ -38,6 +40,8 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
                 video_ids=frozenset({11}),
                 manifest_path=Path("stage.json"),
                 run_identity=True,
+                recording_verifier_backend="typesafe",
+                recording_verifier_model="jev-1.13.0",
             ),
             dependencies=ResumePipelineDependencies(
                 transcribe=transcribe,

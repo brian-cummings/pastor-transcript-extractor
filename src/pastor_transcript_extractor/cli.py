@@ -6013,10 +6013,15 @@ def extract(
         help="Content classifier: auto, rules, or llm.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
-    recording_verifier_model: str = typer.Option(
-        "gemma3:12b",
+    recording_verifier_backend: str = typer.Option(
+        "ollama",
+        "--recording-verifier-backend",
+        help="Ambiguous-recording verifier: ollama, typesafe, or none.",
+    ),
+    recording_verifier_model: str | None = typer.Option(
+        None,
         "--recording-verifier-model",
-        help="Ollama model used only for ambiguous recording-level decisions.",
+        help="Verifier model override; defaults by backend.",
     ),
     jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video extraction jobs."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -6032,6 +6037,7 @@ def extract(
             source_id=source_id,
             classifier=classifier,
             llm_model=llm_model,
+            recording_verifier_backend=recording_verifier_backend,
             recording_verifier_model=recording_verifier_model,
             workers=jobs,
             event_callback=lambda message: console.print(message, markup=False),
@@ -6099,10 +6105,15 @@ def apply_fixture_correction(
         "--llm-model",
         help="Override the configured local Ollama classification model.",
     ),
-    recording_verifier_model: str = typer.Option(
-        "gemma3:12b",
+    recording_verifier_backend: str = typer.Option(
+        "ollama",
+        "--recording-verifier-backend",
+        help="Ambiguous-recording verifier: ollama, typesafe, or none.",
+    ),
+    recording_verifier_model: str | None = typer.Option(
+        None,
         "--recording-verifier-model",
-        help="Ollama model used only for ambiguous recording-level decisions.",
+        help="Verifier model override; defaults by backend.",
     ),
     inference_cache_root: Path | None = typer.Option(
         None,
@@ -6162,8 +6173,14 @@ def apply_fixture_correction(
     if llm_model is not None:
         llm_config = replace(llm_config, model=llm_model)
     client = local_llm.OllamaClient(llm_config)
-    verifier_config = replace(llm_config, model=recording_verifier_model)
-    verifier_client = local_llm.OllamaClient(verifier_config)
+    try:
+        verifier = application.build_recording_verifier_runner(
+            backend=recording_verifier_backend,
+            model=recording_verifier_model,
+            llm_config=llm_config,
+        )
+    except (RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
     resolved_inference_cache_root = (
         inference_cache_root.expanduser().resolve()
         if inference_cache_root is not None
@@ -6192,8 +6209,7 @@ def apply_fixture_correction(
                 if resolved_inference_cache_root is not None
                 else None
             ),
-            recording_verifier_client=verifier_client,
-            recording_verifier_model_digest=verifier_client.model_digest(),
+            recording_verifier=verifier,
             recording_verifier_cache_dir=resolved_verifier_cache_root,
         )
         proposed = json.loads(
@@ -6302,10 +6318,15 @@ def reclassify(
         help="Reclassify every approved fixture in this directory.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
-    recording_verifier_model: str = typer.Option(
-        "gemma3:12b",
+    recording_verifier_backend: str = typer.Option(
+        "ollama",
+        "--recording-verifier-backend",
+        help="Ambiguous-recording verifier: ollama, typesafe, or none.",
+    ),
+    recording_verifier_model: str | None = typer.Option(
+        None,
         "--recording-verifier-model",
-        help="Ollama model used only for ambiguous recording-level decisions.",
+        help="Verifier model override; defaults by backend.",
     ),
     jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video classification jobs."),
     inference_cache_root: Path | None = typer.Option(
@@ -6411,18 +6432,14 @@ def reclassify(
     if llm_model is not None:
         llm_config = replace(llm_config, model=llm_model)
     client = local_llm.OllamaClient(llm_config)
-    verifier_config = replace(llm_config, model=recording_verifier_model)
-    raw_verifier_client = local_llm.OllamaClient(verifier_config)
-    verifier_lock = Lock()
-
-    class LockedVerifierClient:
-        model = raw_verifier_client.model
-
-        def generate_json(self, prompt, schema):
-            with verifier_lock:
-                return raw_verifier_client.generate_json(prompt, schema)
-
-    verifier_client = LockedVerifierClient()
+    try:
+        verifier = application.build_recording_verifier_runner(
+            backend=recording_verifier_backend,
+            model=recording_verifier_model,
+            llm_config=llm_config,
+        )
+    except (RuntimeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
 
     processed = 0
     reused = 0
@@ -6467,9 +6484,6 @@ def reclassify(
         eligible_videos.append(video)
 
     model_digest = client.model_digest() if eligible_videos else None
-    verifier_model_digest = (
-        raw_verifier_client.model_digest() if eligible_videos else None
-    )
     resolved_cache_root = (
         inference_cache_root.expanduser().resolve()
         if inference_cache_root is not None
@@ -6499,8 +6513,7 @@ def reclassify(
                 if resolved_cache_root is not None
                 else None
             ),
-            recording_verifier_client=verifier_client,
-            recording_verifier_model_digest=verifier_model_digest,
+            recording_verifier=verifier,
             recording_verifier_cache_dir=(
                 resolved_verifier_cache_root
                 if resolved_verifier_cache_root is not None
@@ -6691,6 +6704,8 @@ def run_workflow_service(
     jobs: int = DEFAULT_TRANSCRIBE_JOBS,
     classifier: str = "auto",
     llm_model: str | None = None,
+    recording_verifier_backend: str = "ollama",
+    recording_verifier_model: str | None = None,
     skip_review: bool = False,
     run_identity: bool = False,
     base_dir: Path | None = None,
@@ -6717,6 +6732,8 @@ def run_workflow_service(
             jobs=jobs,
             classifier=classifier,
             llm_model=llm_model,
+            recording_verifier_backend=recording_verifier_backend,
+            recording_verifier_model=recording_verifier_model,
             skip_review=skip_review,
             run_identity=run_identity,
             base_dir=base_dir,

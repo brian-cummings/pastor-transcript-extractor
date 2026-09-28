@@ -69,6 +69,41 @@ class ExtractionParallelismTests(unittest.TestCase):
         self.assertEqual(0, result.skipped)
         extract.assert_called_once()
 
+    def test_extract_batch_passes_typesafe_verifier_into_extraction(self) -> None:
+        video = SimpleNamespace(
+            id=1,
+            pastor_id=None,
+            title="Ambiguous Service",
+            status=VideoStatus.TRANSCRIBED_LOCAL,
+            duration_seconds=None,
+            published_at=None,
+        )
+        database = SimpleNamespace(
+            list_videos=lambda: [video],
+            get_latest_transcript_artifact_for_video=lambda _: SimpleNamespace(),
+            get_latest_extraction_result_for_video=lambda _: None,
+            update_video_status=lambda *args: None,
+        )
+        verifier = SimpleNamespace()
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "pastor_transcript_extractor.application.build_recording_verifier_runner",
+            return_value=verifier,
+        ) as build_verifier, patch(
+            "pastor_transcript_extractor.application.extract_video",
+        ) as extract:
+            result = extract_batch(
+                database,
+                build_paths(Path(tmp)),
+                classifier="rules",
+                recording_verifier_backend="typesafe",
+                recording_verifier_model="jev-1.13.0",
+            )
+
+        self.assertEqual(1, result.processed)
+        build_verifier.assert_called_once()
+        self.assertIs(verifier, extract.call_args.kwargs["recording_verifier"])
+
     def test_extract_batch_runs_independent_videos_with_requested_workers(self) -> None:
         videos = [
             SimpleNamespace(
@@ -216,6 +251,14 @@ class ExtractionParallelismTests(unittest.TestCase):
                 SimpleNamespace(),
                 build_paths(Path("/tmp/unused")),
                 workers=0,
+            )
+
+    def test_extract_batch_rejects_unknown_recording_verifier_backend(self) -> None:
+        with self.assertRaisesRegex(ValueError, "ollama, typesafe, none"):
+            extract_batch(
+                SimpleNamespace(),
+                build_paths(Path("/tmp/unused")),
+                recording_verifier_backend="mystery",
             )
 
 

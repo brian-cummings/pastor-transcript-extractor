@@ -46,13 +46,19 @@ class RunWorkflowTests(unittest.TestCase):
     def test_online_mode_deduplicates_source_ids_before_dispatch(self) -> None:
         calls = []
         result = run_workflow(
-            RunWorkflowRequest(source_ids=(2, 4, 2)),
+            RunWorkflowRequest(
+                source_ids=(2, 4, 2),
+                recording_verifier_backend="typesafe",
+                recording_verifier_model="jev-1.13.0",
+            ),
             dependencies=self._dependencies(calls),
         )
 
         self.assertEqual(RunMode.ONLINE, result.mode)
         self.assertEqual(["online"], [call[0] for call in calls])
         self.assertEqual((2, 4), calls[0][1][0].source_ids)
+        self.assertEqual("typesafe", calls[0][1][0].recording_verifier_backend)
+        self.assertEqual("jev-1.13.0", calls[0][1][0].recording_verifier_model)
 
     def test_audio_mode_resolves_scope_before_staging(self) -> None:
         calls = []
