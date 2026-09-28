@@ -372,13 +372,14 @@ pte run \
   --base-dir /path/to/app-data
 ```
 
-The Jev-first classifier maps five-minute blocks in batches, refines only the
-plausible sermon regions at one-minute resolution, and lets code select and
-validate the resulting interval. When a one-minute edge is still ambiguous, it
-collapses overlapping caption fragments, uses one request to choose among the
-remaining transcript-segment cuts in a local three-block edge neighborhood, and
-uses a second request to validate the selected cut. It accepts a refined edge only
-at the automatic confidence threshold. Its cache keys block judgments,
+The Jev-first classifier first converts rolling captions into a deduplicated semantic
+transcript while retaining a lossless mapping to the original segment indexes. It
+then maps five-minute blocks in batches, refines only the plausible sermon regions
+at one-minute resolution, and lets code select and validate the resulting interval.
+When a one-minute edge is still ambiguous, it uses one request to choose among the
+deduplicated transcript-segment cuts in a local three-block edge neighborhood and a
+second request to validate the selected cut. It accepts a refined edge only at the
+automatic confidence threshold. Its cache keys block judgments,
 candidate-set selections, and selected-cut validations by model, question version,
 title, timestamps, and text. A rerun asks Jev only for missing or changed judgments.
 `pte reclassify` automatically uses this Jev-first path when its recording verifier

@@ -24,6 +24,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
     _boundary_candidates,
+    _deduplicated_drafts,
 )
 from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
@@ -298,6 +299,43 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         )
 
         self.assertEqual([10.0], [item.boundary_seconds for item in candidates])
+
+    def test_classifier_input_is_deduplicated_with_source_index_mapping(self) -> None:
+        transcript = [
+            SegmentDraft(
+                0.0,
+                2.0,
+                "Father in heaven",
+                None,
+                TranscriptSegmentLabel.PRAYER,
+                0.7,
+            ),
+            SegmentDraft(
+                1.5,
+                3.0,
+                "Father in heaven thank you",
+                None,
+                TranscriptSegmentLabel.PRAYER,
+                0.7,
+            ),
+            SegmentDraft(
+                2.5,
+                4.0,
+                "thank you for grace",
+                None,
+                TranscriptSegmentLabel.PRAYER,
+                0.7,
+            ),
+        ]
+
+        semantic, source_groups, diagnostics = _deduplicated_drafts(transcript)
+
+        self.assertEqual(1, len(semantic))
+        self.assertEqual("Father in heaven thank you for grace", semantic[0].text)
+        self.assertEqual(((0, 1, 2),), source_groups)
+        self.assertEqual(3, diagnostics["source_segment_count"])
+        self.assertEqual(1, diagnostics["semantic_segment_count"])
+        self.assertGreater(diagnostics["deduplication_ratio"], 0.0)
 
     def test_currentness_tracks_typesafe_first_versions(self) -> None:
         classification = {

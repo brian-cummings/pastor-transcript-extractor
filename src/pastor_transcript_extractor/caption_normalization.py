@@ -14,6 +14,13 @@ _WORD = re.compile(r"[^\w']+", re.UNICODE)
 class NormalizedCaptionText:
     text: str
     diagnostics: dict[str, Any]
+    units: tuple["NormalizedCaptionUnit", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedCaptionUnit:
+    text: str
+    source_segment_indexes: tuple[int, ...]
 
 
 def _words(text: str) -> list[str]:
@@ -110,7 +117,14 @@ def normalize_caption_fragments(
         ],
         "operations": operations,
     }
-    return NormalizedCaptionText(normalized_text, diagnostics)
+    return NormalizedCaptionText(
+        normalized_text,
+        diagnostics,
+        tuple(
+            NormalizedCaptionUnit(unit["text"], tuple(unit["sources"]))
+            for unit in units
+        ),
+    )
 
 
 def normalize_caption_text(text: str) -> NormalizedCaptionText:
