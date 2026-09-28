@@ -40,16 +40,17 @@ class FinalDispositionTests(unittest.TestCase):
 
         self.assertEqual("rejected_no_sermon", result["status"])
 
-    def test_manual_override_is_authoritative_only_for_content_boundaries(self) -> None:
+    def test_manual_override_accepts_despite_guest_signal(self) -> None:
         result = build_final_disposition(
             {"confidence_tier": "low", "retained_segment_indexes": []},
             {"start_seconds": 60.0, "end_seconds": 600.0, "source": "override"},
             guest_speaker_suspected=True,
         )
 
-        self.assertEqual("review_required", result["status"])
-        self.assertIn("manual_override_applies_to_content_boundary_only", result["reason_codes"])
+        self.assertEqual("accepted_sermon", result["status"])
+        self.assertEqual(["manual_content_boundary_override_is_authoritative"], result["reason_codes"])
         self.assertTrue(result["manual_content_override_present"])
+        self.assertTrue(result["guest_speaker_suspected"])
 
     def test_manual_content_override_can_accept_when_no_identity_concern_exists(self) -> None:
         result = build_final_disposition(
@@ -167,7 +168,7 @@ class FinalDispositionTests(unittest.TestCase):
         self.assertEqual("review_required", result["status"])
         self.assertEqual(["medium_confidence_requires_review"], result["reason_codes"])
 
-    def test_guest_speaker_safeguard_precedes_recording_verifier(self) -> None:
+    def test_guest_signal_does_not_override_recording_verifier(self) -> None:
         result = build_final_disposition(
             {"confidence_tier": "medium", "retained_segment_indexes": [1, 2]},
             {"start_seconds": 60.0, "end_seconds": 600.0, "source": "hybrid_llm"},
@@ -178,8 +179,12 @@ class FinalDispositionTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual("review_required", result["status"])
-        self.assertEqual(["guest_speaker_suspected"], result["reason_codes"])
+        self.assertEqual("accepted_sermon", result["status"])
+        self.assertEqual(
+            ["recording_verifier_confirmed_worship_service_sermon"],
+            result["reason_codes"],
+        )
+        self.assertTrue(result["guest_speaker_suspected"])
 
     def test_verified_no_sermon_can_reject_despite_guest_signal(self) -> None:
         result = build_final_disposition(
