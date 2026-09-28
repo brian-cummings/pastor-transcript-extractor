@@ -37,7 +37,6 @@ from pastor_transcript_extractor import (
     speaker_pair_eligibility,
     speaker_pair_review,
 )
-from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.church_database_import import (
     ChurchDatabaseImportError,
     import_church_sources,
@@ -323,11 +322,7 @@ from pastor_transcript_extractor.workflows.audio_stage import (
 from pastor_transcript_extractor.workflows.resume_pipeline import (
     ResumePipelineDependencies,
 )
-from pastor_transcript_extractor.workflows.pipeline import (
-    PipelineDependencies,
-    PostContentIdentityRequest,
-    run_post_content_identity,
-)
+from pastor_transcript_extractor.workflows.pipeline import PipelineDependencies
 from pastor_transcript_extractor.workflows.run import (
     RunWorkflowDependencies,
     RunWorkflowRequest,
@@ -6644,7 +6639,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
         if isinstance(event, str):
             console.print(event, markup="[yellow]" in event)
         else:
-            _print_review_batch(event)
+            _pipeline_commands.print_review_batch(event)
 
     run_workflow(
         request,
@@ -6671,7 +6666,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 transcribe=acquisition.transcribe_videos_service,
                 extract=application.extract_batch,
                 ensure_media=_pipeline_commands.ensure_and_archive_run_media,
-                run_identity=_run_post_content_identity,
+                run_identity=_pipeline_commands.run_post_content_identity,
                 prepare_reviews=application.prepare_review_exports,
             ),
             online_pipeline=PipelineDependencies(
@@ -6684,7 +6679,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 transcribe=acquisition.transcribe_videos_service,
                 extract=application.extract_batch,
                 ensure_media=_pipeline_commands.ensure_and_archive_run_media,
-                run_identity=_run_post_content_identity,
+                run_identity=_pipeline_commands.run_post_content_identity,
                 prepare_reviews=application.prepare_review_exports,
             ),
         ),
@@ -6750,28 +6745,9 @@ def run_workflow_service(
             cookies=cookies,
         )
     )
-def _run_post_content_identity(
-    base_dir: Path | None,
-    *,
-    jobs: int = 2,
-) -> None:
-    run_post_content_identity(
-        PostContentIdentityRequest(base_dir=base_dir, jobs=jobs),
-        event_callback=lambda message: console.print(message, markup=False),
-        identity_runner=run_identity_workflow_service,
-    )
-
-
+_run_post_content_identity = _pipeline_commands.run_post_content_identity
 _ensure_and_archive_run_media = _pipeline_commands.ensure_and_archive_run_media
-
-def _print_review_batch(batch: ReviewBatchResult) -> None:
-    for pastor_result in batch.pastors:
-        result = pastor_result.export
-        console.print(f"Wrote pastor review markdown to {result.export_path}")
-        console.print(f"Wrote review manifest to {result.manifest_path}")
-        console.print(f"Included {result.video_count} video(s); skipped {result.skipped_count}.")
-    if batch.prepared or batch.failed:
-        console.print(f"Prepared {batch.prepared} video(s) for review; failed {batch.failed}.")
+_print_review_batch = _pipeline_commands.print_review_batch
 
 
 _identity_review_commands.configure_ground_truth_reviewer(review_ground_truth)
@@ -6784,6 +6760,7 @@ _identity_coordination_commands.configure_shadow_associator(
 _identity_workflow_commands.configure_identity_workflow(
     _invoke_identity_workflow_request
 )
+_pipeline_commands.configure_identity_runner(run_identity_workflow_service)
 _pipeline_commands.configure_run_command(_invoke_run_request)
 
 

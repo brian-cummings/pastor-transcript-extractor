@@ -2226,13 +2226,13 @@ class CliTests(unittest.TestCase):
                 "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
                 side_effect=lambda *args, **kwargs: calls.append("media"),
             ), patch(
-                "pastor_transcript_extractor.cli._run_post_content_identity",
+                "pastor_transcript_extractor.commands.pipeline.run_post_content_identity",
                 side_effect=apply_identity,
             ), patch(
                 "pastor_transcript_extractor.application.prepare_review_exports",
                 side_effect=export_review,
             ), patch(
-                "pastor_transcript_extractor.cli._print_review_batch"
+                "pastor_transcript_extractor.commands.pipeline.print_review_batch"
             ):
                 result = runner.invoke(
                     app,
@@ -2271,7 +2271,7 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media"
         ), patch(
-            "pastor_transcript_extractor.cli._run_post_content_identity"
+            "pastor_transcript_extractor.commands.pipeline.run_post_content_identity"
         ) as identity, patch(
             "pastor_transcript_extractor.application.prepare_review_exports"
         ) as review:
@@ -2435,7 +2435,7 @@ class CliTests(unittest.TestCase):
 
     def test_integrated_identity_uses_conservative_automatic_policy(self) -> None:
         with patch(
-            "pastor_transcript_extractor.cli.run_identity_workflow_service"
+            "pastor_transcript_extractor.commands.pipeline._identity_runner"
         ) as identity:
             _run_post_content_identity(Path("data"), jobs=3)
 
@@ -2817,7 +2817,7 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.commands.pipeline.ensure_and_archive_run_media",
             side_effect=lambda *args, **kwargs: calls.append("media"),
         ), patch(
-            "pastor_transcript_extractor.cli._run_post_content_identity",
+            "pastor_transcript_extractor.commands.pipeline.run_post_content_identity",
             side_effect=lambda *args, **kwargs: calls.append("identity"),
         ), patch(
             "pastor_transcript_extractor.application.prepare_review_exports",
@@ -2825,7 +2825,7 @@ class CliTests(unittest.TestCase):
                 calls.append("review") or SimpleNamespace()
             ),
         ), patch(
-            "pastor_transcript_extractor.cli._print_review_batch"
+            "pastor_transcript_extractor.commands.pipeline.print_review_batch"
         ):
             run_workflow_service(
                 resume_stage=Path("stage.json"),

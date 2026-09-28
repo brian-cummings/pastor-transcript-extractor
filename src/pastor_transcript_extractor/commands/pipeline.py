@@ -13,10 +13,15 @@ from pastor_transcript_extractor import (
     media_archive,
     media_artifacts,
 )
+from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.commands.apps import root_app
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.run import RunWorkflowRequest
+from pastor_transcript_extractor.workflows.pipeline import (
+    PostContentIdentityRequest,
+    run_post_content_identity as run_post_content_identity_workflow,
+)
 from pastor_transcript_extractor.workflows.run_media import (
     RunMediaDependencies,
     RunMediaRequest,
@@ -30,14 +35,50 @@ from pastor_transcript_extractor.workflows.transcription import (
 
 DEFAULT_DISCOVER_LIMIT = 26
 RunInvoker = Callable[[RunWorkflowRequest], object]
+IdentityRunner = Callable[..., object]
 console = Console()
 _run_invoker: RunInvoker | None = None
+_identity_runner: IdentityRunner | None = None
 
 
 def configure_run_command(invoker: RunInvoker) -> None:
     """Bind the application workflow at composition time."""
     global _run_invoker
     _run_invoker = invoker
+
+
+def configure_identity_runner(identity_runner: IdentityRunner) -> None:
+    """Bind the identity workflow at composition time."""
+    global _identity_runner
+    _identity_runner = identity_runner
+
+
+def run_post_content_identity(
+    base_dir: Path | None,
+    *,
+    jobs: int = 2,
+) -> None:
+    if _identity_runner is None:
+        raise RuntimeError("Identity workflow is not configured.")
+    run_post_content_identity_workflow(
+        PostContentIdentityRequest(base_dir=base_dir, jobs=jobs),
+        event_callback=lambda message: console.print(message, markup=False),
+        identity_runner=_identity_runner,
+    )
+
+
+def print_review_batch(batch: ReviewBatchResult) -> None:
+    for pastor_result in batch.pastors:
+        result = pastor_result.export
+        console.print(f"Wrote pastor review markdown to {result.export_path}")
+        console.print(f"Wrote review manifest to {result.manifest_path}")
+        console.print(
+            f"Included {result.video_count} video(s); skipped {result.skipped_count}."
+        )
+    if batch.prepared or batch.failed:
+        console.print(
+            f"Prepared {batch.prepared} video(s) for review; failed {batch.failed}."
+        )
 
 
 def ensure_and_archive_run_media(
