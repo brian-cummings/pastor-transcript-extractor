@@ -384,19 +384,19 @@ class TypeSafeSdkAdapter:
             )
         else:
             statement = (
-                "`before_boundary` finishes the principal preacher's same sermon-closing "
-                "prayer, appeal, or benediction, and `after_boundary` begins a distinct "
-                "post-sermon service activity."
+                "`before_boundary` continues or completes the principal message's "
+                "concluding material, and `after_boundary` begins a distinct service "
+                "activity that is no longer part of that message."
             )
             true_criteria = (
-                "The cut retains the complete integrated closing material before it and "
-                "places seating instructions, music, announcements, logistics, or another "
-                "new service element after it. A final Amen may be repeated after the cut "
-                "by overlapping captions."
+                "The cut retains the complete integrated conclusion before it, whether "
+                "that conclusion is preaching, appeal, prayer, Scripture, or benediction, "
+                "and places a genuinely new service element after it."
             )
             false_criteria = (
-                "The closing prayer, appeal, or benediction continues materially after "
-                "the cut; post-sermon activity begins before it; or no handoff occurs."
+                "The same message or its integrated conclusion continues materially after "
+                "the cut; a distinct service activity begins before it; or no semantic "
+                "handoff occurs."
             )
         result = self._client.system_one(
             {
