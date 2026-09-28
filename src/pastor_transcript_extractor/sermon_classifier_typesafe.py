@@ -25,15 +25,17 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v8"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v9"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
 BLOCK_BUILDER_VERSION = "typesafe-deduplicated-coarse-300s-fine-60s-v2"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v8-deduplicated-input"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v9-temporal-neighborhood"
 BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
 BOUNDARY_CANDIDATE_MIN_SPACING_SECONDS = 0.75
+BOUNDARY_NEIGHBORHOOD_SECONDS = 180.0
+BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
 CAPTION_DEDUP_WINDOW_SECONDS = 20.0
 CAPTION_DEDUP_MAX_GAP_SECONDS = 2.0
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
@@ -504,11 +506,16 @@ def _boundary_candidates(
 def _edge_neighborhood(
     blocks: list[TranscriptBlock], position: int, *, edge: str
 ) -> list[TranscriptBlock]:
-    """Return the selected edge block plus at most two contiguous outer blocks."""
+    """Return contiguous edge context within a bounded temporal neighborhood."""
     result = [blocks[position]]
     step = -1 if edge == "start" else 1
     cursor = position
-    while len(result) < 3:
+    anchor = (
+        blocks[position].start_seconds
+        if edge == "start"
+        else blocks[position].end_seconds
+    )
+    while len(result) < BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS:
         next_position = cursor + step
         if next_position < 0 or next_position >= len(blocks):
             break
@@ -520,6 +527,13 @@ def _edge_neighborhood(
             else outer.start_seconds - inner.end_seconds
         )
         if gap > 1.0:
+            break
+        distance = (
+            anchor - outer.end_seconds
+            if edge == "start"
+            else outer.start_seconds - anchor
+        )
+        if distance > BOUNDARY_NEIGHBORHOOD_SECONDS:
             break
         if edge == "start":
             result.insert(0, outer)
@@ -537,12 +551,34 @@ def _candidate_components(
 ) -> list[list[TranscriptBlock]]:
     components: list[list[TranscriptBlock]] = []
     current: list[TranscriptBlock] = []
-    for block in blocks:
+    supported = [
+        answers[block.block_id].sermon_probability >= threshold for block in blocks
+    ]
+    for position in range(1, len(blocks) - 1):
+        if (
+            supported[position]
+            or not supported[position - 1]
+            or not supported[position + 1]
+        ):
+            continue
+        previous = blocks[position - 1]
+        block = blocks[position]
+        following = blocks[position + 1]
+        if (
+            block.start_seconds - previous.end_seconds <= 1.0
+            and following.start_seconds - block.end_seconds <= 1.0
+            and (
+                answers[block.block_id].sermon_probability >= 0.4
+                or answers[block.block_id].choice == "unclear"
+            )
+        ):
+            supported[position] = True
+
+    for position, block in enumerate(blocks):
         if current and block.start_seconds - current[-1].end_seconds > 1.0:
             components.append(current)
             current = []
-        probability = answers[block.block_id].sermon_probability
-        if probability >= threshold:
+        if supported[position]:
             current.append(block)
             continue
         if current:
