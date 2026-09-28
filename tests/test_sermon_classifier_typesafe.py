@@ -24,7 +24,9 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
     _boundary_candidates,
+    _candidate_components,
     _deduplicated_drafts,
+    _edge_neighborhood,
 )
 from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
@@ -299,6 +301,76 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         )
 
         self.assertEqual([10.0], [item.boundary_seconds for item in candidates])
+
+    def test_edge_neighborhood_uses_elapsed_time_not_two_block_limit(self) -> None:
+        blocks = [
+            TranscriptBlock(
+                index, [index], index * 70.0, (index + 1) * 70.0, str(index)
+            )
+            for index in range(7)
+        ]
+
+        neighborhood = _edge_neighborhood(blocks, 1, edge="end")
+
+        self.assertEqual([1, 2, 3, 4], [block.block_id for block in neighborhood])
+
+    def test_candidate_components_bridge_one_locally_ambiguous_block(self) -> None:
+        blocks = [
+            TranscriptBlock(
+                index, [index], index * 60.0, (index + 1) * 60.0, str(index)
+            )
+            for index in range(4)
+        ]
+
+        def answer(
+            probability: float, choice: str = "principal_sermon"
+        ) -> TypeSafeBlockAnswer:
+            probabilities = {role: 0.0 for role in ROLE_CHOICES}
+            probabilities["principal_sermon"] = probability
+            probabilities["administration_or_transition"] = 1.0 - probability
+            return TypeSafeBlockAnswer(choice, probabilities, 0.5, "jev-1.13.0")
+
+        components = _candidate_components(
+            blocks,
+            {
+                0: answer(0.9),
+                1: answer(0.57),
+                2: answer(0.95),
+                3: answer(0.1, "administration_or_transition"),
+            },
+            threshold=0.66,
+        )
+
+        self.assertEqual(
+            [[0, 1, 2]],
+            [[block.block_id for block in item] for item in components],
+        )
+
+    def test_candidate_components_do_not_bridge_confident_nonsermon_block(self) -> None:
+        blocks = [
+            TranscriptBlock(
+                index, [index], index * 60.0, (index + 1) * 60.0, str(index)
+            )
+            for index in range(3)
+        ]
+        answers = {}
+        for index, probability in enumerate((0.9, 0.1, 0.95)):
+            probabilities = {role: 0.0 for role in ROLE_CHOICES}
+            probabilities["principal_sermon"] = probability
+            probabilities["administration_or_transition"] = 1.0 - probability
+            answers[index] = TypeSafeBlockAnswer(
+                "principal_sermon" if probability >= 0.5 else "administration_or_transition",
+                probabilities,
+                0.9,
+                "jev-1.13.0",
+            )
+
+        components = _candidate_components(blocks, answers, threshold=0.66)
+
+        self.assertEqual(
+            [[0], [2]],
+            [[block.block_id for block in item] for item in components],
+        )
 
     def test_classifier_input_is_deduplicated_with_source_index_mapping(self) -> None:
         transcript = [
