@@ -261,6 +261,15 @@ class ExtractionParallelismTests(unittest.TestCase):
                 recording_verifier_backend="mystery",
             )
 
+    def test_typesafe_first_classifier_requires_typesafe_backend(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires"):
+            extract_batch(
+                SimpleNamespace(),
+                build_paths(Path("/tmp/unused")),
+                classifier="typesafe",
+                recording_verifier_backend="ollama",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

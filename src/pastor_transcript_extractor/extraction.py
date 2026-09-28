@@ -33,6 +33,13 @@ from pastor_transcript_extractor.recording_verifier import (
 from pastor_transcript_extractor.recording_verifier_typesafe import (
     TypeSafeProductionRecordingVerifier,
 )
+from pastor_transcript_extractor.sermon_classifier_typesafe import (
+    BLOCK_BUILDER_VERSION as TYPESAFE_BLOCK_BUILDER_VERSION,
+    COARSE_DISCOVERY_VERSION as TYPESAFE_COARSE_DISCOVERY_VERSION,
+    FINE_COMPONENT_VERSION as TYPESAFE_FINE_COMPONENT_VERSION,
+    QUESTION_SET_VERSION as TYPESAFE_CLASSIFIER_PROMPT_VERSION,
+    SEARCH_ALGORITHM_VERSION as TYPESAFE_SEARCH_ALGORITHM_VERSION,
+)
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.sermon_classification import (
@@ -133,6 +140,8 @@ def _classify_with_fallback(
     context_size: int = 4096,
     progress: Any | None = None,
     video_title: str | None = None,
+    semantic_classifier: Any | None = None,
+    manual_override_present: bool = False,
 ) -> tuple[dict[str, Any], HybridSermonResult | None]:
     classification: dict[str, Any] = {
         "schema_version": 1,
@@ -162,11 +171,51 @@ def _classify_with_fallback(
             "manual_override_present": False,
         },
     }
-    if classifier not in {"rules", "auto", "llm"}:
+    if classifier not in {"rules", "auto", "llm", "typesafe"}:
         raise ValueError(f"Unknown classifier mode: {classifier}")
     if classifier == "llm" and llm_client is None:
         raise ValueError("LLM classifier requested but no local LLM client is configured")
-    if classifier not in {"auto", "llm"} or llm_client is None:
+    typesafe_warning: str | None = None
+    if classifier == "typesafe" and semantic_classifier is not None:
+        classify_sermon = getattr(semantic_classifier, "classify_sermon", None)
+        if callable(classify_sermon):
+            try:
+                typesafe_result = classify_sermon(
+                    drafts,
+                    detected_window,
+                    title=video_title or "",
+                    cache_dir=(cache_dir or Path(".typesafe-inference-cache")),
+                    progress=progress,
+                )
+                if (
+                    isinstance(typesafe_result, HybridSermonResult)
+                    and typesafe_result.retained_segment_indexes
+                    and typesafe_result.confidence_tier in {"high", "medium"}
+                ):
+                    result = typesafe_result.to_dict()
+                    result["window_arbitration_policy_version"] = (
+                        WINDOW_ARBITRATION_POLICY_VERSION
+                    )
+                    return result, typesafe_result
+                typesafe_warning = (
+                    "TypeSafe first pass abstained; used the configured fallback"
+                )
+            except Exception as error:
+                typesafe_warning = (
+                    f"TypeSafe first pass failed; used the configured fallback: {error}"
+                )
+        else:
+            typesafe_warning = (
+                "TypeSafe first pass unavailable; used the configured fallback"
+            )
+    if classifier == "typesafe" and llm_client is None:
+        classification["method"] = "rule_based_fallback"
+        classification["confidence_tier"] = "low"
+        classification["warnings"].append(
+            typesafe_warning or "TypeSafe first pass is not configured"
+        )
+        return classification, None
+    if classifier not in {"auto", "llm", "typesafe"} or llm_client is None:
         return classification, None
     try:
         digest_method = getattr(llm_client, "model_digest", None)
@@ -182,7 +231,7 @@ def _classify_with_fallback(
             context_size=context_size,
             rule_baseline_source="recomputed_rules",
             rule_baseline_algorithm_version=detected_window.method,
-            manual_override_present=False,
+            manual_override_present=manual_override_present,
             video_title=video_title,
         )
     except Exception as error:
@@ -193,6 +242,11 @@ def _classify_with_fallback(
         classification["warnings"].append(f"local LLM classification failed: {error}")
         return classification, None
     result = hybrid_result.to_dict()
+    if typesafe_warning is not None:
+        result["warnings"] = [typesafe_warning, *result.get("warnings", [])]
+        result.setdefault("search", {}).setdefault("discovery", {})[
+            "typesafe_first_fallback"
+        ] = typesafe_warning
     result["window_arbitration_policy_version"] = WINDOW_ARBITRATION_POLICY_VERSION
     return result, hybrid_result
 
@@ -202,6 +256,11 @@ def _classification_is_current(
     *,
     model: str,
     prompt_version: str,
+    method: str = SEARCH_ALGORITHM_VERSION,
+    block_builder_version: str = BLOCK_BUILDER_VERSION,
+    coarse_discovery_version: str = COARSE_DISCOVERY_VERSION,
+    fine_component_version: str = FINE_COMPONENT_VERSION,
+    confidence_policy_version: str = CONFIDENCE_POLICY_VERSION,
     recording_verifier_model: str | None = None,
     recording_verifier_prompt_version: str | None = None,
     recording_verifier_policy_version: str | None = None,
@@ -209,13 +268,13 @@ def _classification_is_current(
 ) -> bool:
     current = (
         isinstance(classification, dict)
-        and classification.get("method") == SEARCH_ALGORITHM_VERSION
-        and classification.get("block_builder_version") == BLOCK_BUILDER_VERSION
-        and classification.get("coarse_discovery_version") == COARSE_DISCOVERY_VERSION
-        and classification.get("fine_component_version") == FINE_COMPONENT_VERSION
+        and classification.get("method") == method
+        and classification.get("block_builder_version") == block_builder_version
+        and classification.get("coarse_discovery_version") == coarse_discovery_version
+        and classification.get("fine_component_version") == fine_component_version
         and classification.get("model") == model
         and classification.get("prompt_version") == prompt_version
-        and classification.get("confidence_policy_version") == CONFIDENCE_POLICY_VERSION
+        and classification.get("confidence_policy_version") == confidence_policy_version
         and classification.get("window_arbitration_policy_version")
         == WINDOW_ARBITRATION_POLICY_VERSION
     )
@@ -1093,14 +1152,32 @@ def _arbitrate_hybrid_window(
             <= 1.0
             for item in objective_segment_precision
         )
+        typesafe_edge = (
+            recovery.get(str(edge_decision.get("edge")), {})
+            if hybrid.method == TYPESAFE_SEARCH_ALGORITHM_VERSION
+            and isinstance(recovery, dict)
+            else {}
+        )
+        adaptive_has_typesafe_boundary = (
+            isinstance(typesafe_edge, dict)
+            and float(typesafe_edge.get("transition_strength") or 0.0) >= 0.72
+            and typesafe_edge.get("status")
+            in {"semantic_transition", "recording_edge"}
+        )
         if adaptive_has_objective_boundary:
             edge_decision["resolution"] = (
                 "adaptive_boundary_has_objective_segment_transition"
             )
+        elif adaptive_has_typesafe_boundary:
+            edge_decision["resolution"] = (
+                "adaptive_boundary_has_typesafe_local_transition"
+            )
+            edge_decision["typesafe_boundary_evidence"] = typesafe_edge
         if (
             disagreement >= max(180.0, selected_duration * 0.08)
             and not adaptive_has_recall_support
             and not adaptive_has_objective_boundary
+            and not adaptive_has_typesafe_boundary
         ):
             unresolved_edges.append({
                 "edge": edge_decision.get("edge"),
@@ -1125,7 +1202,11 @@ def _arbitrate_hybrid_window(
         "adaptive_evidence_score": round(adaptive_score, 3),
         "rule_evidence_score": round(rule_score, 3),
         "rule_evidence_state": rule_evidence_state,
-        "recording_verifier_role": "sermon_existence_only",
+        "recording_verifier_role": (
+            "typesafe_first_boundary_localization"
+            if hybrid.method == TYPESAFE_SEARCH_ALGORITHM_VERSION
+            else "sermon_existence_only"
+        ),
         "recording_sermon_confirmed": recording_sermon_confirmed,
         "recording_single_sustained_message": recording_single_sustained_message,
         "rejected_alternative": rejected,
@@ -1180,10 +1261,33 @@ def reclassify_video(
         recording_verifier_client,
         recording_verifier_model_digest,
     )
+    typesafe_first = (
+        isinstance(verifier, TypeSafeProductionRecordingVerifier)
+        and verifier.first_pass is not None
+    )
     if not force and _classification_is_current(
         existing,
-        model=llm_client.model,
-        prompt_version=prompt_version,
+        model=verifier.model if typesafe_first else llm_client.model,
+        prompt_version=(
+            TYPESAFE_CLASSIFIER_PROMPT_VERSION if typesafe_first else prompt_version
+        ),
+        method=TYPESAFE_SEARCH_ALGORITHM_VERSION if typesafe_first else SEARCH_ALGORITHM_VERSION,
+        block_builder_version=(
+            TYPESAFE_BLOCK_BUILDER_VERSION if typesafe_first else BLOCK_BUILDER_VERSION
+        ),
+        coarse_discovery_version=(
+            TYPESAFE_COARSE_DISCOVERY_VERSION
+            if typesafe_first
+            else COARSE_DISCOVERY_VERSION
+        ),
+        fine_component_version=(
+            TYPESAFE_FINE_COMPONENT_VERSION if typesafe_first else FINE_COMPONENT_VERSION
+        ),
+        confidence_policy_version=(
+            "typesafe-boundary-confidence-v1"
+            if typesafe_first
+            else CONFIDENCE_POLICY_VERSION
+        ),
         recording_verifier_model=verifier.model if verifier is not None else None,
         recording_verifier_prompt_version=(
             verifier.prompt_version if verifier is not None else None
@@ -1255,27 +1359,23 @@ def reclassify_video(
         if override is not None
         else recomputed_window
     )
-    hybrid = classify_sermon_content_adaptive(
+    classification, hybrid = _classify_with_fallback(
         drafts,
-        # Manual review establishes the final content envelope only.  Candidate
-        # discovery and ranking must retain an independently recomputed rule
-        # comparator or the override leaks ground truth into automatic evidence.
+        # Manual review establishes the final content envelope only. Candidate
+        # discovery must retain an independently recomputed rule comparator.
         recomputed_window,
-        llm_client,
+        classifier="typesafe" if typesafe_first else "llm",
+        llm_client=llm_client,
         prompt_version=prompt_version,
         progress=progress,
         cache_dir=inference_cache_dir or video_paths.extracted / "inference-cache",
-        model_digest=model_digest,
         context_size=context_size,
-        rule_baseline_source="recomputed_rules",
-        rule_baseline_algorithm_version=recomputed_window.method,
-        manual_override_present=override is not None,
         video_title=video.title,
+        semantic_classifier=verifier if typesafe_first else None,
+        manual_override_present=override is not None,
     )
-    classification = hybrid.to_dict()
-    classification["window_arbitration_policy_version"] = (
-        WINDOW_ARBITRATION_POLICY_VERSION
-    )
+    if hybrid is None:
+        raise RuntimeError("No semantic classifier produced a sermon candidate")
     payload["classification"] = classification
 
     existing_window = _baseline_window_payload(
@@ -1608,6 +1708,11 @@ def extract_video(
     drafts = segment_transcript(raw_text, raw_json)
     persisted_segments = [_segment_to_storage(database, video.id, transcript_artifact, draft) for draft in drafts]
     detected_window = detect_sermon_window(drafts, transcript_source=transcript_artifact.source_kind)
+    verifier = _recording_verifier_runner(
+        recording_verifier,
+        recording_verifier_client,
+        recording_verifier_model_digest,
+    )
     classification, hybrid_result = _classify_with_fallback(
         drafts,
         detected_window,
@@ -1618,6 +1723,12 @@ def extract_video(
         context_size=context_size,
         progress=progress,
         video_title=video.title,
+        semantic_classifier=(
+            verifier
+            if classifier == "typesafe"
+            and isinstance(verifier, TypeSafeProductionRecordingVerifier)
+            else None
+        ),
     )
     override_path = video_paths.review / "window_override.json"
     override, override_error = _load_window_override(override_path)
@@ -1654,11 +1765,6 @@ def extract_video(
         classification,
         sermon_window,
         guest_speaker_suspected=guest_flags.suspected,
-    )
-    verifier = _recording_verifier_runner(
-        recording_verifier,
-        recording_verifier_client,
-        recording_verifier_model_digest,
     )
     if (
         preliminary_disposition["status"] == REVIEW_REQUIRED
