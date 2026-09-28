@@ -22,6 +22,8 @@ from pastor_transcript_extractor.recording_verifier import (
     validate_partition_access,
 )
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
+    TypeSafeBoundaryAnswer,
+    TypeSafeBoundaryCandidate,
     TypeSafeBlockAnswer,
     TypeSafeFirstPassSermonClassifier,
     role_question,
@@ -209,11 +211,13 @@ class TypeSafeSdkAdapter:
         if not os.environ.get("TYPESAFE_API_KEY"):
             raise RuntimeError("TYPESAFE_API_KEY is required for the TypeSafe recording verifier")
         try:
-            from typesafe_sdk import Choice, TypeSafeClient  # type: ignore[import-not-found]
+            from typesafe_sdk import Choice, Noul, TypeSafeClient  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError("Install the optional dependency: pip install -e '.[typesafe]'") from exc
         self.model, self.timeout_seconds = model, timeout_seconds
-        self._client, self._Choice = TypeSafeClient(model=model, timeout=timeout_seconds), Choice
+        self._client, self._Choice, self._Noul = (
+            TypeSafeClient(model=model, timeout=timeout_seconds), Choice, Noul
+        )
 
     def assess(self, state: TypeSafeRecordingState) -> TypeSafeAnswers:
         choice = question_inventory()["recording_type"]
@@ -288,6 +292,77 @@ class TypeSafeSdkAdapter:
                 resolved_model_id=resolved_model,
             )
             for position, block in enumerate(blocks)
+        }
+
+    def assess_boundary_candidates(
+        self,
+        title: str,
+        edge: str,
+        candidates: list[TypeSafeBoundaryCandidate],
+    ) -> Mapping[str, TypeSafeBoundaryAnswer]:
+        expected_order = (
+            "outside the principal sermon before the boundary and inside it after"
+            if edge == "start"
+            else "inside the principal sermon before the boundary and outside it after"
+        )
+        state = {
+            "recording_title": title,
+            "edge": edge,
+            "candidates": [
+                {
+                    "candidate_id": candidate.candidate_id,
+                    "before_boundary": candidate.before_text,
+                    "after_boundary": candidate.after_text,
+                }
+                for candidate in candidates
+            ],
+        }
+        questions = {
+            f"candidate_{position}": self._Noul(
+                instructions={
+                    "task": (
+                        f"Does `candidates[{position}]` cleanly place the {edge} "
+                        "boundary of the principal worship-service sermon?"
+                    ),
+                    "expected_order": expected_order,
+                    "sermon_scope": (
+                        "Include a prayer, Scripture reading, appeal, or benediction "
+                        "that remains integrated into the principal preacher's message."
+                    ),
+                    "outside_scope": (
+                        "Music, a separate service prayer, announcements, logistics, "
+                        "speaker handoff, or post-sermon activity is outside."
+                    ),
+                },
+                criteria={
+                    "true": (
+                        "The before/after excerpts show the expected transition at this "
+                        "cut without removing an integrated part of the sermon or retaining "
+                        "a separate service element."
+                    ),
+                    "false": (
+                        "The cut is premature, late, ambiguous, or both excerpts remain on "
+                        "the same side of the sermon boundary."
+                    ),
+                },
+            )
+            for position in range(len(candidates))
+        }
+        result = self._client.system_one(
+            state,
+            questions,
+            model=self.model,
+            timeout=self.timeout_seconds,
+        )
+        resolved_model = str(getattr(result, "model", self.model))
+        return {
+            candidate.candidate_id: TypeSafeBoundaryAnswer(
+                transition_probability=float(
+                    result.nouls[f"candidate_{position}"].noul
+                ),
+                resolved_model_id=resolved_model,
+            )
+            for position, candidate in enumerate(candidates)
         }
 
 
