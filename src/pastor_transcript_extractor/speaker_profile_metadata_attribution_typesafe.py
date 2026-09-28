@@ -24,8 +24,8 @@ from pastor_transcript_extractor.speaker_registry import normalize_person_name
 from pastor_transcript_extractor.storage import Database
 
 
-TYPESAFE_ATTRIBUTION_VERSION = "profile_metadata_attribution_typesafe_v1"
-TYPESAFE_QUESTION_VERSION = "profile-metadata-role-choice-v1"
+TYPESAFE_ATTRIBUTION_VERSION = "profile_metadata_attribution_typesafe_v2"
+TYPESAFE_QUESTION_VERSION = "profile-metadata-role-choice-v2"
 TYPESAFE_POLICY_VERSION = "profile-metadata-grounded-policy-v1"
 DEFAULT_TYPESAFE_MODEL = "jev-1.13.0"
 DEFAULT_CONFIDENCE_THRESHOLD = 0.70
@@ -177,7 +177,10 @@ def extract_profile_name_candidates(
         # A channel name identifies the publisher, not the sermon speaker.
         if field.field_path == "video.channel_name":
             continue
-        for span in extract_person_name_spans(field.text):
+        for span in extract_person_name_spans(
+            field.text,
+            include_bare=field.field_path == "raw_metadata.description",
+        ):
             if not _valid_person_name(
                 span.normalized_name,
                 raw_name=span.exact_text,

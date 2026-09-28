@@ -20,6 +20,7 @@ _SUPPORTED_ATTRIBUTION_VERSIONS = {
     "profile_metadata_attribution_v3",
     PROFILE_METADATA_ATTRIBUTION_VERSION,
     "profile_metadata_attribution_typesafe_v1",
+    "profile_metadata_attribution_typesafe_v2",
 }
 PROFILE_METADATA_OUTPUT_TOKEN_BUDGET = 768
 PROFILE_METADATA_TEXT_LIMIT = 800
@@ -56,9 +57,11 @@ _NON_PERSON_NAME_TOKENS = {
     "fellowship",
     "in",
     "livestream",
+    "lifestyle",
     "message",
     "ministry",
     "of",
+    "program",
     "sabbath",
     "sermon",
     "service",
