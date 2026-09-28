@@ -72,14 +72,15 @@ def _build_classifier_client(
     classifier: str,
     llm_model: str | None,
 ) -> tuple[LlmConfig, LocalLlmClient | None]:
-    if classifier not in {"auto", "rules", "llm"}:
-        raise ValueError("Classifier must be one of: auto, rules, llm")
+    if classifier not in {"auto", "rules", "llm", "typesafe"}:
+        raise ValueError("Classifier must be one of: auto, rules, llm, typesafe")
     llm_config = build_llm_config()
     if llm_model is not None:
         llm_config = replace(llm_config, model=llm_model)
     client = (
         OllamaClient(llm_config)
-        if classifier == "llm" or (classifier == "auto" and llm_config.enabled)
+        if classifier == "llm"
+        or (classifier in {"auto", "typesafe"} and llm_config.enabled)
         else None
     )
     return llm_config, client
@@ -89,7 +90,11 @@ def _classifier_summary(classifier: str, llm_config: LlmConfig, llm_client: Loca
     if classifier == "rules":
         return "Classifier: rules (Ollama will not be called)."
     if llm_client is None:
+        if classifier == "typesafe":
+            return "Classifier: TypeSafe/Jev first -> rules fallback (Ollama disabled)."
         return "Classifier: auto -> rules (Ollama disabled by PTE_LLM_ENABLED)."
+    if classifier == "typesafe":
+        return f"Classifier: TypeSafe/Jev first -> Ollama {llm_config.model} fallback."
     fallback = "rules fallback enabled" if classifier == "auto" else "strict; no rules fallback"
     return f"Classifier: {classifier} -> Ollama {llm_config.model} ({fallback})."
 
@@ -146,6 +151,13 @@ def extract_batch(
     """Extract eligible videos through the adaptive production path."""
     if workers < 1:
         raise ValueError("Extraction workers must be at least 1")
+    if (
+        classifier == "typesafe"
+        and recording_verifier_backend.strip().casefold() != "typesafe"
+    ):
+        raise ValueError(
+            "Classifier 'typesafe' requires --recording-verifier-backend typesafe"
+        )
     if recording_verifier_backend.strip().casefold() not in {
         "ollama",
         "typesafe",

@@ -21,6 +21,14 @@ from pastor_transcript_extractor.recording_verifier import (
     title_program_decision,
     validate_partition_access,
 )
+from pastor_transcript_extractor.sermon_classifier_typesafe import (
+    TypeSafeBlockAnswer,
+    TypeSafeFirstPassSermonClassifier,
+    role_question,
+)
+from pastor_transcript_extractor.sermon_classification import HybridSermonResult, TranscriptBlock
+from pastor_transcript_extractor.sermon_detection import SermonWindowResult
+from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.storage import Database
 
 
@@ -224,6 +232,64 @@ class TypeSafeSdkAdapter:
         usage = getattr(result, "usage", None)
         return TypeSafeAnswers(str(answer.choice), {str(k): float(v) for k, v in probabilities.items()}, getattr(answer, "confidence", None), str(getattr(result, "model", self.model)), getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None))
 
+    def assess_blocks(
+        self,
+        title: str,
+        blocks: list[TranscriptBlock],
+    ) -> Mapping[int, TypeSafeBlockAnswer]:
+        question = role_question()
+        state = {
+            "recording_title": title,
+            "blocks": [
+                {
+                    "block_id": block.block_id,
+                    "text": block.text,
+                }
+                for block in blocks
+            ],
+        }
+        questions = {
+            f"block_{position}": self._Choice(
+                instructions={
+                    **question["instructions"],
+                    "target": f"Classify only `blocks[{position}].text`.",
+                },
+                criteria=question["criteria"],
+            )
+            for position in range(len(blocks))
+        }
+        result = self._client.system_one(
+            state,
+            questions,
+            model=self.model,
+            timeout=self.timeout_seconds,
+        )
+        resolved_model = str(getattr(result, "model", self.model))
+        return {
+            block.block_id: TypeSafeBlockAnswer(
+                choice=str(result.choices[f"block_{position}"].choice),
+                probabilities={
+                    str(key): float(value)
+                    for key, value in dict(
+                        getattr(
+                            result.choices[f"block_{position}"],
+                            "probabilities",
+                            getattr(
+                                result.choices[f"block_{position}"],
+                                "distribution",
+                                {},
+                            ),
+                        )
+                    ).items()
+                },
+                confidence=getattr(
+                    result.choices[f"block_{position}"], "confidence", None
+                ),
+                resolved_model_id=resolved_model,
+            )
+            for position, block in enumerate(blocks)
+        }
+
 
 def _hash(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -267,6 +333,35 @@ class TypeSafeProductionRecordingVerifier:
         )
         self.policy = policy
         self._lock = Lock()
+        self.first_pass = (
+            TypeSafeFirstPassSermonClassifier(
+                model=model,
+                client=self.client,
+                lock=self._lock,
+            )
+            if callable(getattr(self.client, "assess_blocks", None))
+            else None
+        )
+
+    def classify_sermon(
+        self,
+        drafts: list[SegmentDraft],
+        rule_window: SermonWindowResult,
+        *,
+        title: str,
+        cache_dir: Path,
+        progress: Any | None = None,
+    ) -> HybridSermonResult | None:
+        """Run the cached Jev-first locator when the client supports block judgments."""
+        if self.first_pass is None:
+            return None
+        return self.first_pass.classify_sermon(
+            drafts,
+            rule_window,
+            title=title,
+            cache_dir=cache_dir,
+            progress=progress,
+        )
 
     def verify(
         self,

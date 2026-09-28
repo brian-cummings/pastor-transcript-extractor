@@ -6010,7 +6010,7 @@ def extract(
     classifier: str = typer.Option(
         "auto",
         "--classifier",
-        help="Content classifier: auto, rules, or llm.",
+        help="Content classifier: auto, rules, llm, or typesafe.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     recording_verifier_backend: str = typer.Option(

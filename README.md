@@ -361,6 +361,25 @@ pte reclassify \
   --base-dir /path/to/app-data
 ```
 
+To make Jev the first semantic localization pass, with the configured local
+Ollama model retained as a fallback, use both TypeSafe switches:
+
+```bash
+pte run \
+  --classifier typesafe \
+  --recording-verifier-backend typesafe \
+  --recording-verifier-model jev-1.13.0 \
+  --base-dir /path/to/app-data
+```
+
+The Jev-first classifier maps five-minute blocks in batches, refines only the
+plausible sermon regions at one-minute resolution, and lets code select and
+validate the resulting interval. Its cache is item-based: each block judgment is
+keyed by model, question version, title, timestamps, and normalized text. A rerun
+asks Jev only for missing or changed judgments, even if batch composition changes.
+`pte reclassify` automatically uses this Jev-first path when its recording verifier
+backend is `typesafe`.
+
 The same `--recording-verifier-backend typesafe` option is available on `pte
 run`, `pte extract`, and `pte apply-fixture-correction`. TypeSafe receives the
 selected candidate's opening, middle, and ending transcript excerpts plus the

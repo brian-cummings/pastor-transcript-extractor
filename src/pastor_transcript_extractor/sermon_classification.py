@@ -91,14 +91,17 @@ class HybridSermonResult:
     search: dict[str, Any] | None = None
     confidence_reasons: list[dict[str, Any]] | None = None
     confidence_policy_version: str | None = None
+    block_builder_version: str = BLOCK_BUILDER_VERSION
+    coarse_discovery_version: str = COARSE_DISCOVERY_VERSION
+    fine_component_version: str = FINE_COMPONENT_VERSION
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": 1,
             "method": self.method,
-            "block_builder_version": BLOCK_BUILDER_VERSION,
-            "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
-            "fine_component_version": FINE_COMPONENT_VERSION,
+            "block_builder_version": self.block_builder_version,
+            "coarse_discovery_version": self.coarse_discovery_version,
+            "fine_component_version": self.fine_component_version,
             "model": self.model,
             "prompt_version": self.prompt_version,
             "confidence_tier": self.confidence_tier,
