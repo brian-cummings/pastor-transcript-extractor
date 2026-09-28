@@ -30,6 +30,9 @@ from pastor_transcript_extractor.recording_verifier import (
     RecordingVerifierRunner,
     verify_recording,
 )
+from pastor_transcript_extractor.recording_verifier_typesafe import (
+    TypeSafeProductionRecordingVerifier,
+)
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
 from pastor_transcript_extractor.sermon_classification import (
@@ -1169,6 +1172,9 @@ def reclassify_video(
     video_paths = build_video_artifact_paths_at_root(proposed_json_path.parent.parent)
     classification_path = video_paths.extracted / "llm-classification-v1.json"
     existing = payload.get("classification")
+    previous_recording_verification = (
+        existing.get("recording_verification") if isinstance(existing, dict) else None
+    )
     verifier = _recording_verifier_runner(
         recording_verifier,
         recording_verifier_client,
@@ -1302,14 +1308,24 @@ def reclassify_video(
         preliminary_disposition["status"] == REVIEW_REQUIRED
         and verifier is not None
     ):
-        recording_verification = verifier.verify(
-            title=video.title,
-            proposed=payload,
-            cache_dir=(
-                recording_verifier_cache_dir
-                or video_paths.extracted / "recording-verifier-cache"
-            ),
+        recording_verification = (
+            verifier.reuse_local_artifact(
+                title=video.title,
+                proposed=payload,
+                artifact=previous_recording_verification,
+            )
+            if isinstance(verifier, TypeSafeProductionRecordingVerifier)
+            else None
         )
+        if recording_verification is None:
+            recording_verification = verifier.verify(
+                title=video.title,
+                proposed=payload,
+                cache_dir=(
+                    recording_verifier_cache_dir
+                    or video_paths.extracted / "recording-verifier-cache"
+                ),
+            )
     else:
         recording_verification = _not_required_recording_verification(
             "guest_speaker_safeguard"

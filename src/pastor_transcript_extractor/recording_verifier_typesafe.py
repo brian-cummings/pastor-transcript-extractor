@@ -349,6 +349,30 @@ class TypeSafeProductionRecordingVerifier:
                 error=f"{type(error).__name__}: {error}",
             )
 
+    def reuse_local_artifact(
+        self,
+        *,
+        title: str,
+        proposed: Mapping[str, Any],
+        artifact: object,
+    ) -> dict[str, Any] | None:
+        """Return a compatible persisted result without making a Jev request."""
+        if not isinstance(artifact, dict):
+            return None
+        state = build_typesafe_state(title, proposed)
+        if (
+            artifact.get("source") != self.source
+            or artifact.get("model_digest") != self.model
+            or artifact.get("prompt_version") != self.prompt_version
+            or artifact.get("policy_version") != self.policy_version
+            or artifact.get("evidence_packet_hash") != _hash(state.judgment_payload())
+            or artifact.get("error") is not None
+        ):
+            return None
+        cached = dict(artifact)
+        cached["cache_hit"] = True
+        return cached
+
 
 def _production_negative_decision(choice: str) -> str:
     if choice == "childrens_story_or_interactive_object_lesson":
