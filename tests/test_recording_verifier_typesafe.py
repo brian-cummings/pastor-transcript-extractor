@@ -129,6 +129,44 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
         self.assertTrue(cached["cache_hit"])
         self.assertEqual(1, client.calls)
 
+    def test_production_verifier_reuses_compatible_local_artifact(self) -> None:
+        client = FakeClient(answers())
+        verifier = TypeSafeProductionRecordingVerifier(model="jev-1.13.0", client=client)
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = verifier.verify(
+                title="A Believing Mother",
+                proposed=proposed(),
+                cache_dir=Path(tmp),
+            )
+
+        cached = verifier.reuse_local_artifact(
+            title="A Believing Mother",
+            proposed=proposed(),
+            artifact=artifact,
+        )
+
+        self.assertIsNotNone(cached)
+        assert cached is not None
+        self.assertTrue(cached["cache_hit"])
+        self.assertEqual(1, client.calls)
+
+    def test_local_artifact_requires_matching_state_and_policy(self) -> None:
+        verifier = TypeSafeProductionRecordingVerifier(model="jev-1.13.0", client=FakeClient(answers()))
+        artifact = {
+            "source": "typesafe_recording_verifier",
+            "model_digest": "jev-1.13.0",
+            "prompt_version": verifier.prompt_version,
+            "policy_version": verifier.policy_version,
+            "evidence_packet_hash": "stale",
+            "error": None,
+        }
+
+        self.assertIsNone(
+            verifier.reuse_local_artifact(
+                title="A Believing Mother", proposed=proposed(), artifact=artifact
+            )
+        )
+
     def test_production_verifier_maps_childrens_story_to_no_sermon(self) -> None:
         verifier = TypeSafeProductionRecordingVerifier(
             model="jev-1.13.0",
