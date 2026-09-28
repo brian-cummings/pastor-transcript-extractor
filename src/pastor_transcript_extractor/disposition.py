@@ -77,11 +77,6 @@ def build_final_disposition(
             else REJECTED_NO_SERMON
         )
         reasons = [f"recording_verifier_{verification_decision}"]
-    elif guest_speaker_suspected:
-        status = REVIEW_REQUIRED
-        reasons = ["guest_speaker_suspected"]
-        if manual_override and has_window:
-            reasons.append("manual_override_applies_to_content_boundary_only")
     elif manual_override and has_window:
         status = ACCEPTED_SERMON
         reasons = ["manual_content_boundary_override_is_authoritative"]
