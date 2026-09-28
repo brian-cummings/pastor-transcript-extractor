@@ -21,12 +21,12 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v5"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v6"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
 BLOCK_BUILDER_VERSION = "typesafe-coarse-300s-fine-60s-v1"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v5-general-validation"
-BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v2"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v6-edge-neighborhood"
+BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v3-neighborhood"
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
@@ -319,18 +319,20 @@ def _boundary_candidates(
     *,
     edge: str,
     selected_indexes: list[int],
-    adjacent_block: TranscriptBlock,
-    selected_edge_block: TranscriptBlock,
+    neighborhood_blocks: list[TranscriptBlock],
 ) -> list[TypeSafeBoundaryCandidate]:
-    adjacent = adjacent_block.segment_indexes
-    if len(adjacent) < 2:
+    neighborhood = [
+        index for block in neighborhood_blocks for index in block.segment_indexes
+    ]
+    if len(neighborhood) < 2:
         return []
+    neighborhood_set = set(neighborhood)
+    selected_outside_neighborhood = set(selected_indexes) - neighborhood_set
     candidates: list[TypeSafeBoundaryCandidate] = []
     if edge == "end":
-        selected_context = selected_edge_block.segment_indexes
-        for split in range(1, len(adjacent)):
-            before_indexes = adjacent[:split]
-            after_indexes = adjacent[split:]
+        for split in range(1, len(neighborhood)):
+            before_indexes = neighborhood[:split]
+            after_indexes = neighborhood[split:]
             boundary = drafts[before_indexes[-1]].end_seconds
             if boundary is None:
                 continue
@@ -338,20 +340,17 @@ def _boundary_candidates(
                 TypeSafeBoundaryCandidate(
                     candidate_id=f"end:{boundary:.3f}",
                     boundary_seconds=boundary,
-                    before_text=_context_text(
-                        drafts, selected_context + before_indexes, tail=True
-                    ),
+                    before_text=_context_text(drafts, before_indexes, tail=True),
                     after_text=_context_text(drafts, after_indexes, tail=False),
                     retained_segment_indexes=tuple(
-                        sorted(set(selected_indexes + before_indexes))
+                        sorted(selected_outside_neighborhood | set(before_indexes))
                     ),
                 )
             )
     else:
-        selected_context = selected_edge_block.segment_indexes
-        for split in range(1, len(adjacent)):
-            before_indexes = adjacent[:split]
-            after_indexes = adjacent[split:]
+        for split in range(1, len(neighborhood)):
+            before_indexes = neighborhood[:split]
+            after_indexes = neighborhood[split:]
             boundary = drafts[after_indexes[0]].start_seconds
             if boundary is None:
                 continue
@@ -360,15 +359,41 @@ def _boundary_candidates(
                     candidate_id=f"start:{boundary:.3f}",
                     boundary_seconds=boundary,
                     before_text=_context_text(drafts, before_indexes, tail=True),
-                    after_text=_context_text(
-                        drafts, after_indexes + selected_context, tail=False
-                    ),
+                    after_text=_context_text(drafts, after_indexes, tail=False),
                     retained_segment_indexes=tuple(
-                        sorted(set(after_indexes + selected_indexes))
+                        sorted(selected_outside_neighborhood | set(after_indexes))
                     ),
                 )
             )
     return candidates
+
+
+def _edge_neighborhood(
+    blocks: list[TranscriptBlock], position: int, *, edge: str
+) -> list[TranscriptBlock]:
+    """Return the selected edge block plus at most two contiguous outer blocks."""
+    result = [blocks[position]]
+    step = -1 if edge == "start" else 1
+    cursor = position
+    while len(result) < 3:
+        next_position = cursor + step
+        if next_position < 0 or next_position >= len(blocks):
+            break
+        inner = blocks[cursor]
+        outer = blocks[next_position]
+        gap = (
+            inner.start_seconds - outer.end_seconds
+            if edge == "start"
+            else outer.start_seconds - inner.end_seconds
+        )
+        if gap > 1.0:
+            break
+        if edge == "start":
+            result.insert(0, outer)
+        else:
+            result.append(outer)
+        cursor = next_position
+    return result
 
 
 def _candidate_components(
@@ -567,8 +592,9 @@ class TypeSafeFirstPassSermonClassifier:
                             drafts,
                             edge="start",
                             selected_indexes=selected_indexes,
-                            adjacent_block=fine_blocks[start_position - 1],
-                            selected_edge_block=first,
+                            neighborhood_blocks=_edge_neighborhood(
+                                fine_blocks, start_position, edge="start"
+                            ),
                         ),
                     )
                 )
@@ -586,8 +612,9 @@ class TypeSafeFirstPassSermonClassifier:
                             drafts,
                             edge="end",
                             selected_indexes=selected_indexes,
-                            adjacent_block=fine_blocks[end_position + 1],
-                            selected_edge_block=last,
+                            neighborhood_blocks=_edge_neighborhood(
+                                fine_blocks, end_position, edge="end"
+                            ),
                         ),
                     )
                 )

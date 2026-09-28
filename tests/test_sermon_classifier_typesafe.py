@@ -23,8 +23,12 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockAnswer,
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
+    _boundary_candidates,
 )
-from pastor_transcript_extractor.sermon_classification import build_transcript_blocks
+from pastor_transcript_extractor.sermon_classification import (
+    TranscriptBlock,
+    build_transcript_blocks,
+)
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
@@ -238,6 +242,35 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual("high", first.confidence_tier)
         self.assertEqual(first_calls, client.calls)
         self.assertEqual(0, second.cache_stats["misses"])
+
+    def test_boundary_candidates_can_move_inside_selected_or_into_outside_block(self) -> None:
+        transcript = [
+            SegmentDraft(
+                float(index * 10),
+                float((index + 1) * 10),
+                f"segment {index}",
+                None,
+                TranscriptSegmentLabel.UNKNOWN,
+                0.5,
+            )
+            for index in range(4)
+        ]
+        selected = TranscriptBlock(1, [0, 1], 0.0, 20.0, "selected")
+        outside = TranscriptBlock(2, [2, 3], 20.0, 40.0, "outside")
+
+        candidates = _boundary_candidates(
+            transcript,
+            edge="end",
+            selected_indexes=[0, 1],
+            neighborhood_blocks=[selected, outside],
+        )
+
+        by_boundary = {
+            candidate.boundary_seconds: candidate.retained_segment_indexes
+            for candidate in candidates
+        }
+        self.assertEqual((0,), by_boundary[10.0])
+        self.assertEqual((0, 1, 2), by_boundary[30.0])
 
     def test_currentness_tracks_typesafe_first_versions(self) -> None:
         classification = {
