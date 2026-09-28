@@ -272,6 +272,33 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual((0,), by_boundary[10.0])
         self.assertEqual((0, 1, 2), by_boundary[30.0])
 
+    def test_boundary_candidates_collapse_subsecond_caption_duplicates(self) -> None:
+        transcript = [
+            SegmentDraft(
+                start,
+                end,
+                text,
+                None,
+                TranscriptSegmentLabel.UNKNOWN,
+                0.5,
+            )
+            for start, end, text in [
+                (0.0, 10.0, "complete caption phrase"),
+                (10.0, 10.01, "repeated caption tail"),
+                (10.01, 20.0, "new material"),
+            ]
+        ]
+        block = TranscriptBlock(1, [0, 1, 2], 0.0, 20.0, "combined")
+
+        candidates = _boundary_candidates(
+            transcript,
+            edge="end",
+            selected_indexes=[0, 1],
+            neighborhood_blocks=[block],
+        )
+
+        self.assertEqual([10.0], [item.boundary_seconds for item in candidates])
+
     def test_currentness_tracks_typesafe_first_versions(self) -> None:
         classification = {
             "method": SEARCH_ALGORITHM_VERSION,
