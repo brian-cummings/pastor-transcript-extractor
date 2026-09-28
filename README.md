@@ -375,9 +375,9 @@ pte run \
 The Jev-first classifier maps five-minute blocks in batches, refines only the
 plausible sermon regions at one-minute resolution, and lets code select and
 validate the resulting interval. When a one-minute edge is still ambiguous, it
-uses one request to choose among every transcript-segment cut inside the adjacent
-mixed block and a second request to validate the selected cut. It accepts a refined
-edge only at the automatic confidence threshold. Its cache keys block judgments,
+uses one request to choose among every transcript-segment cut in a local three-block
+edge neighborhood and a second request to validate the selected cut. It accepts a
+refined edge only at the automatic confidence threshold. Its cache keys block judgments,
 candidate-set selections, and selected-cut validations by model, question version,
 title, timestamps, and text. A rerun asks Jev only for missing or changed judgments.
 `pte reclassify` automatically uses this Jev-first path when its recording verifier
