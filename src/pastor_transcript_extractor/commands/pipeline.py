@@ -223,6 +223,16 @@ def run(
         "--llm-model",
         help="Override the configured local Ollama model.",
     ),
+    recording_verifier_backend: str = typer.Option(
+        "ollama",
+        "--recording-verifier-backend",
+        help="Ambiguous-recording verifier: ollama, typesafe, or none.",
+    ),
+    recording_verifier_model: str | None = typer.Option(
+        None,
+        "--recording-verifier-model",
+        help="Verifier model override; defaults by backend.",
+    ),
     skip_review: bool = typer.Option(
         False,
         "--skip-review",
@@ -312,6 +322,8 @@ def run(
         jobs=jobs,
         classifier=classifier,
         llm_model=llm_model,
+        recording_verifier_backend=recording_verifier_backend,
+        recording_verifier_model=recording_verifier_model,
         skip_review=skip_review,
         run_identity=run_identity,
         base_dir=base_dir,

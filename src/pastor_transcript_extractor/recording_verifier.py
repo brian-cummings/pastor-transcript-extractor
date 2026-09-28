@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Protocol
 
 from pastor_transcript_extractor.caption_normalization import normalize_caption_text
 from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmResponse
@@ -60,6 +60,51 @@ class RecordingVerifierCase:
     expected_outcome: str
     evaluation_partition: str
     evidence_packet: str
+
+
+class RecordingVerifierRunner(Protocol):
+    """Provider-neutral recording verifier used by the extraction pipeline."""
+
+    model: str
+    prompt_version: str
+    policy_version: str
+    source: str
+
+    def verify(
+        self,
+        *,
+        title: str,
+        proposed: dict[str, Any],
+        cache_dir: Path,
+    ) -> dict[str, Any]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class OllamaRecordingVerifierRunner:
+    client: LocalLlmClient
+    model_digest: str
+    prompt_version: str = PROMPT_VERSION
+    policy_version: str = POLICY_VERSION
+    source: str = "llm_recording_verifier"
+
+    @property
+    def model(self) -> str:
+        return self.client.model
+
+    def verify(
+        self,
+        *,
+        title: str,
+        proposed: dict[str, Any],
+        cache_dir: Path,
+    ) -> dict[str, Any]:
+        return verify_recording(
+            title=title,
+            proposed=proposed,
+            client=self.client,
+            model_digest=self.model_digest,
+            cache_dir=cache_dir,
+        )
 
 
 def verifier_schema() -> dict[str, Any]:

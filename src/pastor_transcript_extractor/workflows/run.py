@@ -49,6 +49,8 @@ class RunWorkflowRequest:
     jobs: int = 2
     classifier: str = "auto"
     llm_model: str | None = None
+    recording_verifier_backend: str = "ollama"
+    recording_verifier_model: str | None = None
     skip_review: bool = False
     run_identity: bool = False
     base_dir: Path | None = None
@@ -152,6 +154,8 @@ def _resume_run(
             jobs=request.jobs,
             classifier=request.classifier,
             llm_model=request.llm_model,
+            recording_verifier_backend=request.recording_verifier_backend,
+            recording_verifier_model=request.recording_verifier_model,
             skip_review=request.skip_review,
             run_identity=request.run_identity,
             base_dir=request.base_dir,
@@ -229,6 +233,8 @@ def _online_run(
             jobs=request.jobs,
             classifier=request.classifier,
             llm_model=request.llm_model,
+            recording_verifier_backend=request.recording_verifier_backend,
+            recording_verifier_model=request.recording_verifier_model,
             skip_review=request.skip_review,
             run_identity=request.run_identity,
             base_dir=request.base_dir,

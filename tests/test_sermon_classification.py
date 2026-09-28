@@ -1859,6 +1859,45 @@ class HybridClassificationTests(unittest.TestCase):
             )
         )
 
+    def test_classification_currentness_tracks_typesafe_provider_identity(self) -> None:
+        from pastor_transcript_extractor.recording_verifier_typesafe import (
+            POLICY_VERSION as TYPESAFE_POLICY_VERSION,
+            QUESTION_SET_VERSION,
+        )
+
+        classification = {
+            "method": SEARCH_ALGORITHM_VERSION,
+            "block_builder_version": BLOCK_BUILDER_VERSION,
+            "coarse_discovery_version": COARSE_DISCOVERY_VERSION,
+            "fine_component_version": FINE_COMPONENT_VERSION,
+            "model": "fixture:4b",
+            "prompt_version": "v1",
+            "confidence_policy_version": CONFIDENCE_POLICY_VERSION,
+            "recording_verifier_policy_version": TYPESAFE_POLICY_VERSION,
+            "window_arbitration_policy_version": WINDOW_ARBITRATION_POLICY_VERSION,
+            "recording_verification": {
+                "source": "typesafe_recording_verifier",
+                "model": "jev-1.13.0",
+                "prompt_version": QUESTION_SET_VERSION,
+                "policy_version": TYPESAFE_POLICY_VERSION,
+            },
+        }
+        kwargs = {
+            "model": "fixture:4b",
+            "prompt_version": "v1",
+            "recording_verifier_model": "jev-1.13.0",
+            "recording_verifier_prompt_version": QUESTION_SET_VERSION,
+            "recording_verifier_policy_version": TYPESAFE_POLICY_VERSION,
+            "recording_verifier_source": "typesafe_recording_verifier",
+        }
+        self.assertTrue(_classification_is_current(classification, **kwargs))
+        self.assertFalse(
+            _classification_is_current(
+                classification,
+                **{**kwargs, "recording_verifier_model": "jev-1.14.0"},
+            )
+        )
+
     def test_adaptive_confidence_treats_rule_overlap_as_corroboration_only(self) -> None:
         self.assertEqual(
             "high",

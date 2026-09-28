@@ -345,12 +345,30 @@ responses are cached separately from ranking and adjudication, so an unchanged
 second pass should normally report zero cache misses.
 
 Production classification is a cascade: `gemma3:4b` localizes sermon-like
-blocks, then `gemma3:12b` verifies only recordings that would otherwise require
-review. Explicit Bible Class, Sabbath School, graduation, concert, technical
-test, and named student-program titles can be resolved by a versioned
-high-precision title policy without calling 12B. Invalid or contradictory
-verifier evidence remains unresolved, and guest-speaker safeguards still take
-precedence.
+blocks, then the configured recording verifier handles only recordings that
+would otherwise require review. The default verifier is local `gemma3:12b`.
+TypeSafe/Jev is available as an explicit external backend:
+
+```bash
+pip install -e '.[typesafe]'
+export TYPESAFE_API_KEY='...'
+
+pte reclassify \
+  --review-required \
+  --force \
+  --recording-verifier-backend typesafe \
+  --recording-verifier-model jev-1.13.0 \
+  --base-dir /path/to/app-data
+```
+
+The same `--recording-verifier-backend typesafe` option is available on `pte
+run`, `pte extract`, and `pte apply-fixture-correction`. TypeSafe receives the
+selected candidate's opening, middle, and ending transcript excerpts plus the
+recording title. Low-confidence choices, service failures, missing credentials,
+and unsupported responses remain `review_required`. Explicit Bible Class,
+Sabbath School, graduation, concert, technical test, and named student-program
+titles can still be resolved by the versioned high-precision title policy without
+calling either verifier. Guest-speaker safeguards continue to take precedence.
 
 Run the frozen regression set after reclassifying its videos:
 

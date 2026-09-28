@@ -76,7 +76,12 @@ class PipelineWorkflowTests(unittest.TestCase):
         events = []
 
         result = run_pipeline(
-            PipelineRequest(all_sources=True, run_identity=True),
+            PipelineRequest(
+                all_sources=True,
+                run_identity=True,
+                recording_verifier_backend="typesafe",
+                recording_verifier_model="jev-1.13.0",
+            ),
             event_callback=events.append,
             dependencies=self._dependencies(database, calls),
         )
@@ -90,6 +95,9 @@ class PipelineWorkflowTests(unittest.TestCase):
         )
         review_call = calls[-1]
         self.assertEqual({11}, review_call[2]["video_ids"])
+        extract_call = next(call for call in calls if call[0] == "extract")
+        self.assertEqual("typesafe", extract_call[2]["recording_verifier_backend"])
+        self.assertEqual("jev-1.13.0", extract_call[2]["recording_verifier_model"])
         self.assertIn("skipping 1 disabled source", events[0])
 
     def test_failed_scope_preserves_missing_only_policy_without_discovery(self) -> None:

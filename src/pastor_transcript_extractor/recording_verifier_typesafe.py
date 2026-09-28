@@ -1,9 +1,4 @@
-"""Shadow-only TypeSafe/Jev benchmark for recording-level verifier evidence.
-
-This module deliberately has no production classifier entry point.  It reads the
-same persisted proposed-extraction payloads as ``recording_verifier`` and writes
-only benchmark reports and a separately namespaced response cache.
-"""
+"""TypeSafe/Jev recording verification and its shadow benchmark."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -15,10 +10,12 @@ import os
 from pathlib import Path
 import re
 import statistics
+from threading import Lock
 import time
 from typing import Any, Mapping, Protocol
 
 from pastor_transcript_extractor.recording_verifier import (
+    ARTIFACT_SCHEMA_VERSION,
     _excerpt,
     _selected_candidate,
     title_program_decision,
@@ -28,7 +25,7 @@ from pastor_transcript_extractor.storage import Database
 
 
 QUESTION_SET_VERSION = "recording-verifier-typesafe-questions-v5-choice-boundaries"
-POLICY_VERSION = "recording-verifier-typesafe-policy-v5-choice-boundaries-experimental"
+POLICY_VERSION = "recording-verifier-typesafe-policy-v5-choice-boundaries"
 COST_RATE_VERSION = "typesafe-jev-rate-unconfigured-v1"
 CHOICES = (
     "worship_service_sermon", "childrens_story_or_interactive_object_lesson",
@@ -156,7 +153,7 @@ def question_inventory() -> dict[str, dict[str, Any]]:
 
 
 @dataclass(frozen=True, slots=True)
-class ExperimentalPolicy:
+class TypeSafeRecordingPolicy:
     version: str = POLICY_VERSION
     choice_probability_threshold: float = 0.85
     choice_confidence_threshold: float = 0.75
@@ -202,11 +199,11 @@ class TypeSafeSdkAdapter:
     """Thin optional-SDK adapter; isolated for inexpensive mocked tests."""
     def __init__(self, *, model: str, timeout_seconds: float = 45.0) -> None:
         if not os.environ.get("TYPESAFE_API_KEY"):
-            raise RuntimeError("TYPESAFE_API_KEY is required for this optional shadow benchmark")
+            raise RuntimeError("TYPESAFE_API_KEY is required for the TypeSafe recording verifier")
         try:
             from typesafe_sdk import Choice, TypeSafeClient  # type: ignore[import-not-found]
         except ImportError as exc:
-            raise RuntimeError("Install the optional dependency: pip install '.[typesafe-experiment]'") from exc
+            raise RuntimeError("Install the optional dependency: pip install -e '.[typesafe]'") from exc
         self.model, self.timeout_seconds = model, timeout_seconds
         self._client, self._Choice = TypeSafeClient(model=model, timeout=timeout_seconds), Choice
 
@@ -248,6 +245,171 @@ class TypeSafeCache:
         return answer, False, key
 
 
+class TypeSafeProductionRecordingVerifier:
+    """Adapt the frozen Jev policy to the production verification artifact."""
+
+    prompt_version = QUESTION_SET_VERSION
+    policy_version = POLICY_VERSION
+    source = "typesafe_recording_verifier"
+
+    def __init__(
+        self,
+        *,
+        model: str = "jev-1.13.0",
+        timeout_seconds: float = 45.0,
+        client: TypeSafeRecordingVerifier | None = None,
+        policy: TypeSafeRecordingPolicy = TypeSafeRecordingPolicy(),
+    ) -> None:
+        self.model = model
+        self.client = client or TypeSafeSdkAdapter(
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
+        self.policy = policy
+        self._lock = Lock()
+
+    def verify(
+        self,
+        *,
+        title: str,
+        proposed: dict[str, Any],
+        cache_dir: Path,
+    ) -> dict[str, Any]:
+        state = build_typesafe_state(title, proposed)
+        state_hash = _hash(state.judgment_payload())
+        title_gate = title_program_decision(title)
+        if title_gate is not None:
+            return _production_artifact(
+                state_hash=state_hash,
+                model=None,
+                source="deterministic_title_gate",
+                decision=title_gate,
+                predicted_outcome="no_sermon",
+                confidence="high",
+                reason_codes=_negative_reason_codes(title_gate),
+                policy_reason_codes=["deterministic_negative_title_gate", title_gate],
+                cache_hit=False,
+            )
+        try:
+            with self._lock:
+                answers, cache_hit, _ = TypeSafeCache(cache_dir).get_or_assess(
+                    self.client,
+                    state,
+                    self.model,
+                )
+            verdict, policy_reasons = self.policy.decide(
+                answers.choice,
+                answers.choice_probabilities,
+                answers.choice_confidence,
+            )
+            automatic = verdict in {"sermon", "no_sermon"}
+            decision = (
+                "worship_service_sermon"
+                if verdict == "sermon"
+                else _production_negative_decision(answers.choice)
+                if verdict == "no_sermon"
+                else "unclear"
+            )
+            reason_codes = (
+                ["single_sustained_message"]
+                if verdict == "sermon"
+                else _negative_reason_codes(answers.choice)
+                if verdict == "no_sermon"
+                else ["insufficient_recording_context"]
+            )
+            return _production_artifact(
+                state_hash=state_hash,
+                model=answers.resolved_model_id,
+                source=self.source,
+                decision=decision,
+                predicted_outcome=verdict if automatic else None,
+                confidence="high" if automatic else "low",
+                reason_codes=reason_codes,
+                policy_reason_codes=policy_reasons,
+                cache_hit=cache_hit,
+                model_verdict={
+                    "choice": answers.choice,
+                    "probabilities": dict(answers.choice_probabilities),
+                    "confidence": answers.choice_confidence,
+                },
+                input_tokens=answers.input_tokens,
+                output_tokens=answers.output_tokens,
+            )
+        except Exception as error:
+            return _production_artifact(
+                state_hash=state_hash,
+                model=self.model,
+                source="unresolved",
+                decision="unclear",
+                predicted_outcome=None,
+                confidence="low",
+                reason_codes=["insufficient_recording_context"],
+                policy_reason_codes=["invalid_or_failed_inference"],
+                cache_hit=False,
+                error=f"{type(error).__name__}: {error}",
+            )
+
+
+def _production_negative_decision(choice: str) -> str:
+    if choice == "childrens_story_or_interactive_object_lesson":
+        return "non_sermon_event"
+    return choice
+
+
+def _negative_reason_codes(choice: str) -> list[str]:
+    return {
+        "religious_education_or_bible_class": ["lesson_or_curriculum_structure"],
+        "multi_speaker_or_student_program": ["multiple_short_speakers_or_sermonettes"],
+        "non_sermon_event": ["ceremony_concert_or_technical_event"],
+        "childrens_story_or_interactive_object_lesson": [
+            "childrens_story_or_interactive_object_lesson"
+        ],
+    }.get(choice, ["insufficient_recording_context"])
+
+
+def _production_artifact(
+    *,
+    state_hash: str,
+    model: str | None,
+    source: str,
+    decision: str,
+    predicted_outcome: str | None,
+    confidence: str,
+    reason_codes: list[str],
+    policy_reason_codes: list[str],
+    cache_hit: bool,
+    model_verdict: Mapping[str, Any] | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
+        "prompt_version": QUESTION_SET_VERSION,
+        "policy_version": POLICY_VERSION,
+        "model": model,
+        "model_digest": model,
+        "source": source,
+        "decision": decision,
+        "confidence": confidence,
+        "reason_codes": reason_codes,
+        "model_verdict": dict(model_verdict) if model_verdict is not None else None,
+        "continuity_follow_up": None,
+        "sermon_specific_reason_codes": [],
+        "contradictory_reason_codes": (
+            reason_codes if predicted_outcome == "no_sermon" else []
+        ),
+        "policy_reason_codes": policy_reason_codes,
+        "predicted_outcome": predicted_outcome,
+        "cache_hit": cache_hit,
+        "evidence_packet_hash": state_hash,
+        "raw_response": None,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "error": error,
+    }
+
+
 def load_frozen_12b_baseline(root: Path) -> dict[str, Mapping[str, Any]]:
     """Use persisted reports, selecting the latest run for each partition."""
     reports: dict[str, tuple[str, Mapping[str, Any]]] = {}
@@ -279,7 +441,7 @@ def _percentile(values: list[float], percentile: float) -> float | None:
     return sorted(values)[min(len(values) - 1, max(0, rank))]
 
 
-def run_benchmark(cases: list[TypeSafeCase], client: TypeSafeRecordingVerifier, *, model: str, cache: TypeSafeCache, policy: ExperimentalPolicy = ExperimentalPolicy(), cost_rate: CostRate = CostRate()) -> dict[str, Any]:
+def run_benchmark(cases: list[TypeSafeCase], client: TypeSafeRecordingVerifier, *, model: str, cache: TypeSafeCache, policy: TypeSafeRecordingPolicy = TypeSafeRecordingPolicy(), cost_rate: CostRate = CostRate()) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     for case in cases:
         title_gate = title_program_decision(case.title); started = time.perf_counter()

@@ -10,12 +10,13 @@ from typer.testing import CliRunner
 
 from pastor_transcript_extractor.recording_verifier_typesafe import (
     CHOICES,
-    ExperimentalPolicy,
+    TypeSafeRecordingPolicy,
     TypeSafeAnswers,
     TypeSafeCache,
     TypeSafeCase,
     TypeSafeRecordingState,
     TypeSafeSdkAdapter,
+    TypeSafeProductionRecordingVerifier,
     _percentile,
     build_typesafe_state,
     disagreement_sets,
@@ -37,6 +38,12 @@ class FakeClient:
         self.answers, self.calls = answers, 0
     def assess(self, state: TypeSafeRecordingState) -> TypeSafeAnswers:
         del state; self.calls += 1; return self.answers
+
+
+class FailingClient:
+    def assess(self, state: TypeSafeRecordingState) -> TypeSafeAnswers:
+        del state
+        raise RuntimeError("service unavailable")
 
 
 def answers(
@@ -77,7 +84,7 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
         self.assertIn("do not contain enough evidence", inventory["recording_type"]["criteria"]["unclear"])
 
     def test_policy_accepts_high_confidence_choice_and_maps_non_sermon_types(self) -> None:
-        policy = ExperimentalPolicy()
+        policy = TypeSafeRecordingPolicy()
         self.assertEqual("sermon", policy.decide("worship_service_sermon", {"worship_service_sermon": .85}, .75)[0])
         self.assertEqual(
             "no_sermon",
@@ -89,14 +96,81 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
         )
 
     def test_policy_abstains_on_unclear_low_confidence_and_bad_response(self) -> None:
-        policy = ExperimentalPolicy()
+        policy = TypeSafeRecordingPolicy()
         self.assertEqual("abstain", policy.decide("unclear", {"unclear": .95}, .9)[0])
         self.assertEqual("abstain", policy.decide("worship_service_sermon", {"worship_service_sermon": .84}, .9)[0])
         self.assertEqual("abstain", policy.decide("worship_service_sermon", {"worship_service_sermon": .9}, .74)[0])
         self.assertEqual("abstain", policy.decide("not_a_choice", {}, .9)[0])
 
+    def test_production_verifier_emits_existing_artifact_contract(self) -> None:
+        client = FakeClient(answers())
+        verifier = TypeSafeProductionRecordingVerifier(
+            model="jev-1.13.0",
+            client=client,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = verifier.verify(
+                title="A Believing Mother",
+                proposed=proposed(),
+                cache_dir=Path(tmp),
+            )
+            cached = verifier.verify(
+                title="A Believing Mother",
+                proposed=proposed(),
+                cache_dir=Path(tmp),
+            )
+        self.assertEqual("typesafe_recording_verifier", artifact["source"])
+        self.assertEqual("worship_service_sermon", artifact["decision"])
+        self.assertEqual("sermon", artifact["predicted_outcome"])
+        self.assertEqual("high", artifact["confidence"])
+        self.assertIn("single_sustained_message", artifact["reason_codes"])
+        self.assertEqual("worship_service_sermon", artifact["model_verdict"]["choice"])
+        self.assertFalse(artifact["cache_hit"])
+        self.assertTrue(cached["cache_hit"])
+        self.assertEqual(1, client.calls)
+
+    def test_production_verifier_maps_childrens_story_to_no_sermon(self) -> None:
+        verifier = TypeSafeProductionRecordingVerifier(
+            model="jev-1.13.0",
+            client=FakeClient(
+                answers(
+                    "childrens_story_or_interactive_object_lesson",
+                    probability=.98,
+                    confidence=.97,
+                )
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = verifier.verify(
+                title="Children's Story",
+                proposed=proposed(),
+                cache_dir=Path(tmp),
+            )
+        self.assertEqual("non_sermon_event", artifact["decision"])
+        self.assertEqual("no_sermon", artifact["predicted_outcome"])
+        self.assertIn(
+            "childrens_story_or_interactive_object_lesson",
+            artifact["reason_codes"],
+        )
+
+    def test_production_verifier_fails_closed(self) -> None:
+        verifier = TypeSafeProductionRecordingVerifier(
+            model="jev-1.13.0",
+            client=FailingClient(),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = verifier.verify(
+                title="Ambiguous service",
+                proposed=proposed(),
+                cache_dir=Path(tmp),
+            )
+        self.assertEqual("unresolved", artifact["source"])
+        self.assertEqual("unclear", artifact["decision"])
+        self.assertIsNone(artifact["predicted_outcome"])
+        self.assertIn("service unavailable", artifact["error"])
+
     def test_title_gate_overrides_choice(self) -> None:
-        policy = ExperimentalPolicy()
+        policy = TypeSafeRecordingPolicy()
         self.assertEqual(
             "no_sermon",
             policy.decide(

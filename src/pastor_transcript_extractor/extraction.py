@@ -24,8 +24,10 @@ from pastor_transcript_extractor.media_artifacts import (
 from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.recording_verifier import (
     ARTIFACT_SCHEMA_VERSION as RECORDING_VERIFIER_SCHEMA_VERSION,
+    OllamaRecordingVerifierRunner,
     POLICY_VERSION as RECORDING_VERIFIER_POLICY_VERSION,
     PROMPT_VERSION as RECORDING_VERIFIER_PROMPT_VERSION,
+    RecordingVerifierRunner,
     verify_recording,
 )
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
@@ -198,6 +200,9 @@ def _classification_is_current(
     model: str,
     prompt_version: str,
     recording_verifier_model: str | None = None,
+    recording_verifier_prompt_version: str | None = None,
+    recording_verifier_policy_version: str | None = None,
+    recording_verifier_source: str | None = None,
 ) -> bool:
     current = (
         isinstance(classification, dict)
@@ -210,8 +215,6 @@ def _classification_is_current(
         and classification.get("confidence_policy_version") == CONFIDENCE_POLICY_VERSION
         and classification.get("window_arbitration_policy_version")
         == WINDOW_ARBITRATION_POLICY_VERSION
-        and classification.get("recording_verifier_policy_version")
-        == RECORDING_VERIFIER_POLICY_VERSION
     )
     if not current or not isinstance(classification, dict):
         return False
@@ -225,8 +228,27 @@ def _classification_is_current(
     return (
         recording_verifier_model is not None
         and verification.get("model") == recording_verifier_model
-        and verification.get("prompt_version") == RECORDING_VERIFIER_PROMPT_VERSION
+        and recording_verifier_prompt_version is not None
+        and verification.get("prompt_version") == recording_verifier_prompt_version
+        and recording_verifier_policy_version is not None
+        and verification.get("policy_version") == recording_verifier_policy_version
+        and classification.get("recording_verifier_policy_version")
+        == recording_verifier_policy_version
+        and recording_verifier_source is not None
+        and verification.get("source") == recording_verifier_source
     )
+
+
+def _recording_verifier_runner(
+    runner: RecordingVerifierRunner | None,
+    client: LocalLlmClient | None,
+    model_digest: str | None,
+) -> RecordingVerifierRunner | None:
+    if runner is not None:
+        return runner
+    if client is None or model_digest is None:
+        return None
+    return OllamaRecordingVerifierRunner(client, model_digest)
 
 
 def _drafts_from_proposed_json(payload: dict[str, Any]) -> list[SegmentDraft]:
@@ -1128,6 +1150,7 @@ def reclassify_video(
     recording_verifier_client: LocalLlmClient | None = None,
     recording_verifier_model_digest: str | None = None,
     recording_verifier_cache_dir: Path | None = None,
+    recording_verifier: RecordingVerifierRunner | None = None,
 ) -> ReclassificationRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -1146,15 +1169,23 @@ def reclassify_video(
     video_paths = build_video_artifact_paths_at_root(proposed_json_path.parent.parent)
     classification_path = video_paths.extracted / "llm-classification-v1.json"
     existing = payload.get("classification")
+    verifier = _recording_verifier_runner(
+        recording_verifier,
+        recording_verifier_client,
+        recording_verifier_model_digest,
+    )
     if not force and _classification_is_current(
         existing,
         model=llm_client.model,
         prompt_version=prompt_version,
-        recording_verifier_model=(
-            recording_verifier_client.model
-            if recording_verifier_client is not None
-            else None
+        recording_verifier_model=verifier.model if verifier is not None else None,
+        recording_verifier_prompt_version=(
+            verifier.prompt_version if verifier is not None else None
         ),
+        recording_verifier_policy_version=(
+            verifier.policy_version if verifier is not None else None
+        ),
+        recording_verifier_source=verifier.source if verifier is not None else None,
     ):
         assert isinstance(existing, dict)
         stored_payload = json.dumps(payload, sort_keys=True, default=str)
@@ -1269,14 +1300,11 @@ def reclassify_video(
     )
     if (
         preliminary_disposition["status"] == REVIEW_REQUIRED
-        and recording_verifier_client is not None
-        and recording_verifier_model_digest is not None
+        and verifier is not None
     ):
-        recording_verification = verify_recording(
+        recording_verification = verifier.verify(
             title=video.title,
             proposed=payload,
-            client=recording_verifier_client,
-            model_digest=recording_verifier_model_digest,
             cache_dir=(
                 recording_verifier_cache_dir
                 or video_paths.extracted / "recording-verifier-cache"
@@ -1291,7 +1319,7 @@ def reclassify_video(
             else "base_classifier_resolved"
         )
     classification["recording_verifier_policy_version"] = (
-        RECORDING_VERIFIER_POLICY_VERSION
+        recording_verification.get("policy_version")
     )
     classification["recording_verification"] = recording_verification
     payload["recording_verification"] = recording_verification
@@ -1536,6 +1564,7 @@ def extract_video(
     progress: Any | None = None,
     recording_verifier_client: LocalLlmClient | None = None,
     recording_verifier_model_digest: str | None = None,
+    recording_verifier: RecordingVerifierRunner | None = None,
 ) -> ExtractionRunResult:
     video = database.get_video_by_id(video_id)
     if video is None:
@@ -1610,12 +1639,16 @@ def extract_video(
         sermon_window,
         guest_speaker_suspected=guest_flags.suspected,
     )
+    verifier = _recording_verifier_runner(
+        recording_verifier,
+        recording_verifier_client,
+        recording_verifier_model_digest,
+    )
     if (
         preliminary_disposition["status"] == REVIEW_REQUIRED
-        and recording_verifier_client is not None
-        and recording_verifier_model_digest is not None
+        and verifier is not None
     ):
-        recording_verification = verify_recording(
+        recording_verification = verifier.verify(
             title=video.title,
             proposed={
                 "video_id": video.id,
@@ -1623,8 +1656,6 @@ def extract_video(
                 "classification": classification,
                 "segments": serialized_segments,
             },
-            client=recording_verifier_client,
-            model_digest=recording_verifier_model_digest,
             cache_dir=video_paths.extracted / "recording-verifier-cache",
         )
     else:
@@ -1636,7 +1667,7 @@ def extract_video(
             else "base_classifier_resolved"
         )
     classification["recording_verifier_policy_version"] = (
-        RECORDING_VERIFIER_POLICY_VERSION
+        recording_verification.get("policy_version")
     )
     classification["recording_verification"] = recording_verification
     if hybrid_result is not None and override is None and hybrid_result.retained_segment_indexes:
