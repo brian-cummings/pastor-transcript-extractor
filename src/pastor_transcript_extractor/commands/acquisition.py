@@ -357,6 +357,108 @@ def transcribe_videos_service(
         renderer.close()
 
 
+@root_app.command(help="Discover videos from queued sources with yt-dlp metadata.")
+def discover(
+    limit: int | None = typer.Option(
+        DEFAULT_DISCOVER_LIMIT,
+        "--limit",
+        min=1,
+        help="Only persist the first N discovered videos per source. Defaults to 26.",
+    ),
+    all_videos: bool = typer.Option(
+        False,
+        "--all",
+        help="Persist all discovered videos for each source.",
+    ),
+    source_id: int | None = typer.Option(
+        None,
+        help="Only discover videos for a specific source id.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    discover_sources_service(limit, all_videos, source_id, base_dir)
+
+
+@root_app.command(
+    help="Download or prepare local ASR transcripts for discovered videos."
+)
+def transcribe(
+    missing_only: bool = typer.Option(
+        False,
+        "--missing-only",
+        help="Only transcribe videos without a local ASR artifact.",
+    ),
+    captions_missing_only: bool = typer.Option(
+        True,
+        "--captions-missing-only/--all-eligible",
+        help=(
+            "By default, only transcribe videos that do not already have a "
+            "captions artifact. Use --all-eligible to transcribe all eligible videos."
+        ),
+    ),
+    jobs: int = typer.Option(
+        default_transcribe_jobs(),
+        "--jobs",
+        min=1,
+        help="Number of videos to transcribe concurrently. Defaults to 2.",
+    ),
+    source_id: int | None = typer.Option(
+        None,
+        help="Only transcribe videos from a specific source id.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    transcribe_videos_service(
+        missing_only,
+        captions_missing_only,
+        jobs,
+        source_id,
+        base_dir,
+    )
+
+
+@root_app.command(
+    help="Fetch YouTube captions when available and persist them as transcript artifacts."
+)
+def fetch(
+    source_id: int | None = typer.Option(
+        None,
+        help="Only fetch captions for videos from a specific source id.",
+    ),
+    cookies_from_browser: str | None = typer.Option(
+        None,
+        "--cookies-from-browser",
+        help="Pass an explicit browser profile to yt-dlp for YouTube authentication.",
+    ),
+    cookies: Path | None = typer.Option(
+        None,
+        "--cookies",
+        exists=True,
+        dir_okay=False,
+        help="Pass an explicit Netscape-format cookie file to yt-dlp.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    try:
+        fetch_captions_service(
+            source_id,
+            base_dir,
+            cookies_from_browser=cookies_from_browser,
+            cookies=cookies,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+
 @root_app.command(
     "sync-imported-sources",
     help="Acquire recent transcripts and fallback audio for provenance-imported sources.",
