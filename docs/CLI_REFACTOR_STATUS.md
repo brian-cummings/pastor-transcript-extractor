@@ -2718,6 +2718,27 @@ git diff --check
 PASS
 ```
 
+### 2026-09-28 — Diagnostics import-regression repair
+
+The extracted `diagnose-system` command omitted imports for the profile-association readiness,
+automatic-observation eligibility, and machine-assignment report helpers. The resulting runtime
+failure was `NameError: assess_profile_association_readiness is not defined`; the two later
+helper calls would have failed similarly. Restored all three imports in
+`commands/diagnostics.py` without changing diagnostic behavior.
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/diagnostics.py
+PASS
+
+.venv/bin/python -m unittest tests.test_cli_contract -v
+Ran 6 tests in 0.237s — OK
+
+.venv/bin/pte diagnose-system --base-dir <temporary app root> \
+  --fixture-dir evaluation/fixtures --speaker-evidence-root <empty temporary root> \
+  --identity-feedback-root <empty temporary root> --output-root <temporary output root>
+PASS — completed an isolated zero-trace diagnostic run without a NameError.
+```
+
 ## Known risks
 
 - Existing tests rely heavily on `cli.py` import and patch locations. Every
