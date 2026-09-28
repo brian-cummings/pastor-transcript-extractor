@@ -77,6 +77,9 @@ def build_final_disposition(
             else REJECTED_NO_SERMON
         )
         reasons = [f"recording_verifier_{verification_decision}"]
+    elif verification_decision == "unclear":
+        status = REVIEW_REQUIRED
+        reasons = ["recording_verifier_unclear_requires_review"]
     elif manual_override and has_window:
         status = ACCEPTED_SERMON
         reasons = ["manual_content_boundary_override_is_authoritative"]
@@ -107,7 +110,7 @@ def build_final_disposition(
 
     return {
         "schema_version": 1,
-        "policy_version": "final_disposition_v2",
+        "policy_version": "final_disposition_v3",
         "status": status,
         "reason_codes": reasons,
         "confidence_tier": confidence,
