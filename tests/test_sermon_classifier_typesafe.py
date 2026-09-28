@@ -19,6 +19,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     ROLE_CHOICES,
     SEARCH_ALGORITHM_VERSION,
     TypeSafeBoundaryAnswer,
+    TypeSafeBoundarySelection,
     TypeSafeBlockAnswer,
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
@@ -51,16 +52,32 @@ class FakeBlockClient:
             )
         return answers
 
-    def assess_boundary_candidates(self, title, edge, candidates):
+    def select_boundary_candidate(self, title, edge, candidates):
         del title, edge
         self.calls += 1
-        return {
-            candidate.candidate_id: TypeSafeBoundaryAnswer(
-                0.9 if "CLOSING PRAYER" in candidate.before_text else 0.1,
-                "jev-1.13.0",
-            )
-            for candidate in candidates
-        }
+        selected = next(
+            (
+                candidate
+                for candidate in candidates
+                if "CLOSING PRAYER" in candidate.before_text
+            ),
+            None,
+        )
+        choice = selected.candidate_id if selected is not None else "no_clear_boundary"
+        return TypeSafeBoundarySelection(
+            choice,
+            {choice: 0.9},
+            0.9,
+            "jev-1.13.0",
+        )
+
+    def validate_boundary_candidate(self, title, edge, candidate):
+        del title, edge
+        self.calls += 1
+        return TypeSafeBoundaryAnswer(
+            0.9 if "CLOSING PRAYER" in candidate.before_text else 0.1,
+            "jev-1.13.0",
+        )
 
 
 def drafts() -> list[SegmentDraft]:

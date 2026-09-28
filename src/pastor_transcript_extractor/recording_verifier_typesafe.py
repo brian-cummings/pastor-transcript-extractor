@@ -24,6 +24,7 @@ from pastor_transcript_extractor.recording_verifier import (
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBoundaryAnswer,
     TypeSafeBoundaryCandidate,
+    TypeSafeBoundarySelection,
     TypeSafeBlockAnswer,
     TypeSafeFirstPassSermonClassifier,
     role_question,
@@ -294,76 +295,118 @@ class TypeSafeSdkAdapter:
             for position, block in enumerate(blocks)
         }
 
-    def assess_boundary_candidates(
-        self,
-        title: str,
-        edge: str,
-        candidates: list[TypeSafeBoundaryCandidate],
-    ) -> Mapping[str, TypeSafeBoundaryAnswer]:
-        expected_order = (
+    @staticmethod
+    def _boundary_order(edge: str) -> str:
+        return (
             "outside the principal sermon before the boundary and inside it after"
             if edge == "start"
             else "inside the principal sermon before the boundary and outside it after"
         )
+
+    def select_boundary_candidate(
+        self,
+        title: str,
+        edge: str,
+        candidates: list[TypeSafeBoundaryCandidate],
+    ) -> TypeSafeBoundarySelection:
+        expected_order = self._boundary_order(edge)
         state = {
             "recording_title": title,
             "edge": edge,
-            "candidates": [
-                {
-                    "candidate_id": candidate.candidate_id,
-                    "before_boundary": candidate.before_text,
-                    "after_boundary": candidate.after_text,
-                }
-                for candidate in candidates
-            ],
         }
-        questions = {
-            f"candidate_{position}": self._Noul(
-                instructions={
-                    "task": (
-                        f"Does `candidates[{position}]` cleanly place the {edge} "
-                        "boundary of the principal worship-service sermon?"
-                    ),
-                    "expected_order": expected_order,
-                    "sermon_scope": (
-                        "Include a prayer, Scripture reading, appeal, or benediction "
-                        "that remains integrated into the principal preacher's message."
-                    ),
-                    "outside_scope": (
-                        "Music, a separate service prayer, announcements, logistics, "
-                        "speaker handoff, or post-sermon activity is outside."
-                    ),
-                },
-                criteria={
-                    "true": (
-                        "The before/after excerpts show the expected transition at this "
-                        "cut without removing an integrated part of the sermon or retaining "
-                        "a separate service element."
-                    ),
-                    "false": (
-                        "The cut is premature, late, ambiguous, or both excerpts remain on "
-                        "the same side of the sermon boundary."
-                    ),
-                },
-            )
-            for position in range(len(candidates))
+        criteria = {
+            candidate.candidate_id: {
+                "choose_when": (
+                    f"This cut best shows {expected_order}. Caption fragments may overlap "
+                    "or repeat across the cut; judge the semantic transition."
+                ),
+                "before_boundary": candidate.before_text[-350:],
+                "after_boundary": candidate.after_text[:350],
+            }
+            for candidate in candidates
         }
+        criteria["no_clear_boundary"] = (
+            "None of the candidate cuts clearly shows the required semantic transition."
+        )
         result = self._client.system_one(
             state,
-            questions,
+            {
+                "boundary": self._Choice(
+                    instructions={
+                        "task": (
+                            f"Choose the single best {edge} boundary for the principal "
+                            "worship-service sermon, or `no_clear_boundary`."
+                        ),
+                        "expected_order": expected_order,
+                        "sermon_scope": (
+                            "Keep closing or opening prayer, Scripture, appeal, and "
+                            "benediction when integrated into the preacher's message."
+                        ),
+                    },
+                    criteria=criteria,
+                )
+            },
             model=self.model,
             timeout=self.timeout_seconds,
         )
         resolved_model = str(getattr(result, "model", self.model))
-        return {
-            candidate.candidate_id: TypeSafeBoundaryAnswer(
-                transition_probability=float(
-                    result.nouls[f"candidate_{position}"].noul
-                ),
-                resolved_model_id=resolved_model,
-            )
-            for position, candidate in enumerate(candidates)
-        }
+        answer = result.choices["boundary"]
+        probabilities = dict(
+            getattr(answer, "probabilities", getattr(answer, "distribution", {}))
+        )
+        return TypeSafeBoundarySelection(
+            choice=str(answer.choice),
+            probabilities={str(key): float(value) for key, value in probabilities.items()},
+            confidence=getattr(answer, "confidence", None),
+            resolved_model_id=resolved_model,
+        )
+
+    def validate_boundary_candidate(
+        self,
+        title: str,
+        edge: str,
+        candidate: TypeSafeBoundaryCandidate,
+    ) -> TypeSafeBoundaryAnswer:
+        expected_order = self._boundary_order(edge)
+        result = self._client.system_one(
+            {
+                "recording_title": title,
+                "edge": edge,
+                "before_boundary": candidate.before_text,
+                "after_boundary": candidate.after_text,
+            },
+            {
+                "valid_boundary": self._Noul(
+                    instructions={
+                        "statement_to_evaluate": (
+                            "The transcript immediately around this boundary shows "
+                            f"{expected_order}."
+                        ),
+                        "caption_handling": (
+                            "Ignore repeated or overlapping caption fragments. A trailing "
+                            "Amen after the cut may echo the completed prayer; use the "
+                            "surrounding activity to identify the semantic handoff."
+                        ),
+                    },
+                    criteria={
+                        "true": (
+                            "The cut preserves the integrated sermon material and places "
+                            "the separate service activity on the outside."
+                        ),
+                        "false": (
+                            "The cut removes integrated sermon material, retains separate "
+                            "service activity, or lacks a discernible handoff."
+                        ),
+                    },
+                )
+            },
+            model=self.model,
+            timeout=self.timeout_seconds,
+        )
+        return TypeSafeBoundaryAnswer(
+            transition_probability=float(result.nouls["valid_boundary"].noul),
+            resolved_model_id=str(getattr(result, "model", self.model)),
+        )
 
 
 def _hash(value: Any) -> str:
