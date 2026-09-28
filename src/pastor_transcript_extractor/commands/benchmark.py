@@ -19,9 +19,70 @@ from pastor_transcript_extractor.benchmark import (
 from pastor_transcript_extractor.commands.apps import benchmark_app
 from pastor_transcript_extractor.config import build_paths, ensure_directories
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.recording_verifier import validate_partition_access
+from pastor_transcript_extractor.recording_verifier_typesafe import (
+    CostRate,
+    TypeSafeCache,
+    TypeSafeSdkAdapter,
+    load_typesafe_cases,
+    run_benchmark,
+    write_reports,
+)
 
 
 console = Console()
+
+
+@benchmark_app.command(
+    "recording-verifier-typesafe",
+    help="Run the shadow-only TypeSafe/Jev recording-verifier benchmark.",
+)
+def benchmark_recording_verifier_typesafe(
+    model: str = typer.Option("jev-1.13.0", "--model", help="Exact versioned TypeSafe model ID."),
+    partition: list[str] = typer.Option(["development", "legacy"], "--partition", help="Fixture partition; repeat to include more than one."),
+    output_dir: Path = typer.Option(..., "--output-dir", help="Directory for timestamped shadow reports and cache."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Override app data directory."),
+    fixture_dir: Path = typer.Option(Path("evaluation/fixtures"), "--fixture-dir", help="Reviewed fixture directory (read only)."),
+    confirm_frozen_policy: bool = typer.Option(False, "--confirm-frozen-policy", help="Required before accessing held_out fixtures."),
+    cost_rate_version: str = typer.Option("typesafe-jev-rate-unconfigured-v1", "--cost-rate-version", help="Version label for supplied token prices."),
+    input_usd_per_million: float | None = typer.Option(None, "--input-usd-per-million", min=0, help="Optional input-token price in USD per million."),
+    output_usd_per_million: float | None = typer.Option(None, "--output-usd-per-million", min=0, help="Optional output-token price in USD per million."),
+) -> None:
+    if not partition:
+        raise typer.BadParameter("provide at least one --partition")
+    if (input_usd_per_million is None) != (output_usd_per_million is None):
+        raise typer.BadParameter("provide both token prices or neither")
+    try:
+        for value in partition:
+            validate_partition_access(value, confirm_frozen_policy=confirm_frozen_policy)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    try:
+        client = TypeSafeSdkAdapter(model=model)
+    except RuntimeError as error:
+        raise typer.BadParameter(str(error)) from error
+    database = _get_database(base_dir)
+    root = output_dir.expanduser().resolve()
+    try:
+        cases = [
+            case
+            for value in partition
+            for case in load_typesafe_cases(
+                database, fixture_dir, partition=value,
+                baseline_root=Path("evaluation/recording-verifier"),
+            )
+        ]
+        run = run_benchmark(cases, client, model=model, cache=TypeSafeCache(root / "cache"), cost_rate=CostRate(cost_rate_version, input_usd_per_million, output_usd_per_million))
+        json_path, markdown_path = write_reports(run, root)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+    summary = run["summary"]["jev"]
+    console.print(
+        f"Shadow benchmark complete: eligible={summary['eligible_fixtures']}; "
+        f"automatic={summary['automatic_decisions']}; abstentions={summary['abstentions']}."
+    )
+    console.print(f"JSON: {json_path}")
+    console.print(f"Markdown: {markdown_path}")
 
 
 def _get_database(base_dir: Path | None = None) -> Database:

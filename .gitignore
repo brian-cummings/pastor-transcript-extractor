@@ -1,6 +1,7 @@
 .appdata/
 .DS_Store
 .venv/
+build/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -9,6 +10,7 @@ evaluation/results/
 evaluation/diagnostics/
 evaluation/interaction-diagnostics/
 evaluation/recording-verifier/
+evaluation/recording-verifier-typesafe/
 evaluation/speaker-pairs/cache/
 evaluation/speaker-pairs/drafts/
 evaluation/speaker-pairs/models/
