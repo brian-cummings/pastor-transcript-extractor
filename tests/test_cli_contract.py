@@ -203,6 +203,30 @@ class CliContractTests(unittest.TestCase):
         )
         self.assertIn("--neighborhood-profile-id", result.output)
 
+    def test_source_profile_consolidation_exposes_all_eligible_mode(self) -> None:
+        help_result = self.runner.invoke(
+            app, ["identity", "consolidate-source-profiles", "--help"]
+        )
+        self.assertEqual(0, help_result.exit_code, msg=help_result.output)
+        self.assertIn("--all-eligible", help_result.output)
+
+        conflict_result = self.runner.invoke(
+            app,
+            [
+                "identity",
+                "consolidate-source-profiles",
+                "--source-id",
+                "1",
+                "--all-eligible",
+            ],
+        )
+        self.assertEqual(2, conflict_result.exit_code, msg=conflict_result.output)
+        self.assertIn(
+            "Pass exactly one of --source-id, --list-sources, or",
+            conflict_result.output,
+        )
+        self.assertIn("--all-eligible", conflict_result.output)
+
     def test_package_and_installed_entry_points_resolve_the_cli(self) -> None:
         self.assertIs(package_main, main)
         entry_points = {

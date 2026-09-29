@@ -906,6 +906,7 @@ reviewed different-speaker constraints block consolidation.
 - `pte identity profile-status --base-dir <app-data>`
 - `pte identity consolidate-source-profiles --list-sources`
 - `pte identity consolidate-source-profiles --source-id <id> --plan-only`
+- `pte identity consolidate-source-profiles --all-eligible`
 - `pte identity association-audit --base-dir <app-data>`
 - `pte identity coordinate --all --base-dir <app-data>`
 - `pte identity coordinate --youtube-video-id <id> --execute-shadow --base-dir <app-data>`
@@ -1018,6 +1019,18 @@ qualifies only when every cross-exemplar comparison is `same_speaker`; missing,
 ambiguous, different-speaker, conflicting name, and reviewed-difference
 evidence fail closed. Multi-profile proposals are complete-link at the profile
 level, so every profile pair must qualify.
+
+To attempt every currently eligible source in one invocation, use
+`--all-eligible`. It snapshots the eligible sources first, then processes each
+cohort in turn and continues when one source's acoustic inputs cannot be
+prepared. It works with `--plan-only` and `--apply`; applying still prompts for
+human approval for every proposed cohort.
+
+```bash
+pte identity consolidate-source-profiles \
+  --all-eligible \
+  --base-dir /path/to/app-data
+```
 
 Apply proposals with one human check of each cohort's acoustically weakest edge:
 
