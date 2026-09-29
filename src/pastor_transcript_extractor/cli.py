@@ -975,6 +975,14 @@ def consolidate_source_profiles_command(
         "--list-sources",
         help="List sources with eligible anonymous profile cohorts.",
     ),
+    all_eligible: bool = typer.Option(
+        False,
+        "--all-eligible",
+        help=(
+            "Process each currently eligible source cohort in turn, instead "
+            "of selecting one source."
+        ),
+    ),
     minimum_profiles: int = typer.Option(
         2,
         "--minimum-profiles",
@@ -1027,9 +1035,12 @@ def consolidate_source_profiles_command(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> Path | None:
-    if (source_id is None) == (not list_sources):
+    selection_count = (
+        int(source_id is not None) + int(list_sources) + int(all_eligible)
+    )
+    if selection_count != 1:
         raise typer.BadParameter(
-            "Pass exactly one of --source-id or --list-sources"
+            "Pass exactly one of --source-id, --list-sources, or --all-eligible"
         )
     if list_sources and apply:
         raise typer.BadParameter("--list-sources cannot be combined with --apply")
@@ -1040,6 +1051,75 @@ def consolidate_source_profiles_command(
     paths = config.build_paths(base_dir)
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
+    if all_eligible:
+        try:
+            reviewed_evidence = load_reviewed_speaker_evidence(
+                evaluation_root.expanduser().resolve()
+            )
+            summaries = list_source_profile_cohorts(
+                Database(paths.database, readonly=True),
+                reviewed_evidence,
+                exemplars_per_profile=exemplars_per_profile,
+                minimum_profiles=minimum_profiles,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            raise typer.BadParameter(str(error)) from error
+        if not summaries:
+            console.print(
+                "No eligible source-profile cohorts found; no acoustic "
+                "comparisons or registry records were created."
+            )
+            return None
+        console.print(
+            "Cycling through "
+            f"{len(summaries)} eligible source-profile cohort(s); "
+            f"minimum_profiles={minimum_profiles}."
+        )
+        last_artifact_path: Path | None = None
+        failed_sources: list[int] = []
+        for index, summary in enumerate(summaries, start=1):
+            console.print(
+                f"[{index}/{len(summaries)}] Source {summary.source_id}: "
+                f"profiles={summary.profile_count}."
+            )
+            try:
+                artifact_path = consolidate_source_profiles_command(
+                    source_id=summary.source_id,
+                    list_sources=False,
+                    all_eligible=False,
+                    minimum_profiles=minimum_profiles,
+                    plan_only=plan_only,
+                    apply=apply,
+                    reviewer=reviewer,
+                    exemplars_per_profile=exemplars_per_profile,
+                    jobs=jobs,
+                    open_packet=open_packet,
+                    model_path=model_path,
+                    model_sha256=model_sha256,
+                    policy_path=policy_path,
+                    evaluation_root=evaluation_root,
+                    cache_dir=cache_dir,
+                    output_root=output_root,
+                    base_dir=base_dir,
+                )
+            except typer.BadParameter as error:
+                failed_sources.append(summary.source_id)
+                console.print(
+                    f"Source {summary.source_id} skipped: {error.message}"
+                )
+                continue
+            if artifact_path is not None:
+                last_artifact_path = artifact_path
+        console.print(
+            "All-eligible source-profile consolidation complete: "
+            f"processed={len(summaries) - len(failed_sources)} "
+            f"skipped={len(failed_sources)}."
+        )
+        if failed_sources:
+            console.print(
+                "Skipped source IDs: " + ",".join(map(str, failed_sources))
+            )
+        return last_artifact_path
     database = Database(paths.database, readonly=not apply)
     if source_id is not None and database.get_source_by_id(source_id) is None:
         raise typer.BadParameter(f"Unknown source: {source_id}")
