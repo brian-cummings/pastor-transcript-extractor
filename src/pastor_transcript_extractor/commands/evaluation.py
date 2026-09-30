@@ -159,10 +159,12 @@ def sync_source_families(
 @root_app.command(help="Evaluate existing production classification artifacts against frozen fixtures.")
 def evaluate(
     fixture_dir: Path = typer.Option(Path("evaluation/fixtures"), help="Approved fixture directory."),
-    results_dir: Path = typer.Option(Path("evaluation/results"), help="Generated result root."),
+    results_dir: Path | None = typer.Option(None, help="Generated result root."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
+    paths = build_paths(base_dir)
+    results_dir = results_dir or paths.evaluation / "results"
     fixture_root = fixture_dir.expanduser().resolve()
     fixtures = validate_fixture_directory(fixture_root)
     results: list[dict[str, object]] = []

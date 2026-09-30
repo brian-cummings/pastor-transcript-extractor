@@ -181,7 +181,7 @@ def media_prepare_canonical_audio(
             result = prepare_canonical_audio(
                 database,
                 paths,
-                cache_root=Path("evaluation/speaker-pairs/cache"),
+                cache_root=paths.evaluation / "speaker-pairs/cache",
                 video_ids=video_ids,
                 all_eligible=all_eligible,
                 dry_run=dry_run,

@@ -3134,6 +3134,7 @@ def run_identity_workflow_service(
     effective_apply_promotions = policy.apply_promotions
     effective_apply_machine = policy.apply_machine_assignments
     paths = config.build_paths(base_dir, remember=not plan_only)
+    runtime_evaluation_root = config.evaluation_root_for(paths, base_dir)
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -3165,7 +3166,7 @@ def run_identity_workflow_service(
         backfiller(video_id=database_video_id, base_dir=base_dir)
 
     machine_cache = MediaVerificationCache(
-        Path("evaluation/speaker-pairs/cache/media-verification").resolve()
+        runtime_evaluation_root / "speaker-pairs/cache/media-verification"
     )
     reconciliation = reconcile_machine_assignments_stage(
         paths.database,
@@ -3282,15 +3283,15 @@ def run_identity_workflow_service(
             model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
             policy_path=association_policy_path,
             evaluation_root=speaker_evaluation_root,
-            cache_dir=Path("evaluation/speaker-pairs/cache"),
-            output_root=Path("evaluation/speaker-associations/shadow-runs"),
+            cache_dir=runtime_evaluation_root / "speaker-pairs/cache",
+            output_root=runtime_evaluation_root / "speaker-associations/shadow-runs",
             base_dir=base_dir,
         ),
         association_cache,
         associator=associator,
     )
     exemplar_state_cache = identity_exemplar_preparation.ExemplarPreparationStateCache(
-        Path("evaluation/speaker-pairs/cache").resolve()
+        runtime_evaluation_root / "speaker-pairs/cache"
     )
     pending_exemplar_repairs = select_pending_exemplar_repairs(
         exemplar_state_cache,
@@ -3421,14 +3422,12 @@ def run_identity_workflow_service(
         )
 
     confirmer(
-        input_root=Path("evaluation/speaker-associations/shadow-runs"),
+        input_root=runtime_evaluation_root / "speaker-associations/shadow-runs",
         apply=effective_apply_confirmations and not plan_only,
         base_dir=base_dir,
     )
 
-    discovery_root = Path(
-        "evaluation/speaker-profile-discovery/shadow-runs"
-    )
+    discovery_root = runtime_evaluation_root / "speaker-profile-discovery/shadow-runs"
     discovery_parameters = {
         "discovery_version": SHADOW_PROFILE_DISCOVERY_VERSION,
         "span_selection_version": TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
@@ -3495,7 +3494,7 @@ def run_identity_workflow_service(
             consistency_policy_path=consistency_policy_path,
             association_policy_path=association_policy_path,
             evaluation_root=speaker_evaluation_root,
-            cache_dir=Path("evaluation/speaker-pairs/cache"),
+            cache_dir=runtime_evaluation_root / "speaker-pairs/cache",
             output_root=discovery_root,
             base_dir=base_dir,
         ),

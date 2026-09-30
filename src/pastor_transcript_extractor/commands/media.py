@@ -70,9 +70,7 @@ def media_ensure_audio(
     else:
         videos = []
         inventory = database.list_videos()
-        verification_cache_root = Path(
-            "evaluation/speaker-pairs/cache"
-        ).resolve()
+        verification_cache_root = paths.evaluation / "speaker-pairs/cache"
         verification_cache = MediaVerificationCache(
             verification_cache_root,
             fallback_roots=(

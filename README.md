@@ -1,5 +1,11 @@
 # Pastor Transcript Extractor
 
+Generated evaluation artifacts now default to `<base-dir>/evaluation/`; reviewed
+fixtures, policies, evidence, and documentation remain in the repository's
+`evaluation/` directory. See
+[`docs/EVALUATION_STORAGE_MIGRATION.md`](docs/EVALUATION_STORAGE_MIGRATION.md) for the
+path inventory, compatibility behavior, dry-run, apply, and recovery commands.
+
 Reference panels and immutable Scripture-usage benchmark snapshots are documented in
 [`docs/reference-benchmarking.md`](docs/reference-benchmarking.md).
 

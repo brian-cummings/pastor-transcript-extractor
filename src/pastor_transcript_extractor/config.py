@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -26,6 +26,10 @@ class AppPaths:
     logs: Path
     exports: Path
     pastors: Path
+    evaluation: Path = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "evaluation", self.root / "evaluation")
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +175,15 @@ def build_paths(base_dir: Path | None = None, remember: bool = False) -> AppPath
     )
 
 
+def evaluation_root_for(paths: object, base_dir: Path | None = None) -> Path:
+    """Return the configured evaluation root, including for lightweight test adapters."""
+    configured = getattr(paths, "evaluation", None)
+    if isinstance(configured, Path):
+        return configured
+    root = getattr(paths, "root", None)
+    return (root if isinstance(root, Path) else resolve_base_dir(base_dir)) / "evaluation"
+
+
 def _resolve_command_path(command: str) -> str:
     candidate = Path(command)
     if candidate.exists():
@@ -224,7 +237,14 @@ def build_llm_config() -> LlmConfig:
 
 
 def ensure_directories(paths: AppPaths) -> None:
-    for directory in (paths.root, paths.artifacts, paths.logs, paths.exports, paths.pastors):
+    for directory in (
+        paths.root,
+        paths.artifacts,
+        paths.logs,
+        paths.exports,
+        paths.pastors,
+        paths.evaluation,
+    ):
         directory.mkdir(parents=True, exist_ok=True)
 
 

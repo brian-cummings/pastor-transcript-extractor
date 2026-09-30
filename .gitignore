@@ -18,7 +18,9 @@ evaluation/speaker-pairs/reports/
 evaluation/speaker-pairs/runs/
 evaluation/speaker-associations/shadow-runs/
 evaluation/speaker-profile-discovery/shadow-runs/
+evaluation/speaker-profile-discovery/promotion-judgments/
 evaluation/source-profile-consolidation/runs/
 evaluation/identity-leverage/
+evaluation/migration-manifest*.json
 source_processing_report.json
 source_processing_report.md

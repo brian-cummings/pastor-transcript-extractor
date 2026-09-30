@@ -12,6 +12,14 @@ from pastor_transcript_extractor.artifact_namespace import resolve_video_artifac
 from pastor_transcript_extractor.commands.apps import root_app
 from pastor_transcript_extractor.commands.common import get_database
 from pastor_transcript_extractor.config import build_llm_config, build_paths
+from pastor_transcript_extractor.evaluation_migration import (
+    MigrationError,
+    apply_migration,
+    backup_database,
+    migrate_database_paths,
+    plan_migration,
+    write_manifest,
+)
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory
 from pastor_transcript_extractor.interaction_diagnostics import (
     DEFAULT_SENTINELS,
@@ -63,6 +71,90 @@ from pastor_transcript_extractor.pipeline_diagnostics import (
 
 
 console = Console()
+
+
+@root_app.command(
+    "migrate-evaluation-storage",
+    help="Safely move generated evaluation artifacts into application data.",
+)
+def migrate_evaluation_storage(
+    apply: bool = typer.Option(
+        False,
+        "--apply/--dry-run",
+        help="Apply the migration; dry-run is the default.",
+    ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+    repo_root: Path = typer.Option(
+        Path.cwd(), "--repo-root", help="Repository containing legacy evaluation artifacts."
+    ),
+    verify: bool = typer.Option(
+        False,
+        "--verify",
+        help="Verify destination sizes after every move and report remaining legacy files.",
+    ),
+    manifest: Path | None = typer.Option(
+        None,
+        "--manifest",
+        help="Manifest destination; defaults beneath the configured evaluation root.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    manifest_path = manifest or paths.evaluation / "migration-manifest.json"
+    plan = plan_migration(
+        repo_root=repo_root,
+        evaluation_root=paths.evaluation,
+        database_path=paths.database,
+    )
+    write_manifest(plan, manifest_path)
+    categories = sorted({entry.category for entry in plan.entries})
+    console.print(
+        f"Evaluation migration {'apply' if apply else 'dry-run'}: "
+        f"planned_files={plan.planned_files} bytes={plan.total_bytes} "
+        f"already_migrated={plan.already_migrated} conflicts={len(plan.conflicts)} "
+        f"unsafe_symlinks={len(plan.symlink_rejections)} "
+        f"database_changes={len(plan.database_changes)}."
+    )
+    console.print(f"Categories: {', '.join(categories) if categories else 'none'}")
+    console.print(f"Manifest: {manifest_path}")
+    for conflict in plan.conflicts:
+        console.print(f"CONFLICT: {conflict}")
+    for rejected in plan.symlink_rejections:
+        console.print(f"UNSAFE SYMLINK: {rejected}")
+    if not apply:
+        return
+    if plan.conflicts or plan.symlink_rejections:
+        raise typer.BadParameter("Refusing migration until all conflicts and symlinks are resolved.")
+    backup_path = paths.database.with_name(
+        f"{paths.database.name}.pre-evaluation-migration.bak"
+    )
+    if plan.database_changes and backup_database(paths.database, backup_path):
+        console.print(f"Created pre-migration database backup: {backup_path}")
+
+    def show_progress(entry, completed_files, completed_bytes, elapsed) -> None:
+        console.print(
+            f"[{entry.category}] files={completed_files}/{plan.planned_files} "
+            f"bytes={completed_bytes}/{plan.total_bytes} elapsed={elapsed:.1f}s "
+            f"move={entry.source}"
+        )
+
+    try:
+        result = apply_migration(plan, verify=verify, progress=show_progress)
+        database_changes = 0
+        if not result.failures and plan.database_changes:
+            database_changes = migrate_database_paths(paths.database, plan.database_changes)
+    except MigrationError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        "Migration complete: "
+        f"moved_files={result.moved_files} moved_bytes={result.moved_bytes} "
+        f"already_migrated={result.already_migrated} failures={len(result.failures)} "
+        f"database_changes={database_changes} "
+        f"remaining_legacy_files={result.remaining_legacy_files}."
+    )
+    for failure in result.failures:
+        console.print(f"FAILURE: {failure}")
+    if result.failures:
+        raise typer.Exit(code=1)
 
 
 def _load_pipeline_diagnostic_fixture(
@@ -145,8 +237,8 @@ def diagnose_pipeline(
         "--output-dir",
         help="Output directory; defaults to the video's immutable artifact namespace.",
     ),
-    identity_feedback_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs"),
+    identity_feedback_root: Path | None = typer.Option(
+        None,
         "--identity-feedback-root",
         help=(
             "Existing identity shadow artifacts containing association outcomes and "
@@ -157,6 +249,9 @@ def diagnose_pipeline(
 ) -> None:
     database = get_database(base_dir)
     paths = build_paths(base_dir, remember=True)
+    identity_feedback_root = identity_feedback_root or (
+        paths.evaluation / "speaker-associations/shadow-runs"
+    )
     video = database.get_video_by_id(video_id)
     if video is None:
         raise typer.BadParameter(f"Unknown video id: {video_id}")
@@ -265,12 +360,12 @@ def diagnose_pipeline_system(
         Path("evaluation/fixtures"),
         help="Reviewed fixture directory to diagnose from existing artifacts.",
     ),
-    output_root: Path = typer.Option(
-        Path("evaluation/diagnostics"),
+    output_root: Path | None = typer.Option(
+        None,
         help="Generated systemic diagnostic root.",
     ),
-    identity_feedback_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs"),
+    identity_feedback_root: Path | None = typer.Option(
+        None,
         "--identity-feedback-root",
         help=(
             "Existing identity shadow artifacts containing association outcomes and "
@@ -301,6 +396,11 @@ def diagnose_pipeline_system(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
+    paths = build_paths(base_dir)
+    output_root = output_root or paths.evaluation / "diagnostics"
+    identity_feedback_root = identity_feedback_root or (
+        paths.evaluation / "speaker-associations/shadow-runs"
+    )
     try:
         fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
     except FixtureValidationError as error:
@@ -630,11 +730,13 @@ def diagnose_pipeline_system(
 def compare_pipeline_diagnostics(
     before: Path = typer.Option(..., "--before", help="Earlier system-diagnostics.json."),
     after: Path = typer.Option(..., "--after", help="Later system-diagnostics.json."),
-    output_root: Path = typer.Option(
-        Path("evaluation/diagnostics/comparisons"),
+    output_root: Path | None = typer.Option(
+        None,
         help="Generated comparison root.",
     ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    output_root = output_root or build_paths(base_dir).evaluation / "diagnostics/comparisons"
     reports: list[dict[str, Any]] = []
     for label, path in (("before", before), ("after", after)):
         resolved = path.expanduser().resolve()
@@ -691,12 +793,13 @@ def diagnose_interaction(
     models: list[str] | None = typer.Option(
         None, "--model", help="Ollama model to compare; repeat for multiple models."
     ),
-    output_root: Path = typer.Option(
-        Path("evaluation/interaction-diagnostics"), help="Generated diagnostic result root."
+    output_root: Path | None = typer.Option(
+        None, help="Generated diagnostic result root."
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
+    output_root = output_root or build_paths(base_dir).evaluation / "interaction-diagnostics"
     selected_models = models or [build_llm_config().model]
     sentinels = [
         (video_id, *load_sentinel_blocks(database, video_id))
@@ -754,8 +857,8 @@ def diagnose_recording_verifier(
     fixture_dir: Path = typer.Option(
         Path("evaluation/fixtures"), help="Approved fixture directory."
     ),
-    output_root: Path = typer.Option(
-        Path("evaluation/recording-verifier"),
+    output_root: Path | None = typer.Option(
+        None,
         help="Generated diagnostic result root.",
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -768,6 +871,7 @@ def diagnose_recording_verifier(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     database = get_database(base_dir)
+    output_root = output_root or build_paths(base_dir).evaluation / "recording-verifier"
     fixture_root = fixture_dir.expanduser().resolve()
     cases = load_recording_verifier_cases(
         database,

@@ -6,6 +6,7 @@ from typing import Callable
 import typer
 
 from pastor_transcript_extractor.commands.apps import identity_app
+from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.workflows.identity.association import (
     ShadowAssociationRequest,
     validate_shadow_association_request,
@@ -102,11 +103,8 @@ def shadow_associate_speakers_command(
         min=1,
         help="Concurrent acoustic preprocessing and comparison jobs.",
     ),
-    model_path: Path = typer.Option(
-        Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-        ),
+    model_path: Path | None = typer.Option(
+        None,
         help="Local ONNX speaker-embedding model.",
     ),
     model_sha256: str = typer.Option(
@@ -124,12 +122,12 @@ def shadow_associate_speakers_command(
         Path("evaluation/speaker-pairs"),
         help="Speaker-pair drafts, reviews, and fixtures root.",
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"),
+    cache_dir: Path | None = typer.Option(
+        None,
         help="Ignored exact-span, embedding, and media-verification cache.",
     ),
-    output_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs"),
+    output_root: Path | None = typer.Option(
+        None,
         help="Ignored versioned shadow-association artifacts.",
     ),
     base_dir: Path | None = typer.Option(
@@ -138,6 +136,7 @@ def shadow_associate_speakers_command(
 ) -> tuple[Path, ...]:
     if _shadow_association_invoker is None:
         raise RuntimeError("Shadow association workflow was not configured.")
+    paths = build_paths(base_dir)
     request = ShadowAssociationRequest(
         youtube_video_id=youtube_video_id,
         all_eligible=all_eligible,
@@ -151,12 +150,15 @@ def shadow_associate_speakers_command(
         minimum_same_exemplars=minimum_same_exemplars,
         maximum_global_profiles=maximum_global_profiles,
         jobs=jobs,
-        model_path=model_path,
+        model_path=model_path or (
+            paths.evaluation
+            / "speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
         model_sha256=model_sha256,
         policy_path=policy_path,
         evaluation_root=evaluation_root,
-        cache_dir=cache_dir,
-        output_root=output_root,
+        cache_dir=cache_dir or paths.evaluation / "speaker-pairs/cache",
+        output_root=output_root or paths.evaluation / "speaker-associations/shadow-runs",
         base_dir=base_dir,
     )
     try:
