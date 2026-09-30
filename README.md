@@ -189,9 +189,11 @@ pte sync-imported-sources \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-By default, synchronization fetches captions and downloads audio for local ASR
-only when captions are unavailable. Add `--all-audio` to acquire and transcribe
-audio for every eligible video. Add `--extract` when the synchronized recordings
+By default, normal runs and synchronization skip caption requests, audio
+downloads, and local ASR for videos that already have any transcript artifact.
+For videos without transcripts, captions are tried before audio is downloaded
+for local ASR. Add `--all-audio` to acquire and transcribe audio for every
+eligible video. Add `--extract` when the synchronized recordings
 should immediately become sermon-fixture candidates. `--archive-sources` requires
 `--extract` and an archive destination previously configured with `pte media
 archive-sources --archive-root PATH`. Synchronization uses separate download /
@@ -531,8 +533,9 @@ pte run --source-id 12 --source-id 19 \
 ```
 
 Stage network-dependent inputs while on a fast connection, then process exactly
-that batch offline. Staging downloads immutable source audio, reuses the existing
-caption acquisition to persist any available YouTube captions, and stops before
+that batch offline. Staging bypasses videos that already have a transcript,
+downloads immutable source audio for the remaining videos, requests YouTube
+captions only for audio downloaded by that staging run, and stops before
 normalization, Whisper, extraction, review, and archival. The resume command
 verifies every staged audio artifact and disables network download fallback:
 
@@ -551,17 +554,19 @@ pte run \
   --base-dir /Users/briancummings/Documents/PastorSearchData
 ```
 
-Use `--acquire-captions` when the resume machine is online. It runs the existing
-caption acquisition over the exact verified manifest scope before local ASR, so
-Whisper only handles remaining caption misses. Large caption batches wait five
+Use `--acquire-captions` when the resume machine is online. It runs caption
+acquisition only for manifest entries downloaded by that staging run before local
+ASR, while preserving persisted captions. Whisper only handles videos with no
+acquired transcript.
+Large caption batches wait five
 seconds between requests and retry infrequent YouTube 429 responses with bounded
 backoff. Repeated rate limiting stops cleanly; rerunning later skips captions
 already persisted. Omit the option for a fully offline run.
 
 The legacy `--stage-audio-only` spelling remains an alias. The same staging
 option works with a URL plus `--pastor`, or with one or more `--source-id`
-values. Re-running staging reuses verified source and caption artifacts and only
-downloads missing inputs.
+values. Re-running staging bypasses acquired transcripts, reuses verified source
+artifacts for remaining videos, and only downloads missing inputs.
 
 Add `--skip-discovery` with `--all` or `--source-id` to select the newest
 eligible videos already stored in the catalog without contacting source feeds.

@@ -2548,6 +2548,7 @@ class CliTests(unittest.TestCase):
     def test_audio_stage_skip_discovery_never_contacts_source_feeds(self) -> None:
         database = SimpleNamespace(
             list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
             list_excluded_videos=lambda: [],
             list_videos_by_source_id=lambda _source_id: [
                 SimpleNamespace(
@@ -2603,6 +2604,7 @@ class CliTests(unittest.TestCase):
     def test_audio_stage_fetches_captions_for_verified_subset(self) -> None:
         database = SimpleNamespace(
             list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
             list_videos=lambda: [
                 SimpleNamespace(id=11, source_id=1),
                 SimpleNamespace(id=12, source_id=1),
@@ -2662,6 +2664,7 @@ class CliTests(unittest.TestCase):
     def test_audio_stage_retries_unexpected_worker_failure(self) -> None:
         database = SimpleNamespace(
             list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
             list_videos=lambda: [
                 SimpleNamespace(id=11, source_id=1, youtube_video_id="video-11"),
                 SimpleNamespace(id=12, source_id=1, youtube_video_id="video-12"),
@@ -2736,6 +2739,9 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.audio_staging.load_and_verify_audio_stage_manifest",
             return_value={11, 12},
         ), patch(
+            "pastor_transcript_extractor.audio_staging.load_audio_stage_downloaded_video_ids",
+            return_value={11},
+        ), patch(
             "pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"
         ) as transcribe, patch(
             "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
@@ -2753,7 +2759,7 @@ class CliTests(unittest.TestCase):
 
         fetch_captions.assert_called_once_with(
             base_dir=None,
-            video_ids={11, 12},
+            video_ids={11},
             request_interval_seconds=5.0,
         )
         self.assertFalse(transcribe.call_args.kwargs["allow_network"])
@@ -2769,6 +2775,9 @@ class CliTests(unittest.TestCase):
             "pastor_transcript_extractor.config.build_paths", return_value=paths
         ), patch(
             "pastor_transcript_extractor.audio_staging.load_and_verify_audio_stage_manifest",
+            return_value={11},
+        ), patch(
+            "pastor_transcript_extractor.audio_staging.load_audio_stage_downloaded_video_ids",
             return_value={11},
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.fetch_captions_service",

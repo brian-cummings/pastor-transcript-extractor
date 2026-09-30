@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from pastor_transcript_extractor.audio_staging import (
+    load_audio_stage_downloaded_video_ids,
+)
 from pastor_transcript_extractor.application import (
     ExtractionBatchResult,
     ReviewBatchResult,
@@ -62,6 +65,7 @@ class ResumePipelineDependencies:
     ensure_media: ResumeOperation | None = None
     run_identity: ResumeOperation | None = None
     prepare_reviews: ResumeOperation = prepare_review_exports
+    caption_scope: ResumeOperation = load_audio_stage_downloaded_video_ids
 
 
 def _pastor_slugs_for_videos(
@@ -100,32 +104,37 @@ def resume_staged_pipeline(
     )
     captions_blocked = False
     if request.acquire_captions:
+        caption_video_ids = set(dependencies.caption_scope(request.manifest_path)) & set(
+            request.video_ids
+        )
         emit(
-            "Resume checkpoint: reconciling requested online captions; persisted "
-            "caption artifacts will be skipped."
+            "Resume checkpoint: reconciling requested online captions for "
+            f"{len(caption_video_ids)} video(s) downloaded by this audio stage; "
+            "persisted caption artifacts will be skipped."
         )
         caption_options = {}
         if request.cookies_from_browser is not None:
             caption_options["cookies_from_browser"] = request.cookies_from_browser
         if request.cookies is not None:
             caption_options["cookies"] = request.cookies
-        try:
-            dependencies.fetch_captions(
-                base_dir=request.base_dir,
-                video_ids=set(request.video_ids),
-                request_interval_seconds=request.caption_request_interval_seconds,
-                **caption_options,
-            )
-        except CaptionAcquisitionBlockedError as error:
-            captions_blocked = True
-            emit(f"[yellow]Caption acquisition stopped[/yellow]: {error}")
-            emit(
-                "Remaining caption misses will stay pending because local "
-                "transcription is disabled by --captions-only."
-                if request.captions_only
-                else "Continuing with offline local transcription for remaining "
-                "caption misses."
-            )
+        if caption_video_ids:
+            try:
+                dependencies.fetch_captions(
+                    base_dir=request.base_dir,
+                    video_ids=caption_video_ids,
+                    request_interval_seconds=request.caption_request_interval_seconds,
+                    **caption_options,
+                )
+            except CaptionAcquisitionBlockedError as error:
+                captions_blocked = True
+                emit(f"[yellow]Caption acquisition stopped[/yellow]: {error}")
+                emit(
+                    "Remaining caption misses will stay pending because local "
+                    "transcription is disabled by --captions-only."
+                    if request.captions_only
+                    else "Continuing with offline local transcription for remaining "
+                    "caption misses."
+                )
     else:
         emit(
             "Resume checkpoint: skipping caption acquisition; persisted captions "
@@ -138,7 +147,7 @@ def resume_staged_pipeline(
             "artifacts will be skipped."
         )
         dependencies.transcribe(
-            missing_only=False,
+            missing_only=request.transcribe_missing,
             captions_missing_only=request.transcribe_missing,
             jobs=request.jobs,
             base_dir=request.base_dir,

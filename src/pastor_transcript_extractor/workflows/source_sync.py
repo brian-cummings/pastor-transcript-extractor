@@ -108,7 +108,7 @@ def projected_transcription_disk_bytes(
         if not should_transcribe_video(
             database,
             video.id,
-            missing_only=False,
+            missing_only=captions_missing_only,
             captions_missing_only=captions_missing_only,
         ):
             continue
@@ -303,7 +303,7 @@ def _acquire_source_videos(
     )
     coordinator.require_disk_reserve(source_id, projected_bytes)
     dependencies.transcribe(
-        missing_only=False,
+        missing_only=not request.all_audio,
         captions_missing_only=not request.all_audio,
         jobs=request.jobs,
         prep_jobs=request.download_jobs,

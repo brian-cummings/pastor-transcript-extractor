@@ -6880,6 +6880,7 @@ def _invoke_run_request(request: RunWorkflowRequest) -> None:
                 ensure_media=_pipeline_commands.ensure_and_archive_run_media,
                 run_identity=_pipeline_commands.run_post_content_identity,
                 prepare_reviews=application.prepare_review_exports,
+                caption_scope=audio_staging.load_audio_stage_downloaded_video_ids,
             ),
             online_pipeline=PipelineDependencies(
                 get_database=command_common.get_database,

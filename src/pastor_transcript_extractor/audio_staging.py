@@ -31,6 +31,7 @@ def write_audio_stage_manifest(
                 "youtube_video_id": result.youtube_video_id,
                 "outcome": result.outcome,
                 "reason_code": result.reason_code,
+                "downloaded": result.downloaded,
                 "artifact_id": artifact.id if artifact else None,
                 "artifact_path": artifact.artifact_path if artifact else None,
                 "content_sha256": artifact.content_sha256 if artifact else None,
@@ -115,6 +116,34 @@ def load_and_verify_audio_stage_manifest(
     if not video_ids:
         raise ValueError("Audio stage manifest contains no verified videos.")
     return video_ids
+
+
+def load_audio_stage_downloaded_video_ids(path: Path) -> set[int]:
+    """Return verified videos whose source audio was downloaded by this stage."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Unable to read audio stage manifest {path}: {error}") from error
+    if not isinstance(payload, dict) or payload.get("schema_version") != AUDIO_STAGE_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported audio stage manifest: {path}")
+    videos = payload.get("videos")
+    stable = {"schema_version": AUDIO_STAGE_SCHEMA_VERSION, "videos": videos}
+    if not isinstance(videos, list) or payload.get("stage_fingerprint") != _fingerprint(stable):
+        raise ValueError(f"Audio stage manifest fingerprint mismatch: {path}")
+    return {
+        row["video_id"]
+        for row in videos
+        if isinstance(row, dict)
+        and isinstance(row.get("video_id"), int)
+        and row.get("outcome") == "verified"
+        and (
+            row.get("downloaded") is True
+            or (
+                "downloaded" not in row
+                and row.get("reason_code") == "source_audio_staged"
+            )
+        )
+    }
 
 
 def _fingerprint(value: object) -> str:
