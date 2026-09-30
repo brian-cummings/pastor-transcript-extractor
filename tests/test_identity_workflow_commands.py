@@ -21,6 +21,11 @@ class IdentityWorkflowCommandTests(unittest.TestCase):
             apply_automatic=False,
             apply_confirmations=False,
             apply_promotions=False,
+            evaluate_profile_promotions=True,
+            promotion_model="jev-test",
+            promotion_judgment_root=Path("judgments"),
+            promotion_successful_profile_value=2.0,
+            promotion_contaminated_profile_cost=3.0,
             apply_machine_canary=False,
             machine_assignment_policy=Path("policy.json"),
             review_prewarm_limit=0,
@@ -35,6 +40,9 @@ class IdentityWorkflowCommandTests(unittest.TestCase):
         self.assertEqual(Path("policy.json"), request.machine_assignment_policy_path)
         self.assertEqual(0, request.review_prewarm_limit)
         self.assertEqual(3, request.jobs)
+        self.assertTrue(request.evaluate_profile_promotions)
+        self.assertEqual("jev-test", request.promotion_model)
+        self.assertEqual(Path("judgments"), request.promotion_judgment_root)
 
     def test_workflow_value_error_becomes_cli_parameter_error(self) -> None:
         def reject(_request) -> None:
@@ -51,6 +59,11 @@ class IdentityWorkflowCommandTests(unittest.TestCase):
                 apply_automatic=False,
                 apply_confirmations=False,
                 apply_promotions=False,
+                evaluate_profile_promotions=False,
+                promotion_model="jev-1.13.0",
+                promotion_judgment_root=Path("judgments"),
+                promotion_successful_profile_value=1.0,
+                promotion_contaminated_profile_cost=4.0,
                 apply_machine_canary=False,
                 machine_assignment_policy=None,
                 review_prewarm_limit=24,

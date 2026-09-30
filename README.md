@@ -807,6 +807,55 @@ it creates stable provisional profiles and attaches their complete-link seed
 observations. Those profiles participate in subsequent shadow association but
 remain automatic-blocked until `pte identity confirm-discovered-profiles`
 accepts a current multi-exemplar proposal from an independent recording.
+
+Profile promotion can also use a Jev probability instead of requiring the
+complete-link component to pass every deterministic promotion gate. The design
+and evidence contract are in
+[`docs/JEV_PROFILE_PROMOTION.md`](docs/JEV_PROFILE_PROMOTION.md). First evaluate
+the bounded candidate groupings:
+
+```bash
+pte identity evaluate-profile-promotions \
+  --discovery-report <artifact> \
+  --details
+```
+
+Then inspect the promotion plan using those judgments:
+
+```bash
+pte identity promote-discovered-profiles \
+  --discovery-report <artifact>
+```
+
+Cached probability judgments are included by default; use
+`--no-probability-judgments` only for a deterministic-only diagnostic. Add
+`--apply` only after reviewing that plan. Promotion eligibility is expected
+utility, `p(same principal speaker) * successful_profile_value -
+(1 - p) * contaminated_profile_cost`, rather than a new confidence gate. The
+default successful-profile value is `1` and the default contamination cost is
+`3`, giving positive utility above `0.75`. These remain policy, not model input.
+
+Jev evaluation is content-addressed and cached per proposed grouping. Its cache
+identity includes the exact question and evidence schema, pinned model identity,
+discovery report, current observations, and selected transcript/metadata
+evidence. Successful judgments and failures are both cached. Repeating the same
+evaluation makes zero Jev calls; changing only the utility weights reuses the raw
+probability. Changed evidence, question wording, schema, or model produces a new
+immutable judgment artifact. Promotion reloads and verifies the current cache
+entry instead of calling Jev itself, so application is reproducible and cannot
+silently use a stale result.
+
+The same stages can run together during the corpus identity workflow:
+
+```bash
+pte identity run --all
+```
+
+Corpus identity runs evaluate only cache misses and print the combined promotion
+plan by default. Use `--no-evaluate-profile-promotions` for a deterministic-only
+diagnostic. Add `--apply-promotions` to apply the plan; without it, the run does
+not mutate profile membership.
+
 While confirmation is pending, a provisional discovery profile remains
 source-local or attribution-routed instead of becoming a global comparison
 target. Confirmation work therefore avoids comparing every unrelated sermon

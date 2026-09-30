@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Sequence
 
 from pastor_transcript_extractor.models import (
     BenchmarkComparisonRun,
@@ -559,6 +559,12 @@ CREATE TABLE IF NOT EXISTS speaker_profile_discovery_promotions (
     discovery_result_sha256 TEXT NOT NULL,
     discovery_artifact_path TEXT NOT NULL,
     seed_observation_ids_json TEXT NOT NULL,
+    promotion_basis TEXT NOT NULL DEFAULT 'deterministic_complete_link',
+    promotion_probability REAL NULL,
+    promotion_expected_utility REAL NULL,
+    promotion_judgment_sha256 TEXT NULL,
+    promotion_judgment_artifact_path TEXT NULL,
+    probability_policy_version TEXT NULL,
     event_fingerprint TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL,
     FOREIGN KEY(profile_id) REFERENCES speaker_profiles(id)
@@ -757,6 +763,7 @@ class Database:
             self._ensure_pastor_columns(connection)
             apply_source_ownership_schema(connection)
             self._ensure_source_processing_column(connection)
+            self._ensure_profile_promotion_columns(connection)
             backfill_source_ownership(connection)
 
     def _ensure_pastor_columns(self, connection: sqlite3.Connection) -> None:
@@ -787,6 +794,33 @@ class Database:
                 "ALTER TABLE sources ADD COLUMN processing_enabled INTEGER NOT NULL DEFAULT 1 "
                 "CHECK(processing_enabled IN (0, 1))"
             )
+
+    def _ensure_profile_promotion_columns(
+        self,
+        connection: sqlite3.Connection,
+    ) -> None:
+        columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(speaker_profile_discovery_promotions)"
+            ).fetchall()
+        }
+        additions = {
+            "promotion_basis": (
+                "TEXT NOT NULL DEFAULT 'deterministic_complete_link'"
+            ),
+            "promotion_probability": "REAL NULL",
+            "promotion_expected_utility": "REAL NULL",
+            "promotion_judgment_sha256": "TEXT NULL",
+            "promotion_judgment_artifact_path": "TEXT NULL",
+            "probability_policy_version": "TEXT NULL",
+        }
+        for name, declaration in additions.items():
+            if name not in columns:
+                connection.execute(
+                    "ALTER TABLE speaker_profile_discovery_promotions "
+                    f"ADD COLUMN {name} {declaration}"
+                )
 
     def _source_from_row(self, row: sqlite3.Row) -> Source:
         return Source(
@@ -2540,6 +2574,28 @@ class Database:
             ).fetchall()
         return [self._transcript_segment_from_row(row) for row in rows]
 
+    def list_transcript_segments_for_videos(
+        self,
+        video_ids: Sequence[int],
+    ) -> list[TranscriptSegment]:
+        """Load transcript segments for a bounded video set in one table scan."""
+        resolved_ids = tuple(sorted(set(video_ids)))
+        if not resolved_ids:
+            return []
+        placeholders = ",".join("?" for _value in resolved_ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, video_id, artifact_id, start_seconds, end_seconds,
+                       text, speaker_hint, label, confidence
+                FROM transcript_segments
+                WHERE video_id IN ({placeholders})
+                ORDER BY video_id, id
+                """,
+                resolved_ids,
+            ).fetchall()
+        return [self._transcript_segment_from_row(row) for row in rows]
+
     def list_transcript_artifacts(self) -> list[TranscriptArtifact]:
         with self.connect() as connection:
             rows = connection.execute(
@@ -3711,6 +3767,18 @@ class Database:
             ).fetchone()
         return self._metadata_artifact_from_row(row) if row is not None else None
 
+    def list_metadata_artifacts(self) -> list[MetadataArtifact]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, video_id, schema_version, source_kind, artifact_path,
+                       content_sha256, extractor_version, created_at
+                FROM metadata_artifacts
+                ORDER BY id
+                """
+            ).fetchall()
+        return [self._metadata_artifact_from_row(row) for row in rows]
+
     def add_identity_evidence(
         self,
         *,
@@ -4296,6 +4364,12 @@ class Database:
         discovery_artifact_path: str,
         seed_observation_ids_json: str,
         event_fingerprint: str,
+        promotion_basis: str = "deterministic_complete_link",
+        promotion_probability: float | None = None,
+        promotion_expected_utility: float | None = None,
+        promotion_judgment_sha256: str | None = None,
+        promotion_judgment_artifact_path: str | None = None,
+        probability_policy_version: str | None = None,
     ) -> int:
         created_at = utc_now().isoformat()
         values = (
@@ -4304,6 +4378,12 @@ class Database:
             discovery_result_sha256,
             discovery_artifact_path,
             seed_observation_ids_json,
+            promotion_basis,
+            promotion_probability,
+            promotion_expected_utility,
+            promotion_judgment_sha256,
+            promotion_judgment_artifact_path,
+            probability_policy_version,
             event_fingerprint,
             created_at,
         )
@@ -4314,8 +4394,13 @@ class Database:
                     INSERT INTO speaker_profile_discovery_promotions (
                         profile_id, component_id, discovery_result_sha256,
                         discovery_artifact_path, seed_observation_ids_json,
+                        promotion_basis, promotion_probability,
+                        promotion_expected_utility,
+                        promotion_judgment_sha256,
+                        promotion_judgment_artifact_path,
+                        probability_policy_version,
                         event_fingerprint, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     values,
                 )
@@ -4323,7 +4408,12 @@ class Database:
                 row = connection.execute(
                     """
                     SELECT profile_id, component_id, discovery_result_sha256,
-                           discovery_artifact_path, seed_observation_ids_json
+                           discovery_artifact_path, seed_observation_ids_json,
+                           promotion_basis, promotion_probability,
+                           promotion_expected_utility,
+                           promotion_judgment_sha256,
+                           promotion_judgment_artifact_path,
+                           probability_policy_version
                     FROM speaker_profile_discovery_promotions
                     WHERE event_fingerprint = ?
                     """,
@@ -4337,8 +4427,14 @@ class Database:
                     str(row["discovery_result_sha256"]),
                     str(row["discovery_artifact_path"]),
                     str(row["seed_observation_ids_json"]),
+                    str(row["promotion_basis"]),
+                    row["promotion_probability"],
+                    row["promotion_expected_utility"],
+                    row["promotion_judgment_sha256"],
+                    row["promotion_judgment_artifact_path"],
+                    row["probability_policy_version"],
                 )
-                if persisted != values[:5]:
+                if persisted != values[:11]:
                     raise ValueError(
                         "Discovery promotion event fingerprint collision"
                     )
@@ -4353,6 +4449,11 @@ class Database:
                 """
                 SELECT profile_id, component_id, discovery_result_sha256,
                        discovery_artifact_path, seed_observation_ids_json,
+                       promotion_basis, promotion_probability,
+                       promotion_expected_utility,
+                       promotion_judgment_sha256,
+                       promotion_judgment_artifact_path,
+                       probability_policy_version,
                        event_fingerprint, created_at
                 FROM speaker_profile_discovery_promotions
                 WHERE profile_id = ?

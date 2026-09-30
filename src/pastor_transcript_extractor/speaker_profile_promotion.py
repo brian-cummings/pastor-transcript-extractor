@@ -13,6 +13,9 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
 from pastor_transcript_extractor.speaker_registry import (
     attach_reviewed_observation,
 )
+from pastor_transcript_extractor.speaker_profile_promotion_typesafe import (
+    PromotionAssessment,
+)
 from pastor_transcript_extractor.speaker_shadow_association import (
     SHADOW_ASSOCIATION_VERSION,
 )
@@ -32,6 +35,12 @@ class PromotionCandidate:
     recording_ids: tuple[int, ...]
     normalized_names: tuple[str, ...]
     existing_profile_id: int | None
+    promotion_basis: str = "deterministic_complete_link"
+    probability: float | None = None
+    expected_utility: float | None = None
+    judgment_artifact_path: Path | None = None
+    judgment_result_sha256: str | None = None
+    probability_policy_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +71,9 @@ class CandidateConfirmationPlan:
 def plan_discovery_promotions(
     database: Database,
     report_path: Path,
+    *,
+    probability_assessments: Sequence[PromotionAssessment] = (),
+    probability_policy_version: str | None = None,
 ) -> DiscoveryPromotionPlan:
     path = report_path.expanduser().resolve()
     report = _load_verified_report(path)
@@ -88,6 +100,54 @@ def plan_discovery_promotions(
             )
             continue
         candidates.append(candidate)
+    selected_observation_ids = {
+        observation_id
+        for candidate in candidates
+        for observation_id in candidate.observation_ids
+    }
+    ranked_probability = sorted(
+        (
+            assessment
+            for assessment in probability_assessments
+            if assessment.qualifies
+            and assessment.probability is not None
+            and assessment.expected_utility is not None
+        ),
+        key=lambda item: (
+            -float(item.expected_utility or 0.0),
+            -len(item.evidence.grouping.observation_ids),
+            item.evidence.grouping.group_id,
+        ),
+    )
+    for assessment in ranked_probability:
+        grouping = assessment.evidence.grouping
+        if selected_observation_ids & set(grouping.observation_ids):
+            skipped.append(
+                {
+                    "component_id": grouping.group_id,
+                    "reason": "overlaps a stronger selected promotion grouping",
+                }
+            )
+            continue
+        try:
+            candidate = _validate_probability_group(
+                database,
+                grouping_id=grouping.group_id,
+                observation_ids=grouping.observation_ids,
+                observation_fingerprints=grouping.observation_fingerprints,
+                probability=float(assessment.probability),
+                expected_utility=float(assessment.expected_utility),
+                judgment_artifact_path=assessment.artifact_path,
+                judgment_result_sha256=assessment.result_sha256,
+                probability_policy_version=probability_policy_version,
+            )
+        except ValueError as error:
+            skipped.append(
+                {"component_id": grouping.group_id, "reason": str(error)}
+            )
+            continue
+        candidates.append(candidate)
+        selected_observation_ids.update(candidate.observation_ids)
     return DiscoveryPromotionPlan(
         report_path=path,
         report_result_sha256=result_sha256,
@@ -116,11 +176,25 @@ def apply_discovery_promotions(
             raise ValueError(
                 f"Stable key {stable_key} belongs to an incompatible profile"
             )
+        existing_promotion = database.get_speaker_profile_discovery_promotion(
+            profile.id
+        )
+        if existing_promotion is not None:
+            if str(existing_promotion["component_id"]) != candidate.component_id:
+                raise ValueError(
+                    "Existing discovery promotion belongs to a different "
+                    f"component for profile {profile.id}"
+                )
+            promoted.append(profile.id)
+            continue
         event_key = _sha256(
             {
                 "promotion_version": DISCOVERY_PROMOTION_VERSION,
                 "component_id": candidate.component_id,
                 "report_result_sha256": plan.report_result_sha256,
+                "promotion_basis": candidate.promotion_basis,
+                "judgment_result_sha256": candidate.judgment_result_sha256,
+                "probability_policy_version": candidate.probability_policy_version,
             }
         )
         database.add_speaker_profile_creation_event(
@@ -128,7 +202,8 @@ def apply_discovery_promotions(
             reviewer=DISCOVERY_PROMOTION_ACTOR,
             reason=(
                 "Reversible provisional profile promoted from verified "
-                f"discovery component {candidate.component_id}"
+                f"discovery grouping {candidate.component_id}; "
+                f"basis={candidate.promotion_basis}"
             ),
             event_fingerprint=_sha256(
                 {"kind": "discovery_profile_creation", "event_key": event_key}
@@ -146,10 +221,21 @@ def apply_discovery_promotions(
             event_fingerprint=_sha256(
                 {"kind": "discovery_profile_promotion", "event_key": event_key}
             ),
+            promotion_basis=candidate.promotion_basis,
+            promotion_probability=candidate.probability,
+            promotion_expected_utility=candidate.expected_utility,
+            promotion_judgment_sha256=candidate.judgment_result_sha256,
+            promotion_judgment_artifact_path=(
+                str(candidate.judgment_artifact_path)
+                if candidate.judgment_artifact_path is not None
+                else None
+            ),
+            probability_policy_version=candidate.probability_policy_version,
         )
         reason = (
-            "Seed membership from verified complete-link discovery component "
-            f"{candidate.component_id}; report={plan.report_result_sha256}"
+            "Seed membership from verified discovery grouping "
+            f"{candidate.component_id}; basis={candidate.promotion_basis}; "
+            f"report={plan.report_result_sha256}"
         )
         for observation_id in candidate.observation_ids:
             attach_reviewed_observation(
@@ -373,6 +459,86 @@ def _validate_component(
             str(value) for value in component.get("normalized_names", ())
         ),
         existing_profile_id=_existing_discovery_profile(database, component_id),
+    )
+
+
+def _validate_probability_group(
+    database: Database,
+    *,
+    grouping_id: str,
+    observation_ids: Sequence[int],
+    observation_fingerprints: Sequence[str],
+    probability: float,
+    expected_utility: float,
+    judgment_artifact_path: Path,
+    judgment_result_sha256: str,
+    probability_policy_version: str | None,
+) -> PromotionCandidate:
+    if len(observation_ids) < 2:
+        raise ValueError("probability-qualified grouping requires two observations")
+    if not 0.0 <= probability <= 1.0 or expected_utility <= 0.0:
+        raise ValueError("probability-qualified grouping has no positive utility")
+    if not judgment_artifact_path.is_file():
+        raise ValueError("probability judgment artifact is unavailable")
+    expected_grouping_id = _sha256(tuple(sorted(observation_fingerprints)))
+    if grouping_id != expected_grouping_id:
+        raise ValueError("probability grouping fingerprint does not match its members")
+    existing_profile_id = _existing_discovery_profile(database, grouping_id)
+    observations = []
+    for observation_id in observation_ids:
+        observation = database.get_speaker_observation(observation_id)
+        if observation is None:
+            raise ValueError(f"observation {observation_id} is unavailable")
+        observations.append(observation)
+    if tuple(sorted(item.input_fingerprint for item in observations)) != tuple(
+        sorted(observation_fingerprints)
+    ):
+        raise ValueError("probability grouping observations no longer match evidence")
+    video_ids = {item.video_id for item in observations}
+    if len(video_ids) != len(observations):
+        raise ValueError("probability grouping repeats a recording")
+    for observation in observations:
+        current = database.get_latest_speaker_observation_for_video(
+            observation.video_id
+        )
+        if current is None or current.id != observation.id:
+            raise ValueError(
+                f"observation {observation.id} is no longer current"
+            )
+        memberships = database.list_effective_profile_ids_for_observation(
+            observation.id
+        )
+        if memberships and (
+            existing_profile_id is None
+            or any(
+                database.resolve_speaker_profile_id(profile_id)
+                != database.resolve_speaker_profile_id(existing_profile_id)
+                for profile_id in memberships
+            )
+        ):
+            raise ValueError(
+                f"observation {observation.id} is already profiled elsewhere"
+            )
+    different_pairs = set(database.list_effective_observation_difference_pairs())
+    if any(
+        tuple(sorted((left, right))) in different_pairs
+        for index, left in enumerate(observation_ids)
+        for right in observation_ids[index + 1 :]
+    ):
+        raise ValueError("probability grouping now contains a reviewed difference")
+    return PromotionCandidate(
+        component_id=grouping_id,
+        observation_ids=tuple(sorted(observation_ids)),
+        observation_fingerprints=tuple(sorted(observation_fingerprints)),
+        recording_ids=tuple(sorted(video_ids)),
+        normalized_names=(),
+        existing_profile_id=existing_profile_id,
+        promotion_basis="jev_probability",
+        probability=probability,
+        expected_utility=expected_utility,
+        judgment_artifact_path=judgment_artifact_path,
+        judgment_result_sha256=judgment_result_sha256,
+        probability_policy_version=probability_policy_version,
     )
 
 

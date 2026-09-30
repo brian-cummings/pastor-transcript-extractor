@@ -290,6 +290,14 @@ from pastor_transcript_extractor.speaker_profile_promotion import (
     plan_candidate_confirmations,
     plan_discovery_promotions,
 )
+from pastor_transcript_extractor.speaker_profile_promotion_typesafe import (
+    DEFAULT_TYPESAFE_MODEL as DEFAULT_PROMOTION_TYPESAFE_MODEL,
+    PromotionProbabilityPolicy,
+    PromotionProviderIdentity,
+    TypeSafeSdkPromotionProvider,
+    evaluate_profile_promotions as evaluate_typesafe_profile_promotions,
+    load_cached_profile_promotions,
+)
 from pastor_transcript_extractor.source_profile_consolidation import (
     apply_source_profile_consolidation,
     build_source_profile_consolidation_plan,
@@ -2300,6 +2308,33 @@ def promote_discovered_profiles_command(
         "--apply",
         help="Create provisional profiles and attach their seed observations.",
     ),
+    include_probability_judgments: bool = typer.Option(
+        True,
+        "--include-probability-judgments/--no-probability-judgments",
+        help=(
+            "Include current cached Jev judgments with positive promotion utility."
+        ),
+    ),
+    promotion_model: str = typer.Option(
+        DEFAULT_PROMOTION_TYPESAFE_MODEL,
+        "--promotion-model",
+        help="Pinned model identity used by the cached Jev judgments.",
+    ),
+    promotion_judgment_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/promotion-judgments"),
+        "--promotion-judgment-root",
+        help="Content-addressed Jev promotion-judgment cache root.",
+    ),
+    successful_profile_value: float = typer.Option(
+        1.0,
+        min=0.0,
+        help="Utility of a correct reversible provisional profile.",
+    ),
+    contaminated_profile_cost: float = typer.Option(
+        3.0,
+        min=0.0,
+        help="Utility cost of a contaminated provisional profile.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
@@ -2311,10 +2346,65 @@ def promote_discovered_profiles_command(
             f"Application database does not exist: {paths.database}"
         )
     try:
-        plan = plan_discovery_promotions(
-            Database(paths.database, readonly=True),
-            discovery_report,
+        readonly_database = Database(paths.database, readonly=True)
+        probability_policy = PromotionProbabilityPolicy(
+            successful_profile_value=successful_profile_value,
+            contaminated_profile_cost=contaminated_profile_cost,
         )
+        if include_probability_judgments:
+            with Progress(
+                TextColumn("{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task_id = progress.add_task(
+                    "Loading cached Jev judgments",
+                    total=None,
+                )
+
+                def report_cache_progress(completed, total, grouping, status) -> None:
+                    label = {
+                        "checking_cache": "checking cache",
+                        "cache_hit": "loaded",
+                        "cached_failure": "loaded cached failure",
+                        "cache_missing": "no current judgment",
+                    }.get(status, status)
+                    progress.update(
+                        task_id,
+                        completed=completed,
+                        total=total,
+                        description=(
+                            f"Profile group {grouping.group_id[:12]}: {label}"
+                        ),
+                        refresh=True,
+                    )
+
+                probability_assessments = load_cached_profile_promotions(
+                    readonly_database,
+                    discovery_report,
+                    promotion_judgment_root,
+                    PromotionProviderIdentity(
+                        model=promotion_model,
+                        model_digest=promotion_model,
+                    ),
+                    policy=probability_policy,
+                    progress_callback=report_cache_progress,
+                )
+        else:
+            probability_assessments = ()
+        with console.status("Selecting non-overlapping promotion candidates..."):
+            plan = plan_discovery_promotions(
+                readonly_database,
+                discovery_report,
+                probability_assessments=probability_assessments,
+                probability_policy_version=(
+                    probability_policy.version
+                    if include_probability_judgments
+                    else None
+                ),
+            )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(str(error)) from error
     console.print(
@@ -2333,7 +2423,14 @@ def promote_discovered_profiles_command(
             f"Component {candidate.component_id[:12]}: "
             f"members={len(candidate.observation_ids)} "
             f"recordings={len(candidate.recording_ids)} "
-            f"names={names} {state}"
+            f"names={names} {state} basis={candidate.promotion_basis}"
+            + (
+                f" probability={candidate.probability:.4f} "
+                f"utility={candidate.expected_utility:.4f}"
+                if candidate.probability is not None
+                and candidate.expected_utility is not None
+                else ""
+            )
         )
     for skipped in plan.skipped:
         console.print(
@@ -2983,6 +3080,13 @@ def run_identity_workflow_service(
     review_prewarm_limit: int = 24,
     base_dir: Path | None,
     jobs: int = 2,
+    evaluate_profile_promotions: bool = False,
+    promotion_model: str = DEFAULT_PROMOTION_TYPESAFE_MODEL,
+    promotion_judgment_root: Path = Path(
+        "evaluation/speaker-profile-discovery/promotion-judgments"
+    ),
+    promotion_successful_profile_value: float = 1.0,
+    promotion_contaminated_profile_cost: float = 3.0,
     associator=None,
     discoverer=None,
     confirmer=None,
@@ -3019,6 +3123,11 @@ def run_identity_workflow_service(
         review_prewarm_limit=review_prewarm_limit,
         base_dir=base_dir,
         jobs=jobs,
+        evaluate_profile_promotions=evaluate_profile_promotions,
+        promotion_model=promotion_model,
+        promotion_judgment_root=promotion_judgment_root,
+        promotion_successful_profile_value=promotion_successful_profile_value,
+        promotion_contaminated_profile_cost=promotion_contaminated_profile_cost,
     )
     policy = validate_identity_workflow_request(request)
     effective_apply_confirmations = policy.apply_confirmations
@@ -3404,6 +3513,95 @@ def run_identity_workflow_service(
         discovery_root=discovery_root,
     )
     latest_discovery = discovery_selection.latest
+    if (
+        evaluate_profile_promotions
+        and all_extractions
+        and latest_discovery is not None
+        and not plan_only
+    ):
+        promotion_probability_policy = PromotionProbabilityPolicy(
+            successful_profile_value=promotion_successful_profile_value,
+            contaminated_profile_cost=promotion_contaminated_profile_cost,
+        )
+        try:
+            with Progress(
+                TextColumn("{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task_id = progress.add_task(
+                    "Preparing Jev promotion evaluation",
+                    total=None,
+                )
+
+                def report_workflow_promotion_progress(
+                    completed, total, grouping, status
+                ) -> None:
+                    label = {
+                        "checking_cache": "checking cache",
+                        "cache_hit": "cache hit",
+                        "cached_failure": "cached failure",
+                        "calling_jev": "calling Jev",
+                        "evaluated": "Jev result cached",
+                        "live_failure": "Jev failure cached",
+                    }.get(status, status)
+                    progress.update(
+                        task_id,
+                        completed=completed,
+                        total=total,
+                        description=(
+                            f"Profile group {grouping.group_id[:12]}: {label}"
+                        ),
+                        refresh=True,
+                    )
+
+                promotion_evaluation = evaluate_typesafe_profile_promotions(
+                    Database(paths.database, readonly=True),
+                    latest_discovery,
+                    promotion_judgment_root,
+                    TypeSafeSdkPromotionProvider(model=promotion_model),
+                    policy=promotion_probability_policy,
+                    progress_callback=report_workflow_promotion_progress,
+                )
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"profile-promotion probability evaluation failed: {error}"
+            ) from error
+        probability_failures = sum(
+            item.error_type is not None for item in promotion_evaluation.assessments
+        )
+        probability_qualifying = sum(
+            item.qualifies for item in promotion_evaluation.assessments
+        )
+        console.print(
+            "Profile promotion probability evaluation: "
+            f"groupings={len(promotion_evaluation.assessments)} "
+            f"qualifying={probability_qualifying} "
+            f"failed={probability_failures} "
+            f"cache_hits={promotion_evaluation.cache_hits} "
+            f"model_calls={promotion_evaluation.model_calls}."
+        )
+    elif evaluate_profile_promotions and all_extractions and plan_only:
+        console.print(
+            "Profile promotion probability evaluation: plan-only; no Jev calls "
+            "or judgment artifacts were created."
+        )
+
+    def promote_latest_discovery(report: Path, apply: bool) -> object:
+        options: dict[str, object] = {
+            "discovery_report": report,
+            "apply": apply,
+            "base_dir": base_dir,
+            "include_probability_judgments": evaluate_profile_promotions,
+            "promotion_model": promotion_model,
+            "promotion_judgment_root": promotion_judgment_root,
+            "successful_profile_value": promotion_successful_profile_value,
+            "contaminated_profile_cost": promotion_contaminated_profile_cost,
+        }
+        return promoter(**options)
+
     discovery_finalization = finalize_discovery_stage(
         decision=discovery_decision,
         plan_only=plan_only,
@@ -3418,11 +3616,7 @@ def run_identity_workflow_service(
                 outputs=outputs,
             )
         ),
-        promoter=lambda report, apply: promoter(
-            discovery_report=report,
-            apply=apply,
-            base_dir=base_dir,
-        ),
+        promoter=promote_latest_discovery,
     )
     if discovery_decision.mode != "deferred" and not discovery_finalization.promotion_attempted:
         console.print("Discovery promotion: no completed report available.")
@@ -3561,6 +3755,15 @@ def _invoke_identity_workflow_request(request: IdentityWorkflowRequest) -> None:
         review_prewarm_limit=request.review_prewarm_limit,
         base_dir=request.base_dir,
         jobs=request.jobs,
+        evaluate_profile_promotions=request.evaluate_profile_promotions,
+        promotion_model=request.promotion_model,
+        promotion_judgment_root=request.promotion_judgment_root,
+        promotion_successful_profile_value=(
+            request.promotion_successful_profile_value
+        ),
+        promotion_contaminated_profile_cost=(
+            request.promotion_contaminated_profile_cost
+        ),
     )
 
 
