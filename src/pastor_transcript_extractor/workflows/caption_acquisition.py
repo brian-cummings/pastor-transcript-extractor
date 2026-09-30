@@ -36,6 +36,7 @@ from pastor_transcript_extractor.transcription import fetch_captions_video
 CAPTION_RATE_LIMIT_BACKOFF_SECONDS = (15.0, 30.0, 60.0)
 CaptionProgressCallback = Callable[[str], None]
 CaptionFetcher = Callable[[Database, AppPaths, ToolConfig, int], object]
+CaptionOutcomeCallback = Callable[[int, "CaptionOutcome"], None]
 Clock = Callable[[], float]
 Sleeper = Callable[[float], None]
 CaptionOutcome = Literal[
@@ -287,6 +288,7 @@ def _run_acquisition_queue(
     initial_skipped: int,
     scheduler: _CaptionRequestScheduler,
     report: CaptionProgressCallback,
+    outcome_callback: CaptionOutcomeCallback | None,
 ) -> _CaptionCounts:
     counts = _CaptionCounts(skipped=initial_skipped)
     attempts: dict[int, int] = {}
@@ -309,6 +311,8 @@ def _run_acquisition_queue(
             scheduler=scheduler,
             report=report,
         )
+        if outcome != "retry" and outcome_callback is not None:
+            outcome_callback(video.id, outcome)
         if outcome == "processed":
             counts.processed += 1
         elif outcome == "unavailable":
@@ -332,6 +336,7 @@ def acquire_captions(
     fetch_captions: CaptionFetcher = fetch_captions_video,
     monotonic: Clock = time.monotonic,
     sleeper: Sleeper = time.sleep,
+    outcome_callback: CaptionOutcomeCallback | None = None,
 ) -> CaptionAcquisitionResult:
     """Acquire captions in sequence, retrying transient per-video failures once."""
 
@@ -379,6 +384,7 @@ def acquire_captions(
         initial_skipped=below_minimum + above_maximum + future,
         scheduler=scheduler,
         report=report,
+        outcome_callback=outcome_callback,
     )
 
     report(
@@ -408,6 +414,7 @@ def fetch_captions_service(
     cookies: Path | None = None,
     *,
     progress_callback: CaptionProgressCallback | None = None,
+    outcome_callback: CaptionOutcomeCallback | None = None,
     fetch_captions: CaptionFetcher = fetch_captions_video,
     monotonic: Clock = time.monotonic,
     sleeper: Sleeper = time.sleep,
@@ -442,6 +449,7 @@ def fetch_captions_service(
             cookies=cookies,
         ),
         progress_callback=progress_callback,
+        outcome_callback=outcome_callback,
         fetch_captions=fetch_captions,
         monotonic=monotonic,
         sleeper=sleeper,

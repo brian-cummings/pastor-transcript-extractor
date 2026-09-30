@@ -560,8 +560,12 @@ ASR, while preserving persisted captions. Whisper only handles videos with no
 acquired transcript.
 Large caption batches wait five
 seconds between requests and retry infrequent YouTube 429 responses with bounded
-backoff. Repeated rate limiting stops cleanly; rerunning later skips captions
-already persisted. Omit the option for a fully offline run.
+backoff. During a staged resume, confirmed caption misses enter the Whisper queue
+immediately while rate-limited caption work remains pending. The caption worker
+polls again after 5, 15, and 30 minute cooldowns; videos still blocked after the
+last retry are then released to Whisper. Persisted captions and transcripts are
+skipped throughout. Normal `pte run` uses the same coordinated caption and
+Whisper queues. Omit the option for a fully offline run.
 
 The legacy `--stage-audio-only` spelling remains an alias. The same staging
 option works with a URL plus `--pastor`, or with one or more `--source-id`

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Callable
 
 from pastor_transcript_extractor.audio_staging import (
@@ -16,11 +17,15 @@ from pastor_transcript_extractor.application import (
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
-    CaptionAcquisitionBlockedError,
     fetch_captions_service,
 )
 from pastor_transcript_extractor.workflows.transcription import (
     transcribe_videos_service,
+)
+from pastor_transcript_extractor.workflows.transcript_coordination import (
+    TranscriptCoordinationDependencies,
+    TranscriptCoordinationRequest,
+    coordinate_transcript_acquisition,
 )
 
 
@@ -66,6 +71,7 @@ class ResumePipelineDependencies:
     run_identity: ResumeOperation | None = None
     prepare_reviews: ResumeOperation = prepare_review_exports
     caption_scope: ResumeOperation = load_audio_stage_downloaded_video_ids
+    caption_retry_sleeper: Callable[[float], None] = time.sleep
 
 
 def _pastor_slugs_for_videos(
@@ -112,36 +118,39 @@ def resume_staged_pipeline(
             f"{len(caption_video_ids)} video(s) downloaded by this audio stage; "
             "persisted caption artifacts will be skipped."
         )
-        caption_options = {}
-        if request.cookies_from_browser is not None:
-            caption_options["cookies_from_browser"] = request.cookies_from_browser
-        if request.cookies is not None:
-            caption_options["cookies"] = request.cookies
-        if caption_video_ids:
-            try:
-                dependencies.fetch_captions(
-                    base_dir=request.base_dir,
-                    video_ids=caption_video_ids,
-                    request_interval_seconds=request.caption_request_interval_seconds,
-                    **caption_options,
-                )
-            except CaptionAcquisitionBlockedError as error:
-                captions_blocked = True
-                emit(f"[yellow]Caption acquisition stopped[/yellow]: {error}")
-                emit(
-                    "Remaining caption misses will stay pending because local "
-                    "transcription is disabled by --captions-only."
-                    if request.captions_only
-                    else "Continuing with offline local transcription for remaining "
-                    "caption misses."
-                )
+        captions_blocked = coordinate_transcript_acquisition(
+            database,
+            TranscriptCoordinationRequest(
+                video_ids=request.video_ids,
+                caption_video_ids=frozenset(caption_video_ids),
+                captions_only=request.captions_only,
+                missing_only=request.transcribe_missing,
+                captions_missing_only=request.transcribe_missing,
+                jobs=request.jobs,
+                base_dir=request.base_dir,
+                allow_network=False,
+                caption_request_interval_seconds=(
+                    request.caption_request_interval_seconds
+                ),
+                cookies_from_browser=request.cookies_from_browser,
+                cookies=request.cookies,
+            ),
+            progress_callback=emit,
+            dependencies=TranscriptCoordinationDependencies(
+                fetch_captions=dependencies.fetch_captions,
+                transcribe=dependencies.transcribe,
+                caption_retry_sleeper=dependencies.caption_retry_sleeper,
+            ),
+        )
     else:
         emit(
             "Resume checkpoint: skipping caption acquisition; persisted captions "
             "remain available and caption misses will use staged audio."
         )
 
-    if not request.captions_only:
+    if request.captions_only:
+        emit("Resume checkpoint: local transcription disabled by --captions-only.")
+    elif not request.acquire_captions:
         emit(
             "Resume checkpoint: reconciling local transcripts; completed transcript "
             "artifacts will be skipped."
@@ -155,7 +164,10 @@ def resume_staged_pipeline(
             allow_network=False,
         )
     else:
-        emit("Resume checkpoint: local transcription disabled by --captions-only.")
+        emit(
+            "Resume checkpoint: coordinated caption retries and local transcription "
+            "are complete."
+        )
 
     emit(
         "Resume checkpoint: reconciling sermon extraction; completed extraction "

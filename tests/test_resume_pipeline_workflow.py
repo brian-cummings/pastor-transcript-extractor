@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import threading
 import unittest
 
 from pastor_transcript_extractor.application import ExtractionBatchResult
+from pastor_transcript_extractor.workflows.caption_acquisition import (
+    CaptionAcquisitionBlockedError,
+)
 from pastor_transcript_extractor.workflows.resume_pipeline import (
     ResumePipelineDependencies,
     ResumePipelineRequest,
@@ -18,6 +22,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
         database = SimpleNamespace(
             get_video_by_id=lambda _video_id: None,
             get_pastor_by_id=lambda _pastor_id: None,
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
         )
 
         resume_staged_pipeline(
@@ -40,6 +45,59 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
         )
 
         self.assertEqual([{11}], caption_video_ids)
+
+    def test_rate_limited_captions_retry_while_confirmed_misses_transcribe(
+        self,
+    ) -> None:
+        fetch_scopes: list[set[int]] = []
+        transcribed_video_ids: list[set[int]] = []
+        sleeps: list[float] = []
+        transcription_started = threading.Event()
+        database = SimpleNamespace(
+            get_video_by_id=lambda _video_id: None,
+            get_pastor_by_id=lambda _pastor_id: None,
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
+        )
+
+        def fetch_captions(**kwargs):
+            scope = set(kwargs["video_ids"])
+            fetch_scopes.append(scope)
+            if len(fetch_scopes) == 1:
+                kwargs["outcome_callback"](11, "unavailable")
+                raise CaptionAcquisitionBlockedError("repeatedly rate limited")
+            kwargs["outcome_callback"](12, "processed")
+
+        def transcribe(**kwargs):
+            transcribed_video_ids.append(kwargs["video_ids"])
+            transcription_started.set()
+
+        def sleeper(seconds):
+            self.assertTrue(transcription_started.wait(timeout=1))
+            sleeps.append(seconds)
+
+        result = resume_staged_pipeline(
+            database,
+            SimpleNamespace(),
+            ResumePipelineRequest(
+                video_ids=frozenset({11, 12}),
+                manifest_path=Path("stage.json"),
+                acquire_captions=True,
+                skip_review=True,
+                jobs=2,
+            ),
+            dependencies=ResumePipelineDependencies(
+                fetch_captions=fetch_captions,
+                transcribe=transcribe,
+                extract=lambda *args, **kwargs: ExtractionBatchResult(0, 2, 0),
+                caption_scope=lambda _path: {11, 12},
+                caption_retry_sleeper=sleeper,
+            ),
+        )
+
+        self.assertEqual([{11, 12}, {12}], fetch_scopes)
+        self.assertEqual([{11}], transcribed_video_ids)
+        self.assertEqual([300.0], sleeps)
+        self.assertFalse(result.captions_blocked)
 
     def test_runs_offline_stages_in_order_and_returns_structured_result(self) -> None:
         calls: list[str] = []

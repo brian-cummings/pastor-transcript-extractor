@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from pastor_transcript_extractor.config import ToolConfig, build_paths, ensure_directories
+from pastor_transcript_extractor.media import NoCaptionsAvailableError
 from pastor_transcript_extractor.models import SourceType, TranscriptSourceKind
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
@@ -132,6 +133,26 @@ class CaptionAcquisitionWorkflowTests(unittest.TestCase):
 
         self.assertEqual([missing.id], fetched_video_ids)
         self.assertEqual(1, result.skipped_count)
+
+    def test_reports_per_video_caption_outcomes(self) -> None:
+        video = self.add_video("nocaptions1", duration_seconds=1800)
+        outcomes: list[tuple[int, str]] = []
+
+        result = acquire_captions(
+            self.database,
+            self.paths,
+            self.tools,
+            CaptionAcquisitionRequest(video_ids=frozenset({video.id})),
+            fetch_captions=lambda *_args: (_ for _ in ()).throw(
+                NoCaptionsAvailableError("no captions")
+            ),
+            outcome_callback=lambda video_id, outcome: outcomes.append(
+                (video_id, outcome)
+            ),
+        )
+
+        self.assertEqual([(video.id, "unavailable")], outcomes)
+        self.assertEqual(1, result.unavailable_count)
 
 
 if __name__ == "__main__":
