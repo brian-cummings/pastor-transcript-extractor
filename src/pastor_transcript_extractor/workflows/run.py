@@ -241,6 +241,9 @@ def _online_run(
             source_ids=request.source_ids,
             cookies_from_browser=request.cookies_from_browser,
             cookies=request.cookies,
+            caption_request_interval_seconds=(
+                request.caption_request_interval_seconds
+            ),
         ),
         event_callback=emit,
         dependencies=dependencies.online_pipeline,

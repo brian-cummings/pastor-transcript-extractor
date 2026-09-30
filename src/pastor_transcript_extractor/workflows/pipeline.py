@@ -3,12 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import time
 from typing import Callable, Mapping
 
 from pastor_transcript_extractor.application import ExtractionBatchResult
 from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.models import VideoStatus
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.workflows.transcript_coordination import (
+    TranscriptCoordinationDependencies,
+    TranscriptCoordinationRequest,
+    coordinate_transcript_acquisition,
+)
 
 
 PipelineEvent = str | object
@@ -45,6 +51,7 @@ class PipelineRequest:
     source_ids: tuple[int, ...] = ()
     cookies_from_browser: str | None = None
     cookies: Path | None = None
+    caption_request_interval_seconds: float = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +76,7 @@ class PipelineDependencies:
     ensure_media: PipelineOperation
     run_identity: PipelineOperation
     prepare_reviews: PipelineOperation
+    caption_retry_sleeper: Callable[[float], None] = time.sleep
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,34 +339,35 @@ def _acquire_transcripts(
     request: PipelineRequest,
     scope: _ResolvedScope,
     dependencies: PipelineDependencies,
+    emit: PipelineEventCallback,
 ) -> None:
-    caption_options: dict[str, object] = {}
-    if request.cookies_from_browser is not None:
-        caption_options["cookies_from_browser"] = request.cookies_from_browser
-    if request.cookies is not None:
-        caption_options["cookies"] = request.cookies
-    fetch_options: dict[str, object] = {
-        "base_dir": request.base_dir,
-        "video_ids": set(scope.video_ids),
-        **caption_options,
-    }
-    if scope.kind is PipelineScope.URL:
-        fetch_options["source_id"] = scope.source_id
-    dependencies.fetch_captions(**fetch_options)
-    if request.captions_only:
-        return
-    transcribe_options: dict[str, object] = {
-        "missing_only": (
-            scope.kind is PipelineScope.FAILED or request.transcribe_missing
+    coordinate_transcript_acquisition(
+        scope.database,
+        TranscriptCoordinationRequest(
+            video_ids=scope.video_ids,
+            caption_video_ids=scope.video_ids,
+            captions_only=request.captions_only,
+            missing_only=(
+                scope.kind is PipelineScope.FAILED or request.transcribe_missing
+            ),
+            captions_missing_only=request.transcribe_missing,
+            jobs=request.jobs,
+            base_dir=request.base_dir,
+            allow_network=True,
+            source_id=(scope.source_id if scope.kind is PipelineScope.URL else None),
+            caption_request_interval_seconds=(
+                request.caption_request_interval_seconds
+            ),
+            cookies_from_browser=request.cookies_from_browser,
+            cookies=request.cookies,
         ),
-        "captions_missing_only": request.transcribe_missing,
-        "jobs": request.jobs,
-        "base_dir": request.base_dir,
-        "video_ids": set(scope.video_ids),
-    }
-    if scope.kind is PipelineScope.URL:
-        transcribe_options["source_id"] = scope.source_id
-    dependencies.transcribe(**transcribe_options)
+        progress_callback=lambda message: emit(message),
+        dependencies=TranscriptCoordinationDependencies(
+            fetch_captions=dependencies.fetch_captions,
+            transcribe=dependencies.transcribe,
+            caption_retry_sleeper=dependencies.caption_retry_sleeper,
+        ),
+    )
 
 
 def _extract_sermons(
@@ -433,7 +442,7 @@ def run_pipeline(
     if scope.skip_reason is not None:
         return PipelineResult(kind, frozenset(), skip_reason=scope.skip_reason)
     scope = _discover_recordings(request, scope, dependencies)
-    _acquire_transcripts(request, scope, dependencies)
+    _acquire_transcripts(request, scope, dependencies, emit)
     app_paths = dependencies.build_paths(request.base_dir, remember=True)
     extraction = _extract_sermons(
         request,

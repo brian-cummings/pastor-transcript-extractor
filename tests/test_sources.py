@@ -2375,7 +2375,19 @@ class CliTests(unittest.TestCase):
                 [selected_one.id, selected_two.id],
                 [call.kwargs["source_id"] for call in discover.call_args_list],
             )
-            for stage in (fetch, transcribe, extract, media):
+            self.assertEqual(
+                selected_video_ids,
+                fetch.call_args.kwargs["video_ids"],
+            )
+            self.assertEqual(
+                selected_video_ids,
+                {
+                    video_id
+                    for call in transcribe.call_args_list
+                    for video_id in call.kwargs["video_ids"]
+                },
+            )
+            for stage in (extract, media):
                 self.assertEqual(
                     selected_video_ids,
                     stage.call_args.kwargs["video_ids"],
@@ -2729,8 +2741,14 @@ class CliTests(unittest.TestCase):
         )
 
     def test_resume_stage_can_acquire_captions_then_disables_other_network(self) -> None:
-        database = SimpleNamespace()
+        database = SimpleNamespace(
+            get_latest_transcript_artifact_for_video=lambda _video_id: None
+        )
         paths = SimpleNamespace(logs=Path("logs"))
+
+        def fetch_captions_side_effect(**kwargs):
+            kwargs["outcome_callback"](11, "processed")
+
         with patch(
             "pastor_transcript_extractor.commands.common.get_database", return_value=database
         ), patch(
@@ -2744,7 +2762,8 @@ class CliTests(unittest.TestCase):
         ), patch(
             "pastor_transcript_extractor.commands.acquisition.transcribe_videos_service"
         ) as transcribe, patch(
-            "pastor_transcript_extractor.commands.acquisition.fetch_captions_service"
+            "pastor_transcript_extractor.commands.acquisition.fetch_captions_service",
+            side_effect=fetch_captions_side_effect,
         ) as fetch_captions, patch(
             "pastor_transcript_extractor.application.extract_batch",
             return_value=ExtractionBatchResult(2, 0, 0),
@@ -2757,17 +2776,21 @@ class CliTests(unittest.TestCase):
                 skip_review=True,
             )
 
-        fetch_captions.assert_called_once_with(
-            base_dir=None,
-            video_ids={11},
-            request_interval_seconds=5.0,
+        fetch_captions.assert_called_once()
+        self.assertEqual({11}, fetch_captions.call_args.kwargs["video_ids"])
+        self.assertEqual(
+            5.0,
+            fetch_captions.call_args.kwargs["request_interval_seconds"],
         )
+        self.assertTrue(callable(fetch_captions.call_args.kwargs["outcome_callback"]))
         self.assertFalse(transcribe.call_args.kwargs["allow_network"])
-        self.assertEqual({11, 12}, transcribe.call_args.kwargs["video_ids"])
+        self.assertEqual({12}, transcribe.call_args.kwargs["video_ids"])
         self.assertFalse(media.call_args.kwargs["allow_download"])
 
     def test_resume_stage_continues_local_transcription_when_captions_are_blocked(self) -> None:
-        database = SimpleNamespace()
+        database = SimpleNamespace(
+            get_latest_transcript_artifact_for_video=lambda _video_id: None
+        )
         paths = SimpleNamespace(logs=Path("logs"))
         with patch(
             "pastor_transcript_extractor.commands.common.get_database", return_value=database

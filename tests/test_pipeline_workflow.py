@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+import threading
 import unittest
 
 from pastor_transcript_extractor.application import ExtractionBatchResult
 from pastor_transcript_extractor.models import VideoStatus
+from pastor_transcript_extractor.workflows.caption_acquisition import (
+    CaptionAcquisitionBlockedError,
+)
 from pastor_transcript_extractor.workflows.pipeline import (
     PipelineDependencies,
     PipelineRequest,
@@ -141,6 +146,59 @@ class PipelineWorkflowTests(unittest.TestCase):
         transcribe = next(call for call in calls if call[0] == "transcribe")
         self.assertFalse(transcribe[2]["missing_only"])
         self.assertFalse(transcribe[2]["captions_missing_only"])
+
+    def test_primary_run_retries_captions_while_confirmed_misses_transcribe(
+        self,
+    ) -> None:
+        calls = []
+        fetch_scopes: list[set[int]] = []
+        transcribed_video_ids: list[set[int]] = []
+        sleeps: list[float] = []
+        transcription_started = threading.Event()
+        database = SimpleNamespace(
+            list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            list_sources=lambda: [SimpleNamespace(id=1)],
+            get_video_by_id=lambda video_id: SimpleNamespace(
+                id=video_id,
+                pastor_id=None,
+            ),
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
+        )
+
+        def fetch_captions(**kwargs):
+            scope = set(kwargs["video_ids"])
+            fetch_scopes.append(scope)
+            if len(fetch_scopes) == 1:
+                kwargs["outcome_callback"](11, "unavailable")
+                raise CaptionAcquisitionBlockedError("repeatedly rate limited")
+            kwargs["outcome_callback"](12, "processed")
+
+        def transcribe(**kwargs):
+            transcribed_video_ids.append(kwargs["video_ids"])
+            transcription_started.set()
+
+        def sleeper(seconds):
+            self.assertTrue(transcription_started.wait(timeout=1))
+            sleeps.append(seconds)
+
+        dependencies = replace(
+            self._dependencies(database, calls),
+            discover=lambda *args, **kwargs: SimpleNamespace(
+                selected_video_ids_by_source={1: (11, 12)}
+            ),
+            fetch_captions=fetch_captions,
+            transcribe=transcribe,
+            caption_retry_sleeper=sleeper,
+        )
+
+        run_pipeline(
+            PipelineRequest(all_sources=True, skip_review=True, jobs=2),
+            dependencies=dependencies,
+        )
+
+        self.assertEqual([{11, 12}, {12}], fetch_scopes)
+        self.assertEqual([{11}], transcribed_video_ids)
+        self.assertEqual([300.0], sleeps)
 
     def test_url_scope_replaces_before_add_and_passes_source_id(self) -> None:
         calls = []
