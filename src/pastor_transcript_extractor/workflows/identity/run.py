@@ -57,6 +57,13 @@ class IdentityWorkflowRequest:
     review_prewarm_limit: int
     base_dir: Path | None
     jobs: int
+    evaluate_profile_promotions: bool = True
+    promotion_model: str = "jev-1.13.0"
+    promotion_judgment_root: Path = Path(
+        "evaluation/speaker-profile-discovery/promotion-judgments"
+    )
+    promotion_successful_profile_value: float = 1.0
+    promotion_contaminated_profile_cost: float = 3.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +205,10 @@ def validate_identity_workflow_request(
         raise ValueError("automatic profile promotion requires --all")
     if not request.all_extractions and request.apply_machine_canary:
         raise ValueError("machine canary activation requires --all")
+    if request.promotion_successful_profile_value < 0.0:
+        raise ValueError("successful profile value cannot be negative")
+    if request.promotion_contaminated_profile_cost < 0.0:
+        raise ValueError("contaminated profile cost cannot be negative")
     if request.review_prewarm_limit < 0:
         raise ValueError("review prewarm limit cannot be negative")
     if request.jobs < 1:

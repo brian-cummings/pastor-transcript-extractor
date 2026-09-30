@@ -66,6 +66,34 @@ def identity_run_command(
         "--apply-promotions",
         help="Promote verified discovery components into provisional profiles.",
     ),
+    evaluate_profile_promotions: bool = typer.Option(
+        True,
+        "--evaluate-profile-promotions/--no-evaluate-profile-promotions",
+        help=(
+            "Evaluate bounded discovery groupings with Jev and include current "
+            "cached positive-utility judgments in the promotion plan."
+        ),
+    ),
+    promotion_model: str = typer.Option(
+        "jev-1.13.0",
+        "--promotion-model",
+        help="Pinned TypeSafe/Jev model for profile-promotion judgments.",
+    ),
+    promotion_judgment_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/promotion-judgments"),
+        "--promotion-judgment-root",
+        help="Content-addressed Jev promotion-judgment cache root.",
+    ),
+    promotion_successful_profile_value: float = typer.Option(
+        1.0,
+        min=0.0,
+        help="Utility of a correct reversible provisional profile.",
+    ),
+    promotion_contaminated_profile_cost: float = typer.Option(
+        3.0,
+        min=0.0,
+        help="Utility cost of a contaminated provisional profile.",
+    ),
     apply_machine_canary: bool = typer.Option(
         False,
         "--apply-machine-canary",
@@ -118,6 +146,11 @@ def identity_run_command(
         review_prewarm_limit=review_prewarm_limit,
         base_dir=base_dir,
         jobs=jobs,
+        evaluate_profile_promotions=evaluate_profile_promotions,
+        promotion_model=promotion_model,
+        promotion_judgment_root=promotion_judgment_root,
+        promotion_successful_profile_value=promotion_successful_profile_value,
+        promotion_contaminated_profile_cost=promotion_contaminated_profile_cost,
     )
     if _identity_workflow_invoker is None:
         raise RuntimeError("Identity workflow was not configured.")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from pastor_transcript_extractor.commands.apps import identity_app
@@ -29,6 +30,13 @@ from pastor_transcript_extractor.speaker_pair_eligibility import (
 from pastor_transcript_extractor.speaker_profile_discovery import (
     load_verified_shadow_profile_discovery,
 )
+from pastor_transcript_extractor.speaker_profile_promotion_typesafe import (
+    DEFAULT_TYPESAFE_MODEL,
+    PromotionProbabilityPolicy,
+    TypeSafeSdkPromotionProvider,
+    build_promotion_groupings,
+    evaluate_profile_promotions,
+)
 from pastor_transcript_extractor.speaker_profile_status import (
     applicable_status_commands,
     build_profile_pipeline_status,
@@ -37,6 +45,152 @@ from pastor_transcript_extractor.storage import Database
 
 
 console = Console()
+
+
+@identity_app.command(
+    "evaluate-profile-promotions",
+    help="Evaluate discovery groupings with cached Jev promotion probabilities.",
+)
+def evaluate_profile_promotions_command(
+    discovery_report: Path = typer.Option(
+        ...,
+        "--discovery-report",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Completed shadow profile-discovery JSON artifact.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_TYPESAFE_MODEL,
+        "--model",
+        help="Pinned TypeSafe/Jev model.",
+    ),
+    output_root: Path = typer.Option(
+        Path("evaluation/speaker-profile-discovery/promotion-judgments"),
+        "--output-root",
+        help="Content-addressed Jev judgment cache and artifact root.",
+    ),
+    successful_profile_value: float = typer.Option(
+        1.0,
+        min=0.0,
+        help="Utility of a correct reversible provisional profile.",
+    ),
+    contaminated_profile_cost: float = typer.Option(
+        3.0,
+        min=0.0,
+        help="Utility cost of a contaminated provisional profile.",
+    ),
+    details: bool = typer.Option(
+        False,
+        "--details",
+        help="Show each grouping, probability, utility, cache state, and artifact.",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="List candidate groupings without TypeSafe calls or artifact writes.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    paths = build_paths(base_dir)
+    if not paths.database.exists():
+        raise typer.BadParameter(
+            f"Application database does not exist: {paths.database}"
+        )
+    database = Database(paths.database, readonly=True)
+    try:
+        report = load_verified_shadow_profile_discovery(discovery_report)
+        groupings = build_promotion_groupings(database, report)
+        if plan_only:
+            console.print(
+                "Profile promotion probability plan: "
+                f"groupings={len(groupings)}; no TypeSafe calls or artifact writes."
+            )
+            if details:
+                for grouping in groupings:
+                    console.print(
+                        f"  group={grouping.group_id[:12]} "
+                        f"members={','.join(str(value) for value in grouping.observation_ids)} "
+                        f"retrieval={','.join(grouping.retrieval_reasons)}"
+                    )
+            return
+        provider = TypeSafeSdkPromotionProvider(model=model)
+        policy = PromotionProbabilityPolicy(
+            successful_profile_value=successful_profile_value,
+            contaminated_profile_cost=contaminated_profile_cost,
+        )
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task(
+                "Preparing Jev promotion evaluation",
+                total=len(groupings),
+            )
+
+            def report_progress(completed, total, grouping, status) -> None:
+                label = {
+                    "checking_cache": "checking cache",
+                    "cache_hit": "cache hit",
+                    "cached_failure": "cached failure",
+                    "calling_jev": "calling Jev",
+                    "evaluated": "Jev result cached",
+                    "live_failure": "Jev failure cached",
+                }.get(status, status)
+                progress.update(
+                    task_id,
+                    completed=completed,
+                    total=total,
+                    description=f"Profile group {grouping.group_id[:12]}: {label}",
+                    refresh=True,
+                )
+
+            result = evaluate_profile_promotions(
+                database,
+                discovery_report,
+                output_root,
+                provider,
+                policy=policy,
+                progress_callback=report_progress,
+            )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+    qualifying = sum(item.qualifies for item in result.assessments)
+    failures = sum(item.error_type is not None for item in result.assessments)
+    console.print(
+        "Profile promotion probability evaluation: "
+        f"groupings={len(result.assessments)} qualifying={qualifying} "
+        f"deferred={len(result.assessments) - qualifying - failures} "
+        f"failed={failures} cache_hits={result.cache_hits} "
+        f"cache_misses={result.cache_misses} model_calls={result.model_calls} "
+        f"cached_failures={result.cached_failures} "
+        f"live_failures={result.live_failures}."
+    )
+    if details:
+        for item in result.assessments:
+            grouping = item.evidence.grouping
+            if item.error_type is not None:
+                outcome = f"failed:{item.error_type}:{item.error_message}"
+            else:
+                outcome = (
+                    f"probability={item.probability:.4f} "
+                    f"utility={item.expected_utility:.4f} "
+                    f"action={'qualify' if item.qualifies else 'defer'}"
+                )
+            console.print(
+                f"  group={grouping.group_id[:12]} "
+                f"members={','.join(str(value) for value in grouping.observation_ids)} "
+                f"cache={'hit' if item.cache_hit else 'miss'} {outcome} "
+                f"artifact={item.artifact_path}",
+                markup=False,
+            )
 
 
 def _print_reviewed_evidence_summary(

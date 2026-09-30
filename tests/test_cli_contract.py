@@ -96,6 +96,7 @@ GROUP_COMMANDS = {
         "enrich-metadata",
         "evaluate-observation-consistency",
         "evaluate-pair-results",
+        "evaluate-profile-promotions",
         "evaluate-speaker-policy-candidate",
         "export-profile",
         "machine-assignment-status",
