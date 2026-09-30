@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from pastor_transcript_extractor.evaluation_storage import portable_database_artifact_path
 from pastor_transcript_extractor.speaker_profile_discovery import (
     SUPPORTED_SHADOW_PROFILE_DISCOVERY_VERSIONS,
     TRANSCRIPT_GROUNDED_SPAN_SELECTION_VERSION,
@@ -213,7 +214,9 @@ def apply_discovery_promotions(
             profile_id=profile.id,
             component_id=candidate.component_id,
             discovery_result_sha256=plan.report_result_sha256,
-            discovery_artifact_path=str(plan.report_path),
+            discovery_artifact_path=portable_database_artifact_path(
+                plan.report_path, database_path=database.database_path
+            ),
             seed_observation_ids_json=json.dumps(
                 list(candidate.observation_ids),
                 separators=(",", ":"),
@@ -226,7 +229,10 @@ def apply_discovery_promotions(
             promotion_expected_utility=candidate.expected_utility,
             promotion_judgment_sha256=candidate.judgment_result_sha256,
             promotion_judgment_artifact_path=(
-                str(candidate.judgment_artifact_path)
+                portable_database_artifact_path(
+                    candidate.judgment_artifact_path,
+                    database_path=database.database_path,
+                )
                 if candidate.judgment_artifact_path is not None
                 else None
             ),
@@ -367,7 +373,9 @@ def apply_candidate_confirmations(
                 profile_id=candidate.profile_id,
                 observation_id=candidate.observation_id,
                 association_result_sha256=candidate.report_result_sha256,
-                association_artifact_path=str(candidate.report_path),
+                association_artifact_path=portable_database_artifact_path(
+                    candidate.report_path, database_path=database.database_path
+                ),
                 event_fingerprint=_sha256(
                     {"kind": "discovery_profile_confirmation", "event_key": event_key}
                 ),

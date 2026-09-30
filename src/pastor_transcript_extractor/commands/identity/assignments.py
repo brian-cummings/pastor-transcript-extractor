@@ -47,12 +47,11 @@ def reconcile_current_proposals_command(
             "machine-assignment-human-on-loop-v1.json"
         )
     ),
-    association_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs")
-    ),
+    association_root: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None),
 ) -> None:
     paths = build_paths(base_dir)
+    association_root = association_root or paths.evaluation / "speaker-associations/shadow-runs"
     database = Database(paths.database, readonly=dry_run)
     reports = latest_association_reports(association_root)
     current_results: dict[int, str] = {}
@@ -67,7 +66,7 @@ def reconcile_current_proposals_command(
         except (OSError, UnicodeError, json.JSONDecodeError):
             continue
     verification_cache = MediaVerificationCache(
-        Path("evaluation/speaker-pairs/cache/media-verification").resolve()
+        paths.evaluation / "speaker-pairs/cache/media-verification"
     )
     evidence = load_reviewed_speaker_evidence(
         Path("evaluation/speaker-pairs").resolve()

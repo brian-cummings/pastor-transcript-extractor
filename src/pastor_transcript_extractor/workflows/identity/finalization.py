@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Callable, Sequence
 
-from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.config import AppPaths, build_paths
 from pastor_transcript_extractor.storage import Database
 
 
@@ -53,15 +53,16 @@ def run_coordination_stage(
     coordinator: Callable[..., object],
 ) -> object:
     """Write the final shadow-only coordination report with pinned inputs."""
+    paths = build_paths(request.base_dir)
     return coordinator(
         youtube_video_id=request.youtube_video_id,
         all_extractions=request.all_extractions,
         execute_shadow=False,
         discovery_report=request.discovery_report,
         discovery_root=request.discovery_root,
-        model_path=Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        model_path=(
+            paths.evaluation
+            / "speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
         ),
         model_sha256=request.model_sha256,
         policy_path=Path(
@@ -69,8 +70,8 @@ def run_coordination_stage(
             "campplus-development-candidate-v1.json"
         ),
         evaluation_root=Path("evaluation/speaker-pairs"),
-        cache_dir=Path("evaluation/speaker-pairs/cache"),
-        association_root=Path("evaluation/speaker-associations/shadow-runs"),
+        cache_dir=paths.evaluation / "speaker-pairs/cache",
+        association_root=paths.evaluation / "speaker-associations/shadow-runs",
         output_root=None,
         base_dir=request.base_dir,
     )

@@ -32,10 +32,12 @@ from pastor_transcript_extractor.speaker_profile_discovery import (
 )
 from pastor_transcript_extractor.speaker_profile_promotion_typesafe import (
     DEFAULT_TYPESAFE_MODEL,
+    PromotionProviderIdentity,
     PromotionProbabilityPolicy,
     TypeSafeSdkPromotionProvider,
     build_promotion_groupings,
     evaluate_profile_promotions,
+    load_cached_profile_promotions,
 )
 from pastor_transcript_extractor.speaker_profile_status import (
     applicable_status_commands,
@@ -65,8 +67,8 @@ def evaluate_profile_promotions_command(
         "--model",
         help="Pinned TypeSafe/Jev model.",
     ),
-    output_root: Path = typer.Option(
-        Path("evaluation/speaker-profile-discovery/promotion-judgments"),
+    output_root: Path | None = typer.Option(
+        None,
         "--output-root",
         help="Content-addressed Jev judgment cache and artifact root.",
     ),
@@ -90,12 +92,25 @@ def evaluate_profile_promotions_command(
         "--plan-only",
         help="List candidate groupings without TypeSafe calls or artifact writes.",
     ),
+    cache_only: bool = typer.Option(
+        False,
+        "--cache-only",
+        help="Replay matching cached judgments without creating a provider or making model calls.",
+    ),
+    model_digest: str | None = typer.Option(
+        None,
+        "--model-digest",
+        help="Cached model digest; inferred when the cache contains exactly one for --model.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         help="Override app data directory.",
     ),
 ) -> None:
     paths = build_paths(base_dir)
+    output_root = output_root or (
+        paths.evaluation / "speaker-profile-discovery" / "promotion-judgments"
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -115,6 +130,50 @@ def evaluate_profile_promotions_command(
                         f"  group={grouping.group_id[:12]} "
                         f"members={','.join(str(value) for value in grouping.observation_ids)} "
                         f"retrieval={','.join(grouping.retrieval_reasons)}"
+                    )
+            return
+        if cache_only:
+            if model_digest is None:
+                digests: set[str] = set()
+                for cached_path in output_root.glob("group-*/*.json"):
+                    try:
+                        cached_payload = json.loads(cached_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        continue
+                    if cached_payload.get("model") == model and isinstance(
+                        cached_payload.get("model_digest"), str
+                    ):
+                        digests.add(str(cached_payload["model_digest"]))
+                if len(digests) != 1:
+                    raise ValueError(
+                        "cache-only replay requires --model-digest when zero or multiple "
+                        f"cached digests exist for {model!r}"
+                    )
+                model_digest = next(iter(digests))
+            assessments = load_cached_profile_promotions(
+                database,
+                discovery_report,
+                output_root,
+                PromotionProviderIdentity(model=model, model_digest=model_digest),
+                policy=PromotionProbabilityPolicy(
+                    successful_profile_value=successful_profile_value,
+                    contaminated_profile_cost=contaminated_profile_cost,
+                ),
+            )
+            console.print(
+                "Cached profile promotion replay: "
+                f"groupings={len(groupings)} cache_hits={len(assessments)} "
+                f"cache_missing={len(groupings) - len(assessments)} model_calls=0."
+            )
+            if details:
+                cached_by_group = {
+                    item.evidence.grouping.group_id: item for item in assessments
+                }
+                for grouping in groupings:
+                    console.print(
+                        f"  group={grouping.group_id} "
+                        f"members={','.join(str(value) for value in grouping.observation_ids)} "
+                        f"cache={'hit' if grouping.group_id in cached_by_group else 'missing'}"
                     )
             return
         provider = TypeSafeSdkPromotionProvider(model=model)
@@ -304,8 +363,8 @@ def profile_status_command(
         Path("evaluation/speaker-pairs"),
         help="Speaker-pair drafts, reviews, and fixtures root.",
     ),
-    discovery_root: Path = typer.Option(
-        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+    discovery_root: Path | None = typer.Option(
+        None,
         help="Shadow profile-discovery reports to include in status.",
     ),
     base_dir: Path | None = typer.Option(
@@ -313,6 +372,9 @@ def profile_status_command(
     ),
 ) -> None:
     paths = build_paths(base_dir)
+    discovery_root = discovery_root or (
+        paths.evaluation / "speaker-profile-discovery/shadow-runs"
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"

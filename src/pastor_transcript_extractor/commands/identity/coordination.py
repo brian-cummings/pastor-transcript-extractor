@@ -9,7 +9,7 @@ from rich.console import Console
 
 from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.commands.identity.review import review_speaker_pair
-from pastor_transcript_extractor.config import build_paths
+from pastor_transcript_extractor.config import build_paths, evaluation_root_for
 from pastor_transcript_extractor.identity_coordination import (
     build_identity_coordination_report,
     load_discovery_observation_states,
@@ -91,12 +91,12 @@ def _print_identity_work_plan(plan, *, details: bool = False) -> None:
 )
 def association_work_plan_command(
     details: bool = typer.Option(False, "--details"),
-    association_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs")
-    ),
+    association_root: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None),
 ) -> None:
     paths = build_paths(base_dir)
+    runtime_root = evaluation_root_for(paths, base_dir)
+    association_root = association_root or runtime_root / "speaker-associations/shadow-runs"
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     plan = build_identity_association_work_plan(
@@ -112,12 +112,11 @@ def association_work_plan_command(
 )
 def association_work_status_command(
     details: bool = typer.Option(False, "--details"),
-    association_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs")
-    ),
+    association_root: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None),
 ) -> None:
     paths = build_paths(base_dir)
+    association_root = association_root or evaluation_root_for(paths, base_dir) / "speaker-associations/shadow-runs"
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     _print_identity_work_plan(
@@ -145,10 +144,11 @@ def review_next_superseded_profile_member_command(
     evaluation_root: Path = typer.Option(
         Path("evaluation/speaker-pairs")
     ),
-    cache_dir: Path = typer.Option(Path("evaluation/speaker-pairs/cache")),
+    cache_dir: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None),
 ) -> None:
     paths = build_paths(base_dir)
+    cache_dir = cache_dir or evaluation_root_for(paths, base_dir) / "speaker-pairs/cache"
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -199,12 +199,11 @@ def dispatch_associations_command(
             "policy-terminal outcomes."
         ),
     ),
-    association_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs")
-    ),
+    association_root: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None),
 ) -> None:
     paths = build_paths(base_dir)
+    association_root = association_root or evaluation_root_for(paths, base_dir) / "speaker-associations/shadow-runs"
     plan = build_identity_association_work_plan(
         Database(paths.database, readonly=True), association_root
     )
@@ -242,9 +241,9 @@ def dispatch_associations_command(
                 minimum_same_exemplars=2,
                 maximum_global_profiles=1,
                 jobs=jobs,
-                model_path=Path(
-                    "evaluation/speaker-pairs/models/"
-                    "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+                model_path=(
+                    evaluation_root_for(paths, base_dir)
+                    / "speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
                 ),
                 model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
                 policy_path=Path(
@@ -252,7 +251,7 @@ def dispatch_associations_command(
                     "campplus-development-candidate-v1.json"
                 ),
                 evaluation_root=Path("evaluation/speaker-pairs"),
-                cache_dir=Path("evaluation/speaker-pairs/cache"),
+                cache_dir=evaluation_root_for(paths, base_dir) / "speaker-pairs/cache",
                 output_root=association_root,
                 base_dir=base_dir,
             )
@@ -283,12 +282,11 @@ def dispatch_associations_command(
 def repair_association_prerequisites_command(
     limit: int = typer.Option(25, "--limit", min=1),
     dry_run: bool = typer.Option(False, "--dry-run"),
-    association_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs")
-    ),
+    association_root: Path | None = typer.Option(None),
     base_dir: Path | None = typer.Option(None),
 ) -> None:
     paths = build_paths(base_dir, remember=not dry_run)
+    association_root = association_root or evaluation_root_for(paths, base_dir) / "speaker-associations/shadow-runs"
     readonly = Database(paths.database, readonly=True)
     plan = build_identity_association_work_plan(readonly, association_root)
     selected = plan.select("prerequisite_blocked", limit=limit)
@@ -382,15 +380,12 @@ def coordinate_identity_command(
         readable=True,
         help="Optional discovery artifact to include in promotion planning.",
     ),
-    discovery_root: Path = typer.Option(
-        Path("evaluation/speaker-profile-discovery/shadow-runs"),
+    discovery_root: Path | None = typer.Option(
+        None,
         help="Discovery artifacts used to avoid redundant batch work.",
     ),
-    model_path: Path = typer.Option(
-        Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-        ),
+    model_path: Path | None = typer.Option(
+        None,
         help="Local ONNX speaker-embedding model.",
     ),
     model_sha256: str = typer.Option(
@@ -408,12 +403,12 @@ def coordinate_identity_command(
         Path("evaluation/speaker-pairs"),
         help="Speaker-pair review and fixture root.",
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"),
+    cache_dir: Path | None = typer.Option(
+        None,
         help="Ignored acoustic and media-verification cache.",
     ),
-    association_root: Path = typer.Option(
-        Path("evaluation/speaker-associations/shadow-runs"),
+    association_root: Path | None = typer.Option(
+        None,
         help="Versioned shadow-association artifact root.",
     ),
     output_root: Path | None = typer.Option(
@@ -435,6 +430,13 @@ def coordinate_identity_command(
             "corpus discovery remains a separately scheduled batch."
         )
     paths = build_paths(base_dir)
+    discovery_root = discovery_root or evaluation_root_for(paths, base_dir) / "speaker-profile-discovery/shadow-runs"
+    model_path = model_path or (
+        evaluation_root_for(paths, base_dir)
+        / "speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+    )
+    cache_dir = cache_dir or evaluation_root_for(paths, base_dir) / "speaker-pairs/cache"
+    association_root = association_root or evaluation_root_for(paths, base_dir) / "speaker-associations/shadow-runs"
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"

@@ -81,16 +81,16 @@ def _load_json_artifacts(paths: Sequence[Path]) -> list[dict[str, object]]:
 def compare_speakers(
     video_a: str = typer.Argument(..., help="First YouTube video ID."),
     video_b: str = typer.Argument(..., help="Second YouTube video ID."),
-    model_path: Path = typer.Option(
-        Path("evaluation/speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"),
+    model_path: Path | None = typer.Option(
+        None,
         help="Local ONNX speaker-embedding model.",
     ),
     model_sha256: str = typer.Option(
         DEFAULT_SPEAKER_MODEL_SHA256,
         help="Required checksum for the local model.",
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"),
+    cache_dir: Path | None = typer.Option(
+        None,
         help="Ignored cache for exact WAV spans and embeddings.",
     ),
     output_path: Path | None = typer.Option(
@@ -103,6 +103,11 @@ def compare_speakers(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     paths = build_paths(base_dir)
+    model_path = model_path or (
+        paths.evaluation
+        / "speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+    )
+    cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -140,7 +145,7 @@ def compare_speakers(
     destination = (
         output_path.expanduser().resolve()
         if output_path
-        else Path("evaluation/speaker-pairs/runs").resolve() / f"{video_a}--{video_b}.json"
+        else paths.evaluation / "speaker-pairs/runs" / f"{video_a}--{video_b}.json"
     )
     write_pair_result(destination, result)
     console.print(f"{result['outcome']}: {result['reason']}")
@@ -159,26 +164,20 @@ def evaluate_observation_consistency(
         Path("evaluation/speaker-pairs"),
         help="Speaker-pair drafts and review events root.",
     ),
-    model_path: Path = typer.Option(
-        Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-        ),
+    model_path: Path | None = typer.Option(
+        None,
         help="Local ONNX speaker-embedding model.",
     ),
     model_sha256: str = typer.Option(
         DEFAULT_SPEAKER_MODEL_SHA256,
         help="Required checksum for the local model.",
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"),
+    cache_dir: Path | None = typer.Option(
+        None,
         help="Ignored embedding cache.",
     ),
-    output_path: Path = typer.Option(
-        Path(
-            "evaluation/speaker-pairs/runs/"
-            "observation-consistency-v1.json"
-        ),
+    output_path: Path | None = typer.Option(
+        None,
         help="Threshold-free calibration report.",
     ),
     execute: bool = typer.Option(
@@ -186,7 +185,17 @@ def evaluate_observation_consistency(
         "--execute",
         help="Run acoustic embeddings; without this flag only print the plan.",
     ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    paths = build_paths(base_dir)
+    model_path = model_path or (
+        paths.evaluation
+        / "speaker-pairs/models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+    )
+    cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
+    output_path = output_path or (
+        paths.evaluation / "speaker-pairs/runs/observation-consistency-v1.json"
+    )
     root = evaluation_root.expanduser().resolve()
     drafts = _load_json_artifacts(sorted((root / "drafts").glob("*.json")))
     reviews = _load_json_artifacts(
@@ -254,20 +263,20 @@ def run_speaker_model_bakeoff(
         Path("evaluation/speaker-pairs/bakeoff-models.json"),
         help="Experimental candidate model manifest.",
     ),
-    result_root: Path = typer.Option(
-        Path("evaluation/speaker-pairs/runs/by-model"),
+    result_root: Path | None = typer.Option(
+        None,
         help="Model-fingerprint-qualified deterministic result root.",
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"),
+    cache_dir: Path | None = typer.Option(
+        None,
         help="Ignored exact-span and embedding cache.",
     ),
-    preflight_path: Path = typer.Option(
-        Path("evaluation/speaker-pairs/reports/bakeoff-preflight.json"),
+    preflight_path: Path | None = typer.Option(
+        None,
         help="Persisted preflight and execution plan.",
     ),
-    report_path: Path = typer.Option(
-        Path("evaluation/speaker-pairs/reports/bakeoff-latest.json"),
+    report_path: Path | None = typer.Option(
+        None,
         help="Threshold-free model comparison report.",
     ),
     preflight_only: bool = typer.Option(
@@ -285,6 +294,15 @@ def run_speaker_model_bakeoff(
     ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    paths = build_paths(base_dir)
+    result_root = result_root or paths.evaluation / "speaker-pairs/runs/by-model"
+    cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
+    preflight_path = preflight_path or (
+        paths.evaluation / "speaker-pairs/reports/bakeoff-preflight.json"
+    )
+    report_path = report_path or (
+        paths.evaluation / "speaker-pairs/reports/bakeoff-latest.json"
+    )
     repository_root = Path.cwd().resolve()
     fixture_root = fixture_dir.expanduser().resolve()
     manifest = manifest_path.expanduser().resolve()
@@ -461,18 +479,22 @@ def evaluate_speaker_policy_candidate(
         Path("evaluation/speaker-pairs/bakeoff-models.json"),
         help="Experimental candidate model manifest.",
     ),
-    result_root: Path = typer.Option(
-        Path("evaluation/speaker-pairs/runs/by-model"),
+    result_root: Path | None = typer.Option(
+        None,
         help="Existing model-fingerprint-qualified bake-off results.",
     ),
-    report_path: Path = typer.Option(
-        Path(
-            "evaluation/speaker-pairs/reports/"
-            "campplus-development-candidate-v1.json"
-        ),
+    report_path: Path | None = typer.Option(
+        None,
         help="Development-only experimental policy report.",
     ),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    paths = build_paths(base_dir)
+    result_root = result_root or paths.evaluation / "speaker-pairs/runs/by-model"
+    report_path = report_path or (
+        paths.evaluation
+        / "speaker-pairs/reports/campplus-development-candidate-v1.json"
+    )
     try:
         fixture_paths = sorted(fixture_dir.expanduser().resolve().glob("*.json"))
         all_fixtures = _load_json_artifacts(fixture_paths)
@@ -653,9 +675,13 @@ def audit_speaker_review_selection(
 )
 def evaluate_pair_results(
     fixture_dir: Path = typer.Option(Path("evaluation/speaker-pairs/fixtures")),
-    result_dir: Path = typer.Option(Path("evaluation/speaker-pairs/runs")),
-    output_path: Path = typer.Option(Path("evaluation/speaker-pairs/reports/latest.json")),
+    result_dir: Path | None = typer.Option(None),
+    output_path: Path | None = typer.Option(None),
+    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
+    paths = build_paths(base_dir)
+    result_dir = result_dir or paths.evaluation / "speaker-pairs/runs"
+    output_path = output_path or paths.evaluation / "speaker-pairs/reports/latest.json"
     try:
         fixture_paths = sorted(fixture_dir.expanduser().resolve().glob("*.json"))
         result_paths = sorted(result_dir.expanduser().resolve().glob("*.json"))

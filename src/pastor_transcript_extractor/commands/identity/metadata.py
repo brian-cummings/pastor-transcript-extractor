@@ -99,8 +99,8 @@ def review_profile_attribution_command(
         "--open-packet/--no-open-packet",
         help="Open the local HTML packet containing timestamped videos.",
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"),
+    cache_dir: Path | None = typer.Option(
+        None,
         help="Persisted identity clip-selection cache used for timestamps.",
     ),
     base_dir: Path | None = typer.Option(
@@ -122,6 +122,7 @@ def review_profile_attribution_command(
         )
     batch_mode = all_proposals or all_anonymous_profiles
     paths = build_paths(base_dir, remember=not plan_only)
+    cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"

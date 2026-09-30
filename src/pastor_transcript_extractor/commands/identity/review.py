@@ -110,8 +110,8 @@ def review_observation(
     evaluation_root: Path = typer.Option(
         Path("evaluation/speaker-pairs"), help="Review packet root."
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"), help="Provenance-bound clip cache."
+    cache_dir: Path | None = typer.Option(
+        None, help="Provenance-bound clip cache."
     ),
     open_packet: bool = typer.Option(
         True, "--open-packet/--no-open-packet", help="Open each local HTML packet."
@@ -127,6 +127,7 @@ def review_observation(
             "or --all-affected."
         )
     paths = build_paths(base_dir)
+    cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -255,8 +256,8 @@ def review_speaker_pair(
     evaluation_root: Path = typer.Option(
         Path("evaluation/speaker-pairs"), help="Speaker-pair drafts, reviews, and fixtures root."
     ),
-    cache_dir: Path = typer.Option(
-        Path("evaluation/speaker-pairs/cache"), help="Ignored exact-span audio cache."
+    cache_dir: Path | None = typer.Option(
+        None, help="Ignored exact-span audio cache."
     ),
     open_packet: bool = typer.Option(
         True, "--open-packet/--no-open-packet", help="Open the local HTML review packet."
@@ -270,6 +271,7 @@ def review_speaker_pair(
     observation_fingerprint_b: str | None = typer.Option(None, hidden=True),
 ) -> ReviewSubmission | None:
     paths = build_paths(base_dir)
+    cache_dir = cache_dir or paths.evaluation / "speaker-pairs/cache"
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)

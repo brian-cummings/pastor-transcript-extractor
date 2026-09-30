@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from pastor_transcript_extractor.evaluation_storage import resolve_database_artifact_path
 from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
 from pastor_transcript_extractor.speaker_pair_eligibility import (
     assess_automatic_speaker_observation,
@@ -834,7 +835,7 @@ def machine_assignment_report(database: Database) -> dict[str, object]:
             "contradiction:"
         ):
             tripped_policies.add(str(evidence["policy_fingerprint"]))
-        provenance = _machine_evidence_provenance_key(evidence)
+        provenance = _machine_evidence_provenance_key(database, evidence)
         if provenance is not None and provenance in tripped_provenance:
             tripped_policies.add(str(evidence["policy_fingerprint"]))
     evidence_by_id = {int(row["id"]): row for row in evidence_rows}
@@ -1179,7 +1180,10 @@ def _machine_evidence_provenance_current(
 ) -> bool:
     try:
         report = _load_verified_association(
-            Path(str(evidence["association_artifact_path"]))
+            resolve_database_artifact_path(
+                str(evidence["association_artifact_path"]),
+                database_path=database.database_path,
+            )
         )
         exemplar_fingerprints = tuple(
             json.loads(str(evidence["exemplar_fingerprints_json"]))
@@ -1351,18 +1355,22 @@ def _tripped_assignment_provenance(
         )
         if not event_contradiction and not reviewed_contradiction:
             continue
-        provenance = _machine_evidence_provenance_key(evidence)
+        provenance = _machine_evidence_provenance_key(database, evidence)
         if provenance is not None:
             tripped.add(provenance)
     return frozenset(tripped)
 
 
 def _machine_evidence_provenance_key(
+    database: Database,
     evidence: Mapping[str, object],
 ) -> tuple[str, str] | None:
     try:
         report = _load_verified_association(
-            Path(str(evidence["association_artifact_path"]))
+            resolve_database_artifact_path(
+                str(evidence["association_artifact_path"]),
+                database_path=database.database_path,
+            )
         )
     except (OSError, ValueError, json.JSONDecodeError):
         return None

@@ -79,8 +79,8 @@ def identity_run_command(
         "--promotion-model",
         help="Pinned TypeSafe/Jev model for profile-promotion judgments.",
     ),
-    promotion_judgment_root: Path = typer.Option(
-        Path("evaluation/speaker-profile-discovery/promotion-judgments"),
+    promotion_judgment_root: Path | None = typer.Option(
+        None,
         "--promotion-judgment-root",
         help="Content-addressed Jev promotion-judgment cache root.",
     ),
@@ -133,6 +133,12 @@ def identity_run_command(
         help="Override app data directory.",
     ),
 ) -> None:
+    from pastor_transcript_extractor.config import build_paths
+
+    paths = build_paths(base_dir)
+    resolved_promotion_judgment_root = promotion_judgment_root or (
+        paths.evaluation / "speaker-profile-discovery" / "promotion-judgments"
+    )
     request = IdentityWorkflowRequest(
         youtube_video_id=youtube_video_id,
         all_extractions=all_extractions,
@@ -148,7 +154,7 @@ def identity_run_command(
         jobs=jobs,
         evaluate_profile_promotions=evaluate_profile_promotions,
         promotion_model=promotion_model,
-        promotion_judgment_root=promotion_judgment_root,
+        promotion_judgment_root=resolved_promotion_judgment_root,
         promotion_successful_profile_value=promotion_successful_profile_value,
         promotion_contaminated_profile_cost=promotion_contaminated_profile_cost,
     )
