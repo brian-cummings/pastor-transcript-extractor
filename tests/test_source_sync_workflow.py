@@ -59,6 +59,7 @@ class SourceSyncWorkflowTests(unittest.TestCase):
 
         def transcribe(**kwargs):
             self.assertEqual({self.video.id}, kwargs["video_ids"])
+            self.assertTrue(kwargs["missing_only"])
             calls.append("transcribe")
 
         def extract(*args, **kwargs):

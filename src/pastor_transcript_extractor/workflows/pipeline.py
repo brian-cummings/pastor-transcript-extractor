@@ -348,7 +348,9 @@ def _acquire_transcripts(
     if request.captions_only:
         return
     transcribe_options: dict[str, object] = {
-        "missing_only": scope.kind is PipelineScope.FAILED,
+        "missing_only": (
+            scope.kind is PipelineScope.FAILED or request.transcribe_missing
+        ),
         "captions_missing_only": request.transcribe_missing,
         "jobs": request.jobs,
         "base_dir": request.base_dir,

@@ -96,6 +96,8 @@ class PipelineWorkflowTests(unittest.TestCase):
         review_call = calls[-1]
         self.assertEqual({11}, review_call[2]["video_ids"])
         extract_call = next(call for call in calls if call[0] == "extract")
+        transcribe_call = next(call for call in calls if call[0] == "transcribe")
+        self.assertTrue(transcribe_call[2]["missing_only"])
         self.assertEqual("typesafe", extract_call[2]["recording_verifier_backend"])
         self.assertEqual("jev-1.13.0", extract_call[2]["recording_verifier_model"])
         self.assertIn("skipping 1 disabled source", events[0])
@@ -117,6 +119,28 @@ class PipelineWorkflowTests(unittest.TestCase):
         self.assertTrue(transcribe[2]["missing_only"])
         self.assertTrue(extract[2]["missing_only"])
         self.assertEqual(4, extract[2]["workers"])
+
+    def test_no_transcribe_missing_explicitly_allows_retranscription(self) -> None:
+        calls = []
+        video = SimpleNamespace(id=11, pastor_id=None)
+        database = SimpleNamespace(
+            list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
+            list_sources=lambda: [SimpleNamespace(id=1)],
+            get_video_by_id=lambda _video_id: video,
+        )
+
+        run_pipeline(
+            PipelineRequest(
+                all_sources=True,
+                transcribe_missing=False,
+                skip_review=True,
+            ),
+            dependencies=self._dependencies(database, calls),
+        )
+
+        transcribe = next(call for call in calls if call[0] == "transcribe")
+        self.assertFalse(transcribe[2]["missing_only"])
+        self.assertFalse(transcribe[2]["captions_missing_only"])
 
     def test_url_scope_replaces_before_add_and_passes_source_id(self) -> None:
         calls = []

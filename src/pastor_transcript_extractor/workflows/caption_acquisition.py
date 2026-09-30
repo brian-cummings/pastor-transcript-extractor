@@ -20,7 +20,7 @@ from pastor_transcript_extractor.media import (
     YtDlpConfigurationError,
     YtDlpRateLimitError,
 )
-from pastor_transcript_extractor.models import TranscriptSourceKind, Video, VideoStatus
+from pastor_transcript_extractor.models import Video, VideoStatus
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
     duration_within_sermon_maximum,
@@ -161,11 +161,8 @@ def _video_is_eligible(
     )
 
 
-def _has_captions(database: Database, video_id: int) -> bool:
-    return any(
-        artifact.source_kind == TranscriptSourceKind.CAPTIONS
-        for artifact in database.list_transcript_artifacts_for_video(video_id)
-    )
+def _has_acquired_transcript(database: Database, video_id: int) -> bool:
+    return bool(database.list_transcript_artifacts_for_video(video_id))
 
 
 def _failure_is_terminal_unavailable(video: Video) -> bool:
@@ -301,7 +298,7 @@ def _run_acquisition_queue(
             maximum_duration=maximum_duration,
         ):
             continue
-        if _has_captions(database, video.id):
+        if _has_acquired_transcript(database, video.id):
             counts.skipped += 1
             continue
 

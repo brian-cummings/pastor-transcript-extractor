@@ -96,6 +96,10 @@ def _has_registered_source_audio(database: Database, video_id: int) -> bool:
     )
 
 
+def _has_acquired_transcript(database: Database, video_id: int) -> bool:
+    return database.get_latest_transcript_artifact_for_video(video_id) is not None
+
+
 def select_existing_stage_video_ids(
     database: Database,
     source_ids: Sequence[int],
@@ -368,9 +372,24 @@ def stage_audio_inputs(
         return AudioStageResult(None, 0, frozenset(), 0)
 
     selected_video_ids = set(request.video_ids)
-    workers = min(request.download_jobs, len(selected_video_ids))
+    transcript_video_ids = {
+        video_id
+        for video_id in selected_video_ids
+        if _has_acquired_transcript(database, video_id)
+    }
+    stage_video_ids = selected_video_ids - transcript_video_ids
+    if transcript_video_ids:
+        report(
+            f"Bypassing {len(transcript_video_ids)} selected video(s) with "
+            "acquired transcripts; source audio and captions will not be requested."
+        )
+    if not stage_video_ids:
+        report("No videos require audio staging.")
+        return AudioStageResult(None, len(selected_video_ids), frozenset(), 0)
+
+    workers = min(request.download_jobs, len(stage_video_ids))
     report(
-        f"Staging source audio for {len(selected_video_ids)} video(s) with "
+        f"Staging source audio for {len(stage_video_ids)} video(s) with "
         f"{workers} worker(s)."
     )
     verification_cache = MediaVerificationCache(
@@ -380,7 +399,7 @@ def stage_audio_inputs(
         database,
         app_paths,
         tool_config,
-        selected_video_ids,
+        stage_video_ids,
         workers=workers,
         retry=False,
         verification_cache=verification_cache,
@@ -413,6 +432,11 @@ def stage_audio_inputs(
     verified_video_ids = {
         result.video_id for result in final_results if result.outcome == "verified"
     }
+    downloaded_video_ids = {
+        result.video_id
+        for result in final_results
+        if result.outcome == "verified" and result.downloaded
+    }
     report(
         f"Audio stage complete: verified={len(verified_video_ids)}, "
         f"failed={len(final_results) - len(verified_video_ids)}."
@@ -425,15 +449,15 @@ def stage_audio_inputs(
     )
 
     captions_blocked = False
-    if verified_video_ids:
+    if downloaded_video_ids:
         report(
-            f"Fetching available captions for {len(verified_video_ids)} verified "
-            "staged video(s)."
+            f"Fetching available captions for {len(downloaded_video_ids)} newly "
+            "downloaded video(s)."
         )
         try:
             dependencies.fetch_captions(
                 base_dir=request.base_dir,
-                video_ids=verified_video_ids,
+                video_ids=downloaded_video_ids,
                 request_interval_seconds=request.caption_request_interval_seconds,
                 **(
                     {"cookies_from_browser": request.cookies_from_browser}

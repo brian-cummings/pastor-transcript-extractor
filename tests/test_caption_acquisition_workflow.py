@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from pastor_transcript_extractor.config import ToolConfig, build_paths, ensure_directories
-from pastor_transcript_extractor.models import SourceType
+from pastor_transcript_extractor.models import SourceType, TranscriptSourceKind
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionRequest,
@@ -106,6 +106,32 @@ class CaptionAcquisitionWorkflowTests(unittest.TestCase):
         self.assertEqual(1, result.processed_count)
         self.assertEqual(0, result.failed_count)
         self.assertTrue(any("Retrying captions" in event for event in events))
+
+    def test_skips_video_with_existing_local_transcript(self) -> None:
+        existing = self.add_video("existingasr1", duration_seconds=1800)
+        missing = self.add_video("missingtext1", duration_seconds=1800)
+        self.database.add_transcript_artifact(
+            video_id=existing.id,
+            source_kind=TranscriptSourceKind.LOCAL_ASR,
+            audio_path="audio.wav",
+            raw_json_path="transcript.json",
+            raw_text_path="transcript.txt",
+        )
+        fetched_video_ids: list[int] = []
+
+        result = acquire_captions(
+            self.database,
+            self.paths,
+            self.tools,
+            CaptionAcquisitionRequest(video_ids=frozenset({existing.id, missing.id})),
+            fetch_captions=lambda _database, _paths, _tools, video_id: (
+                fetched_video_ids.append(video_id)
+                or SimpleNamespace(raw_text_path=Path("captions.txt"))
+            ),
+        )
+
+        self.assertEqual([missing.id], fetched_video_ids)
+        self.assertEqual(1, result.skipped_count)
 
 
 if __name__ == "__main__":

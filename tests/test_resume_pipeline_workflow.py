@@ -13,6 +13,34 @@ from pastor_transcript_extractor.workflows.resume_pipeline import (
 
 
 class ResumePipelineWorkflowTests(unittest.TestCase):
+    def test_caption_scope_is_limited_to_stage_downloads(self) -> None:
+        caption_video_ids: list[set[int]] = []
+        database = SimpleNamespace(
+            get_video_by_id=lambda _video_id: None,
+            get_pastor_by_id=lambda _pastor_id: None,
+        )
+
+        resume_staged_pipeline(
+            database,
+            SimpleNamespace(),
+            ResumePipelineRequest(
+                video_ids=frozenset({11, 12}),
+                manifest_path=Path("stage.json"),
+                acquire_captions=True,
+                captions_only=True,
+                skip_review=True,
+            ),
+            dependencies=ResumePipelineDependencies(
+                fetch_captions=lambda **kwargs: caption_video_ids.append(
+                    kwargs["video_ids"]
+                ),
+                extract=lambda *args, **kwargs: ExtractionBatchResult(0, 2, 0),
+                caption_scope=lambda _path: {11},
+            ),
+        )
+
+        self.assertEqual([{11}], caption_video_ids)
+
     def test_runs_offline_stages_in_order_and_returns_structured_result(self) -> None:
         calls: list[str] = []
         video = SimpleNamespace(id=11, pastor_id=7)
@@ -25,6 +53,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
 
         def transcribe(**kwargs):
             self.assertFalse(kwargs["allow_network"])
+            self.assertTrue(kwargs["missing_only"])
             calls.append("transcribe")
 
         def extract(*args, **kwargs):
