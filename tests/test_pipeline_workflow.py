@@ -156,6 +156,7 @@ class PipelineWorkflowTests(unittest.TestCase):
         transcription_jobs: list[int] = []
         sleeps: list[float] = []
         transcription_started = threading.Event()
+        release_transcription = threading.Event()
         database = SimpleNamespace(
             list_processing_enabled_sources=lambda: [SimpleNamespace(id=1)],
             list_sources=lambda: [SimpleNamespace(id=1)],
@@ -164,13 +165,16 @@ class PipelineWorkflowTests(unittest.TestCase):
                 pastor_id=None,
             ),
             get_latest_transcript_artifact_for_video=lambda _video_id: None,
+            known_caption_unavailable_video_ids=lambda video_ids: (
+                set(video_ids) & {11, 12}
+            ),
         )
 
         def fetch_captions(**kwargs):
+            self.assertTrue(transcription_started.wait(timeout=1))
             scope = set(kwargs["video_ids"])
             fetch_scopes.append(scope)
             if len(fetch_scopes) == 1:
-                kwargs["outcome_callback"](11, "unavailable")
                 raise CaptionAcquisitionBlockedError("repeatedly rate limited")
             kwargs["outcome_callback"](13, "processed")
             kwargs["outcome_callback"](14, "processed")
@@ -179,10 +183,12 @@ class PipelineWorkflowTests(unittest.TestCase):
             transcribed_video_ids.append(kwargs["video_ids"])
             transcription_jobs.append(kwargs["jobs"])
             transcription_started.set()
+            self.assertTrue(release_transcription.wait(timeout=1))
 
         def sleeper(seconds):
             self.assertTrue(transcription_started.wait(timeout=1))
             sleeps.append(seconds)
+            release_transcription.set()
 
         dependencies = replace(
             self._dependencies(database, calls),
@@ -199,7 +205,7 @@ class PipelineWorkflowTests(unittest.TestCase):
             dependencies=dependencies,
         )
 
-        self.assertEqual([{11, 12, 13, 14}, {13, 14}], fetch_scopes)
+        self.assertEqual([{13, 14}, {13, 14}], fetch_scopes)
         self.assertEqual([{11, 12}], transcribed_video_ids)
         self.assertEqual([2], transcription_jobs)
         self.assertEqual([300.0], sleeps)

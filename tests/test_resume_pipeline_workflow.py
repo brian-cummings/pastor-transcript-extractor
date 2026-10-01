@@ -53,6 +53,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
         transcribed_video_ids: list[set[int]] = []
         sleeps: list[float] = []
         transcription_started = threading.Event()
+        release_transcription = threading.Event()
         database = SimpleNamespace(
             get_video_by_id=lambda _video_id: None,
             get_pastor_by_id=lambda _pastor_id: None,
@@ -64,6 +65,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
             fetch_scopes.append(scope)
             if len(fetch_scopes) == 1:
                 kwargs["outcome_callback"](11, "unavailable")
+                kwargs["outcome_callback"](12, "unavailable")
                 raise CaptionAcquisitionBlockedError("repeatedly rate limited")
             kwargs["outcome_callback"](13, "processed")
             kwargs["outcome_callback"](14, "processed")
@@ -71,10 +73,12 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
         def transcribe(**kwargs):
             transcribed_video_ids.append(kwargs["video_ids"])
             transcription_started.set()
+            self.assertTrue(release_transcription.wait(timeout=1))
 
         def sleeper(seconds):
             self.assertTrue(transcription_started.wait(timeout=1))
             sleeps.append(seconds)
+            release_transcription.set()
 
         result = resume_staged_pipeline(
             database,
