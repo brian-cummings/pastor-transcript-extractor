@@ -52,6 +52,9 @@ from pastor_transcript_extractor.sermon_classification import (
     classify_sermon_content_adaptive,
 )
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.transcript_canonicalization import (
+    ensure_canonical_transcript_for_video,
+)
 
 
 WINDOW_ARBITRATION_POLICY_VERSION = "verified_semantic_continuity_v6"
@@ -1814,13 +1817,7 @@ def extract_video(
 
     pastor = database.get_pastor_by_id(video.pastor_id) if video.pastor_id is not None else None
 
-    transcript_artifacts = database.list_transcript_artifacts_for_video(video.id)
-    if not transcript_artifacts:
-        raise ValueError(f"Video {video_id} has no transcript artifact to extract from")
-    transcript_artifact = next(
-        (artifact for artifact in reversed(transcript_artifacts) if artifact.source_kind == TranscriptSourceKind.CAPTIONS),
-        transcript_artifacts[-1],
-    )
+    transcript_artifact = ensure_canonical_transcript_for_video(database, video.id)
 
     video_paths = resolve_video_artifact_paths(database, app_paths, video)
     video_paths.extracted.mkdir(parents=True, exist_ok=True)
@@ -1971,6 +1968,10 @@ def extract_video(
         "pastor_slug": pastor.slug if pastor is not None else None,
         "source_url": video.url,
         "transcript_source": transcript_artifact.source_kind.value,
+        "transcript_artifact_id": transcript_artifact.id,
+        "transcript_artifact_kind": transcript_artifact.artifact_kind,
+        "transcript_transformation_version": transcript_artifact.transformation_version,
+        "transcript_content_sha256": transcript_artifact.content_sha256,
         "sermon_window": sermon_window,
         "classification": classification,
         "recording_verification": recording_verification,

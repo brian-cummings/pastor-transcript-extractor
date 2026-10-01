@@ -20,6 +20,9 @@ from pastor_transcript_extractor.media_artifacts import (
 )
 from pastor_transcript_extractor.models import TranscriptArtifact, TranscriptSourceKind, VideoStatus
 from pastor_transcript_extractor.storage import Database
+from pastor_transcript_extractor.transcript_canonicalization import (
+    materialize_canonical_transcript,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,13 +271,14 @@ def fetch_captions_video(
     }
     video_paths.metadata.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
-    artifact = database.add_transcript_artifact(
+    source_artifact = database.add_transcript_artifact(
         video_id=video.id,
         source_kind=TranscriptSourceKind.CAPTIONS,
         audio_path=None,
         raw_json_path=str(raw_json_path),
         raw_text_path=str(raw_text_path),
     )
+    artifact = materialize_canonical_transcript(database, source_artifact)
     database.update_video_status(video.id, VideoStatus.TRANSCRIPT_FETCHED)
     return CaptionResult(
         artifact=artifact,
@@ -444,13 +448,14 @@ def complete_transcription_video(
     prepared.transcript_root.mkdir(parents=True, exist_ok=True)
     prepared.metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
-    artifact = database.add_transcript_artifact(
+    source_artifact = database.add_transcript_artifact(
         video_id=prepared.video_id,
         source_kind=TranscriptSourceKind.LOCAL_ASR,
         audio_path=str(prepared.normalized_audio_path),
         raw_json_path=str(raw_json_path),
         raw_text_path=str(raw_text_path),
     )
+    artifact = materialize_canonical_transcript(database, source_artifact)
     database.update_video_status(prepared.video_id, VideoStatus.TRANSCRIBED_LOCAL)
     if stage_callback is not None:
         stage_callback("done")

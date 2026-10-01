@@ -4858,7 +4858,7 @@ class TranscriptionTests(unittest.TestCase):
             self.assertTrue(result.raw_json_path.exists())
             self.assertTrue(result.raw_text_path.exists())
             self.assertEqual("hello", result.raw_text_path.read_text(encoding="utf-8"))
-            self.assertEqual(1, database.counts_by_table()["transcript_artifacts"])
+            self.assertEqual(2, database.counts_by_table()["transcript_artifacts"])
 
     def test_prepare_transcription_input_reuses_downloaded_and_normalized_audio(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

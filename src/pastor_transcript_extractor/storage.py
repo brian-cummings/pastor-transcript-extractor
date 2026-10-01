@@ -111,11 +111,20 @@ CREATE TABLE IF NOT EXISTS transcript_artifacts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     video_id INTEGER NOT NULL,
     source_kind TEXT NOT NULL,
+    parent_transcript_artifact_id INTEGER NULL,
+    artifact_kind TEXT NOT NULL DEFAULT 'source'
+        CHECK(artifact_kind IN ('source', 'canonical')),
+    transformation_version TEXT NULL,
+    input_content_sha256 TEXT NULL,
+    content_sha256 TEXT NULL,
+    superseded_by_artifact_id INTEGER NULL,
     raw_json_path TEXT NULL,
     raw_text_path TEXT NULL,
     audio_path TEXT NULL,
     created_at TEXT NOT NULL,
-    FOREIGN KEY(video_id) REFERENCES videos(id)
+    FOREIGN KEY(video_id) REFERENCES videos(id),
+    FOREIGN KEY(parent_transcript_artifact_id) REFERENCES transcript_artifacts(id),
+    FOREIGN KEY(superseded_by_artifact_id) REFERENCES transcript_artifacts(id)
 );
 
 CREATE TABLE IF NOT EXISTS caption_acquisition_outcomes (
@@ -771,6 +780,7 @@ class Database:
             self._ensure_pastor_columns(connection)
             apply_source_ownership_schema(connection)
             self._ensure_source_processing_column(connection)
+            self._ensure_transcript_artifact_columns(connection)
             self._ensure_profile_promotion_columns(connection)
             backfill_source_ownership(connection)
 
@@ -802,6 +812,50 @@ class Database:
                 "ALTER TABLE sources ADD COLUMN processing_enabled INTEGER NOT NULL DEFAULT 1 "
                 "CHECK(processing_enabled IN (0, 1))"
             )
+
+    def _ensure_transcript_artifact_columns(
+        self,
+        connection: sqlite3.Connection,
+    ) -> None:
+        columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(transcript_artifacts)"
+            ).fetchall()
+        }
+        additions = {
+            "parent_transcript_artifact_id": "INTEGER NULL",
+            "artifact_kind": "TEXT NOT NULL DEFAULT 'source'",
+            "transformation_version": "TEXT NULL",
+            "input_content_sha256": "TEXT NULL",
+            "content_sha256": "TEXT NULL",
+            "superseded_by_artifact_id": "INTEGER NULL",
+        }
+        for name, declaration in additions.items():
+            if name not in columns:
+                connection.execute(
+                    f"ALTER TABLE transcript_artifacts ADD COLUMN {name} {declaration}"
+                )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_transcript_artifacts_effective
+            ON transcript_artifacts(
+                video_id, source_kind, artifact_kind,
+                superseded_by_artifact_id, id
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_artifacts_canonical_identity
+            ON transcript_artifacts(
+                parent_transcript_artifact_id,
+                transformation_version,
+                input_content_sha256
+            )
+            WHERE artifact_kind = 'canonical'
+            """
+        )
 
     def _ensure_profile_promotion_columns(
         self,
@@ -916,6 +970,38 @@ class Database:
             raw_text_path=row["raw_text_path"],
             audio_path=row["audio_path"],
             created_at=parse_datetime(str(row["created_at"])) or utc_now(),
+            parent_transcript_artifact_id=(
+                int(row["parent_transcript_artifact_id"])
+                if "parent_transcript_artifact_id" in row.keys()
+                and row["parent_transcript_artifact_id"] is not None
+                else None
+            ),
+            artifact_kind=(
+                str(row["artifact_kind"])
+                if "artifact_kind" in row.keys()
+                else "source"
+            ),
+            transformation_version=(
+                row["transformation_version"]
+                if "transformation_version" in row.keys()
+                else None
+            ),
+            input_content_sha256=(
+                row["input_content_sha256"]
+                if "input_content_sha256" in row.keys()
+                else None
+            ),
+            content_sha256=(
+                row["content_sha256"]
+                if "content_sha256" in row.keys()
+                else None
+            ),
+            superseded_by_artifact_id=(
+                int(row["superseded_by_artifact_id"])
+                if "superseded_by_artifact_id" in row.keys()
+                and row["superseded_by_artifact_id"] is not None
+                else None
+            ),
         )
 
     def _media_artifact_from_row(self, row: sqlite3.Row) -> MediaArtifact:
@@ -1961,25 +2047,87 @@ class Database:
         audio_path: str | None,
         raw_json_path: str | None = None,
         raw_text_path: str | None = None,
+        *,
+        parent_transcript_artifact_id: int | None = None,
+        artifact_kind: str = "source",
+        transformation_version: str | None = None,
+        input_content_sha256: str | None = None,
+        content_sha256: str | None = None,
     ) -> TranscriptArtifact:
+        if artifact_kind not in {"source", "canonical"}:
+            raise ValueError("Transcript artifact kind must be source or canonical")
+        if artifact_kind == "canonical" and parent_transcript_artifact_id is None:
+            raise ValueError("Canonical transcript artifacts require a parent artifact")
         created_at = utc_now().isoformat()
         with self.connect() as connection:
+            if artifact_kind == "canonical":
+                existing = connection.execute(
+                    """
+                    SELECT *
+                    FROM transcript_artifacts
+                    WHERE parent_transcript_artifact_id = ?
+                      AND artifact_kind = 'canonical'
+                      AND transformation_version = ?
+                      AND input_content_sha256 = ?
+                    LIMIT 1
+                    """,
+                    (
+                        parent_transcript_artifact_id,
+                        transformation_version,
+                        input_content_sha256,
+                    ),
+                ).fetchone()
+                if existing is not None:
+                    return self._transcript_artifact_from_row(existing)
             cursor = connection.execute(
                 """
                 INSERT INTO transcript_artifacts (
-                    video_id, source_kind, raw_json_path, raw_text_path, audio_path, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    video_id, source_kind, parent_transcript_artifact_id,
+                    artifact_kind, transformation_version, input_content_sha256,
+                    content_sha256, raw_json_path, raw_text_path, audio_path,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (video_id, source_kind.value, raw_json_path, raw_text_path, audio_path, created_at),
+                (
+                    video_id,
+                    source_kind.value,
+                    parent_transcript_artifact_id,
+                    artifact_kind,
+                    transformation_version,
+                    input_content_sha256,
+                    content_sha256,
+                    raw_json_path,
+                    raw_text_path,
+                    audio_path,
+                    created_at,
+                ),
             )
+            artifact_id = int(cursor.lastrowid)
+            if artifact_kind == "canonical":
+                connection.execute(
+                    """
+                    UPDATE transcript_artifacts
+                    SET superseded_by_artifact_id = ?
+                    WHERE video_id = ?
+                      AND source_kind = ?
+                      AND id != ?
+                      AND superseded_by_artifact_id IS NULL
+                    """,
+                    (artifact_id, video_id, source_kind.value, artifact_id),
+                )
         return TranscriptArtifact(
-            id=int(cursor.lastrowid),
+            id=artifact_id,
             video_id=video_id,
             source_kind=source_kind,
             raw_json_path=raw_json_path,
             raw_text_path=raw_text_path,
             audio_path=audio_path,
             created_at=parse_datetime(created_at) or utc_now(),
+            parent_transcript_artifact_id=parent_transcript_artifact_id,
+            artifact_kind=artifact_kind,
+            transformation_version=transformation_version,
+            input_content_sha256=input_content_sha256,
+            content_sha256=content_sha256,
         )
 
     def add_media_artifact(
@@ -2662,7 +2810,7 @@ class Database:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, video_id, source_kind, raw_json_path, raw_text_path, audio_path, created_at
+                SELECT *
                 FROM transcript_artifacts
                 ORDER BY id
                 """
@@ -2673,7 +2821,7 @@ class Database:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, video_id, source_kind, raw_json_path, raw_text_path, audio_path, created_at
+                SELECT *
                 FROM transcript_artifacts
                 WHERE video_id = ?
                 ORDER BY id
@@ -2686,13 +2834,65 @@ class Database:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, video_id, source_kind, raw_json_path, raw_text_path, audio_path, created_at
+                SELECT *
                 FROM transcript_artifacts
                 WHERE video_id = ?
-                ORDER BY id DESC
+                ORDER BY
+                    CASE WHEN superseded_by_artifact_id IS NULL THEN 0 ELSE 1 END,
+                    CASE WHEN artifact_kind = 'canonical' THEN 0 ELSE 1 END,
+                    id DESC
                 LIMIT 1
                 """,
                 (video_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._transcript_artifact_from_row(row)
+
+    def get_preferred_source_transcript_artifact_for_video(
+        self,
+        video_id: int,
+    ) -> TranscriptArtifact | None:
+        """Return the source artifact that should feed canonicalization."""
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM transcript_artifacts
+                WHERE video_id = ? AND artifact_kind = 'source'
+                ORDER BY
+                    CASE WHEN source_kind = 'captions' THEN 0 ELSE 1 END,
+                    id DESC
+                LIMIT 1
+                """,
+                (video_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._transcript_artifact_from_row(row)
+
+    def get_canonical_transcript_artifact(
+        self,
+        parent_transcript_artifact_id: int,
+        transformation_version: str,
+        input_content_sha256: str,
+    ) -> TranscriptArtifact | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM transcript_artifacts
+                WHERE parent_transcript_artifact_id = ?
+                  AND artifact_kind = 'canonical'
+                  AND transformation_version = ?
+                  AND input_content_sha256 = ?
+                LIMIT 1
+                """,
+                (
+                    parent_transcript_artifact_id,
+                    transformation_version,
+                    input_content_sha256,
+                ),
             ).fetchone()
         if row is None:
             return None
@@ -2704,10 +2904,13 @@ class Database:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, video_id, source_kind, raw_json_path, raw_text_path, audio_path, created_at
+                SELECT *
                 FROM transcript_artifacts
                 WHERE video_id = ? AND audio_path IS NOT NULL AND audio_path != ''
-                ORDER BY id DESC
+                ORDER BY
+                    CASE WHEN superseded_by_artifact_id IS NULL THEN 0 ELSE 1 END,
+                    CASE WHEN artifact_kind = 'canonical' THEN 0 ELSE 1 END,
+                    id DESC
                 LIMIT 1
                 """,
                 (video_id,),

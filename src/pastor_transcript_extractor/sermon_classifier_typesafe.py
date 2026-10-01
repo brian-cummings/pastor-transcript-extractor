@@ -10,10 +10,6 @@ import re
 from threading import Lock
 from typing import Any, Mapping, Protocol
 
-from pastor_transcript_extractor.caption_normalization import (
-    NORMALIZER_VERSION,
-    normalize_caption_fragments,
-)
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
     BlockClassification,
@@ -25,9 +21,9 @@ from pastor_transcript_extractor.sermon_classification import (
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v11"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v12"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v1"
-BLOCK_BUILDER_VERSION = "typesafe-deduplicated-coarse-300s-fine-60s-v2"
+BLOCK_BUILDER_VERSION = "typesafe-canonical-coarse-300s-fine-60s-v3"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-role-map-v1"
 FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v10-mixed-edge-refinement"
 BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
@@ -37,8 +33,6 @@ BOUNDARY_MIXED_OUTSIDE_MINIMUM = 0.1
 BOUNDARY_CANDIDATE_MIN_SPACING_SECONDS = 0.75
 BOUNDARY_NEIGHBORHOOD_SECONDS = 180.0
 BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
-CAPTION_DEDUP_WINDOW_SECONDS = 20.0
-CAPTION_DEDUP_MAX_GAP_SECONDS = 2.0
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
 # shared state near the size exercised by TypeSafe's large-document cookbook.
 BATCH_SIZE = 6
@@ -324,123 +318,6 @@ def _context_text(drafts: list[SegmentDraft], indexes: list[int], *, tail: bool)
     return text[-700:] if tail else text[:700]
 
 
-def _deduplicated_drafts(
-    drafts: list[SegmentDraft],
-) -> tuple[list[SegmentDraft], tuple[tuple[int, ...], ...], dict[str, Any]]:
-    timed_indexes = [
-        index
-        for index, draft in enumerate(drafts)
-        if draft.start_seconds is not None
-        and draft.end_seconds is not None
-        and draft.end_seconds > draft.start_seconds
-    ]
-    semantic_drafts: list[SegmentDraft] = []
-    source_groups: list[tuple[int, ...]] = []
-    raw_token_count = 0
-    normalized_token_count = 0
-
-    def flush(chunk: list[int]) -> None:
-        nonlocal raw_token_count, normalized_token_count
-        if not chunk:
-            return
-        normalized = normalize_caption_fragments(
-            (index, drafts[index].text) for index in chunk
-        )
-        raw_token_count += int(normalized.diagnostics["raw_token_count"])
-        normalized_token_count += int(
-            normalized.diagnostics["normalized_token_count"]
-        )
-        for unit in normalized.units:
-            source_indexes = unit.source_segment_indexes
-            if not source_indexes:
-                continue
-            sources = [drafts[index] for index in source_indexes]
-            starts = [
-                item.start_seconds for item in sources if item.start_seconds is not None
-            ]
-            ends = [
-                item.end_seconds for item in sources if item.end_seconds is not None
-            ]
-            if not starts or not ends:
-                continue
-            source_groups.append(source_indexes)
-            semantic_drafts.append(
-                SegmentDraft(
-                    start_seconds=min(starts),
-                    end_seconds=max(ends),
-                    text=unit.text,
-                    speaker_hint=next(
-                        (item.speaker_hint for item in sources if item.speaker_hint),
-                        None,
-                    ),
-                    label=sources[0].label,
-                    confidence=sources[0].confidence,
-                )
-            )
-
-    chunk: list[int] = []
-    for index in timed_indexes:
-        draft = drafts[index]
-        if chunk:
-            first = drafts[chunk[0]]
-            previous = drafts[chunk[-1]]
-            assert first.start_seconds is not None
-            assert previous.end_seconds is not None
-            assert draft.start_seconds is not None
-            assert draft.end_seconds is not None
-            if (
-                draft.end_seconds - first.start_seconds
-                > CAPTION_DEDUP_WINDOW_SECONDS
-                or draft.start_seconds - previous.end_seconds
-                > CAPTION_DEDUP_MAX_GAP_SECONDS
-            ):
-                flush(chunk)
-                chunk = []
-        chunk.append(index)
-    flush(chunk)
-
-    diagnostics = {
-        "normalizer_version": NORMALIZER_VERSION,
-        "window_seconds": CAPTION_DEDUP_WINDOW_SECONDS,
-        "source_segment_count": len(timed_indexes),
-        "semantic_segment_count": len(semantic_drafts),
-        "raw_token_count": raw_token_count,
-        "normalized_token_count": normalized_token_count,
-        "deduplication_ratio": round(
-            1.0 - (normalized_token_count / raw_token_count), 6
-        )
-        if raw_token_count
-        else 0.0,
-    }
-    return semantic_drafts, tuple(source_groups), diagnostics
-
-
-def _source_indexes(
-    semantic_indexes: list[int] | set[int],
-    source_groups: tuple[tuple[int, ...], ...],
-) -> list[int]:
-    return sorted(
-        {
-            source_index
-            for semantic_index in semantic_indexes
-            for source_index in source_groups[semantic_index]
-        }
-    )
-
-
-def _source_blocks(
-    blocks: list[TranscriptBlock],
-    source_groups: tuple[tuple[int, ...], ...],
-) -> list[TranscriptBlock]:
-    return [
-        replace(
-            block,
-            segment_indexes=_source_indexes(block.segment_indexes, source_groups),
-        )
-        for block in blocks
-    ]
-
-
 def _boundary_candidates(
     drafts: list[SegmentDraft],
     *,
@@ -645,7 +522,6 @@ class TypeSafeFirstPassSermonClassifier:
         progress: Any | None = None,
     ) -> HybridSermonResult:
         del rule_window  # independent baseline; arbitration compares it downstream.
-        drafts, source_groups, caption_normalization = _deduplicated_drafts(drafts)
         coarse_blocks = build_transcript_blocks(
             drafts, target_seconds=300.0, max_chars=9000
         )
@@ -666,8 +542,6 @@ class TypeSafeFirstPassSermonClassifier:
                 coarse_blocks,
                 coarse_answers,
                 cache,
-                source_groups,
-                caption_normalization,
             )
 
         plausible_ranges = [
@@ -703,8 +577,6 @@ class TypeSafeFirstPassSermonClassifier:
                 coarse_blocks + fine_blocks,
                 {**coarse_answers, **fine_answers},
                 cache,
-                source_groups,
-                caption_normalization,
             )
         ranked_components = sorted(
             fine_components,
@@ -955,14 +827,12 @@ class TypeSafeFirstPassSermonClassifier:
                 ),
             },
         }
-        source_selected_indexes = _source_indexes(selected_indexes, source_groups)
-        source_all_timed = set(_source_indexes(all_timed, source_groups))
         candidate = {
             "rank": 1,
             "source": "typesafe_first",
             "start_seconds": selected_start,
             "end_seconds": selected_end,
-            "included_segment_indexes": source_selected_indexes,
+            "included_segment_indexes": selected_indexes,
             "coarse_support_block_ids": [
                 block.block_id
                 for block in coarse_blocks
@@ -989,7 +859,6 @@ class TypeSafeFirstPassSermonClassifier:
         }
         answers = {**coarse_answers, **fine_answers}
         blocks = coarse_blocks + fine_blocks
-        source_mapped_blocks = _source_blocks(blocks, source_groups)
         uncertain_ids = [
             block.block_id
             for block in fine_blocks
@@ -1010,14 +879,12 @@ class TypeSafeFirstPassSermonClassifier:
             model=self.model,
             prompt_version=self.prompt_version,
             confidence_tier=confidence,
-            retained_segment_indexes=source_selected_indexes,
-            excluded_segment_indexes=sorted(
-                source_all_timed - set(source_selected_indexes)
-            ),
+            retained_segment_indexes=selected_indexes,
+            excluded_segment_indexes=sorted(all_timed - set(selected_indexes)),
             uncertain_block_ids=uncertain_ids,
             warnings=warnings,
-            blocks=source_mapped_blocks,
-            classifications=self._classifications(source_mapped_blocks, answers),
+            blocks=blocks,
+            classifications=self._classifications(blocks, answers),
             cache_stats={"hits": cache.hits, "misses": cache.misses},
             search={
                 "schema_version": 1,
@@ -1037,7 +904,7 @@ class TypeSafeFirstPassSermonClassifier:
                     ),
                     "cache_identity": "per_block_question_state",
                     "segment_boundary_refinement": bool(boundary_candidate_count),
-                    "caption_normalization": caption_normalization,
+                    "transcript_input": "persisted_canonical_artifact",
                 },
             },
             confidence_reasons=[
@@ -1063,14 +930,10 @@ class TypeSafeFirstPassSermonClassifier:
         blocks: list[TranscriptBlock],
         answers: Mapping[int, TypeSafeBlockAnswer],
         cache: TypeSafeBlockCache,
-        source_groups: tuple[tuple[int, ...], ...],
-        caption_normalization: Mapping[str, Any],
     ) -> HybridSermonResult:
-        all_timed = _source_indexes(
-            {index for block in blocks for index in block.segment_indexes},
-            source_groups,
+        all_timed = sorted(
+            {index for block in blocks for index in block.segment_indexes}
         )
-        source_mapped_blocks = _source_blocks(blocks, source_groups)
         return HybridSermonResult(
             self.method,
             self.model,
@@ -1080,8 +943,8 @@ class TypeSafeFirstPassSermonClassifier:
             sorted(all_timed),
             [],
             ["TypeSafe found no sufficiently supported principal sermon component"],
-            source_mapped_blocks,
-            self._classifications(source_mapped_blocks, answers),
+            blocks,
+            self._classifications(blocks, answers),
             {"hits": cache.hits, "misses": cache.misses},
             {
                 "schema_version": 1,
@@ -1090,7 +953,7 @@ class TypeSafeFirstPassSermonClassifier:
                 "selected_rank": None,
                 "discovery": {
                     "selected_mode": "typesafe_first_no_candidate",
-                    "caption_normalization": dict(caption_normalization),
+                    "transcript_input": "persisted_canonical_artifact",
                 },
             },
             [{"code": "typesafe_probability_map", "tier": "low"}],

@@ -131,6 +131,12 @@ class TranscriptArtifact:
     raw_text_path: Optional[str]
     audio_path: Optional[str]
     created_at: datetime
+    parent_transcript_artifact_id: Optional[int] = None
+    artifact_kind: str = "source"
+    transformation_version: Optional[str] = None
+    input_content_sha256: Optional[str] = None
+    content_sha256: Optional[str] = None
+    superseded_by_artifact_id: Optional[int] = None
 
 
 @dataclass(slots=True)

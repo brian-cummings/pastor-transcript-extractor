@@ -269,7 +269,7 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual(len(mapped), len(set(mapped)))
         self.assertEqual("segment 0\nsegment 1\nsegment 2", blocks[0].text)
         self.assertEqual("segment 0\nsegment 1\nsegment 2", blocks[0].raw_text)
-        self.assertEqual(NORMALIZER_VERSION, blocks[0].normalization["normalizer_version"])
+        self.assertIsNone(blocks[0].normalization)
 
     def test_untimestamped_segments_are_not_fabricated(self) -> None:
         drafts = [SegmentDraft(None, None, "plain text", None, TranscriptSegmentLabel.SERMON, 0.55)]
