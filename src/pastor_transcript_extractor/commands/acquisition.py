@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 import shutil
 from threading import Lock
@@ -34,6 +35,7 @@ from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionResult,
     CaptionOutcomeCallback,
+    CaptionRequestInterval,
     fetch_captions_service as _fetch_captions_service,
 )
 from pastor_transcript_extractor.workflows.source_discovery import (
@@ -103,7 +105,7 @@ def fetch_captions_service(
     source_id: int | None = None,
     base_dir: Path | None = None,
     video_ids: set[int] | None = None,
-    request_interval_seconds: float = 0.0,
+    request_interval_seconds: CaptionRequestInterval = 0.0,
     cookies_from_browser: str | None = None,
     cookies: Path | None = None,
     outcome_callback: CaptionOutcomeCallback | None = None,
@@ -167,8 +169,9 @@ def _complete_transcription_task(
 
 
 class TranscriptionRenderer:
-    def __init__(self) -> None:
+    def __init__(self, *, coordinated: bool = False) -> None:
         self._terminal = console.is_terminal
+        self._coordinated = coordinated
         self._lock = Lock()
         self._progress: Progress | None = None
         self._task_ids: dict[int, TaskID] = {}
@@ -186,11 +189,16 @@ class TranscriptionRenderer:
         if isinstance(event, TranscriptionMessage):
             console.print(event.text)
         elif isinstance(event, TranscriptionBatchStarted):
-            console.print(
-                f"Transcribing {event.total} video(s) with {event.workers} worker(s)."
-            )
-            if self._terminal:
-                self._start_progress()
+            if self._coordinated:
+                if self._terminal:
+                    self._ensure_progress()
+            else:
+                console.print(
+                    f"Transcribing {event.total} video(s) with "
+                    f"{event.workers} worker(s)."
+                )
+                if self._terminal:
+                    self._start_progress()
         elif isinstance(event, TranscriptionVideoQueued):
             if not self._terminal:
                 console.print(
@@ -208,6 +216,8 @@ class TranscriptionRenderer:
         elif isinstance(event, TranscriptionVideoFinished):
             self._render_finished(event)
         elif isinstance(event, TranscriptionBatchFinished):
+            if self._coordinated:
+                return
             self.close()
             result = event.result
             console.print(
@@ -221,17 +231,23 @@ class TranscriptionRenderer:
 
     def _start_progress(self) -> None:
         self.close()
-        self._progress = Progress(
-            TextColumn("{task.fields[status]:>7}", justify="right"),
-            TextColumn("video #{task.fields[video_id]}"),
-            TextColumn("{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            console=console,
-            transient=False,
-        )
-        self._progress.__enter__()
+        self._ensure_progress()
+
+    def _ensure_progress(self) -> None:
+        with self._lock:
+            if self._progress is not None:
+                return
+            self._progress = Progress(
+                TextColumn("{task.fields[status]:>7}", justify="right"),
+                TextColumn("video #{task.fields[video_id]}"),
+                TextColumn("{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                console=console,
+                transient=False,
+            )
+            self._progress.__enter__()
 
     def _add_task(self, event: TranscriptionTaskSubmitted) -> None:
         with self._lock:
@@ -324,6 +340,25 @@ class TranscriptionRenderer:
             )
 
 
+_coordinated_renderer = TranscriptionRenderer(coordinated=True)
+_coordinated_renderer_lock = Lock()
+_coordinated_renderer_users = 0
+
+
+@contextmanager
+def _use_coordinated_renderer():
+    global _coordinated_renderer_users
+    with _coordinated_renderer_lock:
+        _coordinated_renderer_users += 1
+    try:
+        yield _coordinated_renderer
+    finally:
+        with _coordinated_renderer_lock:
+            _coordinated_renderer_users -= 1
+            if _coordinated_renderer_users == 0:
+                _coordinated_renderer.close()
+
+
 def transcribe_videos_service(
     missing_only: bool = False,
     captions_missing_only: bool = True,
@@ -334,11 +369,15 @@ def transcribe_videos_service(
     video_ids: set[int] | None = None,
     allow_network: bool = True,
     _retry_failed_once: bool = True,
+    _coordinated: bool = False,
+    *,
+    database: Database | None = None,
 ) -> TranscriptionResult:
-    database = get_database(base_dir)
+    if database is None:
+        database = get_database(base_dir)
     app_paths = build_paths(base_dir, remember=True)
-    renderer = TranscriptionRenderer()
-    try:
+
+    def run(renderer: TranscriptionRenderer) -> TranscriptionResult:
         return _transcribe_videos_service(
             missing_only=missing_only,
             captions_missing_only=captions_missing_only,
@@ -356,6 +395,13 @@ def transcribe_videos_service(
             prepare=_prepare_transcription_task,
             complete=_complete_transcription_task,
         )
+
+    if _coordinated:
+        with _use_coordinated_renderer() as renderer:
+            return run(renderer)
+    renderer = TranscriptionRenderer()
+    try:
+        return run(renderer)
     finally:
         renderer.close()
 

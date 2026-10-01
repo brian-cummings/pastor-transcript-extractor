@@ -25,6 +25,11 @@ from pastor_transcript_extractor.workflows.caption_acquisition import (
 from pastor_transcript_extractor.workflows.source_discovery import (
     discover_sources_service,
 )
+from pastor_transcript_extractor.workflows.transcript_coordination import (
+    TranscriptCoordinationDependencies,
+    TranscriptCoordinationRequest,
+    coordinate_transcript_acquisition,
+)
 from pastor_transcript_extractor.workflows.transcription import (
     DEFAULT_PREP_WORKERS,
     DEFAULT_TRANSCRIBE_JOBS,
@@ -290,11 +295,6 @@ def _acquire_source_videos(
         f"Selected {len(selected_video_ids)} video(s) for downstream processing "
         f"from source #{source_id}."
     )
-    dependencies.fetch_captions(
-        source_id=source_id,
-        base_dir=base_dir,
-        video_ids=selected_video_ids,
-    )
     projected_bytes = projected_transcription_disk_bytes(
         database,
         source_id=source_id,
@@ -302,14 +302,25 @@ def _acquire_source_videos(
         video_ids=selected_video_ids,
     )
     coordinator.require_disk_reserve(source_id, projected_bytes)
-    dependencies.transcribe(
-        missing_only=not request.all_audio,
-        captions_missing_only=not request.all_audio,
-        jobs=request.jobs,
-        prep_jobs=request.download_jobs,
-        source_id=source_id,
-        base_dir=base_dir,
-        video_ids=selected_video_ids,
+    coordinate_transcript_acquisition(
+        database,
+        TranscriptCoordinationRequest(
+            video_ids=frozenset(selected_video_ids),
+            caption_video_ids=frozenset(selected_video_ids),
+            missing_only=not request.all_audio,
+            captions_missing_only=not request.all_audio,
+            jobs=request.jobs,
+            prep_jobs=request.download_jobs,
+            base_dir=base_dir,
+            allow_network=True,
+            source_id=source_id,
+        ),
+        progress_callback=report,
+        dependencies=TranscriptCoordinationDependencies(
+            fetch_captions=dependencies.fetch_captions,
+            transcribe=dependencies.transcribe,
+            caption_retry_sleeper=dependencies.sleeper,
+        ),
     )
     return selected_video_ids
 

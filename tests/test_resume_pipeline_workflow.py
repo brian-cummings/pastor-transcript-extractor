@@ -65,6 +65,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
             fetch_scopes.append(scope)
             if len(fetch_scopes) == 1:
                 kwargs["outcome_callback"](11, "unavailable")
+                self.assertTrue(transcription_started.wait(timeout=1))
                 kwargs["outcome_callback"](12, "unavailable")
                 raise CaptionAcquisitionBlockedError("repeatedly rate limited")
             kwargs["outcome_callback"](13, "processed")
@@ -100,8 +101,8 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
         )
 
         self.assertEqual([{11, 12, 13, 14}, {13, 14}], fetch_scopes)
-        self.assertEqual([{11, 12}], transcribed_video_ids)
-        self.assertEqual([300.0], sleeps)
+        self.assertCountEqual([{11}, {12}], transcribed_video_ids)
+        self.assertEqual([900.0], sleeps)
         self.assertFalse(result.captions_blocked)
 
     def test_runs_offline_stages_in_order_and_returns_structured_result(self) -> None:

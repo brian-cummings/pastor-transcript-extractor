@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
+import threading
 import unittest
 
 from pastor_transcript_extractor.config import build_paths, ensure_directories
@@ -44,6 +45,7 @@ class SourceSyncWorkflowTests(unittest.TestCase):
     def test_returns_structured_counts_and_preserves_stage_order(self) -> None:
         calls: list[str] = []
         events: list[str] = []
+        transcription_started = threading.Event()
 
         def discover(**kwargs):
             calls.append("discover")
@@ -55,12 +57,20 @@ class SourceSyncWorkflowTests(unittest.TestCase):
 
         def captions(**kwargs):
             self.assertEqual({self.video.id}, kwargs["video_ids"])
+            interval = kwargs["request_interval_seconds"]
+            self.assertEqual(15.0, interval() if callable(interval) else interval)
             calls.append("captions")
+            kwargs["outcome_callback"](self.video.id, "unavailable")
+            self.assertTrue(transcription_started.wait(timeout=1))
 
         def transcribe(**kwargs):
             self.assertEqual({self.video.id}, kwargs["video_ids"])
             self.assertTrue(kwargs["missing_only"])
+            self.assertEqual(1, kwargs["jobs"])
+            self.assertEqual(2, kwargs["prep_jobs"])
+            self.assertTrue(kwargs["_coordinated"])
             calls.append("transcribe")
+            transcription_started.set()
 
         def extract(*args, **kwargs):
             self.assertEqual({self.video.id}, kwargs["video_ids"])

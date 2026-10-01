@@ -33,10 +33,11 @@ from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.transcription import fetch_captions_video
 
 
-CAPTION_RATE_LIMIT_BACKOFF_SECONDS = (15.0, 30.0, 60.0)
+CAPTION_RATE_LIMIT_BACKOFF_SECONDS: tuple[float, ...] = ()
 CaptionProgressCallback = Callable[[str], None]
 CaptionFetcher = Callable[[Database, AppPaths, ToolConfig, int], object]
 CaptionOutcomeCallback = Callable[[int, "CaptionOutcome"], None]
+CaptionRequestInterval = float | Callable[[], float]
 Clock = Callable[[], float]
 Sleeper = Callable[[float], None]
 CaptionOutcome = Literal[
@@ -56,7 +57,7 @@ class CaptionAcquisitionBlockedError(ValueError):
 class CaptionAcquisitionRequest:
     source_id: int | None = None
     video_ids: frozenset[int] | None = None
-    request_interval_seconds: float = 0.0
+    request_interval_seconds: CaptionRequestInterval = 0.0
     cookies_from_browser: str | None = None
     cookies: Path | None = None
 
@@ -189,7 +190,7 @@ class _CaptionRequestScheduler:
     database: Database
     app_paths: AppPaths
     tool_config: ToolConfig
-    request_interval_seconds: float
+    request_interval_seconds: CaptionRequestInterval
     report: CaptionProgressCallback
     fetch_captions: CaptionFetcher
     monotonic: Clock
@@ -198,8 +199,13 @@ class _CaptionRequestScheduler:
 
     def fetch(self, video: Video) -> object:
         for attempt in range(len(CAPTION_RATE_LIMIT_BACKOFF_SECONDS) + 1):
-            if self.last_request_started is not None and self.request_interval_seconds > 0:
-                remaining = self.request_interval_seconds - (
+            request_interval = (
+                self.request_interval_seconds()
+                if callable(self.request_interval_seconds)
+                else self.request_interval_seconds
+            )
+            if self.last_request_started is not None and request_interval > 0:
+                remaining = request_interval - (
                     self.monotonic() - self.last_request_started
                 )
                 if remaining > 0:
@@ -252,9 +258,7 @@ def _acquire_video(
         return "failed"
     except YtDlpRateLimitError as error:
         raise CaptionAcquisitionBlockedError(
-            "YouTube repeatedly rate limited caption acquisition after retries. "
-            "Wait for the limit to clear and rerun the same command; captions "
-            "already persisted will be skipped."
+            "YouTube rate limited caption acquisition."
         ) from error
     except YtDlpAuthenticationRequiredError as error:
         raise CaptionAcquisitionBlockedError(
@@ -415,7 +419,7 @@ def fetch_captions_service(
     source_id: int | None = None,
     base_dir: Path | None = None,
     video_ids: set[int] | None = None,
-    request_interval_seconds: float = 0.0,
+    request_interval_seconds: CaptionRequestInterval = 0.0,
     cookies_from_browser: str | None = None,
     cookies: Path | None = None,
     *,

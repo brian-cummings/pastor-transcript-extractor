@@ -3432,7 +3432,7 @@ class CliTests(unittest.TestCase):
             updated_video = database.get_video_by_id(video.id)
             self.assertNotEqual(0, result.exit_code)
             self.assertIn("rate limited caption acquisition", result.output)
-            self.assertEqual(4, fetch_captions.call_count)
+            self.assertEqual(1, fetch_captions.call_count)
             self.assertEqual(VideoStatus.DISCOVERED, updated_video.status)
             self.assertIsNone(updated_video.failure_reason)
 

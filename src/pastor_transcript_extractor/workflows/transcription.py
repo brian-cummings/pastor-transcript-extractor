@@ -638,6 +638,7 @@ def transcribe_videos_service(
     video_ids: set[int] | None = None,
     allow_network: bool = True,
     _retry_failed_once: bool = True,
+    _coordinated: bool = False,
     *,
     event_callback: TranscriptionEventCallback | None = None,
     database: Database | None = None,
@@ -646,6 +647,7 @@ def transcribe_videos_service(
     prepare: PrepareTranscription = prepare_transcription_input,
     complete: CompleteTranscription = complete_transcription_video,
 ) -> TranscriptionResult:
+    del _coordinated
     if app_paths is None:
         app_paths = build_paths(base_dir, remember=True)
     ensure_directories(app_paths)
