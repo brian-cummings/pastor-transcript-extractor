@@ -23,6 +23,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockAnswer,
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
+    TypeSafeRecordingGateAnswer,
     _boundary_candidates,
     _candidate_components,
     _edge_neighborhood,
@@ -38,9 +39,25 @@ class FakeBlockClient:
     def __init__(self) -> None:
         self.calls = 0
         self.block_ids: list[list[int]] = []
+        self.gate_states: list[dict] = []
+        self.recording_contexts: list[dict] = []
 
-    def assess_blocks(self, title, blocks):
-        del title
+    def assess_recording_gate(self, state):
+        self.gate_states.append(dict(state))
+        self.calls += 1
+        probabilities = {
+            "target_worship_service_or_sermon": 0.97,
+            "unclear": 0.03,
+        }
+        return TypeSafeRecordingGateAnswer(
+            "target_worship_service_or_sermon",
+            probabilities,
+            0.95,
+            "jev-1.13.0",
+        )
+
+    def assess_blocks(self, recording_context, blocks):
+        self.recording_contexts.append(dict(recording_context))
         self.calls += 1
         self.block_ids.append([block.block_id for block in blocks])
         answers = {}
@@ -129,6 +146,10 @@ class TypeSafeFirstPassTests(unittest.TestCase):
                 drafts(),
                 rule_window(),
                 title="Worship Service",
+                recording_metadata={
+                    "title": "Worship Service",
+                    "description": "Weekly divine worship livestream",
+                },
                 cache_dir=Path(tmp),
             )
 
@@ -143,6 +164,14 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             candidate["boundary_recovery"]["start"]["transition_strength"],
             0.72,
         )
+        self.assertEqual(
+            "Weekly divine worship livestream",
+            client.gate_states[0]["metadata"]["description"],
+        )
+        context = client.recording_contexts[0]
+        self.assertTrue(context["deterministic_detection"]["window_found"])
+        self.assertEqual(300.0, context["deterministic_detection"]["duration_seconds"])
+        self.assertTrue(context["recording_outline"])
 
     def test_item_cache_prevents_duplicate_jev_requests(self) -> None:
         client = FakeBlockClient()
@@ -172,13 +201,70 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
-            cache.assess(client, "Worship Service", blocks[:2])
+            context = {"metadata": {"title": "Worship Service"}}
+            cache.assess(client, context, blocks[:2])
             first_call_count = client.calls
-            cache.assess(client, "Worship Service", blocks)
+            cache.assess(client, context, blocks)
 
         self.assertEqual(first_call_count + 1, client.calls)
         self.assertEqual(2, cache.hits)
         self.assertEqual(len(blocks), cache.misses)
+
+    def test_recording_gate_bypasses_localization_and_is_cached(self) -> None:
+        class SabbathSchoolClient(FakeBlockClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.block_calls = 0
+
+            def assess_recording_gate(self, state):
+                del state
+                self.calls += 1
+                return TypeSafeRecordingGateAnswer(
+                    "religious_education_or_bible_class",
+                    {
+                        "religious_education_or_bible_class": 0.97,
+                        "target_worship_service_or_sermon": 0.02,
+                        "unclear": 0.01,
+                    },
+                    0.95,
+                    "jev-1.13.0",
+                )
+
+            def assess_blocks(self, recording_context, blocks):
+                self.block_calls += 1
+                return super().assess_blocks(recording_context, blocks)
+
+        client = SabbathSchoolClient()
+        classifier = TypeSafeFirstPassSermonClassifier(
+            model="jev-1.13.0",
+            client=client,
+        )
+        metadata = {
+            "title": "Sabbath School Lesson",
+            "description": "Quarterly lesson study",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            first = classifier.classify_sermon(
+                drafts(),
+                rule_window(),
+                title=metadata["title"],
+                recording_metadata=metadata,
+                cache_dir=Path(tmp),
+            )
+            second = classifier.classify_sermon(
+                drafts(),
+                rule_window(),
+                title=metadata["title"],
+                recording_metadata=metadata,
+                cache_dir=Path(tmp),
+            )
+
+        self.assertEqual(1, client.calls)
+        self.assertEqual(0, client.block_calls)
+        self.assertEqual([], first.retained_segment_indexes)
+        gate = first.search["discovery"]["recording_gate"]
+        self.assertEqual("bypass_non_target", gate["route"])
+        self.assertEqual(0, second.cache_stats["misses"])
 
     def test_refines_weak_end_inside_adjacent_mixed_block_and_caches_it(self) -> None:
         class MixedEdgeClient(FakeBlockClient):

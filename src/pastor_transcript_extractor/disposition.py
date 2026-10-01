@@ -31,6 +31,15 @@ def build_final_disposition(
 ) -> dict[str, Any]:
     """Derive the user-facing outcome without discarding diagnostic candidates."""
     classification_dict = classification if isinstance(classification, dict) else {}
+    search = classification_dict.get("search")
+    discovery = search.get("discovery") if isinstance(search, dict) else None
+    recording_gate = (
+        discovery.get("recording_gate") if isinstance(discovery, dict) else None
+    )
+    recording_gate_bypass = (
+        isinstance(recording_gate, dict)
+        and recording_gate.get("route") == "bypass_non_target"
+    )
     confidence = str(classification_dict.get("confidence_tier", "unknown"))
     retained = classification_dict.get("retained_segment_indexes")
     diagnostic_candidate_present = isinstance(retained, list) and bool(retained)
@@ -67,6 +76,11 @@ def build_final_disposition(
     if identity_boundary_review_required:
         status = REVIEW_REQUIRED
         reasons = ["identity_boundary_review_required"]
+    elif recording_gate_bypass:
+        status = REJECTED_NO_SERMON
+        reasons = [
+            f"recording_gate_{recording_gate.get('choice') or 'non_target'}"
+        ]
     elif ambiguous_speakers:
         status = REJECTED_AMBIGUOUS_SPEAKERS
         reasons = ["multiple_sustained_speakers_cannot_be_attributed_to_target_pastor"]
@@ -129,4 +143,10 @@ def build_final_disposition(
         ),
         "unresolved_material_edge_disagreement": unresolved_edge_disagreement,
         "identity_boundary_review_required": identity_boundary_review_required,
+        "recording_gate_route": (
+            recording_gate.get("route") if isinstance(recording_gate, dict) else None
+        ),
+        "recording_gate_choice": (
+            recording_gate.get("choice") if isinstance(recording_gate, dict) else None
+        ),
     }

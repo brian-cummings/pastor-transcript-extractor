@@ -21,7 +21,7 @@ from pastor_transcript_extractor.local_llm import LocalLlmClient
 from pastor_transcript_extractor.media_artifacts import (
     get_registered_normalized_media_artifact,
 )
-from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, VideoStatus
+from pastor_transcript_extractor.models import ExtractionResult, TranscriptArtifact, TranscriptSegment, TranscriptSegmentLabel, TranscriptSourceKind, Video, VideoStatus
 from pastor_transcript_extractor.recording_verifier import (
     ARTIFACT_SCHEMA_VERSION as RECORDING_VERIFIER_SCHEMA_VERSION,
     OllamaRecordingVerifierRunner,
@@ -237,9 +237,38 @@ def _classify_with_fallback(
     context_size: int = 4096,
     progress: Any | None = None,
     video_title: str | None = None,
+    recording_metadata: dict[str, Any] | None = None,
     semantic_classifier: Any | None = None,
     manual_override_present: bool = False,
 ) -> tuple[dict[str, Any], HybridSermonResult | None]:
+    rule_candidate = (
+        {
+            "rank": 1,
+            "source": "rule_fallback",
+            "start_seconds": detected_window.start_seconds,
+            "end_seconds": detected_window.end_seconds,
+            "included_segment_indexes": list(
+                detected_window.included_segment_indexes
+            ),
+            "score": detected_window.confidence,
+            "score_components": {
+                "deterministic_confidence": detected_window.confidence,
+                "source_note": (
+                    "selected deterministic fallback retained for semantic "
+                    "abstention or inference failure"
+                ),
+            },
+            "coarse_support_block_ids": [],
+            "fine_support_block_ids": [],
+            "refinement_reasons": [
+                "deterministic detector produced a valid sermon window"
+            ],
+        }
+        if isinstance(detected_window.start_seconds, (int, float))
+        and isinstance(detected_window.end_seconds, (int, float))
+        and float(detected_window.end_seconds) > float(detected_window.start_seconds)
+        else None
+    )
     classification: dict[str, Any] = {
         "schema_version": 1,
         "method": "rule_based_v1",
@@ -256,8 +285,8 @@ def _classify_with_fallback(
         "search": {
             "schema_version": 1,
             "algorithm_version": "rule_based_v1",
-            "candidates": [],
-            "selected_rank": None,
+            "candidates": [rule_candidate] if rule_candidate is not None else [],
+            "selected_rank": 1 if rule_candidate is not None else None,
             "rule_baseline": {
                 "start_seconds": detected_window.start_seconds,
                 "end_seconds": detected_window.end_seconds,
@@ -283,8 +312,27 @@ def _classify_with_fallback(
                     detected_window,
                     title=video_title or "",
                     cache_dir=(cache_dir or Path(".typesafe-inference-cache")),
+                    recording_metadata=recording_metadata,
                     progress=progress,
                 )
+                discovery = (
+                    typesafe_result.search.get("discovery")
+                    if isinstance(typesafe_result, HybridSermonResult)
+                    and isinstance(typesafe_result.search, dict)
+                    and isinstance(typesafe_result.search.get("discovery"), dict)
+                    else {}
+                )
+                recording_gate = discovery.get("recording_gate")
+                gate_bypassed = (
+                    isinstance(recording_gate, dict)
+                    and recording_gate.get("route") == "bypass_non_target"
+                )
+                if gate_bypassed and isinstance(typesafe_result, HybridSermonResult):
+                    result = typesafe_result.to_dict()
+                    result["window_arbitration_policy_version"] = (
+                        WINDOW_ARBITRATION_POLICY_VERSION
+                    )
+                    return result, typesafe_result
                 if (
                     isinstance(typesafe_result, HybridSermonResult)
                     and typesafe_result.retained_segment_indexes
@@ -363,6 +411,14 @@ def _classify_with_fallback(
             raise
         classification["method"] = "rule_based_fallback"
         classification["confidence_tier"] = "low"
+        if typesafe_warning is not None:
+            classification["warnings"].append(typesafe_warning)
+            discovery = classification.setdefault("search", {}).setdefault(
+                "discovery", {}
+            )
+            discovery["typesafe_first_fallback"] = typesafe_warning
+            if typesafe_attempt is not None:
+                discovery["typesafe_first_attempt"] = typesafe_attempt
         classification["warnings"].append(f"local LLM classification failed: {error}")
         return classification, None
     result = hybrid_result.to_dict()
@@ -1499,6 +1555,7 @@ def reclassify_video(
         cache_dir=inference_cache_dir or video_paths.extracted / "inference-cache",
         context_size=context_size,
         video_title=video.title,
+        recording_metadata=_recording_metadata_state(database, video),
         semantic_classifier=verifier if typesafe_first else None,
         manual_override_present=override is not None,
     )
@@ -1639,6 +1696,57 @@ def _read_text(path: Path | None) -> str:
     if path is None or not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _recording_metadata_state(
+    database: Database,
+    video: Video,
+) -> dict[str, Any]:
+    """Build bounded, persisted metadata state for the TypeSafe recording gate."""
+    published_at = getattr(video, "published_at", None)
+    state: dict[str, Any] = {
+        "title": video.title,
+        "channel_name": getattr(video, "channel_name", None),
+        "published_at": (
+            published_at.isoformat() if published_at is not None else None
+        ),
+        "duration_seconds": getattr(video, "duration_seconds", None),
+        "source_url": getattr(video, "url", None),
+    }
+    get_metadata = getattr(database, "get_latest_metadata_artifact_for_video", None)
+    artifact = get_metadata(video.id) if callable(get_metadata) else None
+    if artifact is None:
+        return state
+    payload = _load_json(Path(artifact.artifact_path))
+    raw = payload.get("raw_metadata") if isinstance(payload, dict) else None
+    if not isinstance(raw, dict):
+        return state
+
+    for key in ("description", "uploader", "channel", "live_status"):
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            state[key] = value.strip()[:4000]
+    for key, limit in (("categories", 10), ("tags", 30)):
+        values = raw.get(key)
+        if isinstance(values, list):
+            state[key] = [
+                str(value).strip()[:240]
+                for value in values[:limit]
+                if str(value).strip()
+            ]
+    chapters = raw.get("chapters")
+    if isinstance(chapters, list):
+        state["chapters"] = [
+            {
+                "title": str(chapter.get("title") or "")[:240],
+                "start_time": chapter.get("start_time"),
+                "end_time": chapter.get("end_time"),
+            }
+            for chapter in chapters[:30]
+            if isinstance(chapter, dict) and chapter.get("title")
+        ]
+    state["metadata_artifact_sha256"] = artifact.content_sha256
+    return state
 
 
 def _load_window_override(path: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -1846,6 +1954,7 @@ def extract_video(
         context_size=context_size,
         progress=progress,
         video_title=video.title,
+        recording_metadata=_recording_metadata_state(database, video),
         semantic_classifier=(
             verifier
             if classifier == "typesafe"
