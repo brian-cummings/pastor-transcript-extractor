@@ -40,6 +40,30 @@ class FinalDispositionTests(unittest.TestCase):
 
         self.assertEqual("rejected_no_sermon", result["status"])
 
+    def test_recording_gate_bypass_rejects_even_when_rules_found_a_window(self) -> None:
+        result = build_final_disposition(
+            {
+                "confidence_tier": "high",
+                "retained_segment_indexes": [],
+                "search": {
+                    "discovery": {
+                        "recording_gate": {
+                            "route": "bypass_non_target",
+                            "choice": "religious_education_or_bible_class",
+                        }
+                    }
+                },
+            },
+            {"start_seconds": 60.0, "end_seconds": 600.0, "source": "detected"},
+        )
+
+        self.assertEqual("rejected_no_sermon", result["status"])
+        self.assertEqual(
+            ["recording_gate_religious_education_or_bible_class"],
+            result["reason_codes"],
+        )
+        self.assertEqual("bypass_non_target", result["recording_gate_route"])
+
     def test_manual_override_accepts_despite_guest_signal(self) -> None:
         result = build_final_disposition(
             {"confidence_tier": "low", "retained_segment_indexes": []},

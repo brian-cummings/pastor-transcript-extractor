@@ -1789,6 +1789,58 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual("low", classification["confidence_tier"])
         self.assertIn("offline", classification["warnings"][0])
 
+    def test_typesafe_and_ollama_failure_preserve_selected_rule_candidate(self) -> None:
+        typesafe_result = HybridSermonResult(
+            method="typesafe_first_v13_recording_gate",
+            model="jev-1.13.0",
+            prompt_version="typesafe-test-v2",
+            confidence_tier="low",
+            retained_segment_indexes=[],
+            excluded_segment_indexes=[0],
+            uncertain_block_ids=[],
+            warnings=["TypeSafe found no supported component"],
+            blocks=[],
+            classifications=[],
+            search={
+                "candidates": [],
+                "selected_rank": None,
+                "discovery": {"selected_mode": "typesafe_first_no_candidate"},
+            },
+        )
+        semantic_classifier = MagicMock()
+        semantic_classifier.classify_sermon.return_value = typesafe_result
+        rule_window = SermonWindowResult(
+            120.0,
+            720.0,
+            0.8,
+            ["sustained sermon cues"],
+            "rule_based_v1",
+            [0],
+            [],
+            False,
+            [],
+        )
+
+        classification, hybrid = _classify_with_fallback(
+            [draft(120.0, 720.0, "sustained sermon")],
+            rule_window,
+            classifier="typesafe",
+            llm_client=FailingLlmClient(),
+            prompt_version="test-v1",
+            semantic_classifier=semantic_classifier,
+        )
+
+        self.assertIsNone(hybrid)
+        self.assertEqual(1, classification["search"]["selected_rank"])
+        candidate = classification["search"]["candidates"][0]
+        self.assertEqual("rule_fallback", candidate["source"])
+        self.assertEqual((120.0, 720.0), (candidate["start_seconds"], candidate["end_seconds"]))
+        self.assertTrue(
+            _recording_verification_required(
+                {"status": "accepted_sermon"}, classification
+            )
+        )
+
     def test_typesafe_abstention_is_audited_and_forces_recording_verification(self) -> None:
         typesafe_result = HybridSermonResult(
             method="typesafe_first_v11",

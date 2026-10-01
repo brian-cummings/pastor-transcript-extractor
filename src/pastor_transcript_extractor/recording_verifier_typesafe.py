@@ -27,6 +27,8 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBoundarySelection,
     TypeSafeBlockAnswer,
     TypeSafeFirstPassSermonClassifier,
+    TypeSafeRecordingGateAnswer,
+    recording_gate_question,
     role_question,
 )
 from pastor_transcript_extractor.sermon_classification import HybridSermonResult, TranscriptBlock
@@ -237,17 +239,46 @@ class TypeSafeSdkAdapter:
         usage = getattr(result, "usage", None)
         return TypeSafeAnswers(str(answer.choice), {str(k): float(v) for k, v in probabilities.items()}, getattr(answer, "confidence", None), str(getattr(result, "model", self.model)), getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None))
 
+    def assess_recording_gate(
+        self,
+        state: Mapping[str, Any],
+    ) -> TypeSafeRecordingGateAnswer:
+        question = recording_gate_question()
+        result = self._client.system_one(
+            dict(state),
+            {
+                "recording_type": self._Choice(
+                    instructions=question["instructions"],
+                    criteria=question["criteria"],
+                )
+            },
+            model=self.model,
+            timeout=self.timeout_seconds,
+        )
+        answer = result.choices["recording_type"]
+        probabilities = dict(
+            getattr(answer, "probabilities", getattr(answer, "distribution", {}))
+        )
+        return TypeSafeRecordingGateAnswer(
+            choice=str(answer.choice),
+            probabilities={str(key): float(value) for key, value in probabilities.items()},
+            confidence=getattr(answer, "confidence", None),
+            resolved_model_id=str(getattr(result, "model", self.model)),
+        )
+
     def assess_blocks(
         self,
-        title: str,
+        recording_context: Mapping[str, Any],
         blocks: list[TranscriptBlock],
     ) -> Mapping[int, TypeSafeBlockAnswer]:
         question = role_question()
         state = {
-            "recording_title": title,
-            "blocks": [
+            "recording": dict(recording_context),
+            "target_blocks": [
                 {
                     "block_id": block.block_id,
+                    "start_seconds": block.start_seconds,
+                    "end_seconds": block.end_seconds,
                     "text": block.text,
                 }
                 for block in blocks
@@ -257,7 +288,10 @@ class TypeSafeSdkAdapter:
             f"block_{position}": self._Choice(
                 instructions={
                     **question["instructions"],
-                    "target": f"Classify only `blocks[{position}].text`.",
+                    "target": (
+                        f"Classify `target_blocks[{position}].text` in the context "
+                        "of `recording`, without treating metadata as conclusive."
+                    ),
                 },
                 criteria=question["criteria"],
             )
@@ -305,13 +339,13 @@ class TypeSafeSdkAdapter:
 
     def select_boundary_candidate(
         self,
-        title: str,
+        recording_context: Mapping[str, Any],
         edge: str,
         candidates: list[TypeSafeBoundaryCandidate],
     ) -> TypeSafeBoundarySelection:
         expected_order = self._boundary_order(edge)
         state = {
-            "recording_title": title,
+            "recording": dict(recording_context),
             "edge": edge,
         }
         criteria = {
@@ -363,7 +397,7 @@ class TypeSafeSdkAdapter:
 
     def validate_boundary_candidate(
         self,
-        title: str,
+        recording_context: Mapping[str, Any],
         edge: str,
         candidate: TypeSafeBoundaryCandidate,
     ) -> TypeSafeBoundaryAnswer:
@@ -400,7 +434,7 @@ class TypeSafeSdkAdapter:
             )
         result = self._client.system_one(
             {
-                "recording_title": title,
+                "recording": dict(recording_context),
                 "edge": edge,
                 "before_boundary": candidate.before_text,
                 "after_boundary": candidate.after_text,
@@ -488,6 +522,7 @@ class TypeSafeProductionRecordingVerifier:
         *,
         title: str,
         cache_dir: Path,
+        recording_metadata: Mapping[str, Any] | None = None,
         progress: Any | None = None,
     ) -> HybridSermonResult | None:
         """Run the cached Jev-first locator when the client supports block judgments."""
@@ -498,6 +533,7 @@ class TypeSafeProductionRecordingVerifier:
             rule_window,
             title=title,
             cache_dir=cache_dir,
+            recording_metadata=recording_metadata,
             progress=progress,
         )
 
