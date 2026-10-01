@@ -8,17 +8,13 @@ from pathlib import Path
 import re
 from typing import Any
 
-from pastor_transcript_extractor.caption_normalization import (
-    NORMALIZER_VERSION,
-    normalize_caption_fragments,
-)
 from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmResponse
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
 CONFIDENCE_POLICY_VERSION = "semantic_primary_rule_guard_v3"
-BLOCK_BUILDER_VERSION = f"timestamp-blocks-v2+{NORMALIZER_VERSION}"
+BLOCK_BUILDER_VERSION = "timestamp-blocks-v3-canonical-transcript"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
 FINE_COMPONENT_VERSION = "objective-service-guards+segment-precision-v9"
 SEARCH_ALGORITHM_VERSION = "adaptive_llm_v8"
@@ -252,19 +248,16 @@ def build_transcript_blocks(
         nonlocal indexes, texts, start, end
         if indexes and start is not None and end is not None:
             raw_text = "\n".join(texts)
-            normalized = normalize_caption_fragments(zip(indexes, texts, strict=True))
             blocks.append(TranscriptBlock(
-                len(blocks), list(indexes), start, end, normalized.text,
-                raw_text, normalized.diagnostics,
+                len(blocks), list(indexes), start, end, raw_text,
+                raw_text, None,
             ))
         indexes, texts, start, end = [], [], None, None
 
     for index, draft in enumerate(drafts):
         if draft.start_seconds is None or draft.end_seconds is None or draft.end_seconds <= draft.start_seconds:
             continue
-        prospective = normalize_caption_fragments(
-            zip([*indexes, index], [*texts, draft.text], strict=True)
-        ).text
+        prospective = "\n".join([*texts, draft.text])
         if start is not None and (
             (draft.end_seconds - start) > target_seconds or len(prospective) > max_chars
         ):
