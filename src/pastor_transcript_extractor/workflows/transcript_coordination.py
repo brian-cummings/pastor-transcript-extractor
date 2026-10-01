@@ -17,32 +17,45 @@ TranscriptCoordinationProgress = Callable[[str], None]
 CAPTION_BACKGROUND_RETRY_SECONDS = (900.0, 1800.0, 3600.0)
 CAPTION_REQUEST_INTERVAL_SECONDS = 15.0
 CAPTION_MAX_REQUEST_INTERVAL_SECONDS = 900.0
-CAPTION_REQUESTS_PER_TRANSCRIPTION = 2.0
+CAPTION_RATE_LIMIT_MULTIPLIER = 1.25
+CAPTION_SUCCESS_PROBE_REQUESTS = 20
+CAPTION_SUCCESS_PROBE_MULTIPLIER = 0.90
 WHISPER_REFILL_INTERVAL_SECONDS = 30.0
 WHISPER_QUEUE_MULTIPLIER = 2
 
 
-def _adaptive_caption_request_interval(
-    *,
-    configured_seconds: float,
-    elapsed_seconds: float,
-    completed_transcriptions: int,
-) -> float:
-    adaptive_seconds = CAPTION_REQUEST_INTERVAL_SECONDS
-    if completed_transcriptions > 0:
-        aggregate_completion_seconds = (
-            max(0.0, elapsed_seconds) / completed_transcriptions
+@dataclass(slots=True)
+class _CaptionRateController:
+    configured_seconds: float
+    interval_seconds: float = 0.0
+    successful_requests: int = 0
+
+    def __post_init__(self) -> None:
+        self.interval_seconds = max(
+            CAPTION_REQUEST_INTERVAL_SECONDS,
+            self.configured_seconds,
         )
-        adaptive_seconds = (
-            aggregate_completion_seconds / CAPTION_REQUESTS_PER_TRANSCRIPTION
+
+    def current_interval(self) -> float:
+        return self.interval_seconds
+
+    def record_result(self, rate_limited: bool) -> None:
+        if rate_limited:
+            self.interval_seconds = min(
+                CAPTION_MAX_REQUEST_INTERVAL_SECONDS,
+                self.interval_seconds * CAPTION_RATE_LIMIT_MULTIPLIER,
+            )
+            self.successful_requests = 0
+            return
+        self.successful_requests += 1
+        if self.successful_requests < CAPTION_SUCCESS_PROBE_REQUESTS:
+            return
+        self.interval_seconds = max(
+            CAPTION_REQUEST_INTERVAL_SECONDS,
+            self.configured_seconds,
+            self.interval_seconds * CAPTION_SUCCESS_PROBE_MULTIPLIER,
         )
-    return max(
-        configured_seconds,
-        min(
-            CAPTION_MAX_REQUEST_INTERVAL_SECONDS,
-            max(CAPTION_REQUEST_INTERVAL_SECONDS, adaptive_seconds),
-        ),
-    )
+        self.successful_requests = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,16 +151,9 @@ def coordinate_transcript_acquisition(
     queued_for_transcription: set[int] = set()
     ready_for_transcription: set[int] = set()
     transcription_started = False
-    coordination_started_at = time.monotonic()
-
-    def caption_request_interval() -> float:
-        return _adaptive_caption_request_interval(
-            configured_seconds=request.caption_request_interval_seconds,
-            elapsed_seconds=time.monotonic() - coordination_started_at,
-            completed_transcriptions=sum(
-                1 for future, _batch in futures if future.done()
-            ),
-        )
+    caption_rate = _CaptionRateController(
+        configured_seconds=request.caption_request_interval_seconds
+    )
 
     def dispatch_transcription(
         executor: ThreadPoolExecutor | None,
@@ -190,13 +196,16 @@ def coordinate_transcript_acquisition(
 
     def refill_whisper_from_caption_candidates(
         pending_caption_ids: set[int],
+        *,
+        excluded_video_ids: set[int] | None = None,
     ) -> set[int]:
         active_or_queued = sum(
             len(batch) for future, batch in futures if not future.done()
         )
         target_queue_depth = request.jobs * WHISPER_QUEUE_MULTIPLIER
         available_queue_slots = max(0, target_queue_depth - active_or_queued)
-        candidates = set(sorted(pending_caption_ids)[:available_queue_slots])
+        candidates = pending_caption_ids - (excluded_video_ids or set())
+        candidates = set(sorted(candidates)[:available_queue_slots])
         dispatched = dispatch_transcription(executor, candidates)
         pending_caption_ids.difference_update(dispatched)
         return dispatched
@@ -226,12 +235,13 @@ def coordinate_transcript_acquisition(
         if pending:
             report(
                 "Caption requests start 15 seconds apart and will slow with "
-                "observed Whisper throughput."
+                "429 feedback while periodically probing faster safe rates."
             )
         resolved: set[int] = set()
 
         def caption_outcome(video_id: int, outcome: str) -> None:
             resolved.add(video_id)
+            pending.discard(video_id)
             if outcome == "unavailable":
                 ready_for_transcription.add(video_id)
                 dispatched = dispatch_transcription(
@@ -240,14 +250,32 @@ def coordinate_transcript_acquisition(
                 )
                 ready_for_transcription.difference_update(dispatched)
 
+        def caption_candidate_is_pending(video_id: int) -> bool:
+            return video_id in pending
+
+        def caption_pacing(video_id: int) -> None:
+            refilled = refill_whisper_from_caption_candidates(
+                pending,
+                excluded_video_ids={video_id},
+            )
+            if refilled:
+                report(
+                    "Caption pacing refilled "
+                    f"{len(refilled)} Whisper queue slot(s); remaining caption "
+                    f"candidates={len(pending)}."
+                )
+
         retry_index = 0
         while pending:
             try:
                 dependencies.fetch_captions(
                     base_dir=request.base_dir,
                     video_ids=set(pending),
-                    request_interval_seconds=caption_request_interval,
+                    request_interval_seconds=caption_rate.current_interval,
                     outcome_callback=caption_outcome,
+                    candidate_filter=caption_candidate_is_pending,
+                    pacing_callback=caption_pacing,
+                    request_result_callback=caption_rate.record_result,
                     **caption_options,
                 )
                 ready_for_transcription.update(pending - resolved)

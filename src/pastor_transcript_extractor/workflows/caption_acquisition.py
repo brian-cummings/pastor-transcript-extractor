@@ -38,6 +38,9 @@ CaptionProgressCallback = Callable[[str], None]
 CaptionFetcher = Callable[[Database, AppPaths, ToolConfig, int], object]
 CaptionOutcomeCallback = Callable[[int, "CaptionOutcome"], None]
 CaptionRequestInterval = float | Callable[[], float]
+CaptionCandidateFilter = Callable[[int], bool]
+CaptionPacingCallback = Callable[[int], None]
+CaptionRequestResultCallback = Callable[[bool], None]
 Clock = Callable[[], float]
 Sleeper = Callable[[float], None]
 CaptionOutcome = Literal[
@@ -195,10 +198,14 @@ class _CaptionRequestScheduler:
     fetch_captions: CaptionFetcher
     monotonic: Clock
     sleeper: Sleeper
+    pacing_callback: CaptionPacingCallback | None = None
+    request_result_callback: CaptionRequestResultCallback | None = None
     last_request_started: float | None = None
 
     def fetch(self, video: Video) -> object:
         for attempt in range(len(CAPTION_RATE_LIMIT_BACKOFF_SECONDS) + 1):
+            if self.pacing_callback is not None:
+                self.pacing_callback(video.id)
             request_interval = (
                 self.request_interval_seconds()
                 if callable(self.request_interval_seconds)
@@ -208,17 +215,23 @@ class _CaptionRequestScheduler:
                 remaining = request_interval - (
                     self.monotonic() - self.last_request_started
                 )
-                if remaining > 0:
-                    self.sleeper(remaining)
+                while remaining > 0:
+                    interval = min(30.0, remaining)
+                    self.sleeper(interval)
+                    remaining -= interval
+                    if self.pacing_callback is not None:
+                        self.pacing_callback(video.id)
             self.last_request_started = self.monotonic()
             try:
-                return self.fetch_captions(
+                result = self.fetch_captions(
                     self.database,
                     self.app_paths,
                     self.tool_config,
                     video.id,
                 )
             except YtDlpRateLimitError:
+                if self.request_result_callback is not None:
+                    self.request_result_callback(True)
                 if attempt >= len(CAPTION_RATE_LIMIT_BACKOFF_SECONDS):
                     raise
                 backoff = CAPTION_RATE_LIMIT_BACKOFF_SECONDS[attempt]
@@ -227,6 +240,14 @@ class _CaptionRequestScheduler:
                     f"retrying in {backoff:g}s."
                 )
                 self.sleeper(backoff)
+            except Exception:
+                if self.request_result_callback is not None:
+                    self.request_result_callback(False)
+                raise
+            else:
+                if self.request_result_callback is not None:
+                    self.request_result_callback(False)
+                return result
         raise AssertionError("unreachable caption retry state")
 
 
@@ -294,6 +315,7 @@ def _run_acquisition_queue(
     scheduler: _CaptionRequestScheduler,
     report: CaptionProgressCallback,
     outcome_callback: CaptionOutcomeCallback | None,
+    candidate_filter: CaptionCandidateFilter | None,
 ) -> _CaptionCounts:
     counts = _CaptionCounts(skipped=initial_skipped)
     attempts: dict[int, int] = {}
@@ -306,6 +328,9 @@ def _run_acquisition_queue(
         ):
             continue
         if _has_acquired_transcript(database, video.id):
+            counts.skipped += 1
+            continue
+        if candidate_filter is not None and not candidate_filter(video.id):
             counts.skipped += 1
             continue
         if database.caption_is_known_unavailable(video.id):
@@ -347,6 +372,9 @@ def acquire_captions(
     monotonic: Clock = time.monotonic,
     sleeper: Sleeper = time.sleep,
     outcome_callback: CaptionOutcomeCallback | None = None,
+    candidate_filter: CaptionCandidateFilter | None = None,
+    pacing_callback: CaptionPacingCallback | None = None,
+    request_result_callback: CaptionRequestResultCallback | None = None,
 ) -> CaptionAcquisitionResult:
     """Acquire captions in sequence, retrying transient per-video failures once."""
 
@@ -385,6 +413,8 @@ def acquire_captions(
         fetch_captions=fetch_captions,
         monotonic=monotonic,
         sleeper=sleeper,
+        pacing_callback=pacing_callback,
+        request_result_callback=request_result_callback,
     )
     counts = _run_acquisition_queue(
         database,
@@ -395,6 +425,7 @@ def acquire_captions(
         scheduler=scheduler,
         report=report,
         outcome_callback=outcome_callback,
+        candidate_filter=candidate_filter,
     )
 
     report(
@@ -425,6 +456,9 @@ def fetch_captions_service(
     *,
     progress_callback: CaptionProgressCallback | None = None,
     outcome_callback: CaptionOutcomeCallback | None = None,
+    candidate_filter: CaptionCandidateFilter | None = None,
+    pacing_callback: CaptionPacingCallback | None = None,
+    request_result_callback: CaptionRequestResultCallback | None = None,
     fetch_captions: CaptionFetcher = fetch_captions_video,
     monotonic: Clock = time.monotonic,
     sleeper: Sleeper = time.sleep,
@@ -460,6 +494,9 @@ def fetch_captions_service(
         ),
         progress_callback=progress_callback,
         outcome_callback=outcome_callback,
+        candidate_filter=candidate_filter,
+        pacing_callback=pacing_callback,
+        request_result_callback=request_result_callback,
         fetch_captions=fetch_captions,
         monotonic=monotonic,
         sleeper=sleeper,

@@ -6,16 +6,38 @@ import tempfile
 import unittest
 
 from pastor_transcript_extractor.config import ToolConfig, build_paths, ensure_directories
-from pastor_transcript_extractor.media import NoCaptionsAvailableError
+from pastor_transcript_extractor.media import (
+    NoCaptionsAvailableError,
+    YtDlpRateLimitError,
+)
 from pastor_transcript_extractor.models import SourceType, TranscriptSourceKind
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
+    CaptionAcquisitionBlockedError,
     CaptionAcquisitionRequest,
     acquire_captions,
 )
 
 
 class CaptionAcquisitionWorkflowTests(unittest.TestCase):
+    def test_reports_rate_limit_feedback_to_shared_pacing_policy(self) -> None:
+        video = self.add_video("ratelimit01", duration_seconds=1800)
+        feedback: list[bool] = []
+
+        with self.assertRaises(CaptionAcquisitionBlockedError):
+            acquire_captions(
+                self.database,
+                self.paths,
+                self.tools,
+                CaptionAcquisitionRequest(video_ids=frozenset({video.id})),
+                fetch_captions=lambda *_args: (_ for _ in ()).throw(
+                    YtDlpRateLimitError("429")
+                ),
+                request_result_callback=feedback.append,
+            )
+
+        self.assertEqual([True], feedback)
+
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.paths = build_paths(Path(self.tempdir.name))
@@ -133,6 +155,29 @@ class CaptionAcquisitionWorkflowTests(unittest.TestCase):
 
         self.assertEqual([missing.id], fetched_video_ids)
         self.assertEqual(1, result.skipped_count)
+
+    def test_skips_candidates_released_to_live_transcription(self) -> None:
+        released = self.add_video("released001", duration_seconds=1800)
+        retained = self.add_video("retained001", duration_seconds=1800)
+        fetched_video_ids: list[int] = []
+
+        result = acquire_captions(
+            self.database,
+            self.paths,
+            self.tools,
+            CaptionAcquisitionRequest(
+                video_ids=frozenset({released.id, retained.id})
+            ),
+            fetch_captions=lambda _database, _paths, _tools, video_id: (
+                fetched_video_ids.append(video_id)
+                or SimpleNamespace(raw_text_path=Path("captions.txt"))
+            ),
+            candidate_filter=lambda video_id: video_id != released.id,
+        )
+
+        self.assertEqual([retained.id], fetched_video_ids)
+        self.assertEqual(1, result.skipped_count)
+        self.assertEqual(1, result.processed_count)
 
     def test_reports_per_video_caption_outcomes(self) -> None:
         video = self.add_video("nocaptions1", duration_seconds=1800)
