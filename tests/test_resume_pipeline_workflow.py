@@ -89,7 +89,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
                 manifest_path=Path("stage.json"),
                 acquire_captions=True,
                 skip_review=True,
-                jobs=2,
+                jobs=1,
             ),
             dependencies=ResumePipelineDependencies(
                 fetch_captions=fetch_captions,
