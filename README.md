@@ -5,6 +5,9 @@ fixtures, policies, evidence, and documentation remain in the repository's
 `evaluation/` directory. See
 [`docs/EVALUATION_STORAGE_MIGRATION.md`](docs/EVALUATION_STORAGE_MIGRATION.md) for the
 path inventory, compatibility behavior, dry-run, apply, and recovery commands.
+Generated-storage retention is managed separately with the dry-run-first
+`pte storage compact` workflow documented in
+[`docs/STORAGE_MAINTENANCE.md`](docs/STORAGE_MAINTENANCE.md).
 
 Reference panels and immutable Scripture-usage benchmark snapshots are documented in
 [`docs/reference-benchmarking.md`](docs/reference-benchmarking.md).
@@ -1408,6 +1411,26 @@ pte media archive-status \
 
 If the NAS is unavailable, PTE records the failed attempt and retries pending
 entries the next time `archive-sources` is run.
+
+Maintain generated evaluation storage with the same configured archive destination:
+
+```bash
+# Plans only and writes evaluation/storage-manifests/compact-plan.json.
+pte storage compact \
+  --base-dir /Users/briancummings/Documents/PastorSearchData \
+  --repo-root /Users/briancummings/code/pastor-transcript-extractor
+
+# Applies the reviewed retention and archival plan.
+pte storage compact --apply \
+  --base-dir /Users/briancummings/Documents/PastorSearchData \
+  --repo-root /Users/briancummings/code/pastor-transcript-extractor
+```
+
+The generated-storage workflow keeps the three newest diagnostic runs and irreversibly
+discards older diagnostics. Unreferenced `speaker_span_v1` cache pairs use a different
+action: they are archived and verified before local removal. Reviewed evidence, pending
+drafts, current span caches, and canonical audio stay local. Apply is rerunnable and the
+manifest states the action and reason for every candidate.
 
 After archival, audit remaining physical audio and safely replace only
 byte-identical, checksum-verified archived duplicates with symlinks:

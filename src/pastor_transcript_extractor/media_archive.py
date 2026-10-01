@@ -2007,6 +2007,22 @@ def _check_destination(
 
 
 @contextmanager
+def archive_maintenance_lock(
+    app_root: Path,
+    *,
+    wait_for_lock: bool = False,
+    retry_seconds: float = 1.0,
+):
+    """Serialize every operation that can relocate or remove archived inputs."""
+    with _archive_lock(
+        app_root,
+        wait_for_lock=wait_for_lock,
+        retry_seconds=retry_seconds,
+    ):
+        yield
+
+
+@contextmanager
 def _archive_lock(
     app_root: Path,
     *,

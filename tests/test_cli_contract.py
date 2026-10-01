@@ -26,6 +26,7 @@ ROOT_COMMANDS = {
     "fetch",
     "import-church-db",
     "init",
+    "migrate-evaluation-storage",
     "reclassify",
     "review",
     "review-ground-truth",
@@ -154,6 +155,7 @@ GROUP_COMMANDS = {
         "set-organization",
     },
     "source-ownership": {"audit", "migrate"},
+    "storage": {"compact", "restore", "verify"},
     "video": {"exclude", "excluded", "list", "unexclude"},
 }
 

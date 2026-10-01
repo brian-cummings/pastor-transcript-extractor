@@ -15,6 +15,7 @@ media_app = typer.Typer(help="Manage transcript-independent local media artifact
 analysis_app = typer.Typer(help="Analyze already-identified sermon content.")
 source_ownership_app = typer.Typer(help="Migrate and audit source ownership data.")
 benchmark_app = typer.Typer(help="Manage reviewed profile reference panels.")
+storage_app = typer.Typer(help="Compact, verify, and restore generated storage.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +34,7 @@ COMMAND_GROUPS = (
     CommandGroup("analysis", analysis_app),
     CommandGroup("source-ownership", source_ownership_app),
     CommandGroup("benchmark", benchmark_app),
+    CommandGroup("storage", storage_app),
 )
 
 

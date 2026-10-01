@@ -61,6 +61,7 @@ from pastor_transcript_extractor.commands import media_archive as _media_archive
 from pastor_transcript_extractor.commands import media_provenance as _media_provenance_commands
 from pastor_transcript_extractor.commands import evaluation as _evaluation_commands
 from pastor_transcript_extractor.commands import pipeline as _pipeline_commands
+from pastor_transcript_extractor.commands import storage as _storage_commands
 from pastor_transcript_extractor.commands.identity import evaluation as _identity_evaluation_commands
 from pastor_transcript_extractor.commands.identity import review as _identity_review_commands
 from pastor_transcript_extractor.commands.identity import profiles as _identity_profile_commands
