@@ -8,6 +8,10 @@ import time
 from typing import Callable
 
 from pastor_transcript_extractor.application import extract_batch
+from pastor_transcript_extractor.inference_defaults import (
+    DEFAULT_CLASSIFIER,
+    DEFAULT_RECORDING_VERIFIER_BACKEND,
+)
 from pastor_transcript_extractor.church_database_import import (
     IMPORT_PROVIDER,
     imported_source_ids,
@@ -343,8 +347,9 @@ def _finalize_source(
             app_paths,
             source_id=source_id,
             video_ids=selected_video_ids,
-            classifier="auto",
+            classifier=DEFAULT_CLASSIFIER,
             llm_model=None,
+            recording_verifier_backend=DEFAULT_RECORDING_VERIFIER_BACKEND,
             workers=request.jobs,
             event_callback=lambda message: report(str(message)),
             progress_callback=lambda stage, current, total: report(

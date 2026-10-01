@@ -8,6 +8,10 @@ from typing import Callable, Mapping
 
 from pastor_transcript_extractor.application import ExtractionBatchResult
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.inference_defaults import (
+    DEFAULT_CLASSIFIER,
+    DEFAULT_RECORDING_VERIFIER_BACKEND,
+)
 from pastor_transcript_extractor.models import VideoStatus
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.transcript_coordination import (
@@ -41,9 +45,9 @@ class PipelineRequest:
     captions_only: bool = False
     transcribe_missing: bool = True
     jobs: int = 2
-    classifier: str = "auto"
+    classifier: str = DEFAULT_CLASSIFIER
     llm_model: str | None = None
-    recording_verifier_backend: str = "ollama"
+    recording_verifier_backend: str = DEFAULT_RECORDING_VERIFIER_BACKEND
     recording_verifier_model: str | None = None
     skip_review: bool = False
     run_identity: bool = False
@@ -416,6 +420,8 @@ def _prepare_reviews(
             "pastor_slug": pastor_slug,
             "classifier": request.classifier,
             "llm_model": request.llm_model,
+            "recording_verifier_backend": request.recording_verifier_backend,
+            "recording_verifier_model": request.recording_verifier_model,
             "event_callback": lambda message: emit(str(message)),
         }
         if scope.kind is PipelineScope.ALL:

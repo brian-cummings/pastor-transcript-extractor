@@ -13,6 +13,12 @@ from pastor_transcript_extractor.workflows.run import (
 
 
 class RunWorkflowTests(unittest.TestCase):
+    def test_production_inference_defaults_to_typesafe(self) -> None:
+        request = RunWorkflowRequest()
+
+        self.assertEqual("typesafe", request.classifier)
+        self.assertEqual("typesafe", request.recording_verifier_backend)
+
     def _dependencies(self, calls):
         def record(name, result=None):
             def operation(*args, **kwargs):

@@ -37,6 +37,10 @@ from pastor_transcript_extractor import (
     speaker_pair_eligibility,
     speaker_pair_review,
 )
+from pastor_transcript_extractor.inference_defaults import (
+    DEFAULT_CLASSIFIER,
+    DEFAULT_RECORDING_VERIFIER_BACKEND,
+)
 from pastor_transcript_extractor.church_database_import import (
     ChurchDatabaseImportError,
     import_church_sources,
@@ -6216,13 +6220,13 @@ def extract(
     ),
     source_id: int | None = typer.Option(None, help="Only extract videos from a specific source id."),
     classifier: str = typer.Option(
-        "auto",
+        DEFAULT_CLASSIFIER,
         "--classifier",
         help="Content classifier: auto, rules, llm, or typesafe.",
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     recording_verifier_backend: str = typer.Option(
-        "ollama",
+        DEFAULT_RECORDING_VERIFIER_BACKEND,
         "--recording-verifier-backend",
         help="Ambiguous-recording verifier: ollama, typesafe, or none.",
     ),
@@ -6314,7 +6318,7 @@ def apply_fixture_correction(
         help="Override the configured local Ollama classification model.",
     ),
     recording_verifier_backend: str = typer.Option(
-        "ollama",
+        DEFAULT_RECORDING_VERIFIER_BACKEND,
         "--recording-verifier-backend",
         help="Ambiguous-recording verifier: ollama, typesafe, or none.",
     ),
@@ -6527,7 +6531,7 @@ def reclassify(
     ),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     recording_verifier_backend: str = typer.Option(
-        "ollama",
+        DEFAULT_RECORDING_VERIFIER_BACKEND,
         "--recording-verifier-backend",
         help="Ambiguous-recording verifier: ollama, typesafe, or none.",
     ),
@@ -6792,7 +6796,7 @@ def review(
     pastor: str | None = typer.Argument(None, help="Pastor slug whose extracted videos should be assembled into review Markdown."),
     all_pastors: bool = typer.Option(False, "--all", help="Build a combined review across all pastors."),
     edit: bool = typer.Option(False, "--edit", help="Open the generated review Markdown in an editor."),
-    classifier: str = typer.Option("auto", "--classifier", help="Content classifier for missing extractions: auto, rules, or llm."),
+    classifier: str = typer.Option(DEFAULT_CLASSIFIER, "--classifier", help="Content classifier for missing extractions: auto, rules, llm, or typesafe."),
     llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
@@ -6813,6 +6817,7 @@ def review(
             all_pastors=all_pastors,
             classifier=classifier,
             llm_model=llm_model,
+            recording_verifier_backend=DEFAULT_RECORDING_VERIFIER_BACKEND,
             event_callback=lambda message: console.print(message, markup=False),
             progress_callback=lambda stage, current, total: console.print(
                 f"  {stage} block {current}/{total}"
@@ -6911,9 +6916,9 @@ def run_workflow_service(
     captions_only: bool = False,
     transcribe_missing: bool = True,
     jobs: int = DEFAULT_TRANSCRIBE_JOBS,
-    classifier: str = "auto",
+    classifier: str = DEFAULT_CLASSIFIER,
     llm_model: str | None = None,
-    recording_verifier_backend: str = "ollama",
+    recording_verifier_backend: str = DEFAULT_RECORDING_VERIFIER_BACKEND,
     recording_verifier_model: str | None = None,
     skip_review: bool = False,
     run_identity: bool = False,

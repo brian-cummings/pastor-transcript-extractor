@@ -15,6 +15,10 @@ from pastor_transcript_extractor.application import (
     prepare_review_exports,
 )
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.inference_defaults import (
+    DEFAULT_CLASSIFIER,
+    DEFAULT_RECORDING_VERIFIER_BACKEND,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     fetch_captions_service,
@@ -42,9 +46,9 @@ class ResumePipelineRequest:
     captions_only: bool = False
     transcribe_missing: bool = True
     jobs: int = 2
-    classifier: str = "auto"
+    classifier: str = DEFAULT_CLASSIFIER
     llm_model: str | None = None
-    recording_verifier_backend: str = "ollama"
+    recording_verifier_backend: str = DEFAULT_RECORDING_VERIFIER_BACKEND
     recording_verifier_model: str | None = None
     skip_review: bool = False
     run_identity: bool = False
@@ -216,6 +220,8 @@ def resume_staged_pipeline(
                 pastor_slug=pastor_slug,
                 classifier=request.classifier,
                 llm_model=request.llm_model,
+                recording_verifier_backend=request.recording_verifier_backend,
+                recording_verifier_model=request.recording_verifier_model,
                 event_callback=lambda message: emit(str(message)),
             )
             emit(batch)

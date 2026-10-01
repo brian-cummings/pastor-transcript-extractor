@@ -5,6 +5,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
+from pastor_transcript_extractor.inference_defaults import (
+    DEFAULT_CLASSIFIER,
+    DEFAULT_RECORDING_VERIFIER_BACKEND,
+)
+
 from pastor_transcript_extractor.workflows.audio_stage import (
     AudioStageDependencies,
     AudioStageRequest,
@@ -47,9 +52,9 @@ class RunWorkflowRequest:
     captions_only: bool = False
     transcribe_missing: bool = True
     jobs: int = 2
-    classifier: str = "auto"
+    classifier: str = DEFAULT_CLASSIFIER
     llm_model: str | None = None
-    recording_verifier_backend: str = "ollama"
+    recording_verifier_backend: str = DEFAULT_RECORDING_VERIFIER_BACKEND
     recording_verifier_model: str | None = None
     skip_review: bool = False
     run_identity: bool = False

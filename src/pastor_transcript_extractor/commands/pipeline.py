@@ -16,6 +16,10 @@ from pastor_transcript_extractor import (
 from pastor_transcript_extractor.application import ReviewBatchResult
 from pastor_transcript_extractor.commands.apps import root_app
 from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.inference_defaults import (
+    DEFAULT_CLASSIFIER,
+    DEFAULT_RECORDING_VERIFIER_BACKEND,
+)
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.run import RunWorkflowRequest
 from pastor_transcript_extractor.workflows.pipeline import (
@@ -255,7 +259,7 @@ def run(
         help="Concurrent transcription jobs.",
     ),
     classifier: str = typer.Option(
-        "auto",
+        DEFAULT_CLASSIFIER,
         "--classifier",
         help="Content classifier: auto, rules, llm, or typesafe.",
     ),
@@ -265,7 +269,7 @@ def run(
         help="Override the configured local Ollama model.",
     ),
     recording_verifier_backend: str = typer.Option(
-        "ollama",
+        DEFAULT_RECORDING_VERIFIER_BACKEND,
         "--recording-verifier-backend",
         help="Ambiguous-recording verifier: ollama, typesafe, or none.",
     ),
