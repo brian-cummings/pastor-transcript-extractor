@@ -18,6 +18,7 @@ CAPTION_BACKGROUND_RETRY_SECONDS = (900.0, 1800.0, 3600.0)
 CAPTION_REQUEST_INTERVAL_SECONDS = 15.0
 CAPTION_MAX_REQUEST_INTERVAL_SECONDS = 900.0
 CAPTION_REQUESTS_PER_TRANSCRIPTION = 2.0
+WHISPER_REFILL_INTERVAL_SECONDS = 30.0
 
 
 def _adaptive_caption_request_interval(
@@ -186,6 +187,18 @@ def coordinate_transcript_acquisition(
             futures.append((future, frozenset({video_id})))
         return batch
 
+    def refill_whisper_from_caption_candidates(
+        pending_caption_ids: set[int],
+    ) -> set[int]:
+        active_or_queued = sum(
+            len(batch) for future, batch in futures if not future.done()
+        )
+        available_workers = max(0, request.jobs - active_or_queued)
+        candidates = set(sorted(pending_caption_ids)[:available_workers])
+        dispatched = dispatch_transcription(executor, candidates)
+        pending_caption_ids.difference_update(dispatched)
+        return dispatched
+
     executor = (
         None
         if request.captions_only
@@ -258,13 +271,30 @@ def coordinate_transcript_acquisition(
                     min(retry_index, len(CAPTION_BACKGROUND_RETRY_SECONDS) - 1)
                 ]
                 retry_index += 1
-                report(
-                    "Caption acquisition remains rate limited; keeping "
-                    f"{len(pending)} unresolved video(s) out of Whisper and "
-                    f"retrying captions in {delay / 60:g} minute(s). Confirmed "
-                    "caption misses continue transcribing."
+                released_count = len(
+                    refill_whisper_from_caption_candidates(pending)
                 )
-                dependencies.caption_retry_sleeper(delay)
+                report(
+                    "Caption acquisition remains rate limited; retrying captions "
+                    f"in {delay / 60:g} minute(s). Released {released_count} "
+                    "unresolved video(s) to fill idle Whisper workers; remaining "
+                    f"caption candidates={len(pending)}."
+                )
+                remaining_delay = delay
+                while remaining_delay > 0 and pending:
+                    interval = min(
+                        WHISPER_REFILL_INTERVAL_SECONDS,
+                        remaining_delay,
+                    )
+                    dependencies.caption_retry_sleeper(interval)
+                    remaining_delay -= interval
+                    refilled = refill_whisper_from_caption_candidates(pending)
+                    if refilled:
+                        report(
+                            "Caption cooldown refilled "
+                            f"{len(refilled)} idle Whisper worker(s); remaining "
+                            f"caption candidates={len(pending)}."
+                        )
         for future, _batch in futures:
             future.result()
     finally:
