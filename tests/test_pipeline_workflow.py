@@ -33,7 +33,7 @@ class PipelineWorkflowTests(unittest.TestCase):
         transcribed: list[set[int]] = []
         release = threading.Event()
         two_started = threading.Event()
-        two_finished = threading.Event()
+        four_finished = threading.Event()
         lock = threading.Lock()
         started = 0
         finished = 0
@@ -55,19 +55,19 @@ class PipelineWorkflowTests(unittest.TestCase):
             self.assertTrue(release.wait(timeout=1))
             with lock:
                 finished += 1
-                if finished == 2:
-                    two_finished.set()
+                if finished == 4:
+                    four_finished.set()
 
         def sleeper(_seconds):
             self.assertTrue(two_started.wait(timeout=1))
             release.set()
-            self.assertTrue(two_finished.wait(timeout=1))
+            self.assertTrue(four_finished.wait(timeout=1))
 
         coordinate_transcript_acquisition(
             database,
             TranscriptCoordinationRequest(
-                video_ids=frozenset({11, 12, 13}),
-                caption_video_ids=frozenset({11, 12, 13}),
+                video_ids=frozenset({11, 12, 13, 14, 15}),
+                caption_video_ids=frozenset({11, 12, 13, 14, 15}),
                 jobs=2,
             ),
             dependencies=TranscriptCoordinationDependencies(
@@ -77,7 +77,7 @@ class PipelineWorkflowTests(unittest.TestCase):
             ),
         )
 
-        self.assertCountEqual([{11}, {12}, {13}], transcribed)
+        self.assertCountEqual([{11}, {12}, {13}, {14}, {15}], transcribed)
 
     def test_caption_pacing_starts_at_fifteen_seconds_and_tracks_throughput(
         self,
@@ -289,7 +289,7 @@ class PipelineWorkflowTests(unittest.TestCase):
         )
 
         run_pipeline(
-            PipelineRequest(all_sources=True, skip_review=True, jobs=2),
+            PipelineRequest(all_sources=True, skip_review=True, jobs=1),
             dependencies=dependencies,
         )
 

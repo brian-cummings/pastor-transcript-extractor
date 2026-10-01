@@ -19,6 +19,7 @@ CAPTION_REQUEST_INTERVAL_SECONDS = 15.0
 CAPTION_MAX_REQUEST_INTERVAL_SECONDS = 900.0
 CAPTION_REQUESTS_PER_TRANSCRIPTION = 2.0
 WHISPER_REFILL_INTERVAL_SECONDS = 30.0
+WHISPER_QUEUE_MULTIPLIER = 2
 
 
 def _adaptive_caption_request_interval(
@@ -193,8 +194,9 @@ def coordinate_transcript_acquisition(
         active_or_queued = sum(
             len(batch) for future, batch in futures if not future.done()
         )
-        available_workers = max(0, request.jobs - active_or_queued)
-        candidates = set(sorted(pending_caption_ids)[:available_workers])
+        target_queue_depth = request.jobs * WHISPER_QUEUE_MULTIPLIER
+        available_queue_slots = max(0, target_queue_depth - active_or_queued)
+        candidates = set(sorted(pending_caption_ids)[:available_queue_slots])
         dispatched = dispatch_transcription(executor, candidates)
         pending_caption_ids.difference_update(dispatched)
         return dispatched
