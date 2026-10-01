@@ -23,12 +23,41 @@ from pastor_transcript_extractor.workflows.pipeline import (
 from pastor_transcript_extractor.workflows.transcript_coordination import (
     TranscriptCoordinationDependencies,
     TranscriptCoordinationRequest,
-    _adaptive_caption_request_interval,
+    _CaptionRateController,
     coordinate_transcript_acquisition,
 )
 
 
 class PipelineWorkflowTests(unittest.TestCase):
+    def test_normal_caption_pacing_maintains_double_worker_queue(self) -> None:
+        transcribed: list[set[int]] = []
+        database = SimpleNamespace(
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
+            known_caption_unavailable_video_ids=lambda _video_ids: set(),
+        )
+
+        def fetch_captions(**kwargs):
+            kwargs["pacing_callback"](11)
+            self.assertTrue(kwargs["candidate_filter"](11))
+            for released_id in (12, 13, 14, 15):
+                self.assertFalse(kwargs["candidate_filter"](released_id))
+            kwargs["outcome_callback"](11, "processed")
+
+        coordinate_transcript_acquisition(
+            database,
+            TranscriptCoordinationRequest(
+                video_ids=frozenset({11, 12, 13, 14, 15}),
+                caption_video_ids=frozenset({11, 12, 13, 14, 15}),
+                jobs=2,
+            ),
+            dependencies=TranscriptCoordinationDependencies(
+                fetch_captions=fetch_captions,
+                transcribe=lambda **kwargs: transcribed.append(kwargs["video_ids"]),
+            ),
+        )
+
+        self.assertCountEqual([{12}, {13}, {14}, {15}], transcribed)
+
     def test_rate_limit_cooldown_refills_idle_whisper_workers(self) -> None:
         transcribed: list[set[int]] = []
         release = threading.Event()
@@ -79,33 +108,19 @@ class PipelineWorkflowTests(unittest.TestCase):
 
         self.assertCountEqual([{11}, {12}, {13}, {14}, {15}], transcribed)
 
-    def test_caption_pacing_starts_at_fifteen_seconds_and_tracks_throughput(
+    def test_caption_pacing_learns_from_rate_limits_and_probes_faster(
         self,
     ) -> None:
-        self.assertEqual(
-            15.0,
-            _adaptive_caption_request_interval(
-                configured_seconds=5.0,
-                elapsed_seconds=0.0,
-                completed_transcriptions=0,
-            ),
-        )
-        self.assertEqual(
-            100.0,
-            _adaptive_caption_request_interval(
-                configured_seconds=5.0,
-                elapsed_seconds=600.0,
-                completed_transcriptions=3,
-            ),
-        )
-        self.assertEqual(
-            900.0,
-            _adaptive_caption_request_interval(
-                configured_seconds=5.0,
-                elapsed_seconds=2400.0,
-                completed_transcriptions=1,
-            ),
-        )
+        controller = _CaptionRateController(configured_seconds=5.0)
+
+        self.assertEqual(15.0, controller.current_interval())
+        controller.record_result(True)
+        self.assertEqual(18.75, controller.current_interval())
+        for _ in range(19):
+            controller.record_result(False)
+        self.assertEqual(18.75, controller.current_interval())
+        controller.record_result(False)
+        self.assertAlmostEqual(16.875, controller.current_interval())
 
     def test_post_content_identity_uses_guarded_automatic_policy(self) -> None:
         calls = []

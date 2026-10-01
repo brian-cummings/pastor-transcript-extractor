@@ -34,7 +34,10 @@ from pastor_transcript_extractor.config import (
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.caption_acquisition import (
     CaptionAcquisitionResult,
+    CaptionCandidateFilter,
     CaptionOutcomeCallback,
+    CaptionPacingCallback,
+    CaptionRequestResultCallback,
     CaptionRequestInterval,
     fetch_captions_service as _fetch_captions_service,
 )
@@ -109,6 +112,9 @@ def fetch_captions_service(
     cookies_from_browser: str | None = None,
     cookies: Path | None = None,
     outcome_callback: CaptionOutcomeCallback | None = None,
+    candidate_filter: CaptionCandidateFilter | None = None,
+    pacing_callback: CaptionPacingCallback | None = None,
+    request_result_callback: CaptionRequestResultCallback | None = None,
 ) -> CaptionAcquisitionResult:
     """Adapt caption acquisition progress and scheduling to the command surface."""
     return _fetch_captions_service(
@@ -119,6 +125,9 @@ def fetch_captions_service(
         cookies_from_browser=cookies_from_browser,
         cookies=cookies,
         outcome_callback=outcome_callback,
+        candidate_filter=candidate_filter,
+        pacing_callback=pacing_callback,
+        request_result_callback=request_result_callback,
         progress_callback=console.print,
         fetch_captions=transcription.fetch_captions_video,
         monotonic=time.monotonic,
