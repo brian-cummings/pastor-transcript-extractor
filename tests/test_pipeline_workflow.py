@@ -21,11 +21,64 @@ from pastor_transcript_extractor.workflows.pipeline import (
     validate_pipeline_request,
 )
 from pastor_transcript_extractor.workflows.transcript_coordination import (
+    TranscriptCoordinationDependencies,
+    TranscriptCoordinationRequest,
     _adaptive_caption_request_interval,
+    coordinate_transcript_acquisition,
 )
 
 
 class PipelineWorkflowTests(unittest.TestCase):
+    def test_rate_limit_cooldown_refills_idle_whisper_workers(self) -> None:
+        transcribed: list[set[int]] = []
+        release = threading.Event()
+        two_started = threading.Event()
+        two_finished = threading.Event()
+        lock = threading.Lock()
+        started = 0
+        finished = 0
+        database = SimpleNamespace(
+            get_latest_transcript_artifact_for_video=lambda _video_id: None,
+            known_caption_unavailable_video_ids=lambda _video_ids: set(),
+        )
+
+        def fetch_captions(**_kwargs):
+            raise CaptionAcquisitionBlockedError("rate limited")
+
+        def transcribe(**kwargs):
+            nonlocal started, finished
+            transcribed.append(kwargs["video_ids"])
+            with lock:
+                started += 1
+                if started == 2:
+                    two_started.set()
+            self.assertTrue(release.wait(timeout=1))
+            with lock:
+                finished += 1
+                if finished == 2:
+                    two_finished.set()
+
+        def sleeper(_seconds):
+            self.assertTrue(two_started.wait(timeout=1))
+            release.set()
+            self.assertTrue(two_finished.wait(timeout=1))
+
+        coordinate_transcript_acquisition(
+            database,
+            TranscriptCoordinationRequest(
+                video_ids=frozenset({11, 12, 13}),
+                caption_video_ids=frozenset({11, 12, 13}),
+                jobs=2,
+            ),
+            dependencies=TranscriptCoordinationDependencies(
+                fetch_captions=fetch_captions,
+                transcribe=transcribe,
+                caption_retry_sleeper=sleeper,
+            ),
+        )
+
+        self.assertCountEqual([{11}, {12}, {13}], transcribed)
+
     def test_caption_pacing_starts_at_fifteen_seconds_and_tracks_throughput(
         self,
     ) -> None:
@@ -211,6 +264,7 @@ class PipelineWorkflowTests(unittest.TestCase):
                 kwargs["outcome_callback"](12, "unavailable")
             if len(fetch_scopes) <= 5:
                 raise CaptionAcquisitionBlockedError("repeatedly rate limited")
+            release_transcription.set()
             kwargs["outcome_callback"](13, "processed")
             kwargs["outcome_callback"](14, "processed")
 
@@ -223,7 +277,6 @@ class PipelineWorkflowTests(unittest.TestCase):
         def sleeper(seconds):
             self.assertTrue(transcription_started.wait(timeout=1))
             sleeps.append(seconds)
-            release_transcription.set()
 
         dependencies = replace(
             self._dependencies(database, calls),
@@ -246,7 +299,8 @@ class PipelineWorkflowTests(unittest.TestCase):
         )
         self.assertCountEqual([{11}, {12}], transcribed_video_ids)
         self.assertEqual([1, 1], transcription_jobs)
-        self.assertEqual([900.0, 1800.0, 3600.0, 3600.0, 3600.0], sleeps)
+        self.assertEqual(13_500.0, sum(sleeps))
+        self.assertTrue(all(seconds <= 30.0 for seconds in sleeps))
         self.assertTrue(all(interval == 15.0 for interval in caption_intervals))
 
     def test_url_scope_replaces_before_add_and_passes_source_id(self) -> None:

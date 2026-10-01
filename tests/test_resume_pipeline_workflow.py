@@ -68,6 +68,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
                 self.assertTrue(transcription_started.wait(timeout=1))
                 kwargs["outcome_callback"](12, "unavailable")
                 raise CaptionAcquisitionBlockedError("repeatedly rate limited")
+            release_transcription.set()
             kwargs["outcome_callback"](13, "processed")
             kwargs["outcome_callback"](14, "processed")
 
@@ -79,7 +80,6 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
         def sleeper(seconds):
             self.assertTrue(transcription_started.wait(timeout=1))
             sleeps.append(seconds)
-            release_transcription.set()
 
         result = resume_staged_pipeline(
             database,
@@ -102,7 +102,8 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
 
         self.assertEqual([{11, 12, 13, 14}, {13, 14}], fetch_scopes)
         self.assertCountEqual([{11}, {12}], transcribed_video_ids)
-        self.assertEqual([900.0], sleeps)
+        self.assertEqual(900.0, sum(sleeps))
+        self.assertTrue(all(seconds <= 30.0 for seconds in sleeps))
         self.assertFalse(result.captions_blocked)
 
     def test_runs_offline_stages_in_order_and_returns_structured_result(self) -> None:
