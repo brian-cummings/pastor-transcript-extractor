@@ -153,6 +153,7 @@ class PipelineWorkflowTests(unittest.TestCase):
         calls = []
         fetch_scopes: list[set[int]] = []
         transcribed_video_ids: list[set[int]] = []
+        transcription_jobs: list[int] = []
         sleeps: list[float] = []
         transcription_started = threading.Event()
         database = SimpleNamespace(
@@ -171,10 +172,12 @@ class PipelineWorkflowTests(unittest.TestCase):
             if len(fetch_scopes) == 1:
                 kwargs["outcome_callback"](11, "unavailable")
                 raise CaptionAcquisitionBlockedError("repeatedly rate limited")
-            kwargs["outcome_callback"](12, "processed")
+            kwargs["outcome_callback"](13, "processed")
+            kwargs["outcome_callback"](14, "processed")
 
         def transcribe(**kwargs):
             transcribed_video_ids.append(kwargs["video_ids"])
+            transcription_jobs.append(kwargs["jobs"])
             transcription_started.set()
 
         def sleeper(seconds):
@@ -184,7 +187,7 @@ class PipelineWorkflowTests(unittest.TestCase):
         dependencies = replace(
             self._dependencies(database, calls),
             discover=lambda *args, **kwargs: SimpleNamespace(
-                selected_video_ids_by_source={1: (11, 12)}
+                selected_video_ids_by_source={1: (11, 12, 13, 14)}
             ),
             fetch_captions=fetch_captions,
             transcribe=transcribe,
@@ -196,8 +199,9 @@ class PipelineWorkflowTests(unittest.TestCase):
             dependencies=dependencies,
         )
 
-        self.assertEqual([{11, 12}, {12}], fetch_scopes)
-        self.assertEqual([{11}], transcribed_video_ids)
+        self.assertEqual([{11, 12, 13, 14}, {13, 14}], fetch_scopes)
+        self.assertEqual([{11, 12}], transcribed_video_ids)
+        self.assertEqual([2], transcription_jobs)
         self.assertEqual([300.0], sleeps)
 
     def test_url_scope_replaces_before_add_and_passes_source_id(self) -> None:

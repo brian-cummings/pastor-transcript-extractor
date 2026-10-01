@@ -65,7 +65,8 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
             if len(fetch_scopes) == 1:
                 kwargs["outcome_callback"](11, "unavailable")
                 raise CaptionAcquisitionBlockedError("repeatedly rate limited")
-            kwargs["outcome_callback"](12, "processed")
+            kwargs["outcome_callback"](13, "processed")
+            kwargs["outcome_callback"](14, "processed")
 
         def transcribe(**kwargs):
             transcribed_video_ids.append(kwargs["video_ids"])
@@ -79,7 +80,7 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
             database,
             SimpleNamespace(),
             ResumePipelineRequest(
-                video_ids=frozenset({11, 12}),
+                video_ids=frozenset({11, 12, 13, 14}),
                 manifest_path=Path("stage.json"),
                 acquire_captions=True,
                 skip_review=True,
@@ -89,13 +90,13 @@ class ResumePipelineWorkflowTests(unittest.TestCase):
                 fetch_captions=fetch_captions,
                 transcribe=transcribe,
                 extract=lambda *args, **kwargs: ExtractionBatchResult(0, 2, 0),
-                caption_scope=lambda _path: {11, 12},
+                caption_scope=lambda _path: {11, 12, 13, 14},
                 caption_retry_sleeper=sleeper,
             ),
         )
 
-        self.assertEqual([{11, 12}, {12}], fetch_scopes)
-        self.assertEqual([{11}], transcribed_video_ids)
+        self.assertEqual([{11, 12, 13, 14}, {13, 14}], fetch_scopes)
+        self.assertEqual([{11, 12}], transcribed_video_ids)
         self.assertEqual([300.0], sleeps)
         self.assertFalse(result.captions_blocked)
 

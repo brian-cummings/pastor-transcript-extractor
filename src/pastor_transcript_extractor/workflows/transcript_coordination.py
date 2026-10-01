@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
+import math
 from pathlib import Path
 import time
 from typing import Callable
@@ -93,50 +94,56 @@ def coordinate_transcript_acquisition(
             dependencies.transcribe(**transcribe_options)
         return False
 
-    futures: list[Future[object]] = []
+    futures: list[tuple[Future[object], frozenset[int]]] = []
     queued_for_transcription: set[int] = set()
+    ready_for_transcription: set[int] = set()
 
-    def submit_transcription(
+    def dispatch_transcription(
         executor: ThreadPoolExecutor | None,
         video_ids: set[int],
-    ) -> None:
+    ) -> set[int]:
         if executor is None:
-            return
-        for video_id in sorted(
+            return set()
+        batch = set(
             _video_ids_without_transcripts(database, video_ids)
             - queued_for_transcription
-        ):
-            queued_for_transcription.add(video_id)
-            transcribe_options: dict[str, object] = {
-                "missing_only": request.missing_only,
-                "captions_missing_only": request.captions_missing_only,
-                "jobs": 1,
-                "base_dir": request.base_dir,
-                "video_ids": {video_id},
-                "allow_network": request.allow_network,
-            }
-            if request.source_id is not None:
-                transcribe_options["source_id"] = request.source_id
-            futures.append(
-                executor.submit(dependencies.transcribe, **transcribe_options)
-            )
+        )
+        if not batch:
+            return set()
+        queued_for_transcription.update(batch)
+        transcribe_options: dict[str, object] = {
+            "missing_only": request.missing_only,
+            "captions_missing_only": request.captions_missing_only,
+            "jobs": request.jobs,
+            "base_dir": request.base_dir,
+            "video_ids": batch,
+            "allow_network": request.allow_network,
+        }
+        if request.source_id is not None:
+            transcribe_options["source_id"] = request.source_id
+        future = executor.submit(dependencies.transcribe, **transcribe_options)
+        futures.append((future, frozenset(batch)))
+        return batch
+
+    def outstanding_transcription_count() -> int:
+        return sum(len(batch) for future, batch in futures if not future.done())
 
     executor = (
         None
         if request.captions_only
-        else ThreadPoolExecutor(max_workers=request.jobs)
+        else ThreadPoolExecutor(max_workers=1)
     )
     captions_blocked = False
     try:
         caption_video_ids = set(request.caption_video_ids)
-        submit_transcription(executor, set(request.video_ids) - caption_video_ids)
+        dispatch_transcription(executor, set(request.video_ids) - caption_video_ids)
         pending = _video_ids_without_transcripts(database, caption_video_ids)
         resolved: set[int] = set()
 
         def caption_outcome(video_id: int, outcome: str) -> None:
             resolved.add(video_id)
             if outcome == "unavailable":
-                submit_transcription(executor, {video_id})
+                ready_for_transcription.add(video_id)
 
         retry_index = 0
         while pending:
@@ -148,7 +155,9 @@ def coordinate_transcript_acquisition(
                     outcome_callback=caption_outcome,
                     **caption_options,
                 )
-                submit_transcription(executor, pending - resolved)
+                ready_for_transcription.update(pending - resolved)
+                dispatch_transcription(executor, ready_for_transcription)
+                ready_for_transcription.clear()
                 pending.clear()
             except CaptionAcquisitionBlockedError as error:
                 pending -= resolved
@@ -160,17 +169,41 @@ def coordinate_transcript_acquisition(
                 ):
                     captions_blocked = True
                     report(f"[yellow]Caption acquisition stopped[/yellow]: {error}")
-                    submit_transcription(executor, pending)
+                    ready_for_transcription.update(pending)
+                    dispatch_transcription(executor, ready_for_transcription)
+                    ready_for_transcription.clear()
                     break
                 delay = CAPTION_BACKGROUND_RETRY_SECONDS[retry_index]
                 retry_index += 1
+                target_work = request.jobs * max(1, math.ceil(delay / 300.0))
+                needed = max(
+                    0,
+                    target_work
+                    - outstanding_transcription_count()
+                    - len(ready_for_transcription),
+                )
+                spillover = set(sorted(pending)[:needed])
+                pending -= spillover
+                ready_for_transcription.update(spillover)
+                dispatched = dispatch_transcription(
+                    executor,
+                    ready_for_transcription,
+                )
+                ready_for_transcription.difference_update(dispatched)
+                if not pending:
+                    report(
+                        "Caption acquisition remains rate limited; released the "
+                        f"remaining {len(dispatched)} video(s) to Whisper."
+                    )
+                    break
                 report(
-                    "Caption acquisition remains rate limited; retrying "
-                    f"{len(pending)} pending video(s) in {delay / 60:g} minute(s) "
-                    "while available Whisper work continues."
+                    "Caption acquisition remains rate limited; released "
+                    f"{len(dispatched)} video(s) to Whisper and will retry "
+                    f"{len(pending)} caption candidate(s) in "
+                    f"{delay / 60:g} minute(s)."
                 )
                 dependencies.caption_retry_sleeper(delay)
-        for future in futures:
+        for future, _batch in futures:
             future.result()
     finally:
         if executor is not None:
