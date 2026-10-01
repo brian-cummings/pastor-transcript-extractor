@@ -17,6 +17,15 @@ from pastor_transcript_extractor.workflows.resume_pipeline import (
 
 
 class ResumePipelineWorkflowTests(unittest.TestCase):
+    def test_resume_inference_defaults_to_typesafe(self) -> None:
+        request = ResumePipelineRequest(
+            video_ids=frozenset(),
+            manifest_path=Path("stage.json"),
+        )
+
+        self.assertEqual("typesafe", request.classifier)
+        self.assertEqual("typesafe", request.recording_verifier_backend)
+
     def test_caption_scope_is_limited_to_stage_downloads(self) -> None:
         caption_video_ids: list[set[int]] = []
         database = SimpleNamespace(

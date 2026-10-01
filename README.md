@@ -481,15 +481,14 @@ Raw structured responses, stable current-excerpt evidence line IDs, validation f
 comparison report are written under `evaluation/interaction-diagnostics/`. Inference
 is cached by model digest, prompt, schema, and deduplicated excerpt.
 
-## Optional Local LLM Filtering
+## Sermon Classification
 
-The normal extraction path defaults to `--classifier auto`. Ollama is enabled by
-default with the production Gemma 3 4B model, and auto safely falls back to
-rules when Ollama is unavailable. No enable flag is required for `pte extract`,
-`pte review`, or `pte run`:
+The normal extraction path defaults to `--classifier typesafe` with the
+`typesafe` recording verifier and pinned `jev-1.13.0` model. Set
+`TYPESAFE_API_KEY` for `pte extract`, `pte review`, and `pte run`:
 
 ```bash
-export PTE_LLM_MODEL=gemma3:4b
+export TYPESAFE_API_KEY='...'
 pte doctor
 pte extract --force
 pte review sample-church
@@ -498,12 +497,15 @@ pte run 'https://www.youtube.com/watch?v=abc123' --pastor sample-church
 
 Classifier modes:
 
+- `--classifier typesafe` uses the cached TypeSafe/Jev recording gate and
+  sermon-window search; this is the production default.
 - `--classifier auto` tries Ollama by default and safely falls back to rules.
 - `--classifier rules` never calls a local LLM.
 - `--classifier llm` requires Ollama and fails visibly if classification fails.
 
-Set `PTE_LLM_ENABLED=0` only when you want `auto` to skip Ollama globally. For
-an individual command, prefer the explicit `--classifier rules` opt-out.
+Use `--classifier rules --recording-verifier-backend none` for a fully local,
+deterministic opt-out. Use `--classifier auto --recording-verifier-backend ollama`
+to select the previous Ollama-first behavior explicitly.
 
 `pte extract`, review preparation, and the extraction stage inside `pte run`
 all call the same adaptive extraction batch service. Review preparation never

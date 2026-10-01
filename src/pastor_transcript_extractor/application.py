@@ -8,6 +8,11 @@ from typing import Callable
 from pastor_transcript_extractor.config import AppPaths, LlmConfig, build_llm_config
 from pastor_transcript_extractor.exporting import PastorReviewMarkdownResult, export_pastor_review_markdown
 from pastor_transcript_extractor.extraction import extract_video
+from pastor_transcript_extractor.inference_defaults import (
+    DEFAULT_CLASSIFIER,
+    DEFAULT_RECORDING_VERIFIER_BACKEND,
+    DEFAULT_TYPESAFE_MODEL,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmClient, OllamaClient
 from pastor_transcript_extractor.models import VideoStatus
 from pastor_transcript_extractor.recording_verifier import (
@@ -111,7 +116,7 @@ def build_recording_verifier_runner(
         return None
     if normalized == "typesafe":
         return TypeSafeProductionRecordingVerifier(
-            model=model or "jev-1.13.0",
+            model=model or DEFAULT_TYPESAFE_MODEL,
         )
     if normalized != "ollama":
         raise ValueError("Recording verifier backend must be one of: ollama, typesafe, none")
@@ -140,9 +145,9 @@ def extract_batch(
     source_id: int | None = None,
     pastor_id: int | None = None,
     video_ids: set[int] | None = None,
-    classifier: str = "auto",
+    classifier: str = DEFAULT_CLASSIFIER,
     llm_model: str | None = None,
-    recording_verifier_backend: str = "ollama",
+    recording_verifier_backend: str = DEFAULT_RECORDING_VERIFIER_BACKEND,
     recording_verifier_model: str | None = None,
     workers: int = 1,
     event_callback: EventCallback | None = None,
@@ -151,20 +156,18 @@ def extract_batch(
     """Extract eligible videos through the adaptive production path."""
     if workers < 1:
         raise ValueError("Extraction workers must be at least 1")
-    if (
-        classifier == "typesafe"
-        and recording_verifier_backend.strip().casefold() != "typesafe"
-    ):
-        raise ValueError(
-            "Classifier 'typesafe' requires --recording-verifier-backend typesafe"
-        )
-    if recording_verifier_backend.strip().casefold() not in {
+    normalized_verifier_backend = recording_verifier_backend.strip().casefold()
+    if normalized_verifier_backend not in {
         "ollama",
         "typesafe",
         "none",
     }:
         raise ValueError(
             "Recording verifier backend must be one of: ollama, typesafe, none"
+        )
+    if classifier == "typesafe" and normalized_verifier_backend != "typesafe":
+        raise ValueError(
+            "Classifier 'typesafe' requires --recording-verifier-backend typesafe"
         )
     llm_config, llm_client = _build_classifier_client(classifier, llm_model)
     _emit(event_callback, _classifier_summary(classifier, llm_config, llm_client))
@@ -347,8 +350,10 @@ def prepare_review_exports(
     pastor_slug: str | None = None,
     all_pastors: bool = False,
     video_ids: set[int] | None = None,
-    classifier: str = "auto",
+    classifier: str = DEFAULT_CLASSIFIER,
     llm_model: str | None = None,
+    recording_verifier_backend: str = DEFAULT_RECORDING_VERIFIER_BACKEND,
+    recording_verifier_model: str | None = None,
     event_callback: EventCallback | None = None,
     progress_callback: ProgressCallback | None = None,
     extractor: ExtractionBatchOperation = extract_batch,
@@ -377,6 +382,8 @@ def prepare_review_exports(
             video_ids=video_ids,
             classifier=classifier,
             llm_model=llm_model,
+            recording_verifier_backend=recording_verifier_backend,
+            recording_verifier_model=recording_verifier_model,
             event_callback=event_callback,
             progress_callback=progress_callback,
         )

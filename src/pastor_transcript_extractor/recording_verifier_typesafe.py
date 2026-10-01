@@ -14,6 +14,7 @@ from threading import Lock
 import time
 from typing import Any, Mapping, Protocol
 
+from pastor_transcript_extractor.inference_defaults import DEFAULT_TYPESAFE_MODEL
 from pastor_transcript_extractor.recording_verifier import (
     ARTIFACT_SCHEMA_VERSION,
     _excerpt,
@@ -493,7 +494,7 @@ class TypeSafeProductionRecordingVerifier:
     def __init__(
         self,
         *,
-        model: str = "jev-1.13.0",
+        model: str = DEFAULT_TYPESAFE_MODEL,
         timeout_seconds: float = 45.0,
         client: TypeSafeRecordingVerifier | None = None,
         policy: TypeSafeRecordingPolicy = TypeSafeRecordingPolicy(),

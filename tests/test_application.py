@@ -13,6 +13,36 @@ from pastor_transcript_extractor.models import VideoStatus
 
 
 class ExtractionParallelismTests(unittest.TestCase):
+    def test_extract_batch_defaults_to_typesafe_inference(self) -> None:
+        video = SimpleNamespace(
+            id=1,
+            pastor_id=None,
+            title="Default inference",
+            status=VideoStatus.TRANSCRIBED_LOCAL,
+            duration_seconds=None,
+            published_at=None,
+        )
+        database = SimpleNamespace(
+            list_videos=lambda: [video],
+            get_latest_transcript_artifact_for_video=lambda _: SimpleNamespace(),
+            get_latest_extraction_result_for_video=lambda _: None,
+            update_video_status=lambda *args: None,
+        )
+        verifier = SimpleNamespace()
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "pastor_transcript_extractor.application.build_recording_verifier_runner",
+            return_value=verifier,
+        ) as build_verifier, patch(
+            "pastor_transcript_extractor.application.extract_video",
+        ) as extract:
+            result = extract_batch(database, build_paths(Path(tmp)))
+
+        self.assertEqual(1, result.processed)
+        self.assertEqual("typesafe", build_verifier.call_args.kwargs["backend"])
+        self.assertEqual("typesafe", extract.call_args.kwargs["classifier"])
+        self.assertIs(verifier, extract.call_args.kwargs["recording_verifier"])
+
     def test_extract_batch_bypasses_video_above_maximum(self) -> None:
         video = SimpleNamespace(
             id=1,
