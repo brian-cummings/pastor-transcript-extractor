@@ -118,6 +118,14 @@ CREATE TABLE IF NOT EXISTS transcript_artifacts (
     FOREIGN KEY(video_id) REFERENCES videos(id)
 );
 
+CREATE TABLE IF NOT EXISTS caption_acquisition_outcomes (
+    video_id INTEGER PRIMARY KEY,
+    outcome TEXT NOT NULL CHECK(outcome IN ('unavailable')),
+    detail TEXT NULL,
+    checked_at TEXT NOT NULL,
+    FOREIGN KEY(video_id) REFERENCES videos(id)
+);
+
 CREATE TABLE IF NOT EXISTS media_artifacts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     video_id INTEGER NOT NULL,
@@ -2061,6 +2069,56 @@ class Database:
             ).fetchall()
         return [self._media_artifact_from_row(row) for row in rows]
 
+    def caption_is_known_unavailable(self, video_id: int) -> bool:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM caption_acquisition_outcomes
+                WHERE video_id = ? AND outcome = 'unavailable'
+                """,
+                (video_id,),
+            ).fetchone()
+        return row is not None
+
+    def known_caption_unavailable_video_ids(
+        self,
+        video_ids: Sequence[int],
+    ) -> set[int]:
+        resolved_ids = tuple(sorted(set(video_ids)))
+        if not resolved_ids:
+            return set()
+        placeholders = ",".join("?" for _video_id in resolved_ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT video_id FROM caption_acquisition_outcomes
+                WHERE outcome = 'unavailable'
+                  AND video_id IN ({placeholders})
+                """,
+                resolved_ids,
+            ).fetchall()
+        return {int(row["video_id"]) for row in rows}
+
+    def mark_captions_unavailable(
+        self,
+        video_id: int,
+        *,
+        detail: str | None = None,
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO caption_acquisition_outcomes (
+                    video_id, outcome, detail, checked_at
+                ) VALUES (?, 'unavailable', ?, ?)
+                ON CONFLICT(video_id) DO UPDATE SET
+                    outcome = excluded.outcome,
+                    detail = excluded.detail,
+                    checked_at = excluded.checked_at
+                """,
+                (video_id, detail, utc_now().isoformat()),
+            )
+
     def get_latest_media_artifact(
         self, video_id: int, artifact_kind: str
     ) -> MediaArtifact | None:
@@ -2443,6 +2501,10 @@ class Database:
             )
             connection.execute("DELETE FROM media_acquisition_attempts WHERE video_id = ?", (video_id,))
             connection.execute("DELETE FROM media_artifacts WHERE video_id = ?", (video_id,))
+            connection.execute(
+                "DELETE FROM caption_acquisition_outcomes WHERE video_id = ?",
+                (video_id,),
+            )
             connection.execute("DELETE FROM videos WHERE id = ?", (video_id,))
 
     def delete_source(self, source_id: int) -> None:

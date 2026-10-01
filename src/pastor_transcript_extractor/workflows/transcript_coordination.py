@@ -51,6 +51,16 @@ def _video_ids_without_transcripts(
     return {video_id for video_id in video_ids if lookup(video_id) is None}
 
 
+def _known_caption_misses(
+    database: Database,
+    video_ids: set[int],
+) -> set[int]:
+    lookup = getattr(database, "known_caption_unavailable_video_ids", None)
+    if lookup is None:
+        return set()
+    return set(lookup(video_ids))
+
+
 def coordinate_transcript_acquisition(
     database: Database,
     request: TranscriptCoordinationRequest,
@@ -136,14 +146,27 @@ def coordinate_transcript_acquisition(
     captions_blocked = False
     try:
         caption_video_ids = set(request.caption_video_ids)
-        dispatch_transcription(executor, set(request.video_ids) - caption_video_ids)
-        pending = _video_ids_without_transcripts(database, caption_video_ids)
+        known_caption_misses = _known_caption_misses(database, caption_video_ids)
+        dispatch_transcription(
+            executor,
+            (set(request.video_ids) - caption_video_ids) | known_caption_misses,
+        )
+        pending = _video_ids_without_transcripts(
+            database,
+            caption_video_ids - known_caption_misses,
+        )
         resolved: set[int] = set()
 
         def caption_outcome(video_id: int, outcome: str) -> None:
             resolved.add(video_id)
             if outcome == "unavailable":
                 ready_for_transcription.add(video_id)
+                if len(ready_for_transcription) >= request.jobs:
+                    dispatched = dispatch_transcription(
+                        executor,
+                        ready_for_transcription,
+                    )
+                    ready_for_transcription.difference_update(dispatched)
 
         retry_index = 0
         while pending:
@@ -176,30 +199,45 @@ def coordinate_transcript_acquisition(
                 delay = CAPTION_BACKGROUND_RETRY_SECONDS[retry_index]
                 retry_index += 1
                 target_work = request.jobs * max(1, math.ceil(delay / 300.0))
-                needed = max(
+                available_capacity = max(
                     0,
-                    target_work
-                    - outstanding_transcription_count()
-                    - len(ready_for_transcription),
+                    target_work - outstanding_transcription_count(),
                 )
-                spillover = set(sorted(pending)[:needed])
-                pending -= spillover
-                ready_for_transcription.update(spillover)
-                dispatched = dispatch_transcription(
-                    executor,
-                    ready_for_transcription,
-                )
-                ready_for_transcription.difference_update(dispatched)
+                dispatched: set[int] = set()
+                if available_capacity > 0:
+                    batch_target = max(request.jobs, available_capacity)
+                    needed = max(
+                        0,
+                        batch_target - len(ready_for_transcription),
+                    )
+                    spillover = set(sorted(pending)[:needed])
+                    pending -= spillover
+                    ready_for_transcription.update(spillover)
+                    dispatched = dispatch_transcription(
+                        executor,
+                        ready_for_transcription,
+                    )
+                    ready_for_transcription.difference_update(dispatched)
                 if not pending:
+                    dispatched.update(
+                        dispatch_transcription(executor, ready_for_transcription)
+                    )
+                    ready_for_transcription.difference_update(dispatched)
                     report(
                         "Caption acquisition remains rate limited; released the "
                         f"remaining {len(dispatched)} video(s) to Whisper."
                     )
                     break
+                if dispatched:
+                    activity = f"released {len(dispatched)} video(s) to Whisper"
+                else:
+                    activity = (
+                        f"kept {outstanding_transcription_count()} video(s) "
+                        "queued or running in Whisper"
+                    )
                 report(
-                    "Caption acquisition remains rate limited; released "
-                    f"{len(dispatched)} video(s) to Whisper and will retry "
-                    f"{len(pending)} caption candidate(s) in "
+                    f"Caption acquisition remains rate limited; {activity} and "
+                    f"will retry {len(pending)} caption candidate(s) in "
                     f"{delay / 60:g} minute(s)."
                 )
                 dependencies.caption_retry_sleeper(delay)

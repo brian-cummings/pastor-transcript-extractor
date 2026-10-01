@@ -154,6 +154,44 @@ class CaptionAcquisitionWorkflowTests(unittest.TestCase):
         self.assertEqual([(video.id, "unavailable")], outcomes)
         self.assertEqual(1, result.unavailable_count)
 
+    def test_persists_no_caption_result_across_interrupted_runs(self) -> None:
+        video = self.add_video("nocaptions2", duration_seconds=1800)
+        fetch_attempts = 0
+
+        def fetch_captions(*_args):
+            nonlocal fetch_attempts
+            fetch_attempts += 1
+            raise NoCaptionsAvailableError("no captions")
+
+        first_result = acquire_captions(
+            self.database,
+            self.paths,
+            self.tools,
+            CaptionAcquisitionRequest(video_ids=frozenset({video.id})),
+            fetch_captions=fetch_captions,
+        )
+
+        reopened_database = Database(self.paths.database)
+        reopened_database.initialize()
+        outcomes: list[tuple[int, str]] = []
+        second_result = acquire_captions(
+            reopened_database,
+            self.paths,
+            self.tools,
+            CaptionAcquisitionRequest(video_ids=frozenset({video.id})),
+            fetch_captions=lambda *_args: self.fail(
+                "known caption miss should not be requested again"
+            ),
+            outcome_callback=lambda video_id, outcome: outcomes.append(
+                (video_id, outcome)
+            ),
+        )
+
+        self.assertEqual(1, fetch_attempts)
+        self.assertEqual(1, first_result.unavailable_count)
+        self.assertEqual(1, second_result.unavailable_count)
+        self.assertEqual([(video.id, "unavailable")], outcomes)
+
 
 if __name__ == "__main__":
     unittest.main()

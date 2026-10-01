@@ -236,7 +236,8 @@ def _acquire_video(
         action = "Retrying captions" if retrying else "Fetching captions"
         report(f"{action} for video #{video.id}: {video.title}")
         result = scheduler.fetch(video)
-    except NoCaptionsAvailableError:
+    except NoCaptionsAvailableError as error:
+        database.mark_captions_unavailable(video.id, detail=str(error))
         if _failure_is_terminal_unavailable(video) or _failure_is_retryable(video):
             database.update_video_status(video.id, VideoStatus.DISCOVERED)
         report(f"No captions for video #{video.id}; leaving it for local transcription.")
@@ -302,6 +303,11 @@ def _run_acquisition_queue(
             continue
         if _has_acquired_transcript(database, video.id):
             counts.skipped += 1
+            continue
+        if database.caption_is_known_unavailable(video.id):
+            counts.unavailable += 1
+            if outcome_callback is not None:
+                outcome_callback(video.id, "unavailable")
             continue
 
         outcome = _acquire_video(
