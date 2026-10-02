@@ -10,7 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 import wave
 
 from pastor_transcript_extractor.artifact_namespace import (
@@ -27,6 +27,7 @@ from pastor_transcript_extractor.media import (
 )
 from pastor_transcript_extractor.models import (
     MediaAcquisitionAttempt,
+    MediaArchiveEntry,
     MediaArtifact,
     Video,
 )
@@ -144,37 +145,55 @@ def media_artifact_availability(
     artifact: MediaArtifact,
     *,
     verification_cache: MediaVerificationCache | None = None,
+    archive_entries_by_artifact_id: Mapping[int, MediaArchiveEntry] | None = None,
 ) -> MediaAvailability:
     """Classify bytes without discarding persisted authority when a mount is offline."""
     path = Path(artifact.artifact_path)
-    entry = database.get_media_archive_entry_for_artifact(artifact.id)
+    entry = (
+        archive_entries_by_artifact_id.get(artifact.id)
+        if archive_entries_by_artifact_id is not None
+        else database.get_media_archive_entry_for_artifact(artifact.id)
+    )
     archived = entry is not None and entry.status == "archived"
     archive_path = Path(entry.archive_path) if entry is not None else path
     try:
-        exists = path.exists()
+        file_stat = path.stat()
     except OSError as error:
         if archived:
-            return MediaAvailability("archived_media_unavailable", artifact, archive_path, str(error))
-        return MediaAvailability("missing", artifact, path, str(error))
-    if not exists:
-        if archived:
             # A persisted archived entry plus the original archive symlink remains
-            # authoritative even when its target cannot currently be reached.
-            if path.is_symlink() and path.resolve(strict=False) == archive_path.resolve(strict=False):
+            # authoritative when its target mount is offline. If the mount is
+            # available, a missing immutable target is a hard failure instead.
+            if (
+                path.is_symlink()
+                and path.resolve(strict=False) == archive_path.resolve(strict=False)
+            ):
                 destination = database.get_active_media_archive_destination()
                 if (
                     destination is not None
                     and Path(destination.archive_root).is_dir()
                 ):
                     return MediaAvailability(
-                        "missing", artifact, archive_path,
+                        "missing",
+                        artifact,
+                        archive_path,
                         "archive destination is accessible but the immutable file is missing",
                     )
-                return MediaAvailability("archived_media_unavailable", artifact, archive_path)
-            return MediaAvailability("provenance_mismatch", artifact, path)
-        return MediaAvailability("missing", artifact, path)
+                return MediaAvailability(
+                    "archived_media_unavailable",
+                    artifact,
+                    archive_path,
+                    str(error),
+                )
+            return MediaAvailability(
+                "provenance_mismatch", artifact, path, str(error)
+            )
+        return MediaAvailability("missing", artifact, path, str(error))
     try:
-        valid = verify_media_artifact(artifact, verification_cache=verification_cache)
+        valid = verify_media_artifact(
+            artifact,
+            verification_cache=verification_cache,
+            file_stat=file_stat,
+        )
     except OSError as error:
         if archived:
             return MediaAvailability("archived_media_unavailable", artifact, archive_path, str(error))
@@ -223,12 +242,18 @@ class MediaVerificationCache:
             if fallback_root != root
         )
 
-    def verify(self, artifact: MediaArtifact) -> bool:
+    def verify(
+        self,
+        artifact: MediaArtifact,
+        *,
+        file_stat: os.stat_result | None = None,
+    ) -> bool:
         path = Path(artifact.artifact_path)
-        try:
-            file_stat = path.stat()
-        except OSError:
-            return False
+        if file_stat is None:
+            try:
+                file_stat = path.stat()
+            except OSError:
+                return False
         if file_stat.st_size != artifact.byte_size:
             return False
 
@@ -1361,10 +1386,16 @@ def verify_media_artifact(
     artifact: MediaArtifact,
     *,
     verification_cache: MediaVerificationCache | None = None,
+    file_stat: os.stat_result | None = None,
 ) -> bool:
     if verification_cache is not None:
-        return verification_cache.verify(artifact)
+        return verification_cache.verify(artifact, file_stat=file_stat)
     path = Path(artifact.artifact_path)
+    if file_stat is not None:
+        return (
+            file_stat.st_size == artifact.byte_size
+            and _sha256_file(path) == artifact.content_sha256
+        )
     return (
         path.exists()
         and path.stat().st_size == artifact.byte_size

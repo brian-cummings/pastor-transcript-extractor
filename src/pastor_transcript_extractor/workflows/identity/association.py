@@ -10,8 +10,16 @@ from pastor_transcript_extractor.identity_leverage import (
 from pastor_transcript_extractor.identity_attribution import (
     title_byline_selection_hint,
 )
-from pastor_transcript_extractor.media_artifacts import MediaVerificationCache
-from pastor_transcript_extractor.models import SpeakerObservation, Video
+from pastor_transcript_extractor.media_artifacts import (
+    MediaVerificationCache,
+    media_artifact_availability,
+)
+from pastor_transcript_extractor.models import (
+    ExtractionResult,
+    MediaArchiveEntry,
+    SpeakerObservation,
+    Video,
+)
 from pastor_transcript_extractor.pipeline_diagnostics import (
     load_identity_association_attempts,
 )
@@ -84,7 +92,12 @@ class AssociationScopeResult:
 class AssociationCorpusInventory:
     videos_by_id: Mapping[int, Video]
     observations_by_id: Mapping[int, SpeakerObservation]
+    observations_by_video_id: Mapping[int, tuple[SpeakerObservation, ...]]
     current_observation_by_video_id: Mapping[int, SpeakerObservation]
+    latest_extraction_by_video_id: Mapping[int, ExtractionResult]
+    archive_entries_by_artifact_id: Mapping[int, MediaArchiveEntry]
+    profiled_observation_ids: frozenset[int]
+    review_actions_by_observation_id: Mapping[int, str]
     source_id_by_video_id: Mapping[int, int]
     candidate_names_by_observation: Mapping[int, frozenset[str]]
 
@@ -176,10 +189,25 @@ def load_association_corpus_inventory(
         for observation in database.list_speaker_observations()
     }
     current_observation_by_video_id: dict[int, SpeakerObservation] = {}
+    observations_by_video_id: dict[int, list[SpeakerObservation]] = {}
     for observation in observations_by_id.values():
+        observations_by_video_id.setdefault(observation.video_id, []).append(
+            observation
+        )
         current = current_observation_by_video_id.get(observation.video_id)
         if current is None or observation.id > current.id:
             current_observation_by_video_id[observation.video_id] = observation
+    latest_extraction_by_video_id: dict[int, ExtractionResult] = {}
+    for extraction in database.list_extraction_results():
+        current = latest_extraction_by_video_id.get(extraction.video_id)
+        if current is None or extraction.id > current.id:
+            latest_extraction_by_video_id[extraction.video_id] = extraction
+    profiled_observation_ids = frozenset(
+        observation_id
+        for _event_id, _profile_id, observation_id, action, _reviewer, _reason
+        in database.list_effective_profile_observation_events()
+        if action == "attach"
+    )
     names: dict[int, set[str]] = {}
     for claim in database.list_speaker_name_claims():
         if (
@@ -193,7 +221,20 @@ def load_association_corpus_inventory(
     return AssociationCorpusInventory(
         videos_by_id=videos_by_id,
         observations_by_id=observations_by_id,
+        observations_by_video_id={
+            video_id: tuple(sorted(values, key=lambda item: item.id))
+            for video_id, values in observations_by_video_id.items()
+        },
         current_observation_by_video_id=current_observation_by_video_id,
+        latest_extraction_by_video_id=latest_extraction_by_video_id,
+        archive_entries_by_artifact_id={
+            entry.media_artifact_id: entry
+            for entry in database.list_media_archive_entries()
+        },
+        profiled_observation_ids=profiled_observation_ids,
+        review_actions_by_observation_id=(
+            database.list_effective_observation_review_actions()
+        ),
         source_id_by_video_id={
             video_id: video.source_id
             for video_id, video in videos_by_id.items()
@@ -282,6 +323,7 @@ def assess_association_candidate(
     attempted_observation_fingerprints: frozenset[str],
     include_profiled: bool,
     verification_cache: MediaVerificationCache,
+    inventory: AssociationCorpusInventory | None = None,
 ) -> AssociationCandidateAssessment:
     """Apply metadata, membership, review, and verified-media admission gates."""
     latest_observation = (
@@ -308,6 +350,21 @@ def assess_association_candidate(
         video.id,
         verification_cache=verification_cache,
         verify_media=False,
+        latest_extractions_by_video_id=(
+            inventory.latest_extraction_by_video_id
+            if inventory is not None
+            else None
+        ),
+        observations_by_video_id=(
+            inventory.observations_by_video_id
+            if inventory is not None
+            else None
+        ),
+        review_actions_by_observation_id=(
+            inventory.review_actions_by_observation_id
+            if inventory is not None
+            else None
+        ),
     )
     if not eligibility.eligible or eligibility.observation is None:
         return AssociationCandidateAssessment(
@@ -326,7 +383,15 @@ def assess_association_candidate(
     )
     if (
         not include_profiled
-        and database.list_effective_profile_ids_for_observation(observation.id)
+        and (
+            observation.id in inventory.profiled_observation_ids
+            if inventory is not None
+            else bool(
+                database.list_effective_profile_ids_for_observation(
+                    observation.id
+                )
+            )
+        )
     ):
         return AssociationCandidateAssessment(
             video,
@@ -337,7 +402,11 @@ def assess_association_candidate(
             "membership_filter",
             media_sha256,
         )
-    review_action = database.get_effective_observation_review_action(observation.id)
+    review_action = (
+        inventory.review_actions_by_observation_id.get(observation.id)
+        if inventory is not None
+        else database.get_effective_observation_review_action(observation.id)
+    )
     if review_action not in {None, "qualified_single_speaker"}:
         reason = f"reviewed_{review_action}"
         return AssociationCandidateAssessment(
@@ -350,12 +419,46 @@ def assess_association_candidate(
             media_sha256,
         )
 
-    verified = assess_automatic_speaker_observation(
-        database,
-        video.id,
-        verification_cache=verification_cache,
-        verify_media=True,
+    availability = (
+        media_artifact_availability(
+            database,
+            eligibility.media_artifact,
+            verification_cache=verification_cache,
+            archive_entries_by_artifact_id=(
+                inventory.archive_entries_by_artifact_id
+                if inventory is not None
+                else None
+            ),
+        )
+        if eligibility.media_artifact is not None
+        else None
     )
+    if availability is not None and availability.verified:
+        verified = eligibility
+    else:
+        # Preserve fallback selection and archived-media reason semantics for
+        # uncommon missing, corrupt, or offline metadata-selected artifacts.
+        verified = assess_automatic_speaker_observation(
+            database,
+            video.id,
+            verification_cache=verification_cache,
+            verify_media=True,
+            latest_extractions_by_video_id=(
+                inventory.latest_extraction_by_video_id
+                if inventory is not None
+                else None
+            ),
+            observations_by_video_id=(
+                inventory.observations_by_video_id
+                if inventory is not None
+                else None
+            ),
+            review_actions_by_observation_id=(
+                inventory.review_actions_by_observation_id
+                if inventory is not None
+                else None
+            ),
+        )
     if not verified.eligible or verified.observation is None:
         return AssociationCandidateAssessment(
             video,
@@ -395,6 +498,7 @@ def scan_association_candidates(
     verification_cache: MediaVerificationCache,
     remember_verified_source: Callable[[Path, str], None],
     exclusion_callback: Callable[[AssociationCandidateAssessment], None],
+    inventory: AssociationCorpusInventory | None = None,
     progress_callback: Callable[[int, int, int, int], None] | None = None,
 ) -> AssociationCandidateScanResult:
     """Assess candidates in stable order and queue verified span inputs."""
@@ -419,6 +523,7 @@ def scan_association_candidates(
             ),
             include_profiled=include_profiled,
             verification_cache=verification_cache,
+            inventory=inventory,
         )
         if not assessment.admitted:
             reason = assessment.exclusion_reason

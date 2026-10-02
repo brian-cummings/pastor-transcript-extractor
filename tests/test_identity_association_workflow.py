@@ -124,13 +124,25 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
         database = SimpleNamespace(
             list_videos=lambda: videos,
             list_speaker_observations=lambda: observations,
+            list_extraction_results=lambda: (),
+            list_media_archive_entries=lambda: (),
+            list_effective_profile_observation_events=lambda: (),
+            list_effective_observation_review_actions=lambda: {},
             list_speaker_name_claims=lambda: claims,
         )
 
         inventory = load_association_corpus_inventory(database)
 
         self.assertEqual(5, inventory.current_observation_by_video_id[1].id)
+        self.assertEqual(
+            (3, 5),
+            tuple(item.id for item in inventory.observations_by_video_id[1]),
+        )
         self.assertEqual({1: 10, 2: 20}, inventory.source_id_by_video_id)
+        self.assertEqual({}, inventory.latest_extraction_by_video_id)
+        self.assertEqual({}, inventory.archive_entries_by_artifact_id)
+        self.assertEqual(frozenset(), inventory.profiled_observation_ids)
+        self.assertEqual({}, inventory.review_actions_by_observation_id)
         self.assertEqual(
             frozenset({"pastor"}),
             inventory.candidate_names_by_observation[5],
@@ -284,6 +296,74 @@ class IdentityAssociationWorkflowTests(unittest.TestCase):
         self.assertEqual(2, assess.call_count)
         self.assertFalse(assess.call_args_list[0].kwargs["verify_media"])
         self.assertTrue(assess.call_args_list[1].kwargs["verify_media"])
+
+    def test_candidate_reuses_verified_metadata_selection_and_bulk_state(self) -> None:
+        observation = SimpleNamespace(id=11)
+        media = SimpleNamespace(
+            content_sha256="verified-sha",
+            artifact_path="audio.wav",
+        )
+        eligibility = SimpleNamespace(
+            eligible=True,
+            observation=observation,
+            media_artifact=media,
+            reason_code="eligible",
+        )
+        database = SimpleNamespace(
+            list_effective_profile_ids_for_observation=Mock(
+                side_effect=AssertionError("bulk membership must be reused")
+            ),
+            get_effective_observation_review_action=Mock(
+                side_effect=AssertionError("bulk review state must be reused")
+            ),
+        )
+        inventory = SimpleNamespace(
+            latest_extraction_by_video_id={7: "extraction"},
+            observations_by_video_id={7: (observation,)},
+            archive_entries_by_artifact_id={},
+            profiled_observation_ids=frozenset(),
+            review_actions_by_observation_id={},
+        )
+        with (
+            patch.object(
+                association,
+                "assess_automatic_speaker_observation",
+                return_value=eligibility,
+            ) as assess,
+            patch.object(
+                association,
+                "media_artifact_availability",
+                return_value=SimpleNamespace(verified=True),
+            ) as availability,
+        ):
+            result = assess_association_candidate(
+                database,
+                SimpleNamespace(id=7),
+                unattempted_only=False,
+                attempted_observation_fingerprints=frozenset(),
+                include_profiled=False,
+                verification_cache=object(),
+                inventory=inventory,
+            )
+
+        self.assertTrue(result.admitted)
+        self.assertEqual(Path("audio.wav"), result.audio_path)
+        assess.assert_called_once()
+        self.assertFalse(assess.call_args.kwargs["verify_media"])
+        self.assertIs(
+            inventory.latest_extraction_by_video_id,
+            assess.call_args.kwargs["latest_extractions_by_video_id"],
+        )
+        self.assertIs(
+            inventory.observations_by_video_id,
+            assess.call_args.kwargs["observations_by_video_id"],
+        )
+        availability.assert_called_once_with(
+            database,
+            media,
+            verification_cache=unittest.mock.ANY,
+            archive_entries_by_artifact_id={},
+        )
 
     def test_candidate_scan_preserves_order_reasons_and_progress(self) -> None:
         videos = tuple(SimpleNamespace(id=value) for value in (1, 2, 3))

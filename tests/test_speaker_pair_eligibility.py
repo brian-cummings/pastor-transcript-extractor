@@ -135,6 +135,49 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
         self.assertTrue(result.eligible)
         self.assertEqual(self.observation.id, result.observation.id)
 
+    def test_preloaded_inventory_avoids_requery_and_preserves_window_match(self) -> None:
+        later = self._add_observation(
+            extraction_result_id=self.extraction.id,
+            start_seconds=120.0,
+            end_seconds=1600.0,
+            fingerprint="later-incompatible-observation",
+        )
+        with (
+            patch.object(
+                self.database,
+                "get_latest_extraction_result_for_video",
+                side_effect=AssertionError("latest extraction was preloaded"),
+            ),
+            patch.object(
+                self.database,
+                "get_speaker_observation_for_extraction_window",
+                side_effect=AssertionError("observations were preloaded"),
+            ),
+            patch.object(
+                self.database,
+                "get_effective_observation_review_action",
+                side_effect=AssertionError("review actions were preloaded"),
+            ),
+            patch(
+                "pastor_transcript_extractor.speaker_pair_eligibility."
+                "get_registered_normalized_media_artifact",
+                return_value=self.media,
+            ),
+        ):
+            result = assess_automatic_speaker_observation(
+                self.database,
+                self.video.id,
+                verify_media=False,
+                latest_extractions_by_video_id={self.video.id: self.extraction},
+                observations_by_video_id={
+                    self.video.id: (self.observation, later)
+                },
+                review_actions_by_observation_id={},
+            )
+
+        self.assertTrue(result.eligible)
+        self.assertEqual(self.observation.id, result.observation.id)
+
     def test_unreadable_latest_extraction_is_excluded(self) -> None:
         self.proposed_path.unlink()
 
@@ -201,7 +244,11 @@ class SpeakerPairEligibilityTests(unittest.TestCase):
             )
 
         self.assertTrue(result.eligible)
-        registered.assert_called_once_with(self.database, self.video.id)
+        registered.assert_called_once_with(
+            self.database,
+            self.video.id,
+            required_window=(120.0, 1800.0),
+        )
         verified.assert_not_called()
 
     def test_selected_pair_only_is_verified(self) -> None:
