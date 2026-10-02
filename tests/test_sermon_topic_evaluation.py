@@ -17,6 +17,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     REQUIRED_BEHAVIOR_TAGS,
+    _validated_score,
     evaluate_topic_behavior_fixture,
     load_topic_behavior_fixture,
     render_topic_behavior_report,
@@ -146,6 +147,10 @@ class SermonTopicEvaluationTests(unittest.TestCase):
 
         self.assertEqual("passed", first["status"])
         self.assertEqual(41, first["summary"]["passed_expectations"])
+        self.assertEqual(
+            str(DEFAULT_TOPIC_BEHAVIOR_FIXTURE),
+            first["fixture"]["fixture_path"],
+        )
         self.assertEqual(21, first["execution"]["cache_misses"])
         self.assertEqual(4, first["execution"]["provider_requests"])
         self.assertEqual(0, replay["execution"]["cache_misses"])
@@ -183,6 +188,71 @@ class SermonTopicEvaluationTests(unittest.TestCase):
         self.assertFalse(failed["passed"])
         self.assertEqual(0.9, report["cases"][0]["scores"]["salvation_gospel"]["confidence"])
         self.assertIn("never used", report["interpretation_contract"]["confidence"])
+
+    def test_score_validation_allows_api_rounding_but_rejects_inconsistency(self) -> None:
+        rounded_distribution = {
+            "0": 0.06,
+            "1": 0.85,
+            "2": 0.01,
+            "3": 0.03,
+            "4": 0.05,
+        }
+
+        accepted = _validated_score(
+            case_id="rounded-provider-score",
+            topic="vocation_stewardship_daily_life",
+            raw={
+                "score": 1.18,
+                "probabilities": rounded_distribution,
+                "confidence": 0.76,
+            },
+        )
+        self.assertEqual(1.18, accepted["score"])
+
+        accepted_short_sum = _validated_score(
+            case_id="rounded-provider-distribution",
+            topic="vocation_stewardship_daily_life",
+            raw={
+                "score": 1.15,
+                "probabilities": {
+                    **rounded_distribution,
+                    "0": 0.05,
+                },
+                "confidence": 0.76,
+            },
+        )
+        self.assertAlmostEqual(
+            0.99,
+            sum(accepted_short_sum["probabilities"].values()),
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "score=1.220000, distribution_expected_score=1.160000",
+        ):
+            _validated_score(
+                case_id="inconsistent-provider-score",
+                topic="vocation_stewardship_daily_life",
+                raw={
+                    "score": 1.22,
+                    "probabilities": rounded_distribution,
+                    "confidence": 0.76,
+                },
+            )
+
+        with self.assertRaisesRegex(ValueError, "probabilities do not sum to one"):
+            _validated_score(
+                case_id="malformed-provider-distribution",
+                topic="vocation_stewardship_daily_life",
+                raw={
+                    "score": 1.16,
+                    "probabilities": {
+                        **rounded_distribution,
+                        "0": 0.01,
+                    },
+                    "confidence": 0.76,
+                },
+            )
 
     def test_report_writer_is_content_addressed_and_repairs_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

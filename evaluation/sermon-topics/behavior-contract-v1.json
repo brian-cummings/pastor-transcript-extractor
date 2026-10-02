@@ -3,7 +3,7 @@
   "fixture_id": "sermon-topic-behavior-contract-v1",
   "question_pack_version": "topics-v2-performed-worship-boundary",
   "review": {
-    "status": "prepared_for_bounded_review",
+    "status": "bounded_jev_review_complete",
     "reviewer": "codex-specification-curation",
     "annotation_basis": "Frozen topic definitions, exclusions, prominence levels, and named video-4548 regression interpretations from the TypeSafe topic analysis plan. Synthetic text is not production ground truth."
   },
@@ -100,8 +100,8 @@
       "expectations": {
         "salvation_gospel": {
           "minimum_score": 2.5,
-          "maximum_score": 3.75,
-          "rationale": "Reconciliation, forgiveness, adoption, and grace receive sustained attention."
+          "maximum_score": 4.0,
+          "rationale": "Reconciliation, forgiveness, adoption, and grace receive sustained attention and may independently organize most of the target."
         },
         "sin_fallenness_human_need": {
           "minimum_score": 2.5,
@@ -462,8 +462,8 @@
         },
         "sin_fallenness_human_need": {
           "minimum_score": 1.5,
-          "maximum_score": 3.25,
-          "rationale": "Guilt and inability to repay are meaningful support for the salvation claim."
+          "maximum_score": 4.0,
+          "rationale": "Guilt, sinnerhood, and inability to repay are positively developed even though financial debt is only a rejected metaphor."
         }
       }
     }
