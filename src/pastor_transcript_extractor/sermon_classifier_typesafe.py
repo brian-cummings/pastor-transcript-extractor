@@ -30,6 +30,7 @@ from pastor_transcript_extractor.sermon_topics import (
     TOPIC_PACK_VERSION,
     TOPIC_RELIABILITY_POLICY_VERSION,
     TOPICS,
+    PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT,
     TopicBlockContext,
     build_topic_context,
     topic_pack_digest,
@@ -1203,9 +1204,7 @@ def _semantic_analysis_artifact(
         "question_version": SEMANTIC_ANALYSIS_QUESTION_VERSION,
         "dimensions": list(SEMANTIC_DIMENSIONS),
         "policy_effect": "none",
-        "activation_requirement": (
-            "accepted_sermon_with_effective_reviewed_profile_membership"
-        ),
+        "activation_requirement": PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT,
         "blocks": observations,
     }
 
@@ -1287,9 +1286,7 @@ def _topic_analysis_artifact(
         "context_policy_version": TOPIC_CONTEXT_POLICY_VERSION,
         "reliability_policy_version": TOPIC_RELIABILITY_POLICY_VERSION,
         "policy_effect": "none",
-        "activation_requirement": (
-            "accepted_sermon_with_effective_reviewed_profile_membership"
-        ),
+        "activation_requirement": PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT,
         "requested_model_id": requested_model_id,
         "inventory": topic_pack_inventory(),
         "provider_requests": list(provider_requests.values()),

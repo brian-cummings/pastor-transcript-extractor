@@ -33,8 +33,12 @@ from pastor_transcript_extractor.sermon_analysis import (
 )
 from pastor_transcript_extractor.sermon_topic_review import (
     KNOWN_TOPIC_REVIEW_CASES,
+    TOPIC_REVIEW_DEFAULT_FILENAME,
     build_topic_review_packet,
     write_topic_review_packet,
+)
+from pastor_transcript_extractor.sermon_topic_projection import (
+    assess_topic_profile_projection,
 )
 
 
@@ -515,6 +519,10 @@ def analysis_topic_review(
             f"Classification artifact is not an object: {classification_path}"
         )
     try:
+        profile_projection_gate = assess_topic_profile_projection(
+            database,
+            video,
+        )
         packet = build_topic_review_packet(
             classification,
             video_id=video.id,
@@ -522,9 +530,10 @@ def analysis_topic_review(
             title=video.title,
             cases=cases,
             source_artifact_path=classification_path,
+            profile_projection_gate=profile_projection_gate.to_dict(),
         )
         result = write_topic_review_packet(
-            output_path or proposed_path.parent / "typesafe-topic-review-v1.json",
+            output_path or proposed_path.parent / TOPIC_REVIEW_DEFAULT_FILENAME,
             packet,
         )
     except ValueError as error:

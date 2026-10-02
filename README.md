@@ -432,8 +432,12 @@ pte analysis topic-review \
 The command writes JSON and Markdown beside the extraction artifacts. The packet
 contains the lyric blocks 52–55, prodigal-son block 69, and closing-prayer region
 77–81 with every Score distribution, confidence, context, density field, role
-distribution, and projection decision. Its input fingerprint makes an unchanged
-rerun a cache hit.
+distribution, and projection decision. It also reports the deterministic
+pastor-projection gate: the current accepted-sermon disposition, exact speaker
+observation, effective direct or inherited reviewed profile membership, and
+canonical profile lifecycle. The gate is evidence only; profile aggregation
+remains disabled. Its input fingerprint makes an unchanged rerun a cache hit and
+changes when either topic evidence or effective membership changes.
 
 TypeSafe with `jev-1.13.0` is the default classifier and recording verifier for
 `pte run`, `pte extract`, and `pte reclassify`, so those flags are only needed for

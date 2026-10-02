@@ -692,13 +692,20 @@ theological stance.
     fields for the named video 4548 lyric, illustration, and closing-prayer
     cases. Unchanged packet preparation makes no provider call and reuses the
     existing artifact.
+12. A deterministic profile-projection activation gate now exercises the full
+    `accepted_sermon_with_effective_reviewed_profile_membership` contract. It
+    binds current topic evidence to the exact sermon-window observation, follows
+    direct or superseded reviewed membership to one canonical active/provisional
+    profile, rejects ambiguous or missing membership, and fingerprints all
+    effective inputs. The review packet exposes the result, but the gate does not
+    write an aggregate or change classifier policy.
 
 ### Next iteration
 
 1. Continue prospective collection and extend the bounded sanity-review packet
    from naturally processed sermons. Do not run a corpus backfill.
-2. Exercise accepted-sermon and reviewed-profile membership rules end to end;
-   profile aggregation remains blocked until then.
+2. Inspect activation-gate outcomes alongside the planned whole-sermon review;
+   profile aggregation remains blocked until analytical projection is credible.
 3. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.

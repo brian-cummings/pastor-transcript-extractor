@@ -7,11 +7,15 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from pastor_transcript_extractor.sermon_topics import TOPICS
+from pastor_transcript_extractor.sermon_topics import (
+    TOPICS,
+    resolve_topic_analysis_artifact,
+)
 
 
-TOPIC_REVIEW_SCHEMA_VERSION = 1
-TOPIC_REVIEW_GENERATOR_VERSION = "typesafe-topic-review-v1"
+TOPIC_REVIEW_SCHEMA_VERSION = 2
+TOPIC_REVIEW_GENERATOR_VERSION = "typesafe-topic-review-v2"
+TOPIC_REVIEW_DEFAULT_FILENAME = f"{TOPIC_REVIEW_GENERATOR_VERSION}.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,22 +96,6 @@ def _canonical_hash(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _topic_analysis(classification: Mapping[str, Any]) -> Mapping[str, Any]:
-    search = classification.get("search")
-    search = search if isinstance(search, Mapping) else {}
-    direct = search.get("topic_analysis")
-    if isinstance(direct, Mapping):
-        return direct
-    discovery = search.get("discovery")
-    discovery = discovery if isinstance(discovery, Mapping) else {}
-    attempt = discovery.get("typesafe_first_attempt")
-    attempt = attempt if isinstance(attempt, Mapping) else {}
-    fallback = attempt.get("topic_analysis")
-    if isinstance(fallback, Mapping):
-        return fallback
-    raise ValueError("Classification has no cached TypeSafe topic analysis")
-
-
 def _validated_scores(block: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     raw_scores = block.get("scores")
     if not isinstance(raw_scores, Mapping):
@@ -151,11 +139,12 @@ def build_topic_review_packet(
     title: str,
     cases: Sequence[TopicReviewCase],
     source_artifact_path: Path | None = None,
+    profile_projection_gate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a bounded packet without changing or rerunning cached inference."""
     if not cases:
         raise ValueError("At least one topic review case is required")
-    analysis = _topic_analysis(classification)
+    analysis = resolve_topic_analysis_artifact(classification)
     raw_blocks = analysis.get("blocks")
     if not isinstance(raw_blocks, list):
         raise ValueError("TypeSafe topic analysis has no block observations")
@@ -221,6 +210,7 @@ def build_topic_review_packet(
             if isinstance(analysis.get("sermon_projection"), Mapping)
             else None
         ),
+        "profile_projection_gate": dict(profile_projection_gate or {}),
         "cases": [asdict(case) for case in cases],
         "blocks": reviewed_blocks,
     }
@@ -257,6 +247,7 @@ def build_topic_review_packet(
                 "Content role, topic meaning, and projection eligibility are separate."
             ),
         },
+        "profile_projection_gate": dict(profile_projection_gate or {}),
         "cases": [asdict(case) for case in cases],
         "blocks": reviewed_blocks,
     }
@@ -282,6 +273,20 @@ def render_topic_review_markdown(packet: Mapping[str, Any]) -> str:
         "meaning, and projection eligibility remain separate.",
         "",
     ]
+    gate = packet.get("profile_projection_gate")
+    if isinstance(gate, Mapping) and gate:
+        lines.extend(
+            [
+                "## Profile projection gate",
+                "",
+                f"- Eligible: `{gate.get('eligible')}`",
+                f"- Profile: `{gate.get('profile_id')}`",
+                f"- Reasons: `{gate.get('reason_codes', [])}`",
+                f"- Policy: `{gate.get('policy_version')}`",
+                f"- Input fingerprint: `{gate.get('input_fingerprint')}`",
+                "",
+            ]
+        )
     for case in packet.get("cases", []):
         lines.extend(
             [
