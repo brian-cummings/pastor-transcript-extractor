@@ -9,9 +9,12 @@ from unittest.mock import patch
 
 from pastor_transcript_extractor.commands.analysis.content import analysis_topic_review
 from pastor_transcript_extractor.sermon_topic_review import (
+    DEFAULT_PROSPECTIVE_REVIEW_CASES,
+    PROSPECTIVE_REVIEW_POLICY_VERSION,
     VIDEO_4548_REVIEW_CASES,
     TopicReviewCase,
     build_topic_review_packet,
+    derive_prospective_topic_review_cases,
     render_topic_review_markdown,
     write_topic_review_packet,
 )
@@ -121,7 +124,7 @@ class SermonTopicReviewTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(2, packet["schema_version"])
+        self.assertEqual(3, packet["schema_version"])
         self.assertEqual(1, len(packet["blocks"]))
         reviewed = packet["blocks"][0]
         self.assertEqual(set(TOPICS), set(reviewed["scores"]))
@@ -248,6 +251,71 @@ class SermonTopicReviewTests(unittest.TestCase):
             },
         )
 
+    def test_prospective_sampler_prioritizes_boundaries_and_broad_distributions(self) -> None:
+        excluded = _block(1)
+        excluded["projection_eligibility"] = {
+            "policy_version": "sermon-topic-full-block-role-density-v1",
+            "eligible": False,
+            "exclusion_reasons": ["outside_final_sermon"],
+        }
+        boundary_inside = _block(2)
+        ambiguous = _block(3)
+        ambiguous["scores"]["salvation_gospel"] = {
+            "score": 2.5,
+            "probabilities": {
+                "0": 0.1,
+                "1": 0.15,
+                "2": 0.2,
+                "3": 0.25,
+                "4": 0.3,
+            },
+            "confidence": 0.05,
+        }
+        classification = _classification([excluded, boundary_inside, ambiguous])
+
+        first = derive_prospective_topic_review_cases(
+            classification,
+            maximum_cases=4,
+        )
+        replay = derive_prospective_topic_review_cases(
+            classification,
+            maximum_cases=4,
+        )
+
+        self.assertEqual(first, replay)
+        self.assertEqual(4, len(first))
+        self.assertEqual((1, 2), first[0].block_ids)
+        self.assertIn("boundary", first[0].case_id)
+        self.assertEqual((3,), first[1].block_ids)
+        self.assertIn("salvation_gospel", first[1].case_id)
+        self.assertTrue(all(case.reviewed_interpretation is None for case in first))
+
+        packet = build_topic_review_packet(
+            classification,
+            video_id=99,
+            youtube_video_id="future-video",
+            title="Future sermon",
+            cases=first,
+            selection={
+                "mode": "prospective",
+                "policy_version": PROSPECTIVE_REVIEW_POLICY_VERSION,
+                "maximum_cases": 4,
+            },
+        )
+        markdown = render_topic_review_markdown(packet)
+        self.assertIn("Mode: `prospective`", markdown)
+        self.assertIn("Review status: pending", markdown)
+
+    def test_prospective_sampler_requires_current_projection(self) -> None:
+        classification = _classification([_block(1)])
+        del classification["search"]["topic_analysis"]["sermon_projection"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "current deterministic sermon projection",
+        ):
+            derive_prospective_topic_review_cases(classification)
+
     def test_analysis_command_writes_and_reuses_prepared_video_packet(self) -> None:
         block_ids = sorted(
             {
@@ -281,7 +349,8 @@ class SermonTopicReviewTests(unittest.TestCase):
                 "pastor_transcript_extractor.commands.analysis.content.get_database",
                 return_value=database,
             ), patch(
-                "pastor_transcript_extractor.commands.analysis.content.assess_topic_profile_projection",
+                "pastor_transcript_extractor.commands.analysis.content."
+                "assess_topic_profile_projection",
                 return_value=SimpleNamespace(
                     to_dict=lambda: {
                         "eligible": False,
@@ -298,6 +367,8 @@ class SermonTopicReviewTests(unittest.TestCase):
                     video_id=4548,
                     youtube_video_id=None,
                     output_path=output,
+                    prospective=False,
+                    maximum_cases=DEFAULT_PROSPECTIVE_REVIEW_CASES,
                     base_dir=Path(tmp),
                 )
                 first = json.loads(output.read_text(encoding="utf-8"))
@@ -305,6 +376,8 @@ class SermonTopicReviewTests(unittest.TestCase):
                     video_id=4548,
                     youtube_video_id=None,
                     output_path=output,
+                    prospective=False,
+                    maximum_cases=DEFAULT_PROSPECTIVE_REVIEW_CASES,
                     base_dir=Path(tmp),
                 )
                 replay = json.loads(output.read_text(encoding="utf-8"))
@@ -312,6 +385,70 @@ class SermonTopicReviewTests(unittest.TestCase):
         self.assertEqual(first["input_fingerprint"], replay["input_fingerprint"])
         self.assertEqual(3, len(first["cases"]))
         self.assertEqual(10, len(first["blocks"]))
+        self.assertEqual("prepared_regression", first["selection"]["mode"])
+
+    def test_analysis_command_automatically_samples_an_unprepared_video(self) -> None:
+        blocks = [_block(block_id) for block_id in range(1, 7)]
+        blocks[0]["projection_eligibility"] = {
+            "policy_version": "sermon-topic-full-block-role-density-v1",
+            "eligible": False,
+            "exclusion_reasons": ["outside_final_sermon"],
+        }
+        blocks[2]["scores"]["salvation_gospel"]["confidence"] = 0.05
+        video = SimpleNamespace(
+            id=99,
+            youtube_video_id="future-video",
+            title="Future sermon",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            extracted = Path(tmp) / "extracted"
+            extracted.mkdir()
+            proposed = extracted / "proposed.json"
+            proposed.write_text("{}", encoding="utf-8")
+            (extracted / "llm-classification-v1.json").write_text(
+                json.dumps(_classification(blocks)),
+                encoding="utf-8",
+            )
+            database = SimpleNamespace(
+                get_video_by_id=lambda requested: video if requested == 99 else None,
+                get_latest_extraction_result_for_video=lambda requested: SimpleNamespace(
+                    proposed_json_path=str(proposed)
+                ),
+            )
+            output = Path(tmp) / "review.json"
+            with patch(
+                "pastor_transcript_extractor.commands.analysis.content.get_database",
+                return_value=database,
+            ), patch(
+                "pastor_transcript_extractor.commands.analysis.content."
+                "assess_topic_profile_projection",
+                return_value=SimpleNamespace(
+                    to_dict=lambda: {
+                        "eligible": False,
+                        "reason_codes": (
+                            "effective_profile_membership_unavailable",
+                        ),
+                        "input_fingerprint": "profile-fingerprint",
+                    }
+                ),
+            ):
+                analysis_topic_review(
+                    video_id=99,
+                    youtube_video_id=None,
+                    output_path=output,
+                    prospective=False,
+                    maximum_cases=5,
+                    base_dir=Path(tmp),
+                )
+            packet = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual("prospective", packet["selection"]["mode"])
+        self.assertEqual(PROSPECTIVE_REVIEW_POLICY_VERSION, packet["selection"]["policy_version"])
+        self.assertLessEqual(len(packet["cases"]), 5)
+        self.assertTrue(packet["cases"])
+        self.assertTrue(
+            all(case["reviewed_interpretation"] is None for case in packet["cases"])
+        )
 
 
 if __name__ == "__main__":

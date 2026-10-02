@@ -439,6 +439,14 @@ canonical profile lifecycle. The gate is evidence only; profile aggregation
 remains disabled. Its input fingerprint makes an unchanged rerun a cache hit and
 changes when either topic evidence or effective membership changes.
 
+For any other naturally processed video, the same command automatically prepares
+at most eight prospective cases from cached observations. The versioned deterministic
+sampler prioritizes up to two projection-boundary windows, up to two meaningful broad
+Score distributions, and domain-diverse positive evidence. It assigns no reviewed
+interpretation and makes no TypeSafe request. Use `--maximum-cases N` to lower the
+bound, or `--prospective` to apply this sampler to a video that already has named
+regression cases.
+
 Validate the frozen synthetic topic behavior contract without making a provider
 request:
 
