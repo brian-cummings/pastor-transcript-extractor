@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -29,6 +30,11 @@ from pastor_transcript_extractor.profile_analysis import (
 from pastor_transcript_extractor.sermon_analysis import (
     ANALYZER_VERSION as SERMON_ANALYZER_VERSION,
     analyze_sermon,
+)
+from pastor_transcript_extractor.sermon_topic_review import (
+    KNOWN_TOPIC_REVIEW_CASES,
+    build_topic_review_packet,
+    write_topic_review_packet,
 )
 
 
@@ -452,4 +458,81 @@ def analysis_run(
         )
     console.print(
         f"Analysis complete: created={created}, reused={reused}, skipped={skipped}."
+    )
+
+
+@analysis_app.command(
+    "topic-review",
+    help="Build or reuse a bounded review packet from cached TypeSafe topic observations.",
+)
+def analysis_topic_review(
+    video_id: int | None = typer.Option(None, "--video-id", help="Database video id."),
+    youtube_video_id: str | None = typer.Option(
+        None, "--youtube-video-id", help="YouTube video id."
+    ),
+    output_path: Path | None = typer.Option(
+        None,
+        "--output",
+        help="JSON output path; defaults beside the video's extraction artifacts.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    videos, _ = _analysis_videos(
+        database,
+        video_id=video_id,
+        youtube_video_id=youtube_video_id,
+        profile_id=None,
+        pastor_slug=None,
+    )
+    video = videos[0]
+    cases = KNOWN_TOPIC_REVIEW_CASES.get(video.youtube_video_id)
+    if not cases:
+        raise typer.BadParameter(
+            f"No prepared topic-review cases exist for {video.youtube_video_id}"
+        )
+    extraction = database.get_latest_extraction_result_for_video(video.id)
+    proposed_path = (
+        Path(extraction.proposed_json_path)
+        if extraction is not None and extraction.proposed_json_path
+        else None
+    )
+    if proposed_path is None:
+        raise typer.BadParameter(f"Video #{video.id} has no extraction artifact")
+    classification_path = proposed_path.parent / "llm-classification-v1.json"
+    try:
+        classification = json.loads(classification_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(
+            f"Cannot read classification artifact: {classification_path}"
+        ) from error
+    if not isinstance(classification, dict):
+        raise typer.BadParameter(
+            f"Classification artifact is not an object: {classification_path}"
+        )
+    try:
+        packet = build_topic_review_packet(
+            classification,
+            video_id=video.id,
+            youtube_video_id=video.youtube_video_id,
+            title=video.title,
+            cases=cases,
+            source_artifact_path=classification_path,
+        )
+        result = write_topic_review_packet(
+            output_path or proposed_path.parent / "typesafe-topic-review-v1.json",
+            packet,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    state = "Reused" if result.reused else "Wrote"
+    console.print(
+        f"{state} topic review packet: {result.json_path} and "
+        f"{result.markdown_path} ({result.case_count} cases, "
+        f"{result.block_count} blocks, fingerprint={result.input_fingerprint[:12]}…)",
+        markup=False,
     )

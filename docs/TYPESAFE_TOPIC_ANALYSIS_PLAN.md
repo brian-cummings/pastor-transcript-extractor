@@ -687,18 +687,19 @@ theological stance.
    denominator, exclusions, and representative and counterevidence block links.
 10. Final rule/semantic/verifier and identity-boundary arbitration refreshes
     overlap and projection eligibility without rerunning TypeSafe.
+11. A fingerprinted JSON/Markdown review-packet generator preserves all Score
+    distributions, confidence, context, density, role, overlap, and projection
+    fields for the named video 4548 lyric, illustration, and closing-prayer
+    cases. Unchanged packet preparation makes no provider call and reuses the
+    existing artifact.
 
 ### Next iteration
 
-1. Extend the bounded review packet for lyric blocks 52–55 and prodigal-son
-   block 69 as more naturally processed sermons become available.
-   Keep full distributions visible; do not use confidence as a correctness
-   score.
-2. Continue prospective collection and prepare the bounded sanity-review packet
+1. Continue prospective collection and extend the bounded sanity-review packet
    from naturally processed sermons. Do not run a corpus backfill.
-3. Exercise accepted-sermon and reviewed-profile membership rules end to end;
+2. Exercise accepted-sermon and reviewed-profile membership rules end to end;
    profile aggregation remains blocked until then.
-4. Once projection is credible, implement `salvation-relationships-v1` as the
+3. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 

@@ -420,6 +420,21 @@ partial or mixed, sparse, and non-sermon-role blocks, reports its eligible-time
 denominator, and links aggregate measurements back to evidence blocks. Pastor-level
 aggregation remains blocked pending reviewed profile membership.
 
+Prepare the bounded review packet for the named video 4548 regression cases
+without making another provider request:
+
+```bash
+pte analysis topic-review \
+  --video-id 4548 \
+  --base-dir /path/to/app-data
+```
+
+The command writes JSON and Markdown beside the extraction artifacts. The packet
+contains the lyric blocks 52–55, prodigal-son block 69, and closing-prayer region
+77–81 with every Score distribution, confidence, context, density field, role
+distribution, and projection decision. Its input fingerprint makes an unchanged
+rerun a cache hit.
+
 TypeSafe with `jev-1.13.0` is the default classifier and recording verifier for
 `pte run`, `pte extract`, and `pte reclassify`, so those flags are only needed for
 an explicit override. `--base-dir /path/to/app-data` takes the application-data
