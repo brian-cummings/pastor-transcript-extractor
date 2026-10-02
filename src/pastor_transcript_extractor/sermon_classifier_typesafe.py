@@ -280,6 +280,7 @@ class TypeSafeBlockCache:
         self.model = model
         self.hits = 0
         self.misses = 0
+        self.provider_requests = 0
 
     def _read_answer(self, path: Path, answer_type: type[Any]) -> Any | None:
         if not path.exists():
@@ -592,7 +593,30 @@ class TypeSafeBlockCache:
             requested.add(TREATMENT_PACK)
         if collect_topic_analysis:
             requested.add(TOPIC_PACK)
-        requested_packs = frozenset(requested)
+        return self.assess_packs(
+            client,
+            recording_context,
+            blocks,
+            requested_packs=frozenset(requested),
+            topic_contexts=topic_contexts,
+        )
+
+    def assess_packs(
+        self,
+        client: TypeSafeBlockClient,
+        recording_context: Mapping[str, Any],
+        blocks: list[TranscriptBlock],
+        *,
+        requested_packs: frozenset[str],
+        topic_contexts: Mapping[int, TopicBlockContext] | None = None,
+    ) -> dict[int, TypeSafeBlockAnswer]:
+        """Assess an explicit pack set while reusing production cache identities."""
+        unknown = requested_packs - {ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}
+        if not requested_packs or unknown:
+            raise ValueError(
+                "TypeSafe answer packs must be a non-empty supported set; "
+                f"unsupported={sorted(unknown)}"
+            )
         contexts = topic_contexts or {}
         cached_packs: dict[int, dict[str, dict[str, Any]]] = {}
         missing_by_set: dict[frozenset[str], list[TranscriptBlock]] = {}
@@ -630,6 +654,7 @@ class TypeSafeBlockCache:
             batch_size = self._batch_size(missing_packs)
             for offset in range(0, len(missing_blocks), batch_size):
                 batch = missing_blocks[offset : offset + batch_size]
+                self.provider_requests += 1
                 assessed = client.assess_blocks(
                     _recording_context_for_blocks(recording_context, batch),
                     batch,

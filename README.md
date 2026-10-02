@@ -439,6 +439,26 @@ canonical profile lifecycle. The gate is evidence only; profile aggregation
 remains disabled. Its input fingerprint makes an unchanged rerun a cache hit and
 changes when either topic evidence or effective membership changes.
 
+Validate the frozen synthetic topic behavior contract without making a provider
+request:
+
+```bash
+pte analysis evaluate-topic-behavior --validate-only
+```
+
+Run its 21 bounded cases against the default pinned Jev model:
+
+```bash
+pte analysis evaluate-topic-behavior
+```
+
+The evaluator requests only the independently cached topic pack. It writes a
+fingerprinted JSON/Markdown report with all twenty Score distributions for every
+case and evaluates 41 frozen score ranges. Cached reruns make zero provider
+requests, and confidence is retained only as distribution concentration—not as a
+correctness threshold. This synthetic contract checks question behavior; even a
+pass does not establish whole-sermon or pastor-level analytical validity.
+
 TypeSafe with `jev-1.13.0` is the default classifier and recording verifier for
 `pte run`, `pte extract`, and `pte reclassify`, so those flags are only needed for
 an explicit override. `--base-dir /path/to/app-data` takes the application-data

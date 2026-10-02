@@ -1,0 +1,471 @@
+{
+  "schema_version": 1,
+  "fixture_id": "sermon-topic-behavior-contract-v1",
+  "question_pack_version": "topics-v2-performed-worship-boundary",
+  "review": {
+    "status": "prepared_for_bounded_review",
+    "reviewer": "codex-specification-curation",
+    "annotation_basis": "Frozen topic definitions, exclusions, prominence levels, and named video-4548 regression interpretations from the TypeSafe topic analysis plan. Synthetic text is not production ground truth."
+  },
+  "required_contract_tags": [
+    "prominence_absent",
+    "prominence_incidental",
+    "prominence_supporting",
+    "prominence_substantial",
+    "prominence_dominant",
+    "overlap_jesus_salvation",
+    "overlap_prophecy_adventist",
+    "boundary_sin_discipleship",
+    "boundary_mission_service",
+    "boundary_ethics_public_life",
+    "boundary_human_nature_creation",
+    "sparse_caption",
+    "performed_lyrics",
+    "quotation",
+    "negation",
+    "rejected_alternative",
+    "context_only_mention",
+    "prodigal_illustration",
+    "closing_prayer_sparse_gap",
+    "spiritual_conflict_positive",
+    "spiritual_conflict_exclusion"
+  ],
+  "cases": [
+    {
+      "case_id": "salvation-absent-administration",
+      "label": "Salvation absent from service administration",
+      "tags": ["prominence_absent"],
+      "leading_context": "The sermon will begin after the announcements.",
+      "target_text": "Please silence your phones. The fellowship lunch begins at one, and the deacons will meet in room four after the service.",
+      "trailing_context": "Now we welcome today's speaker.",
+      "reviewed_interpretation": "Administrative logistics give salvation no meaningful attention.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 0.0,
+          "maximum_score": 0.75,
+          "rationale": "No saving work or reception of salvation is discussed in the target."
+        }
+      }
+    },
+    {
+      "case_id": "salvation-incidental-transition",
+      "label": "Incidental salvation reference",
+      "tags": ["prominence_incidental"],
+      "leading_context": "We are beginning a series about family communication.",
+      "target_text": "We are grateful that Christ saves us. Today, though, our subject is how spouses can listen carefully before answering each other in conflict.",
+      "trailing_context": "Start by asking what the other person actually meant.",
+      "reviewed_interpretation": "Salvation is named once but not developed; relationships organize the block.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 0.5,
+          "maximum_score": 1.75,
+          "rationale": "The saving claim is meaningful but brief and undeveloped."
+        },
+        "relationships_family_interpersonal": {
+          "minimum_score": 2.5,
+          "maximum_score": 4.0,
+          "rationale": "Listening and marital conflict are the developed concern."
+        }
+      }
+    },
+    {
+      "case_id": "salvation-supports-forgiveness",
+      "label": "Salvation supporting interpersonal forgiveness",
+      "tags": ["prominence_supporting"],
+      "leading_context": "The preacher has described a long family estrangement.",
+      "target_text": "Because God forgave us in Christ when we could not repair our guilt, Christians have a reason to release vengeance. That grace supports the harder work of naming the hurt, listening, and rebuilding trust with a brother or sister.",
+      "trailing_context": "Forgiveness does not erase wise boundaries.",
+      "reviewed_interpretation": "Saving grace is developed as the basis for a primarily relational application.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 1.5,
+          "maximum_score": 2.75,
+          "rationale": "Forgiveness in Christ is developed but remains subordinate to relational repair."
+        },
+        "relationships_family_interpersonal": {
+          "minimum_score": 2.5,
+          "maximum_score": 4.0,
+          "rationale": "Estrangement, hurt, listening, trust, and boundaries organize the target."
+        }
+      }
+    },
+    {
+      "case_id": "salvation-substantial-with-sin",
+      "label": "Salvation substantial alongside human need",
+      "tags": ["prominence_substantial"],
+      "leading_context": "The sermon asks why human effort cannot erase guilt.",
+      "target_text": "Sin alienates us from God and leaves us unable to declare ourselves righteous. Yet God reconciles the guilty through Christ, forgiving and adopting those who receive his grace. Our need and God's saving answer are both central to this passage.",
+      "trailing_context": "The next verses describe the new life that follows.",
+      "reviewed_interpretation": "Sin and salvation are co-central rather than one being a passing support.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 2.5,
+          "maximum_score": 3.75,
+          "rationale": "Reconciliation, forgiveness, adoption, and grace receive sustained attention."
+        },
+        "sin_fallenness_human_need": {
+          "minimum_score": 2.5,
+          "maximum_score": 3.75,
+          "rationale": "Guilt, alienation, and inability are also sustained main concerns."
+        }
+      }
+    },
+    {
+      "case_id": "salvation-dominant-grace",
+      "label": "Salvation dominant through the block",
+      "tags": ["prominence_dominant"],
+      "leading_context": "The preacher has introduced the question of acceptance with God.",
+      "target_text": "The heart of the gospel is that God saves by grace. Christ bears our guilt, reconciles us to God, forgives us, and gives us a new standing we could never earn. We receive this gift by faith; our assurance rests in his saving work, not our achievement.",
+      "trailing_context": "Everything that follows grows from that gift.",
+      "reviewed_interpretation": "Every developed claim serves the saving work and reception of salvation.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 3.25,
+          "maximum_score": 4.0,
+          "rationale": "Grace, atonement, reconciliation, forgiveness, faith, and assurance organize the entire target."
+        }
+      }
+    },
+    {
+      "case_id": "overlap-jesus-salvation",
+      "label": "Jesus and salvation overlap without competition",
+      "tags": ["overlap_jesus_salvation"],
+      "leading_context": "The sermon turns to the meaning of the cross and resurrection.",
+      "target_text": "Jesus, the incarnate Son, willingly dies for sinners and rises in victory. His cross accomplishes atonement and reconciliation, and his resurrection grounds the believer's hope and assurance of new life.",
+      "trailing_context": "The risen Christ now mediates for his people.",
+      "reviewed_interpretation": "Christ's person and work and the salvation accomplished through that work are independently substantial.",
+      "expectations": {
+        "jesus_person_work": {
+          "minimum_score": 2.75,
+          "maximum_score": 4.0,
+          "rationale": "Jesus's incarnation, death, resurrection, and mediation are developed."
+        },
+        "salvation_gospel": {
+          "minimum_score": 2.5,
+          "maximum_score": 4.0,
+          "rationale": "Atonement, reconciliation, assurance, and new life are developed."
+        }
+      }
+    },
+    {
+      "case_id": "overlap-prophecy-adventist",
+      "label": "Prophecy and Adventist doctrine overlap",
+      "tags": ["overlap_prophecy_adventist"],
+      "leading_context": "The speaker identifies the passage as Daniel 8.",
+      "target_text": "Adventists read the 2,300-day prophecy as pointing to Christ's heavenly sanctuary ministry and the pre-Advent judgment. This interpretation shapes the denomination's account of final events and its historic identity.",
+      "trailing_context": "The sermon next compares alternative readings of the symbol.",
+      "reviewed_interpretation": "Prophetic interpretation and explicitly Adventist sanctuary identity are both developed subjects.",
+      "expectations": {
+        "eschatology_prophecy": {
+          "minimum_score": 2.5,
+          "maximum_score": 4.0,
+          "rationale": "Daniel, prophetic time, judgment, and final events are developed."
+        },
+        "adventist_doctrine_identity": {
+          "minimum_score": 2.5,
+          "maximum_score": 4.0,
+          "rationale": "The target explicitly develops an Adventist sanctuary interpretation and identity."
+        }
+      }
+    },
+    {
+      "case_id": "boundary-sin-discipleship",
+      "label": "Discipleship rather than developed sin",
+      "tags": ["boundary_sin_discipleship"],
+      "leading_context": "The congregation is urged to form a daily practice of prayer.",
+      "target_text": "When temptation comes, pause, pray, and redirect your attention toward what is faithful. Repeated trust and obedience form Christian character over time; practice this rhythm each morning rather than waiting for a crisis.",
+      "trailing_context": "Small habits train us to depend on God.",
+      "reviewed_interpretation": "Temptation supplies the setting, while formation, practice, trust, and obedience are the developed topic.",
+      "expectations": {
+        "discipleship_spiritual_formation": {
+          "minimum_score": 2.75,
+          "maximum_score": 4.0,
+          "rationale": "The block sustains prayer, habits, trust, obedience, and formation."
+        },
+        "sin_fallenness_human_need": {
+          "minimum_score": 0.0,
+          "maximum_score": 1.75,
+          "rationale": "Temptation is mentioned without developing guilt, rebellion, alienation, or fallenness."
+        }
+      }
+    },
+    {
+      "case_id": "boundary-mission-service",
+      "label": "Compassionate service without evangelistic purpose",
+      "tags": ["boundary_mission_service"],
+      "leading_context": "A winter storm has displaced families in the neighborhood.",
+      "target_text": "Bring blankets, meals, and transportation to the families whose homes were damaged. Listen to what they need, protect their dignity, and keep serving after the news crews leave. The aid is given because our neighbors need care, not as a condition for hearing a presentation.",
+      "trailing_context": "The deacons will coordinate volunteers this afternoon.",
+      "reviewed_interpretation": "Direct aid and care are central; proclamation and disciple-making are expressly not the purpose.",
+      "expectations": {
+        "compassion_generosity_service": {
+          "minimum_score": 3.0,
+          "maximum_score": 4.0,
+          "rationale": "Meals, blankets, transportation, listening, dignity, and sustained aid organize the target."
+        },
+        "mission_evangelism_witness": {
+          "minimum_score": 0.0,
+          "maximum_score": 1.25,
+          "rationale": "No proclamation or disciple-making is developed, and instrumental aid is rejected."
+        }
+      }
+    },
+    {
+      "case_id": "boundary-ethics-public-life",
+      "label": "Personal ethics without public-life development",
+      "tags": ["boundary_ethics_public_life"],
+      "leading_context": "The preacher addresses honesty at work.",
+      "target_text": "Tell the truth on your time sheet even when no supervisor will notice. Returning money that is not yours is morally right because integrity does not depend on whether a dishonest choice is legal or profitable.",
+      "trailing_context": "Faithfulness is practiced in ordinary decisions.",
+      "reviewed_interpretation": "The block explicitly evaluates personal conduct but does not develop government, policy, or social structures.",
+      "expectations": {
+        "ethics_moral_conduct": {
+          "minimum_score": 3.0,
+          "maximum_score": 4.0,
+          "rationale": "Honesty, right action, and integrity are explicitly evaluated."
+        },
+        "society_public_life": {
+          "minimum_score": 0.0,
+          "maximum_score": 0.75,
+          "rationale": "A reference to legality does not develop government, policy, or public structures."
+        }
+      }
+    },
+    {
+      "case_id": "boundary-human-nature-creation",
+      "label": "Human identity rather than creation as a subject",
+      "tags": ["boundary_human_nature_creation"],
+      "leading_context": "The sermon asks why every person has dignity.",
+      "target_text": "Human beings bear God's image. Our worth does not come from productivity, wealth, age, or ability; it belongs to our creaturely identity and purpose before God. That dignity shapes how we see ourselves and every neighbor.",
+      "trailing_context": "The next section applies that dignity to disability and aging.",
+      "reviewed_interpretation": "Creation language supports a sustained theological account of human identity and dignity.",
+      "expectations": {
+        "human_nature_identity": {
+          "minimum_score": 3.0,
+          "maximum_score": 4.0,
+          "rationale": "Image, worth, purpose, and creaturely identity are the organizing subject."
+        },
+        "creation_origins_created_order": {
+          "minimum_score": 0.5,
+          "maximum_score": 2.0,
+          "rationale": "Created status is meaningful support, but origins or the created order are not developed as the main concern."
+        }
+      }
+    },
+    {
+      "case_id": "performed-lyrics-theological-subjects",
+      "label": "Performed lyrics contain theology without discussing worship",
+      "tags": ["performed_lyrics"],
+      "leading_context": "[music] The worship team begins the final verse.",
+      "target_text": "Jesus, mighty Savior, you carried all my sin. Your grace has reconciled me; your love has brought me in. God of mercy, I will praise the victory you win.",
+      "trailing_context": "[music] The instruments continue under applause.",
+      "reviewed_interpretation": "The lyrics genuinely contain Jesus, salvation, and divine-action topics, but performance alone does not make church or corporate worship the subject.",
+      "expectations": {
+        "jesus_person_work": {
+          "minimum_score": 2.0,
+          "maximum_score": 4.0,
+          "rationale": "The lyrics develop Jesus as Savior who bears sin."
+        },
+        "salvation_gospel": {
+          "minimum_score": 2.25,
+          "maximum_score": 4.0,
+          "rationale": "Sin-bearing, grace, reconciliation, and saving victory are developed in the target text."
+        },
+        "god_character_action": {
+          "minimum_score": 1.5,
+          "maximum_score": 3.5,
+          "rationale": "Divine mercy, love, and action receive meaningful attention."
+        },
+        "church_worship_community": {
+          "minimum_score": 0.0,
+          "maximum_score": 1.25,
+          "rationale": "The target performs praise but does not discuss worship or church life as a subject."
+        }
+      }
+    },
+    {
+      "case_id": "quotation-without-scripture-topic",
+      "label": "Biblical quotation is not automatically the Scripture topic",
+      "tags": ["quotation"],
+      "leading_context": "The preacher reads the next sentence aloud.",
+      "target_text": "For God so loved the world that he gave his only Son, that whoever believes in him should not perish but have eternal life. The gift in this sentence is God's saving love for people who trust the Son.",
+      "trailing_context": "The sermon continues with the meaning of eternal life.",
+      "reviewed_interpretation": "A quoted biblical sentence can develop salvation while leaving inspiration, authority, reliability, and interpretation undeveloped.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 2.0,
+          "maximum_score": 4.0,
+          "rationale": "Saving love, belief, rescue from perishing, and eternal life are developed."
+        },
+        "scripture_revelation": {
+          "minimum_score": 0.0,
+          "maximum_score": 1.5,
+          "rationale": "The target quotes and explains a passage without discussing Scripture or revelation itself."
+        }
+      }
+    },
+    {
+      "case_id": "negated-public-life",
+      "label": "Negated public-life alternative",
+      "tags": ["negation"],
+      "leading_context": "The preacher narrows the scope of the application.",
+      "target_text": "I am not asking which party should win an election or what policy parliament should enact. I am asking each believer to practice patient prayer, examine personal habits, and learn daily trust in God.",
+      "trailing_context": "Begin with ten quiet minutes tomorrow morning.",
+      "reviewed_interpretation": "Political examples are explicitly rejected; personal spiritual formation is the developed subject.",
+      "expectations": {
+        "society_public_life": {
+          "minimum_score": 0.0,
+          "maximum_score": 1.25,
+          "rationale": "Party, election, and policy language identifies what the target is not developing."
+        },
+        "discipleship_spiritual_formation": {
+          "minimum_score": 2.5,
+          "maximum_score": 4.0,
+          "rationale": "Prayer, habits, and daily trust are sustained as the positive concern."
+        }
+      }
+    },
+    {
+      "case_id": "context-only-mission-mention",
+      "label": "Mission appears only in leading context",
+      "tags": ["context_only_mention"],
+      "leading_context": "Yesterday our mission team described sharing the gospel and making disciples in three cities.",
+      "target_text": "Set aside a regular time for silence and prayer. Bring your fear honestly to God, remain attentive, and practice trusting his presence before you make the day's decisions.",
+      "trailing_context": "This habit will not remove every anxious feeling at once.",
+      "reviewed_interpretation": "Leading context clarifies continuity but cannot independently establish mission in a target about prayer and trust.",
+      "expectations": {
+        "mission_evangelism_witness": {
+          "minimum_score": 0.0,
+          "maximum_score": 0.75,
+          "rationale": "Mission occurs only outside the target block."
+        },
+        "discipleship_spiritual_formation": {
+          "minimum_score": 2.5,
+          "maximum_score": 4.0,
+          "rationale": "Prayer, attentive trust, and a repeated practice organize the target."
+        }
+      }
+    },
+    {
+      "case_id": "sparse-salvation-caption",
+      "label": "Sparse caption retains raw topic meaning",
+      "tags": ["sparse_caption"],
+      "leading_context": "He receives us because of grace, not because we have earned a place.",
+      "target_text": "Grace. Jesus saves. Accepted.",
+      "trailing_context": "That is why our assurance rests in him.",
+      "reviewed_interpretation": "The sparse target contains salvation language worth preserving as a raw observation, while deterministic projection policy—not confidence—decides whether it is attributable.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 1.0,
+          "maximum_score": 3.5,
+          "rationale": "The sparse target directly asserts grace, salvation, and acceptance but cannot sustain a narrow high-prominence judgment."
+        }
+      }
+    },
+    {
+      "case_id": "prodigal-illustration-salvation",
+      "label": "Prodigal illustration serves a salvation point",
+      "tags": ["prodigal_illustration"],
+      "leading_context": "The preacher asks what divine acceptance looks like.",
+      "target_text": "Like the father running to the returning son, God receives the sinner before the son can bargain his way back into the household. The embrace pictures grace, reconciliation, and adoption: acceptance is given, not purchased by a successful apology.",
+      "trailing_context": "That is the gospel point of the story.",
+      "reviewed_interpretation": "A father-son narrative supplies relational material, but grace, reconciliation, adoption, and acceptance organize the point.",
+      "expectations": {
+        "salvation_gospel": {
+          "minimum_score": 2.75,
+          "maximum_score": 4.0,
+          "rationale": "Receiving sinners, grace, reconciliation, adoption, and unearned acceptance are sustained."
+        },
+        "relationships_family_interpersonal": {
+          "minimum_score": 1.0,
+          "maximum_score": 2.75,
+          "rationale": "Father-son reconciliation is meaningful narrative material but subordinate to salvation."
+        }
+      }
+    },
+    {
+      "case_id": "closing-prayer-after-sparse-gap",
+      "label": "Closing sermon prayer after sparse caption fragments",
+      "tags": ["closing_prayer_sparse_gap", "sparse_caption"],
+      "leading_context": "[applause] yes amen [inaudible] The preacher continues the same closing appeal.",
+      "target_text": "Father, teach us to trust the grace we have heard today. When fear returns, turn our hearts toward Christ, form obedience in us, and keep us resting in your saving love. In Jesus' name, amen.",
+      "trailing_context": "[music] The service transitions to the closing hymn.",
+      "reviewed_interpretation": "The prayer continues the sermon's salvation and formation themes; sparse separators are a boundary-policy issue, not grounds to erase raw topic meaning.",
+      "expectations": {
+        "discipleship_spiritual_formation": {
+          "minimum_score": 2.0,
+          "maximum_score": 3.75,
+          "rationale": "Trust, formed obedience, and resting in grace are developed petitions."
+        },
+        "salvation_gospel": {
+          "minimum_score": 1.5,
+          "maximum_score": 3.5,
+          "rationale": "Grace, Christ, and saving love continue the sermon theme in prayer."
+        }
+      }
+    },
+    {
+      "case_id": "spiritual-conflict-positive",
+      "label": "Sustained spiritual conflict",
+      "tags": ["spiritual_conflict_positive"],
+      "leading_context": "The sermon introduces the unseen conflict behind the narrative.",
+      "target_text": "The adversary is not merely a symbol for a bad mood. Satan opposes God's purposes, demonic powers seek to deceive, and angels serve within a real unseen conflict. Christian resistance therefore includes discernment against supernatural evil.",
+      "trailing_context": "The victory still belongs to Christ rather than human strength.",
+      "reviewed_interpretation": "Satan, demons, angels, and supernatural opposition are explicitly and repeatedly developed.",
+      "expectations": {
+        "spiritual_conflict_unseen_realm": {
+          "minimum_score": 3.25,
+          "maximum_score": 4.0,
+          "rationale": "Supernatural beings and conflict organize nearly every sentence."
+        }
+      }
+    },
+    {
+      "case_id": "spiritual-conflict-exclusion",
+      "label": "Ordinary temptation without unseen agency",
+      "tags": ["spiritual_conflict_exclusion"],
+      "leading_context": "The preacher discusses staying focused while studying.",
+      "target_text": "When you are tempted to abandon the habit after a tiring day, put the phone in another room, choose a realistic time, and ask a friend to keep you accountable. Discipline grows through repeated ordinary choices.",
+      "trailing_context": "Prepare the environment before motivation disappears.",
+      "reviewed_interpretation": "Temptation is ordinary habit resistance; no supernatural being, power, or warfare is developed.",
+      "expectations": {
+        "spiritual_conflict_unseen_realm": {
+          "minimum_score": 0.0,
+          "maximum_score": 0.75,
+          "rationale": "The target contains no supernatural agency or unseen conflict."
+        },
+        "discipleship_spiritual_formation": {
+          "minimum_score": 2.25,
+          "maximum_score": 4.0,
+          "rationale": "Habit, accountability, discipline, and repeated practice are developed."
+        }
+      }
+    },
+    {
+      "case_id": "rejected-budgeting-alternative",
+      "label": "Rejected daily-life alternative",
+      "tags": ["rejected_alternative"],
+      "leading_context": "The text uses the language of debt as a metaphor.",
+      "target_text": "This is not a lesson about balancing a household budget or finding a better investment. The debt in view is guilt before God, and the good news is that Christ cancels what we cannot repay and freely forgives the sinner.",
+      "trailing_context": "Grace, not financial technique, resolves the problem.",
+      "reviewed_interpretation": "Budgeting and investment are rejected alternatives; guilt, grace, and forgiveness carry the positive claim.",
+      "expectations": {
+        "vocation_stewardship_daily_life": {
+          "minimum_score": 0.0,
+          "maximum_score": 1.25,
+          "rationale": "Money management is named only to reject it as the target's subject."
+        },
+        "salvation_gospel": {
+          "minimum_score": 2.75,
+          "maximum_score": 4.0,
+          "rationale": "Christ canceling guilt and freely forgiving sinners is the sustained positive point."
+        },
+        "sin_fallenness_human_need": {
+          "minimum_score": 1.5,
+          "maximum_score": 3.25,
+          "rationale": "Guilt and inability to repay are meaningful support for the salvation claim."
+        }
+      }
+    }
+  ]
+}

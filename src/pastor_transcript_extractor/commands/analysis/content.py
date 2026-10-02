@@ -18,6 +18,7 @@ from pastor_transcript_extractor.commands.analysis.common import (
     get_database,
 )
 from pastor_transcript_extractor.commands.apps import analysis_app
+from pastor_transcript_extractor.inference_defaults import DEFAULT_TYPESAFE_MODEL
 from pastor_transcript_extractor.population_analysis import (
     POPULATION_ANALYZER_VERSION,
     PopulationPolicy,
@@ -31,6 +32,13 @@ from pastor_transcript_extractor.sermon_analysis import (
     ANALYZER_VERSION as SERMON_ANALYZER_VERSION,
     analyze_sermon,
 )
+from pastor_transcript_extractor.sermon_topic_evaluation import (
+    DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
+    default_topic_behavior_output_path,
+    evaluate_topic_behavior_fixture,
+    load_topic_behavior_fixture,
+    write_topic_behavior_report,
+)
 from pastor_transcript_extractor.sermon_topic_review import (
     KNOWN_TOPIC_REVIEW_CASES,
     TOPIC_REVIEW_DEFAULT_FILENAME,
@@ -40,9 +48,29 @@ from pastor_transcript_extractor.sermon_topic_review import (
 from pastor_transcript_extractor.sermon_topic_projection import (
     assess_topic_profile_projection,
 )
+from pastor_transcript_extractor.recording_verifier_typesafe import (
+    TypeSafeSdkAdapter,
+)
 
 
 console = Console()
+
+
+class _LazyTopicBehaviorClient:
+    """Avoid requiring credentials when every fixture answer is already cached."""
+
+    def __init__(self, *, model: str, timeout_seconds: float) -> None:
+        self.model = model
+        self.timeout_seconds = timeout_seconds
+        self._client = None
+
+    def assess_blocks(self, *args, **kwargs):
+        if self._client is None:
+            self._client = TypeSafeSdkAdapter(
+                model=self.model,
+                timeout_seconds=self.timeout_seconds,
+            )
+        return self._client.assess_blocks(*args, **kwargs)
 
 
 def _print_analysis_readiness(report: ReadinessReport) -> None:
@@ -545,3 +573,91 @@ def analysis_topic_review(
         f"{result.block_count} blocks, fingerprint={result.input_fingerprint[:12]}…)",
         markup=False,
     )
+
+
+@analysis_app.command(
+    "evaluate-topic-behavior",
+    help="Run or validate the bounded synthetic TypeSafe topic behavior contract.",
+)
+def analysis_evaluate_topic_behavior(
+    fixture_path: Path = typer.Option(
+        DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
+        "--fixture",
+        help="Frozen synthetic topic fixture JSON.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_TYPESAFE_MODEL,
+        "--model",
+        help="Pinned TypeSafe model id.",
+    ),
+    cache_dir: Path | None = typer.Option(
+        None,
+        "--cache-dir",
+        help="Content-addressed answer cache; defaults beside the fixture.",
+    ),
+    output_path: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Result JSON path; Markdown is written beside it.",
+    ),
+    timeout_seconds: float = typer.Option(
+        45.0,
+        "--timeout-seconds",
+        min=1.0,
+        help="Provider timeout for an uncached request.",
+    ),
+    validate_only: bool = typer.Option(
+        False,
+        "--validate-only",
+        help="Validate frozen coverage without calling TypeSafe or writing results.",
+    ),
+) -> None:
+    try:
+        fixture = load_topic_behavior_fixture(fixture_path)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="--fixture") from error
+    expectation_count = sum(
+        len(case["expectations"]) for case in fixture["cases"]
+    )
+    if validate_only:
+        console.print(
+            "Topic behavior fixture valid: "
+            f"cases={len(fixture['cases'])}, expectations={expectation_count}, "
+            f"fingerprint={fixture['fixture_sha256'][:12]}…",
+            markup=False,
+        )
+        return
+
+    fixture_path = Path(fixture["fixture_path"])
+    resolved_cache_dir = cache_dir or fixture_path.parent / "cache"
+    client = _LazyTopicBehaviorClient(
+        model=model,
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        report = evaluate_topic_behavior_fixture(
+            fixture,
+            cache_dir=resolved_cache_dir,
+            model=model,
+            client=client,
+        )
+        json_path, markdown_path, reused = write_topic_behavior_report(
+            output_path or default_topic_behavior_output_path(fixture_path, model),
+            report,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    state = "Reused" if reused else "Wrote"
+    summary = report["summary"]
+    execution = report["execution"]
+    console.print(
+        f"{state} topic behavior report: {json_path} and {markdown_path}; "
+        f"status={report['status']}, cases={summary['passed_cases']}/"
+        f"{summary['case_count']}, expectations={summary['passed_expectations']}/"
+        f"{summary['expectation_count']}, cache_hits={execution['cache_hits']}, "
+        f"cache_misses={execution['cache_misses']}, "
+        f"provider_requests={execution['provider_requests']}",
+        markup=False,
+    )
+    if report["status"] != "passed":
+        raise typer.Exit(code=1)

@@ -11,6 +11,7 @@ evaluation/diagnostics/
 evaluation/interaction-diagnostics/
 evaluation/recording-verifier/
 evaluation/recording-verifier-typesafe/
+evaluation/sermon-topics/cache/
 evaluation/speaker-pairs/cache/
 evaluation/speaker-pairs/drafts/
 evaluation/speaker-pairs/models/
