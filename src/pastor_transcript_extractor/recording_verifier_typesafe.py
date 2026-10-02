@@ -30,6 +30,9 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockAnswer,
     TypeSafeFirstPassSermonClassifier,
     TypeSafeRecordingGateAnswer,
+    ROLE_PACK,
+    TOPIC_PACK,
+    TREATMENT_PACK,
     recording_gate_question,
     role_question,
 )
@@ -40,6 +43,13 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
     semantic_question_inventory,
 )
 from pastor_transcript_extractor.sermon_classification import HybridSermonResult, TranscriptBlock
+from pastor_transcript_extractor.sermon_topics import (
+    TOPIC_PACK_VERSION,
+    TOPICS,
+    TopicBlockContext,
+    topic_question_id,
+    topic_question_inventory,
+)
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.storage import Database
@@ -241,12 +251,12 @@ class TypeSafeSdkAdapter:
         if not os.environ.get("TYPESAFE_API_KEY"):
             raise RuntimeError("TYPESAFE_API_KEY is required for the TypeSafe recording verifier")
         try:
-            from typesafe_sdk import Choice, Noul, TypeSafeClient  # type: ignore[import-not-found]
+            from typesafe_sdk import Choice, Noul, Score, TypeSafeClient  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError("Install the optional dependency: pip install -e '.[typesafe]'") from exc
         self.model, self.timeout_seconds = model, timeout_seconds
-        self._client, self._Choice, self._Noul = (
-            TypeSafeClient(model=model, timeout=timeout_seconds), Choice, Noul
+        self._client, self._Choice, self._Noul, self._Score = (
+            TypeSafeClient(model=model, timeout=timeout_seconds), Choice, Noul, Score
         )
 
     def assess(self, state: TypeSafeRecordingState) -> TypeSafeAnswers:
@@ -299,7 +309,20 @@ class TypeSafeSdkAdapter:
         blocks: list[TranscriptBlock],
         *,
         collect_semantic_analysis: bool = False,
+        collect_topic_analysis: bool = False,
+        requested_packs: frozenset[str] | None = None,
+        topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> Mapping[int, TypeSafeBlockAnswer]:
+        packs = requested_packs or frozenset(
+            {
+                ROLE_PACK,
+                *([TREATMENT_PACK] if collect_semantic_analysis else []),
+                *([TOPIC_PACK] if collect_topic_analysis else []),
+            }
+        )
+        unknown = packs - {ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}
+        if unknown:
+            raise ValueError(f"Unsupported TypeSafe answer packs: {sorted(unknown)}")
         question = role_question()
         shared_recording_context = {
             key: value
@@ -312,55 +335,112 @@ class TypeSafeSdkAdapter:
                 _target_block_state(recording_context, block) for block in blocks
             ],
         }
-        questions = {
-            f"block_{position}": self._Choice(
-                instructions={
-                    **question["instructions"],
-                    "target": (
-                        f"Classify `target_blocks[{position}].text` in the context "
-                        "of `recording`. When `target_blocks["
-                        f"{position}].coarse_parent_finding` is present, treat it as "
-                        "an advisory prior rather than a conclusion. Independently "
-                        "judge the fine block and correct conflicting coarse evidence."
-                    ),
-                },
-                criteria=question["criteria"],
+        contexts = topic_contexts or {}
+        if TOPIC_PACK in packs:
+            missing_contexts = [
+                block.block_id for block in blocks if block.block_id not in contexts
+            ]
+            if missing_contexts:
+                raise ValueError(
+                    f"Missing topic contexts for blocks: {missing_contexts}"
+                )
+            state["topic_blocks"] = [
+                contexts[block.block_id].state_payload() for block in blocks
+            ]
+        questions: dict[str, Any] = {}
+        if ROLE_PACK in packs:
+            questions.update(
+                {
+                    f"block_{position}": self._Choice(
+                        instructions={
+                            **question["instructions"],
+                            "target": (
+                                f"Classify `target_blocks[{position}].text` in the context "
+                                "of `recording`. When `target_blocks["
+                                f"{position}].coarse_parent_finding` is present, treat it as "
+                                "an advisory prior rather than a conclusion. Independently "
+                                "judge the fine block and correct conflicting coarse evidence."
+                            ),
+                        },
+                        criteria=question["criteria"],
+                    )
+                    for position in range(len(blocks))
+                }
             )
-            for position in range(len(blocks))
-        }
-        if collect_semantic_analysis:
+        if TREATMENT_PACK in packs:
             for position in range(len(blocks)):
                 for question_id, item in semantic_question_inventory(position).items():
                     questions[question_id] = self._Noul(
                         instructions=item["instructions"],
                         criteria=item["criteria"],
                     )
+        if TOPIC_PACK in packs:
+            for position in range(len(blocks)):
+                for question_id, item in topic_question_inventory(position).items():
+                    questions[question_id] = self._Score(
+                        instructions=item["instructions"],
+                        criteria=item["criteria"],
+                    )
+        started = time.perf_counter()
         result = self._client.system_one(
             state,
             questions,
             model=self.model,
             timeout=self.timeout_seconds,
         )
+        latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
         resolved_model = str(getattr(result, "model", self.model))
+        usage = getattr(result, "usage", None)
+        response_count = (
+            len(getattr(result, "choices", {}))
+            + len(getattr(result, "nouls", {}))
+            + len(getattr(result, "scores", {}))
+        )
+        request_provenance = {
+            "request_key": _hash(
+                {"state": state, "question_ids": sorted(questions)}
+            ),
+            "requested_model_id": self.model,
+            "resolved_model_id": resolved_model,
+            "requested_packs": sorted(packs),
+            "block_count": len(blocks),
+            "question_count": len(questions),
+            "response_count": response_count,
+            "response_complete": response_count == len(questions),
+            "latency_ms": latency_ms,
+            "timeout_seconds": self.timeout_seconds,
+            "input_tokens": getattr(usage, "input_tokens", None),
+            "output_tokens": getattr(usage, "output_tokens", None),
+        }
         return {
             block.block_id: TypeSafeBlockAnswer(
-                choice=str(result.choices[f"block_{position}"].choice),
-                probabilities={
-                    str(key): float(value)
-                    for key, value in dict(
-                        getattr(
-                            result.choices[f"block_{position}"],
-                            "probabilities",
+                choice=(
+                    str(result.choices[f"block_{position}"].choice)
+                    if ROLE_PACK in packs
+                    else "unclear"
+                ),
+                probabilities=(
+                    {
+                        str(key): float(value)
+                        for key, value in dict(
                             getattr(
                                 result.choices[f"block_{position}"],
-                                "distribution",
-                                {},
-                            ),
-                        )
-                    ).items()
-                },
-                confidence=getattr(
-                    result.choices[f"block_{position}"], "confidence", None
+                                "probabilities",
+                                getattr(
+                                    result.choices[f"block_{position}"],
+                                    "distribution",
+                                    {},
+                                ),
+                            )
+                        ).items()
+                    }
+                    if ROLE_PACK in packs
+                    else {}
+                ),
+                confidence=(
+                    getattr(result.choices[f"block_{position}"], "confidence", None)
+                    if ROLE_PACK in packs
+                    else None
                 ),
                 resolved_model_id=resolved_model,
                 semantic_probabilities=(
@@ -372,14 +452,65 @@ class TypeSafeSdkAdapter:
                         )
                         for dimension in SEMANTIC_DIMENSIONS
                     }
-                    if collect_semantic_analysis
+                    if TREATMENT_PACK in packs
                     else {}
                 ),
                 semantic_question_version=(
                     SEMANTIC_ANALYSIS_QUESTION_VERSION
-                    if collect_semantic_analysis
+                    if TREATMENT_PACK in packs
                     else None
                 ),
+                topic_scores=(
+                    {
+                        topic: {
+                            "score": float(
+                                result.scores[
+                                    topic_question_id(position, topic)
+                                ].score
+                            ),
+                            "probabilities": {
+                                str(key): float(value)
+                                for key, value in dict(
+                                    getattr(
+                                        result.scores[
+                                            topic_question_id(position, topic)
+                                        ],
+                                        "probabilities",
+                                        getattr(
+                                            result.scores[
+                                                topic_question_id(position, topic)
+                                            ],
+                                            "distribution",
+                                            {},
+                                        ),
+                                    )
+                                ).items()
+                            },
+                            "confidence": getattr(
+                                result.scores[topic_question_id(position, topic)],
+                                "confidence",
+                                None,
+                            ),
+                        }
+                        for topic in TOPICS
+                    }
+                    if TOPIC_PACK in packs
+                    else {}
+                ),
+                topic_question_version=(
+                    TOPIC_PACK_VERSION if TOPIC_PACK in packs else None
+                ),
+                topic_context=(
+                    {
+                        **contexts[block.block_id].state_payload(),
+                        "diagnostics": dict(
+                            contexts[block.block_id].diagnostics
+                        ),
+                    }
+                    if TOPIC_PACK in packs
+                    else {}
+                ),
+                request_provenance=request_provenance,
             )
             for position, block in enumerate(blocks)
         }

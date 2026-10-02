@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -28,7 +29,12 @@ from pastor_transcript_extractor.recording_verifier_typesafe import (
 from pastor_transcript_extractor.sermon_classification import TranscriptBlock
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
     FINE_PARENT_CONTEXT_KEY,
+    ROLE_PACK,
+    TOPIC_PACK,
+    TREATMENT_PACK,
 )
+from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_DIMENSIONS
+from pastor_transcript_extractor.sermon_topics import TOPICS, TopicBlockContext
 
 
 def proposed() -> dict[str, object]:
@@ -63,6 +69,75 @@ def answers(
 
 
 class TypeSafeRecordingVerifierTests(unittest.TestCase):
+    def test_sdk_adapter_composes_and_parses_all_fine_answer_packs(self) -> None:
+        captured = {}
+
+        def question(kind):
+            return lambda **kwargs: {"kind": kind, **kwargs}
+
+        class FakeSdkClient:
+            def system_one(self, state, questions, **kwargs):
+                captured.update(state=state, questions=questions, kwargs=kwargs)
+                choices = {
+                    "block_0": SimpleNamespace(
+                        choice="principal_sermon",
+                        probabilities={"principal_sermon": 0.9, "unclear": 0.1},
+                        confidence=0.8,
+                    )
+                }
+                nouls = {
+                    f"semantic_0_{dimension}": SimpleNamespace(noul=0.4)
+                    for dimension in SEMANTIC_DIMENSIONS
+                }
+                scores = {
+                    f"topic_0_{topic}": SimpleNamespace(
+                        score=2.0,
+                        probabilities={0: 0.0, 1: 0.0, 2: 1.0, 3: 0.0, 4: 0.0},
+                        confidence=0.9,
+                    )
+                    for topic in TOPICS
+                }
+                return SimpleNamespace(
+                    choices=choices,
+                    nouls=nouls,
+                    scores=scores,
+                    model="jev-1.13.0",
+                    usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+                )
+
+        adapter = object.__new__(TypeSafeSdkAdapter)
+        adapter.model = "jev-1.13.0"
+        adapter.timeout_seconds = 45.0
+        adapter._client = FakeSdkClient()
+        adapter._Choice = question("choice")
+        adapter._Noul = question("noul")
+        adapter._Score = question("score")
+        block = TranscriptBlock(4, [8], 60.0, 120.0, "Grace saves us.")
+        topic_context = TopicBlockContext(
+            "Earlier sentence.",
+            block.text,
+            "Following sentence.",
+            {"policy_version": "topic-context-sentences-v1"},
+        )
+
+        result = adapter.assess_blocks(
+            {"metadata": {"title": "Grace"}},
+            [block],
+            requested_packs=frozenset({ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}),
+            topic_contexts={block.block_id: topic_context},
+        )[block.block_id]
+
+        self.assertEqual(25, len(captured["questions"]))
+        self.assertEqual(
+            {"leading_context", "target_text", "trailing_context"},
+            set(captured["state"]["topic_blocks"][0]),
+        )
+        self.assertEqual(set(TOPICS), set(result.topic_scores))
+        self.assertEqual({"0", "1", "2", "3", "4"}, set(result.topic_scores[TOPICS[0]]["probabilities"]))
+        self.assertEqual(25, result.request_provenance["question_count"])
+        self.assertTrue(result.request_provenance["response_complete"])
+        self.assertEqual(45.0, result.request_provenance["timeout_seconds"])
+
     def test_target_block_state_attaches_matching_coarse_parent_finding(self) -> None:
         block = TranscriptBlock(12, [3], 60.0, 120.0, "minute transcript")
         parent = {

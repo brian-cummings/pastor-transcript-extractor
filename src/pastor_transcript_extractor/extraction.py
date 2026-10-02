@@ -138,6 +138,8 @@ def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
     semantic_analysis = (
         semantic_analysis if isinstance(semantic_analysis, dict) else None
     )
+    topic_analysis = search.get("topic_analysis")
+    topic_analysis = topic_analysis if isinstance(topic_analysis, dict) else None
     discovery = search.get("discovery")
     discovery = discovery if isinstance(discovery, dict) else {}
     candidates = search.get("candidates")
@@ -184,6 +186,7 @@ def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
         "warnings": list(result.warnings),
         "confidence_reasons": list(result.confidence_reasons or []),
         "semantic_analysis": semantic_analysis,
+        "topic_analysis": topic_analysis,
         "discovery": {
             key: discovery[key]
             for key in (
