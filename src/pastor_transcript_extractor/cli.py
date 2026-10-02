@@ -2116,19 +2116,6 @@ def shadow_discover_profiles_command(
             pair_diagnostic_cache=pair_diagnostic_cache,
         )
 
-    association_evaluator = AssociationEvaluator(
-        output_root=output_root,
-        jobs=jobs,
-        policy_spec=policy_spec,
-        model_fingerprint=backend.spec.fingerprint,
-        minimum_same_exemplars=minimum_same_exemplars,
-        selections_by_observation_id=span_selection_by_observation_id,
-        reviewed_difference_pairs=(
-            database.list_effective_observation_difference_pairs
-        ),
-        compare=compare,
-    )
-
     report = evaluate_shadow_profile_discovery(
         signatures=signatures,
         nominations=nominations,
@@ -4742,6 +4729,19 @@ def shadow_associate_speakers_service(
             span_specs_are_activity_qualified=True,
             pair_diagnostic_cache=pair_diagnostic_cache,
         )
+
+    association_evaluator = AssociationEvaluator(
+        output_root=output_root,
+        jobs=jobs,
+        policy_spec=policy_spec,
+        model_fingerprint=backend.spec.fingerprint,
+        minimum_same_exemplars=minimum_same_exemplars,
+        selections_by_observation_id=span_selection_by_observation_id,
+        reviewed_difference_pairs=(
+            database.list_effective_observation_difference_pairs
+        ),
+        compare=compare,
+    )
 
     result_accumulator = AssociationResultAccumulator()
     detailed_profile_comparisons = 0
