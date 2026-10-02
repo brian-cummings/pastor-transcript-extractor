@@ -14,6 +14,7 @@ from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
     BLOCK_BUILDER_VERSION,
     COARSE_DISCOVERY_VERSION,
+    FINE_PARENT_CONTEXT_KEY,
     FINE_COMPONENT_VERSION,
     QUESTION_SET_VERSION,
     ROLE_CHOICES,
@@ -195,6 +196,27 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertTrue(context["deterministic_detection"]["window_found"])
         self.assertEqual(300.0, context["deterministic_detection"]["duration_seconds"])
         self.assertTrue(context["recording_outline"])
+        fine_contexts = [
+            item
+            for item in client.recording_contexts
+            if FINE_PARENT_CONTEXT_KEY in item
+        ]
+        self.assertTrue(fine_contexts)
+        for fine_context in fine_contexts:
+            parent_findings = fine_context[FINE_PARENT_CONTEXT_KEY]
+            self.assertTrue(parent_findings)
+            for finding in parent_findings.values():
+                self.assertIn("advisory", finding["policy"].lower())
+                self.assertTrue(finding["coarse_findings"])
+                primary = [
+                    item
+                    for item in finding["coarse_findings"]
+                    if item["primary_parent"]
+                ]
+                self.assertEqual(1, len(primary))
+                self.assertIn(primary[0]["selected_role"], ROLE_CHOICES)
+                self.assertIn("sermon_probability", primary[0])
+                self.assertIn("candidate_component", primary[0])
         semantic = result.search["semantic_analysis"]
         self.assertEqual("observations_only", semantic["status"])
         self.assertEqual("none", semantic["policy_effect"])
