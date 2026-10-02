@@ -614,6 +614,39 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             replay[block.block_id].topic_scores,
         )
 
+    def test_explicit_pack_assessment_can_request_topics_without_role(self) -> None:
+        client = FakeBlockClient()
+        block = build_transcript_blocks(
+            drafts(), target_seconds=300.0, max_chars=9000
+        )[0]
+        context = {"metadata": {"title": "Synthetic topic fixture"}}
+        topic_contexts = {
+            block.block_id: build_topic_context(drafts(), block)
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            first = cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({TOPIC_PACK}),
+                topic_contexts=topic_contexts,
+            )
+            replay = cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({TOPIC_PACK}),
+                topic_contexts=topic_contexts,
+            )
+
+        self.assertEqual([frozenset({TOPIC_PACK})], client.requested_packs)
+        self.assertEqual({}, first[block.block_id].probabilities)
+        self.assertEqual(
+            first[block.block_id].topic_scores,
+            replay[block.block_id].topic_scores,
+        )
+
     def test_legacy_combined_cache_is_migrated_without_provider_call(self) -> None:
         client = FakeBlockClient()
         block = build_transcript_blocks(
