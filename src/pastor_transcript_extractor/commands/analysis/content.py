@@ -43,10 +43,14 @@ from pastor_transcript_extractor.sermon_topic_review import (
     DEFAULT_PROSPECTIVE_REVIEW_CASES,
     KNOWN_TOPIC_REVIEW_CASES,
     KNOWN_REVIEW_POLICY_VERSION,
+    PROSPECTIVE_TOPIC_REVIEW_DEFAULT_FILENAME,
     PROSPECTIVE_REVIEW_POLICY_VERSION,
     TOPIC_REVIEW_DEFAULT_FILENAME,
+    WHOLE_SERMON_REVIEW_POLICY_VERSION,
+    WHOLE_SERMON_TOPIC_REVIEW_DEFAULT_FILENAME,
     build_topic_review_packet,
     derive_prospective_topic_review_cases,
+    derive_whole_sermon_topic_review_case,
     write_topic_review_packet,
 )
 from pastor_transcript_extractor.sermon_topic_projection import (
@@ -526,6 +530,11 @@ def analysis_topic_review(
         max=20,
         help="Maximum cases selected in prospective mode.",
     ),
+    whole_sermon: bool = typer.Option(
+        False,
+        "--whole-sermon",
+        help="Include every cached topic block for whole-sermon analytical review.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         "--base-dir",
@@ -561,8 +570,20 @@ def analysis_topic_review(
             f"Classification artifact is not an object: {classification_path}"
         )
     try:
+        if whole_sermon and prospective:
+            raise ValueError("Choose either --whole-sermon or --prospective, not both")
         prepared_cases = KNOWN_TOPIC_REVIEW_CASES.get(video.youtube_video_id)
-        if prospective or not prepared_cases:
+        if whole_sermon:
+            whole_case = derive_whole_sermon_topic_review_case(classification)
+            cases = (whole_case,)
+            selection = {
+                "mode": "whole_sermon",
+                "policy_version": WHOLE_SERMON_REVIEW_POLICY_VERSION,
+                "maximum_cases": 1,
+                "selected_block_count": len(whole_case.block_ids),
+            }
+            default_filename = WHOLE_SERMON_TOPIC_REVIEW_DEFAULT_FILENAME
+        elif prospective or not prepared_cases:
             cases = derive_prospective_topic_review_cases(
                 classification,
                 maximum_cases=maximum_cases,
@@ -572,6 +593,7 @@ def analysis_topic_review(
                 "policy_version": PROSPECTIVE_REVIEW_POLICY_VERSION,
                 "maximum_cases": maximum_cases,
             }
+            default_filename = PROSPECTIVE_TOPIC_REVIEW_DEFAULT_FILENAME
         else:
             cases = prepared_cases
             selection = {
@@ -579,6 +601,7 @@ def analysis_topic_review(
                 "policy_version": KNOWN_REVIEW_POLICY_VERSION,
                 "maximum_cases": len(cases),
             }
+            default_filename = TOPIC_REVIEW_DEFAULT_FILENAME
         profile_projection_gate = assess_topic_profile_projection(
             database,
             video,
@@ -594,7 +617,7 @@ def analysis_topic_review(
             selection=selection,
         )
         result = write_topic_review_packet(
-            output_path or proposed_path.parent / TOPIC_REVIEW_DEFAULT_FILENAME,
+            output_path or proposed_path.parent / default_filename,
             packet,
         )
     except ValueError as error:

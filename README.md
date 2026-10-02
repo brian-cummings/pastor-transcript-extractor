@@ -447,6 +447,20 @@ interpretation and makes no TypeSafe request. Use `--maximum-cases N` to lower t
 bound, or `--prospective` to apply this sampler to a video that already has named
 regression cases.
 
+Prepare the separate whole-sermon Stage 3 artifact from the same cached evidence:
+
+```bash
+pte analysis topic-review \
+  --video-id VIDEO_ID \
+  --whole-sermon \
+  --base-dir /path/to/app-data
+```
+
+Whole-sermon mode includes every observed block in timeline order for missed-episode,
+false-positive, sparse-evidence, and projection-boundary review. It uses the same
+packet schema and raw distributions but a separate policy version and filename, so
+it neither overwrites the bounded packet nor makes a provider request.
+
 Validate the frozen synthetic topic behavior contract without making a provider
 request:
 

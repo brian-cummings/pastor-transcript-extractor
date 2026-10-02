@@ -11,10 +11,12 @@ from pastor_transcript_extractor.commands.analysis.content import analysis_topic
 from pastor_transcript_extractor.sermon_topic_review import (
     DEFAULT_PROSPECTIVE_REVIEW_CASES,
     PROSPECTIVE_REVIEW_POLICY_VERSION,
+    WHOLE_SERMON_REVIEW_POLICY_VERSION,
     VIDEO_4548_REVIEW_CASES,
     TopicReviewCase,
     build_topic_review_packet,
     derive_prospective_topic_review_cases,
+    derive_whole_sermon_topic_review_case,
     render_topic_review_markdown,
     write_topic_review_packet,
 )
@@ -316,6 +318,30 @@ class SermonTopicReviewTests(unittest.TestCase):
         ):
             derive_prospective_topic_review_cases(classification)
 
+    def test_whole_sermon_case_selects_every_block_in_timeline_order(self) -> None:
+        classification = _classification([_block(9), _block(7), _block(8)])
+
+        case = derive_whole_sermon_topic_review_case(classification)
+        packet = build_topic_review_packet(
+            classification,
+            video_id=99,
+            youtube_video_id="whole-sermon",
+            title="Whole sermon",
+            cases=(case,),
+            selection={
+                "mode": "whole_sermon",
+                "policy_version": WHOLE_SERMON_REVIEW_POLICY_VERSION,
+                "maximum_cases": 1,
+                "selected_block_count": 3,
+            },
+        )
+
+        self.assertEqual((7, 8, 9), case.block_ids)
+        self.assertEqual([7, 8, 9], [block["block_id"] for block in packet["blocks"]])
+        self.assertEqual("whole_sermon", packet["selection"]["mode"])
+        self.assertIsNone(case.reviewed_interpretation)
+        self.assertIn("Selected blocks: `3`", render_topic_review_markdown(packet))
+
     def test_analysis_command_writes_and_reuses_prepared_video_packet(self) -> None:
         block_ids = sorted(
             {
@@ -369,6 +395,7 @@ class SermonTopicReviewTests(unittest.TestCase):
                     output_path=output,
                     prospective=False,
                     maximum_cases=DEFAULT_PROSPECTIVE_REVIEW_CASES,
+                    whole_sermon=False,
                     base_dir=Path(tmp),
                 )
                 first = json.loads(output.read_text(encoding="utf-8"))
@@ -378,6 +405,7 @@ class SermonTopicReviewTests(unittest.TestCase):
                     output_path=output,
                     prospective=False,
                     maximum_cases=DEFAULT_PROSPECTIVE_REVIEW_CASES,
+                    whole_sermon=False,
                     base_dir=Path(tmp),
                 )
                 replay = json.loads(output.read_text(encoding="utf-8"))
@@ -438,6 +466,7 @@ class SermonTopicReviewTests(unittest.TestCase):
                     output_path=output,
                     prospective=False,
                     maximum_cases=5,
+                    whole_sermon=False,
                     base_dir=Path(tmp),
                 )
             packet = json.loads(output.read_text(encoding="utf-8"))
