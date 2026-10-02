@@ -715,6 +715,12 @@ theological stance.
     Selection is fingerprinted, carries no pre-assigned human interpretation, and
     never calls TypeSafe. Named regression cases remain stable and independently
     selectable.
+15. A separate whole-sermon selection mode reuses the same packet schema and
+    cached observations while including every observed block in timeline order.
+    Its independent policy version and filename preserve bounded packets and make
+    missed-episode, false-positive, sparse-evidence, and projection-boundary review
+    possible without another inference path. This is review infrastructure, not a
+    claim that the required 12-sermon Stage 3 validation has occurred.
 
 ### Next iteration
 

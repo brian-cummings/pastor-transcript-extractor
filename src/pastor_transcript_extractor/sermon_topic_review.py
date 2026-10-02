@@ -20,7 +20,14 @@ TOPIC_REVIEW_GENERATOR_VERSION = "typesafe-topic-review-v3"
 TOPIC_REVIEW_DEFAULT_FILENAME = f"{TOPIC_REVIEW_GENERATOR_VERSION}.json"
 PROSPECTIVE_REVIEW_POLICY_VERSION = "topic-prospective-sanity-sampler-v1"
 KNOWN_REVIEW_POLICY_VERSION = "topic-known-regression-cases-v1"
+WHOLE_SERMON_REVIEW_POLICY_VERSION = "topic-whole-sermon-review-v1"
 DEFAULT_PROSPECTIVE_REVIEW_CASES = 8
+PROSPECTIVE_TOPIC_REVIEW_DEFAULT_FILENAME = (
+    f"{PROSPECTIVE_REVIEW_POLICY_VERSION}.json"
+)
+WHOLE_SERMON_TOPIC_REVIEW_DEFAULT_FILENAME = (
+    f"{WHOLE_SERMON_REVIEW_POLICY_VERSION}.json"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +316,46 @@ def derive_prospective_topic_review_cases(
     return tuple(cases)
 
 
+def derive_whole_sermon_topic_review_case(
+    classification: Mapping[str, Any],
+) -> TopicReviewCase:
+    """Select every cached block for missed-episode and boundary review."""
+    analysis = resolve_topic_analysis_artifact(classification)
+    projection = analysis.get("sermon_projection")
+    if not isinstance(projection, Mapping):
+        raise ValueError(
+            "Whole-sermon topic review requires a current deterministic sermon projection"
+        )
+    raw_blocks = analysis.get("blocks")
+    if not isinstance(raw_blocks, list) or not raw_blocks:
+        raise ValueError("TypeSafe topic analysis has no block observations")
+    blocks = sorted(
+        (block for block in raw_blocks if isinstance(block, Mapping)),
+        key=lambda block: (
+            float(block.get("start_seconds") or 0.0),
+            int(block.get("block_id") or 0),
+        ),
+    )
+    block_ids = tuple(
+        int(block["block_id"])
+        for block in blocks
+        if isinstance(block.get("block_id"), int)
+    )
+    if not block_ids:
+        raise ValueError("TypeSafe topic analysis has no addressable block observations")
+    return TopicReviewCase(
+        "whole-sermon-topic-review",
+        "Whole-sermon topic and projection review",
+        block_ids,
+        (
+            "Review every observed block in sequence. Search for missed topic episodes, "
+            "false positive topics, sparse-evidence errors, and projection-boundary "
+            "failures without treating confidence as correctness."
+        ),
+        None,
+    )
+
+
 def build_topic_review_packet(
     classification: Mapping[str, Any],
     *,
@@ -477,9 +524,13 @@ def render_topic_review_markdown(packet: Mapping[str, Any]) -> str:
                 f"- Mode: `{selection.get('mode')}`",
                 f"- Policy: `{selection.get('policy_version')}`",
                 f"- Maximum cases: `{selection.get('maximum_cases')}`",
-                "",
             ]
         )
+        if selection.get("selected_block_count") is not None:
+            lines.append(
+                f"- Selected blocks: `{selection.get('selected_block_count')}`"
+            )
+        lines.append("")
     for case in packet.get("cases", []):
         lines.extend([f"## {case['label']}", "", f"Review focus: {case['review_focus']}", ""])
         interpretation = case.get("reviewed_interpretation")
