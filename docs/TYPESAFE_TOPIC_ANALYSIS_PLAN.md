@@ -704,20 +704,18 @@ theological stance.
     and spiritual-conflict behaviors with 41 specification-derived score ranges. Its evaluator
     requests only the independently cached topic pack, validates and preserves
     complete Score distributions, fingerprints reports, and makes cached reruns
-    provider-free. The fixture and command are prepared; a real Jev result still
-    requires bounded execution and review before the behavior contract is called
-    passing.
+    provider-free. The reviewed `jev-1.13.0` result passes all 21 cases and all
+    41 expectations. The two initial range failures were reviewed as fixture-spec
+    errors under independent overlapping-topic scoring; correcting expectations
+    reused all 21 cached answers and made zero additional provider requests.
 
 ### Next iteration
 
-1. Run and inspect the bounded synthetic behavior contract. Treat failures as
-   case-level evidence and do not use confidence as correctness or tune against
-   aggregate distributions.
-2. Continue prospective collection and extend the bounded sanity-review packet
+1. Continue prospective collection and extend the bounded sanity-review packet
    from naturally processed sermons. Do not run a corpus backfill.
-3. Inspect activation-gate outcomes alongside the planned whole-sermon review;
+2. Inspect activation-gate outcomes alongside the planned whole-sermon review;
    profile aggregation remains blocked until analytical projection is credible.
-4. Once projection is credible, implement `salvation-relationships-v1` as the
+3. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 

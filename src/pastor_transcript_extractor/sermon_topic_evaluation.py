@@ -24,8 +24,10 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 TOPIC_BEHAVIOR_FIXTURE_SCHEMA_VERSION = 1
-TOPIC_BEHAVIOR_EVALUATOR_VERSION = "typesafe-topic-behavior-evaluator-v1"
+TOPIC_BEHAVIOR_EVALUATOR_VERSION = "typesafe-topic-behavior-evaluator-v2"
 TOPIC_BEHAVIOR_REPORT_SCHEMA_VERSION = 1
+PROBABILITY_SUM_ROUNDING_TOLERANCE = 0.03
+SCORE_DISTRIBUTION_ROUNDING_TOLERANCE = 0.05
 DEFAULT_TOPIC_BEHAVIOR_FIXTURE = Path(
     "evaluation/sermon-topics/behavior-contract-v1.json"
 )
@@ -68,6 +70,15 @@ def _number(value: object) -> float | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     return None
+
+
+def _report_path(path: str | Path) -> str:
+    """Prefer checkout-relative provenance so report identity is portable."""
+    resolved = Path(path).expanduser().resolve()
+    try:
+        return str(resolved.relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(resolved)
 
 
 def load_topic_behavior_fixture(path: Path) -> dict[str, Any]:
@@ -221,14 +232,31 @@ def _validated_score(
         raise ValueError(f"Case {case_id} has incomplete {topic} distribution") from error
     if any(not 0.0 <= probability <= 1.0 for probability in distribution.values()):
         raise ValueError(f"Case {case_id} has invalid {topic} probabilities")
-    if not math.isclose(sum(distribution.values()), 1.0, abs_tol=0.01):
+    # Five independently rounded probabilities can sum a few hundredths above or
+    # below one even though their unrounded values form a normalized distribution.
+    if not math.isclose(
+        sum(distribution.values()),
+        1.0,
+        rel_tol=0.0,
+        abs_tol=PROBABILITY_SUM_ROUNDING_TOLERANCE,
+    ):
         raise ValueError(f"Case {case_id} {topic} probabilities do not sum to one")
     expected_score = sum(
         level * distribution[str(level)] for level in range(5)
     )
-    if not math.isclose(score, expected_score, abs_tol=0.02):
+    # The API reports both the expected score and each probability rounded to two
+    # decimal places. Reconstructing the score from five independently rounded
+    # probabilities can therefore differ by several hundredths from the reported
+    # score even when the unrounded values are consistent.
+    if not math.isclose(
+        score,
+        expected_score,
+        rel_tol=0.0,
+        abs_tol=SCORE_DISTRIBUTION_ROUNDING_TOLERANCE,
+    ):
         raise ValueError(
-            f"Case {case_id} {topic} score is inconsistent with its distribution"
+            f"Case {case_id} {topic} score is inconsistent with its distribution "
+            f"(score={score:.6f}, distribution_expected_score={expected_score:.6f})"
         )
     confidence = raw.get("confidence")
     confidence_number = _number(confidence)
@@ -359,7 +387,7 @@ def evaluate_topic_behavior_fixture(
         },
         "fixture": {
             "fixture_id": fixture["fixture_id"],
-            "fixture_path": fixture["fixture_path"],
+            "fixture_path": _report_path(fixture["fixture_path"]),
             "fixture_sha256": fixture["fixture_sha256"],
             "review": dict(fixture["review"]),
         },
