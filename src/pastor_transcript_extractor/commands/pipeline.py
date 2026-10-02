@@ -19,6 +19,7 @@ from pastor_transcript_extractor.config import AppPaths
 from pastor_transcript_extractor.inference_defaults import (
     DEFAULT_CLASSIFIER,
     DEFAULT_RECORDING_VERIFIER_BACKEND,
+    DEFAULT_TYPESAFE_MODEL,
 )
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.workflows.run import RunWorkflowRequest
@@ -276,7 +277,7 @@ def run(
     recording_verifier_model: str | None = typer.Option(
         None,
         "--recording-verifier-model",
-        help="Verifier model override; defaults by backend.",
+        help=f"Verifier model override; TypeSafe defaults to {DEFAULT_TYPESAFE_MODEL}.",
     ),
     skip_review: bool = typer.Option(
         False,
@@ -350,7 +351,8 @@ def run(
     ),
     base_dir: Path | None = typer.Option(
         None,
-        help="Override app data directory.",
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
     request = RunWorkflowRequest(

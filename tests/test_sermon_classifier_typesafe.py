@@ -32,6 +32,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TREATMENT_PACK,
     _boundary_candidates,
     _candidate_components,
+    _candidate_components_with_recovery,
     _edge_neighborhood,
     _hash,
     _semantic_analysis_artifact,
@@ -48,8 +49,10 @@ from pastor_transcript_extractor.sermon_classification import (
 )
 from pastor_transcript_extractor.sermon_topics import (
     TOPIC_PACK_VERSION,
+    TOPIC_PROJECTION_POLICY_VERSION,
     TOPICS,
     build_topic_context,
+    refresh_topic_analysis_projection,
     topic_pack_inventory,
     topic_question_inventory,
 )
@@ -323,6 +326,13 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         domains = topic_pack_inventory()["domains"]
         self.assertEqual(4, len(domains))
         self.assertTrue(all(not domain["scored"] for domain in domains.values()))
+        church = next(
+            item
+            for item in inventory.values()
+            if item["topic"] == "church_worship_community"
+        )
+        self.assertIn("performing music", str(church["instructions"]))
+        self.assertIn("separate code", str(church["instructions"]))
 
     def test_topic_context_is_bounded_and_keeps_target_text_exact(self) -> None:
         transcript = [
@@ -397,6 +407,15 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertTrue(observation["reliability"]["sparse"])
         self.assertEqual(30.0, observation["reliability"]["final_sermon_overlap_seconds"])
         self.assertEqual([1], observation["reliability"]["retained_source_segment_indexes"])
+        self.assertFalse(observation["projection_eligibility"]["eligible"])
+        self.assertIn(
+            "partial_or_mixed_retained_coverage",
+            observation["projection_eligibility"]["exclusion_reasons"],
+        )
+        self.assertEqual(
+            TOPIC_PROJECTION_POLICY_VERSION,
+            artifact["sermon_projection"]["policy_version"],
+        )
         self.assertEqual(1, len(artifact["provider_requests"]))
 
     def test_semantic_artifact_ignores_role_only_answers(self) -> None:
@@ -412,6 +431,75 @@ class TypeSafeFirstPassTests(unittest.TestCase):
 
         self.assertEqual("not_collected", artifact["status"])
         self.assertEqual([], artifact["blocks"])
+
+    def test_topic_projection_excludes_lyrics_sparse_and_partial_blocks(self) -> None:
+        def observation(
+            block_id: int,
+            *,
+            role: str,
+            segment_indexes: list[int],
+            sparse: bool = False,
+        ) -> dict:
+            return {
+                "block_id": block_id,
+                "start_seconds": (block_id - 1) * 60.0,
+                "end_seconds": block_id * 60.0,
+                "segment_indexes": segment_indexes,
+                "content_role": role,
+                "scores": {
+                    topic: {
+                        "score": 3.0 if topic == "salvation_gospel" else 0.0,
+                        "probabilities": {
+                            "0": 0.0,
+                            "1": 0.0,
+                            "2": 0.0,
+                            "3": 1.0,
+                            "4": 0.0,
+                        },
+                    }
+                    for topic in TOPICS
+                },
+                "reliability": {
+                    "block_duration_seconds": 60.0,
+                    "sparse": sparse,
+                    "non_analyzable": False,
+                },
+            }
+
+        analysis = {
+            "blocks": [
+                observation(1, role="principal_sermon", segment_indexes=[1]),
+                observation(2, role="worship_music_or_service_prayer", segment_indexes=[2]),
+                observation(3, role="principal_sermon", segment_indexes=[3], sparse=True),
+                observation(4, role="principal_sermon", segment_indexes=[4, 5]),
+                observation(5, role="principal_sermon", segment_indexes=[6]),
+            ]
+        }
+
+        refresh_topic_analysis_projection(
+            analysis,
+            retained_segment_indexes={1, 2, 3, 4},
+            selected_start_seconds=0.0,
+            selected_end_seconds=240.0,
+            eligible_roles={"principal_sermon", "sermon_integrated_prayer_or_scripture"},
+            final_disposition_status="accepted_sermon",
+            window_source="hybrid_llm",
+        )
+
+        projection = analysis["sermon_projection"]
+        self.assertEqual([1], projection["eligible_block_ids"])
+        self.assertEqual(60.0, projection["eligible_sermon_seconds"])
+        exclusions = {
+            item["block_id"]: item["reasons"]
+            for item in projection["excluded_blocks"]
+        }
+        self.assertIn("non_sermon_content_role", exclusions[2])
+        self.assertIn("sparse_transcript_evidence", exclusions[3])
+        self.assertIn("partial_or_mixed_retained_coverage", exclusions[4])
+        self.assertIn("outside_final_sermon", exclusions[5])
+        salvation = projection["measurements"]["salvation_gospel"]
+        self.assertEqual(0.75, salvation["mean_normalized_expected_prominence"])
+        self.assertEqual(1.0, salvation["mean_supporting_or_above_probability"])
 
     def test_item_cache_prevents_duplicate_jev_requests(self) -> None:
         client = FakeBlockClient()
@@ -887,6 +975,74 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(
             [[0], [2]],
             [[block.block_id for block in item] for item in components],
+        )
+
+    def test_candidate_components_recover_video_4548_sparse_closing_prayer_gap(self) -> None:
+        blocks = [
+            TranscriptBlock(76, [100, 101], 4230.0, 4290.0, "SERMON conclusion"),
+            TranscriptBlock(77, [102, 103], 4290.0, 4350.0, "Let us open the door for Jesus. outside"),
+            TranscriptBlock(78, [104], 4350.0, 4380.0, "Oh,"),
+            TranscriptBlock(79, [105], 4380.0, 4470.0, "I"),
+            TranscriptBlock(80, [106, 107], 4470.0, 4530.0, "Dear Father, help us respond to your love in this closing prayer." * 3),
+            TranscriptBlock(81, [108, 109], 4530.0, 4590.0, "Open our hearts and help us accept you and listen for your knocking." * 3),
+        ]
+
+        def answer(choice: str, sermon_probability: float) -> TypeSafeBlockAnswer:
+            probabilities = {role: 0.0 for role in ROLE_CHOICES}
+            probabilities[choice] = sermon_probability if choice in ROLE_CHOICES else 0.0
+            if choice in {"principal_sermon", "sermon_integrated_prayer_or_scripture"}:
+                probabilities["administration_or_transition"] = 1.0 - sermon_probability
+            else:
+                probabilities["principal_sermon"] = sermon_probability
+                probabilities[choice] = 1.0 - sermon_probability
+            return TypeSafeBlockAnswer(
+                choice,
+                probabilities,
+                0.5,
+                "jev-1.13.0",
+            )
+
+        components, recovered = _candidate_components_with_recovery(
+            blocks,
+            {
+                76: answer("principal_sermon", 0.93),
+                77: answer("principal_sermon", 0.61),
+                78: answer("unclear", 0.25),
+                79: answer("principal_sermon", 0.52),
+                80: answer("sermon_integrated_prayer_or_scripture", 0.79),
+                81: answer("sermon_integrated_prayer_or_scripture", 0.72),
+            },
+            threshold=0.66,
+        )
+
+        self.assertEqual({77, 78, 79}, recovered)
+        self.assertEqual(
+            [[76, 77, 78, 79, 80, 81]],
+            [[block.block_id for block in component] for component in components],
+        )
+
+    def test_sparse_gap_does_not_bridge_confident_music_separator(self) -> None:
+        blocks = [
+            TranscriptBlock(1, [1], 0.0, 60.0, "SERMON conclusion"),
+            TranscriptBlock(2, [2], 60.0, 120.0, "song"),
+            TranscriptBlock(3, [3], 120.0, 180.0, "closing prayer words " * 10),
+            TranscriptBlock(4, [4], 180.0, 240.0, "more closing prayer words " * 10),
+        ]
+        answers = {
+            1: TypeSafeBlockAnswer("principal_sermon", {"principal_sermon": 0.95}, 0.9, "jev-1.13.0"),
+            2: TypeSafeBlockAnswer("worship_music_or_service_prayer", {"principal_sermon": 0.05, "worship_music_or_service_prayer": 0.95}, 0.9, "jev-1.13.0"),
+            3: TypeSafeBlockAnswer("sermon_integrated_prayer_or_scripture", {"sermon_integrated_prayer_or_scripture": 0.9}, 0.9, "jev-1.13.0"),
+            4: TypeSafeBlockAnswer("sermon_integrated_prayer_or_scripture", {"sermon_integrated_prayer_or_scripture": 0.9}, 0.9, "jev-1.13.0"),
+        }
+
+        components, recovered = _candidate_components_with_recovery(
+            blocks, answers, threshold=0.66
+        )
+
+        self.assertEqual(set(), recovered)
+        self.assertEqual(
+            [[1], [3, 4]],
+            [[block.block_id for block in component] for component in components],
         )
 
     def test_currentness_tracks_typesafe_first_versions(self) -> None:

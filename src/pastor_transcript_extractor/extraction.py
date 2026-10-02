@@ -38,7 +38,11 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     COARSE_DISCOVERY_VERSION as TYPESAFE_COARSE_DISCOVERY_VERSION,
     FINE_COMPONENT_VERSION as TYPESAFE_FINE_COMPONENT_VERSION,
     QUESTION_SET_VERSION as TYPESAFE_CLASSIFIER_PROMPT_VERSION,
+    SERMON_ROLES as TYPESAFE_SERMON_ROLES,
     SEARCH_ALGORITHM_VERSION as TYPESAFE_SEARCH_ALGORITHM_VERSION,
+)
+from pastor_transcript_extractor.sermon_topics import (
+    refresh_topic_analysis_projection,
 )
 from pastor_transcript_extractor.sermon_detection import GuestSpeakerFlags, SermonWindowResult, detect_guest_speaker_flags, detect_sermon_window
 from pastor_transcript_extractor.segmentation import SegmentDraft, segment_transcript
@@ -207,6 +211,56 @@ def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
             else None
         ),
     }
+
+
+def _refresh_typesafe_topic_projections(
+    classification: dict[str, Any],
+    sermon_window: dict[str, Any] | None,
+    *,
+    final_disposition_status: str | None,
+) -> None:
+    """Bind raw TypeSafe observations to the final retained sermon envelope."""
+    if not isinstance(sermon_window, dict):
+        return
+    retained = [
+        index
+        for index in sermon_window.get("included_segment_indexes", [])
+        if isinstance(index, int)
+    ]
+    start = sermon_window.get("start_seconds")
+    end = sermon_window.get("end_seconds")
+    start_seconds = float(start) if isinstance(start, (int, float)) else None
+    end_seconds = float(end) if isinstance(end, (int, float)) else None
+    search = classification.get("search")
+    if not isinstance(search, dict):
+        return
+    analyses: list[dict[str, Any]] = []
+    direct = search.get("topic_analysis")
+    if isinstance(direct, dict):
+        analyses.append(direct)
+    discovery = search.get("discovery")
+    attempt = (
+        discovery.get("typesafe_first_attempt")
+        if isinstance(discovery, dict)
+        else None
+    )
+    fallback = attempt.get("topic_analysis") if isinstance(attempt, dict) else None
+    if isinstance(fallback, dict):
+        analyses.append(fallback)
+    for analysis in analyses:
+        refresh_topic_analysis_projection(
+            analysis,
+            retained_segment_indexes=retained,
+            selected_start_seconds=start_seconds,
+            selected_end_seconds=end_seconds,
+            eligible_roles=TYPESAFE_SERMON_ROLES,
+            final_disposition_status=final_disposition_status,
+            window_source=(
+                str(sermon_window.get("source"))
+                if sermon_window.get("source") is not None
+                else None
+            ),
+        )
 
 
 def _typesafe_first_requires_verification(classification: object) -> bool:
@@ -1500,6 +1554,11 @@ def reclassify_video(
             recording_verification=recording_verification,
             identity_boundary_review=payload.get("identity_boundary_review"),
         )
+        _refresh_typesafe_topic_projections(
+            existing,
+            payload.get("sermon_window"),
+            final_disposition_status=str(disposition.get("status")),
+        )
         payload_changed = json.dumps(payload, sort_keys=True, default=str) != stored_payload
         if (
             payload_changed
@@ -1660,6 +1719,11 @@ def reclassify_video(
     )
     classification["final_disposition"] = disposition
     payload["final_disposition"] = disposition
+    _refresh_typesafe_topic_projections(
+        classification,
+        existing_window,
+        final_disposition_status=str(disposition.get("status")),
+    )
     proposed_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     classification_path.write_text(json.dumps(classification, indent=2, sort_keys=True), encoding="utf-8")
     (video_paths.extracted / "recording-verification-v1.json").write_text(
@@ -2062,6 +2126,11 @@ def extract_video(
         identity_boundary_review=identity_boundary_review,
     )
     classification["final_disposition"] = final_disposition
+    _refresh_typesafe_topic_projections(
+        classification,
+        sermon_window,
+        final_disposition_status=str(final_disposition.get("status")),
+    )
 
     proposed_text = _build_proposed_markdown(
         video.title,
