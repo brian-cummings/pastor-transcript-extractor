@@ -2859,6 +2859,7 @@ def _repair_exemplars_and_retry_association(
     associator=None,
 ) -> tuple[Path, ...]:
     associator = associator or _identity_association_commands.shadow_associate_speakers_command
+    runtime_evaluation_root = paths.evaluation
     profile_ids = tuple(
         sorted({state.profile_id for state in pending_exemplar_repairs})
     )
@@ -2872,10 +2873,10 @@ def _repair_exemplars_and_retry_association(
             sermon_level_reviews=0,
             prospective_correct=0,
             prospective_incorrect=0,
-            association_root=Path(
-                "evaluation/speaker-associations/shadow-runs"
+            association_root=(
+                runtime_evaluation_root / "speaker-associations/shadow-runs"
             ),
-            output_root=Path("evaluation/identity-leverage"),
+            output_root=runtime_evaluation_root / "identity-leverage",
             base_dir=base_dir,
         )
     except (OSError, ValueError, typer.BadParameter) as error:
@@ -2895,7 +2896,7 @@ def _repair_exemplars_and_retry_association(
         repair_result = media_archive.prepare_canonical_audio(
             Database(paths.database),
             paths,
-            cache_root=Path("evaluation/speaker-pairs/cache"),
+            cache_root=runtime_evaluation_root / "speaker-pairs/cache",
             video_ids=repair_video_ids,
             all_eligible=False,
             dry_run=False,
@@ -2947,8 +2948,9 @@ def _repair_exemplars_and_retry_association(
             minimum_same_exemplars=2,
             maximum_global_profiles=1,
             jobs=jobs,
-            model_path=Path(
-                "evaluation/speaker-pairs/models/"
+            model_path=(
+                runtime_evaluation_root
+                / "speaker-pairs/models/"
                 "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
             ),
             model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
@@ -2957,9 +2959,9 @@ def _repair_exemplars_and_retry_association(
                 "campplus-development-candidate-v1.json"
             ),
             evaluation_root=Path("evaluation/speaker-pairs"),
-            cache_dir=Path("evaluation/speaker-pairs/cache"),
-            output_root=Path(
-                "evaluation/speaker-associations/shadow-runs"
+            cache_dir=runtime_evaluation_root / "speaker-pairs/cache",
+            output_root=(
+                runtime_evaluation_root / "speaker-associations/shadow-runs"
             ),
             base_dir=base_dir,
         )
@@ -2975,10 +2977,10 @@ def _repair_exemplars_and_retry_association(
                 sermon_level_reviews=0,
                 prospective_correct=0,
                 prospective_incorrect=0,
-                association_root=Path(
-                    "evaluation/speaker-associations/shadow-runs"
+                association_root=(
+                    runtime_evaluation_root / "speaker-associations/shadow-runs"
                 ),
-                output_root=Path("evaluation/identity-leverage"),
+                output_root=runtime_evaluation_root / "identity-leverage",
                 base_dir=base_dir,
             )
         except (OSError, ValueError, typer.BadParameter) as error:
@@ -3285,6 +3287,11 @@ def run_identity_workflow_service(
             all_extractions=all_extractions,
             plan_only=plan_only,
             jobs=jobs,
+            model_path=(
+                runtime_evaluation_root
+                / "speaker-pairs/models/"
+                "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+            ),
             model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
             policy_path=association_policy_path,
             evaluation_root=speaker_evaluation_root,
@@ -3324,7 +3331,7 @@ def run_identity_workflow_service(
     # Assignment planning is a projection of every current association result,
     # not merely the artifacts produced by this invocation. Superseded evidence
     # is explicitly revoked before the current proposal is planned.
-    association_root = Path("evaluation/speaker-associations/shadow-runs")
+    association_root = runtime_evaluation_root / "speaker-associations/shadow-runs"
     persisted_current_reports = current_reports_loader(association_root)
     if persisted_current_reports:
         current_association_reports = persisted_current_reports
@@ -3495,6 +3502,11 @@ def run_identity_workflow_service(
         DiscoveryExecutionRequest(
             plan_only=plan_only,
             jobs=jobs,
+            model_path=(
+                runtime_evaluation_root
+                / "speaker-pairs/models/"
+                "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+            ),
             model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
             consistency_policy_path=consistency_policy_path,
             association_policy_path=association_policy_path,
@@ -3795,7 +3807,7 @@ def _archive_normalized_after_identity(
     preparation = media_archive.prepare_canonical_audio(
         database,
         paths,
-        cache_root=Path("evaluation/speaker-pairs/cache"),
+        cache_root=paths.evaluation / "speaker-pairs/cache",
         video_ids=video_ids,
         all_eligible=all_eligible,
         wait_for_lock=True,
@@ -4175,9 +4187,9 @@ def _replay_profile_association_neighborhood(
         minimum_same_exemplars=2,
         maximum_global_profiles=1,
         jobs=2,
-        model_path=Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        model_path=(
+            cache_dir.parent
+            / "models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
         ),
         model_sha256=DEFAULT_SPEAKER_MODEL_SHA256,
         policy_path=Path(

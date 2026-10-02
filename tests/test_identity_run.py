@@ -233,6 +233,10 @@ class IdentityRunTests(unittest.TestCase):
         self.assertFalse(replay.call_args.kwargs["unattempted_only"])
         self.assertEqual(3, replay.call_args.kwargs["minimum_profile_members"])
         self.assertEqual(2, replay.call_args.kwargs["minimum_same_exemplars"])
+        self.assertEqual(
+            Path("models/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"),
+            replay.call_args.kwargs["model_path"],
+        )
 
     def test_association_admission_persistence_excludes_non_candidates(self) -> None:
         self.assertFalse(
@@ -351,6 +355,7 @@ class IdentityRunTests(unittest.TestCase):
             discover = Mock()
             promote = Mock()
             coordinate = Mock()
+            current_reports_loader = Mock(return_value=())
             prewarm = Mock(
                 return_value=ActionableReviewAudioPreparation(
                     requested=4,
@@ -434,6 +439,7 @@ class IdentityRunTests(unittest.TestCase):
                     confirmer=confirm,
                     promoter=promote,
                     coordinator=coordinate,
+                    current_reports_loader=current_reports_loader,
                     archiver=archive_normalized,
                     backfiller=backfill,
                     reviewed_evidence_renderer=reviewed_renderer,
@@ -464,6 +470,21 @@ class IdentityRunTests(unittest.TestCase):
         self.assertTrue(
             all(call.kwargs["jobs"] == 3 for call in associate.call_args_list)
         )
+        expected_evaluation_root = Path(tempdir) / "evaluation"
+        expected_model_path = (
+            expected_evaluation_root
+            / "speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        )
+        self.assertTrue(
+            all(
+                call.kwargs["model_path"] == expected_model_path
+                for call in associate.call_args_list
+            )
+        )
+        current_reports_loader.assert_called_once_with(
+            expected_evaluation_root / "speaker-associations/shadow-runs"
+        )
         self.assertFalse(associate.call_args.kwargs["plan_only"])
         self.assertTrue(associate.call_args.kwargs["all_eligible"])
         self.assertEqual(
@@ -474,6 +495,7 @@ class IdentityRunTests(unittest.TestCase):
         self.assertFalse(confirm.call_args.kwargs["apply"])
         self.assertFalse(discover.call_args.kwargs["plan_only"])
         self.assertEqual(3, discover.call_args.kwargs["jobs"])
+        self.assertEqual(expected_model_path, discover.call_args.kwargs["model_path"])
         promote.assert_not_called()
         self.assertTrue(coordinate.call_args.kwargs["all_extractions"])
         prewarm.assert_called_once_with(
@@ -826,7 +848,7 @@ class IdentityRunTests(unittest.TestCase):
         prepare.assert_called_once_with(
             database,
             paths,
-            cache_root=Path("evaluation/speaker-pairs/cache"),
+            cache_root=paths.evaluation / "speaker-pairs/cache",
             video_ids={7, 8},
             all_eligible=False,
             wait_for_lock=True,

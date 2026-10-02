@@ -56,6 +56,7 @@ class IdentityRunWorkflowTests(unittest.TestCase):
             all_extractions=True,
             plan_only=False,
             jobs=3,
+            model_path=Path("app-data/evaluation/speaker-pairs/models/model.onnx"),
             model_sha256="model-sha",
             policy_path=Path("policy.json"),
             evaluation_root=Path("evaluation"),
@@ -68,6 +69,7 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         return DiscoveryExecutionRequest(
             plan_only=False,
             jobs=4,
+            model_path=Path("app-data/evaluation/speaker-pairs/models/model.onnx"),
             model_sha256="model-sha",
             consistency_policy_path=Path("consistency.json"),
             association_policy_path=Path("association.json"),
@@ -109,6 +111,10 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertTrue(associator.call_args.kwargs["unattempted_only"])
         self.assertEqual(3, associator.call_args.kwargs["jobs"])
         self.assertFalse(associator.call_args.kwargs["plan_only"])
+        self.assertEqual(
+            Path("app-data/evaluation/speaker-pairs/models/model.onnx"),
+            associator.call_args.kwargs["model_path"],
+        )
         self.assertEqual(
             Path("policy.json"), associator.call_args.kwargs["policy_path"]
         )
@@ -403,6 +409,10 @@ class IdentityRunWorkflowTests(unittest.TestCase):
         self.assertEqual(8, options["nearest_neighbors"])
         self.assertEqual(0.50, options["borderline_deferred_minimum"])
         self.assertEqual(Path("consistency.json"), options["consistency_policy"])
+        self.assertEqual(
+            Path("app-data/evaluation/speaker-pairs/models/model.onnx"),
+            options["model_path"],
+        )
         self.assertFalse(options["include_deferred"])
 
     def test_executed_discovery_writes_checkpoint_and_plans_promotion(self) -> None:
