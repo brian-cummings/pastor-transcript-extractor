@@ -104,6 +104,7 @@ class AssociationExecutionRequest:
     all_extractions: bool
     plan_only: bool
     jobs: int
+    model_path: Path
     model_sha256: str
     policy_path: Path
     evaluation_root: Path
@@ -153,6 +154,7 @@ class DiscoveryExecutionRequest:
 
     plan_only: bool
     jobs: int
+    model_path: Path
     model_sha256: str
     consistency_policy_path: Path
     association_policy_path: Path
@@ -346,10 +348,7 @@ def execute_association_stage(
         minimum_same_exemplars=2,
         maximum_global_profiles=1,
         jobs=request.jobs,
-        model_path=Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-        ),
+        model_path=request.model_path,
         model_sha256=request.model_sha256,
         policy_path=request.policy_path,
         evaluation_root=request.evaluation_root,
@@ -553,10 +552,7 @@ def execute_discovery_stage(
         minimum_consistency_score=None,
         consistency_policy=request.consistency_policy_path,
         include_deferred=False,
-        model_path=Path(
-            "evaluation/speaker-pairs/models/"
-            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
-        ),
+        model_path=request.model_path,
         model_sha256=request.model_sha256,
         policy_path=request.association_policy_path,
         evaluation_root=request.evaluation_root,
