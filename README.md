@@ -406,6 +406,16 @@ They are retained for possible future analysis only when the recording is ultima
 accepted as a sermon and projected through effective reviewed speaker-profile
 membership.
 
+The fine pass also collects the versioned `topics-v1` observation pack: twenty
+independent five-level Score questions covering broad sermon topics. Each cached
+topic answer preserves its expected score, complete level distribution, confidence,
+bounded sentence context, source-segment provenance, and a separate deterministic
+density/reliability record under `classification.search.topic_analysis`. Role,
+homiletic-treatment, and topic answers have independent content-addressed cache
+identities, so adding or changing one pack does not invalidate the others. Topic
+observations have `policy_effect: none`; they do not affect sermon classification,
+boundaries, or disposition.
+
 The same `--recording-verifier-backend typesafe` option is available on `pte
 run`, `pte extract`, and `pte apply-fixture-correction`. TypeSafe receives the
 selected candidate's opening, middle, and ending transcript excerpts plus the

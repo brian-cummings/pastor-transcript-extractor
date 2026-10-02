@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,10 +27,15 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
     TypeSafeRecordingGateAnswer,
+    ROLE_PACK,
+    TOPIC_PACK,
+    TREATMENT_PACK,
     _boundary_candidates,
     _candidate_components,
     _edge_neighborhood,
+    _hash,
     _semantic_analysis_artifact,
+    _topic_analysis_artifact,
 )
 from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_ANALYSIS_QUESTION_VERSION,
@@ -39,6 +46,13 @@ from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
     build_transcript_blocks,
 )
+from pastor_transcript_extractor.sermon_topics import (
+    TOPIC_PACK_VERSION,
+    TOPICS,
+    build_topic_context,
+    topic_pack_inventory,
+    topic_question_inventory,
+)
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
@@ -48,6 +62,7 @@ class FakeBlockClient:
         self.block_ids: list[list[int]] = []
         self.gate_states: list[dict] = []
         self.recording_contexts: list[dict] = []
+        self.requested_packs: list[frozenset[str]] = []
 
     def assess_recording_gate(self, state):
         self.gate_states.append(dict(state))
@@ -64,12 +79,27 @@ class FakeBlockClient:
         )
 
     def assess_blocks(
-        self, recording_context, blocks, *, collect_semantic_analysis=False
+        self,
+        recording_context,
+        blocks,
+        *,
+        collect_semantic_analysis=False,
+        collect_topic_analysis=False,
+        requested_packs=None,
+        topic_contexts=None,
     ):
         self.recording_contexts.append(dict(recording_context))
         self.calls += 1
         self.block_ids.append([block.block_id for block in blocks])
         answers = {}
+        packs = requested_packs or frozenset(
+            {
+                ROLE_PACK,
+                *([TREATMENT_PACK] if collect_semantic_analysis else []),
+                *([TOPIC_PACK] if collect_topic_analysis else []),
+            }
+        )
+        self.requested_packs.append(frozenset(packs))
         for block in blocks:
             sermon = "SERMON" in block.text
             choice = "principal_sermon" if sermon else "administration_or_transition"
@@ -88,14 +118,42 @@ class FakeBlockClient:
                         )
                         for dimension in SEMANTIC_DIMENSIONS
                     }
-                    if collect_semantic_analysis
+                    if TREATMENT_PACK in packs
                     else {}
                 ),
                 (
                     SEMANTIC_ANALYSIS_QUESTION_VERSION
-                    if collect_semantic_analysis
+                    if TREATMENT_PACK in packs
                     else None
                 ),
+                (
+                    {
+                        topic: {
+                            "score": 3.0 if sermon and topic == "salvation_gospel" else 0.0,
+                            "probabilities": {
+                                "0": 0.0 if sermon and topic == "salvation_gospel" else 1.0,
+                                "1": 0.0,
+                                "2": 0.0,
+                                "3": 1.0 if sermon and topic == "salvation_gospel" else 0.0,
+                                "4": 0.0,
+                            },
+                            "confidence": 0.9,
+                        }
+                        for topic in TOPICS
+                    }
+                    if TOPIC_PACK in packs
+                    else {}
+                ),
+                TOPIC_PACK_VERSION if TOPIC_PACK in packs else None,
+                (
+                    {
+                        **topic_contexts[block.block_id].state_payload(),
+                        "diagnostics": dict(topic_contexts[block.block_id].diagnostics),
+                    }
+                    if TOPIC_PACK in packs and topic_contexts
+                    else {}
+                ),
+                {"request_key": f"request-{self.calls}"},
             )
         return answers
 
@@ -247,6 +305,100 @@ class TypeSafeFirstPassTests(unittest.TestCase):
                 for item in inventory.values())
         )
 
+    def test_topic_inventory_has_twenty_independent_five_level_scores(self) -> None:
+        inventory = topic_question_inventory(3)
+
+        self.assertEqual(20, len(TOPICS))
+        self.assertEqual(20, len(inventory))
+        self.assertEqual(
+            set(TOPICS), {item["topic"] for item in inventory.values()}
+        )
+        self.assertTrue(all(len(item["criteria"]) == 5 for item in inventory.values()))
+        self.assertTrue(
+            all(
+                "`topic_blocks[3].target_text`" in str(item["instructions"])
+                for item in inventory.values()
+            )
+        )
+        domains = topic_pack_inventory()["domains"]
+        self.assertEqual(4, len(domains))
+        self.assertTrue(all(not domain["scored"] for domain in domains.values()))
+
+    def test_topic_context_is_bounded_and_keeps_target_text_exact(self) -> None:
+        transcript = [
+            SegmentDraft(0.0, 10.0, "Earlier complete sentence. " * 40, None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+            SegmentDraft(10.0, 20.0, "Exact target text", None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+            SegmentDraft(20.0, 30.0, "Following complete sentence. " * 40, None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+        ]
+        block = TranscriptBlock(7, [1], 10.0, 20.0, "Exact target text")
+
+        context = build_topic_context(transcript, block)
+
+        self.assertEqual("Exact target text", context.target_text)
+        self.assertLessEqual(len(context.leading_context), 400)
+        self.assertLessEqual(len(context.trailing_context), 400)
+        self.assertEqual("topic-context-sentences-v1", context.diagnostics["policy_version"])
+        self.assertLessEqual(
+            context.diagnostics["leading"]["selected_sentence_units"], 2
+        )
+        self.assertLessEqual(
+            context.diagnostics["trailing"]["selected_sentence_units"], 2
+        )
+
+    def test_topic_artifact_preserves_complete_scores_density_and_overlap(self) -> None:
+        transcript = [
+            SegmentDraft(0.0, 30.0, "[Music]", None, TranscriptSegmentLabel.MUSIC, 0.9),
+            SegmentDraft(30.0, 60.0, "Grace saves us.", None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+        ]
+        block = TranscriptBlock(2, [0, 1], 0.0, 60.0, "[Music]\nGrace saves us.")
+        context = build_topic_context(transcript, block)
+        answer = TypeSafeBlockAnswer(
+            "principal_sermon",
+            {"principal_sermon": 1.0},
+            1.0,
+            "jev-1.13.0",
+            topic_scores={
+                topic: {
+                    "score": 2.0,
+                    "probabilities": {"0": 0.0, "1": 0.0, "2": 1.0, "3": 0.0, "4": 0.0},
+                    "confidence": 1.0,
+                }
+                for topic in TOPICS
+            },
+            topic_question_version=TOPIC_PACK_VERSION,
+            topic_context={
+                **context.state_payload(),
+                "diagnostics": dict(context.diagnostics),
+            },
+            request_provenance={
+                TOPIC_PACK: {
+                    "request_key": "request-1",
+                    "question_count": 20,
+                    "input_tokens": 10,
+                    "output_tokens": 20,
+                }
+            },
+        )
+
+        artifact = _topic_analysis_artifact(
+            [block],
+            {block.block_id: answer},
+            requested_model_id="jev-1.13.0",
+            retained_segment_indexes={1},
+            selected_start_seconds=30.0,
+            selected_end_seconds=60.0,
+        )
+
+        self.assertEqual("observations_only", artifact["status"])
+        self.assertEqual("none", artifact["policy_effect"])
+        self.assertEqual(20, len(artifact["inventory"]["topics"]))
+        observation = artifact["blocks"][0]
+        self.assertEqual(set(TOPICS), set(observation["scores"]))
+        self.assertTrue(observation["reliability"]["sparse"])
+        self.assertEqual(30.0, observation["reliability"]["final_sermon_overlap_seconds"])
+        self.assertEqual([1], observation["reliability"]["retained_source_segment_indexes"])
+        self.assertEqual(1, len(artifact["provider_requests"]))
+
     def test_semantic_artifact_ignores_role_only_answers(self) -> None:
         block = TranscriptBlock(1, [3], 10.0, 20.0, "sermon text")
         answer = TypeSafeBlockAnswer(
@@ -332,6 +484,89 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             replay[block.block_id].semantic_probabilities,
         )
 
+    def test_missing_pack_planner_reuses_role_and_treatment_for_topic_addition(self) -> None:
+        client = FakeBlockClient()
+        block = build_transcript_blocks(
+            drafts(), target_seconds=300.0, max_chars=9000
+        )[0]
+        context = {"metadata": {"title": "Worship Service"}}
+        topic_context = {block.block_id: build_topic_context(drafts(), block)}
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            cache.assess(
+                client,
+                context,
+                [block],
+                collect_semantic_analysis=True,
+            )
+            enriched = cache.assess(
+                client,
+                context,
+                [block],
+                collect_semantic_analysis=True,
+                collect_topic_analysis=True,
+                topic_contexts=topic_context,
+            )
+            calls_after_enrichment = client.calls
+            replay = cache.assess(
+                client,
+                context,
+                [block],
+                collect_semantic_analysis=True,
+                collect_topic_analysis=True,
+                topic_contexts=topic_context,
+            )
+
+        self.assertEqual(frozenset({ROLE_PACK, TREATMENT_PACK}), client.requested_packs[0])
+        self.assertEqual(frozenset({TOPIC_PACK}), client.requested_packs[1])
+        self.assertEqual(calls_after_enrichment, client.calls)
+        self.assertEqual(set(TOPICS), set(enriched[block.block_id].topic_scores))
+        self.assertEqual(
+            enriched[block.block_id].topic_scores,
+            replay[block.block_id].topic_scores,
+        )
+
+    def test_legacy_combined_cache_is_migrated_without_provider_call(self) -> None:
+        client = FakeBlockClient()
+        block = build_transcript_blocks(
+            drafts(), target_seconds=300.0, max_chars=9000
+        )[0]
+        context = {"metadata": {"title": "Worship Service"}}
+        legacy_answer = TypeSafeBlockAnswer(
+            "principal_sermon",
+            {"principal_sermon": 0.95, "unclear": 0.05},
+            0.9,
+            "jev-1.13.0",
+            {dimension: 0.25 for dimension in SEMANTIC_DIMENSIONS},
+            SEMANTIC_ANALYSIS_QUESTION_VERSION,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            identity = cache._legacy_identity(
+                context, block, include_semantic=True
+            )
+            path = cache.root / f"{_hash(identity)}.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps({"identity": identity, "answer": asdict(legacy_answer)}),
+                encoding="utf-8",
+            )
+
+            migrated = cache.assess(
+                client,
+                context,
+                [block],
+                collect_semantic_analysis=True,
+            )
+
+        self.assertEqual(0, client.calls)
+        self.assertEqual("principal_sermon", migrated[block.block_id].choice)
+        self.assertEqual(
+            set(SEMANTIC_DIMENSIONS),
+            set(migrated[block.block_id].semantic_probabilities),
+        )
+        self.assertEqual(0, cache.misses)
+
     def test_recording_gate_bypasses_localization_and_is_cached(self) -> None:
         class SabbathSchoolClient(FakeBlockClient):
             def __init__(self) -> None:
@@ -353,13 +588,14 @@ class TypeSafeFirstPassTests(unittest.TestCase):
                 )
 
             def assess_blocks(
-                self, recording_context, blocks, *, collect_semantic_analysis=False
+                self, recording_context, blocks, *, collect_semantic_analysis=False, **kwargs
             ):
                 self.block_calls += 1
                 return super().assess_blocks(
                     recording_context,
                     blocks,
                     collect_semantic_analysis=collect_semantic_analysis,
+                    **kwargs,
                 )
 
         client = SabbathSchoolClient()
@@ -397,12 +633,13 @@ class TypeSafeFirstPassTests(unittest.TestCase):
     def test_refines_weak_end_inside_adjacent_mixed_block_and_caches_it(self) -> None:
         class MixedEdgeClient(FakeBlockClient):
             def assess_blocks(
-                self, title, blocks, *, collect_semantic_analysis=False
+                self, title, blocks, *, collect_semantic_analysis=False, **kwargs
             ):
                 answers = super().assess_blocks(
                     title,
                     blocks,
                     collect_semantic_analysis=collect_semantic_analysis,
+                    **kwargs,
                 )
                 for block in blocks:
                     if "CLOSING PRAYER" not in block.text:
@@ -468,12 +705,13 @@ class TypeSafeFirstPassTests(unittest.TestCase):
     def test_refines_high_strength_edge_when_outside_block_is_mixed(self) -> None:
         class MixedOutsideClient(FakeBlockClient):
             def assess_blocks(
-                self, title, blocks, *, collect_semantic_analysis=False
+                self, title, blocks, *, collect_semantic_analysis=False, **kwargs
             ):
                 answers = super().assess_blocks(
                     title,
                     blocks,
                     collect_semantic_analysis=collect_semantic_analysis,
+                    **kwargs,
                 )
                 for block in blocks:
                     if "CLOSING PRAYER" not in block.text:

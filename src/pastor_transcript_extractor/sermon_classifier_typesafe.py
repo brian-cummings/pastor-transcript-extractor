@@ -24,9 +24,22 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_DIMENSIONS,
     semantic_question_inventory,
 )
+from pastor_transcript_extractor.sermon_topics import (
+    TOPIC_ARTIFACT_SCHEMA_VERSION,
+    TOPIC_CONTEXT_POLICY_VERSION,
+    TOPIC_PACK_VERSION,
+    TOPIC_RELIABILITY_POLICY_VERSION,
+    TOPICS,
+    TopicBlockContext,
+    build_topic_context,
+    topic_pack_digest,
+    topic_pack_inventory,
+    topic_question_inventory,
+    topic_reliability,
+)
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v13_recording_gate"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v14_topic_observations"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
 BLOCK_BUILDER_VERSION = "typesafe-canonical-coarse-300s-fine-60s-v3"
@@ -42,6 +55,10 @@ BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
 # shared state near the size exercised by TypeSafe's large-document cookbook.
 BATCH_SIZE = 6
+MAX_FINE_QUESTION_BUDGET = 150
+ROLE_PACK = "role"
+TREATMENT_PACK = "homiletic-treatment"
+TOPIC_PACK = TOPIC_PACK_VERSION
 FINE_PARENT_CONTEXT_KEY = "fine_block_coarse_parent_findings"
 
 ROLE_CHOICES = (
@@ -171,6 +188,10 @@ class TypeSafeBlockAnswer:
     resolved_model_id: str
     semantic_probabilities: Mapping[str, float] = field(default_factory=dict)
     semantic_question_version: str | None = None
+    topic_scores: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    topic_question_version: str | None = None
+    topic_context: Mapping[str, Any] = field(default_factory=dict)
+    request_provenance: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def sermon_probability(self) -> float:
@@ -220,6 +241,9 @@ class TypeSafeBlockClient(Protocol):
         blocks: list[TranscriptBlock],
         *,
         collect_semantic_analysis: bool = False,
+        collect_topic_analysis: bool = False,
+        requested_packs: frozenset[str] | None = None,
+        topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> Mapping[int, TypeSafeBlockAnswer]: ...
 
     def select_boundary_candidate(
@@ -243,7 +267,7 @@ def _hash(value: Any) -> str:
 
 
 class TypeSafeBlockCache:
-    """Content-addressed cache for every TypeSafe localization judgment."""
+    """Content-addressed cache with independently reusable per-block answer packs."""
 
     def __init__(self, root: Path, *, model: str) -> None:
         self.root = root / "typesafe-first" / re.sub(r"[^A-Za-z0-9_.-]+", "_", model)
@@ -279,6 +303,39 @@ class TypeSafeBlockCache:
         )
         self.misses += 1
 
+    def _read_pack(self, path: Path) -> dict[str, Any] | None:
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            answer = payload["answer"]
+            if not isinstance(answer, dict):
+                return None
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        self.hits += 1
+        return answer
+
+    def _write_pack(
+        self,
+        path: Path,
+        identity: Mapping[str, Any],
+        answer: Mapping[str, Any],
+        *,
+        count_miss: bool = True,
+    ) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {"identity": identity, "answer": dict(answer)},
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        if count_miss:
+            self.misses += 1
+
     def assess_recording_gate(
         self,
         client: TypeSafeBlockClient,
@@ -298,37 +355,221 @@ class TypeSafeBlockCache:
         self._write_answer(path, identity, answer)
         return answer
 
-    def _identity(
+    def _pack_identity(
         self,
         recording_context: Mapping[str, Any],
         block: TranscriptBlock,
         *,
-        collect_semantic_analysis: bool,
+        pack: str,
+        topic_context: TopicBlockContext | None,
     ) -> dict[str, Any]:
-        block_context = _recording_context_for_blocks(
-            recording_context,
-            [block],
-        )
-        identity = {
+        block_identity = {
+            "segment_indexes": list(block.segment_indexes),
+            "start_seconds": block.start_seconds,
+            "end_seconds": block.end_seconds,
+            "text": block.text,
+        }
+        identity: dict[str, Any] = {
+            "requested_model_id": self.model,
+            # Production uses an exact pinned model id, so the requested id is
+            # also the cache's expected resolved id. The provider's actual
+            # resolved id remains stored in every answer pack and artifact.
+            "resolved_model_id": self.model,
+            "pack": pack,
+            "block": {
+                "start_seconds": block.start_seconds,
+                "end_seconds": block.end_seconds,
+                "text": block.text,
+                "segment_indexes": list(block.segment_indexes),
+            },
+        }
+        if pack == ROLE_PACK:
+            identity.update(
+                {
+                    "question_set_version": QUESTION_SET_VERSION,
+                    "question": role_question(),
+                    "recording_context": _recording_context_for_blocks(
+                        recording_context, [block]
+                    ),
+                }
+            )
+        elif pack == TREATMENT_PACK:
+            identity.update(
+                {
+                    "question_version": SEMANTIC_ANALYSIS_QUESTION_VERSION,
+                    "questions": semantic_question_inventory(0),
+                    "recording_context": _recording_context_for_blocks(
+                        recording_context, [block]
+                    ),
+                }
+            )
+        elif pack == TOPIC_PACK:
+            if topic_context is None:
+                raise ValueError("Topic answer pack requires a topic context")
+            identity.update(
+                {
+                    "question_version": TOPIC_PACK_VERSION,
+                    "inventory_digest": topic_pack_digest(),
+                    "questions": topic_question_inventory(0),
+                    "state": topic_context.state_payload(),
+                    "context_diagnostics": dict(topic_context.diagnostics),
+                    "block_provenance": block_identity,
+                }
+            )
+        else:
+            raise ValueError(f"Unsupported TypeSafe answer pack: {pack}")
+        return identity
+
+    def _legacy_identity(
+        self,
+        recording_context: Mapping[str, Any],
+        block: TranscriptBlock,
+        *,
+        include_semantic: bool,
+    ) -> dict[str, Any]:
+        identity: dict[str, Any] = {
             "model": self.model,
             "question_set_version": QUESTION_SET_VERSION,
             "question": role_question(),
-            "recording_context": block_context,
+            "recording_context": _recording_context_for_blocks(
+                recording_context, [block]
+            ),
             "block": {
                 "start_seconds": block.start_seconds,
                 "end_seconds": block.end_seconds,
                 "text": block.text,
             },
         }
-        if collect_semantic_analysis:
+        if include_semantic:
             identity["semantic_analysis"] = {
                 "question_version": SEMANTIC_ANALYSIS_QUESTION_VERSION,
                 "questions": semantic_question_inventory(0),
             }
         return identity
 
-    def _path(self, identity: Mapping[str, Any]) -> Path:
-        return self.root / f"{_hash(identity)}.json"
+    def _hydrate_legacy_packs(
+        self,
+        recording_context: Mapping[str, Any],
+        block: TranscriptBlock,
+        requested_packs: frozenset[str],
+        block_packs: dict[str, dict[str, Any]],
+        identities: Mapping[tuple[int, str], tuple[dict[str, Any], Path]],
+    ) -> None:
+        def migrate(include_semantic: bool) -> None:
+            wanted = requested_packs - block_packs.keys()
+            legacy_identity = self._legacy_identity(
+                recording_context,
+                block,
+                include_semantic=include_semantic,
+            )
+            legacy = self._read_answer(
+                self.root / f"{_hash(legacy_identity)}.json",
+                TypeSafeBlockAnswer,
+            )
+            if legacy is None:
+                return
+            migratable = {ROLE_PACK}
+            if legacy.semantic_probabilities:
+                migratable.add(TREATMENT_PACK)
+            for pack in wanted & migratable:
+                payload = self._pack_payload(legacy, pack)
+                identity, path = identities[(block.block_id, pack)]
+                self._write_pack(path, identity, payload, count_miss=False)
+                block_packs[pack] = payload
+
+        wanted = requested_packs - block_packs.keys()
+        if TREATMENT_PACK in wanted:
+            migrate(include_semantic=True)
+        if ROLE_PACK in requested_packs - block_packs.keys():
+            migrate(include_semantic=False)
+
+    def _pack_path(self, pack: str, identity: Mapping[str, Any]) -> Path:
+        return self.root / "packs" / pack / f"{_hash(identity)}.json"
+
+    @staticmethod
+    def _pack_payload(answer: TypeSafeBlockAnswer, pack: str) -> dict[str, Any]:
+        common = {
+            "resolved_model_id": answer.resolved_model_id,
+            "request_provenance": dict(answer.request_provenance),
+        }
+        if pack == ROLE_PACK:
+            return {
+                **common,
+                "choice": answer.choice,
+                "probabilities": dict(answer.probabilities),
+                "confidence": answer.confidence,
+            }
+        if pack == TREATMENT_PACK:
+            return {
+                **common,
+                "semantic_probabilities": dict(answer.semantic_probabilities),
+                "semantic_question_version": answer.semantic_question_version,
+            }
+        if pack == TOPIC_PACK:
+            return {
+                **common,
+                "topic_scores": {
+                    name: dict(score) for name, score in answer.topic_scores.items()
+                },
+                "topic_question_version": answer.topic_question_version,
+                "topic_context": dict(answer.topic_context),
+            }
+        raise ValueError(f"Unsupported TypeSafe answer pack: {pack}")
+
+    @staticmethod
+    def _merge_packs(packs: Mapping[str, Mapping[str, Any]]) -> TypeSafeBlockAnswer:
+        role = packs.get(ROLE_PACK, {})
+        semantic = packs.get(TREATMENT_PACK, {})
+        topics = packs.get(TOPIC_PACK, {})
+        resolved_models = [
+            str(pack["resolved_model_id"])
+            for pack in packs.values()
+            if pack.get("resolved_model_id") is not None
+        ]
+        provenance = {
+            name: dict(pack.get("request_provenance", {}))
+            for name, pack in packs.items()
+            if pack.get("request_provenance")
+        }
+        return TypeSafeBlockAnswer(
+            choice=str(role.get("choice", "unclear")),
+            probabilities={
+                str(key): float(value)
+                for key, value in dict(role.get("probabilities", {})).items()
+            },
+            confidence=(
+                float(role["confidence"])
+                if isinstance(role.get("confidence"), (int, float))
+                else None
+            ),
+            resolved_model_id=resolved_models[0] if resolved_models else "unknown",
+            semantic_probabilities={
+                str(key): float(value)
+                for key, value in dict(
+                    semantic.get("semantic_probabilities", {})
+                ).items()
+            },
+            semantic_question_version=semantic.get("semantic_question_version"),
+            topic_scores={
+                str(key): dict(value)
+                for key, value in dict(topics.get("topic_scores", {})).items()
+                if isinstance(value, Mapping)
+            },
+            topic_question_version=topics.get("topic_question_version"),
+            topic_context=dict(topics.get("topic_context", {})),
+            request_provenance=provenance,
+        )
+
+    @staticmethod
+    def _batch_size(packs: frozenset[str]) -> int:
+        questions_per_block = (
+            (1 if ROLE_PACK in packs else 0)
+            + (len(SEMANTIC_DIMENSIONS) if TREATMENT_PACK in packs else 0)
+            + (len(TOPICS) if TOPIC_PACK in packs else 0)
+        )
+        if questions_per_block <= 0:
+            return BATCH_SIZE
+        return max(1, min(BATCH_SIZE, MAX_FINE_QUESTION_BUDGET // questions_per_block))
 
     def assess(
         self,
@@ -337,41 +578,79 @@ class TypeSafeBlockCache:
         blocks: list[TranscriptBlock],
         *,
         collect_semantic_analysis: bool = False,
+        collect_topic_analysis: bool = False,
+        topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> dict[int, TypeSafeBlockAnswer]:
-        answers: dict[int, TypeSafeBlockAnswer] = {}
-        missing: list[tuple[TranscriptBlock, dict[str, Any], Path]] = []
+        requested = {ROLE_PACK}
+        if collect_semantic_analysis:
+            requested.add(TREATMENT_PACK)
+        if collect_topic_analysis:
+            requested.add(TOPIC_PACK)
+        requested_packs = frozenset(requested)
+        contexts = topic_contexts or {}
+        cached_packs: dict[int, dict[str, dict[str, Any]]] = {}
+        missing_by_set: dict[frozenset[str], list[TranscriptBlock]] = {}
+        identities: dict[tuple[int, str], tuple[dict[str, Any], Path]] = {}
         for block in blocks:
-            identity = self._identity(
+            block_packs: dict[str, dict[str, Any]] = {}
+            missing: set[str] = set()
+            for pack in requested_packs:
+                identity = self._pack_identity(
+                    recording_context,
+                    block,
+                    pack=pack,
+                    topic_context=contexts.get(block.block_id),
+                )
+                path = self._pack_path(pack, identity)
+                identities[(block.block_id, pack)] = (identity, path)
+                cached = self._read_pack(path)
+                if cached is None:
+                    missing.add(pack)
+                else:
+                    block_packs[pack] = cached
+            cached_packs[block.block_id] = block_packs
+            self._hydrate_legacy_packs(
                 recording_context,
                 block,
-                collect_semantic_analysis=collect_semantic_analysis,
+                requested_packs,
+                block_packs,
+                identities,
             )
-            path = self._path(identity)
-            cached = self._read_answer(path, TypeSafeBlockAnswer)
-            if cached is not None:
-                answers[block.block_id] = cached
-                continue
-            missing.append((block, identity, path))
+            missing = requested_packs - block_packs.keys()
+            if missing:
+                missing_by_set.setdefault(frozenset(missing), []).append(block)
 
-        for offset in range(0, len(missing), BATCH_SIZE):
-            batch = missing[offset : offset + BATCH_SIZE]
-            assessed = client.assess_blocks(
-                _recording_context_for_blocks(
-                    recording_context,
-                    [item[0] for item in batch],
-                ),
-                [item[0] for item in batch],
-                collect_semantic_analysis=collect_semantic_analysis,
-            )
-            for block, identity, path in batch:
-                answer = assessed.get(block.block_id)
-                if answer is None:
-                    raise ValueError(
-                        f"TypeSafe omitted block judgment {block.block_id}"
-                    )
-                self._write_answer(path, identity, answer)
-                answers[block.block_id] = answer
-        return answers
+        for missing_packs, missing_blocks in missing_by_set.items():
+            batch_size = self._batch_size(missing_packs)
+            for offset in range(0, len(missing_blocks), batch_size):
+                batch = missing_blocks[offset : offset + batch_size]
+                assessed = client.assess_blocks(
+                    _recording_context_for_blocks(recording_context, batch),
+                    batch,
+                    collect_semantic_analysis=TREATMENT_PACK in missing_packs,
+                    collect_topic_analysis=TOPIC_PACK in missing_packs,
+                    requested_packs=missing_packs,
+                    topic_contexts={
+                        block.block_id: contexts[block.block_id]
+                        for block in batch
+                        if block.block_id in contexts
+                    },
+                )
+                for block in batch:
+                    answer = assessed.get(block.block_id)
+                    if answer is None:
+                        raise ValueError(
+                            f"TypeSafe omitted block judgment {block.block_id}"
+                        )
+                    for pack in missing_packs:
+                        payload = self._pack_payload(answer, pack)
+                        identity, path = identities[(block.block_id, pack)]
+                        self._write_pack(path, identity, payload)
+                        cached_packs[block.block_id][pack] = payload
+        return {
+            block.block_id: self._merge_packs(cached_packs[block.block_id])
+            for block in blocks
+        }
 
     def _boundary_selection_identity(
         self,
@@ -855,6 +1134,86 @@ def _semantic_analysis_artifact(
     }
 
 
+def _topic_analysis_artifact(
+    blocks: list[TranscriptBlock],
+    answers: Mapping[int, TypeSafeBlockAnswer],
+    *,
+    requested_model_id: str,
+    retained_segment_indexes: set[int] | None = None,
+    selected_start_seconds: float | None = None,
+    selected_end_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Persist raw topic observations and deterministic reliability separately."""
+    retained = retained_segment_indexes or set()
+    observations: list[dict[str, Any]] = []
+    provider_requests: dict[str, dict[str, Any]] = {}
+    for block in blocks:
+        answer = answers.get(block.block_id)
+        if answer is None or not answer.topic_scores:
+            continue
+        scores = {
+            topic: {
+                "score": round(float(answer.topic_scores[topic]["score"]), 6),
+                "probabilities": {
+                    str(level): round(float(probability), 6)
+                    for level, probability in dict(
+                        answer.topic_scores[topic]["probabilities"]
+                    ).items()
+                },
+                "confidence": (
+                    round(float(answer.topic_scores[topic]["confidence"]), 6)
+                    if isinstance(
+                        answer.topic_scores[topic].get("confidence"),
+                        (int, float),
+                    )
+                    else None
+                ),
+            }
+            for topic in TOPICS
+        }
+        provenance = answer.request_provenance.get(TOPIC_PACK, {})
+        provenance = provenance if isinstance(provenance, Mapping) else {}
+        request_key = provenance.get("request_key")
+        if isinstance(request_key, str):
+            provider_requests[request_key] = dict(provenance)
+        observations.append(
+            {
+                "block_id": block.block_id,
+                "start_seconds": block.start_seconds,
+                "end_seconds": block.end_seconds,
+                "segment_indexes": list(block.segment_indexes),
+                "context": dict(answer.topic_context),
+                "context_identity": _hash(answer.topic_context),
+                "scores": scores,
+                "reliability": topic_reliability(
+                    block,
+                    retained_segment_indexes=retained,
+                    selected_start_seconds=selected_start_seconds,
+                    selected_end_seconds=selected_end_seconds,
+                ),
+                "resolved_model_id": answer.resolved_model_id,
+                "request_key": request_key,
+            }
+        )
+    return {
+        "schema_version": TOPIC_ARTIFACT_SCHEMA_VERSION,
+        "status": "observations_only" if observations else "not_collected",
+        "source": "typesafe_fine_localization_fanout",
+        "question_pack_version": TOPIC_PACK_VERSION,
+        "question_pack_digest": topic_pack_digest(),
+        "context_policy_version": TOPIC_CONTEXT_POLICY_VERSION,
+        "reliability_policy_version": TOPIC_RELIABILITY_POLICY_VERSION,
+        "policy_effect": "none",
+        "activation_requirement": (
+            "accepted_sermon_with_effective_reviewed_profile_membership"
+        ),
+        "requested_model_id": requested_model_id,
+        "inventory": topic_pack_inventory(),
+        "provider_requests": list(provider_requests.values()),
+        "blocks": observations,
+    }
+
+
 class TypeSafeFirstPassSermonClassifier:
     """Map the recording first, then refine only plausible sermon regions."""
 
@@ -961,6 +1320,10 @@ class TypeSafeFirstPassSermonClassifier:
                 coarse_components,
             ),
         }
+        topic_contexts = {
+            block.block_id: build_topic_context(drafts, block)
+            for block in fine_blocks
+        }
         if progress is not None:
             progress("typesafe-boundary", 0, len(fine_blocks))
         with self._lock:
@@ -969,6 +1332,8 @@ class TypeSafeFirstPassSermonClassifier:
                 fine_recording_context,
                 fine_blocks,
                 collect_semantic_analysis=True,
+                collect_topic_analysis=True,
+                topic_contexts=topic_contexts,
             )
         if progress is not None:
             progress("typesafe-boundary", len(fine_blocks), len(fine_blocks))
@@ -1282,6 +1647,14 @@ class TypeSafeFirstPassSermonClassifier:
             warnings.append(
                 "TypeSafe segment boundary refinement failed; retained block boundary"
             )
+        topic_analysis = _topic_analysis_artifact(
+            fine_blocks,
+            fine_answers,
+            requested_model_id=self.model,
+            retained_segment_indexes=set(selected_indexes),
+            selected_start_seconds=selected_start,
+            selected_end_seconds=selected_end,
+        )
         return HybridSermonResult(
             method=self.method,
             model=self.model,
@@ -1304,6 +1677,7 @@ class TypeSafeFirstPassSermonClassifier:
                     fine_answers,
                     selected_block_ids=selected_ids,
                 ),
+                "topic_analysis": topic_analysis,
                 "model_digest": self.model,
                 "rule_baseline_source": "recomputed_rules",
                 "rule_baseline_algorithm_version": "rule_based_v1",
@@ -1316,7 +1690,17 @@ class TypeSafeFirstPassSermonClassifier:
                     "competing_component_ratio": round(
                         competing_component_ratio, 6
                     ),
-                    "cache_identity": "per_block_question_state",
+                    "cache_identity": "per_block_versioned_answer_pack",
+                    "fine_question_budget": MAX_FINE_QUESTION_BUDGET,
+                    "topic_collection": {
+                        "status": topic_analysis["status"],
+                        "question_pack_version": TOPIC_PACK_VERSION,
+                        "observation_count": len(topic_analysis["blocks"]),
+                        "provider_request_count": len(
+                            topic_analysis["provider_requests"]
+                        ),
+                        "policy_effect": "none",
+                    },
                     "segment_boundary_refinement": bool(boundary_candidate_count),
                     "transcript_input": "persisted_canonical_artifact",
                 },
@@ -1367,6 +1751,11 @@ class TypeSafeFirstPassSermonClassifier:
                 "candidates": [],
                 "selected_rank": None,
                 "semantic_analysis": _semantic_analysis_artifact(blocks, answers),
+                "topic_analysis": _topic_analysis_artifact(
+                    blocks,
+                    answers,
+                    requested_model_id=self.model,
+                ),
                 "discovery": {
                     "selected_mode": "typesafe_first_no_candidate",
                     "recording_gate": dict(gate),
@@ -1407,6 +1796,11 @@ class TypeSafeFirstPassSermonClassifier:
                 "candidates": [],
                 "selected_rank": None,
                 "semantic_analysis": _semantic_analysis_artifact([], {}),
+                "topic_analysis": _topic_analysis_artifact(
+                    [],
+                    {},
+                    requested_model_id=self.model,
+                ),
                 "discovery": {
                     "selected_mode": "typesafe_recording_gate_bypass",
                     "recording_gate": dict(gate),
