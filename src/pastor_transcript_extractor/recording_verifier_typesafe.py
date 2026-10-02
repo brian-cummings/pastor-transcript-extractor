@@ -32,6 +32,12 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     recording_gate_question,
     role_question,
 )
+from pastor_transcript_extractor.sermon_semantic_dimensions import (
+    SEMANTIC_ANALYSIS_QUESTION_VERSION,
+    SEMANTIC_DIMENSIONS,
+    semantic_question_id,
+    semantic_question_inventory,
+)
 from pastor_transcript_extractor.sermon_classification import HybridSermonResult, TranscriptBlock
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 from pastor_transcript_extractor.segmentation import SegmentDraft
@@ -271,6 +277,8 @@ class TypeSafeSdkAdapter:
         self,
         recording_context: Mapping[str, Any],
         blocks: list[TranscriptBlock],
+        *,
+        collect_semantic_analysis: bool = False,
     ) -> Mapping[int, TypeSafeBlockAnswer]:
         question = role_question()
         state = {
@@ -298,6 +306,13 @@ class TypeSafeSdkAdapter:
             )
             for position in range(len(blocks))
         }
+        if collect_semantic_analysis:
+            for position in range(len(blocks)):
+                for question_id, item in semantic_question_inventory(position).items():
+                    questions[question_id] = self._Noul(
+                        instructions=item["instructions"],
+                        criteria=item["criteria"],
+                    )
         result = self._client.system_one(
             state,
             questions,
@@ -326,6 +341,23 @@ class TypeSafeSdkAdapter:
                     result.choices[f"block_{position}"], "confidence", None
                 ),
                 resolved_model_id=resolved_model,
+                semantic_probabilities=(
+                    {
+                        dimension: float(
+                            result.nouls[
+                                semantic_question_id(position, dimension)
+                            ].noul
+                        )
+                        for dimension in SEMANTIC_DIMENSIONS
+                    }
+                    if collect_semantic_analysis
+                    else {}
+                ),
+                semantic_question_version=(
+                    SEMANTIC_ANALYSIS_QUESTION_VERSION
+                    if collect_semantic_analysis
+                    else None
+                ),
             )
             for position, block in enumerate(blocks)
         }

@@ -134,6 +134,10 @@ def _record_speaker_evidence_safely(
 
 def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
     search = result.search if isinstance(result.search, dict) else {}
+    semantic_analysis = search.get("semantic_analysis")
+    semantic_analysis = (
+        semantic_analysis if isinstance(semantic_analysis, dict) else None
+    )
     discovery = search.get("discovery")
     discovery = discovery if isinstance(discovery, dict) else {}
     candidates = search.get("candidates")
@@ -179,6 +183,7 @@ def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
         "retained_segment_count": len(result.retained_segment_indexes),
         "warnings": list(result.warnings),
         "confidence_reasons": list(result.confidence_reasons or []),
+        "semantic_analysis": semantic_analysis,
         "discovery": {
             key: discovery[key]
             for key in (

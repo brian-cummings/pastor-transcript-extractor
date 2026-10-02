@@ -396,6 +396,16 @@ title, timestamps, and text. A rerun asks Jev only for missing or changed judgme
 `pte reclassify` automatically uses this Jev-first path when its recording verifier
 backend is `typesafe`.
 
+The one-minute fine pass also asks four independent, observation-only semantic
+questions in the same TypeSafe request: exegetical exposition, narrative
+illustration, doctrinal argument, and practical application. Their raw
+probabilities, exact fine-block time ranges, segment indexes, model id, and question
+version are stored under `classification.search.semantic_analysis`. They do not
+affect sermon detection, boundaries, disposition, or current comparison features.
+They are retained for possible future analysis only when the recording is ultimately
+accepted as a sermon and projected through effective reviewed speaker-profile
+membership.
+
 The same `--recording-verifier-backend typesafe` option is available on `pte
 run`, `pte extract`, and `pte apply-fixture-correction`. TypeSafe receives the
 selected candidate's opening, middle, and ending transcript excerpts plus the
