@@ -1944,6 +1944,12 @@ class HybridClassificationTests(unittest.TestCase):
         )
 
     def test_typesafe_attempt_explains_no_candidate_abstention(self) -> None:
+        semantic_analysis = {
+            "schema_version": 1,
+            "status": "observations_only",
+            "policy_effect": "none",
+            "blocks": [{"block_id": 4, "probabilities": {"test": 0.75}}],
+        }
         attempt = _typesafe_first_attempt(
             HybridSermonResult(
                 method="typesafe_first_v11",
@@ -1956,13 +1962,19 @@ class HybridClassificationTests(unittest.TestCase):
                 warnings=[],
                 blocks=[],
                 classifications=[],
-                search={"candidates": [], "selected_rank": None, "discovery": {}},
+                search={
+                    "candidates": [],
+                    "selected_rank": None,
+                    "semantic_analysis": semantic_analysis,
+                    "discovery": {},
+                },
             )
         )
 
         self.assertEqual(
             ["no_supported_principal_sermon_component"], attempt["reason_codes"]
         )
+        self.assertEqual(semantic_analysis, attempt["semantic_analysis"])
 
     def test_strict_llm_mode_propagates_failure(self) -> None:
         drafts = [draft(0.0, 120.0, "sermon")]

@@ -25,6 +25,9 @@ from pastor_transcript_extractor.sermon_analysis import (
     prepare_sermon_analysis,
     load_identified_sermon_source,
 )
+from pastor_transcript_extractor.sermon_semantic_dimensions import (
+    SEMANTIC_DIMENSIONS as STYLE_DIMENSIONS,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -36,26 +39,6 @@ STYLE_ACCEPTANCE_VERSION = "observable-dimension-gates-v2"
 STYLE_RUN_MERGE_VERSION = "boundary-touching-continuation-v1"
 STYLE_ANALYSIS_SCHEMA_VERSION = 2
 STYLE_OUTPUT_TOKEN_BUDGET = 512
-
-STYLE_DIMENSIONS: dict[str, str] = {
-    "exegetical_exposition": (
-        "Explains the meaning, context, wording, structure, or implications of a "
-        "biblical text. A quotation or reference without explanation is insufficient."
-    ),
-    "narrative_illustration": (
-        "Recounts a concrete personal experience, observed event, or developed story "
-        "to illuminate a sermon's point. A passing example or hypothetical is insufficient."
-    ),
-    "doctrinal_argument": (
-        "Develops a reasoned claim about Christian belief using premises, distinctions, "
-        "support, consequences, or responses to alternatives. A bare assertion is insufficient."
-    ),
-    "practical_application": (
-        "Directs listeners toward a concrete action, practice, decision, relationship, "
-        "or lived response. Generic encouragement without a specific response is insufficient."
-    ),
-}
-
 
 @dataclass(frozen=True, slots=True)
 class StyleAnalysisOutcome:

@@ -27,6 +27,12 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     _boundary_candidates,
     _candidate_components,
     _edge_neighborhood,
+    _semantic_analysis_artifact,
+)
+from pastor_transcript_extractor.sermon_semantic_dimensions import (
+    SEMANTIC_ANALYSIS_QUESTION_VERSION,
+    SEMANTIC_DIMENSIONS,
+    semantic_question_inventory,
 )
 from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
@@ -56,7 +62,9 @@ class FakeBlockClient:
             "jev-1.13.0",
         )
 
-    def assess_blocks(self, recording_context, blocks):
+    def assess_blocks(
+        self, recording_context, blocks, *, collect_semantic_analysis=False
+    ):
         self.recording_contexts.append(dict(recording_context))
         self.calls += 1
         self.block_ids.append([block.block_id for block in blocks])
@@ -72,6 +80,21 @@ class FakeBlockClient:
                 probabilities,
                 0.9,
                 "jev-1.13.0",
+                (
+                    {
+                        dimension: (
+                            0.8 if sermon and dimension == "exegetical_exposition" else 0.1
+                        )
+                        for dimension in SEMANTIC_DIMENSIONS
+                    }
+                    if collect_semantic_analysis
+                    else {}
+                ),
+                (
+                    SEMANTIC_ANALYSIS_QUESTION_VERSION
+                    if collect_semantic_analysis
+                    else None
+                ),
             )
         return answers
 
@@ -172,6 +195,49 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertTrue(context["deterministic_detection"]["window_found"])
         self.assertEqual(300.0, context["deterministic_detection"]["duration_seconds"])
         self.assertTrue(context["recording_outline"])
+        semantic = result.search["semantic_analysis"]
+        self.assertEqual("observations_only", semantic["status"])
+        self.assertEqual("none", semantic["policy_effect"])
+        self.assertEqual(
+            SEMANTIC_ANALYSIS_QUESTION_VERSION,
+            semantic["question_version"],
+        )
+        self.assertEqual(list(SEMANTIC_DIMENSIONS), semantic["dimensions"])
+        self.assertTrue(semantic["blocks"])
+        self.assertTrue(
+            any(item["within_selected_candidate"] for item in semantic["blocks"])
+        )
+        self.assertEqual(
+            set(SEMANTIC_DIMENSIONS),
+            set(semantic["blocks"][0]["probabilities"]),
+        )
+
+    def test_semantic_question_inventory_uses_shared_dimension_inventory(self) -> None:
+        inventory = semantic_question_inventory(2)
+
+        self.assertEqual(len(SEMANTIC_DIMENSIONS), len(inventory))
+        self.assertEqual(
+            set(SEMANTIC_DIMENSIONS),
+            {item["dimension"] for item in inventory.values()},
+        )
+        self.assertTrue(
+            all("`target_blocks[2].text`" in str(item["instructions"])
+                for item in inventory.values())
+        )
+
+    def test_semantic_artifact_ignores_role_only_answers(self) -> None:
+        block = TranscriptBlock(1, [3], 10.0, 20.0, "sermon text")
+        answer = TypeSafeBlockAnswer(
+            "principal_sermon",
+            {"principal_sermon": 1.0},
+            1.0,
+            "jev-1.13.0",
+        )
+
+        artifact = _semantic_analysis_artifact([block], {1: answer})
+
+        self.assertEqual("not_collected", artifact["status"])
+        self.assertEqual([], artifact["blocks"])
 
     def test_item_cache_prevents_duplicate_jev_requests(self) -> None:
         client = FakeBlockClient()
@@ -210,6 +276,40 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(2, cache.hits)
         self.assertEqual(len(blocks), cache.misses)
 
+    def test_semantic_question_pack_has_separate_cache_identity(self) -> None:
+        client = FakeBlockClient()
+        block = build_transcript_blocks(
+            drafts(), target_seconds=300.0, max_chars=9000
+        )[0]
+        context = {"metadata": {"title": "Worship Service"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            role_only = cache.assess(client, context, [block])
+            with_semantics = cache.assess(
+                client,
+                context,
+                [block],
+                collect_semantic_analysis=True,
+            )
+            calls_after_both = client.calls
+            replay = cache.assess(
+                client,
+                context,
+                [block],
+                collect_semantic_analysis=True,
+            )
+
+        self.assertEqual({}, role_only[block.block_id].semantic_probabilities)
+        self.assertEqual(
+            set(SEMANTIC_DIMENSIONS),
+            set(with_semantics[block.block_id].semantic_probabilities),
+        )
+        self.assertEqual(calls_after_both, client.calls)
+        self.assertEqual(
+            with_semantics[block.block_id].semantic_probabilities,
+            replay[block.block_id].semantic_probabilities,
+        )
+
     def test_recording_gate_bypasses_localization_and_is_cached(self) -> None:
         class SabbathSchoolClient(FakeBlockClient):
             def __init__(self) -> None:
@@ -230,9 +330,15 @@ class TypeSafeFirstPassTests(unittest.TestCase):
                     "jev-1.13.0",
                 )
 
-            def assess_blocks(self, recording_context, blocks):
+            def assess_blocks(
+                self, recording_context, blocks, *, collect_semantic_analysis=False
+            ):
                 self.block_calls += 1
-                return super().assess_blocks(recording_context, blocks)
+                return super().assess_blocks(
+                    recording_context,
+                    blocks,
+                    collect_semantic_analysis=collect_semantic_analysis,
+                )
 
         client = SabbathSchoolClient()
         classifier = TypeSafeFirstPassSermonClassifier(
@@ -268,8 +374,14 @@ class TypeSafeFirstPassTests(unittest.TestCase):
 
     def test_refines_weak_end_inside_adjacent_mixed_block_and_caches_it(self) -> None:
         class MixedEdgeClient(FakeBlockClient):
-            def assess_blocks(self, title, blocks):
-                answers = super().assess_blocks(title, blocks)
+            def assess_blocks(
+                self, title, blocks, *, collect_semantic_analysis=False
+            ):
+                answers = super().assess_blocks(
+                    title,
+                    blocks,
+                    collect_semantic_analysis=collect_semantic_analysis,
+                )
                 for block in blocks:
                     if "CLOSING PRAYER" not in block.text:
                         continue
@@ -333,8 +445,14 @@ class TypeSafeFirstPassTests(unittest.TestCase):
 
     def test_refines_high_strength_edge_when_outside_block_is_mixed(self) -> None:
         class MixedOutsideClient(FakeBlockClient):
-            def assess_blocks(self, title, blocks):
-                answers = super().assess_blocks(title, blocks)
+            def assess_blocks(
+                self, title, blocks, *, collect_semantic_analysis=False
+            ):
+                answers = super().assess_blocks(
+                    title,
+                    blocks,
+                    collect_semantic_analysis=collect_semantic_analysis,
+                )
                 for block in blocks:
                     if "CLOSING PRAYER" not in block.text:
                         continue

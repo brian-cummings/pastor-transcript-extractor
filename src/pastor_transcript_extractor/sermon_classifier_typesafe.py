@@ -1,7 +1,7 @@
 """Fast, cached TypeSafe/Jev-first sermon localization."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 import hashlib
 import json
 import math
@@ -19,6 +19,11 @@ from pastor_transcript_extractor.sermon_classification import (
     build_transcript_blocks,
 )
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
+from pastor_transcript_extractor.sermon_semantic_dimensions import (
+    SEMANTIC_ANALYSIS_QUESTION_VERSION,
+    SEMANTIC_DIMENSIONS,
+    semantic_question_inventory,
+)
 
 
 SEARCH_ALGORITHM_VERSION = "typesafe_first_v13_recording_gate"
@@ -161,6 +166,8 @@ class TypeSafeBlockAnswer:
     probabilities: Mapping[str, float]
     confidence: float | None
     resolved_model_id: str
+    semantic_probabilities: Mapping[str, float] = field(default_factory=dict)
+    semantic_question_version: str | None = None
 
     @property
     def sermon_probability(self) -> float:
@@ -208,6 +215,8 @@ class TypeSafeBlockClient(Protocol):
         self,
         recording_context: Mapping[str, Any],
         blocks: list[TranscriptBlock],
+        *,
+        collect_semantic_analysis: bool = False,
     ) -> Mapping[int, TypeSafeBlockAnswer]: ...
 
     def select_boundary_candidate(
@@ -290,8 +299,10 @@ class TypeSafeBlockCache:
         self,
         recording_context: Mapping[str, Any],
         block: TranscriptBlock,
+        *,
+        collect_semantic_analysis: bool,
     ) -> dict[str, Any]:
-        return {
+        identity = {
             "model": self.model,
             "question_set_version": QUESTION_SET_VERSION,
             "question": role_question(),
@@ -302,6 +313,12 @@ class TypeSafeBlockCache:
                 "text": block.text,
             },
         }
+        if collect_semantic_analysis:
+            identity["semantic_analysis"] = {
+                "question_version": SEMANTIC_ANALYSIS_QUESTION_VERSION,
+                "questions": semantic_question_inventory(0),
+            }
+        return identity
 
     def _path(self, identity: Mapping[str, Any]) -> Path:
         return self.root / f"{_hash(identity)}.json"
@@ -311,11 +328,17 @@ class TypeSafeBlockCache:
         client: TypeSafeBlockClient,
         recording_context: Mapping[str, Any],
         blocks: list[TranscriptBlock],
+        *,
+        collect_semantic_analysis: bool = False,
     ) -> dict[int, TypeSafeBlockAnswer]:
         answers: dict[int, TypeSafeBlockAnswer] = {}
         missing: list[tuple[TranscriptBlock, dict[str, Any], Path]] = []
         for block in blocks:
-            identity = self._identity(recording_context, block)
+            identity = self._identity(
+                recording_context,
+                block,
+                collect_semantic_analysis=collect_semantic_analysis,
+            )
             path = self._path(identity)
             cached = self._read_answer(path, TypeSafeBlockAnswer)
             if cached is not None:
@@ -328,6 +351,7 @@ class TypeSafeBlockCache:
             assessed = client.assess_blocks(
                 recording_context,
                 [item[0] for item in batch],
+                collect_semantic_analysis=collect_semantic_analysis,
             )
             for block, identity, path in batch:
                 answer = assessed.get(block.block_id)
@@ -682,6 +706,47 @@ def _recording_gate_artifact(
     }
 
 
+def _semantic_analysis_artifact(
+    blocks: list[TranscriptBlock],
+    answers: Mapping[int, TypeSafeBlockAnswer],
+    *,
+    selected_block_ids: set[int] | None = None,
+) -> dict[str, Any]:
+    """Persist raw fine-pass signals without turning them into analysis claims."""
+    selected = selected_block_ids or set()
+    observations = []
+    for block in blocks:
+        answer = answers.get(block.block_id)
+        if answer is None or not answer.semantic_probabilities:
+            continue
+        observations.append(
+            {
+                "block_id": block.block_id,
+                "start_seconds": block.start_seconds,
+                "end_seconds": block.end_seconds,
+                "segment_indexes": list(block.segment_indexes),
+                "within_selected_candidate": block.block_id in selected,
+                "probabilities": {
+                    name: round(float(answer.semantic_probabilities[name]), 6)
+                    for name in SEMANTIC_DIMENSIONS
+                },
+                "resolved_model_id": answer.resolved_model_id,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "status": "observations_only" if observations else "not_collected",
+        "source": "typesafe_fine_localization_fanout",
+        "question_version": SEMANTIC_ANALYSIS_QUESTION_VERSION,
+        "dimensions": list(SEMANTIC_DIMENSIONS),
+        "policy_effect": "none",
+        "activation_requirement": (
+            "accepted_sermon_with_effective_reviewed_profile_membership"
+        ),
+        "blocks": observations,
+    }
+
+
 class TypeSafeFirstPassSermonClassifier:
     """Map the recording first, then refine only plausible sermon regions."""
 
@@ -786,6 +851,7 @@ class TypeSafeFirstPassSermonClassifier:
                 self.client,
                 recording_context,
                 fine_blocks,
+                collect_semantic_analysis=True,
             )
         if progress is not None:
             progress("typesafe-boundary", len(fine_blocks), len(fine_blocks))
@@ -1116,6 +1182,11 @@ class TypeSafeFirstPassSermonClassifier:
                 "algorithm_version": self.method,
                 "candidates": [candidate],
                 "selected_rank": 1,
+                "semantic_analysis": _semantic_analysis_artifact(
+                    fine_blocks,
+                    fine_answers,
+                    selected_block_ids=selected_ids,
+                ),
                 "model_digest": self.model,
                 "rule_baseline_source": "recomputed_rules",
                 "rule_baseline_algorithm_version": "rule_based_v1",
@@ -1178,6 +1249,7 @@ class TypeSafeFirstPassSermonClassifier:
                 "algorithm_version": self.method,
                 "candidates": [],
                 "selected_rank": None,
+                "semantic_analysis": _semantic_analysis_artifact(blocks, answers),
                 "discovery": {
                     "selected_mode": "typesafe_first_no_candidate",
                     "recording_gate": dict(gate),
@@ -1217,6 +1289,7 @@ class TypeSafeFirstPassSermonClassifier:
                 "algorithm_version": self.method,
                 "candidates": [],
                 "selected_rank": None,
+                "semantic_analysis": _semantic_analysis_artifact([], {}),
                 "discovery": {
                     "selected_mode": "typesafe_recording_gate_bypass",
                     "recording_gate": dict(gate),
