@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from pastor_transcript_extractor.disposition import ACCEPTED_SERMON, REVIEW_REQUIRED
 from pastor_transcript_extractor.media_artifacts import (
@@ -13,7 +13,11 @@ from pastor_transcript_extractor.media_artifacts import (
     get_registered_normalized_media_artifact,
     get_verified_normalized_media_artifact,
 )
-from pastor_transcript_extractor.models import MediaArtifact, SpeakerObservation
+from pastor_transcript_extractor.models import (
+    ExtractionResult,
+    MediaArtifact,
+    SpeakerObservation,
+)
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     SpanSpec,
     select_diagnostic_spans,
@@ -134,6 +138,13 @@ def assess_automatic_speaker_observation(
     verification_cache: MediaVerificationCache | None = None,
     verify_media: bool = True,
     allow_review_required: bool = False,
+    latest_extractions_by_video_id: Mapping[
+        int, ExtractionResult
+    ] | None = None,
+    observations_by_video_id: Mapping[
+        int, Sequence[SpeakerObservation]
+    ] | None = None,
+    review_actions_by_observation_id: Mapping[int, str] | None = None,
 ) -> AutomaticSpeakerObservationEligibility:
     """Admit a current accepted observation or an exact persisted member.
 
@@ -144,6 +155,8 @@ def assess_automatic_speaker_observation(
     ``observation_id`` permits an exact immutable profile member to remain an
     exemplar after a newer extraction exists. Its persisted window is
     authoritative unless an explicit observation review invalidates it.
+    Optional corpus maps avoid repeated database lookups without changing the
+    exact extraction-window match used to select an observation.
     """
     requested_observation = None
     if observation_id is not None:
@@ -160,7 +173,11 @@ def assess_automatic_speaker_observation(
             requested_observation.extraction_result_id
         )
     else:
-        extraction = database.get_latest_extraction_result_for_video(video_id)
+        extraction = (
+            latest_extractions_by_video_id.get(video_id)
+            if latest_extractions_by_video_id is not None
+            else database.get_latest_extraction_result_for_video(video_id)
+        )
     if extraction is None:
         return AutomaticSpeakerObservationEligibility("extraction_unavailable")
     if extraction.video_id != video_id:
@@ -210,16 +227,36 @@ def assess_automatic_speaker_observation(
             return AutomaticSpeakerObservationEligibility(
                 "sermon_window_invalid"
             )
-        observation = database.get_speaker_observation_for_extraction_window(
-            video_id,
-            extraction.id,
-            start_seconds=window[0],
-            end_seconds=window[1],
-        )
+        if observations_by_video_id is not None:
+            observation = next(
+                (
+                    candidate
+                    for candidate in reversed(
+                        observations_by_video_id.get(video_id, ())
+                    )
+                    if candidate.extraction_result_id == extraction.id
+                    and abs(candidate.start_seconds - window[0]) <= 0.001
+                    and abs(candidate.end_seconds - window[1]) <= 0.001
+                ),
+                None,
+            )
+        else:
+            observation = database.get_speaker_observation_for_extraction_window(
+                video_id,
+                extraction.id,
+                start_seconds=window[0],
+                end_seconds=window[1],
+            )
     if observation is None:
-        latest_observation = database.get_latest_speaker_observation_for_video(
-            video_id
-        )
+        if observations_by_video_id is not None:
+            known_observations = observations_by_video_id.get(video_id, ())
+            latest_observation = (
+                known_observations[-1] if known_observations else None
+            )
+        else:
+            latest_observation = database.get_latest_speaker_observation_for_video(
+                video_id
+            )
         if latest_observation is None:
             return AutomaticSpeakerObservationEligibility(
                 "observation_unavailable"
@@ -235,8 +272,10 @@ def assess_automatic_speaker_observation(
             "observation_window_mismatch"
         )
 
-    review_action = database.get_effective_observation_review_action(
-        observation.id
+    review_action = (
+        review_actions_by_observation_id.get(observation.id)
+        if review_actions_by_observation_id is not None
+        else database.get_effective_observation_review_action(observation.id)
     )
     if review_action not in {None, "qualified_single_speaker"}:
         return AutomaticSpeakerObservationEligibility(
@@ -254,11 +293,7 @@ def assess_automatic_speaker_observation(
                 database,
                 video_id,
                 verification_cache=verification_cache,
-                **(
-                    {"required_window": window}
-                    if requested_observation is not None
-                    else {}
-                ),
+                required_window=window,
             )
         except ArchivedMediaUnavailableError:
             return AutomaticSpeakerObservationEligibility(
@@ -271,11 +306,7 @@ def assess_automatic_speaker_observation(
         media = get_registered_normalized_media_artifact(
             database,
             video_id,
-            **(
-                {"required_window": window}
-                if requested_observation is not None
-                else {}
-            ),
+            required_window=window,
         )
     if media is None:
         return AutomaticSpeakerObservationEligibility(

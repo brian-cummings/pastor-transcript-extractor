@@ -4425,6 +4425,7 @@ def shadow_associate_speakers_service(
         attempted_observation_fingerprints=attempted_observation_fingerprints,
         include_profiled=include_profiled,
         verification_cache=verification_cache,
+        inventory=corpus_inventory,
         remember_verified_source=span_cache.remember_verified_source,
         exclusion_callback=record_candidate_exclusion,
         progress_callback=report_candidate_scan,
