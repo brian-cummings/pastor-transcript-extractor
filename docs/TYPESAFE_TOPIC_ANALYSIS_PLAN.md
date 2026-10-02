@@ -708,11 +708,18 @@ theological stance.
     41 expectations. The two initial range failures were reviewed as fixture-spec
     errors under independent overlapping-topic scoring; correcting expectations
     reused all 21 cached answers and made zero additional provider requests.
+14. The Stage 2 review command now works for every naturally processed sermon,
+    not only the named video 4548 regression. Its versioned deterministic sampler
+    selects a bounded packet of projection transitions, meaningful broad Score
+    distributions, and domain-diverse positive evidence from persisted observations.
+    Selection is fingerprinted, carries no pre-assigned human interpretation, and
+    never calls TypeSafe. Named regression cases remain stable and independently
+    selectable.
 
 ### Next iteration
 
-1. Continue prospective collection and extend the bounded sanity-review packet
-   from naturally processed sermons. Do not run a corpus backfill.
+1. Collect and inspect bounded prospective packets from three or four naturally
+   processed sermons across different pastors. Do not run a corpus backfill.
 2. Inspect activation-gate outcomes alongside the planned whole-sermon review;
    profile aggregation remains blocked until analytical projection is credible.
 3. Once projection is credible, implement `salvation-relationships-v1` as the

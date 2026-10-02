@@ -8,14 +8,19 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from pastor_transcript_extractor.sermon_topics import (
+    TOPIC_DOMAIN_LABELS,
+    TOPIC_SPECS,
     TOPICS,
     resolve_topic_analysis_artifact,
 )
 
 
-TOPIC_REVIEW_SCHEMA_VERSION = 2
-TOPIC_REVIEW_GENERATOR_VERSION = "typesafe-topic-review-v2"
+TOPIC_REVIEW_SCHEMA_VERSION = 3
+TOPIC_REVIEW_GENERATOR_VERSION = "typesafe-topic-review-v3"
 TOPIC_REVIEW_DEFAULT_FILENAME = f"{TOPIC_REVIEW_GENERATOR_VERSION}.json"
+PROSPECTIVE_REVIEW_POLICY_VERSION = "topic-prospective-sanity-sampler-v1"
+KNOWN_REVIEW_POLICY_VERSION = "topic-known-regression-cases-v1"
+DEFAULT_PROSPECTIVE_REVIEW_CASES = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +29,7 @@ class TopicReviewCase:
     label: str
     block_ids: tuple[int, ...]
     review_focus: str
-    reviewed_interpretation: str
+    reviewed_interpretation: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +136,179 @@ def _validated_scores(block: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return scores
 
 
+def _score_number(score: Mapping[str, Any], key: str) -> float | None:
+    value = score.get(key)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _supporting_probability(score: Mapping[str, Any]) -> float:
+    probabilities = score.get("probabilities")
+    if not isinstance(probabilities, Mapping):
+        return 0.0
+    return sum(
+        float(probabilities.get(str(level)) or 0.0) for level in (2, 3, 4)
+    )
+
+
+def derive_prospective_topic_review_cases(
+    classification: Mapping[str, Any],
+    *,
+    maximum_cases: int = DEFAULT_PROSPECTIVE_REVIEW_CASES,
+) -> tuple[TopicReviewCase, ...]:
+    """Select a bounded, deterministic sanity-review sample from cached evidence."""
+    if maximum_cases < 1:
+        raise ValueError("Prospective topic review requires at least one case")
+    analysis = resolve_topic_analysis_artifact(classification)
+    if not isinstance(analysis.get("sermon_projection"), Mapping):
+        raise ValueError(
+            "Prospective topic review requires a current deterministic sermon projection"
+        )
+    raw_blocks = analysis.get("blocks")
+    if not isinstance(raw_blocks, list) or not raw_blocks:
+        raise ValueError("TypeSafe topic analysis has no block observations")
+    blocks = sorted(
+        (block for block in raw_blocks if isinstance(block, Mapping)),
+        key=lambda block: (
+            float(block.get("start_seconds") or 0.0),
+            int(block.get("block_id") or 0),
+        ),
+    )
+    if any(
+        not isinstance(block.get("projection_eligibility"), Mapping)
+        for block in blocks
+    ):
+        raise ValueError(
+            "Prospective topic review requires per-block projection eligibility"
+        )
+    scores_by_block_id = {
+        int(block["block_id"]): _validated_scores(block) for block in blocks
+    }
+
+    cases: list[TopicReviewCase] = []
+    selected_block_ids: set[int] = set()
+
+    def add_case(case: TopicReviewCase) -> None:
+        if len(cases) >= maximum_cases:
+            return
+        cases.append(case)
+        selected_block_ids.update(case.block_ids)
+
+    # First expose changes in deterministic attribution eligibility. These windows
+    # are the highest-value places to inspect boundary contamination or lost recall.
+    boundary_count = 0
+    for left, right in zip(blocks, blocks[1:]):
+        left_eligible = bool(left["projection_eligibility"].get("eligible"))
+        right_eligible = bool(right["projection_eligibility"].get("eligible"))
+        if left_eligible == right_eligible:
+            continue
+        left_id = int(left["block_id"])
+        right_id = int(right["block_id"])
+        add_case(
+            TopicReviewCase(
+                f"prospective-boundary-{left_id}-{right_id}",
+                f"Projection boundary at blocks {left_id}-{right_id}",
+                (left_id, right_id),
+                (
+                    "Inspect the adjacent retained-window overlap, density, content "
+                    "roles, and topic distributions where projection eligibility changes."
+                ),
+                None,
+            )
+        )
+        boundary_count += 1
+        if len(cases) >= maximum_cases:
+            return tuple(cases)
+        if boundary_count >= 2:
+            break
+
+    # Next surface concentrated-vs-broad distributions only where the topic has
+    # meaningful support. Confidence prioritizes review; it never decides truth.
+    ambiguous: list[tuple[float, int, str]] = []
+    for block in blocks:
+        block_id = int(block["block_id"])
+        for topic, score in scores_by_block_id[block_id].items():
+            expected = float(score["score"])
+            support = _supporting_probability(score)
+            confidence = _score_number(score, "confidence")
+            if confidence is None or (expected < 1.0 and support < 0.25):
+                continue
+            ambiguous.append((confidence, block_id, topic))
+    ambiguity_count = 0
+    for confidence, block_id, topic in sorted(ambiguous):
+        if block_id in selected_block_ids:
+            continue
+        add_case(
+            TopicReviewCase(
+                f"prospective-distribution-{block_id}-{topic}",
+                f"Broad {topic} distribution in block {block_id}",
+                (block_id,),
+                (
+                    f"Inspect the complete `{topic}` distribution (concentration "
+                    f"{confidence:.3f}) against the target text; do not treat "
+                    "concentration as correctness."
+                ),
+                None,
+            )
+        )
+        ambiguity_count += 1
+        if len(cases) >= maximum_cases:
+            return tuple(cases)
+        if ambiguity_count >= 2:
+            break
+
+    # Finally cover the strongest eligible evidence in each broad domain, favoring
+    # a different block for each domain so a small packet spans the sermon.
+    for domain, domain_label in TOPIC_DOMAIN_LABELS.items():
+        domain_topics = tuple(
+            topic for topic, spec in TOPIC_SPECS.items() if spec.domain == domain
+        )
+        candidates: list[tuple[float, float, int, str]] = []
+        for block in blocks:
+            if not block["projection_eligibility"].get("eligible"):
+                continue
+            block_id = int(block["block_id"])
+            scores = scores_by_block_id[block_id]
+            for topic in domain_topics:
+                score = scores[topic]
+                candidates.append(
+                    (
+                        float(score["score"]),
+                        _supporting_probability(score),
+                        block_id,
+                        topic,
+                    )
+                )
+        unused = [item for item in candidates if item[2] not in selected_block_ids]
+        ranked = unused or candidates
+        if not ranked:
+            continue
+        expected, support, block_id, topic = max(
+            ranked,
+            key=lambda item: (item[0], item[1], -item[2], item[3]),
+        )
+        add_case(
+            TopicReviewCase(
+                f"prospective-domain-{domain}-{block_id}-{topic}",
+                f"{domain_label} evidence in block {block_id}",
+                (block_id,),
+                (
+                    f"Inspect the strongest eligible `{topic}` evidence selected "
+                    f"for domain coverage (score {expected:.3f}, supporting-or-above "
+                    f"probability {support:.3f})."
+                ),
+                None,
+            )
+        )
+        if len(cases) >= maximum_cases:
+            break
+
+    if not cases:
+        raise ValueError("No prospective topic review cases could be selected")
+    return tuple(cases)
+
+
 def build_topic_review_packet(
     classification: Mapping[str, Any],
     *,
@@ -140,6 +318,7 @@ def build_topic_review_packet(
     cases: Sequence[TopicReviewCase],
     source_artifact_path: Path | None = None,
     profile_projection_gate: Mapping[str, Any] | None = None,
+    selection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a bounded packet without changing or rerunning cached inference."""
     if not cases:
@@ -211,6 +390,7 @@ def build_topic_review_packet(
             else None
         ),
         "profile_projection_gate": dict(profile_projection_gate or {}),
+        "selection": dict(selection or {}),
         "cases": [asdict(case) for case in cases],
         "blocks": reviewed_blocks,
     }
@@ -247,6 +427,7 @@ def build_topic_review_packet(
                 "Content role, topic meaning, and projection eligibility are separate."
             ),
         },
+        "selection": dict(selection or {}),
         "profile_projection_gate": dict(profile_projection_gate or {}),
         "cases": [asdict(case) for case in cases],
         "blocks": reviewed_blocks,
@@ -287,17 +468,31 @@ def render_topic_review_markdown(packet: Mapping[str, Any]) -> str:
                 "",
             ]
         )
-    for case in packet.get("cases", []):
+    selection = packet.get("selection")
+    if isinstance(selection, Mapping) and selection:
         lines.extend(
             [
-                f"## {case['label']}",
+                "## Review selection",
                 "",
-                f"Review focus: {case['review_focus']}",
-                "",
-                f"Reviewed interpretation: {case['reviewed_interpretation']}",
+                f"- Mode: `{selection.get('mode')}`",
+                f"- Policy: `{selection.get('policy_version')}`",
+                f"- Maximum cases: `{selection.get('maximum_cases')}`",
                 "",
             ]
         )
+    for case in packet.get("cases", []):
+        lines.extend([f"## {case['label']}", "", f"Review focus: {case['review_focus']}", ""])
+        interpretation = case.get("reviewed_interpretation")
+        if interpretation:
+            lines.extend([f"Reviewed interpretation: {interpretation}", ""])
+        else:
+            lines.extend(
+                [
+                    "Review status: pending; this deterministic selection carries no "
+                    "pre-assigned interpretation.",
+                    "",
+                ]
+            )
         for block_id in case["block_ids"]:
             block = blocks[int(block_id)]
             reliability = block["reliability"]

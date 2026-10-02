@@ -40,9 +40,13 @@ from pastor_transcript_extractor.sermon_topic_evaluation import (
     write_topic_behavior_report,
 )
 from pastor_transcript_extractor.sermon_topic_review import (
+    DEFAULT_PROSPECTIVE_REVIEW_CASES,
     KNOWN_TOPIC_REVIEW_CASES,
+    KNOWN_REVIEW_POLICY_VERSION,
+    PROSPECTIVE_REVIEW_POLICY_VERSION,
     TOPIC_REVIEW_DEFAULT_FILENAME,
     build_topic_review_packet,
+    derive_prospective_topic_review_cases,
     write_topic_review_packet,
 )
 from pastor_transcript_extractor.sermon_topic_projection import (
@@ -507,6 +511,21 @@ def analysis_topic_review(
         "--output",
         help="JSON output path; defaults beside the video's extraction artifacts.",
     ),
+    prospective: bool = typer.Option(
+        False,
+        "--prospective",
+        help=(
+            "Use the deterministic prospective sampler even when named regression "
+            "cases exist."
+        ),
+    ),
+    maximum_cases: int = typer.Option(
+        DEFAULT_PROSPECTIVE_REVIEW_CASES,
+        "--maximum-cases",
+        min=1,
+        max=20,
+        help="Maximum cases selected in prospective mode.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         "--base-dir",
@@ -522,11 +541,6 @@ def analysis_topic_review(
         pastor_slug=None,
     )
     video = videos[0]
-    cases = KNOWN_TOPIC_REVIEW_CASES.get(video.youtube_video_id)
-    if not cases:
-        raise typer.BadParameter(
-            f"No prepared topic-review cases exist for {video.youtube_video_id}"
-        )
     extraction = database.get_latest_extraction_result_for_video(video.id)
     proposed_path = (
         Path(extraction.proposed_json_path)
@@ -547,6 +561,24 @@ def analysis_topic_review(
             f"Classification artifact is not an object: {classification_path}"
         )
     try:
+        prepared_cases = KNOWN_TOPIC_REVIEW_CASES.get(video.youtube_video_id)
+        if prospective or not prepared_cases:
+            cases = derive_prospective_topic_review_cases(
+                classification,
+                maximum_cases=maximum_cases,
+            )
+            selection = {
+                "mode": "prospective",
+                "policy_version": PROSPECTIVE_REVIEW_POLICY_VERSION,
+                "maximum_cases": maximum_cases,
+            }
+        else:
+            cases = prepared_cases
+            selection = {
+                "mode": "prepared_regression",
+                "policy_version": KNOWN_REVIEW_POLICY_VERSION,
+                "maximum_cases": len(cases),
+            }
         profile_projection_gate = assess_topic_profile_projection(
             database,
             video,
@@ -559,6 +591,7 @@ def analysis_topic_review(
             cases=cases,
             source_artifact_path=classification_path,
             profile_projection_gate=profile_projection_gate.to_dict(),
+            selection=selection,
         )
         result = write_topic_review_packet(
             output_path or proposed_path.parent / TOPIC_REVIEW_DEFAULT_FILENAME,
@@ -570,7 +603,8 @@ def analysis_topic_review(
     console.print(
         f"{state} topic review packet: {result.json_path} and "
         f"{result.markdown_path} ({result.case_count} cases, "
-        f"{result.block_count} blocks, fingerprint={result.input_fingerprint[:12]}…)",
+        f"{result.block_count} blocks, mode={selection['mode']}, "
+        f"fingerprint={result.input_fingerprint[:12]}…)",
         markup=False,
     )
 
