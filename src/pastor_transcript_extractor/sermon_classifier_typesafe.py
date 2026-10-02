@@ -41,7 +41,7 @@ from pastor_transcript_extractor.sermon_topics import (
 )
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v15_topic_projection"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v16_topic_review_packets"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
 BLOCK_BUILDER_VERSION = "typesafe-canonical-coarse-300s-fine-60s-v3"
@@ -1262,6 +1262,11 @@ def _topic_analysis_artifact(
                 "context_identity": _hash(answer.topic_context),
                 "scores": scores,
                 "content_role": answer.choice,
+                "content_role_probabilities": {
+                    role: round(float(probability), 6)
+                    for role, probability in answer.probabilities.items()
+                },
+                "content_role_confidence": answer.confidence,
                 "sermon_probability": round(answer.sermon_probability, 6),
                 "reliability": topic_reliability(
                     block,
