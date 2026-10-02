@@ -15,6 +15,9 @@ TOPIC_PACK_VERSION = "topics-v2-performed-worship-boundary"
 TOPIC_CONTEXT_POLICY_VERSION = "topic-context-sentences-v1"
 TOPIC_RELIABILITY_POLICY_VERSION = "topic-density-v1"
 TOPIC_PROJECTION_POLICY_VERSION = "sermon-topic-full-block-role-density-v1"
+PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT = (
+    "accepted_sermon_with_effective_reviewed_profile_membership"
+)
 TOPIC_ARTIFACT_SCHEMA_VERSION = 2
 TOPIC_CONTEXT_MAX_CHARS = 400
 TOPIC_PROMINENCE_LEVELS = (
@@ -68,6 +71,25 @@ TOPIC_DOMAIN_LABELS = {
     "church_lived_community": "Church & lived community",
     "moral_created_public_future": "Moral, created, public & future order",
 }
+
+
+def resolve_topic_analysis_artifact(
+    classification: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Return cached topic observations from either supported classifier layout."""
+    search = classification.get("search")
+    search = search if isinstance(search, Mapping) else {}
+    direct = search.get("topic_analysis")
+    if isinstance(direct, Mapping):
+        return direct
+    discovery = search.get("discovery")
+    discovery = discovery if isinstance(discovery, Mapping) else {}
+    attempt = discovery.get("typesafe_first_attempt")
+    attempt = attempt if isinstance(attempt, Mapping) else {}
+    fallback = attempt.get("topic_analysis")
+    if isinstance(fallback, Mapping):
+        return fallback
+    raise ValueError("Classification has no cached TypeSafe topic analysis")
 
 
 def topic_question_id(position: int, topic: str) -> str:

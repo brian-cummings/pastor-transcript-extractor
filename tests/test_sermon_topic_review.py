@@ -112,9 +112,16 @@ class SermonTopicReviewTests(unittest.TestCase):
             title="Accepted in the Beloved",
             cases=[case],
             source_artifact_path=Path("classification.json"),
+            profile_projection_gate={
+                "eligible": True,
+                "profile_id": 12,
+                "reason_codes": (),
+                "policy_version": "profile-policy-v1",
+                "input_fingerprint": "profile-fingerprint",
+            },
         )
 
-        self.assertEqual(1, packet["schema_version"])
+        self.assertEqual(2, packet["schema_version"])
         self.assertEqual(1, len(packet["blocks"]))
         reviewed = packet["blocks"][0]
         self.assertEqual(set(TOPICS), set(reviewed["scores"]))
@@ -126,12 +133,14 @@ class SermonTopicReviewTests(unittest.TestCase):
             "not topic presence",
             packet["interpretation_contract"]["confidence"],
         )
+        self.assertTrue(packet["profile_projection_gate"]["eligible"])
 
         markdown = render_topic_review_markdown(packet)
         self.assertIn("## One case", markdown)
         self.assertIn("### Block 7", markdown)
         self.assertIn("| `salvation_gospel` |", markdown)
         self.assertIn("| 0.050 | 0.100 | 0.700 | 0.100 | 0.050 |", markdown)
+        self.assertIn("## Profile projection gate", markdown)
 
     def test_writer_reuses_unchanged_packet_and_rewrites_changed_input(self) -> None:
         case = TopicReviewCase("case-1", "One case", (7,), "Focus.", "Review.")
@@ -178,6 +187,56 @@ class SermonTopicReviewTests(unittest.TestCase):
                 cases=[case],
             )
 
+    def test_profile_projection_gate_participates_in_packet_identity(self) -> None:
+        case = TopicReviewCase("case-1", "One case", (7,), "Focus.", "Review.")
+        arguments = {
+            "video_id": 4548,
+            "youtube_video_id": "ClJI4jeCL2E",
+            "title": "Accepted in the Beloved",
+            "cases": [case],
+        }
+
+        blocked = build_topic_review_packet(
+            _classification([_block(7)]),
+            **arguments,
+            profile_projection_gate={
+                "eligible": False,
+                "reason_codes": ("effective_profile_membership_unavailable",),
+                "input_fingerprint": "membership-v1",
+            },
+        )
+        eligible = build_topic_review_packet(
+            _classification([_block(7)]),
+            **arguments,
+            profile_projection_gate={
+                "eligible": True,
+                "reason_codes": (),
+                "input_fingerprint": "membership-v2",
+            },
+        )
+
+        self.assertNotEqual(
+            blocked["input_fingerprint"],
+            eligible["input_fingerprint"],
+        )
+
+    def test_packet_reuses_topic_observations_retained_by_fallback_layout(self) -> None:
+        classification = _classification([_block(7)])
+        topic_analysis = classification["search"].pop("topic_analysis")
+        classification["search"]["discovery"] = {
+            "typesafe_first_attempt": {"topic_analysis": topic_analysis}
+        }
+
+        packet = build_topic_review_packet(
+            classification,
+            video_id=4548,
+            youtube_video_id="ClJI4jeCL2E",
+            title="Accepted in the Beloved",
+            cases=[TopicReviewCase("case-1", "One", (7,), "Focus.", "Review.")],
+        )
+
+        self.assertEqual([7], [block["block_id"] for block in packet["blocks"]])
+
     def test_video_4548_cases_are_bounded_and_named(self) -> None:
         self.assertEqual(3, len(VIDEO_4548_REVIEW_CASES))
         self.assertEqual(
@@ -221,6 +280,19 @@ class SermonTopicReviewTests(unittest.TestCase):
             with patch(
                 "pastor_transcript_extractor.commands.analysis.content.get_database",
                 return_value=database,
+            ), patch(
+                "pastor_transcript_extractor.commands.analysis.content.assess_topic_profile_projection",
+                return_value=SimpleNamespace(
+                    to_dict=lambda: {
+                        "eligible": False,
+                        "profile_id": None,
+                        "reason_codes": (
+                            "effective_profile_membership_unavailable",
+                        ),
+                        "policy_version": "profile-policy-v1",
+                        "input_fingerprint": "profile-fingerprint",
+                    }
+                ),
             ):
                 analysis_topic_review(
                     video_id=4548,
