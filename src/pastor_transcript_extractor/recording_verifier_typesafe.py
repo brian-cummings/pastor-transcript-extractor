@@ -23,6 +23,7 @@ from pastor_transcript_extractor.recording_verifier import (
     validate_partition_access,
 )
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
+    FINE_PARENT_CONTEXT_KEY,
     TypeSafeBoundaryAnswer,
     TypeSafeBoundaryCandidate,
     TypeSafeBoundarySelection,
@@ -215,6 +216,25 @@ class CostRate:
         return ((input_tokens or 0) * self.input_usd_per_million + (output_tokens or 0) * self.output_usd_per_million) / 1_000_000
 
 
+def _target_block_state(
+    recording_context: Mapping[str, Any],
+    block: TranscriptBlock,
+) -> dict[str, Any]:
+    """Build one TypeSafe target block with its optional coarse-parent prior."""
+    state = {
+        "block_id": block.block_id,
+        "start_seconds": block.start_seconds,
+        "end_seconds": block.end_seconds,
+        "text": block.text,
+    }
+    parent_findings = recording_context.get(FINE_PARENT_CONTEXT_KEY, {})
+    if isinstance(parent_findings, Mapping):
+        parent_finding = parent_findings.get(str(block.block_id))
+        if isinstance(parent_finding, Mapping):
+            state["coarse_parent_finding"] = dict(parent_finding)
+    return state
+
+
 class TypeSafeSdkAdapter:
     """Thin optional-SDK adapter; isolated for inexpensive mocked tests."""
     def __init__(self, *, model: str, timeout_seconds: float = 45.0) -> None:
@@ -281,16 +301,15 @@ class TypeSafeSdkAdapter:
         collect_semantic_analysis: bool = False,
     ) -> Mapping[int, TypeSafeBlockAnswer]:
         question = role_question()
+        shared_recording_context = {
+            key: value
+            for key, value in recording_context.items()
+            if key != FINE_PARENT_CONTEXT_KEY
+        }
         state = {
-            "recording": dict(recording_context),
+            "recording": shared_recording_context,
             "target_blocks": [
-                {
-                    "block_id": block.block_id,
-                    "start_seconds": block.start_seconds,
-                    "end_seconds": block.end_seconds,
-                    "text": block.text,
-                }
-                for block in blocks
+                _target_block_state(recording_context, block) for block in blocks
             ],
         }
         questions = {
@@ -299,7 +318,10 @@ class TypeSafeSdkAdapter:
                     **question["instructions"],
                     "target": (
                         f"Classify `target_blocks[{position}].text` in the context "
-                        "of `recording`, without treating metadata as conclusive."
+                        "of `recording`. When `target_blocks["
+                        f"{position}].coarse_parent_finding` is present, treat it as "
+                        "an advisory prior rather than a conclusion. Independently "
+                        "judge the fine block and correct conflicting coarse evidence."
                     ),
                 },
                 criteria=question["criteria"],

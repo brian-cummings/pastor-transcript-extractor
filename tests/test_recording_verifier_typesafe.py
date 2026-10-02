@@ -17,12 +17,17 @@ from pastor_transcript_extractor.recording_verifier_typesafe import (
     TypeSafeRecordingState,
     TypeSafeSdkAdapter,
     TypeSafeProductionRecordingVerifier,
+    _target_block_state,
     _percentile,
     build_typesafe_state,
     disagreement_sets,
     question_inventory,
     run_benchmark,
     write_reports,
+)
+from pastor_transcript_extractor.sermon_classification import TranscriptBlock
+from pastor_transcript_extractor.sermon_classifier_typesafe import (
+    FINE_PARENT_CONTEXT_KEY,
 )
 
 
@@ -58,6 +63,21 @@ def answers(
 
 
 class TypeSafeRecordingVerifierTests(unittest.TestCase):
+    def test_target_block_state_attaches_matching_coarse_parent_finding(self) -> None:
+        block = TranscriptBlock(12, [3], 60.0, 120.0, "minute transcript")
+        parent = {
+            "policy": "advisory",
+            "coarse_findings": [{"block_id": 2, "selected_role": "principal_sermon"}],
+        }
+
+        state = _target_block_state(
+            {FINE_PARENT_CONTEXT_KEY: {"12": parent, "13": {"stale": True}}},
+            block,
+        )
+
+        self.assertEqual(parent, state["coarse_parent_finding"])
+        self.assertNotIn("stale", state["coarse_parent_finding"])
+
     def test_percentile_uses_nearest_rank_for_small_samples(self) -> None:
         self.assertEqual(232.727, _percentile([227.692, 232.727], .95))
 

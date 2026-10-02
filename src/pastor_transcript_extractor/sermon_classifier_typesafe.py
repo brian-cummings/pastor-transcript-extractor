@@ -27,11 +27,11 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
 
 
 SEARCH_ALGORITHM_VERSION = "typesafe_first_v13_recording_gate"
-QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v2-recording-aware"
+QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
 BLOCK_BUILDER_VERSION = "typesafe-canonical-coarse-300s-fine-60s-v3"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-recording-aware-role-map-v2"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v10-mixed-edge-refinement"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v11-coarse-parent-context"
 BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
@@ -42,6 +42,7 @@ BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
 # Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
 # shared state near the size exercised by TypeSafe's large-document cookbook.
 BATCH_SIZE = 6
+FINE_PARENT_CONTEXT_KEY = "fine_block_coarse_parent_findings"
 
 ROLE_CHOICES = (
     "principal_sermon",
@@ -81,7 +82,9 @@ def role_question() -> dict[str, Any]:
             "scope": (
                 "Judge whether the principal worship-service sermon is underway in "
                 "this block. Use the supplied recording metadata, recording outline, "
-                "block position, and deterministic candidate as supporting context."
+                "block position, deterministic candidate, and any supplied coarse-parent "
+                "finding as supporting context. A coarse-parent finding is an advisory "
+                "prior, not ground truth; independently judge the finer transcript block."
             ),
             "boundary": (
                 "A children's feature, lesson study, Bible class, announcements, "
@@ -302,11 +305,15 @@ class TypeSafeBlockCache:
         *,
         collect_semantic_analysis: bool,
     ) -> dict[str, Any]:
+        block_context = _recording_context_for_blocks(
+            recording_context,
+            [block],
+        )
         identity = {
             "model": self.model,
             "question_set_version": QUESTION_SET_VERSION,
             "question": role_question(),
-            "recording_context": dict(recording_context),
+            "recording_context": block_context,
             "block": {
                 "start_seconds": block.start_seconds,
                 "end_seconds": block.end_seconds,
@@ -349,7 +356,10 @@ class TypeSafeBlockCache:
         for offset in range(0, len(missing), BATCH_SIZE):
             batch = missing[offset : offset + BATCH_SIZE]
             assessed = client.assess_blocks(
-                recording_context,
+                _recording_context_for_blocks(
+                    recording_context,
+                    [item[0] for item in batch],
+                ),
                 [item[0] for item in batch],
                 collect_semantic_analysis=collect_semantic_analysis,
             )
@@ -605,6 +615,104 @@ def _component_score(
     return mean_probability * math.log2(max(duration, 1.0) + 1.0)
 
 
+def _recording_context_for_blocks(
+    recording_context: Mapping[str, Any],
+    blocks: list[TranscriptBlock],
+) -> dict[str, Any]:
+    """Limit per-block parent evidence to the blocks in one request or cache key."""
+    context = dict(recording_context)
+    parent_findings = context.get(FINE_PARENT_CONTEXT_KEY)
+    if isinstance(parent_findings, Mapping):
+        context[FINE_PARENT_CONTEXT_KEY] = {
+            str(block.block_id): parent_findings[str(block.block_id)]
+            for block in blocks
+            if str(block.block_id) in parent_findings
+        }
+    return context
+
+
+def _fine_block_parent_findings(
+    fine_blocks: list[TranscriptBlock],
+    coarse_blocks: list[TranscriptBlock],
+    coarse_answers: Mapping[int, TypeSafeBlockAnswer],
+    coarse_components: list[list[TranscriptBlock]],
+) -> dict[str, dict[str, Any]]:
+    """Describe the coarse evidence that caused each fine block to be inspected."""
+    component_by_block_id: dict[int, dict[str, Any]] = {}
+    for component_index, component in enumerate(coarse_components, start=1):
+        summary = {
+            "component_index": component_index,
+            "start_seconds": component[0].start_seconds,
+            "end_seconds": component[-1].end_seconds,
+            "coarse_block_ids": [block.block_id for block in component],
+            "score": round(_component_score(component, coarse_answers), 6),
+        }
+        for block in component:
+            component_by_block_id[block.block_id] = summary
+
+    def coarse_finding(block: TranscriptBlock, *, primary: bool) -> dict[str, Any]:
+        answer = coarse_answers[block.block_id]
+        return {
+            "primary_parent": primary,
+            "block_id": block.block_id,
+            "start_seconds": block.start_seconds,
+            "end_seconds": block.end_seconds,
+            "selected_role": answer.choice,
+            "selected_role_probability": round(
+                float(answer.probabilities.get(answer.choice, 0.0)), 6
+            ),
+            "sermon_probability": round(answer.sermon_probability, 6),
+            "confidence": answer.confidence,
+            "role_probabilities": {
+                role: round(float(answer.probabilities.get(role, 0.0)), 6)
+                for role in ROLE_CHOICES
+            },
+            "candidate_component": component_by_block_id.get(block.block_id),
+        }
+
+    contexts: dict[str, dict[str, Any]] = {}
+    for fine_block in fine_blocks:
+        overlaps = [
+            (
+                max(
+                    0.0,
+                    min(fine_block.end_seconds, coarse_block.end_seconds)
+                    - max(fine_block.start_seconds, coarse_block.start_seconds),
+                ),
+                coarse_block,
+            )
+            for coarse_block in coarse_blocks
+        ]
+        overlapping = [item for item in overlaps if item[0] > 0.0]
+        if not overlapping:
+            fine_midpoint = (fine_block.start_seconds + fine_block.end_seconds) / 2.0
+            overlapping = [
+                min(
+                    overlaps,
+                    key=lambda item: abs(
+                        fine_midpoint
+                        - (item[1].start_seconds + item[1].end_seconds) / 2.0
+                    ),
+                )
+            ]
+        overlapping.sort(key=lambda item: (-item[0], item[1].start_seconds))
+        primary_id = overlapping[0][1].block_id
+        contexts[str(fine_block.block_id)] = {
+            "policy": (
+                "Advisory coarse-pass evidence; independently classify the fine block "
+                "and correct the coarse finding when its transcript conflicts."
+            ),
+            "coarse_findings": [
+                coarse_finding(
+                    coarse_block,
+                    primary=coarse_block.block_id == primary_id,
+                )
+                for _, coarse_block in overlapping
+            ],
+        }
+    return contexts
+
+
 def _mapped_label(answer: TypeSafeBlockAnswer) -> ContentLabel:
     if answer.choice == "principal_sermon":
         return ContentLabel.SERMON
@@ -844,12 +952,21 @@ class TypeSafeFirstPassSermonClassifier:
                 for start, end in plausible_ranges
             )
         ]
+        fine_recording_context = {
+            **recording_context,
+            FINE_PARENT_CONTEXT_KEY: _fine_block_parent_findings(
+                fine_blocks,
+                coarse_blocks,
+                coarse_answers,
+                coarse_components,
+            ),
+        }
         if progress is not None:
             progress("typesafe-boundary", 0, len(fine_blocks))
         with self._lock:
             fine_answers = cache.assess(
                 self.client,
-                recording_context,
+                fine_recording_context,
                 fine_blocks,
                 collect_semantic_analysis=True,
             )
