@@ -406,7 +406,8 @@ They are retained for possible future analysis only when the recording is ultima
 accepted as a sermon and projected through effective reviewed speaker-profile
 membership.
 
-The fine pass also collects the versioned `topics-v1` observation pack: twenty
+The fine pass also collects the versioned
+`topics-v2-performed-worship-boundary` observation pack: twenty
 independent five-level Score questions covering broad sermon topics. Each cached
 topic answer preserves its expected score, complete level distribution, confidence,
 bounded sentence context, source-segment provenance, and a separate deterministic
@@ -414,7 +415,17 @@ density/reliability record under `classification.search.topic_analysis`. Role,
 homiletic-treatment, and topic answers have independent content-addressed cache
 identities, so adding or changing one pack does not invalidate the others. Topic
 observations have `policy_effect: none`; they do not affect sermon classification,
-boundaries, or disposition.
+boundaries, or disposition. A read-only sermon projection excludes zero-overlap,
+partial or mixed, sparse, and non-sermon-role blocks, reports its eligible-time
+denominator, and links aggregate measurements back to evidence blocks. Pastor-level
+aggregation remains blocked pending reviewed profile membership.
+
+TypeSafe with `jev-1.13.0` is the default classifier and recording verifier for
+`pte run`, `pte extract`, and `pte reclassify`, so those flags are only needed for
+an explicit override. `--base-dir /path/to/app-data` takes the application-data
+directory, not the `app.db` file; PTE resolves the database as
+`/path/to/app-data/app.db`. An explicitly supplied base directory is remembered,
+and `PTE_BASE_DIR` is also supported.
 
 The same `--recording-verifier-backend typesafe` option is available on `pte
 run`, `pte extract`, and `pte apply-fixture-correction`. TypeSafe receives the

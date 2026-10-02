@@ -34,17 +34,19 @@ from pastor_transcript_extractor.sermon_topics import (
     build_topic_context,
     topic_pack_digest,
     topic_pack_inventory,
+    topic_block_density,
     topic_question_inventory,
     topic_reliability,
+    refresh_topic_analysis_projection,
 )
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v14_topic_observations"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v15_topic_projection"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
 BLOCK_BUILDER_VERSION = "typesafe-canonical-coarse-300s-fine-60s-v3"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-recording-aware-role-map-v2"
-FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v11-coarse-parent-context"
+FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v12-sparse-closing-prayer"
 BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
@@ -56,6 +58,9 @@ BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
 # shared state near the size exercised by TypeSafe's large-document cookbook.
 BATCH_SIZE = 6
 MAX_FINE_QUESTION_BUDGET = 150
+MAX_SPARSE_CLOSING_PRAYER_GAP_BLOCKS = 3
+MAX_SPARSE_CLOSING_PRAYER_GAP_SECONDS = 180.0
+STRONG_NONSERMON_SEPARATOR_PROBABILITY = 0.8
 ROLE_PACK = "role"
 TREATMENT_PACK = "homiletic-treatment"
 TOPIC_PACK = TOPIC_PACK_VERSION
@@ -843,8 +848,23 @@ def _candidate_components(
     *,
     threshold: float,
 ) -> list[list[TranscriptBlock]]:
+    components, _ = _candidate_components_with_recovery(
+        blocks,
+        answers,
+        threshold=threshold,
+    )
+    return components
+
+
+def _candidate_components_with_recovery(
+    blocks: list[TranscriptBlock],
+    answers: Mapping[int, TypeSafeBlockAnswer],
+    *,
+    threshold: float,
+) -> tuple[list[list[TranscriptBlock]], set[int]]:
     components: list[list[TranscriptBlock]] = []
     current: list[TranscriptBlock] = []
+    recovered_ids: set[int] = set()
     supported = [
         answers[block.block_id].sermon_probability >= threshold for block in blocks
     ]
@@ -868,6 +888,62 @@ def _candidate_components(
         ):
             supported[position] = True
 
+    position = 0
+    while position < len(blocks):
+        if supported[position]:
+            position += 1
+            continue
+        gap_start = position
+        while position < len(blocks) and not supported[position]:
+            position += 1
+        gap_end = position
+        if gap_start == 0 or gap_end >= len(blocks):
+            continue
+        gap = blocks[gap_start:gap_end]
+        right = blocks[gap_end]
+        left = blocks[gap_start - 1]
+        right_run_end = gap_end
+        while right_run_end < len(blocks) and supported[right_run_end]:
+            right_run_end += 1
+        right_run = blocks[gap_end:right_run_end]
+        gap_duration = gap[-1].end_seconds - gap[0].start_seconds
+        gap_is_sparse = all(topic_block_density(block)["sparse"] for block in gap)
+        gap_has_strong_separator = any(
+            max(
+                (
+                    float(probability)
+                    for role, probability in answers[block.block_id].probabilities.items()
+                    if role not in SERMON_ROLES
+                ),
+                default=0.0,
+            )
+            >= STRONG_NONSERMON_SEPARATOR_PROBABILITY
+            for block in gap
+        )
+        closes_same_sermon = (
+            answers[left.block_id].choice in SERMON_ROLES
+            and answers[right.block_id].choice
+            == "sermon_integrated_prayer_or_scripture"
+            and len(right_run) >= 2
+            and all(
+                answers[block.block_id].choice
+                == "sermon_integrated_prayer_or_scripture"
+                for block in right_run[:2]
+            )
+        )
+        if (
+            len(gap) <= MAX_SPARSE_CLOSING_PRAYER_GAP_BLOCKS
+            and gap_duration <= MAX_SPARSE_CLOSING_PRAYER_GAP_SECONDS + 0.001
+            and gap[0].start_seconds - left.end_seconds <= 1.0
+            and right.start_seconds - gap[-1].end_seconds <= 1.0
+            and gap_is_sparse
+            and not gap_has_strong_separator
+            and closes_same_sermon
+        ):
+            for gap_position in range(gap_start, gap_end):
+                supported[gap_position] = True
+                recovered_ids.add(blocks[gap_position].block_id)
+
     for position, block in enumerate(blocks):
         if current and block.start_seconds - current[-1].end_seconds > 1.0:
             components.append(current)
@@ -880,7 +956,7 @@ def _candidate_components(
             current = []
     if current:
         components.append(current)
-    return components
+    return components, recovered_ids
 
 
 def _component_score(
@@ -1185,6 +1261,8 @@ def _topic_analysis_artifact(
                 "context": dict(answer.topic_context),
                 "context_identity": _hash(answer.topic_context),
                 "scores": scores,
+                "content_role": answer.choice,
+                "sermon_probability": round(answer.sermon_probability, 6),
                 "reliability": topic_reliability(
                     block,
                     retained_segment_indexes=retained,
@@ -1195,7 +1273,7 @@ def _topic_analysis_artifact(
                 "request_key": request_key,
             }
         )
-    return {
+    artifact = {
         "schema_version": TOPIC_ARTIFACT_SCHEMA_VERSION,
         "status": "observations_only" if observations else "not_collected",
         "source": "typesafe_fine_localization_fanout",
@@ -1212,6 +1290,15 @@ def _topic_analysis_artifact(
         "provider_requests": list(provider_requests.values()),
         "blocks": observations,
     }
+    refresh_topic_analysis_projection(
+        artifact,
+        retained_segment_indexes=retained,
+        selected_start_seconds=selected_start_seconds,
+        selected_end_seconds=selected_end_seconds,
+        eligible_roles=SERMON_ROLES,
+        window_source="typesafe_candidate",
+    )
+    return artifact
 
 
 class TypeSafeFirstPassSermonClassifier:
@@ -1338,7 +1425,7 @@ class TypeSafeFirstPassSermonClassifier:
         if progress is not None:
             progress("typesafe-boundary", len(fine_blocks), len(fine_blocks))
 
-        fine_components = _candidate_components(
+        fine_components, sparse_gap_recovered_ids = _candidate_components_with_recovery(
             fine_blocks, fine_answers, threshold=0.66
         )
         if not fine_components:
@@ -1556,6 +1643,7 @@ class TypeSafeFirstPassSermonClassifier:
                 if component is not selected
             ],
             "objective_separator_block_ids": [],
+            "sparse_gap_recovered_block_ids": sorted(sparse_gap_recovered_ids),
             "objective_segment_precision": [],
             "start": {
                 "status": (

@@ -1,9 +1,11 @@
 # TypeSafe Sermon Topic Analysis Plan
 
-Status: observation and cache contract implemented. The taxonomy is frozen as
-the `topics-v1` starting hypothesis, but it is not yet empirically validated and
-does not authorize pastor-level conclusions. Prospective review and later
-projection stages remain intentionally pending.
+Status: observation, cache, sparse-gap recovery, and read-only sermon projection
+contracts implemented, with one naturally processed sermon reviewed as an
+initial field observation. The broad taxonomy remains the `topics-v1` starting
+hypothesis; the clarified question pack is
+`topics-v2-performed-worship-boundary`. Neither version authorizes pastor-level
+conclusions. Profile aggregation and leaf packs remain deferred.
 
 ## Purpose
 
@@ -21,6 +23,39 @@ The topic layer answers:
 It does not by itself answer what position the preacher takes, how two
 theological concepts are related, what source material is used, or what the
 listener is directed to do.
+
+## First field observation: video 4548
+
+The first naturally processed result, **Accepted in the Beloved**, was
+directionally encouraging. Its retained sermon blocks emphasized salvation,
+God's action, Jesus, and sin. Specific blocks also surfaced the expected
+eschatology, suffering, and spiritual-conflict signals. The broad inventory is
+therefore useful enough to continue without adding, removing, or merging topics.
+
+The run also exposed three distinctions that the next iteration must preserve:
+
+1. **Text topic is not preacher attribution.** Song lyrics genuinely contain
+   subjects such as God, Jesus, and salvation. Raw topic observations may record
+   those subjects, but a music-role block must not become evidence about the
+   preacher's topical emphasis. Code owns that attribution through the final
+   retained sermon and projection policy.
+2. **A performed song is not automatically the church/worship topic.** Lyric
+   blocks 52–55 scored only `0.08`–`0.24` on
+   `church_worship_community`, even while several theological subjects scored
+   higher. This is the desired distinction: performing worship is a content
+   role; discussing corporate worship or church life is a topic.
+3. **Correct topic observations cannot repair an incorrect sermon boundary.**
+   Closing-prayer blocks 80–81 had strong
+   `sermon_integrated_prayer_or_scripture` probabilities, but sparse intervening
+   captions split the component and left them with zero retained-sermon overlap.
+   Boundary recovery must be fixed before projection or valid closing material
+   will be omitted.
+
+Block 69 also showed why topic and source/material must remain separate. A
+prodigal-son illustration produced elevated relationship and compassion scores
+even though salvation and acceptance organized the point. Preserve that case in
+bounded review; do not expand or collapse the taxonomy in response to one
+illustration.
 
 ## Analytical layers
 
@@ -161,6 +196,13 @@ membership, worship, ordinances, or gifts of the church.
 - Exclude: merely addressing the congregation or referring to the local church
   without developing it as a subject.
 - Allowed overlap: Holy Spirit, mission, relationships, Adventist identity.
+
+`topics-v2-performed-worship-boundary` makes the already intended boundary
+explicit: music, lyrics, prayer, or another act of worship merely being
+performed does not establish this topic unless worship or church life is itself
+discussed. Because question wording participates in cache identity, the
+clarification uses a new pack version rather than silently rewriting stored
+`topics-v1` observations.
 
 ### 10. `mission_evangelism_witness`
 
@@ -370,11 +412,37 @@ mutual exclusivity or a higher-order ontology.
   recording outline, `leading_context`, and `trailing_context` are not
   independent topic evidence; they may only clarify language that occurs inside
   `target_text`.
-- Captions, repeated fragments, stage directions, lyrics, rhetorical questions,
-  and quotations must not be treated as the preacher's developed topic without
-  sufficient center-block evidence.
+- Captions, repeated fragments, stage directions, rhetorical questions, and
+  quotations must not independently manufacture a developed topic without
+  sufficient center-block evidence. Lyrics may truthfully carry theological
+  subjects in the raw observation; their content role and eligibility for
+  preacher-level projection are separate decisions.
 - Only timestamped source segments participate. Exact source segment indexes and
   the overlap with the final retained sermon window remain durable provenance.
+
+## Content role, topic meaning, and analytical eligibility
+
+Keep three decisions separate:
+
+| Decision | Owner | Meaning |
+|---|---|---|
+| Content role | TypeSafe role pack plus localization policy | Whether the block is principal sermon, sermon-integrated prayer or Scripture, music/service prayer, administration, education, or unclear |
+| Topic observation | `topics-v2-performed-worship-boundary` | Which subjects are present and how prominent they are in the target text |
+| Analytical eligibility | Deterministic projection policy | Whether and how the observation may contribute to a sermon or pastor measurement |
+
+The role label `worship_music_or_service_prayer` includes music and song lyrics.
+The topic `church_worship_community` does not include a song merely because it
+is sung in worship. A sermon discussing hymnody, congregational singing, or the
+theology and practice of worship may score that topic; ordinary praise lyrics
+need not.
+
+Zero retained-sermon overlap makes a block ineligible for sermon or profile
+projection, but the raw observation remains stored. Simple time weighting is
+not enough when excluded lyrics and retained preaching share a one-minute
+target, because the topic Score is not span-attributed. Projection therefore
+requires full retained coverage of the block and excludes partial or mixed
+blocks. It also excludes sparse evidence and non-sermon content roles under the
+versioned projection policy.
 
 ## Density and evidence reliability
 
@@ -423,18 +491,59 @@ Therefore taxonomy and scheduling are separate concerns:
 - TypeSafe speculative fan-out is useful for independent questions, but all
   questions in one request are evaluated. A genuine conditional leaf pack
   requires a later request over qualifying blocks.
+- Do not attach the complete leaf inventory to every minute merely to reuse its
+  state tokens. The repeated target/context for a bounded set of routed blocks
+  is preferable to evaluating mostly irrelevant leaves across the full sermon.
 
 See TypeSafe's
 [speculative fan-out guidance](https://docs.typesafe.ai/patterns/fan-out.md).
 
+## Leaf-pack policy
+
+The broad topics are routing observations, not the final theological analysis.
+The architecture should support leaves now through independent pack identities,
+but `topics-v1` must not contain the leaf questions themselves.
+
+A leaf pack is a separately versioned, separately cached set of narrow
+judgments over a qualifying block. It may be requested only after the broad
+answer exists, because questions in one TypeSafe request cannot depend on other
+answers in that request. The later request resends the selected minute and its
+bounded context, but it does not resend or invalidate the role, treatment, or
+twenty-topic packs.
+
+Routing must use the stored Score distribution and declared code policy. Do not
+use TypeSafe confidence as if it were topic presence: confidence measures the
+concentration of the ordered-level distribution. A concentrated absent answer
+can have high confidence, and a genuine topic split across neighboring levels
+can have lower confidence. Candidate routing signals include expected Score and
+probability mass at `Supporting` or above; thresholds remain uncommitted until
+reviewed against bounded evidence.
+
+Tentative enrichment order after projection eligibility is stable:
+
+1. **Salvation relationships:** grace, atonement, forgiveness,
+   justification, sanctification, assurance, judgment, and explicitly asserted
+   relationships such as obedience as consequence versus condition.
+2. **Listener directives:** trust, repent, change behavior, undertake a
+   spiritual practice, witness, serve, give, participate, or take civic action.
+3. **Public-life treatment:** descriptive, illustrative, theological, moral,
+   critical, supportive, prescriptive, or advocative treatment.
+4. **Source/material:** biblical narrative, testimony, historical example,
+   quotation, and denominational source use where those distinctions solve
+   reviewed ambiguity.
+
+Do not create a universal subtopic tree simply because a leaf can be named.
+Add a pack when it supports a concrete downstream statement and its triggering
+broad evidence can be inspected.
+
 ## First-class cache architecture
 
-Refactor the current per-block answer cache before attaching `topics-v1`.
-Logical answer packs require independent identities:
+The per-block answer cache keeps logical answer packs under independent
+identities:
 
 - sermon role pack;
 - homiletic-treatment pack;
-- `topics-v1`; and
+- the independently versioned broad-topic pack; and
 - future leaf, directive, framing, and proposition packs.
 
 For a new block, the request planner may batch every missing pack into one
@@ -445,7 +554,7 @@ answers.
 Each topic-pack cache identity includes:
 
 - requested and resolved model identifiers;
-- exact `topics-v1` inventory and prominence rubric digest;
+- exact broad-topic inventory and prominence rubric digest;
 - center block text, timestamps, and source segment indexes;
 - exact leading/trailing context, completeness diagnostics, and context-builder
   policy version;
@@ -510,7 +619,13 @@ Create a small reviewed block fixture covering:
 - nearest-neighbor boundaries such as sin versus discipleship, mission versus
   service, ethics versus public life, and human nature versus creation;
 - sparse captions, lyrics, quotations, negation, rejected alternatives, and
-  context-only mentions; and
+  context-only mentions;
+- a performed song whose lyrics discuss God, Jesus, and salvation but do not
+  discuss church or corporate worship as a subject;
+- a biblical illustration whose narrative relationships are subordinate to a
+  salvation point;
+- a closing sermon prayer separated from the sermon by sparse caption
+  fragments; and
 - spiritual-conflict positives and exclusions.
 
 Use focused unit tests and a bounded reviewed fixture only. Do not run a broad
@@ -523,6 +638,11 @@ those naturally collected results, prepare a bounded evidence packet showing
 the center block, adjacent context, all Score distributions, density fields,
 and final-sermon overlap. Review disagreements and boundary failures rather
 than tuning against unlabeled aggregate distributions.
+
+Video 4548 is the first observation in this stage, not a validation set. Preserve
+its lyric blocks 52–55, prodigal-son block 69, and closing-prayer blocks 80–81
+as named regression cases. Do not infer thresholds or taxonomy accuracy from a
+single sermon.
 
 ### Stage 3: whole-sermon analytical validation
 
@@ -542,27 +662,45 @@ theological stance.
 
 ## Implementation sequence
 
-1. Add a single shared `topics-v1` specification from which TypeSafe questions,
-   persisted inventory, display labels, and test expectations are derived.
-2. Split the current TypeSafe block cache into independently versioned answer
-   packs and add a missing-pack request planner.
-3. Generate the twenty Score questions for each fine block, using the universal
-   rubric, target-minute-only evidence contract, and bounded leading/trailing
-   context.
-4. Parse and persist expected Scores, complete probability distributions,
-   confidence, provenance, and density fields with no policy effect.
-5. Add focused tests for request composition, cache separation, unchanged
-   replay, partial pack reuse, fallback retention, sparse blocks, overlap, and
-   schema completeness.
-6. Record provider usage and surface topic collection in diagnostics without
-   turning it into a classification gate.
-7. Collect prospectively and prepare the bounded sanity-review packet.
-8. Implement a read-only sermon/profile projection only after the observation
-   and density contracts are stable.
-9. Add smaller cached enrichment packs in this tentative order: source/material,
-   listener directives, salvation relationships, public-life treatment, and
-   other topic-specific propositions justified by reviewed failures or product
-   needs.
+### Completed foundation
+
+1. A shared `topics-v1` specification generates TypeSafe questions, persisted
+   inventory, display labels, and test expectations.
+2. The TypeSafe block cache has independently versioned answer packs and a
+   missing-pack request planner.
+3. The fine pass asks twenty Score questions per target minute with bounded
+   leading and trailing context.
+4. The artifact persists expected Scores, complete distributions, confidence,
+   provenance, density fields, usage, and request provenance with no topic
+   policy effect.
+5. Focused tests cover request composition, cache separation, replay, partial
+   reuse, fallback retention, sparse blocks, overlap, and schema completeness.
+6. One naturally processed sermon has received an initial sanity review.
+7. Sparse-gap recovery rejoins a two-block integrated closing prayer across at
+   most three non-separator sparse caption blocks, with explicit recovery
+   provenance.
+8. `topics-v2-performed-worship-boundary` clarifies that performing music does
+   not establish the church/worship topic. Its cache identity is independent,
+   so existing role and treatment answers remain reusable.
+9. A deterministic read-only sermon projection admits only fully retained,
+   non-sparse blocks with sermon content roles. It reports its eligible-time
+   denominator, exclusions, and representative and counterevidence block links.
+10. Final rule/semantic/verifier and identity-boundary arbitration refreshes
+    overlap and projection eligibility without rerunning TypeSafe.
+
+### Next iteration
+
+1. Extend the bounded review packet for lyric blocks 52–55 and prodigal-son
+   block 69 as more naturally processed sermons become available.
+   Keep full distributions visible; do not use confidence as a correctness
+   score.
+2. Continue prospective collection and prepare the bounded sanity-review packet
+   from naturally processed sermons. Do not run a corpus backfill.
+3. Exercise accepted-sermon and reviewed-profile membership rules end to end;
+   profile aggregation remains blocked until then.
+4. Once projection is credible, implement `salvation-relationships-v1` as the
+   first routed leaf pack. Keep its cache and question identity independent of
+   the broad topic pack and later revisions.
 
 ## Non-goals for `topics-v1`
 
@@ -575,6 +713,8 @@ theological stance.
 - Treating an Ellen White quotation as denominational identity by itself.
 - Building all topic leaves or topic-treatment cross-products into the broad
   pass.
+- Treating a performed song as the church/worship topic merely because it is
+  music, or treating its theological lyrics as pastor-profile evidence.
 - Backfilling the full corpus before the observation contract passes bounded
   review.
 
@@ -590,6 +730,14 @@ theological stance.
   taxonomy Choice.
 - Preserve full Score distributions, confidence, raw evidence, and deterministic
   density separately.
+- Treat content role, topic meaning, and analytical eligibility as separate
+  decisions. Raw observations may describe lyrics; projection must not attribute
+  excluded music to the preacher.
+- Keep leaves out of the one-minute broad request. Add them as independently
+  cached, second-stage packs over qualifying blocks, beginning tentatively with
+  salvation relationships.
+- Exclude zero-overlap, partial or mixed, sparse, and non-sermon-role blocks from
+  read-only projection; preserve their raw observations for inspection.
 - Keep topic inference observation-only until accepted-sermon and reviewed-profile
   projection, whole-sermon validity, and cross-series stability support a more
   specific use.
