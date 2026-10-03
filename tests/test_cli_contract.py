@@ -49,6 +49,7 @@ GROUP_COMMANDS = {
         "evaluate-scripture-detector",
         "evaluate-style",
         "evaluate-style-boundaries",
+        "evaluate-topic-behavior",
         "population-build",
         "population-show",
         "refresh-profiles",
@@ -69,6 +70,9 @@ GROUP_COMMANDS = {
         "style-show-profile",
         "style-summarize-profile",
         "summarize-profile",
+        "topic-review",
+        "topic-review-draft",
+        "topic-review-finalize",
     },
     "benchmark": {
         "add-profile",

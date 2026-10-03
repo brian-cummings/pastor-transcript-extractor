@@ -461,6 +461,27 @@ false-positive, sparse-evidence, and projection-boundary review. It uses the sam
 packet schema and raw distributions but a separate policy version and filename, so
 it neither overwrites the bounded packet nor makes a provider request.
 
+TypeSafe block packs are cached independently of provider batch composition. Full
+fine-pass batches are capped at 75 questions, and a provider token-limit rejection
+splits only that failed batch; successful block packs remain reusable on rerun.
+
+After inspecting a packet, create a separate adjudication draft and freeze the
+review without editing or replacing the cached evidence:
+
+```bash
+pte analysis topic-review-draft /path/to/topic-review-packet.json
+pte analysis topic-review-finalize \
+  /path/to/topic-review-packet.review-draft.json \
+  --reviewer REVIEWER \
+  --accept-as-reviewed
+```
+
+`--accept-as-reviewed` confirms the required review checks after inspection. If a
+packet needs corrections, edit only the generated draft's correction lists and
+check fields, then finalize without that flag. The finalized artifact is bound to
+the source packet's logical fingerprint and exact file hash; rerunning draft
+generation refuses to overwrite review edits.
+
 Validate the frozen synthetic topic behavior contract without making a provider
 request:
 

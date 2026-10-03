@@ -55,10 +55,12 @@ BOUNDARY_MIXED_OUTSIDE_MINIMUM = 0.1
 BOUNDARY_CANDIDATE_MIN_SPACING_SECONDS = 0.75
 BOUNDARY_NEIGHBORHOOD_SECONDS = 180.0
 BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
-# Coarse blocks can each approach 9,000 characters. Six keeps the worst-case
-# shared state near the size exercised by TypeSafe's large-document cookbook.
+# Provider batch composition never participates in per-block cache identity.
+# Start with six blocks, but split a rejected token-heavy request recursively.
 BATCH_SIZE = 6
-MAX_FINE_QUESTION_BUDGET = 150
+# Field runs with the full role + treatment + topic pack showed that 150 output
+# questions can exceed Jev's request budget even when the target text is bounded.
+MAX_FINE_QUESTION_BUDGET = 75
 MAX_SPARSE_CLOSING_PRAYER_GAP_BLOCKS = 3
 MAX_SPARSE_CLOSING_PRAYER_GAP_SECONDS = 180.0
 STRONG_NONSERMON_SEPARATOR_PROBABILITY = 0.8
@@ -270,6 +272,12 @@ class TypeSafeBlockClient(Protocol):
 def _hash(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _is_request_token_limit_error(error: Exception) -> bool:
+    """Recognize the provider's stable oversized-request failure signal."""
+    message = str(error).casefold().replace("-", "_").replace(" ", "_")
+    return "max_tokens_exceeded" in message or "maximum_tokens_exceeded" in message
 
 
 class TypeSafeBlockCache:
@@ -650,11 +658,12 @@ class TypeSafeBlockCache:
             if missing:
                 missing_by_set.setdefault(frozenset(missing), []).append(block)
 
-        for missing_packs, missing_blocks in missing_by_set.items():
-            batch_size = self._batch_size(missing_packs)
-            for offset in range(0, len(missing_blocks), batch_size):
-                batch = missing_blocks[offset : offset + batch_size]
-                self.provider_requests += 1
+        def assess_missing_batch(
+            batch: list[TranscriptBlock],
+            missing_packs: frozenset[str],
+        ) -> Mapping[int, TypeSafeBlockAnswer]:
+            self.provider_requests += 1
+            try:
                 assessed = client.assess_blocks(
                     _recording_context_for_blocks(recording_context, batch),
                     batch,
@@ -667,17 +676,37 @@ class TypeSafeBlockCache:
                         if block.block_id in contexts
                     },
                 )
-                for block in batch:
-                    answer = assessed.get(block.block_id)
-                    if answer is None:
-                        raise ValueError(
-                            f"TypeSafe omitted block judgment {block.block_id}"
-                        )
-                    for pack in missing_packs:
-                        payload = self._pack_payload(answer, pack)
-                        identity, path = identities[(block.block_id, pack)]
-                        self._write_pack(path, identity, payload)
-                        cached_packs[block.block_id][pack] = payload
+            except Exception as error:
+                if len(batch) <= 1 or not _is_request_token_limit_error(error):
+                    raise
+                midpoint = len(batch) // 2
+                left = assess_missing_batch(batch[:midpoint], missing_packs)
+                right = assess_missing_batch(batch[midpoint:], missing_packs)
+                return {**left, **right}
+            missing_answers = [
+                block.block_id
+                for block in batch
+                if assessed.get(block.block_id) is None
+            ]
+            if missing_answers:
+                raise ValueError(
+                    "TypeSafe omitted block judgment(s): "
+                    + ", ".join(str(block_id) for block_id in missing_answers)
+                )
+            for block in batch:
+                answer = assessed[block.block_id]
+                for pack in missing_packs:
+                    payload = self._pack_payload(answer, pack)
+                    identity, path = identities[(block.block_id, pack)]
+                    self._write_pack(path, identity, payload)
+                    cached_packs[block.block_id][pack] = payload
+            return assessed
+
+        for missing_packs, missing_blocks in missing_by_set.items():
+            batch_size = self._batch_size(missing_packs)
+            for offset in range(0, len(missing_blocks), batch_size):
+                batch = missing_blocks[offset : offset + batch_size]
+                assess_missing_batch(batch, missing_packs)
         return {
             block.block_id: self._merge_packs(cached_packs[block.block_id])
             for block in blocks

@@ -466,11 +466,14 @@ not the historical model answer.
 For a 33-block fine pass such as video 4548, twenty topic Scores add 660
 questions. Together with 33 role questions and 132 existing semantic-mode
 Nouls, that produces 825 question objects across the enriched fine pass. The
-current block batch size is six, so a full batch would contain at most 150
-questions: six role Choices, 24 semantic-mode Nouls, and 120 topic Scores. The
-last partial batch may be smaller. Transcript state is shared within each
-provider request, but question definitions and answer distributions still
-consume tokens.
+general block batch ceiling is six, but the declared 75-question fine-pass
+budget reduces a full role+treatment+topic request to at most three blocks:
+three role Choices, 12 semantic-mode Nouls, and 60 topic Scores. The last
+partial batch may be smaller. Transcript state is shared within each provider
+request, but question definitions and answer distributions still consume
+tokens. A provider `max_tokens_exceeded` response recursively splits only the
+failed batch; provider batch composition remains outside per-block cache
+identity.
 
 Coarse discovery and fine analysis remain sequential provider stages. The
 coarse answers determine the plausible ranges from which fine blocks are
@@ -486,8 +489,8 @@ Therefore taxonomy and scheduling are separate concerns:
 - Provider usage, latency, timeout behavior, and response completeness must be
   recorded before leaf packs are added.
 - Fine batching must be controlled by a declared maximum question budget. The
-  current six-block batch produces at most 150 questions after `topics-v1` and
-  must be reducible without changing per-block cache identity.
+  current 75-question budget produces at most three full-pack blocks and may be
+  split further without changing per-block cache identity.
 - TypeSafe speculative fan-out is useful for independent questions, but all
   questions in one request are evaluated. A genuine conditional leaf pack
   requires a later request over qualifying blocks.
@@ -721,6 +724,19 @@ theological stance.
     missed-episode, false-positive, sparse-evidence, and projection-boundary review
     possible without another inference path. This is review infrastructure, not a
     claim that the required 12-sermon Stage 3 validation has occurred.
+16. Topic review adjudication is stored separately from cached evidence. A
+    deterministic draft is bound to both the packet fingerprint and exact file
+    hash, protects edits from regeneration, supports compact topic-level and
+    projection corrections, and freezes reviewer provenance under an independent
+    review fingerprint. Whole-sermon finalization explicitly confirms selected
+    block review, missed-episode search, and projection-boundary review; it does
+    not silently treat packet creation as human validation.
+17. Four prospective field runs exposed provider `max_tokens_exceeded` failures
+    before topic observations could be persisted. The scheduler now caps full
+    fine requests at 75 questions and recursively splits only token-rejected
+    batches down to one block. Pack identities remain per block and independent
+    of batch composition, so successful work is reusable and unrelated provider
+    failures still fail fast instead of being retried as size errors.
 
 ### Next iteration
 
