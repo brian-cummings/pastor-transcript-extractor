@@ -136,7 +136,10 @@ def audit_database_paths(
     if not database_path.exists():
         return ()
     changes: list[dict[str, object]] = []
-    connection = sqlite3.connect(database_path)
+    connection = sqlite3.connect(
+        f"{database_path.expanduser().resolve().as_uri()}?mode=ro",
+        uri=True,
+    )
     try:
         tables = {
             str(row[0])

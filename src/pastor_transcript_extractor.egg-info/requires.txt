@@ -1,3 +1,11 @@
 typer<1.0,>=0.12
 rich<14.0,>=13.7
 pydantic<3.0,>=2.7
+yt-dlp[default]>=2026.6.9
+
+[acoustic-experiment]
+numpy<3.0,>=1.26
+sherpa-onnx==1.13.1
+
+[typesafe-experiment]
+typesafe-sdk<1.0,>=0.7.2

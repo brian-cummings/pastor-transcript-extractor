@@ -488,12 +488,20 @@ def source_processing_report(
     )
 
 
-@source_app.command("list", help="List configured sources.")
+@source_app.command("list", help="List configured sources and downloaded recording counts.")
 def source_list(
+    include_queued: bool = typer.Option(
+        False,
+        "--include-queued",
+        help="Count queued catalog entries in addition to downloaded recordings.",
+    ),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     database = get_database(base_dir)
     sources = database.list_sources()
+    recording_counts = database.count_recordings_by_source(
+        include_queued=include_queued
+    )
 
     if not sources:
         console.print("No sources configured.")
@@ -505,6 +513,7 @@ def source_list(
     table.add_column("Target Pastor")
     table.add_column("Type")
     table.add_column("Processing")
+    table.add_column("Recordings", justify="right")
     table.add_column("URL")
     for source in sources:
         organization_name = "-"
@@ -527,6 +536,7 @@ def source_list(
             pastor_name,
             source.source_type.value,
             "enabled" if source.processing_enabled else "disabled",
+            str(recording_counts.get(source.id, 0)),
             source.url,
         )
     console.print(table)

@@ -22,6 +22,7 @@ from pastor_transcript_extractor.evaluation_storage import (
     portable_artifact_path,
     resolve_artifact_path,
     runtime_default,
+    runtime_option,
 )
 from pastor_transcript_extractor.cli import app
 
@@ -41,6 +42,32 @@ class EvaluationPathTests(unittest.TestCase):
             self.assertEqual(
                 paths.evaluation / "diagnostics",
                 runtime_default(None, paths=paths, relative="diagnostics"),
+            )
+
+    def test_legacy_runtime_option_uses_configured_evaluation_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = root / "repo"
+            paths = build_paths(root / "app")
+            relative = "speaker-pairs/cache"
+            self.assertEqual(
+                paths.evaluation / relative,
+                runtime_option(
+                    Path("evaluation") / relative,
+                    paths=paths,
+                    relative=relative,
+                    repo_root=repo,
+                ),
+            )
+            explicit = root / "custom-cache"
+            self.assertEqual(
+                explicit.resolve(),
+                runtime_option(
+                    explicit,
+                    paths=paths,
+                    relative=relative,
+                    repo_root=repo,
+                ),
             )
 
     def test_legacy_translation_and_repository_input_preservation(self) -> None:
@@ -84,14 +111,21 @@ class EvaluationMigrationTests(unittest.TestCase):
             reviewed = repo / "evaluation/fixtures/reviewed.json"
             reviewed.parent.mkdir(parents=True)
             reviewed.write_text("{}", encoding="utf-8")
+            sermon_cache = repo / "evaluation/sermon-topics/cache/result.json"
+            sermon_cache.parent.mkdir(parents=True)
+            sermon_cache.write_text("{}", encoding="utf-8")
+            sermon_contract = repo / "evaluation/sermon-topics/behavior-contract-v1.json"
+            sermon_contract.write_text("{}", encoding="utf-8")
 
             plan = plan_migration(repo_root=repo, evaluation_root=app / "evaluation")
-            self.assertEqual(1, plan.planned_files)
+            self.assertEqual(2, plan.planned_files)
             self.assertTrue(generated.exists())
             result = apply_migration(plan, verify=True)
-            self.assertEqual(1, result.moved_files)
+            self.assertEqual(2, result.moved_files)
             self.assertFalse(generated.exists())
+            self.assertFalse(sermon_cache.exists())
             self.assertTrue(reviewed.exists())
+            self.assertTrue(sermon_contract.exists())
             rerun = plan_migration(repo_root=repo, evaluation_root=app / "evaluation")
             self.assertEqual(0, rerun.planned_files)
             self.assertEqual(0, apply_migration(rerun).moved_files)

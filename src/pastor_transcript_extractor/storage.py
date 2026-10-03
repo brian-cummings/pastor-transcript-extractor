@@ -1466,6 +1466,37 @@ class Database:
     def list_processing_enabled_sources(self) -> list[Source]:
         return [source for source in self.list_sources() if source.processing_enabled]
 
+    def count_recordings_by_source(
+        self, *, include_queued: bool = False
+    ) -> dict[int, int]:
+        """Count downloaded recordings for every source.
+
+        Queued catalog entries are included only when explicitly requested.
+        """
+        downloaded_recording_predicate = "" if include_queued else """
+            AND (
+                EXISTS (
+                    SELECT 1 FROM transcript_artifacts AS transcript
+                    WHERE transcript.video_id = video.id
+                )
+                OR EXISTS (
+                    SELECT 1 FROM media_artifacts AS media
+                    WHERE media.video_id = video.id
+                )
+            )
+        """
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT source.id, COUNT(video.id) AS video_count
+                FROM sources AS source
+                LEFT JOIN videos AS video ON video.source_id = source.id
+                {downloaded_recording_predicate}
+                GROUP BY source.id
+                """
+            ).fetchall()
+        return {int(row["id"]): int(row["video_count"]) for row in rows}
+
     def set_source_processing_enabled(self, source_id: int, enabled: bool) -> Source:
         with self.connect() as connection:
             cursor = connection.execute(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from pastor_transcript_extractor.config import AppPaths
+from pastor_transcript_extractor.config import AppPaths, evaluation_root_for
 
 
 # Only these repository-relative prefixes are generated. Everything else below
@@ -17,6 +17,7 @@ GENERATED_EVALUATION_PREFIXES: tuple[PurePosixPath, ...] = tuple(
         "interaction-diagnostics",
         "recording-verifier",
         "recording-verifier-typesafe",
+        "sermon-topics/cache",
         "speaker-pairs/cache",
         "speaker-pairs/drafts",
         "speaker-pairs/models",
@@ -150,3 +151,24 @@ def runtime_default(
 ) -> Path:
     """Honor an explicit CLI path; otherwise use the configured evaluation tree."""
     return explicit.expanduser().resolve() if explicit is not None else paths.evaluation / relative
+
+
+def runtime_option(
+    value: Path | None,
+    *,
+    paths: AppPaths,
+    relative: str,
+    repo_root: Path | None = None,
+) -> Path:
+    """Translate a legacy generated CLI default while preserving real overrides."""
+    evaluation_root = evaluation_root_for(paths)
+    if value is None:
+        return evaluation_root / relative
+    candidate = value.expanduser()
+    repository = (repo_root or Path.cwd()).expanduser().resolve()
+    legacy = repository / "evaluation" / relative
+    if candidate == Path("evaluation") / relative:
+        return evaluation_root / relative
+    if candidate.resolve(strict=False) == legacy.resolve(strict=False):
+        return evaluation_root / relative
+    return candidate.resolve(strict=False)
