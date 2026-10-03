@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import re
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 
 NORMALIZER_VERSION = "rolling-caption-v1"
+ROLLING_CAPTION_INPUT_POLICY_VERSION = "legacy-captions-before-blocking-v1"
 _WORD = re.compile(r"[^\w']+", re.UNICODE)
 
 
@@ -29,6 +30,14 @@ def _words(text: str) -> list[str]:
 
 def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def should_normalize_rolling_captions(metadata: Mapping[str, Any]) -> bool:
+    """Limit prompt-time normalization to unversioned legacy caption artifacts."""
+    return (
+        metadata.get("transcript_source") == "captions"
+        and metadata.get("transcript_artifact_kind") != "canonical"
+    )
 
 
 def _suffix_prefix_overlap(left: list[str], right: list[str]) -> int:

@@ -348,12 +348,41 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual("Exact target text", context.target_text)
         self.assertLessEqual(len(context.leading_context), 400)
         self.assertLessEqual(len(context.trailing_context), 400)
-        self.assertEqual("topic-context-sentences-v1", context.diagnostics["policy_version"])
+        self.assertEqual(
+            "topic-context-sentences-normalized-v2",
+            context.diagnostics["policy_version"],
+        )
         self.assertLessEqual(
             context.diagnostics["leading"]["selected_sentence_units"], 2
         )
         self.assertLessEqual(
             context.diagnostics["trailing"]["selected_sentence_units"], 2
+        )
+
+    def test_topic_context_normalizes_rolling_caption_fragments(self) -> None:
+        transcript = [
+            SegmentDraft(0.0, 5.0, "Before words", None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+            SegmentDraft(5.0, 10.0, "Before words continue.", None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+            SegmentDraft(10.0, 20.0, "Exact target", None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+            SegmentDraft(20.0, 25.0, "After words", None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+            SegmentDraft(25.0, 30.0, "After words continue.", None, TranscriptSegmentLabel.UNKNOWN, 0.5),
+        ]
+        block = TranscriptBlock(
+            1,
+            [2],
+            10.0,
+            20.0,
+            "Exact target",
+            normalization={"normalizer_version": "rolling-caption-v1"},
+        )
+
+        context = build_topic_context(transcript, block)
+
+        self.assertEqual("Before words continue.", context.leading_context)
+        self.assertEqual("After words continue.", context.trailing_context)
+        self.assertGreater(
+            context.diagnostics["leading_normalization"]["deduplication_ratio"],
+            0.0,
         )
 
     def test_topic_artifact_preserves_complete_scores_density_and_overlap(self) -> None:

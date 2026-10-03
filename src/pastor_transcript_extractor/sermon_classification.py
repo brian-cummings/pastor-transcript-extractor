@@ -8,13 +8,16 @@ from pathlib import Path
 import re
 from typing import Any
 
+from pastor_transcript_extractor.caption_normalization import (
+    normalize_caption_fragments,
+)
 from pastor_transcript_extractor.local_llm import LocalLlmClient, LocalLlmResponse
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_detection import SermonWindowResult
 
 
 CONFIDENCE_POLICY_VERSION = "semantic_primary_rule_guard_v3"
-BLOCK_BUILDER_VERSION = "timestamp-blocks-v3-canonical-transcript"
+BLOCK_BUILDER_VERSION = "timestamp-blocks-v4-full-stream-caption-normalization"
 COARSE_DISCOVERY_VERSION = "phase-primary-evidence-rescue-v3"
 FINE_COMPONENT_VERSION = "objective-service-guards+segment-precision-v9"
 SEARCH_ALGORITHM_VERSION = "adaptive_llm_v8"
@@ -236,8 +239,54 @@ _LIKELIHOOD_DECISIONS: dict[str, tuple[LikelihoodPhase, str, ContentLabel]] = {
 
 
 def build_transcript_blocks(
-    drafts: list[SegmentDraft], *, target_seconds: float = 90.0, max_chars: int = 3200
+    drafts: list[SegmentDraft],
+    *,
+    target_seconds: float = 90.0,
+    max_chars: int = 3200,
+    normalize_rolling_captions: bool = False,
 ) -> list[TranscriptBlock]:
+    timed_drafts = {
+        index: draft
+        for index, draft in enumerate(drafts)
+        if draft.start_seconds is not None
+        and draft.end_seconds is not None
+        and draft.end_seconds > draft.start_seconds
+    }
+    units: list[tuple[list[int], float, float, str]] = []
+    if normalize_rolling_captions:
+        normalized = normalize_caption_fragments(
+            (index, draft.text) for index, draft in timed_drafts.items()
+        )
+        for unit in normalized.units:
+            source_indexes = [
+                index for index in unit.source_segment_indexes if index in timed_drafts
+            ]
+            if not source_indexes:
+                continue
+            units.append(
+                (
+                    source_indexes,
+                    min(
+                        float(timed_drafts[index].start_seconds)
+                        for index in source_indexes
+                    ),
+                    max(
+                        float(timed_drafts[index].end_seconds)
+                        for index in source_indexes
+                    ),
+                    unit.text,
+                )
+            )
+    else:
+        units.extend(
+            (
+                [index],
+                float(draft.start_seconds),
+                float(draft.end_seconds),
+                draft.text,
+            )
+            for index, draft in timed_drafts.items()
+        )
     blocks: list[TranscriptBlock] = []
     indexes: list[int] = []
     texts: list[str] = []
@@ -247,26 +296,42 @@ def build_transcript_blocks(
     def flush() -> None:
         nonlocal indexes, texts, start, end
         if indexes and start is not None and end is not None:
-            raw_text = "\n".join(texts)
+            raw_text = "\n".join(timed_drafts[index].text for index in indexes)
+            diagnostics = None
+            if normalize_rolling_captions:
+                normalized_block = normalize_caption_fragments(
+                    (index, timed_drafts[index].text) for index in indexes
+                )
+                diagnostics = {
+                    key: normalized_block.diagnostics.get(key)
+                    for key in (
+                        "normalizer_version",
+                        "raw_text_hash",
+                        "normalized_text_hash",
+                        "raw_token_count",
+                        "normalized_token_count",
+                        "deduplication_ratio",
+                        "source_segment_indexes",
+                        "normalized_units",
+                    )
+                }
             blocks.append(TranscriptBlock(
-                len(blocks), list(indexes), start, end, raw_text,
-                raw_text, None,
+                len(blocks), list(indexes), start, end, "\n".join(texts),
+                raw_text, diagnostics,
             ))
         indexes, texts, start, end = [], [], None, None
 
-    for index, draft in enumerate(drafts):
-        if draft.start_seconds is None or draft.end_seconds is None or draft.end_seconds <= draft.start_seconds:
-            continue
-        prospective = "\n".join([*texts, draft.text])
+    for source_indexes, unit_start, unit_end, text in units:
+        prospective = "\n".join([*texts, text])
         if start is not None and (
-            (draft.end_seconds - start) > target_seconds or len(prospective) > max_chars
+            (unit_end - start) > target_seconds or len(prospective) > max_chars
         ):
             flush()
         if start is None:
-            start = draft.start_seconds
-        end = draft.end_seconds
-        indexes.append(index)
-        texts.append(draft.text)
+            start = unit_start
+        end = unit_end
+        indexes.extend(source_indexes)
+        texts.append(text)
     flush()
     return blocks
 

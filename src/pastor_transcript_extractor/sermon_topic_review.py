@@ -7,6 +7,11 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from pastor_transcript_extractor.caption_normalization import (
+    ROLLING_CAPTION_INPUT_POLICY_VERSION,
+    normalize_caption_fragments,
+    should_normalize_rolling_captions,
+)
 from pastor_transcript_extractor.sermon_topics import (
     TOPIC_DOMAIN_LABELS,
     TOPIC_SPECS,
@@ -15,8 +20,8 @@ from pastor_transcript_extractor.sermon_topics import (
 )
 
 
-TOPIC_REVIEW_SCHEMA_VERSION = 3
-TOPIC_REVIEW_GENERATOR_VERSION = "typesafe-topic-review-v3"
+TOPIC_REVIEW_SCHEMA_VERSION = 4
+TOPIC_REVIEW_GENERATOR_VERSION = "typesafe-topic-review-v4"
 TOPIC_REVIEW_DEFAULT_FILENAME = f"{TOPIC_REVIEW_GENERATOR_VERSION}.json"
 PROSPECTIVE_REVIEW_POLICY_VERSION = "topic-prospective-sanity-sampler-v1"
 KNOWN_REVIEW_POLICY_VERSION = "topic-known-regression-cases-v1"
@@ -157,6 +162,62 @@ def _supporting_probability(score: Mapping[str, Any]) -> float:
     return sum(
         float(probabilities.get(str(level)) or 0.0) for level in (2, 3, 4)
     )
+
+
+def build_topic_review_transcript_provenance(
+    proposed: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Describe the transcript representation actually used by reclassification."""
+    raw_segments = proposed.get("segments")
+    segments = raw_segments if isinstance(raw_segments, list) else []
+    fragments = [
+        (index, str(segment["text"]))
+        for index, segment in enumerate(segments)
+        if isinstance(segment, Mapping) and isinstance(segment.get("text"), str)
+    ]
+    normalization = normalize_caption_fragments(fragments).diagnostics
+    artifact_kind = proposed.get("transcript_artifact_kind")
+    transformation_version = proposed.get("transcript_transformation_version")
+    canonical = artifact_kind == "canonical" and isinstance(
+        transformation_version, str
+    )
+    normalize_legacy_captions = should_normalize_rolling_captions(proposed)
+    deduplication_ratio = float(normalization.get("deduplication_ratio") or 0.0)
+    warnings: list[str] = []
+    if not canonical:
+        warnings.append("classification_input_not_versioned_canonical_transcript")
+    if deduplication_ratio >= 0.2:
+        warnings.append("high_rolling_caption_duplication")
+    return {
+        "transcript_source": proposed.get("transcript_source"),
+        "transcript_artifact_id": proposed.get("transcript_artifact_id"),
+        "transcript_artifact_kind": artifact_kind,
+        "transcript_transformation_version": transformation_version,
+        "transcript_content_sha256": proposed.get("transcript_content_sha256"),
+        "source_artifact_canonical": canonical,
+        "rolling_caption_normalization_policy_version": (
+            ROLLING_CAPTION_INPUT_POLICY_VERSION
+        ),
+        "rolling_caption_normalization_applied": normalize_legacy_captions,
+        "segment_count": (
+            int(proposed["segment_count"])
+            if isinstance(proposed.get("segment_count"), int)
+            and not isinstance(proposed.get("segment_count"), bool)
+            else len(segments)
+        ),
+        "diagnostic_normalization": {
+            key: normalization.get(key)
+            for key in (
+                "normalizer_version",
+                "raw_text_hash",
+                "normalized_text_hash",
+                "raw_token_count",
+                "normalized_token_count",
+                "deduplication_ratio",
+            )
+        },
+        "warnings": warnings,
+    }
 
 
 def derive_prospective_topic_review_cases(
@@ -366,6 +427,7 @@ def build_topic_review_packet(
     source_artifact_path: Path | None = None,
     profile_projection_gate: Mapping[str, Any] | None = None,
     selection: Mapping[str, Any] | None = None,
+    transcript_provenance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a bounded packet without changing or rerunning cached inference."""
     if not cases:
@@ -438,6 +500,7 @@ def build_topic_review_packet(
         ),
         "profile_projection_gate": dict(profile_projection_gate or {}),
         "selection": dict(selection or {}),
+        "transcript_provenance": dict(transcript_provenance or {}),
         "cases": [asdict(case) for case in cases],
         "blocks": reviewed_blocks,
     }
@@ -462,6 +525,7 @@ def build_topic_review_packet(
             "reliability_policy_version": analysis.get(
                 "reliability_policy_version"
             ),
+            "transcript_provenance": dict(transcript_provenance or {}),
         },
         "interpretation_contract": {
             "score": "Probability-weighted position on ordered prominence levels 0-4.",
@@ -501,6 +565,27 @@ def render_topic_review_markdown(packet: Mapping[str, Any]) -> str:
         "meaning, and projection eligibility remain separate.",
         "",
     ]
+    transcript = source.get("transcript_provenance")
+    if isinstance(transcript, Mapping) and transcript:
+        normalization = transcript.get("diagnostic_normalization")
+        normalization = normalization if isinstance(normalization, Mapping) else {}
+        lines.extend(
+            [
+                "## Transcript representation",
+                "",
+                f"- Source: `{transcript.get('transcript_source')}`",
+                f"- Artifact kind: `{transcript.get('transcript_artifact_kind')}`",
+                f"- Transformation: `{transcript.get('transcript_transformation_version')}`",
+                f"- Canonical source artifact: `{transcript.get('source_artifact_canonical')}`",
+                f"- Legacy caption normalization applied: `{transcript.get('rolling_caption_normalization_applied')}`",
+                f"- Normalization policy: `{transcript.get('rolling_caption_normalization_policy_version')}`",
+                f"- Segment count: `{transcript.get('segment_count')}`",
+                f"- Content SHA-256: `{transcript.get('transcript_content_sha256')}`",
+                f"- Diagnostic deduplication ratio: `{normalization.get('deduplication_ratio')}`",
+                f"- Representation warnings: `{transcript.get('warnings', [])}`",
+                "",
+            ]
+        )
     gate = packet.get("profile_projection_gate")
     if isinstance(gate, Mapping) and gate:
         lines.extend(

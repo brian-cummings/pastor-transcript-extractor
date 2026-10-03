@@ -49,6 +49,7 @@ from pastor_transcript_extractor.sermon_topic_review import (
     WHOLE_SERMON_REVIEW_POLICY_VERSION,
     WHOLE_SERMON_TOPIC_REVIEW_DEFAULT_FILENAME,
     build_topic_review_packet,
+    build_topic_review_transcript_provenance,
     derive_prospective_topic_review_cases,
     derive_whole_sermon_topic_review_case,
     write_topic_review_packet,
@@ -574,6 +575,16 @@ def analysis_topic_review(
             f"Classification artifact is not an object: {classification_path}"
         )
     try:
+        proposed = json.loads(proposed_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise typer.BadParameter(
+            f"Cannot read extraction artifact: {proposed_path}"
+        ) from error
+    if not isinstance(proposed, dict):
+        raise typer.BadParameter(
+            f"Extraction artifact is not an object: {proposed_path}"
+        )
+    try:
         if whole_sermon and prospective:
             raise ValueError("Choose either --whole-sermon or --prospective, not both")
         prepared_cases = KNOWN_TOPIC_REVIEW_CASES.get(video.youtube_video_id)
@@ -619,6 +630,7 @@ def analysis_topic_review(
             source_artifact_path=classification_path,
             profile_projection_gate=profile_projection_gate.to_dict(),
             selection=selection,
+            transcript_provenance=build_topic_review_transcript_provenance(proposed),
         )
         result = write_topic_review_packet(
             output_path or proposed_path.parent / default_filename,

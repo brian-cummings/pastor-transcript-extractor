@@ -45,7 +45,7 @@ from pastor_transcript_extractor.sermon_topics import (
 SEARCH_ALGORITHM_VERSION = "typesafe_first_v16_topic_review_packets"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
-BLOCK_BUILDER_VERSION = "typesafe-canonical-coarse-300s-fine-60s-v3"
+BLOCK_BUILDER_VERSION = "typesafe-normalized-coarse-300s-fine-60s-v4"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-recording-aware-role-map-v2"
 FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v12-sparse-closing-prayer"
 BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
@@ -1385,10 +1385,19 @@ class TypeSafeFirstPassSermonClassifier:
         title: str,
         cache_dir: Path,
         recording_metadata: Mapping[str, Any] | None = None,
+        normalize_rolling_captions: bool = False,
         progress: Any | None = None,
     ) -> HybridSermonResult:
+        transcript_input = (
+            "legacy_captions_normalized_before_blocking"
+            if normalize_rolling_captions
+            else "persisted_transcript_segments"
+        )
         coarse_blocks = build_transcript_blocks(
-            drafts, target_seconds=300.0, max_chars=9000
+            drafts,
+            target_seconds=300.0,
+            max_chars=9000,
+            normalize_rolling_captions=normalize_rolling_captions,
         )
         if not coarse_blocks:
             raise ValueError("TypeSafe classification requires timestamped segments")
@@ -1408,7 +1417,12 @@ class TypeSafeFirstPassSermonClassifier:
                 progress("typesafe-recording-gate", 1, 1)
         gate = _recording_gate_artifact(gate_answer)
         if gate["route"] == "bypass_non_target":
-            return self._bypass_result(coarse_blocks, cache, gate)
+            return self._bypass_result(
+                coarse_blocks,
+                cache,
+                gate,
+                transcript_input=transcript_input,
+            )
 
         recording_context = {
             **gate_state,
@@ -1434,6 +1448,7 @@ class TypeSafeFirstPassSermonClassifier:
                 coarse_answers,
                 cache,
                 gate,
+                transcript_input=transcript_input,
             )
 
         plausible_ranges = [
@@ -1444,7 +1459,10 @@ class TypeSafeFirstPassSermonClassifier:
             for component in coarse_components
         ]
         raw_fine_blocks = build_transcript_blocks(
-            drafts, target_seconds=60.0, max_chars=3200
+            drafts,
+            target_seconds=60.0,
+            max_chars=3200,
+            normalize_rolling_captions=normalize_rolling_captions,
         )
         fine_blocks = [
             replace(block, block_id=len(coarse_blocks) + block.block_id)
@@ -1490,6 +1508,7 @@ class TypeSafeFirstPassSermonClassifier:
                 {**coarse_answers, **fine_answers},
                 cache,
                 gate,
+                transcript_input=transcript_input,
             )
         ranked_components = sorted(
             fine_components,
@@ -1846,7 +1865,7 @@ class TypeSafeFirstPassSermonClassifier:
                         "policy_effect": "none",
                     },
                     "segment_boundary_refinement": bool(boundary_candidate_count),
-                    "transcript_input": "persisted_canonical_artifact",
+                    "transcript_input": transcript_input,
                 },
             },
             confidence_reasons=[
@@ -1873,6 +1892,8 @@ class TypeSafeFirstPassSermonClassifier:
         answers: Mapping[int, TypeSafeBlockAnswer],
         cache: TypeSafeBlockCache,
         gate: Mapping[str, Any],
+        *,
+        transcript_input: str,
     ) -> HybridSermonResult:
         all_timed = sorted(
             {index for block in blocks for index in block.segment_indexes}
@@ -1903,7 +1924,7 @@ class TypeSafeFirstPassSermonClassifier:
                 "discovery": {
                     "selected_mode": "typesafe_first_no_candidate",
                     "recording_gate": dict(gate),
-                    "transcript_input": "persisted_canonical_artifact",
+                    "transcript_input": transcript_input,
                 },
             },
             [{"code": "typesafe_probability_map", "tier": "low"}],
@@ -1918,6 +1939,8 @@ class TypeSafeFirstPassSermonClassifier:
         blocks: list[TranscriptBlock],
         cache: TypeSafeBlockCache,
         gate: Mapping[str, Any],
+        *,
+        transcript_input: str,
     ) -> HybridSermonResult:
         all_timed = sorted(
             {index for block in blocks for index in block.segment_indexes}
@@ -1948,7 +1971,7 @@ class TypeSafeFirstPassSermonClassifier:
                 "discovery": {
                     "selected_mode": "typesafe_recording_gate_bypass",
                     "recording_gate": dict(gate),
-                    "transcript_input": "persisted_canonical_artifact",
+                    "transcript_input": transcript_input,
                 },
             },
             [

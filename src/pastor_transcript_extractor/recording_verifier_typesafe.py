@@ -709,6 +709,7 @@ class TypeSafeProductionRecordingVerifier:
         title: str,
         cache_dir: Path,
         recording_metadata: Mapping[str, Any] | None = None,
+        normalize_rolling_captions: bool = False,
         progress: Any | None = None,
     ) -> HybridSermonResult | None:
         """Run the cached Jev-first locator when the client supports block judgments."""
@@ -720,6 +721,7 @@ class TypeSafeProductionRecordingVerifier:
             title=title,
             cache_dir=cache_dir,
             recording_metadata=recording_metadata,
+            normalize_rolling_captions=normalize_rolling_captions,
             progress=progress,
         )
 
