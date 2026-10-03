@@ -40,6 +40,7 @@ from pastor_transcript_extractor import (
 from pastor_transcript_extractor.inference_defaults import (
     DEFAULT_CLASSIFIER,
     DEFAULT_RECORDING_VERIFIER_BACKEND,
+    DEFAULT_TYPESAFE_MODEL,
 )
 from pastor_transcript_extractor.church_database_import import (
     ChurchDatabaseImportError,
@@ -210,6 +211,7 @@ from pastor_transcript_extractor.identity_stage_cache import (
     load_identity_stage_input_state,
     write_identity_stage_checkpoint,
 )
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.identity_automation import (
     build_identity_association_work_plan,
     latest_association_reports,
@@ -913,6 +915,16 @@ def association_audit_command(
     ),
 ) -> None:
     paths = config.build_paths(base_dir)
+    association_root = runtime_option(
+        association_root,
+        paths=paths,
+        relative="speaker-associations/shadow-runs",
+    )
+    cache_dir = runtime_option(
+        cache_dir,
+        paths=paths,
+        relative="speaker-pairs/cache",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -1062,6 +1074,24 @@ def consolidate_source_profiles_command(
     if apply and not (reviewer or "").strip():
         raise typer.BadParameter("--apply requires --reviewer")
     paths = config.build_paths(base_dir)
+    model_path = runtime_option(
+        model_path,
+        paths=paths,
+        relative=(
+            "speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+    )
+    cache_dir = runtime_option(
+        cache_dir,
+        paths=paths,
+        relative="speaker-pairs/cache",
+    )
+    output_root = runtime_option(
+        output_root,
+        paths=paths,
+        relative="source-profile-consolidation/runs",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     if all_eligible:
@@ -1759,6 +1789,24 @@ def shadow_discover_profiles_command(
             "--minimum-consistency-score requires --consistency-report"
         )
     paths = config.build_paths(base_dir)
+    model_path = runtime_option(
+        model_path,
+        paths=paths,
+        relative=(
+            "speaker-pairs/models/"
+            "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+        ),
+    )
+    cache_dir = runtime_option(
+        cache_dir,
+        paths=paths,
+        relative="speaker-pairs/cache",
+    )
+    output_root = runtime_option(
+        output_root,
+        paths=paths,
+        relative="speaker-profile-discovery/shadow-runs",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -2333,6 +2381,11 @@ def promote_discovered_profiles_command(
     ),
 ) -> None:
     paths = config.build_paths(base_dir)
+    promotion_judgment_root = runtime_option(
+        promotion_judgment_root,
+        paths=paths,
+        relative="speaker-profile-discovery/promotion-judgments",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -2471,6 +2524,11 @@ def confirm_discovered_profiles_command(
     ),
 ) -> None:
     paths = config.build_paths(base_dir)
+    input_root = runtime_option(
+        input_root,
+        paths=paths,
+        relative="speaker-associations/shadow-runs",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -2627,7 +2685,7 @@ def _prepare_actionable_review_audio(
     *,
     discovery_report: Path | None,
     association_reports: Sequence[Path],
-    cache_dir: Path = Path("evaluation/speaker-pairs/cache"),
+    cache_dir: Path | None = None,
     limit: int = 24,
     automatic_profile_ready_ids: frozenset[int] = frozenset(),
     association_progress_callback: Callable[[int, int, Path], None]
@@ -2636,6 +2694,11 @@ def _prepare_actionable_review_audio(
     """Prewarm exact review clips for the current actionable frontier."""
     if limit < 1:
         raise ValueError("review audio prewarm limit must be positive")
+    cache_dir = runtime_option(
+        cache_dir,
+        paths=paths,
+        relative="speaker-pairs/cache",
+    )
     nominated_fingerprints = _actionable_review_fingerprints(
         discovery_report=discovery_report,
         association_reports=association_reports,
@@ -3129,6 +3192,11 @@ def run_identity_workflow_service(
     effective_apply_machine = policy.apply_machine_assignments
     paths = config.build_paths(base_dir, remember=not plan_only)
     runtime_evaluation_root = config.evaluation_root_for(paths, base_dir)
+    promotion_judgment_root = runtime_option(
+        promotion_judgment_root,
+        paths=paths,
+        relative="speaker-profile-discovery/promotion-judgments",
+    )
     if not paths.database.exists():
         raise ValueError(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -3939,6 +4007,16 @@ def profile_leverage_snapshot_command(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> Path:
     paths = config.build_paths(base_dir)
+    association_root = runtime_option(
+        association_root,
+        paths=paths,
+        relative="speaker-associations/shadow-runs",
+    )
+    output_root = runtime_option(
+        output_root,
+        paths=paths,
+        relative="identity-leverage",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -4925,6 +5003,11 @@ def shadow_association_status_command(
     ),
 ) -> None:
     paths = config.build_paths(base_dir)
+    input_root = runtime_option(
+        input_root,
+        paths=paths,
+        relative="speaker-associations/shadow-runs",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -5100,6 +5183,11 @@ def prepare_speaker_review_audio(
             "evaluation scope must be one of: all, development, validation, held_out"
         )
     paths = config.build_paths(base_dir)
+    cache_dir = runtime_option(
+        cache_dir,
+        paths=paths,
+        relative="speaker-pairs/cache",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -5231,6 +5319,21 @@ def prepare_actionable_review_audio_command(
     ),
 ) -> None:
     paths = config.build_paths(base_dir)
+    cache_dir = runtime_option(
+        cache_dir,
+        paths=paths,
+        relative="speaker-pairs/cache",
+    )
+    discovery_root = runtime_option(
+        discovery_root,
+        paths=paths,
+        relative="speaker-profile-discovery/shadow-runs",
+    )
+    association_root = runtime_option(
+        association_root,
+        paths=paths,
+        relative="speaker-associations/shadow-runs",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(
             f"Application database does not exist: {paths.database}"
@@ -5378,6 +5481,26 @@ def review_next_speaker_pair(
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
 ) -> None:
     paths = config.build_paths(base_dir)
+    cache_dir = runtime_option(
+        cache_dir,
+        paths=paths,
+        relative="speaker-pairs/cache",
+    )
+    discovery_root = runtime_option(
+        discovery_root,
+        paths=paths,
+        relative="speaker-profile-discovery/shadow-runs",
+    )
+    association_root = runtime_option(
+        association_root,
+        paths=paths,
+        relative="speaker-associations/shadow-runs",
+    )
+    observation_consistency_report = runtime_option(
+        observation_consistency_report,
+        paths=paths,
+        relative="speaker-pairs/runs/observation-consistency-v1.json",
+    )
     if not paths.database.exists():
         raise typer.BadParameter(f"Application database does not exist: {paths.database}")
     database = Database(paths.database, readonly=True)
@@ -6246,7 +6369,7 @@ def extract(
     recording_verifier_model: str | None = typer.Option(
         None,
         "--recording-verifier-model",
-        help="Verifier model override; defaults by backend.",
+        help=f"Verifier model override; TypeSafe defaults to {DEFAULT_TYPESAFE_MODEL}.",
     ),
     jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video extraction jobs."),
     base_dir: Path | None = typer.Option(None, help="Override app data directory."),
@@ -6338,7 +6461,7 @@ def apply_fixture_correction(
     recording_verifier_model: str | None = typer.Option(
         None,
         "--recording-verifier-model",
-        help="Verifier model override; defaults by backend.",
+        help=f"Verifier model override; TypeSafe defaults to {DEFAULT_TYPESAFE_MODEL}.",
     ),
     inference_cache_root: Path | None = typer.Option(
         None,
@@ -6520,7 +6643,7 @@ def apply_fixture_correction(
     )
 
 
-@app.command(help="Rerun local-LLM classification using existing extraction segments.")
+@app.command(help="Rerun classification using existing extraction segments.")
 def reclassify(
     video_id: int | None = typer.Option(None, "--video-id", help="Reclassify one database video id."),
     source_id: int | None = typer.Option(None, "--source-id", help="Reclassify extracted videos from one source id."),
@@ -6551,7 +6674,7 @@ def reclassify(
     recording_verifier_model: str | None = typer.Option(
         None,
         "--recording-verifier-model",
-        help="Verifier model override; defaults by backend.",
+        help=f"Verifier model override; TypeSafe defaults to {DEFAULT_TYPESAFE_MODEL}.",
     ),
     jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video classification jobs."),
     inference_cache_root: Path | None = typer.Option(
@@ -6565,7 +6688,11 @@ def reclassify(
         help="Use a shared recording-verifier cache root.",
     ),
     force: bool = typer.Option(False, "--force", help="Rerun even when model and prompt versions match."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
 ) -> None:
     selector_count = sum(
         (

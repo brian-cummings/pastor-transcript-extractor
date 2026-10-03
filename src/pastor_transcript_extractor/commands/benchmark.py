@@ -18,6 +18,7 @@ from pastor_transcript_extractor.benchmark import (
 )
 from pastor_transcript_extractor.commands.apps import benchmark_app
 from pastor_transcript_extractor.config import build_paths, ensure_directories
+from pastor_transcript_extractor.evaluation_storage import runtime_option
 from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.recording_verifier import validate_partition_access
 from pastor_transcript_extractor.recording_verifier_typesafe import (
@@ -61,6 +62,7 @@ def benchmark_recording_verifier_typesafe(
         client = TypeSafeSdkAdapter(model=model)
     except RuntimeError as error:
         raise typer.BadParameter(str(error)) from error
+    paths = build_paths(base_dir, remember=True)
     database = _get_database(base_dir)
     root = output_dir.expanduser().resolve()
     try:
@@ -69,7 +71,11 @@ def benchmark_recording_verifier_typesafe(
             for value in partition
             for case in load_typesafe_cases(
                 database, fixture_dir, partition=value,
-                baseline_root=Path("evaluation/recording-verifier"),
+                baseline_root=runtime_option(
+                    Path("evaluation/recording-verifier"),
+                    paths=paths,
+                    relative="recording-verifier",
+                ),
             )
         ]
         run = run_benchmark(cases, client, model=model, cache=TypeSafeCache(root / "cache"), cost_rate=CostRate(cost_rate_version, input_usd_per_million, output_usd_per_million))

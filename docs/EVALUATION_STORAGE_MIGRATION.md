@@ -18,6 +18,7 @@ The migration moves only these explicitly enumerated generated prefixes:
 
 - `drafts/`, `results/`, `diagnostics/`, and `interaction-diagnostics/`
 - `recording-verifier/` and `recording-verifier-typesafe/`
+- `sermon-topics/cache/`
 - `speaker-pairs/{cache,drafts,models,reports,runs}/`
 - `speaker-associations/shadow-runs/`
 - `speaker-profile-discovery/{shadow-runs,promotion-judgments}/`
