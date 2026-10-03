@@ -7,12 +7,13 @@ import json
 import re
 from typing import Any, Collection, Mapping, MutableMapping, Sequence
 
+from pastor_transcript_extractor.caption_normalization import normalize_caption_fragments
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import TranscriptBlock
 
 
 TOPIC_PACK_VERSION = "topics-v2-performed-worship-boundary"
-TOPIC_CONTEXT_POLICY_VERSION = "topic-context-sentences-v1"
+TOPIC_CONTEXT_POLICY_VERSION = "topic-context-sentences-normalized-v2"
 TOPIC_RELIABILITY_POLICY_VERSION = "topic-density-v1"
 TOPIC_PROJECTION_POLICY_VERSION = "sermon-topic-full-block-role-density-v1"
 PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT = (
@@ -229,8 +230,33 @@ def build_topic_context(drafts: Sequence[SegmentDraft], block: TranscriptBlock) 
         and draft.end_seconds is not None
         and draft.end_seconds > draft.start_seconds
     ]
-    before = " ".join(draft.text for index, draft in timed if index not in indexes and draft.end_seconds <= block.start_seconds)
-    after = " ".join(draft.text for index, draft in timed if index not in indexes and draft.start_seconds >= block.end_seconds)
+    before_fragments = [
+        (index, draft.text)
+        for index, draft in timed
+        if index not in indexes and draft.end_seconds <= block.start_seconds
+    ]
+    after_fragments = [
+        (index, draft.text)
+        for index, draft in timed
+        if index not in indexes and draft.start_seconds >= block.end_seconds
+    ]
+    normalize_context = block.normalization is not None
+    before_normalized = (
+        normalize_caption_fragments(before_fragments) if normalize_context else None
+    )
+    after_normalized = (
+        normalize_caption_fragments(after_fragments) if normalize_context else None
+    )
+    before = (
+        before_normalized.text
+        if before_normalized is not None
+        else " ".join(text for _, text in before_fragments)
+    )
+    after = (
+        after_normalized.text
+        if after_normalized is not None
+        else " ".join(text for _, text in after_fragments)
+    )
     leading, leading_diagnostics = _bounded_context(before, leading=True)
     trailing, trailing_diagnostics = _bounded_context(after, leading=False)
     return TopicBlockContext(
@@ -242,6 +268,37 @@ def build_topic_context(drafts: Sequence[SegmentDraft], block: TranscriptBlock) 
             "max_characters_per_side": TOPIC_CONTEXT_MAX_CHARS,
             "leading": leading_diagnostics,
             "trailing": trailing_diagnostics,
+            "rolling_caption_normalization": normalize_context,
+            "leading_normalization": (
+                {
+                    "normalizer_version": before_normalized.diagnostics.get(
+                        "normalizer_version"
+                    ),
+                    "deduplication_ratio": before_normalized.diagnostics.get(
+                        "deduplication_ratio"
+                    ),
+                    "normalized_text_hash": before_normalized.diagnostics.get(
+                        "normalized_text_hash"
+                    ),
+                }
+                if before_normalized is not None
+                else None
+            ),
+            "trailing_normalization": (
+                {
+                    "normalizer_version": after_normalized.diagnostics.get(
+                        "normalizer_version"
+                    ),
+                    "deduplication_ratio": after_normalized.diagnostics.get(
+                        "deduplication_ratio"
+                    ),
+                    "normalized_text_hash": after_normalized.diagnostics.get(
+                        "normalized_text_hash"
+                    ),
+                }
+                if after_normalized is not None
+                else None
+            ),
         },
     )
 

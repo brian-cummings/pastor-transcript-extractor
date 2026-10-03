@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from pastor_transcript_extractor.artifact_namespace import resolve_video_artifact_paths
+from pastor_transcript_extractor.caption_normalization import (
+    should_normalize_rolling_captions,
+)
 from pastor_transcript_extractor.config import AppPaths, build_video_artifact_paths_at_root
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED, build_final_disposition
 from pastor_transcript_extractor.identity import (
@@ -300,6 +303,7 @@ def _classify_with_fallback(
     progress: Any | None = None,
     video_title: str | None = None,
     recording_metadata: dict[str, Any] | None = None,
+    normalize_rolling_captions: bool = False,
     semantic_classifier: Any | None = None,
     manual_override_present: bool = False,
 ) -> tuple[dict[str, Any], HybridSermonResult | None]:
@@ -375,6 +379,7 @@ def _classify_with_fallback(
                     title=video_title or "",
                     cache_dir=(cache_dir or Path(".typesafe-inference-cache")),
                     recording_metadata=recording_metadata,
+                    normalize_rolling_captions=normalize_rolling_captions,
                     progress=progress,
                 )
                 discovery = (
@@ -1623,6 +1628,7 @@ def reclassify_video(
         context_size=context_size,
         video_title=video.title,
         recording_metadata=_recording_metadata_state(database, video),
+        normalize_rolling_captions=should_normalize_rolling_captions(payload),
         semantic_classifier=verifier if typesafe_first else None,
         manual_override_present=override is not None,
     )

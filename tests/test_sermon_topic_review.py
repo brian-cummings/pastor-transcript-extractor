@@ -15,6 +15,7 @@ from pastor_transcript_extractor.sermon_topic_review import (
     VIDEO_4548_REVIEW_CASES,
     TopicReviewCase,
     build_topic_review_packet,
+    build_topic_review_transcript_provenance,
     derive_prospective_topic_review_cases,
     derive_whole_sermon_topic_review_case,
     render_topic_review_markdown,
@@ -126,7 +127,7 @@ class SermonTopicReviewTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(3, packet["schema_version"])
+        self.assertEqual(4, packet["schema_version"])
         self.assertEqual(1, len(packet["blocks"]))
         reviewed = packet["blocks"][0]
         self.assertEqual(set(TOPICS), set(reviewed["scores"]))
@@ -146,6 +147,46 @@ class SermonTopicReviewTests(unittest.TestCase):
         self.assertIn("| `salvation_gospel` |", markdown)
         self.assertIn("| 0.050 | 0.100 | 0.700 | 0.100 | 0.050 |", markdown)
         self.assertIn("## Profile projection gate", markdown)
+
+    def test_transcript_provenance_flags_legacy_rolling_captions(self) -> None:
+        provenance = build_topic_review_transcript_provenance(
+            {
+                "transcript_source": "captions",
+                "segments": [
+                    {"text": "Father in heaven"},
+                    {"text": "Father in heaven thank you"},
+                    {"text": "thank you for grace"},
+                ],
+            }
+        )
+
+        self.assertFalse(provenance["source_artifact_canonical"])
+        self.assertTrue(provenance["rolling_caption_normalization_applied"])
+        self.assertIn(
+            "classification_input_not_versioned_canonical_transcript",
+            provenance["warnings"],
+        )
+        self.assertGreater(
+            provenance["diagnostic_normalization"]["deduplication_ratio"],
+            0.0,
+        )
+
+    def test_transcript_provenance_recognizes_canonical_input(self) -> None:
+        provenance = build_topic_review_transcript_provenance(
+            {
+                "transcript_source": "local_asr",
+                "transcript_artifact_kind": "canonical",
+                "transcript_transformation_version": (
+                    "canonical-transcript-v1+rolling-caption-v1"
+                ),
+                "transcript_content_sha256": "abc123",
+                "segments": [{"text": "A complete sentence."}],
+            }
+        )
+
+        self.assertTrue(provenance["source_artifact_canonical"])
+        self.assertFalse(provenance["rolling_caption_normalization_applied"])
+        self.assertEqual([], provenance["warnings"])
 
     def test_writer_reuses_unchanged_packet_and_rewrites_changed_input(self) -> None:
         case = TopicReviewCase("case-1", "One case", (7,), "Focus.", "Review.")

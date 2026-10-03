@@ -271,6 +271,27 @@ class TranscriptBlockTests(unittest.TestCase):
         self.assertEqual("segment 0\nsegment 1\nsegment 2", blocks[0].raw_text)
         self.assertIsNone(blocks[0].normalization)
 
+    def test_blocks_normalize_full_rolling_caption_stream_before_splitting(self) -> None:
+        drafts = [
+            draft(0.0, 20.0, "Father in heaven"),
+            draft(10.0, 30.0, "Father in heaven thank you"),
+            draft(20.0, 40.0, "thank you for grace"),
+            draft(30.0, 50.0, "for grace"),
+        ]
+
+        blocks = build_transcript_blocks(
+            drafts,
+            target_seconds=60.0,
+            max_chars=35,
+            normalize_rolling_captions=True,
+        )
+
+        self.assertEqual(1, len(blocks))
+        self.assertEqual("Father in heaven thank you for grace", blocks[0].text)
+        self.assertEqual([0, 1, 2, 3], blocks[0].segment_indexes)
+        self.assertIn("Father in heaven thank you", blocks[0].raw_text)
+        self.assertGreater(blocks[0].normalization["deduplication_ratio"], 0.0)
+
     def test_untimestamped_segments_are_not_fabricated(self) -> None:
         drafts = [SegmentDraft(None, None, "plain text", None, TranscriptSegmentLabel.SERMON, 0.55)]
         self.assertEqual([], build_transcript_blocks(drafts))
@@ -1827,9 +1848,15 @@ class HybridClassificationTests(unittest.TestCase):
             classifier="typesafe",
             llm_client=FailingLlmClient(),
             prompt_version="test-v1",
+            normalize_rolling_captions=True,
             semantic_classifier=semantic_classifier,
         )
 
+        self.assertTrue(
+            semantic_classifier.classify_sermon.call_args.kwargs[
+                "normalize_rolling_captions"
+            ]
+        )
         self.assertIsNone(hybrid)
         self.assertEqual(1, classification["search"]["selected_rank"])
         candidate = classification["search"]["candidates"][0]
