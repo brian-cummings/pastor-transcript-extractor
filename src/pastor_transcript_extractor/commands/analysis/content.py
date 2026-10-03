@@ -53,6 +53,10 @@ from pastor_transcript_extractor.sermon_topic_review import (
     derive_whole_sermon_topic_review_case,
     write_topic_review_packet,
 )
+from pastor_transcript_extractor.sermon_topic_review_adjudication import (
+    create_topic_review_adjudication_draft,
+    finalize_topic_review_adjudication,
+)
 from pastor_transcript_extractor.sermon_topic_projection import (
     assess_topic_profile_projection,
 )
@@ -628,6 +632,77 @@ def analysis_topic_review(
         f"{result.markdown_path} ({result.case_count} cases, "
         f"{result.block_count} blocks, mode={selection['mode']}, "
         f"fingerprint={result.input_fingerprint[:12]}…)",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "topic-review-draft",
+    help="Create a protected adjudication draft for a cached topic review packet.",
+)
+def analysis_topic_review_draft(
+    packet: Path = typer.Argument(..., help="Topic review packet JSON file."),
+    output_path: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Draft JSON path; defaults beside the source packet.",
+    ),
+) -> None:
+    packet = packet.expanduser().resolve()
+    output = output_path or packet.with_name(f"{packet.stem}.review-draft.json")
+    try:
+        result = create_topic_review_adjudication_draft(packet, output)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    state = "Reused" if result.reused else "Created"
+    console.print(
+        f"{state} topic review adjudication draft: {result.json_path} "
+        f"(instructions: {result.markdown_path}, "
+        f"packet={result.source_packet_fingerprint[:12]}…)",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "topic-review-finalize",
+    help="Validate and freeze a topic review separately from cached evidence.",
+)
+def analysis_topic_review_finalize(
+    draft: Path = typer.Argument(..., help="Topic review adjudication draft JSON."),
+    reviewer: str = typer.Option(..., "--reviewer", help="Reviewer identity."),
+    output_path: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Final reviewed JSON path; defaults beside the draft.",
+    ),
+    accept_as_reviewed: bool = typer.Option(
+        False,
+        "--accept-as-reviewed",
+        help="Confirm all required checks after inspecting the source packet.",
+    ),
+) -> None:
+    draft = draft.expanduser().resolve()
+    default_stem = (
+        draft.stem[: -len(".review-draft")]
+        if draft.stem.endswith(".review-draft")
+        else draft.stem
+    )
+    output = output_path or draft.with_name(f"{default_stem}.reviewed.json")
+    try:
+        result = finalize_topic_review_adjudication(
+            draft,
+            output,
+            reviewer=reviewer,
+            accept_as_reviewed=accept_as_reviewed,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    state = "Reused" if result.reused else "Finalized"
+    console.print(
+        f"{state} topic review adjudication: {result.json_path} "
+        f"(topic_corrections={result.topic_correction_count}, "
+        f"projection_corrections={result.projection_correction_count}, "
+        f"fingerprint={result.review_fingerprint[:12]}…)",
         markup=False,
     )
 

@@ -27,6 +27,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockCache,
     TypeSafeFirstPassSermonClassifier,
     TypeSafeRecordingGateAnswer,
+    MAX_FINE_QUESTION_BUDGET,
     ROLE_PACK,
     TOPIC_PACK,
     TREATMENT_PACK,
@@ -537,6 +538,97 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(first_call_count + 1, client.calls)
         self.assertEqual(2, cache.hits)
         self.assertEqual(len(blocks), cache.misses)
+
+    def test_oversized_provider_batch_splits_without_changing_pack_cache(self) -> None:
+        class SizeLimitedClient(FakeBlockClient):
+            def assess_blocks(self, recording_context, blocks, **kwargs):
+                self.calls += 1
+                self.block_ids.append([block.block_id for block in blocks])
+                if len(blocks) > 2:
+                    raise RuntimeError('{"error_type":"max_tokens_exceeded"}')
+                # Avoid double-counting successful calls in the base fake.
+                self.calls -= 1
+                self.block_ids.pop()
+                return super().assess_blocks(recording_context, blocks, **kwargs)
+
+        client = SizeLimitedClient()
+        blocks = [
+            TranscriptBlock(index, [index], float(index), float(index + 1), "SERMON")
+            for index in range(1, 6)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            first = cache.assess(client, {"metadata": {}}, blocks)
+            calls_after_first = client.calls
+            replay = cache.assess(client, {"metadata": {}}, blocks)
+
+        self.assertEqual(set(range(1, 6)), set(first))
+        self.assertEqual(set(first), set(replay))
+        self.assertGreater(calls_after_first, 3)
+        self.assertEqual(calls_after_first, client.calls)
+        self.assertEqual(calls_after_first, cache.provider_requests)
+        self.assertEqual(5, cache.misses)
+        self.assertEqual(5, cache.hits)
+
+    def test_non_size_provider_failure_is_not_split(self) -> None:
+        class FailingClient(FakeBlockClient):
+            def assess_blocks(self, recording_context, blocks, **kwargs):
+                self.calls += 1
+                raise RuntimeError("authentication failed")
+
+        client = FailingClient()
+        blocks = [
+            TranscriptBlock(index, [index], float(index), float(index + 1), "SERMON")
+            for index in range(1, 4)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            with self.assertRaisesRegex(RuntimeError, "authentication failed"):
+                cache.assess(client, {"metadata": {}}, blocks)
+
+        self.assertEqual(1, client.calls)
+        self.assertEqual(1, cache.provider_requests)
+
+    def test_successful_split_is_cached_before_later_singleton_failure(self) -> None:
+        class PartiallyFailingClient(FakeBlockClient):
+            def assess_blocks(self, recording_context, blocks, **kwargs):
+                self.calls += 1
+                if len(blocks) > 2 or blocks[0].block_id == 3:
+                    raise RuntimeError('{"error_type":"max_tokens_exceeded"}')
+                self.calls -= 1
+                return super().assess_blocks(recording_context, blocks, **kwargs)
+
+        blocks = [
+            TranscriptBlock(index, [index], float(index), float(index + 1), "SERMON")
+            for index in range(1, 5)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            with self.assertRaisesRegex(RuntimeError, "max_tokens_exceeded"):
+                cache.assess(PartiallyFailingClient(), {"metadata": {}}, blocks)
+
+            replay_client = FakeBlockClient()
+            replay_cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            replay = replay_cache.assess(
+                replay_client, {"metadata": {}}, blocks
+            )
+
+        self.assertEqual(set(range(1, 5)), set(replay))
+        self.assertEqual(2, replay_cache.hits)
+        self.assertEqual(2, replay_cache.misses)
+        self.assertEqual([[3, 4]], replay_client.block_ids)
+
+    def test_full_fine_pack_uses_conservative_question_budget(self) -> None:
+        questions_per_block = 1 + len(SEMANTIC_DIMENSIONS) + len(TOPICS)
+
+        self.assertEqual(75, MAX_FINE_QUESTION_BUDGET)
+        self.assertEqual(
+            3,
+            TypeSafeBlockCache._batch_size(
+                frozenset({ROLE_PACK, TREATMENT_PACK, TOPIC_PACK})
+            ),
+        )
+        self.assertLessEqual(3 * questions_per_block, MAX_FINE_QUESTION_BUDGET)
 
     def test_semantic_question_pack_has_separate_cache_identity(self) -> None:
         client = FakeBlockClient()
