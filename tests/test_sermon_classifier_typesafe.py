@@ -1138,6 +1138,23 @@ class TypeSafeFirstPassTests(unittest.TestCase):
 
         self.assertEqual([1, 2, 3, 4], [block.block_id for block in neighborhood])
 
+    def test_edge_neighborhood_stops_at_competing_component(self) -> None:
+        blocks = [
+            TranscriptBlock(
+                index, [index], index * 60.0, (index + 1) * 60.0, str(index)
+            )
+            for index in range(5)
+        ]
+
+        neighborhood = _edge_neighborhood(
+            blocks,
+            4,
+            edge="start",
+            barrier_block_ids={2},
+        )
+
+        self.assertEqual([3, 4], [block.block_id for block in neighborhood])
+
     def test_candidate_components_bridge_one_locally_ambiguous_block(self) -> None:
         blocks = [
             TranscriptBlock(

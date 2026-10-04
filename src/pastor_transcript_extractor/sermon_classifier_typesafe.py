@@ -48,10 +48,12 @@ from pastor_transcript_extractor.sermon_topics import (
 SEARCH_ALGORITHM_VERSION = "typesafe_first_v16_topic_review_packets"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
-BLOCK_BUILDER_VERSION = "typesafe-normalized-coarse-fine-boundaries-v5"
+BLOCK_BUILDER_VERSION = "typesafe-normalized-component-bounded-boundaries-v6"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-recording-aware-role-map-v2"
 FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v12-sparse-closing-prayer"
-BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v5-normalized"
+BOUNDARY_SELECTION_VERSION = (
+    "typesafe-segment-boundary-selection-v6-component-bounded"
+)
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
 BOUNDARY_MIXED_OUTSIDE_MINIMUM = 0.1
@@ -979,9 +981,14 @@ def _boundary_candidates(
 
 
 def _edge_neighborhood(
-    blocks: list[TranscriptBlock], position: int, *, edge: str
+    blocks: list[TranscriptBlock],
+    position: int,
+    *,
+    edge: str,
+    barrier_block_ids: set[int] | None = None,
 ) -> list[TranscriptBlock]:
     """Return contiguous edge context within a bounded temporal neighborhood."""
+    barriers = barrier_block_ids or set()
     result = [blocks[position]]
     step = -1 if edge == "start" else 1
     cursor = position
@@ -996,6 +1003,8 @@ def _edge_neighborhood(
             break
         inner = blocks[cursor]
         outer = blocks[next_position]
+        if outer.block_id in barriers:
+            break
         gap = (
             inner.start_seconds - outer.end_seconds
             if edge == "start"
@@ -1637,6 +1646,11 @@ class TypeSafeFirstPassSermonClassifier:
             reverse=True,
         )
         selected = ranked_components[0]
+        competing_component_ids = {
+            block.block_id
+            for component in ranked_components[1:]
+            for block in component
+        }
         selected_component_score = _component_score(selected, fine_answers)
         competing_component_ratio = (
             _component_score(ranked_components[1], fine_answers)
@@ -1699,7 +1713,10 @@ class TypeSafeFirstPassSermonClassifier:
                             edge="start",
                             selected_indexes=selected_indexes,
                             neighborhood_blocks=_edge_neighborhood(
-                                fine_blocks, start_position, edge="start"
+                                fine_blocks,
+                                start_position,
+                                edge="start",
+                                barrier_block_ids=competing_component_ids,
                             ),
                             normalize_rolling_captions=normalize_rolling_captions,
                         ),
@@ -1723,7 +1740,10 @@ class TypeSafeFirstPassSermonClassifier:
                             edge="end",
                             selected_indexes=selected_indexes,
                             neighborhood_blocks=_edge_neighborhood(
-                                fine_blocks, end_position, edge="end"
+                                fine_blocks,
+                                end_position,
+                                edge="end",
+                                barrier_block_ids=competing_component_ids,
                             ),
                             normalize_rolling_captions=normalize_rolling_captions,
                         ),
