@@ -1061,6 +1061,71 @@ class TypeSafeFirstPassTests(unittest.TestCase):
 
         self.assertEqual([10.0], [item.boundary_seconds for item in candidates])
 
+    def test_boundary_candidates_normalize_legacy_rolling_captions(self) -> None:
+        transcript = [
+            SegmentDraft(
+                start,
+                end,
+                text,
+                None,
+                TranscriptSegmentLabel.UNKNOWN,
+                0.5,
+            )
+            for start, end, text in [
+                (0.0, 10.0, "welcome church"),
+                (5.0, 15.0, "welcome church announcements now"),
+                (10.0, 15.01, "welcome church announcements now"),
+                (15.01, 25.0, "Today we open scripture"),
+                (20.0, 30.0, "Today we open scripture together"),
+            ]
+        ]
+        block = TranscriptBlock(1, list(range(5)), 0.0, 30.0, "combined")
+
+        candidates = _boundary_candidates(
+            transcript,
+            edge="start",
+            selected_indexes=[3, 4],
+            neighborhood_blocks=[block],
+            normalize_rolling_captions=True,
+        )
+
+        candidate = next(
+            item for item in candidates if item.boundary_seconds == 15.01
+        )
+        self.assertLess(len(candidates), len(transcript))
+        self.assertEqual((3, 4), candidate.retained_segment_indexes)
+        self.assertEqual("welcome church announcements now", candidate.before_text)
+        self.assertEqual("Today we open scripture together", candidate.after_text)
+
+    def test_boundary_candidates_are_bounded_without_losing_transition_cues(self) -> None:
+        transcript = [
+            SegmentDraft(
+                float(index),
+                float(index + 1),
+                (
+                    "All right sermon begins"
+                    if index == 30
+                    else f"ordinary fragment {index}"
+                ),
+                None,
+                TranscriptSegmentLabel.UNKNOWN,
+                0.5,
+            )
+            for index in range(60)
+        ]
+        block = TranscriptBlock(1, list(range(60)), 0.0, 60.0, "combined")
+
+        candidates = _boundary_candidates(
+            transcript,
+            edge="start",
+            selected_indexes=list(range(30, 60)),
+            neighborhood_blocks=[block],
+            normalize_rolling_captions=True,
+        )
+
+        self.assertEqual(24, len(candidates))
+        self.assertIn(30.0, [candidate.boundary_seconds for candidate in candidates])
+
     def test_edge_neighborhood_uses_elapsed_time_not_two_block_limit(self) -> None:
         blocks = [
             TranscriptBlock(

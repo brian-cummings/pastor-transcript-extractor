@@ -10,6 +10,9 @@ import re
 from threading import Lock
 from typing import Any, Mapping, Protocol
 
+from pastor_transcript_extractor.caption_normalization import (
+    normalize_caption_fragments,
+)
 from pastor_transcript_extractor.segmentation import SegmentDraft
 from pastor_transcript_extractor.sermon_classification import (
     BlockClassification,
@@ -45,14 +48,16 @@ from pastor_transcript_extractor.sermon_topics import (
 SEARCH_ALGORITHM_VERSION = "typesafe_first_v16_topic_review_packets"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
-BLOCK_BUILDER_VERSION = "typesafe-normalized-coarse-300s-fine-60s-v4"
+BLOCK_BUILDER_VERSION = "typesafe-normalized-coarse-fine-boundaries-v5"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-recording-aware-role-map-v2"
 FINE_COMPONENT_VERSION = "typesafe-local-boundary-map-v12-sparse-closing-prayer"
-BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v4-compact"
+BOUNDARY_SELECTION_VERSION = "typesafe-segment-boundary-selection-v5-normalized"
 BOUNDARY_VALIDATION_VERSION = "typesafe-segment-boundary-validation-v4-general"
 BOUNDARY_AUTOMATIC_THRESHOLD = 0.72
 BOUNDARY_MIXED_OUTSIDE_MINIMUM = 0.1
 BOUNDARY_CANDIDATE_MIN_SPACING_SECONDS = 0.75
+BOUNDARY_CANDIDATE_MIN_SOURCE_SECONDS = 0.5
+BOUNDARY_CANDIDATE_MAXIMUM = 24
 BOUNDARY_NEIGHBORHOOD_SECONDS = 180.0
 BOUNDARY_NEIGHBORHOOD_MAX_BLOCKS = 5
 # Provider batch composition never participates in per-block cache identity.
@@ -789,9 +794,80 @@ class TypeSafeBlockCache:
         return answer
 
 
-def _context_text(drafts: list[SegmentDraft], indexes: list[int], *, tail: bool) -> str:
-    text = "\n".join(drafts[index].text for index in indexes)
+def _context_text(
+    drafts: list[SegmentDraft],
+    indexes: list[int],
+    *,
+    tail: bool,
+    normalize_rolling_captions: bool,
+) -> str:
+    text = (
+        normalize_caption_fragments(
+            (index, drafts[index].text) for index in indexes
+        ).text
+        if normalize_rolling_captions
+        else "\n".join(drafts[index].text for index in indexes)
+    )
     return text[-700:] if tail else text[:700]
+
+
+_BOUNDARY_TRANSITION_CUE = re.compile(
+    r"\b(?:all right|so|now|today|let's|let us|turn with me|turn|open your|"
+    r"our message|our sermon|good morning|good evening|in conclusion|finally|"
+    r"amen)\b",
+    re.IGNORECASE,
+)
+
+
+def _evenly_sample_candidates(
+    candidates: list[TypeSafeBoundaryCandidate], limit: int
+) -> list[TypeSafeBoundaryCandidate]:
+    if limit <= 0:
+        return []
+    if len(candidates) <= limit:
+        return candidates
+    if limit == 1:
+        return [candidates[len(candidates) // 2]]
+    last = len(candidates) - 1
+    indexes = {
+        round(position * last / (limit - 1))
+        for position in range(limit)
+    }
+    return [candidates[index] for index in sorted(indexes)]
+
+
+def _bounded_boundary_candidates(
+    candidates: list[TypeSafeBoundaryCandidate],
+    *,
+    block_boundaries: set[float],
+) -> list[TypeSafeBoundaryCandidate]:
+    if len(candidates) <= BOUNDARY_CANDIDATE_MAXIMUM:
+        return candidates
+    prioritized: list[TypeSafeBoundaryCandidate] = []
+    others: list[TypeSafeBoundaryCandidate] = []
+    for candidate in candidates:
+        after = candidate.after_text[:200]
+        before = candidate.before_text[-200:].casefold()
+        cue = _BOUNDARY_TRANSITION_CUE.search(after)
+        is_block_boundary = any(
+            abs(candidate.boundary_seconds - boundary) < 0.001
+            for boundary in block_boundaries
+        )
+        introduces_transition_cue = (
+            cue is not None and cue.group(0).casefold() not in before
+        )
+        (prioritized if is_block_boundary or introduces_transition_cue else others).append(
+            candidate
+        )
+    prioritized = _evenly_sample_candidates(
+        prioritized, BOUNDARY_CANDIDATE_MAXIMUM
+    )
+    remaining = BOUNDARY_CANDIDATE_MAXIMUM - len(prioritized)
+    selected = [
+        *prioritized,
+        *_evenly_sample_candidates(others, remaining),
+    ]
+    return sorted(selected, key=lambda candidate: candidate.boundary_seconds)
 
 
 def _boundary_candidates(
@@ -800,6 +876,7 @@ def _boundary_candidates(
     edge: str,
     selected_indexes: list[int],
     neighborhood_blocks: list[TranscriptBlock],
+    normalize_rolling_captions: bool = False,
 ) -> list[TypeSafeBoundaryCandidate]:
     neighborhood = [
         index for block in neighborhood_blocks for index in block.segment_indexes
@@ -813,6 +890,14 @@ def _boundary_candidates(
         for split in range(1, len(neighborhood)):
             before_indexes = neighborhood[:split]
             after_indexes = neighborhood[split:]
+            boundary_draft = drafts[before_indexes[-1]]
+            if normalize_rolling_captions and (
+                boundary_draft.start_seconds is None
+                or boundary_draft.end_seconds is None
+                or boundary_draft.end_seconds - boundary_draft.start_seconds
+                < BOUNDARY_CANDIDATE_MIN_SOURCE_SECONDS
+            ):
+                continue
             boundary = drafts[before_indexes[-1]].end_seconds
             if boundary is None:
                 continue
@@ -820,8 +905,18 @@ def _boundary_candidates(
                 TypeSafeBoundaryCandidate(
                     candidate_id=f"end:{boundary:.3f}",
                     boundary_seconds=boundary,
-                    before_text=_context_text(drafts, before_indexes, tail=True),
-                    after_text=_context_text(drafts, after_indexes, tail=False),
+                    before_text=_context_text(
+                        drafts,
+                        before_indexes,
+                        tail=True,
+                        normalize_rolling_captions=normalize_rolling_captions,
+                    ),
+                    after_text=_context_text(
+                        drafts,
+                        after_indexes,
+                        tail=False,
+                        normalize_rolling_captions=normalize_rolling_captions,
+                    ),
                     retained_segment_indexes=tuple(
                         sorted(selected_outside_neighborhood | set(before_indexes))
                     ),
@@ -831,6 +926,14 @@ def _boundary_candidates(
         for split in range(1, len(neighborhood)):
             before_indexes = neighborhood[:split]
             after_indexes = neighborhood[split:]
+            boundary_draft = drafts[after_indexes[0]]
+            if normalize_rolling_captions and (
+                boundary_draft.start_seconds is None
+                or boundary_draft.end_seconds is None
+                or boundary_draft.end_seconds - boundary_draft.start_seconds
+                < BOUNDARY_CANDIDATE_MIN_SOURCE_SECONDS
+            ):
+                continue
             boundary = drafts[after_indexes[0]].start_seconds
             if boundary is None:
                 continue
@@ -838,8 +941,18 @@ def _boundary_candidates(
                 TypeSafeBoundaryCandidate(
                     candidate_id=f"start:{boundary:.3f}",
                     boundary_seconds=boundary,
-                    before_text=_context_text(drafts, before_indexes, tail=True),
-                    after_text=_context_text(drafts, after_indexes, tail=False),
+                    before_text=_context_text(
+                        drafts,
+                        before_indexes,
+                        tail=True,
+                        normalize_rolling_captions=normalize_rolling_captions,
+                    ),
+                    after_text=_context_text(
+                        drafts,
+                        after_indexes,
+                        tail=False,
+                        normalize_rolling_captions=normalize_rolling_captions,
+                    ),
                     retained_segment_indexes=tuple(
                         sorted(selected_outside_neighborhood | set(after_indexes))
                     ),
@@ -854,7 +967,15 @@ def _boundary_candidates(
         ):
             continue
         compact.append(candidate)
-    return compact
+    block_boundaries = {
+        boundary
+        for block in neighborhood_blocks
+        for boundary in (block.start_seconds, block.end_seconds)
+    }
+    return _bounded_boundary_candidates(
+        compact,
+        block_boundaries=block_boundaries,
+    )
 
 
 def _edge_neighborhood(
@@ -1580,6 +1701,7 @@ class TypeSafeFirstPassSermonClassifier:
                             neighborhood_blocks=_edge_neighborhood(
                                 fine_blocks, start_position, edge="start"
                             ),
+                            normalize_rolling_captions=normalize_rolling_captions,
                         ),
                     )
                 )
@@ -1603,6 +1725,7 @@ class TypeSafeFirstPassSermonClassifier:
                             neighborhood_blocks=_edge_neighborhood(
                                 fine_blocks, end_position, edge="end"
                             ),
+                            normalize_rolling_captions=normalize_rolling_captions,
                         ),
                     )
                 )
