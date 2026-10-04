@@ -737,14 +737,36 @@ theological stance.
     batches down to one block. Pack identities remain per block and independent
     of batch composition, so successful work is reusable and unrelated provider
     failures still fail fast instead of being retried as size errors.
+18. The four bounded prospective packets now exist for videos 1200, 4394, 4430,
+    and 4589 across four pastors. Their boundary samples and distinct topic
+    profiles are broadly coherent, and eligible reviewed-profile activation works
+    for 1200, 4394, and 4430 while correctly remaining unavailable for 4589.
+    Video 1200 also exposed an unversioned rolling-caption artifact with 65.3%
+    duplicate tokens. Reclassification now routes only legacy caption artifacts
+    through the shared caption normalizer before coarse, fine, topic-context, and
+    segment-boundary prompts; canonical and local-ASR inputs are not normalized
+    again. Boundary choices are capped at 24 and cannot cross a separately ranked
+    competing sermon component. The final verification run reused 148 cached
+    judgments, made one new boundary-selection request, safely abstained on an
+    unclear opening transition, and reused the unchanged topic packet. The
+    conservative 197.68-second start omits roughly seven seconds of the opening
+    illustration and remains explicitly medium-confidence rather than being
+    forced to an unsupported boundary.
 
 ### Next iteration
 
-1. Collect and inspect bounded prospective packets from three or four naturally
-   processed sermons across different pastors. Do not run a corpus backfill.
-2. Inspect activation-gate outcomes alongside the planned whole-sermon review;
-   profile aggregation remains blocked until analytical projection is credible.
-3. Once projection is credible, implement `salvation-relationships-v1` as the
+1. Prepare adjudication drafts for the four existing prospective packets and
+   supply concrete proposed interpretations and corrections for review. This is
+   deterministic and must not make another provider call.
+2. Resolve the observed `mission_evangelism_witness` ambiguity between discussing
+   Christian mission and merely performing an evangelistic appeal. Change and
+   version the question pack only if the reviewed evidence supports a stable
+   clarification; keep all unrelated cached packs reusable.
+3. After those adjudications, prepare the bounded 12-sermon, four-pastor Stage 3
+   cohort and whole-sermon packets from naturally accumulated cached evidence.
+   Profile aggregation remains blocked until that review establishes credible
+   analytical projection.
+4. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 
