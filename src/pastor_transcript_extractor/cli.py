@@ -331,6 +331,7 @@ from pastor_transcript_extractor.workflows.resume_pipeline import (
 )
 from pastor_transcript_extractor.workflows.reclassification import (
     ReclassificationSelectionRequest,
+    execute_reclassification,
     has_reusable_extraction_segments,
     select_eligible_reclassification_videos,
     select_reclassification_videos,
@@ -6572,29 +6573,17 @@ def reclassify(
     for video in eligible_videos:
         console.print(f"Reclassifying video #{video.id}: {video.title}")
 
-    max_workers = min(jobs, len(eligible_videos)) if eligible_videos else 1
-    if max_workers == 1:
-        for video in eligible_videos:
-            try:
-                result = reclassify_one(video)
-            except Exception as error:
-                record_result(video, error=error)
-            else:
-                record_result(video, result=result)
-    else:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_video = {
-                executor.submit(reclassify_one, video): video
-                for video in eligible_videos
-            }
-            for future in as_completed(future_to_video):
-                video = future_to_video[future]
-                try:
-                    result = future.result()
-                except Exception as error:
-                    record_result(video, error=error)
-                else:
-                    record_result(video, result=result)
+    execution = execute_reclassification(
+        tuple(eligible_videos),
+        jobs=jobs,
+        reclassify=reclassify_one,
+    )
+    for outcome in execution.outcomes:
+        record_result(
+            outcome.video,
+            result=outcome.result,
+            error=outcome.error,
+        )
     console.print(
         f"Reclassified {processed} video(s); reused {reused}; skipped {skipped}; failed {failed}."
     )
