@@ -36,7 +36,6 @@ from pastor_transcript_extractor import (
 from pastor_transcript_extractor.inference_defaults import (
     DEFAULT_CLASSIFIER,
     DEFAULT_RECORDING_VERIFIER_BACKEND,
-    DEFAULT_TYPESAFE_MODEL,
 )
 from pastor_transcript_extractor.commands.apps import (
     attach_command_groups,
@@ -102,9 +101,6 @@ from pastor_transcript_extractor.evaluation_partitioning import (
     assign_recording_partition,
     extend_source_family_registry,
     load_source_family_registry,
-)
-from pastor_transcript_extractor.fixture_correction import (
-    load_fixture_window_correction,
 )
 from pastor_transcript_extractor.fixture_validation import (
     FixtureValidationError,
@@ -332,13 +328,9 @@ from pastor_transcript_extractor.workflows.resume_pipeline import (
 from pastor_transcript_extractor.workflows.reclassification import (
     ReclassificationSelectionRequest,
     execute_reclassification,
-    has_reusable_extraction_segments,
     select_eligible_reclassification_videos,
     select_reclassification_videos,
     validate_reclassification_selection_request,
-)
-from pastor_transcript_extractor.workflows.fixture_correction import (
-    propagate_fixture_correction,
 )
 from pastor_transcript_extractor.workflows.pipeline import PipelineDependencies
 from pastor_transcript_extractor.workflows.run import (
@@ -6189,100 +6181,6 @@ fetch_captions_service = acquisition.fetch_captions_service
 transcribe_videos_service = acquisition.transcribe_videos_service
 
 
-def _invoke_fixture_correction_request(
-    request: _fixture_correction_commands.FixtureCorrectionCommandRequest,
-) -> None:
-    youtube_video_id = request.youtube_video_id
-    fixture_dir = request.fixture_dir
-    llm_model = request.llm_model
-    recording_verifier_backend = request.recording_verifier_backend
-    recording_verifier_model = request.recording_verifier_model
-    inference_cache_root = request.inference_cache_root
-    recording_verifier_cache_root = request.recording_verifier_cache_root
-    base_dir = request.base_dir
-    try:
-        correction = load_fixture_window_correction(
-            fixture_dir,
-            youtube_video_id,
-        )
-    except FixtureValidationError as error:
-        raise typer.BadParameter(str(error)) from error
-
-    database = command_common.get_database(base_dir)
-    paths = config.build_paths(base_dir, remember=True)
-    video = database.get_video_by_youtube_id(youtube_video_id)
-    if video is None:
-        raise typer.BadParameter(
-            f"Unknown YouTube video ID: {youtube_video_id}"
-        )
-    extraction = database.get_latest_extraction_result_for_video(video.id)
-    if extraction is None or not has_reusable_extraction_segments(extraction):
-        raise typer.BadParameter(
-            f"Video {youtube_video_id} has no reusable extraction segments"
-        )
-
-    previous_observation = database.get_latest_speaker_observation_for_video(
-        video.id
-    )
-    try:
-        normalized_audio, _normalized_availability = (
-            get_authoritative_normalized_media_artifact(database, video.id)
-        )
-    except AttributeError:
-        # Compatibility for injected lightweight database adapters.
-        normalized_audio = None
-    llm_config = config.build_llm_config()
-    if llm_model is not None:
-        llm_config = replace(llm_config, model=llm_model)
-    client = local_llm.OllamaClient(llm_config)
-    try:
-        verifier = application.build_recording_verifier_runner(
-            backend=recording_verifier_backend,
-            model=recording_verifier_model,
-            llm_config=llm_config,
-        )
-    except (RuntimeError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
-    resolved_inference_cache_root = (
-        inference_cache_root.expanduser().resolve()
-        if inference_cache_root is not None
-        else None
-    )
-    resolved_verifier_cache_root = (
-        recording_verifier_cache_root.expanduser().resolve()
-        if recording_verifier_cache_root is not None
-        else None
-    )
-    try:
-        result = propagate_fixture_correction(
-            database,
-            paths,
-            video=video,
-            correction=correction,
-            previous_observation=previous_observation,
-            normalized_audio=normalized_audio,
-            llm_client=client,
-            prompt_version=llm_config.prompt_version,
-            context_size=llm_config.context_size,
-            inference_cache_root=resolved_inference_cache_root,
-            recording_verifier=verifier,
-            recording_verifier_cache_root=resolved_verifier_cache_root,
-            event_callback=lambda message: console.print(message, markup=False),
-        )
-    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-        raise typer.BadParameter(
-            f"Fixture override was saved, but correction propagation failed: {error}"
-        ) from error
-
-    console.print(
-        f"Corrected video #{result.video_id}: disposition={result.disposition_status}; "
-        f"speaker_fingerprint_{result.fingerprint_state}="
-        f"{result.observation_fingerprint}; "
-        f"previous={result.previous_fingerprint or 'none'}; "
-        f"automatic_pair_eligibility={result.automatic_pair_eligibility}."
-    )
-
-
 def _invoke_reclassification_request(
     request: _reclassification_commands.ReclassificationCommandRequest,
 ) -> None:
@@ -6564,9 +6462,6 @@ _identity_coordination_commands.configure_shadow_associator(
 )
 _identity_workflow_commands.configure_identity_workflow(
     _invoke_identity_workflow_request
-)
-_fixture_correction_commands.configure_fixture_correction_command(
-    _invoke_fixture_correction_request
 )
 _reclassification_commands.configure_reclassification_command(
     _invoke_reclassification_request

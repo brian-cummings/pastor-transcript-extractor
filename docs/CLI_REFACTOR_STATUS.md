@@ -8,8 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action: move fixture-correction command composition and rendering into
-  its command module, then do the same for reclassification.
+- Next action: move reclassification dependency construction, progress, and
+  result rendering into its command module and remove the final invoker seam.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1246,6 +1246,14 @@ verification, neutral speaker-evidence regeneration, and automatic-pair
 eligibility assessment into `workflows.fixture_correction`. The workflow emits
 progress through a callback and returns a typed result; Typer error translation
 and final rendering remain at the command composition boundary.
+
+### 2026-10-06 — Milestone 9.13: fixture-correction ownership completion
+
+Moved fixture loading, database/path resolution, verifier construction, error
+translation, progress rendering, and result rendering into
+`commands.fixture_correction`. Removed its CLI invoker/configuration seam and
+unused imports. The command resolves its database boundary through the owning
+module so existing focused tests no longer depend on a copied binding.
 
 ## Validation log
 
@@ -2981,6 +2989,19 @@ PASS
 
 TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_correction tests.test_cli_contract
 Ran 13 tests in 0.653s — OK (verifier calls mocked; no inference executed)
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Fixture-correction ownership completion
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/fixture_correction.py src/pastor_transcript_extractor/workflows/fixture_correction.py src/pastor_transcript_extractor/cli.py
+PASS
+
+TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_correction tests.test_cli_contract
+Ran 13 tests in 0.659s — OK (verifier calls mocked; no inference executed)
 
 git diff --check
 PASS
