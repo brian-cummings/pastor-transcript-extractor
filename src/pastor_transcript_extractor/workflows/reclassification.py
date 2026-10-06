@@ -7,6 +7,11 @@ from pathlib import Path
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory
 from pastor_transcript_extractor.models import Video
+from pastor_transcript_extractor.sermon_policy import (
+    maximum_sermon_duration_seconds,
+    minimum_sermon_duration_seconds,
+    video_is_sermon_eligible,
+)
 from pastor_transcript_extractor.storage import Database
 
 
@@ -24,6 +29,13 @@ class ReclassificationSelection:
     videos: tuple[Video, ...]
     messages: tuple[str, ...] = ()
     empty_is_success: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ReclassificationEligibility:
+    videos: tuple[Video, ...]
+    skipped: int
+    messages: tuple[str, ...] = ()
 
 
 def has_reusable_extraction_segments(extraction: object) -> bool:
@@ -163,3 +175,54 @@ def validate_reclassification_selection_request(
             "Pass exactly one of --video-id, --source-id, --fixture-dir, "
             "--review-required, or --all."
         )
+
+
+def select_eligible_reclassification_videos(
+    database: Database,
+    videos: tuple[Video, ...],
+    *,
+    fixture_selection: bool,
+    report_skips: bool,
+) -> ReclassificationEligibility:
+    """Apply production eligibility and reusable-artifact gates."""
+    eligible: list[Video] = []
+    messages: list[str] = []
+    skipped = 0
+    minimum_duration = minimum_sermon_duration_seconds()
+    maximum_duration = maximum_sermon_duration_seconds()
+    for video in videos:
+        # Frozen fixtures are explicit validation targets and intentionally
+        # bypass production discovery eligibility policy.
+        if not fixture_selection and not video_is_sermon_eligible(
+            video.duration_seconds,
+            video.published_at,
+            minimum_seconds=minimum_duration,
+            maximum_seconds=maximum_duration,
+        ):
+            skipped += 1
+            if report_skips:
+                messages.append(
+                    f"Skipping video #{video.id}: video is outside the configured "
+                    "sermon-video duration range or is a future event."
+                )
+            continue
+        extraction = database.get_latest_extraction_result_for_video(video.id)
+        if extraction is None:
+            skipped += 1
+            if report_skips:
+                messages.append(
+                    f"Skipping video #{video.id}: no reusable extraction segments."
+                )
+            continue
+        if report_skips and not has_reusable_extraction_segments(extraction):
+            skipped += 1
+            messages.append(
+                f"Skipping video #{video.id}: no reusable extraction segments."
+            )
+            continue
+        eligible.append(video)
+    return ReclassificationEligibility(
+        videos=tuple(eligible),
+        skipped=skipped,
+        messages=tuple(messages),
+    )

@@ -94,10 +94,7 @@ from pastor_transcript_extractor.config import (
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
     duration_within_sermon_maximum,
-    maximum_sermon_duration_seconds,
-    minimum_sermon_duration_seconds,
     publication_is_not_future,
-    video_is_sermon_eligible,
 )
 from pastor_transcript_extractor.exporting import export_profile_transcript_collection
 from pastor_transcript_extractor.evaluation_partitioning import (
@@ -335,6 +332,7 @@ from pastor_transcript_extractor.workflows.resume_pipeline import (
 from pastor_transcript_extractor.workflows.reclassification import (
     ReclassificationSelectionRequest,
     has_reusable_extraction_segments,
+    select_eligible_reclassification_videos,
     select_reclassification_videos,
     validate_reclassification_selection_request,
 )
@@ -416,21 +414,6 @@ console = Console()
 DEFAULT_DISCOVER_LIMIT = 26
 CAPTION_BATCH_REQUEST_INTERVAL_SECONDS = 5.0
 DEFAULT_SPEAKER_MODEL_SHA256 = "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
-
-
-def _catalog_video_is_sermon_eligible(
-    database: Database,
-    video: object,
-    *,
-    minimum_seconds: float | None = None,
-    maximum_seconds: float | None = None,
-) -> bool:
-    return video_is_sermon_eligible(
-        getattr(video, "duration_seconds", None),
-        getattr(video, "published_at", None),
-        minimum_seconds=minimum_seconds,
-        maximum_seconds=maximum_seconds,
-    )
 
 
 def _select_existing_stage_video_ids(
@@ -6509,45 +6492,17 @@ def reclassify(
 
     processed = 0
     reused = 0
-    skipped = 0
     failed = 0
-    eligible_videos = []
-    minimum_duration = minimum_sermon_duration_seconds()
-    maximum_duration = maximum_sermon_duration_seconds()
-    for video in videos:
-        # Frozen fixtures are explicit validation targets.  Do not silently
-        # leave stale classifier artifacts because a fixture now falls outside
-        # the production discovery eligibility policy.
-        if fixture_dir is None and not _catalog_video_is_sermon_eligible(
-            database,
-            video,
-            minimum_seconds=minimum_duration,
-            maximum_seconds=maximum_duration,
-        ):
-            skipped += 1
-            if all_videos or review_required:
-                console.print(
-                    f"Skipping video #{video.id}: video is outside the configured "
-                    "sermon-video duration range or is a future event."
-                )
-            continue
-        extraction = database.get_latest_extraction_result_for_video(video.id)
-        if extraction is None:
-            skipped += 1
-            if all_videos or review_required:
-                console.print(
-                    f"Skipping video #{video.id}: no reusable extraction segments."
-                )
-            continue
-        if (all_videos or review_required) and not _has_reusable_extraction_segments(
-            extraction
-        ):
-            skipped += 1
-            console.print(
-                f"Skipping video #{video.id}: no reusable extraction segments."
-            )
-            continue
-        eligible_videos.append(video)
+    eligibility = select_eligible_reclassification_videos(
+        database,
+        tuple(videos),
+        fixture_selection=fixture_dir is not None,
+        report_skips=all_videos or review_required,
+    )
+    skipped = eligibility.skipped
+    eligible_videos = list(eligibility.videos)
+    for message in eligibility.messages:
+        console.print(message)
 
     model_digest = client.model_digest() if eligible_videos else None
     resolved_cache_root = (
