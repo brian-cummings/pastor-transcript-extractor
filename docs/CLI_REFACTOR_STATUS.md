@@ -1189,6 +1189,13 @@ Moved `import-church-db` into `commands.church_import` and `doctor` into
 of growing already-oversized catalog and diagnostics modules. Removed the
 duplicate handlers and now-unused imports from `cli.py`.
 
+### 2026-10-06 — Milestone 9.5: identity backfill command ownership
+
+Moved the thin `identity backfill` handler into
+`commands.identity.workflow`, beside the identity run command and its
+composition seam. The handler now resolves backfill behavior through the
+identity domain module; its CLI name, options, and summary remain unchanged.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -2816,6 +2823,22 @@ PASS
 
 .venv/bin/python -m unittest tests.test_church_database_import <2 doctor/base-dir tests> tests.test_cli_contract
 Ran 24 tests in 2.922s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Identity backfill command ownership
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/identity/workflow.py src/pastor_transcript_extractor/cli.py
+PASS
+
+.venv/bin/pte identity backfill --base-dir <empty temporary app root>
+Identity shadow backfill: created 0, reused 0, skipped 0, failed 0.
+
+.venv/bin/python -m unittest tests.test_cli_contract
+Ran 8 tests in 0.495s — OK
 
 git diff --check
 PASS

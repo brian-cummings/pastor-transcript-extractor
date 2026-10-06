@@ -140,7 +140,6 @@ from pastor_transcript_extractor.reviewed_speaker_evidence import (
     sync_reviewed_speaker_evidence,
 )
 from pastor_transcript_extractor.identity import (
-    backfill_shadow_identity_assessments,
     persist_metadata_snapshot,
 )
 from pastor_transcript_extractor.identity_attribution import (
@@ -6191,24 +6190,6 @@ def review_next_speaker_pair(
         observation_fingerprint_b=(
             selection.observation_b.input_fingerprint
         ),
-    )
-
-
-@identity_app.command(
-    "backfill",
-    help="Create missing shadow identity and neutral speaker artifacts without reclassification.",
-)
-def identity_backfill(
-    video_id: int | None = typer.Option(None, "--video-id", help="Only backfill one database video id."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = command_common.get_database(base_dir)
-    paths = config.build_paths(base_dir, remember=True)
-    result = backfill_shadow_identity_assessments(database, paths, video_id=video_id)
-    console.print(
-        "Identity shadow backfill: "
-        f"created {result.created}, reused {result.reused}, "
-        f"skipped {result.skipped}, failed {result.failed}."
     )
 
 

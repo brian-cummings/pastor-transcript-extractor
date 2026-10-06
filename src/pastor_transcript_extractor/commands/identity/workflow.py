@@ -4,8 +4,11 @@ from pathlib import Path
 from typing import Callable
 
 import typer
+from rich.console import Console
 
+from pastor_transcript_extractor import config, identity as identity_domain
 from pastor_transcript_extractor.commands.apps import identity_app
+from pastor_transcript_extractor.commands.common import get_database
 from pastor_transcript_extractor.workflows.identity.run import (
     IdentityWorkflowRequest,
 )
@@ -13,12 +16,45 @@ from pastor_transcript_extractor.workflows.identity.run import (
 
 IdentityWorkflowInvoker = Callable[[IdentityWorkflowRequest], object]
 _identity_workflow_invoker: IdentityWorkflowInvoker | None = None
+console = Console()
 
 
 def configure_identity_workflow(invoker: IdentityWorkflowInvoker) -> None:
     """Bind the identity application workflow at composition time."""
     global _identity_workflow_invoker
     _identity_workflow_invoker = invoker
+
+
+@identity_app.command(
+    "backfill",
+    help=(
+        "Create missing shadow identity and neutral speaker artifacts without "
+        "reclassification."
+    ),
+)
+def identity_backfill(
+    video_id: int | None = typer.Option(
+        None,
+        "--video-id",
+        help="Only backfill one database video id.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        help="Override app data directory.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    paths = config.build_paths(base_dir, remember=True)
+    result = identity_domain.backfill_shadow_identity_assessments(
+        database,
+        paths,
+        video_id=video_id,
+    )
+    console.print(
+        "Identity shadow backfill: "
+        f"created {result.created}, reused {result.reused}, "
+        f"skipped {result.skipped}, failed {result.failed}."
+    )
 
 
 @identity_app.command(
