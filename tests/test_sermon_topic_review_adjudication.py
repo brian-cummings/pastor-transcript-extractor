@@ -140,6 +140,59 @@ class SermonTopicReviewAdjudicationTests(unittest.TestCase):
                 self.packet_path, self.draft_path
             )
 
+    def test_create_migrates_only_unchanged_prior_workflow_draft(self) -> None:
+        proposal_path = self.root / "proposal.json"
+        proposal_path.write_text(json.dumps(_proposal()), encoding="utf-8")
+        create_topic_review_adjudication_draft(
+            self.packet_path,
+            self.draft_path,
+            proposal_path=proposal_path,
+        )
+        legacy = json.loads(self.draft_path.read_text(encoding="utf-8"))
+        legacy["workflow_version"] = "topic-review-adjudication-v1"
+        self.draft_path.write_text(json.dumps(legacy), encoding="utf-8")
+        self.draft_path.with_suffix(".md").write_text(
+            "# Prior generated instructions\n",
+            encoding="utf-8",
+        )
+
+        migrated = create_topic_review_adjudication_draft(
+            self.packet_path,
+            self.draft_path,
+            proposal_path=proposal_path,
+        )
+
+        self.assertFalse(migrated.reused)
+        updated = json.loads(self.draft_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            "topic-review-adjudication-v2",
+            updated["workflow_version"],
+        )
+        self.assertIn(
+            "How to interpret and decide",
+            migrated.markdown_path.read_text(encoding="utf-8"),
+        )
+
+    def test_create_refuses_migration_after_prior_draft_review_edit(self) -> None:
+        proposal_path = self.root / "proposal.json"
+        proposal_path.write_text(json.dumps(_proposal()), encoding="utf-8")
+        create_topic_review_adjudication_draft(
+            self.packet_path,
+            self.draft_path,
+            proposal_path=proposal_path,
+        )
+        legacy = json.loads(self.draft_path.read_text(encoding="utf-8"))
+        legacy["workflow_version"] = "topic-review-adjudication-v1"
+        legacy["checks"]["selected_blocks_reviewed"] = True
+        self.draft_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "review edits"):
+            create_topic_review_adjudication_draft(
+                self.packet_path,
+                self.draft_path,
+                proposal_path=proposal_path,
+            )
+
     def test_finalize_accepts_review_and_reuses_logical_result(self) -> None:
         create_topic_review_adjudication_draft(self.packet_path, self.draft_path)
         output = self.root / "packet.reviewed.json"

@@ -23,6 +23,9 @@ TOPIC_REVIEW_ADJUDICATION_SCHEMA_VERSION = 2
 TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION = "topic-review-adjudication-v2"
 TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION = 1
 TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION = "topic-review-proposal-v1"
+MIGRATABLE_UNREVIEWED_DRAFT_VERSIONS = frozenset(
+    {(2, "topic-review-adjudication-v1")}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,6 +284,19 @@ def _demote_markdown_headings(markdown: str) -> str:
     )
 
 
+def _is_unchanged_migratable_draft(
+    existing: Mapping[str, Any],
+    expected: Mapping[str, Any],
+) -> bool:
+    version = (existing.get("schema_version"), existing.get("workflow_version"))
+    if version not in MIGRATABLE_UNREVIEWED_DRAFT_VERSIONS:
+        return False
+    normalized = dict(existing)
+    normalized["schema_version"] = expected.get("schema_version")
+    normalized["workflow_version"] = expected.get("workflow_version")
+    return normalized == dict(expected)
+
+
 def render_topic_review_adjudication_markdown(
     draft: Mapping[str, Any],
     packet: Mapping[str, Any],
@@ -499,14 +515,6 @@ def create_topic_review_adjudication_draft(
         existing = _read_object(output_path, "topic review adjudication draft")
         existing_source = existing.get("source_packet")
         if (
-            isinstance(existing_source, Mapping)
-            and existing_source.get("sha256") == draft["source_packet"]["sha256"]
-            and existing != draft
-        ):
-            raise ValueError(
-                "Existing adjudication draft contains review edits; refusing to overwrite it"
-            )
-        if (
             existing == draft
             and markdown_path.exists()
             and markdown_path.read_text(encoding="utf-8") == expected_markdown
@@ -514,7 +522,16 @@ def create_topic_review_adjudication_draft(
             return TopicReviewDraftResult(
                 output_path, markdown_path, fingerprint, True
             )
-        raise ValueError("Adjudication draft output already belongs to another input")
+        same_packet = (
+            isinstance(existing_source, Mapping)
+            and existing_source.get("sha256") == draft["source_packet"]["sha256"]
+        )
+        if same_packet and not _is_unchanged_migratable_draft(existing, draft):
+            raise ValueError(
+                "Existing adjudication draft contains review edits; refusing to overwrite it"
+            )
+        if not same_packet:
+            raise ValueError("Adjudication draft output already belongs to another input")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(expected_json, encoding="utf-8")
     markdown_path.write_text(expected_markdown, encoding="utf-8")
