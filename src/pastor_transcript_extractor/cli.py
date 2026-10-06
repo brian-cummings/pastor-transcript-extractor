@@ -61,6 +61,7 @@ from pastor_transcript_extractor.commands import media_archive as _media_archive
 from pastor_transcript_extractor.commands import media_provenance as _media_provenance_commands
 from pastor_transcript_extractor.commands import evaluation as _evaluation_commands
 from pastor_transcript_extractor.commands import extraction as _extraction_commands
+from pastor_transcript_extractor.commands import fixture_correction as _fixture_correction_commands
 from pastor_transcript_extractor.commands import pipeline as _pipeline_commands
 from pastor_transcript_extractor.commands import reclassification as _reclassification_commands
 from pastor_transcript_extractor.commands import review as _review_commands
@@ -6187,53 +6188,17 @@ fetch_captions_service = acquisition.fetch_captions_service
 transcribe_videos_service = acquisition.transcribe_videos_service
 
 
-@app.command(
-    "apply-fixture-correction",
-    help=(
-        "Apply one approved continuous sermon fixture to its production window "
-        "and speaker observation."
-    ),
-)
-def apply_fixture_correction(
-    youtube_video_id: str = typer.Argument(
-        ...,
-        help="YouTube video ID whose approved fixture supplies the correction.",
-    ),
-    fixture_dir: Path = typer.Option(
-        Path("evaluation/fixtures"),
-        "--fixture-dir",
-        help="Directory containing <youtube-video-id>.json fixtures.",
-    ),
-    llm_model: str | None = typer.Option(
-        None,
-        "--llm-model",
-        help="Override the configured local Ollama classification model.",
-    ),
-    recording_verifier_backend: str = typer.Option(
-        DEFAULT_RECORDING_VERIFIER_BACKEND,
-        "--recording-verifier-backend",
-        help="Ambiguous-recording verifier: ollama, typesafe, or none.",
-    ),
-    recording_verifier_model: str | None = typer.Option(
-        None,
-        "--recording-verifier-model",
-        help=f"Verifier model override; TypeSafe defaults to {DEFAULT_TYPESAFE_MODEL}.",
-    ),
-    inference_cache_root: Path | None = typer.Option(
-        None,
-        "--inference-cache-root",
-        help="Use a separate per-video inference cache root.",
-    ),
-    recording_verifier_cache_root: Path | None = typer.Option(
-        None,
-        "--recording-verifier-cache-root",
-        help="Use a shared recording-verifier cache root.",
-    ),
-    base_dir: Path | None = typer.Option(
-        None,
-        help="Override app data directory.",
-    ),
+def _invoke_fixture_correction_request(
+    request: _fixture_correction_commands.FixtureCorrectionCommandRequest,
 ) -> None:
+    youtube_video_id = request.youtube_video_id
+    fixture_dir = request.fixture_dir
+    llm_model = request.llm_model
+    recording_verifier_backend = request.recording_verifier_backend
+    recording_verifier_model = request.recording_verifier_model
+    inference_cache_root = request.inference_cache_root
+    recording_verifier_cache_root = request.recording_verifier_cache_root
+    base_dir = request.base_dir
     try:
         correction = load_fixture_window_correction(
             fixture_dir,
@@ -6680,6 +6645,9 @@ _identity_coordination_commands.configure_shadow_associator(
 )
 _identity_workflow_commands.configure_identity_workflow(
     _invoke_identity_workflow_request
+)
+_fixture_correction_commands.configure_fixture_correction_command(
+    _invoke_fixture_correction_request
 )
 _reclassification_commands.configure_reclassification_command(
     _invoke_reclassification_request
