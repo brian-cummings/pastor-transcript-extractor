@@ -110,7 +110,7 @@ class SermonTopicEvaluationTests(unittest.TestCase):
         }
 
         self.assertEqual(REQUIRED_BEHAVIOR_TAGS, observed_tags & REQUIRED_BEHAVIOR_TAGS)
-        self.assertEqual(21, len(self.fixture["cases"]))
+        self.assertEqual(23, len(self.fixture["cases"]))
         self.assertEqual(
             {"prominence_absent", "performed_lyrics", "spiritual_conflict_positive"},
             {
@@ -146,15 +146,15 @@ class SermonTopicEvaluationTests(unittest.TestCase):
             replay_write = write_topic_behavior_report(output, replay)
 
         self.assertEqual("passed", first["status"])
-        self.assertEqual(41, first["summary"]["passed_expectations"])
+        self.assertEqual(43, first["summary"]["passed_expectations"])
         self.assertEqual(
             str(DEFAULT_TOPIC_BEHAVIOR_FIXTURE),
             first["fixture"]["fixture_path"],
         )
-        self.assertEqual(21, first["execution"]["cache_misses"])
-        self.assertEqual(4, first["execution"]["provider_requests"])
+        self.assertEqual(23, first["execution"]["cache_misses"])
+        self.assertEqual(8, first["execution"]["provider_requests"])
         self.assertEqual(0, replay["execution"]["cache_misses"])
-        self.assertEqual(21, replay["execution"]["cache_hits"])
+        self.assertEqual(23, replay["execution"]["cache_hits"])
         self.assertEqual(0, replay["execution"]["provider_requests"])
         self.assertEqual(0, replay_client.calls)
         self.assertEqual(first["result_fingerprint"], replay["result_fingerprint"])
@@ -273,7 +273,7 @@ class SermonTopicEvaluationTests(unittest.TestCase):
         self.assertTrue(replay[2])
         self.assertFalse(repaired[2])
         markdown = render_topic_behavior_report(report)
-        self.assertIn("21/21 passed", markdown)
+        self.assertIn("23/23 passed", markdown)
         self.assertIn("P0", markdown)
         self.assertIn("Confidence", markdown)
 

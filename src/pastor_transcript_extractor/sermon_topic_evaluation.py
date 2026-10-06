@@ -24,7 +24,7 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 TOPIC_BEHAVIOR_FIXTURE_SCHEMA_VERSION = 1
-TOPIC_BEHAVIOR_EVALUATOR_VERSION = "typesafe-topic-behavior-evaluator-v2"
+TOPIC_BEHAVIOR_EVALUATOR_VERSION = "typesafe-topic-behavior-evaluator-v3"
 TOPIC_BEHAVIOR_REPORT_SCHEMA_VERSION = 1
 PROBABILITY_SUM_ROUNDING_TOLERANCE = 0.03
 SCORE_DISTRIBUTION_ROUNDING_TOLERANCE = 0.05
@@ -42,6 +42,8 @@ REQUIRED_BEHAVIOR_TAGS = frozenset(
         "overlap_prophecy_adventist",
         "boundary_sin_discipleship",
         "boundary_mission_service",
+        "mission_performed_appeal_exclusion",
+        "mission_commanded_witness_positive",
         "boundary_ethics_public_life",
         "boundary_human_nature_creation",
         "sparse_caption",

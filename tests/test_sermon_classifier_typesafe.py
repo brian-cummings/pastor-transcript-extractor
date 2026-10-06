@@ -334,6 +334,16 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         )
         self.assertIn("performing music", str(church["instructions"]))
         self.assertIn("separate code", str(church["instructions"]))
+        mission = next(
+            item
+            for item in inventory.values()
+            if item["topic"] == "mission_evangelism_witness"
+        )
+        mission_instructions = str(mission["instructions"])
+        self.assertIn("command to preach to peoples or nations", mission_instructions)
+        self.assertIn("Christians being witnesses", mission_instructions)
+        self.assertIn("merely performs a gospel presentation", mission_instructions)
+        self.assertIn("present hearers", mission_instructions)
 
     def test_topic_context_is_bounded_and_keeps_target_text_exact(self) -> None:
         transcript = [
