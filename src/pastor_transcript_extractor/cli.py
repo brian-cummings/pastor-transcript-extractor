@@ -4,15 +4,12 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_c
 from dataclasses import dataclass, replace
 from datetime import date
 import json
-from importlib import metadata as importlib_metadata
 import os
 from pathlib import Path
 import re
 import shlex
-import shutil
 import sqlite3
 import subprocess
-import sys
 import time
 from threading import Lock, local
 from typing import Any, Callable, Mapping, Sequence
@@ -42,10 +39,6 @@ from pastor_transcript_extractor.inference_defaults import (
     DEFAULT_RECORDING_VERIFIER_BACKEND,
     DEFAULT_TYPESAFE_MODEL,
 )
-from pastor_transcript_extractor.church_database_import import (
-    ChurchDatabaseImportError,
-    import_church_sources,
-)
 from pastor_transcript_extractor.commands.apps import (
     attach_command_groups,
     identity_app,
@@ -60,7 +53,9 @@ from pastor_transcript_extractor.commands.analysis import structure as _analysis
 from pastor_transcript_extractor.commands.analysis import style as _analysis_style_commands
 from pastor_transcript_extractor.commands import benchmark as _benchmark_commands
 from pastor_transcript_extractor.commands import catalog as _catalog_commands
+from pastor_transcript_extractor.commands import church_import as _church_import_commands
 from pastor_transcript_extractor.commands import diagnostics as _diagnostic_commands
+from pastor_transcript_extractor.commands import doctor as _doctor_commands
 from pastor_transcript_extractor.commands import media as _media_commands
 from pastor_transcript_extractor.commands import media_archive as _media_archive_commands
 from pastor_transcript_extractor.commands import media_provenance as _media_provenance_commands
@@ -95,7 +90,6 @@ from pastor_transcript_extractor.commands.identity.review import (
 from pastor_transcript_extractor.commands import acquisition, common as command_common
 from pastor_transcript_extractor.config import (
     AppPaths,
-    ensure_directories,
 )
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.sermon_policy import (
@@ -6200,69 +6194,6 @@ def review_next_speaker_pair(
     )
 
 
-def _path_status(path: Path) -> str:
-    return "ok" if path.exists() else "missing"
-
-
-def _tool_status(command: str) -> tuple[str, str]:
-    resolved = shutil.which(command)
-    if resolved is None:
-        local_candidate = Path(sys.executable).parent / command
-        if local_candidate.exists():
-            resolved = str(local_candidate)
-    return (resolved or command, "ok" if resolved else "missing")
-
-
-def _package_status(distribution: str) -> tuple[str, str]:
-    try:
-        return (importlib_metadata.version(distribution), "ok")
-    except importlib_metadata.PackageNotFoundError:
-        return ("not installed", "missing")
-
-
-@app.command(
-    "import-church-db",
-    help="Import complete pastor/channel pairs from church-youtube-finder with stable provenance.",
-)
-def import_church_db(
-    church_database: Path = typer.Argument(..., help="Path to the church-youtube-finder SQLite database."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Report changes without importing records."),
-    show_all: bool = typer.Option(False, help="Show unchanged records in addition to changes and conflicts."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = command_common.get_database(base_dir)
-    try:
-        result = import_church_sources(
-            database,
-            church_database.expanduser().resolve(),
-            dry_run=dry_run,
-        )
-    except (ChurchDatabaseImportError, OSError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
-
-    table = Table(title="Church database import" + (" (dry run)" if dry_run else ""))
-    table.add_column("Status")
-    table.add_column("Church")
-    table.add_column("Pastor")
-    table.add_column("Source")
-    table.add_column("Reason")
-    for item in result.items:
-        if item.status == "unchanged" and not show_all:
-            continue
-        table.add_row(
-            item.status,
-            item.record.church_name,
-            item.record.pastor_name,
-            item.record.channel_url,
-            item.reason,
-        )
-    console.print(table)
-    counts = ", ".join(
-        f"{status}={count}" for status, count in sorted(result.counts.items())
-    )
-    console.print(f"Church import complete: {counts or 'no complete records'}.")
-
-
 @identity_app.command(
     "backfill",
     help="Create missing shadow identity and neutral speaker artifacts without reclassification.",
@@ -6279,62 +6210,6 @@ def identity_backfill(
         f"created {result.created}, reused {result.reused}, "
         f"skipped {result.skipped}, failed {result.failed}."
     )
-
-
-@app.command(help="Validate local tool paths and app data directories.")
-def doctor(
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    paths = config.build_paths(base_dir, remember=True)
-    tools = config.build_tool_config()
-    llm = config.build_llm_config()
-    sermon_minimum = minimum_sermon_duration_seconds()
-    sermon_maximum = maximum_sermon_duration_seconds()
-
-    try:
-        ensure_directories(paths)
-        app_status = "ok"
-    except PermissionError:
-        app_status = "unwritable"
-
-    rows = [
-        ("app root", str(paths.root), app_status),
-        ("database", str(paths.database), _path_status(paths.database)),
-        ("pastors dir", str(paths.pastors), _path_status(paths.pastors)),
-        ("whisper.cpp", str(tools.whisper_cpp_bin), _path_status(tools.whisper_cpp_bin)),
-        ("whisper model", str(tools.whisper_model_path), _path_status(tools.whisper_model_path)),
-        ("sermon minimum", f"{sermon_minimum:g} seconds", "configured"),
-        ("sermon-video maximum", f"{sermon_maximum:g} seconds", "configured"),
-    ]
-
-    ffmpeg_resolved, ffmpeg_status = _tool_status(tools.ffmpeg_bin)
-    yt_dlp_resolved, yt_dlp_status = _tool_status(tools.yt_dlp_bin)
-    rows.append(("ffmpeg", ffmpeg_resolved, ffmpeg_status))
-    rows.append(("yt-dlp", yt_dlp_resolved, yt_dlp_status))
-    rows.append(
-        (
-            "yt-dlp js runtime",
-            tools.yt_dlp_js_runtimes or "none detected",
-            "ok" if tools.yt_dlp_js_runtimes else "missing",
-        )
-    )
-    ejs_version, ejs_status = _package_status("yt-dlp-ejs")
-    rows.append(("yt-dlp EJS solver", ejs_version, ejs_status))
-    rows.append(("local LLM", llm.base_url, "enabled" if llm.enabled else "disabled"))
-    rows.append(("local LLM model", llm.model, "configured" if llm.enabled else "inactive"))
-    if llm.enabled:
-        health = local_llm.OllamaClient(llm).check_health()
-        rows.append(("Ollama connectivity", health.detail, "ok" if health.reachable else "failed"))
-        rows.append(("Ollama model installed", llm.model, "ok" if health.model_available else "failed"))
-        rows.append(("Ollama structured output", health.detail, "ok" if health.structured_output else "failed"))
-
-    table = Table(title="Doctor")
-    table.add_column("Check")
-    table.add_column("Resolved Path")
-    table.add_column("Status")
-    for check, resolved, status_value in rows:
-        table.add_row(check, resolved, status_value)
-    console.print(table)
 
 
 discover_sources_service = acquisition.discover_sources_service

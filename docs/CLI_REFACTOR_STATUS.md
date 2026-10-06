@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action: move the remaining small root utility handlers (`import-church-db`
-  and `doctor`) into cohesive command modules before returning to the larger
-  reclassification family.
+- Next action: extract the fixture-correction and reclassification command
+  family together so their shared selection, inference, and progress behavior
+  has one explicit owner.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1181,6 +1181,13 @@ Moved the root `review` Typer handler into `commands.review`, including its
 validation, missing-extraction preparation callbacks, rendering, and optional
 editor launch. Removed the duplicate implementation and its now-unused CLI
 imports; command behavior and public options remain unchanged.
+
+### 2026-10-06 — Milestone 9.4: church import and doctor ownership
+
+Moved `import-church-db` into `commands.church_import` and `doctor` into
+`commands.doctor`, keeping their rendering helpers with their handlers instead
+of growing already-oversized catalog and diagnostics modules. Removed the
+duplicate handlers and now-unused imports from `cli.py`.
 
 ## Validation log
 
@@ -2796,6 +2803,19 @@ PASS
 
 .venv/bin/python -m unittest <3 representative review command tests> tests.test_cli_contract
 Ran 11 tests in 3.202s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Church import and doctor ownership
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/church_import.py src/pastor_transcript_extractor/commands/doctor.py src/pastor_transcript_extractor/cli.py
+PASS
+
+.venv/bin/python -m unittest tests.test_church_database_import <2 doctor/base-dir tests> tests.test_cli_contract
+Ran 24 tests in 2.922s — OK
 
 git diff --check
 PASS
