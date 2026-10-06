@@ -65,6 +65,7 @@ from pastor_transcript_extractor.commands import media as _media_commands
 from pastor_transcript_extractor.commands import media_archive as _media_archive_commands
 from pastor_transcript_extractor.commands import media_provenance as _media_provenance_commands
 from pastor_transcript_extractor.commands import evaluation as _evaluation_commands
+from pastor_transcript_extractor.commands import extraction as _extraction_commands
 from pastor_transcript_extractor.commands import pipeline as _pipeline_commands
 from pastor_transcript_extractor.commands import storage as _storage_commands
 from pastor_transcript_extractor.commands.identity import evaluation as _identity_evaluation_commands
@@ -6340,62 +6341,6 @@ def doctor(
 discover_sources_service = acquisition.discover_sources_service
 fetch_captions_service = acquisition.fetch_captions_service
 transcribe_videos_service = acquisition.transcribe_videos_service
-
-
-@app.command(help="Chunk transcript artifacts into reviewable segments and proposed Markdown.")
-def extract(
-    missing_only: bool = typer.Option(
-        False,
-        "--missing-only",
-        help="Only extract videos without a proposed Markdown artifact.",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Rebuild extraction artifacts even when a video is already marked extracted or exported.",
-    ),
-    source_id: int | None = typer.Option(None, help="Only extract videos from a specific source id."),
-    classifier: str = typer.Option(
-        DEFAULT_CLASSIFIER,
-        "--classifier",
-        help="Content classifier: auto, rules, llm, or typesafe.",
-    ),
-    llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
-    recording_verifier_backend: str = typer.Option(
-        DEFAULT_RECORDING_VERIFIER_BACKEND,
-        "--recording-verifier-backend",
-        help="Ambiguous-recording verifier: ollama, typesafe, or none.",
-    ),
-    recording_verifier_model: str | None = typer.Option(
-        None,
-        "--recording-verifier-model",
-        help=f"Verifier model override; TypeSafe defaults to {DEFAULT_TYPESAFE_MODEL}.",
-    ),
-    jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video extraction jobs."),
-    base_dir: Path | None = typer.Option(None, help="Override app data directory."),
-) -> None:
-    database = command_common.get_database(base_dir)
-    paths = config.build_paths(base_dir, remember=True)
-    try:
-        result = application.extract_batch(
-            database,
-            paths,
-            missing_only=missing_only,
-            force=force,
-            source_id=source_id,
-            classifier=classifier,
-            llm_model=llm_model,
-            recording_verifier_backend=recording_verifier_backend,
-            recording_verifier_model=recording_verifier_model,
-            workers=jobs,
-            event_callback=lambda message: console.print(message, markup=False),
-            progress_callback=lambda stage, current, total: console.print(
-                f"  {stage} block {current}/{total}"
-            ),
-        )
-    except ValueError as error:
-        raise typer.BadParameter(str(error)) from error
-    console.print(f"Extracted {result.processed} video(s); skipped {result.skipped}; failed {result.failed}.")
 
 
 def _has_reusable_extraction_segments(extraction: object) -> bool:
