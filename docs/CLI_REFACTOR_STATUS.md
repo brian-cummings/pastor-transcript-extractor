@@ -8,9 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action: extract fixture-correction propagation and verification into a
-  typed workflow, then move both correction and reclassification invokers out
-  of the CLI composition root.
+- Next action: move fixture-correction command composition and rendering into
+  its command module, then do the same for reclassification.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1239,6 +1238,14 @@ Moved all `apply-fixture-correction` Typer options and registration into
 `commands.fixture_correction`. The thin handler constructs a typed request for
 an explicitly configured invoker; `cli.py` temporarily retains only dependency
 composition, propagation, verification, and rendering.
+
+### 2026-10-06 — Milestone 9.12: fixture-correction propagation workflow
+
+Extracted override persistence, forced reclassification, corrected-window
+verification, neutral speaker-evidence regeneration, and automatic-pair
+eligibility assessment into `workflows.fixture_correction`. The workflow emits
+progress through a callback and returns a typed result; Typer error translation
+and final rendering remain at the command composition boundary.
 
 ## Validation log
 
@@ -2961,6 +2968,19 @@ PASS
 
 TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_correction tests.test_cli_contract
 Ran 13 tests in 0.649s — OK (verifier calls mocked; no inference executed)
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Fixture-correction propagation workflow
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/fixture_correction.py src/pastor_transcript_extractor/cli.py
+PASS
+
+TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_correction tests.test_cli_contract
+Ran 13 tests in 0.653s — OK (verifier calls mocked; no inference executed)
 
 git diff --check
 PASS
