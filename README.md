@@ -489,6 +489,11 @@ exact content hash is also retained in the draft and final review fingerprint.
 Finalization reopens both sources and fails closed if either exact file has changed;
 artifact paths themselves do not affect the logical review fingerprint. Rerunning
 draft generation reuses an unchanged draft and refuses to overwrite review edits.
+The generated draft Markdown is self-contained: it explains the 0-4 prominence
+levels and approval decision, compares each proposal with the cached Score and full
+probability distribution, and embeds the source packet's transcript context, content
+roles, projection decisions, and complete topic evidence. Confidence is shown as
+distribution concentration, never as a correctness grade.
 
 Validate the frozen synthetic topic behavior contract without making a provider
 request:

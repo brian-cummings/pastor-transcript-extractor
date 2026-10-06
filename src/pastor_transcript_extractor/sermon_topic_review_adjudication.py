@@ -9,11 +9,18 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from pastor_transcript_extractor.sermon_topics import TOPICS
+from pastor_transcript_extractor.sermon_topic_review import (
+    render_topic_review_markdown,
+)
+from pastor_transcript_extractor.sermon_topics import (
+    TOPIC_PROMINENCE_LEVELS,
+    TOPIC_SPECS,
+    TOPICS,
+)
 
 
 TOPIC_REVIEW_ADJUDICATION_SCHEMA_VERSION = 2
-TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION = "topic-review-adjudication-v1"
+TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION = "topic-review-adjudication-v2"
 TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION = 1
 TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION = "topic-review-proposal-v1"
 
@@ -221,7 +228,63 @@ def build_topic_review_adjudication_draft(
     return draft
 
 
-def render_topic_review_adjudication_markdown(draft: Mapping[str, Any]) -> str:
+def _topic_score_summary(
+    packet: Mapping[str, Any],
+    *,
+    block_id: int,
+    topic: str,
+) -> str:
+    blocks = packet.get("blocks")
+    blocks = blocks if isinstance(blocks, list) else []
+    block = next(
+        (
+            item
+            for item in blocks
+            if isinstance(item, Mapping) and item.get("block_id") == block_id
+        ),
+        None,
+    )
+    if not isinstance(block, Mapping):
+        return "source block unavailable"
+    scores = block.get("scores")
+    score = scores.get(topic) if isinstance(scores, Mapping) else None
+    if not isinstance(score, Mapping):
+        return "cached topic score unavailable"
+    probabilities = score.get("probabilities")
+    probabilities = probabilities if isinstance(probabilities, Mapping) else {}
+    distribution = ", ".join(
+        f"P{level}={float(probabilities.get(str(level)) or 0.0):.3f}"
+        for level in range(5)
+    )
+    expected = score.get("score")
+    confidence = score.get("confidence")
+    expected_text = (
+        f"{float(expected):.3f}"
+        if isinstance(expected, (int, float)) and not isinstance(expected, bool)
+        else "n/a"
+    )
+    confidence_text = (
+        f"{float(confidence):.3f}"
+        if isinstance(confidence, (int, float)) and not isinstance(confidence, bool)
+        else "n/a"
+    )
+    return (
+        f"expected score {expected_text}; {distribution}; "
+        f"confidence {confidence_text}"
+    )
+
+
+def _demote_markdown_headings(markdown: str) -> str:
+    return "\n".join(
+        f"#{line}" if line.startswith("#") else line
+        for line in markdown.rstrip().splitlines()
+    )
+
+
+def render_topic_review_adjudication_markdown(
+    draft: Mapping[str, Any],
+    packet: Mapping[str, Any],
+) -> str:
     source = draft["source_packet"]
     checks = draft["required_checks"]
     lines = [
@@ -236,6 +299,31 @@ def render_topic_review_adjudication_markdown(draft: Mapping[str, Any]) -> str:
         "",
         "Review the source packet's Markdown inspection view. This draft stores only "
         "the review decision; it never changes the cached TypeSafe observations.",
+        "",
+        "## How to interpret and decide",
+        "",
+        "You are deciding whether the prepared human interpretation matches the "
+        "target transcript—not whether the fractional TypeSafe score is exactly "
+        "right. The score is the probability-weighted position across levels 0-4; "
+        "confidence only describes how concentrated that distribution is and is not "
+        "a correctness grade.",
+        "",
+        "| Level | Meaning |",
+        "|---:|---|",
+        *[
+            f"| {level} — {item['name']} | {item['criterion']} |"
+            for level, item in enumerate(TOPIC_PROMINENCE_LEVELS)
+        ],
+        "",
+        "For each proposed correction below, compare its rationale with the target "
+        "text and adjacent context in **Cached source packet evidence**. Also inspect "
+        "the content role and projection decision: a topic may genuinely occur in a "
+        "block while still being ineligible for preacher-profile attribution.",
+        "",
+        "Approve only if every selected case and every proposed correction is "
+        "acceptable. If anything is wrong, report the video, block, topic, and your "
+        "interpretation; the correction can be revised before finalization without "
+        "changing or rerunning the cached TypeSafe observation.",
         "",
         "## Required confirmations",
         "",
@@ -252,6 +340,7 @@ def render_topic_review_adjudication_markdown(draft: Mapping[str, Any]) -> str:
         "",
     ]
     if isinstance(draft.get("proposal_source"), Mapping):
+        proposal_notes = str(draft.get("notes") or "").strip()
         lines.extend(
             [
                 "## Prepared proposal",
@@ -266,8 +355,103 @@ def render_topic_review_adjudication_markdown(draft: Mapping[str, Any]) -> str:
                 f"- Proposal: `{draft['proposal_source'].get('path')}`",
                 f"- Proposal SHA-256: `{draft['proposal_source'].get('sha256')}`",
                 "",
+                "### Overall interpretation",
+                "",
+                proposal_notes or "No overall proposal notes were supplied.",
+                "",
             ]
         )
+        topic_corrections = draft.get("topic_level_corrections")
+        topic_corrections = (
+            topic_corrections if isinstance(topic_corrections, list) else []
+        )
+        if topic_corrections:
+            lines.extend(["### Proposed topic decisions", ""])
+            for correction in topic_corrections:
+                if not isinstance(correction, Mapping):
+                    continue
+                topic = str(correction.get("topic") or "")
+                spec = TOPIC_SPECS.get(topic)
+                reviewed_level = correction.get("reviewed_level")
+                reviewed_name = (
+                    TOPIC_PROMINENCE_LEVELS[reviewed_level]["name"]
+                    if isinstance(reviewed_level, int)
+                    and not isinstance(reviewed_level, bool)
+                    and 0 <= reviewed_level < len(TOPIC_PROMINENCE_LEVELS)
+                    else "Unknown"
+                )
+                block_ids = correction.get("block_ids")
+                block_ids = block_ids if isinstance(block_ids, list) else []
+                lines.extend(
+                    [
+                        f"#### `{topic}` — blocks {', '.join(map(str, block_ids))}",
+                        "",
+                        f"- Topic meaning: {spec.definition if spec else 'Unknown topic.'}",
+                        f"- Proposed reviewed level: `{reviewed_level}` — {reviewed_name}",
+                        f"- Rationale: {str(correction.get('notes') or '').strip()}",
+                    ]
+                )
+                for block_id in block_ids:
+                    if isinstance(block_id, int) and not isinstance(block_id, bool):
+                        lines.append(
+                            f"- Block {block_id} TypeSafe result: "
+                            + _topic_score_summary(
+                                packet,
+                                block_id=block_id,
+                                topic=topic,
+                            )
+                        )
+                lines.append("")
+        else:
+            lines.extend(
+                [
+                    "### Proposed topic decisions",
+                    "",
+                    "No topic-level corrections are proposed. Approval means the "
+                    "sampled topic observations are acceptable as displayed below.",
+                    "",
+                ]
+            )
+
+        projection_corrections = draft.get("projection_eligibility_corrections")
+        projection_corrections = (
+            projection_corrections
+            if isinstance(projection_corrections, list)
+            else []
+        )
+        lines.extend(["### Proposed projection decisions", ""])
+        if projection_corrections:
+            for correction in projection_corrections:
+                if not isinstance(correction, Mapping):
+                    continue
+                lines.extend(
+                    [
+                        f"- Block `{correction.get('block_id')}` → "
+                        f"eligible=`{correction.get('eligible')}`: "
+                        f"{str(correction.get('notes') or '').strip()}",
+                    ]
+                )
+            lines.append("")
+        else:
+            lines.extend(
+                [
+                    "No projection corrections are proposed. Approval means the "
+                    "displayed eligibility decisions and exclusion reasons are acceptable.",
+                    "",
+                ]
+            )
+
+    lines.extend(
+        [
+            "## Cached source packet evidence",
+            "",
+            "The complete cached review packet is reproduced below. It is evidence "
+            "only and is not modified by this adjudication.",
+            "",
+            _demote_markdown_headings(render_topic_review_markdown(packet)),
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -309,7 +493,7 @@ def create_topic_review_adjudication_draft(
         proposal_sha256=proposal_sha256,
     )
     expected_json = json.dumps(draft, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    expected_markdown = render_topic_review_adjudication_markdown(draft)
+    expected_markdown = render_topic_review_adjudication_markdown(draft, packet)
     markdown_path = output_path.with_suffix(".md")
     if output_path.exists():
         existing = _read_object(output_path, "topic review adjudication draft")

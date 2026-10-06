@@ -9,6 +9,45 @@ from pastor_transcript_extractor.sermon_topic_review_adjudication import (
     create_topic_review_adjudication_draft,
     finalize_topic_review_adjudication,
 )
+from pastor_transcript_extractor.sermon_topics import TOPICS
+
+
+def _block(block_id: int) -> dict:
+    return {
+        "block_id": block_id,
+        "start_seconds": float(block_id * 10),
+        "end_seconds": float(block_id * 10 + 10),
+        "content_role": "principal_sermon",
+        "content_role_confidence": 1.0,
+        "content_role_probabilities": {"principal_sermon": 1.0},
+        "sermon_probability": 1.0,
+        "reliability": {
+            "analyzable_lexical_word_count": 20,
+            "sparse": False,
+            "final_sermon_overlap_seconds": 10.0,
+        },
+        "projection_eligibility": {
+            "eligible": True,
+            "exclusion_reasons": [],
+        },
+        "leading_context": "Leading sentence.",
+        "target_text": f"Target block {block_id}.",
+        "trailing_context": "Trailing sentence.",
+        "scores": {
+            topic: {
+                "score": 1.0,
+                "probabilities": {
+                    "0": 0.0,
+                    "1": 1.0,
+                    "2": 0.0,
+                    "3": 0.0,
+                    "4": 0.0,
+                },
+                "confidence": 1.0,
+            }
+            for topic in TOPICS
+        },
+    }
 
 
 def _packet() -> dict:
@@ -19,13 +58,22 @@ def _packet() -> dict:
         "source": {
             "video_id": 42,
             "youtube_video_id": "youtube-42",
+            "title": "Review fixture",
+            "classification_method": "typesafe_test",
+            "final_disposition_status": "accepted_sermon",
             "question_pack_version": "topics-v2-performed-worship-boundary",
         },
         "selection": {"mode": "whole_sermon"},
-        "blocks": [
-            {"block_id": 7},
-            {"block_id": 8},
+        "cases": [
+            {
+                "case_id": "fixture-case",
+                "label": "Fixture review case",
+                "block_ids": [7, 8],
+                "review_focus": "Review the cached topic evidence.",
+                "reviewed_interpretation": None,
+            }
         ],
+        "blocks": [_block(7), _block(8)],
     }
 
 
@@ -136,7 +184,13 @@ class SermonTopicReviewAdjudicationTests(unittest.TestCase):
         self.assertFalse(any(draft["checks"].values()))
         self.assertEqual(64, len(draft["proposal_source"]["sha256"]))
         self.assertEqual("proposal.json", draft["proposal_source"]["path"])
-        self.assertIn("Prepared proposal", result.markdown_path.read_text())
+        markdown = result.markdown_path.read_text()
+        self.assertIn("How to interpret and decide", markdown)
+        self.assertIn("Prepared proposal", markdown)
+        self.assertIn("Proposed reviewed level: `3` — Substantial", markdown)
+        self.assertIn("expected score 1.000; P0=0.000, P1=1.000", markdown)
+        self.assertIn("Cached source packet evidence", markdown)
+        self.assertIn("Target block 7.", markdown)
 
     def test_finalize_rejects_changed_proposal_content(self) -> None:
         proposal_path = self.root / "proposal.json"

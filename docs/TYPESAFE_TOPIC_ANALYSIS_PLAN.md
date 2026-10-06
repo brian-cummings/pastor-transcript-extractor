@@ -760,7 +760,10 @@ theological stance.
     invalid corrections fail closed. Finalization re-resolves both the packet and
     proposal source paths and verifies their exact hashes before freezing a
     path-independent logical review fingerprint; cached TypeSafe observations
-    remain immutable.
+    remain immutable. The draft Markdown reuses the packet renderer to provide a
+    self-contained decision guide, proposal-to-Score comparison, transcript context,
+    projection evidence, and every cached distribution rather than asking the
+    reviewer to infer meaning from correction JSON.
 
 ### Next iteration
 
