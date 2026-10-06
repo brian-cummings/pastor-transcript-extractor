@@ -8,9 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action: extract the fixture-correction and reclassification command
-  family together so their shared selection, inference, and progress behavior
-  has one explicit owner.
+- Next action: extract reclassification eligibility and concurrent execution
+  into typed workflow stages, leaving the command responsible only for options,
+  rendering, and error translation.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1195,6 +1195,15 @@ Moved the thin `identity backfill` handler into
 `commands.identity.workflow`, beside the identity run command and its
 composition seam. The handler now resolves backfill behavior through the
 identity domain module; its CLI name, options, and summary remain unchanged.
+
+### 2026-10-06 — Milestone 9.6: reclassification selection workflow
+
+Extracted selector validation, fixture resolution, persisted
+`review_required` discovery, reusable-segment inspection, and selection events
+into the presentation-free `workflows.reclassification` module with typed
+request/result objects. The CLI now validates selectors before database
+initialization (preserving the prior failure ordering), renders returned
+messages, and retains inference execution for the next slice.
 
 ## Validation log
 
@@ -2839,6 +2848,19 @@ Identity shadow backfill: created 0, reused 0, skipped 0, failed 0.
 
 .venv/bin/python -m unittest tests.test_cli_contract
 Ran 8 tests in 0.495s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Reclassification selection workflow
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/reclassification.py src/pastor_transcript_extractor/cli.py
+PASS
+
+TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_validation tests.test_fixture_correction tests.test_cli_contract
+Ran 31 tests in 0.929s — OK (verifier calls mocked; no inference executed)
 
 git diff --check
 PASS

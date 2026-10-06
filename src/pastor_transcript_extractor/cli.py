@@ -91,7 +91,6 @@ from pastor_transcript_extractor.commands import acquisition, common as command_
 from pastor_transcript_extractor.config import (
     AppPaths,
 )
-from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.sermon_policy import (
     duration_meets_sermon_minimum,
     duration_within_sermon_maximum,
@@ -113,7 +112,6 @@ from pastor_transcript_extractor.fixture_correction import (
 from pastor_transcript_extractor.fixture_validation import (
     FixtureValidationError,
     ValidatedFixture,
-    validate_fixture_directory,
     validate_fixture_payload,
 )
 from pastor_transcript_extractor.ground_truth_review import (
@@ -333,6 +331,12 @@ from pastor_transcript_extractor.workflows.audio_stage import (
 )
 from pastor_transcript_extractor.workflows.resume_pipeline import (
     ResumePipelineDependencies,
+)
+from pastor_transcript_extractor.workflows.reclassification import (
+    ReclassificationSelectionRequest,
+    has_reusable_extraction_segments,
+    select_reclassification_videos,
+    validate_reclassification_selection_request,
 )
 from pastor_transcript_extractor.workflows.pipeline import PipelineDependencies
 from pastor_transcript_extractor.workflows.run import (
@@ -6199,36 +6203,7 @@ transcribe_videos_service = acquisition.transcribe_videos_service
 
 
 def _has_reusable_extraction_segments(extraction: object) -> bool:
-    proposed_path = getattr(extraction, "proposed_json_path", None)
-    if not isinstance(proposed_path, str) or not proposed_path.strip():
-        return False
-    try:
-        payload = json.loads(Path(proposed_path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    if not isinstance(payload, dict):
-        return False
-    segments = payload.get("segments")
-    if (
-        not isinstance(segments, list)
-        or not segments
-        or any(
-            not isinstance(segment, dict)
-            or not isinstance(segment.get("text"), str)
-            for segment in segments
-        )
-    ):
-        return False
-    return any(
-        isinstance(segment, dict)
-        and isinstance(segment.get("text"), str)
-        and isinstance(segment.get("start_seconds"), (int, float))
-        and not isinstance(segment.get("start_seconds"), bool)
-        and isinstance(segment.get("end_seconds"), (int, float))
-        and not isinstance(segment.get("end_seconds"), bool)
-        and float(segment["end_seconds"]) > float(segment["start_seconds"])
-        for segment in segments
-    )
+    return has_reusable_extraction_segments(extraction)
 
 
 @app.command(
@@ -6494,92 +6469,31 @@ def reclassify(
         help="Application-data directory containing app.db; pass the directory, not the database file.",
     ),
 ) -> None:
-    selector_count = sum(
-        (
-            video_id is not None,
-            source_id is not None,
-            fixture_dir is not None,
-            review_required,
-            all_videos,
-        )
+    selection_request = ReclassificationSelectionRequest(
+        video_id=video_id,
+        source_id=source_id,
+        review_required=review_required,
+        all_videos=all_videos,
+        fixture_dir=fixture_dir,
     )
-    if selector_count != 1:
-        raise typer.BadParameter(
-            "Pass exactly one of --video-id, --source-id, --fixture-dir, "
-            "--review-required, or --all."
-        )
+    try:
+        validate_reclassification_selection_request(selection_request)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
     database = command_common.get_database(base_dir)
     paths = config.build_paths(base_dir, remember=True)
-    if video_id is not None:
-        video = database.get_video_by_id(video_id)
-        videos = [video] if video is not None else []
-    elif source_id is not None:
-        videos = database.list_videos_by_source_id(source_id)
-    elif review_required:
-        videos = []
-        invalid_disposition_artifacts = 0
-        for video in database.list_videos():
-            extraction = database.get_latest_extraction_result_for_video(video.id)
-            proposed_path = (
-                getattr(extraction, "proposed_json_path", None)
-                if extraction is not None
-                else None
-            )
-            if not isinstance(proposed_path, str) or not proposed_path.strip():
-                continue
-            try:
-                payload = json.loads(Path(proposed_path).read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                invalid_disposition_artifacts += 1
-                continue
-            disposition = (
-                payload.get("final_disposition")
-                if isinstance(payload, dict)
-                else None
-            )
-            if (
-                isinstance(disposition, dict)
-                and disposition.get("status") == REVIEW_REQUIRED
-            ):
-                videos.append(video)
-        videos.sort(key=lambda video: video.id)
-        console.print(
-            f"Discovered {len(videos)} video(s) with a review_required "
-            "final disposition."
+    try:
+        selection = select_reclassification_videos(
+            database,
+            selection_request,
         )
-        if invalid_disposition_artifacts:
-            console.print(
-                f"Skipped {invalid_disposition_artifacts} invalid proposed "
-                "artifact(s) while selecting review-required videos."
-            )
-        if not videos:
-            console.print("No review-required videos remain to reclassify.")
-            return
-    elif all_videos:
-        videos = database.list_videos()
-        console.print(f"Discovered {len(videos)} video(s) in the corpus.")
-    else:
-        assert fixture_dir is not None
-        fixtures = validate_fixture_directory(fixture_dir.expanduser().resolve())
-        resolved = [
-            (fixture, database.get_video_by_youtube_id(fixture.video_id))
-            for fixture in fixtures
-        ]
-        missing_fixture_ids = [
-            fixture.video_id for fixture, video in resolved if video is None
-        ]
-        if missing_fixture_ids:
-            raise typer.BadParameter(
-                "Fixture videos are missing from the database: "
-                + ", ".join(missing_fixture_ids)
-            )
-        videos = [video for _, video in resolved if video is not None]
-        console.print(
-            f"Discovered {len(videos)} fixture video(s) in "
-            f"{fixture_dir.expanduser().resolve()}."
-        )
-    if not videos:
-        raise typer.BadParameter("No matching videos found.")
+    except (FixtureValidationError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    for message in selection.messages:
+        console.print(message)
+    if selection.empty_is_success:
+        return
+    videos = list(selection.videos)
     llm_config = config.build_llm_config()
     if llm_model is not None:
         llm_config = replace(llm_config, model=llm_model)
