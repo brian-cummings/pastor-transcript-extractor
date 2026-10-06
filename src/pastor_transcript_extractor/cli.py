@@ -22,7 +22,6 @@ from rich.table import Table
 
 from pastor_transcript_extractor import (
     application,
-    artifact_namespace,
     audio_staging,
     config,
     extraction as extraction_service,
@@ -106,7 +105,6 @@ from pastor_transcript_extractor.evaluation_partitioning import (
 )
 from pastor_transcript_extractor.fixture_correction import (
     load_fixture_window_correction,
-    persist_fixture_window_override,
 )
 from pastor_transcript_extractor.fixture_validation import (
     FixtureValidationError,
@@ -338,6 +336,9 @@ from pastor_transcript_extractor.workflows.reclassification import (
     select_eligible_reclassification_videos,
     select_reclassification_videos,
     validate_reclassification_selection_request,
+)
+from pastor_transcript_extractor.workflows.fixture_correction import (
+    propagate_fixture_correction,
 )
 from pastor_transcript_extractor.workflows.pipeline import PipelineDependencies
 from pastor_transcript_extractor.workflows.run import (
@@ -6220,8 +6221,6 @@ def _invoke_fixture_correction_request(
             f"Video {youtube_video_id} has no reusable extraction segments"
         )
 
-    video_paths = artifact_namespace.resolve_video_artifact_paths(database, paths, video)
-    override_path = video_paths.review / "window_override.json"
     previous_observation = database.get_latest_speaker_observation_for_video(
         video.id
     )
@@ -6232,12 +6231,6 @@ def _invoke_fixture_correction_request(
     except AttributeError:
         # Compatibility for injected lightweight database adapters.
         normalized_audio = None
-    persist_fixture_window_override(correction, override_path)
-    console.print(
-        f"Applied fixture {correction.fixture_path} as window override "
-        f"{correction.start_seconds:.3f}-{correction.end_seconds:.3f}s."
-    )
-
     llm_config = config.build_llm_config()
     if llm_model is not None:
         llm_config = replace(llm_config, model=llm_model)
@@ -6261,106 +6254,32 @@ def _invoke_fixture_correction_request(
         else None
     )
     try:
-        result = extraction_service.reclassify_video(
-            database,
-            paths,
-            video.id,
-            llm_client=client,
-            prompt_version=llm_config.prompt_version,
-            force=True,
-            progress=lambda stage, current, total: console.print(
-                f"  video #{video.id} {stage} block {current}/{total}"
-            ),
-            model_digest=client.model_digest(),
-            context_size=llm_config.context_size,
-            inference_cache_dir=(
-                resolved_inference_cache_root / video.youtube_video_id
-                if resolved_inference_cache_root is not None
-                else None
-            ),
-            recording_verifier=verifier,
-            recording_verifier_cache_dir=resolved_verifier_cache_root,
-        )
-        proposed = json.loads(
-            result.proposed_json_path.read_text(encoding="utf-8")
-        )
-        window = proposed.get("sermon_window")
-        if not isinstance(window, dict):
-            raise ValueError("reclassification did not persist a sermon window")
-        persisted_start = window.get("start_seconds")
-        persisted_end = window.get("end_seconds")
-        if (
-            window.get("source") != "override"
-            or not isinstance(persisted_start, (int, float))
-            or isinstance(persisted_start, bool)
-            or not isinstance(persisted_end, (int, float))
-            or isinstance(persisted_end, bool)
-            or abs(float(persisted_start) - correction.start_seconds) > 1e-6
-            or abs(float(persisted_end) - correction.end_seconds) > 1e-6
-        ):
-            raise ValueError(
-                "reclassification did not preserve the fixture-derived override"
-            )
-
-        current_extraction = database.get_latest_extraction_result_for_video(
-            video.id
-        )
-        if current_extraction is None:
-            raise ValueError("latest extraction disappeared after reclassification")
-        pastor = (
-            database.get_pastor_by_id(video.pastor_id)
-            if video.pastor_id is not None
-            else None
-        )
-        speaker_record = identity_domain.record_neutral_speaker_evidence(
+        result = propagate_fixture_correction(
             database,
             paths,
             video=video,
-            pastor=pastor,
-            extraction_result=current_extraction,
-            normalized_audio_artifact=normalized_audio,
+            correction=correction,
+            previous_observation=previous_observation,
+            normalized_audio=normalized_audio,
+            llm_client=client,
+            prompt_version=llm_config.prompt_version,
+            context_size=llm_config.context_size,
+            inference_cache_root=resolved_inference_cache_root,
+            recording_verifier=verifier,
+            recording_verifier_cache_root=resolved_verifier_cache_root,
+            event_callback=lambda message: console.print(message, markup=False),
         )
-        observation = speaker_record.neutral_evidence.observation
-        if observation is None:
-            raise ValueError(
-                "corrected extraction did not produce a speaker observation"
-            )
-        if (
-            observation.extraction_result_id != current_extraction.id
-            or abs(observation.start_seconds - correction.start_seconds) > 1e-6
-            or abs(observation.end_seconds - correction.end_seconds) > 1e-6
-        ):
-            raise ValueError(
-                "speaker observation does not match the corrected extraction window"
-            )
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         raise typer.BadParameter(
             f"Fixture override was saved, but correction propagation failed: {error}"
         ) from error
 
-    previous_fingerprint = (
-        previous_observation.input_fingerprint
-        if previous_observation is not None
-        else None
-    )
-    fingerprint_state = (
-        "reused"
-        if previous_fingerprint == observation.input_fingerprint
-        else "regenerated"
-    )
-    eligibility = speaker_pair_eligibility.assess_automatic_speaker_observation(database, video.id)
-    disposition = proposed.get("final_disposition")
-    disposition_status = (
-        disposition.get("status")
-        if isinstance(disposition, dict)
-        else "unknown"
-    )
     console.print(
-        f"Corrected video #{video.id}: disposition={disposition_status}; "
-        f"speaker_fingerprint_{fingerprint_state}="
-        f"{observation.input_fingerprint}; "
-        f"previous={previous_fingerprint or 'none'}; "
-        f"automatic_pair_eligibility={eligibility.reason_code}."
+        f"Corrected video #{result.video_id}: disposition={result.disposition_status}; "
+        f"speaker_fingerprint_{result.fingerprint_state}="
+        f"{result.observation_fingerprint}; "
+        f"previous={result.previous_fingerprint or 'none'}; "
+        f"automatic_pair_eligibility={result.automatic_pair_eligibility}."
     )
 
 
