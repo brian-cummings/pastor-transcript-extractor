@@ -8,8 +8,9 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action: move the root review handler behind its owning command boundary,
-  preserving its review-preparation and rendering behavior.
+- Next action: move the remaining small root utility handlers (`import-church-db`
+  and `doctor`) into cohesive command modules before returning to the larger
+  reclassification family.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1173,6 +1174,13 @@ Moved the root `extract` Typer handler into `commands.extraction`, beside its
 command-level database, path, progress, error-translation, and rendering
 adapters. Removed the duplicate implementation from `cli.py`; command name,
 options, defaults, and application workflow behavior remain unchanged.
+
+### 2026-10-06 — Milestone 9.3: review command ownership
+
+Moved the root `review` Typer handler into `commands.review`, including its
+validation, missing-extraction preparation callbacks, rendering, and optional
+editor launch. Removed the duplicate implementation and its now-unused CLI
+imports; command behavior and public options remain unchanged.
 
 ## Validation log
 
@@ -2775,6 +2783,19 @@ PASS
 
 .venv/bin/python -m unittest <2 representative extract command tests> tests.test_cli_contract
 Ran 10 tests in 10.040s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Review command ownership
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/review.py src/pastor_transcript_extractor/cli.py
+PASS
+
+.venv/bin/python -m unittest <3 representative review command tests> tests.test_cli_contract
+Ran 11 tests in 3.202s — OK
 
 git diff --check
 PASS
