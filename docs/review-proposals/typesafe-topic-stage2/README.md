@@ -13,9 +13,11 @@ pte analysis topic-review-draft \
   --proposal docs/review-proposals/typesafe-topic-stage2/VIDEO_ID.json
 ```
 
-Inspect the packet Markdown, the prepared notes, and every proposed correction.
-Only then finalize with the reviewer identity and `--accept-as-reviewed`, or edit
-the draft before finalization if a proposal is rejected.
+Inspect the generated draft Markdown. It includes the prepared notes, every proposed
+correction, an interpretation guide, and the complete cached packet evidence needed
+to judge it. Only then finalize with the reviewer identity and
+`--accept-as-reviewed`. If a proposal is rejected, report the video, block, topic,
+and preferred interpretation so the draft can be revised before finalization.
 
 The proposals deliberately make no provider calls. Their SHA-256 hashes and the
 source packet fingerprint are preserved in the draft and finalized review.
