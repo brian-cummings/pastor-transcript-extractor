@@ -1,0 +1,15 @@
+{
+  "notes": "Proposed review: accept both projection decisions, the broad scripture and Christ distributions, and the four domain examples. Block 25 is a clear dominant positive control for mission. Block 18 also substantially develops mission by treating the command to preach repentance and remission to all nations, the disciples' witness, and promised empowerment; its broad distribution understates that prominence.",
+  "projection_eligibility_corrections": [],
+  "schema_version": 1,
+  "source_packet_fingerprint": "6bc6096418c5015021c53a6eb8b581dbbcd9d158172eedce43a0e9cc4524aa74",
+  "topic_level_corrections": [
+    {
+      "block_ids": [18],
+      "notes": "Preaching repentance and forgiveness to all nations, bearing witness, and receiving power are sustained as a main concern of the block.",
+      "reviewed_level": 3,
+      "topic": "mission_evangelism_witness"
+    }
+  ],
+  "workflow_version": "topic-review-proposal-v1"
+}

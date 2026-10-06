@@ -14,6 +14,8 @@ from pastor_transcript_extractor.sermon_topics import TOPICS
 
 TOPIC_REVIEW_ADJUDICATION_SCHEMA_VERSION = 1
 TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION = "topic-review-adjudication-v1"
+TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION = 1
+TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION = "topic-review-proposal-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,10 +134,12 @@ def build_topic_review_adjudication_draft(
     *,
     source_packet_path: str,
     source_packet_sha256: str,
+    proposal: Mapping[str, Any] | None = None,
+    proposal_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Build a separate review layer without modifying cached observations."""
-    _validate_source_packet(packet)
-    return {
+    fingerprint, _, block_ids = _validate_source_packet(packet)
+    draft = {
         "schema_version": TOPIC_REVIEW_ADJUDICATION_SCHEMA_VERSION,
         "workflow_version": TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION,
         "review_status": "unreviewed",
@@ -157,45 +161,93 @@ def build_topic_review_adjudication_draft(
         "reviewed_at": None,
         "review_fingerprint": None,
     }
+    if proposal is None:
+        return draft
+    if proposal.get("schema_version") != TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION:
+        raise ValueError("Unsupported topic review proposal schema_version")
+    if proposal.get("workflow_version") != TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION:
+        raise ValueError("Unsupported topic review proposal workflow_version")
+    if proposal.get("source_packet_fingerprint") != fingerprint:
+        raise ValueError("Topic review proposal belongs to another source packet")
+    if not isinstance(proposal_sha256, str) or not proposal_sha256:
+        raise ValueError("Topic review proposal requires its exact content hash")
+    draft["proposal_source"] = {
+        "sha256": proposal_sha256,
+        "schema_version": TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION,
+        "workflow_version": TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION,
+    }
+    topic_corrections = proposal.get("topic_level_corrections", [])
+    projection_corrections = proposal.get(
+        "projection_eligibility_corrections", []
+    )
+    if not isinstance(topic_corrections, list):
+        raise ValueError("Topic review proposal topic corrections must be a list")
+    if not isinstance(projection_corrections, list):
+        raise ValueError("Topic review proposal projection corrections must be a list")
+    draft["topic_level_corrections"] = topic_corrections
+    draft["projection_eligibility_corrections"] = projection_corrections
+    notes = proposal.get("notes")
+    if not isinstance(notes, str):
+        raise ValueError("Topic review proposal notes must be a string")
+    draft["notes"] = notes.strip()
+    _validated_corrections(draft, block_ids=block_ids)
+    return draft
 
 
 def render_topic_review_adjudication_markdown(draft: Mapping[str, Any]) -> str:
     source = draft["source_packet"]
     checks = draft["required_checks"]
-    return "\n".join(
-        [
-            "# TypeSafe Topic Review Adjudication",
-            "",
-            f"- Video: database #{source.get('video_id')} / "
-            f"`{source.get('youtube_video_id')}`",
-            f"- Selection mode: `{source.get('selection_mode')}`",
-            f"- Topic pack: `{source.get('topic_question_pack_version')}`",
-            f"- Source packet fingerprint: `{source.get('input_fingerprint')}`",
-            f"- Source packet SHA-256: `{source.get('sha256')}`",
-            "",
-            "Review the source packet's Markdown inspection view. This draft stores only "
-            "the review decision; it never changes the cached TypeSafe observations.",
-            "",
-            "## Required confirmations",
-            "",
-            *[f"- [ ] `{check}`" for check in checks],
-            "",
-            "If every displayed modal prominence level and projection decision is "
-            "acceptable, finalize with `--accept-as-reviewed`. Otherwise edit the JSON "
-            "draft first, add only the necessary corrections, and set the required "
-            "check fields to `true`.",
-            "",
-            "A topic correction has `block_ids`, `topic`, `reviewed_level` (0-4), and "
-            "non-empty `notes`. A projection correction has `block_id`, `eligible`, "
-            "and non-empty `notes`.",
-            "",
-        ]
-    )
+    lines = [
+        "# TypeSafe Topic Review Adjudication",
+        "",
+        f"- Video: database #{source.get('video_id')} / "
+        f"`{source.get('youtube_video_id')}`",
+        f"- Selection mode: `{source.get('selection_mode')}`",
+        f"- Topic pack: `{source.get('topic_question_pack_version')}`",
+        f"- Source packet fingerprint: `{source.get('input_fingerprint')}`",
+        f"- Source packet SHA-256: `{source.get('sha256')}`",
+        "",
+        "Review the source packet's Markdown inspection view. This draft stores only "
+        "the review decision; it never changes the cached TypeSafe observations.",
+        "",
+        "## Required confirmations",
+        "",
+        *[f"- [ ] `{check}`" for check in checks],
+        "",
+        "If every displayed modal prominence level and projection decision is "
+        "acceptable, finalize with `--accept-as-reviewed`. Otherwise edit the JSON "
+        "draft first, add only the necessary corrections, and set the required "
+        "check fields to `true`.",
+        "",
+        "A topic correction has `block_ids`, `topic`, `reviewed_level` (0-4), and "
+        "non-empty `notes`. A projection correction has `block_id`, `eligible`, "
+        "and non-empty `notes`.",
+        "",
+    ]
+    if isinstance(draft.get("proposal_source"), Mapping):
+        lines.extend(
+            [
+                "## Prepared proposal",
+                "",
+                "The correction lists and notes were prefilled from a proposal bound "
+                "to this exact packet. They remain proposals until the required review "
+                "checks are confirmed and the draft is finalized.",
+                "",
+                f"- Topic corrections: `{len(draft['topic_level_corrections'])}`",
+                f"- Projection corrections: "
+                f"`{len(draft['projection_eligibility_corrections'])}`",
+                f"- Proposal SHA-256: `{draft['proposal_source'].get('sha256')}`",
+                "",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def create_topic_review_adjudication_draft(
     packet_path: Path,
     output_path: Path,
+    *,
+    proposal_path: Path | None = None,
 ) -> TopicReviewDraftResult:
     """Create or reuse a draft bound to the exact source packet bytes."""
     packet_path = packet_path.expanduser().resolve()
@@ -203,10 +255,22 @@ def create_topic_review_adjudication_draft(
     packet = _read_object(packet_path, "topic review packet")
     fingerprint, _, _ = _validate_source_packet(packet)
     relative_source = os.path.relpath(packet_path, output_path.parent)
+    proposal = (
+        _read_object(proposal_path.expanduser().resolve(), "topic review proposal")
+        if proposal_path is not None
+        else None
+    )
+    proposal_sha256 = (
+        _file_sha256(proposal_path.expanduser().resolve())
+        if proposal_path is not None
+        else None
+    )
     draft = build_topic_review_adjudication_draft(
         packet,
         source_packet_path=relative_source,
         source_packet_sha256=_file_sha256(packet_path),
+        proposal=proposal,
+        proposal_sha256=proposal_sha256,
     )
     expected_json = json.dumps(draft, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     expected_markdown = render_topic_review_adjudication_markdown(draft)
@@ -408,6 +472,11 @@ def finalize_topic_review_adjudication(
         "topic_level_corrections": topic_corrections,
         "projection_eligibility_corrections": projection_corrections,
         "notes": str(draft.get("notes") or "").strip(),
+        "proposal_source": (
+            dict(draft["proposal_source"])
+            if isinstance(draft.get("proposal_source"), Mapping)
+            else None
+        ),
         "reviewed_by": reviewer,
     }
     review_fingerprint = _canonical_hash(logical_review)

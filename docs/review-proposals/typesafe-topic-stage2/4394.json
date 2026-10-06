@@ -1,0 +1,15 @@
+{
+  "notes": "Proposed review: accept the sampled projection decisions and all non-mission topic observations. Blocks 49, 52, and 53 perform a direct conversion appeal to the hearers. Their developed content is salvation, surrender, and Christian transformation; the sermon is not discussing evangelism, witness, missions, or disciple-making as a subject. Treating the speech act itself as mission would confound sermons that issue appeals with sermons about mission.",
+  "projection_eligibility_corrections": [],
+  "schema_version": 1,
+  "source_packet_fingerprint": "a4be2103cd3ac29f4883644e16ac1e23afb5180f6be5f081a595103d63495180",
+  "topic_level_corrections": [
+    {
+      "block_ids": [49, 52, 53],
+      "notes": "These blocks perform an appeal for conversion and surrender; they do not discuss communicating faith outwardly as a topic.",
+      "reviewed_level": 0,
+      "topic": "mission_evangelism_witness"
+    }
+  ],
+  "workflow_version": "topic-review-proposal-v1"
+}

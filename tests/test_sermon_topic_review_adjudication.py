@@ -99,6 +99,78 @@ class SermonTopicReviewAdjudicationTests(unittest.TestCase):
         self.assertTrue(all(reviewed["checks"].values()))
         self.assertEqual(first.review_fingerprint, replay.review_fingerprint)
 
+    def test_proposal_prefills_draft_without_completing_review(self) -> None:
+        proposal_path = self.root / "proposal.json"
+        proposal_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "workflow_version": "topic-review-proposal-v1",
+                    "source_packet_fingerprint": "packet-fingerprint",
+                    "topic_level_corrections": [
+                        {
+                            "block_ids": [7],
+                            "topic": "salvation_gospel",
+                            "reviewed_level": 3,
+                            "notes": "The saving-work claim is substantial.",
+                        }
+                    ],
+                    "projection_eligibility_corrections": [],
+                    "notes": "Prepared from the cached review evidence.",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        result = create_topic_review_adjudication_draft(
+            self.packet_path,
+            self.draft_path,
+            proposal_path=proposal_path,
+        )
+
+        self.assertFalse(result.reused)
+        draft = json.loads(self.draft_path.read_text(encoding="utf-8"))
+        self.assertEqual(1, len(draft["topic_level_corrections"]))
+        self.assertFalse(any(draft["checks"].values()))
+        self.assertEqual(64, len(draft["proposal_source"]["sha256"]))
+        self.assertIn("Prepared proposal", result.markdown_path.read_text())
+
+    def test_proposal_rejects_stale_packet_or_invalid_corrections(self) -> None:
+        proposal_path = self.root / "proposal.json"
+        proposal = {
+            "schema_version": 1,
+            "workflow_version": "topic-review-proposal-v1",
+            "source_packet_fingerprint": "stale-fingerprint",
+            "topic_level_corrections": [],
+            "projection_eligibility_corrections": [],
+            "notes": "Prepared proposal.",
+        }
+        proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "another source packet"):
+            create_topic_review_adjudication_draft(
+                self.packet_path,
+                self.draft_path,
+                proposal_path=proposal_path,
+            )
+
+        proposal["source_packet_fingerprint"] = "packet-fingerprint"
+        proposal["topic_level_corrections"] = [
+            {
+                "block_ids": [999],
+                "topic": "salvation_gospel",
+                "reviewed_level": 3,
+                "notes": "Not a packet block.",
+            }
+        ]
+        proposal_path.write_text(json.dumps(proposal), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "source packet blocks"):
+            create_topic_review_adjudication_draft(
+                self.packet_path,
+                self.draft_path,
+                proposal_path=proposal_path,
+            )
+
     def test_finalize_validates_corrections_and_source_hash(self) -> None:
         create_topic_review_adjudication_draft(self.packet_path, self.draft_path)
         draft = json.loads(self.draft_path.read_text(encoding="utf-8"))

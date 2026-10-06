@@ -659,11 +659,20 @@ def analysis_topic_review_draft(
         "--output",
         help="Draft JSON path; defaults beside the source packet.",
     ),
+    proposal: Path | None = typer.Option(
+        None,
+        "--proposal",
+        help="Optional fingerprint-bound proposal used to prefill review corrections.",
+    ),
 ) -> None:
     packet = packet.expanduser().resolve()
     output = output_path or packet.with_name(f"{packet.stem}.review-draft.json")
     try:
-        result = create_topic_review_adjudication_draft(packet, output)
+        result = create_topic_review_adjudication_draft(
+            packet,
+            output,
+            proposal_path=proposal,
+        )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     state = "Reused" if result.reused else "Created"

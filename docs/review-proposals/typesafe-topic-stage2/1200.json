@@ -1,0 +1,27 @@
+{
+  "notes": "Proposed review: accept projection decisions at blocks 12/13 and 16/17, including exclusion of mixed administration and sparse evidence. Accept the sampled non-mission topic observations. Review mission at block 12 as supporting discussion of outreach within mixed administration, block 24 as a supporting personal-witness example subordinate to heavenly citizenship, and block 35 as only incidental message language within developed Christ-and-gospel content. The conservative 197.68-second sermon start omits about seven seconds of the opening illustration but does not make the whole mixed block 12 projection-eligible.",
+  "projection_eligibility_corrections": [],
+  "schema_version": 1,
+  "source_packet_fingerprint": "119df8436a954ae4bf4b9566da4ce0dcb01f69635788dda94ae022fd77706f63",
+  "topic_level_corrections": [
+    {
+      "block_ids": [12],
+      "notes": "Outreach and its hoped-for fruit are meaningfully discussed, but mission is subordinate to service acknowledgments and Vacation Bible School administration.",
+      "reviewed_level": 2,
+      "topic": "mission_evangelism_witness"
+    },
+    {
+      "block_ids": [24],
+      "notes": "The suggested personal-witness response is developed as an example, but the block's main concern is Christian citizenship rather than evangelism itself.",
+      "reviewed_level": 2,
+      "topic": "mission_evangelism_witness"
+    },
+    {
+      "block_ids": [35],
+      "notes": "The block names the church's message while developing Christ and the gospel; it does not meaningfully develop mission practice or disciple-making.",
+      "reviewed_level": 1,
+      "topic": "mission_evangelism_witness"
+    }
+  ],
+  "workflow_version": "topic-review-proposal-v1"
+}
