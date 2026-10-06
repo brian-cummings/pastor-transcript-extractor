@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "cohort_id": "typesafe-topic-stage3-whole-sermon-v1",
+  "model": "jev-1.13.0",
+  "question_pack_version": "topics-v3-mission-discourse-boundary",
+  "review_policy_version": "topic-whole-sermon-review-v1",
+  "selection_contract": {
+    "pastor_count": 4,
+    "sermons_per_pastor": 3,
+    "sermon_count": 12,
+    "double_review_video_ids": [1200, 4394, 4430, 4589],
+    "requirements": [
+      "existing reusable extraction artifact",
+      "accepted-sermon disposition before Stage 3 refresh",
+      "explicit title attribution or reviewed speaker evidence",
+      "no duplicate recording of another selected sermon",
+      "topic and recording-context diversity within the bounded cohort"
+    ]
+  },
+  "pastors": [
+    {
+      "pastor_id": 39,
+      "display_name": "David P Ryder",
+      "slug": "churchdb-144",
+      "sermons": [
+        {
+          "video_id": 1200,
+          "youtube_video_id": "vBHMiKxBnYs",
+          "title": "Matthew 13:44 Treasure- Pastor Ryder",
+          "selection_reason": "Existing reviewed v3 field sermon; parable, salvation, and stewardship evidence.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 4052,
+          "youtube_video_id": "DR8tjCIIeIU",
+          "title": "Joseph  Genesis 41  Pastor Dave",
+          "selection_reason": "Reviewed single-speaker evidence; narrative, providence, vocation, and adversity coverage.",
+          "v3_topic_analysis_present": false
+        },
+        {
+          "video_id": 4458,
+          "youtube_video_id": "taLi4yIIaiU",
+          "title": "Reformation Part 1  Wycliffe and Tyndale  Pastor Dave",
+          "selection_reason": "Reviewed single-speaker evidence; Scripture, history, church, and public-life coverage.",
+          "v3_topic_analysis_present": false
+        }
+      ]
+    },
+    {
+      "pastor_id": 16,
+      "display_name": "Rusty Williams",
+      "slug": "churchdb-66",
+      "sermons": [
+        {
+          "video_id": 4394,
+          "youtube_video_id": "6aO_aOaq4Zs",
+          "title": "\"The Problem with AI\", Pastor Rusty Williams, September 26, 2026",
+          "selection_reason": "Existing reviewed v3 field sermon; technology, ethics, identity, and conversion-appeal boundary evidence.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 3974,
+          "youtube_video_id": "YSZXxgk6J6M",
+          "title": "\"As It Is in Heaven\", Pastor Rusty Williams, August 29, 2026",
+          "selection_reason": "Reviewed single-speaker evidence; independent sermon and earlier recording date.",
+          "v3_topic_analysis_present": false
+        },
+        {
+          "video_id": 590,
+          "youtube_video_id": "y4PshEBQrwU",
+          "title": "\"What More Could I Have Done\", Pastor Rusty Williams, June 6, 2026",
+          "selection_reason": "Reviewed single-speaker evidence; independent sermon and wider date separation.",
+          "v3_topic_analysis_present": false
+        }
+      ]
+    },
+    {
+      "pastor_id": 28,
+      "display_name": "Ron Clouzet",
+      "slug": "churchdb-110",
+      "sermons": [
+        {
+          "video_id": 4430,
+          "youtube_video_id": "U_qCxrDUAsQ",
+          "title": "Breaking Good News - By Dr. Ron Couzet",
+          "selection_reason": "Existing reviewed v3 field sermon; mission, witness, salvation, and Scripture evidence.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 350,
+          "youtube_video_id": "8YdupMtUtvg",
+          "title": "Jesus and Mary: The Sinner",
+          "selection_reason": "Reviewed single-speaker evidence; Jesus, sin, salvation, and interpersonal coverage.",
+          "v3_topic_analysis_present": false
+        },
+        {
+          "video_id": 1033,
+          "youtube_video_id": "vzte0jj9pGU",
+          "title": "Jesus and the Devil: The Archenemy",
+          "selection_reason": "Reviewed single-speaker evidence; Jesus and spiritual-conflict coverage.",
+          "v3_topic_analysis_present": false
+        }
+      ]
+    },
+    {
+      "pastor_id": 67,
+      "display_name": "John Bradshaw",
+      "slug": "john-bradshaw",
+      "sermons": [
+        {
+          "video_id": 4589,
+          "youtube_video_id": "uGQDKn4uNJM",
+          "title": "Demons & Dry Places by John Bradshaw | Partnership 2024 Friday Night Program",
+          "selection_reason": "Existing reviewed v3 field sermon; spiritual-conflict and formation evidence from a partnership event.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 4312,
+          "youtube_video_id": "7c828RxOJnw",
+          "title": "If God Is Good, How Can Hell Be Forever? A Biblical Answer | Night 11",
+          "selection_reason": "Reviewed single-speaker evidence; death, suffering, salvation, and divine-character coverage from a separate series.",
+          "v3_topic_analysis_present": false
+        },
+        {
+          "video_id": 4317,
+          "youtube_video_id": "y80X08b041Y",
+          "title": "From Creation to Revelation: God’s Forgotten Sign of Love | Night 6",
+          "selection_reason": "Reviewed single-speaker evidence; creation, Scripture, prophecy, and Adventist-identity coverage.",
+          "v3_topic_analysis_present": false
+        }
+      ]
+    }
+  ]
+}

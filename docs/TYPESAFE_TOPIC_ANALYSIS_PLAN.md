@@ -788,11 +788,19 @@ theological stance.
     classifications and prospective packets carry the v3 pack identity. This is
     sufficient evidence to retain the clarified question without modifying the
     other nineteen topic definitions.
+22. The Stage 3 cohort is frozen in
+    `evaluation/sermon-topics/stage3-whole-sermon-cohort-v1.json`: twelve accepted
+    sermons, three each for David P Ryder, Rusty Williams, Ron Clouzet, and John
+    Bradshaw. Selection requires an existing extraction, explicit title attribution
+    or reviewed speaker evidence, no duplicate selected recording, and useful topic
+    and recording-context variation. The four Stage 2 sermons are the designated
+    double-review set. Eight additional sermons require a v3 refresh before all
+    twelve whole-sermon packets can be generated.
 
 ### Next iteration
 
-1. Prepare the bounded 12-sermon, four-pastor Stage 3
-   cohort and whole-sermon packets from naturally accumulated cached evidence.
+1. Refresh the eight missing v3 analyses, generate the twelve frozen-cohort
+   whole-sermon packets, and perform the Stage 3 review.
    Profile aggregation remains blocked until that review establishes credible
    analytical projection.
 2. Once projection is credible, implement `salvation-relationships-v1` as the
