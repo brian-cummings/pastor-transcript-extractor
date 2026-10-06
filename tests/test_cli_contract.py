@@ -234,6 +234,15 @@ class CliContractTests(unittest.TestCase):
         )
         self.assertIn("--all-eligible", conflict_result.output)
 
+    def test_topic_review_draft_exposes_fingerprint_bound_proposals(self) -> None:
+        result = self.runner.invoke(
+            app, ["analysis", "topic-review-draft", "--help"]
+        )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        self.assertIn("--proposal", result.output)
+        self.assertIn("fingerprint-bound", result.output)
+
     def test_package_and_installed_entry_points_resolve_the_cli(self) -> None:
         self.assertIs(package_main, main)
         entry_points = {

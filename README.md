@@ -466,10 +466,15 @@ fine-pass batches are capped at 75 questions, and a provider token-limit rejecti
 splits only that failed batch; successful block packs remain reusable on rerun.
 
 After inspecting a packet, create a separate adjudication draft and freeze the
-review without editing or replacing the cached evidence:
+review without editing or replacing the cached evidence. A fingerprint-bound
+proposal may prefill concrete corrections and notes while leaving every required
+human-review check incomplete:
 
 ```bash
 pte analysis topic-review-draft /path/to/topic-review-packet.json
+pte analysis topic-review-draft \
+  /path/to/topic-review-packet.json \
+  --proposal /path/to/fingerprint-bound-proposal.json
 pte analysis topic-review-finalize \
   /path/to/topic-review-packet.review-draft.json \
   --reviewer REVIEWER \
@@ -479,8 +484,10 @@ pte analysis topic-review-finalize \
 `--accept-as-reviewed` confirms the required review checks after inspection. If a
 packet needs corrections, edit only the generated draft's correction lists and
 check fields, then finalize without that flag. The finalized artifact is bound to
-the source packet's logical fingerprint and exact file hash; rerunning draft
-generation refuses to overwrite review edits.
+the source packet's logical fingerprint and exact file hash. A prepared proposal's
+exact content hash is also retained in the draft and final review fingerprint.
+Rerunning draft generation reuses an unchanged draft and refuses to overwrite
+review edits.
 
 Validate the frozen synthetic topic behavior contract without making a provider
 request:

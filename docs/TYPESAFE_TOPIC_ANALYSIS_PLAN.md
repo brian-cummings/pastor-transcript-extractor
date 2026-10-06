@@ -752,12 +752,19 @@ theological stance.
     conservative 197.68-second start omits roughly seven seconds of the opening
     illustration and remains explicitly medium-confidence rather than being
     forced to an unsupported boundary.
+19. Four concrete Stage 2 adjudication proposals are checked in for those exact
+    packet fingerprints. The shared draft workflow validates their topic and
+    projection corrections, records the proposal content hash, and pre-fills a
+    protected review draft without completing any human-review check. Proposal
+    preparation and replay are deterministic and provider-free; stale packets or
+    invalid corrections fail closed, and cached TypeSafe observations remain
+    immutable.
 
 ### Next iteration
 
-1. Prepare adjudication drafts for the four existing prospective packets and
-   supply concrete proposed interpretations and corrections for review. This is
-   deterministic and must not make another provider call.
+1. Generate the four protected drafts from the checked-in proposals, review the
+   concrete interpretations and corrections, and finalize the accepted decisions.
+   This is deterministic and must not make another provider call.
 2. Resolve the observed `mission_evangelism_witness` ambiguity between discussing
    Christian mission and merely performing an evangelistic appeal. Change and
    version the question pack only if the reviewed evidence supports a stable
