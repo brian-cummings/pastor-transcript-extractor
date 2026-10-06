@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import Any, Callable
 
 from pastor_transcript_extractor.disposition import REVIEW_REQUIRED
 from pastor_transcript_extractor.fixture_validation import validate_fixture_directory
@@ -36,6 +38,18 @@ class ReclassificationEligibility:
     videos: tuple[Video, ...]
     skipped: int
     messages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ReclassificationOutcome:
+    video: Video
+    result: Any | None = None
+    error: Exception | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReclassificationExecution:
+    outcomes: tuple[ReclassificationOutcome, ...]
 
 
 def has_reusable_extraction_segments(extraction: object) -> bool:
@@ -226,3 +240,42 @@ def select_eligible_reclassification_videos(
         skipped=skipped,
         messages=tuple(messages),
     )
+
+
+def execute_reclassification(
+    videos: tuple[Video, ...],
+    *,
+    jobs: int,
+    reclassify: Callable[[Video], Any],
+) -> ReclassificationExecution:
+    """Run independent classifications while isolating per-video failures."""
+    if jobs < 1:
+        raise ValueError("jobs must be at least 1")
+    outcomes: list[ReclassificationOutcome] = []
+    max_workers = min(jobs, len(videos)) if videos else 1
+    if max_workers == 1:
+        for video in videos:
+            try:
+                result = reclassify(video)
+            except Exception as error:
+                outcomes.append(ReclassificationOutcome(video=video, error=error))
+            else:
+                outcomes.append(ReclassificationOutcome(video=video, result=result))
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_video = {
+                executor.submit(reclassify, video): video for video in videos
+            }
+            for future in as_completed(future_to_video):
+                video = future_to_video[future]
+                try:
+                    result = future.result()
+                except Exception as error:
+                    outcomes.append(
+                        ReclassificationOutcome(video=video, error=error)
+                    )
+                else:
+                    outcomes.append(
+                        ReclassificationOutcome(video=video, result=result)
+                    )
+    return ReclassificationExecution(outcomes=tuple(outcomes))

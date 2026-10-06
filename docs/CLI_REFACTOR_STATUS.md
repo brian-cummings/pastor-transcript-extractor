@@ -8,9 +8,8 @@ context compaction or a new session.
 
 - Status: in progress.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action: extract concurrent reclassification execution and structured
-  outcomes, leaving the command responsible only for dependency construction,
-  options, rendering, and error translation.
+- Next action: move the now-decomposed reclassification command handler into a
+  dedicated command module, then separate fixture-correction orchestration.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1211,6 +1210,13 @@ Extracted production duration/publication eligibility, fixture-policy bypass,
 latest-extraction checks, reusable-segment checks, skip counts, and skip events
 into a typed presentation-free workflow stage. Removed the CLI-local catalog
 eligibility shim and its policy imports.
+
+### 2026-10-06 — Milestone 9.8: reclassification execution workflow
+
+Extracted bounded worker scheduling, completion ordering, and per-video failure
+isolation into `execute_reclassification`, returning typed outcomes for command
+rendering. The workflow remains independent of Typer and Rich; the command
+still owns dependency construction, progress text, summaries, and error style.
 
 ## Validation log
 
@@ -2881,6 +2887,19 @@ PASS
 
 TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_validation tests.test_fixture_correction tests.test_cli_contract
 Ran 31 tests in 0.935s — OK (verifier calls mocked; no inference executed)
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Reclassification execution workflow
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/workflows/reclassification.py src/pastor_transcript_extractor/cli.py
+PASS
+
+TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_validation tests.test_fixture_correction tests.test_cli_contract
+Ran 31 tests in 0.934s — OK (verifier calls mocked; no inference executed)
 
 git diff --check
 PASS
