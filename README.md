@@ -407,7 +407,7 @@ accepted as a sermon and projected through effective reviewed speaker-profile
 membership.
 
 The fine pass also collects the versioned
-`topics-v2-performed-worship-boundary` observation pack: twenty
+`topics-v3-mission-discourse-boundary` observation pack: twenty
 independent five-level Score questions covering broad sermon topics. Each cached
 topic answer preserves its expected score, complete level distribution, confidence,
 bounded sentence context, source-segment provenance, and a separate deterministic

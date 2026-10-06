@@ -3,8 +3,8 @@
 Status: observation, cache, sparse-gap recovery, and read-only sermon projection
 contracts implemented, with one naturally processed sermon reviewed as an
 initial field observation. The broad taxonomy remains the `topics-v1` starting
-hypothesis; the clarified question pack is
-`topics-v2-performed-worship-boundary`. Neither version authorizes pastor-level
+hypothesis; the current clarified question pack is
+`topics-v3-mission-discourse-boundary`. No version authorizes pastor-level
 conclusions. Profile aggregation and leaf packs remain deferred.
 
 ## Purpose
@@ -427,7 +427,7 @@ Keep three decisions separate:
 | Decision | Owner | Meaning |
 |---|---|---|
 | Content role | TypeSafe role pack plus localization policy | Whether the block is principal sermon, sermon-integrated prayer or Scripture, music/service prayer, administration, education, or unclear |
-| Topic observation | `topics-v2-performed-worship-boundary` | Which subjects are present and how prominent they are in the target text |
+| Topic observation | `topics-v3-mission-discourse-boundary` | Which subjects are present and how prominent they are in the target text |
 | Analytical eligibility | Deterministic projection policy | Whether and how the observation may contribute to a sermon or pastor measurement |
 
 The role label `worship_music_or_service_prayer` includes music and song lyrics.
@@ -764,17 +764,26 @@ theological stance.
     self-contained decision guide, proposal-to-Score comparison, transcript context,
     projection evidence, and every cached distribution rather than asking the
     reviewer to infer meaning from correction JSON.
+20. Stage 2 review found the general topic classification strong and isolated a
+    symmetric semantic-boundary defect in `mission_evangelism_witness`: a direct
+    gospel appeal to the current hearer could be mistaken for evangelism as a
+    topic, while teaching that Christians are commanded to preach to the nations
+    or serve as witnesses could be underestimated. `topics-v3-mission-discourse-boundary`
+    changes only that topic definition: it includes teaching about the Christian
+    task of witness and excludes merely performing a conversion appeal. The other
+    nineteen topic definitions remain unchanged. The broad topic analysis stays
+    one coherent cached pack: every block must still be evaluated against the
+    changed question, and splitting one question into a separate physical cache
+    would add coordination and migration complexity without avoiding that work.
 
 ### Next iteration
 
-1. Generate the four protected drafts from the checked-in proposals, review the
-   concrete interpretations and corrections, and finalize the accepted decisions.
+1. Finalize the four reviewed Stage 2 drafts against their protected proposals.
    This is deterministic and must not make another provider call.
-2. Resolve the observed `mission_evangelism_witness` ambiguity between discussing
-   Christian mission and merely performing an evangelistic appeal. Change and
-   version the question pack only if the reviewed evidence supports a stable
-   clarification; keep all unrelated cached packs reusable.
-3. After those adjudications, prepare the bounded 12-sermon, four-pastor Stage 3
+2. Validate `topics-v3-mission-discourse-boundary` on the same four-sermon Stage 2
+   cohort, checking the corrected mission boundary and guarding the other nineteen
+   topics against regression.
+3. After those adjudications and validation, prepare the bounded 12-sermon, four-pastor Stage 3
    cohort and whole-sermon packets from naturally accumulated cached evidence.
    Profile aggregation remains blocked until that review establishes credible
    analytical projection.

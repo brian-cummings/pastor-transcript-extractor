@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "fixture_id": "sermon-topic-behavior-contract-v1",
-  "question_pack_version": "topics-v2-performed-worship-boundary",
+  "question_pack_version": "topics-v3-mission-discourse-boundary",
   "review": {
     "status": "bounded_jev_review_complete",
     "reviewer": "codex-specification-curation",
@@ -17,6 +17,8 @@
     "overlap_prophecy_adventist",
     "boundary_sin_discipleship",
     "boundary_mission_service",
+    "mission_performed_appeal_exclusion",
+    "mission_commanded_witness_positive",
     "boundary_ethics_public_life",
     "boundary_human_nature_creation",
     "sparse_caption",
@@ -207,6 +209,38 @@
           "minimum_score": 0.0,
           "maximum_score": 1.25,
           "rationale": "No proclamation or disciple-making is developed, and instrumental aid is rejected."
+        }
+      }
+    },
+    {
+      "case_id": "mission-performed-appeal-exclusion",
+      "label": "Direct conversion appeal without mission as subject",
+      "tags": ["mission_performed_appeal_exclusion"],
+      "leading_context": "The sermon has explained forgiveness through Christ.",
+      "target_text": "Christ died for you and offers you forgiveness today. Will you accept him now? Open your heart, surrender your life to Jesus, and receive the salvation he freely gives.",
+      "trailing_context": "The preacher pauses while the congregation responds.",
+      "reviewed_interpretation": "The preacher performs a gospel invitation to the present hearers but does not teach about evangelism, witness, missions, or disciple-making.",
+      "expectations": {
+        "mission_evangelism_witness": {
+          "minimum_score": 0.0,
+          "maximum_score": 1.25,
+          "rationale": "A direct conversion appeal is being performed, not discussed as the Christian task of witness."
+        }
+      }
+    },
+    {
+      "case_id": "mission-commanded-witness-positive",
+      "label": "Christian command to witness to the nations",
+      "tags": ["mission_commanded_witness_positive"],
+      "leading_context": "The sermon turns from receiving the gospel to the church's responsibility.",
+      "target_text": "Christ commands his disciples to go to the nations and proclaim the good news. We are his witnesses, so every congregation must equip believers to speak about Jesus, make disciples, and carry the gospel beyond its own community.",
+      "trailing_context": "The preacher next describes practical opportunities for witness.",
+      "reviewed_interpretation": "The Christian command and responsibility to proclaim, witness, and make disciples is the organizing subject.",
+      "expectations": {
+        "mission_evangelism_witness": {
+          "minimum_score": 3.25,
+          "maximum_score": 4.0,
+          "rationale": "Commanded proclamation, witness, equipping, and disciple-making organize the target."
         }
       }
     },
