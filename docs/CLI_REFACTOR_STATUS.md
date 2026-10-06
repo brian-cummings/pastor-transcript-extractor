@@ -1227,6 +1227,12 @@ an explicitly configured invoker. `cli.py` now contains only the temporary
 composition implementation, with no command decorator or Typer declarations
 for reclassification.
 
+### 2026-10-06 — Milestone 9.10: reusable-segment seam removal
+
+Removed the temporary CLI wrapper for reusable extraction-segment validation.
+Fixture correction now calls the presentation-free reclassification workflow
+owner directly.
+
 ## Validation log
 
 ### 2026-09-24 — CLI contract baseline
@@ -2922,6 +2928,19 @@ PASS
 
 TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_validation tests.test_fixture_correction tests.test_cli_contract
 Ran 31 tests in 0.928s — OK (verifier calls mocked; no inference executed)
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Reusable-segment seam removal
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/cli.py
+PASS
+
+TYPESAFE_API_KEY=test .venv/bin/python -m unittest tests.test_fixture_correction tests.test_cli_contract
+Ran 13 tests in 0.652s — OK (verifier calls mocked; no inference executed)
 
 git diff --check
 PASS

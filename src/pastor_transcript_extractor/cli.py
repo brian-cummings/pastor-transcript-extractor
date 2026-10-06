@@ -6187,10 +6187,6 @@ fetch_captions_service = acquisition.fetch_captions_service
 transcribe_videos_service = acquisition.transcribe_videos_service
 
 
-def _has_reusable_extraction_segments(extraction: object) -> bool:
-    return has_reusable_extraction_segments(extraction)
-
-
 @app.command(
     "apply-fixture-correction",
     help=(
@@ -6254,7 +6250,7 @@ def apply_fixture_correction(
             f"Unknown YouTube video ID: {youtube_video_id}"
         )
     extraction = database.get_latest_extraction_result_for_video(video.id)
-    if extraction is None or not _has_reusable_extraction_segments(extraction):
+    if extraction is None or not has_reusable_extraction_segments(extraction):
         raise typer.BadParameter(
             f"Video {youtube_video_id} has no reusable extraction segments"
         )
