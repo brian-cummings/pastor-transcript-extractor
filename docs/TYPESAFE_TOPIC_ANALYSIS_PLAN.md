@@ -775,19 +775,27 @@ theological stance.
     one coherent cached pack: every block must still be evaluated against the
     changed question, and splitting one question into a separate physical cache
     would add coordination and migration complexity without avoiding that work.
+21. All four protected Stage 2 adjudications were finalized against their exact
+    v2 packet and proposal fingerprints. The bounded v3 validation then passed all
+    23 synthetic cases and all 43 reviewed expectations on `jev-1.13.0`. The
+    direct conversion appeal scored 0.02 for
+    `mission_evangelism_witness` with 0.99 probability on absent, while the command
+    to witness and preach to the nations scored 3.99 with 1.00 probability on
+    dominant. The four-sermon replay also matched the human review: video 4394's
+    appeal blocks 49, 52, and 53 fell to 0.03, 0.11, and 0.15; video 4430's
+    commanded-witness block 18 rose to 2.50; and video 1200's reviewed supporting
+    or incidental mission blocks landed at 1.41, 1.84, and 0.83. All four
+    classifications and prospective packets carry the v3 pack identity. This is
+    sufficient evidence to retain the clarified question without modifying the
+    other nineteen topic definitions.
 
 ### Next iteration
 
-1. Finalize the four reviewed Stage 2 drafts against their protected proposals.
-   This is deterministic and must not make another provider call.
-2. Validate `topics-v3-mission-discourse-boundary` on the same four-sermon Stage 2
-   cohort, checking the corrected mission boundary and guarding the other nineteen
-   topics against regression.
-3. After those adjudications and validation, prepare the bounded 12-sermon, four-pastor Stage 3
+1. Prepare the bounded 12-sermon, four-pastor Stage 3
    cohort and whole-sermon packets from naturally accumulated cached evidence.
    Profile aggregation remains blocked until that review establishes credible
    analytical projection.
-4. Once projection is credible, implement `salvation-relationships-v1` as the
+2. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 
