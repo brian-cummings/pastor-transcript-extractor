@@ -6,10 +6,10 @@ context compaction or a new session.
 
 ## Current state
 
-- Status: paused at a committed boundary by user request.
+- Status: in progress.
 - Active milestone: Milestone 9 — remove migration scaffolding.
-- Next action when resumed: move the next bounded root-command family out of
-  `cli.py`; `extract` and review/reclassification commands remain candidates.
+- Next action: move the root review handler behind its owning command boundary,
+  preserving its review-preparation and rendering behavior.
 - Dataset validation: not needed for the current milestone.
 
 ## Baseline observations
@@ -1166,6 +1166,13 @@ Moved the root `discover`, `fetch`, and `transcribe` Typer handlers into
 handlers and now-unused transcription-default shim from `cli.py`. Command
 names, options, defaults, error translation, and service compatibility exports
 remain unchanged. Paused after this committed slice at the user's request.
+
+### 2026-10-06 — Milestone 9.2: extraction command ownership
+
+Moved the root `extract` Typer handler into `commands.extraction`, beside its
+command-level database, path, progress, error-translation, and rendering
+adapters. Removed the duplicate implementation from `cli.py`; command name,
+options, defaults, and application workflow behavior remain unchanged.
 
 ## Validation log
 
@@ -2755,6 +2762,19 @@ PASS
 
 .venv/bin/python -m unittest tests.test_identity_run tests.test_identity_run_workflow
 Ran 62 tests in 0.577s — OK
+
+git diff --check
+PASS
+```
+
+### 2026-10-06 — Extraction command ownership
+
+```text
+.venv/bin/python -m compileall -q src/pastor_transcript_extractor/commands/extraction.py src/pastor_transcript_extractor/cli.py
+PASS
+
+.venv/bin/python -m unittest <2 representative extract command tests> tests.test_cli_contract
+Ran 10 tests in 10.040s — OK
 
 git diff --check
 PASS
