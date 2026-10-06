@@ -796,14 +796,34 @@ theological stance.
     and recording-context variation. The four Stage 2 sermons are the designated
     double-review set. Eight additional sermons require a v3 refresh before all
     twelve whole-sermon packets can be generated.
+23. All twelve frozen-cohort v3 packets now exist. A read-only adversarial audit
+    of their 618 blocks found no second semantic-boundary defect warranting a
+    question revision. `discipleship_spiritual_formation` remains a monitoring
+    boundary because one projection-ineligible children's exhortation and a few
+    mixed blocks are plausibly high by one level, while the wider high-score set
+    consistently develops growth, surrender, prayer, practice, or
+    transformation. `adventist_doctrine_identity` keeps artifact and
+    institutional mentions incidental while its supporting evidence develops
+    actual distinctives or identity. `vocation_stewardship_daily_life` has an
+    expected level-1 baseline from ordinary daily-life language, but its
+    supporting-or-higher mass remains selective. The latter is an aggregation
+    interpretation constraint, not a question defect: future profile summaries
+    must use supporting-or-higher probability as the primary developed-emphasis
+    measure and retain expected prominence as a secondary sensitivity measure.
+    The evidence and decision are frozen in
+    `evaluation/sermon-topics/stage3-topic-boundary-audit-v1.md`; no provider
+    call, cache invalidation, or rerun was needed.
 
 ### Next iteration
 
-1. Refresh the eight missing v3 analyses, generate the twelve frozen-cohort
-   whole-sermon packets, and perform the Stage 3 review.
-   Profile aggregation remains blocked until that review establishes credible
-   analytical projection.
-2. Once projection is credible, implement `salvation-relationships-v1` as the
+1. Freeze the completed Stage 3 whole-sermon review decisions and carry their
+   evidence constraints into the first profile-aggregation design. Use
+   equal-sermon weighting, make supporting-or-higher probability the primary
+   developed-topic measurement, retain expected prominence as a sensitivity
+   measure, and preserve representative evidence links.
+2. Evaluate Stage 4 repeatability across independent sermon series and periods
+   before treating pastor-level topic differences as stable.
+3. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 
