@@ -757,8 +757,10 @@ theological stance.
     projection corrections, records the proposal content hash, and pre-fills a
     protected review draft without completing any human-review check. Proposal
     preparation and replay are deterministic and provider-free; stale packets or
-    invalid corrections fail closed, and cached TypeSafe observations remain
-    immutable.
+    invalid corrections fail closed. Finalization re-resolves both the packet and
+    proposal source paths and verifies their exact hashes before freezing a
+    path-independent logical review fingerprint; cached TypeSafe observations
+    remain immutable.
 
 ### Next iteration
 

@@ -29,6 +29,24 @@ def _packet() -> dict:
     }
 
 
+def _proposal() -> dict:
+    return {
+        "schema_version": 1,
+        "workflow_version": "topic-review-proposal-v1",
+        "source_packet_fingerprint": "packet-fingerprint",
+        "topic_level_corrections": [
+            {
+                "block_ids": [7],
+                "topic": "salvation_gospel",
+                "reviewed_level": 3,
+                "notes": "The saving-work claim is substantial.",
+            }
+        ],
+        "projection_eligibility_corrections": [],
+        "notes": "Prepared from the cached review evidence.",
+    }
+
+
 class SermonTopicReviewAdjudicationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
@@ -102,24 +120,7 @@ class SermonTopicReviewAdjudicationTests(unittest.TestCase):
     def test_proposal_prefills_draft_without_completing_review(self) -> None:
         proposal_path = self.root / "proposal.json"
         proposal_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "workflow_version": "topic-review-proposal-v1",
-                    "source_packet_fingerprint": "packet-fingerprint",
-                    "topic_level_corrections": [
-                        {
-                            "block_ids": [7],
-                            "topic": "salvation_gospel",
-                            "reviewed_level": 3,
-                            "notes": "The saving-work claim is substantial.",
-                        }
-                    ],
-                    "projection_eligibility_corrections": [],
-                    "notes": "Prepared from the cached review evidence.",
-                },
-                sort_keys=True,
-            ),
+            json.dumps(_proposal(), sort_keys=True),
             encoding="utf-8",
         )
 
@@ -134,7 +135,28 @@ class SermonTopicReviewAdjudicationTests(unittest.TestCase):
         self.assertEqual(1, len(draft["topic_level_corrections"]))
         self.assertFalse(any(draft["checks"].values()))
         self.assertEqual(64, len(draft["proposal_source"]["sha256"]))
+        self.assertEqual("proposal.json", draft["proposal_source"]["path"])
         self.assertIn("Prepared proposal", result.markdown_path.read_text())
+
+    def test_finalize_rejects_changed_proposal_content(self) -> None:
+        proposal_path = self.root / "proposal.json"
+        proposal_path.write_text(json.dumps(_proposal()), encoding="utf-8")
+        create_topic_review_adjudication_draft(
+            self.packet_path,
+            self.draft_path,
+            proposal_path=proposal_path,
+        )
+        changed = _proposal()
+        changed["notes"] = "Changed after the review draft was prepared."
+        proposal_path.write_text(json.dumps(changed), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "proposal content hash has changed"):
+            finalize_topic_review_adjudication(
+                self.draft_path,
+                self.root / "reviewed.json",
+                reviewer="Brian",
+                accept_as_reviewed=True,
+            )
 
     def test_proposal_rejects_stale_packet_or_invalid_corrections(self) -> None:
         proposal_path = self.root / "proposal.json"
@@ -253,6 +275,45 @@ class SermonTopicReviewAdjudicationTests(unittest.TestCase):
             second_output.parent / reviewed["source_packet"]["path"]
         ).resolve()
         self.assertEqual(self.packet_path.resolve(), resolved_source)
+
+    def test_proposal_review_fingerprint_is_independent_of_artifact_paths(self) -> None:
+        proposal_path = self.root / "proposal.json"
+        proposal_path.write_text(json.dumps(_proposal()), encoding="utf-8")
+        first_dir = self.root / "first-proposal"
+        second_dir = self.root / "second-proposal"
+        first_draft = first_dir / "draft.json"
+        second_draft = second_dir / "draft.json"
+        create_topic_review_adjudication_draft(
+            self.packet_path,
+            first_draft,
+            proposal_path=proposal_path,
+        )
+        create_topic_review_adjudication_draft(
+            self.packet_path,
+            second_draft,
+            proposal_path=proposal_path,
+        )
+
+        first = finalize_topic_review_adjudication(
+            first_draft,
+            first_dir / "reviewed.json",
+            reviewer="Brian",
+            accept_as_reviewed=True,
+        )
+        second_output = second_dir / "nested" / "reviewed.json"
+        second = finalize_topic_review_adjudication(
+            second_draft,
+            second_output,
+            reviewer="Brian",
+            accept_as_reviewed=True,
+        )
+
+        self.assertEqual(first.review_fingerprint, second.review_fingerprint)
+        reviewed = json.loads(second_output.read_text(encoding="utf-8"))
+        resolved_proposal = (
+            second_output.parent / reviewed["proposal_source"]["path"]
+        ).resolve()
+        self.assertEqual(proposal_path.resolve(), resolved_proposal)
 
 
 if __name__ == "__main__":

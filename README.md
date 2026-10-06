@@ -486,8 +486,9 @@ packet needs corrections, edit only the generated draft's correction lists and
 check fields, then finalize without that flag. The finalized artifact is bound to
 the source packet's logical fingerprint and exact file hash. A prepared proposal's
 exact content hash is also retained in the draft and final review fingerprint.
-Rerunning draft generation reuses an unchanged draft and refuses to overwrite
-review edits.
+Finalization reopens both sources and fails closed if either exact file has changed;
+artifact paths themselves do not affect the logical review fingerprint. Rerunning
+draft generation reuses an unchanged draft and refuses to overwrite review edits.
 
 Validate the frozen synthetic topic behavior contract without making a provider
 request:
