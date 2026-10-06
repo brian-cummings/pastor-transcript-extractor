@@ -62,6 +62,7 @@ from pastor_transcript_extractor.commands import media_provenance as _media_prov
 from pastor_transcript_extractor.commands import evaluation as _evaluation_commands
 from pastor_transcript_extractor.commands import extraction as _extraction_commands
 from pastor_transcript_extractor.commands import pipeline as _pipeline_commands
+from pastor_transcript_extractor.commands import reclassification as _reclassification_commands
 from pastor_transcript_extractor.commands import review as _review_commands
 from pastor_transcript_extractor.commands import storage as _storage_commands
 from pastor_transcript_extractor.commands.identity import evaluation as _identity_evaluation_commands
@@ -6402,57 +6403,22 @@ def apply_fixture_correction(
     )
 
 
-@app.command(help="Rerun classification using existing extraction segments.")
-def reclassify(
-    video_id: int | None = typer.Option(None, "--video-id", help="Reclassify one database video id."),
-    source_id: int | None = typer.Option(None, "--source-id", help="Reclassify extracted videos from one source id."),
-    review_required: bool = typer.Option(
-        False,
-        "--review-required",
-        help=(
-            "Reclassify videos whose latest extraction has a persisted "
-            "review_required final disposition."
-        ),
-    ),
-    all_videos: bool = typer.Option(
-        False,
-        "--all",
-        help="Reclassify every database video with reusable extraction segments.",
-    ),
-    fixture_dir: Path | None = typer.Option(
-        None,
-        "--fixture-dir",
-        help="Reclassify every approved fixture in this directory.",
-    ),
-    llm_model: str | None = typer.Option(None, "--llm-model", help="Override the configured local Ollama model."),
-    recording_verifier_backend: str = typer.Option(
-        DEFAULT_RECORDING_VERIFIER_BACKEND,
-        "--recording-verifier-backend",
-        help="Ambiguous-recording verifier: ollama, typesafe, or none.",
-    ),
-    recording_verifier_model: str | None = typer.Option(
-        None,
-        "--recording-verifier-model",
-        help=f"Verifier model override; TypeSafe defaults to {DEFAULT_TYPESAFE_MODEL}.",
-    ),
-    jobs: int = typer.Option(2, "--jobs", min=1, help="Concurrent video classification jobs."),
-    inference_cache_root: Path | None = typer.Option(
-        None,
-        "--inference-cache-root",
-        help="Use a separate per-video inference cache root, primarily for controlled comparisons.",
-    ),
-    recording_verifier_cache_root: Path | None = typer.Option(
-        None,
-        "--recording-verifier-cache-root",
-        help="Use a shared recording-verifier cache root.",
-    ),
-    force: bool = typer.Option(False, "--force", help="Rerun even when model and prompt versions match."),
-    base_dir: Path | None = typer.Option(
-        None,
-        "--base-dir",
-        help="Application-data directory containing app.db; pass the directory, not the database file.",
-    ),
+def _invoke_reclassification_request(
+    request: _reclassification_commands.ReclassificationCommandRequest,
 ) -> None:
+    video_id = request.video_id
+    source_id = request.source_id
+    review_required = request.review_required
+    all_videos = request.all_videos
+    fixture_dir = request.fixture_dir
+    llm_model = request.llm_model
+    recording_verifier_backend = request.recording_verifier_backend
+    recording_verifier_model = request.recording_verifier_model
+    jobs = request.jobs
+    inference_cache_root = request.inference_cache_root
+    recording_verifier_cache_root = request.recording_verifier_cache_root
+    force = request.force
+    base_dir = request.base_dir
     selection_request = ReclassificationSelectionRequest(
         video_id=video_id,
         source_id=source_id,
@@ -6718,6 +6684,9 @@ _identity_coordination_commands.configure_shadow_associator(
 )
 _identity_workflow_commands.configure_identity_workflow(
     _invoke_identity_workflow_request
+)
+_reclassification_commands.configure_reclassification_command(
+    _invoke_reclassification_request
 )
 _pipeline_commands.configure_identity_runner(run_identity_workflow_service)
 _pipeline_commands.configure_run_command(_invoke_run_request)
