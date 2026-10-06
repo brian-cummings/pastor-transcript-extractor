@@ -12,7 +12,7 @@ from typing import Any, Mapping
 from pastor_transcript_extractor.sermon_topics import TOPICS
 
 
-TOPIC_REVIEW_ADJUDICATION_SCHEMA_VERSION = 1
+TOPIC_REVIEW_ADJUDICATION_SCHEMA_VERSION = 2
 TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION = "topic-review-adjudication-v1"
 TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION = 1
 TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION = "topic-review-proposal-v1"
@@ -129,12 +129,50 @@ def _source_packet_descriptor(
     }
 
 
+def _validated_proposal(
+    proposal: Mapping[str, Any],
+    *,
+    source_packet_fingerprint: str,
+    block_ids: list[int],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    if proposal.get("schema_version") != TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION:
+        raise ValueError("Unsupported topic review proposal schema_version")
+    if proposal.get("workflow_version") != TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION:
+        raise ValueError("Unsupported topic review proposal workflow_version")
+    if proposal.get("source_packet_fingerprint") != source_packet_fingerprint:
+        raise ValueError("Topic review proposal belongs to another source packet")
+    notes = proposal.get("notes")
+    if not isinstance(notes, str):
+        raise ValueError("Topic review proposal notes must be a string")
+    topic_corrections, projection_corrections = _validated_corrections(
+        proposal,
+        block_ids=block_ids,
+    )
+    return topic_corrections, projection_corrections, notes.strip()
+
+
+def _proposal_descriptor(
+    proposal: Mapping[str, Any],
+    *,
+    path: str,
+    sha256: str,
+) -> dict[str, Any]:
+    return {
+        "path": path,
+        "sha256": sha256,
+        "schema_version": proposal.get("schema_version"),
+        "workflow_version": proposal.get("workflow_version"),
+        "source_packet_fingerprint": proposal.get("source_packet_fingerprint"),
+    }
+
+
 def build_topic_review_adjudication_draft(
     packet: Mapping[str, Any],
     *,
     source_packet_path: str,
     source_packet_sha256: str,
     proposal: Mapping[str, Any] | None = None,
+    proposal_path: str | None = None,
     proposal_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Build a separate review layer without modifying cached observations."""
@@ -163,34 +201,23 @@ def build_topic_review_adjudication_draft(
     }
     if proposal is None:
         return draft
-    if proposal.get("schema_version") != TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION:
-        raise ValueError("Unsupported topic review proposal schema_version")
-    if proposal.get("workflow_version") != TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION:
-        raise ValueError("Unsupported topic review proposal workflow_version")
-    if proposal.get("source_packet_fingerprint") != fingerprint:
-        raise ValueError("Topic review proposal belongs to another source packet")
+    topic_corrections, projection_corrections, notes = _validated_proposal(
+        proposal,
+        source_packet_fingerprint=fingerprint,
+        block_ids=block_ids,
+    )
+    if not isinstance(proposal_path, str) or not proposal_path:
+        raise ValueError("Topic review proposal requires its source path")
     if not isinstance(proposal_sha256, str) or not proposal_sha256:
         raise ValueError("Topic review proposal requires its exact content hash")
-    draft["proposal_source"] = {
-        "sha256": proposal_sha256,
-        "schema_version": TOPIC_REVIEW_PROPOSAL_SCHEMA_VERSION,
-        "workflow_version": TOPIC_REVIEW_PROPOSAL_WORKFLOW_VERSION,
-    }
-    topic_corrections = proposal.get("topic_level_corrections", [])
-    projection_corrections = proposal.get(
-        "projection_eligibility_corrections", []
+    draft["proposal_source"] = _proposal_descriptor(
+        proposal,
+        path=proposal_path,
+        sha256=proposal_sha256,
     )
-    if not isinstance(topic_corrections, list):
-        raise ValueError("Topic review proposal topic corrections must be a list")
-    if not isinstance(projection_corrections, list):
-        raise ValueError("Topic review proposal projection corrections must be a list")
     draft["topic_level_corrections"] = topic_corrections
     draft["projection_eligibility_corrections"] = projection_corrections
-    notes = proposal.get("notes")
-    if not isinstance(notes, str):
-        raise ValueError("Topic review proposal notes must be a string")
-    draft["notes"] = notes.strip()
-    _validated_corrections(draft, block_ids=block_ids)
+    draft["notes"] = notes
     return draft
 
 
@@ -236,6 +263,7 @@ def render_topic_review_adjudication_markdown(draft: Mapping[str, Any]) -> str:
                 f"- Topic corrections: `{len(draft['topic_level_corrections'])}`",
                 f"- Projection corrections: "
                 f"`{len(draft['projection_eligibility_corrections'])}`",
+                f"- Proposal: `{draft['proposal_source'].get('path')}`",
                 f"- Proposal SHA-256: `{draft['proposal_source'].get('sha256')}`",
                 "",
             ]
@@ -255,14 +283,17 @@ def create_topic_review_adjudication_draft(
     packet = _read_object(packet_path, "topic review packet")
     fingerprint, _, _ = _validate_source_packet(packet)
     relative_source = os.path.relpath(packet_path, output_path.parent)
+    resolved_proposal_path = (
+        proposal_path.expanduser().resolve() if proposal_path is not None else None
+    )
     proposal = (
-        _read_object(proposal_path.expanduser().resolve(), "topic review proposal")
-        if proposal_path is not None
+        _read_object(resolved_proposal_path, "topic review proposal")
+        if resolved_proposal_path is not None
         else None
     )
     proposal_sha256 = (
-        _file_sha256(proposal_path.expanduser().resolve())
-        if proposal_path is not None
+        _file_sha256(resolved_proposal_path)
+        if resolved_proposal_path is not None
         else None
     )
     draft = build_topic_review_adjudication_draft(
@@ -270,6 +301,11 @@ def create_topic_review_adjudication_draft(
         source_packet_path=relative_source,
         source_packet_sha256=_file_sha256(packet_path),
         proposal=proposal,
+        proposal_path=(
+            os.path.relpath(resolved_proposal_path, output_path.parent)
+            if resolved_proposal_path is not None
+            else None
+        ),
         proposal_sha256=proposal_sha256,
     )
     expected_json = json.dumps(draft, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
@@ -304,7 +340,7 @@ def create_topic_review_adjudication_draft(
 def _resolve_source_packet(
     draft_path: Path,
     draft: Mapping[str, Any],
-) -> tuple[Path, dict[str, Any], list[int]]:
+) -> tuple[Path, dict[str, Any], list[int], str]:
     source = draft.get("source_packet")
     if not isinstance(source, Mapping):
         raise ValueError("Adjudication draft has no source_packet object")
@@ -331,7 +367,45 @@ def _resolve_source_packet(
     )
     if dict(source) != expected_source:
         raise ValueError("Adjudication draft source metadata does not match its packet")
-    return packet_path, packet, block_ids
+    return packet_path, packet, block_ids, source_sha256
+
+
+def _resolve_proposal(
+    draft_path: Path,
+    draft: Mapping[str, Any],
+    *,
+    source_packet_fingerprint: str,
+    block_ids: list[int],
+) -> tuple[Path, dict[str, Any], str] | None:
+    source = draft.get("proposal_source")
+    if source is None:
+        return None
+    if not isinstance(source, Mapping):
+        raise ValueError("Adjudication draft proposal_source must be an object")
+    raw_path = source.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise ValueError("Adjudication draft has no proposal path")
+    proposal_path = Path(raw_path).expanduser()
+    if not proposal_path.is_absolute():
+        proposal_path = draft_path.parent / proposal_path
+    proposal_path = proposal_path.resolve()
+    proposal = _read_object(proposal_path, "source topic review proposal")
+    _validated_proposal(
+        proposal,
+        source_packet_fingerprint=source_packet_fingerprint,
+        block_ids=block_ids,
+    )
+    proposal_sha256 = _file_sha256(proposal_path)
+    if source.get("sha256") != proposal_sha256:
+        raise ValueError("Source topic review proposal content hash has changed")
+    expected_source = _proposal_descriptor(
+        proposal,
+        path=raw_path,
+        sha256=proposal_sha256,
+    )
+    if dict(source) != expected_source:
+        raise ValueError("Adjudication draft proposal metadata does not match its source")
+    return proposal_path, proposal, proposal_sha256
 
 
 def _validated_corrections(
@@ -436,7 +510,17 @@ def finalize_topic_review_adjudication(
     reviewer = reviewer.strip()
     if not reviewer:
         raise ValueError("Reviewer must not be blank")
-    packet_path, packet, block_ids = _resolve_source_packet(draft_path, draft)
+    packet_path, packet, block_ids, source_sha256 = _resolve_source_packet(
+        draft_path,
+        draft,
+    )
+    packet_fingerprint, _, _ = _validate_source_packet(packet)
+    resolved_proposal = _resolve_proposal(
+        draft_path,
+        draft,
+        source_packet_fingerprint=packet_fingerprint,
+        block_ids=block_ids,
+    )
     checks = draft.get("checks")
     required_checks = draft.get("required_checks")
     if not isinstance(checks, Mapping) or not isinstance(required_checks, list):
@@ -455,7 +539,6 @@ def finalize_topic_review_adjudication(
     topic_corrections, projection_corrections = _validated_corrections(
         draft, block_ids=block_ids
     )
-    source_sha256 = _file_sha256(packet_path)
     finalized_source = _source_packet_descriptor(
         packet,
         path=os.path.relpath(packet_path, output_path.parent),
@@ -464,6 +547,20 @@ def finalize_topic_review_adjudication(
     logical_source = {
         key: value for key, value in finalized_source.items() if key != "path"
     }
+    finalized_proposal_source = None
+    logical_proposal_source = None
+    if resolved_proposal is not None:
+        proposal_path, proposal, proposal_sha256 = resolved_proposal
+        finalized_proposal_source = _proposal_descriptor(
+            proposal,
+            path=os.path.relpath(proposal_path, output_path.parent),
+            sha256=proposal_sha256,
+        )
+        logical_proposal_source = {
+            key: value
+            for key, value in finalized_proposal_source.items()
+            if key != "path"
+        }
     logical_review = {
         "workflow_version": TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION,
         "source_packet": logical_source,
@@ -472,11 +569,7 @@ def finalize_topic_review_adjudication(
         "topic_level_corrections": topic_corrections,
         "projection_eligibility_corrections": projection_corrections,
         "notes": str(draft.get("notes") or "").strip(),
-        "proposal_source": (
-            dict(draft["proposal_source"])
-            if isinstance(draft.get("proposal_source"), Mapping)
-            else None
-        ),
+        "proposal_source": logical_proposal_source,
         "reviewed_by": reviewer,
     }
     review_fingerprint = _canonical_hash(logical_review)
@@ -494,6 +587,7 @@ def finalize_topic_review_adjudication(
     finalized = {
         **draft,
         "source_packet": finalized_source,
+        "proposal_source": finalized_proposal_source,
         "review_status": "reviewed",
         "checks": normalized_checks,
         "topic_level_corrections": topic_corrections,
