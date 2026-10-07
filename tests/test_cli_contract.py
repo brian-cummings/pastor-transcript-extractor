@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib.metadata import distribution
 import unittest
+from unittest.mock import patch
 
 from typer.core import TyperGroup
 from typer.main import get_command
@@ -246,6 +247,34 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual(0, result.exit_code, msg=result.output)
         self.assertIn("--proposal", result.output)
         self.assertIn("fingerprint-bound", result.output)
+
+    def test_blocked_topic_stability_readiness_is_a_successful_audit(self) -> None:
+        report = {
+            "ready": False,
+            "input_fingerprint": "f" * 64,
+            "pastors": [],
+            "review_actions": [],
+        }
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.get_database",
+                return_value=object(),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.load_topic_stage4_cohort",
+                return_value={},
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.assess_topic_stage4_readiness",
+                return_value=report,
+            ),
+        ):
+            result = self.runner.invoke(
+                app, ["analysis", "topic-stability-readiness"]
+            )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        self.assertIn("Overall: blocked", result.output)
 
     def test_package_and_installed_entry_points_resolve_the_cli(self) -> None:
         self.assertIs(package_main, main)
