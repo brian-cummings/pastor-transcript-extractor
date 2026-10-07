@@ -828,12 +828,31 @@ theological stance.
     measure, and reuses both cache layers on unchanged replay. Its stored and CLI
     status remains `exploratory_stage4_repeatability_pending`, with comparative
     use explicitly disabled until Stage 4.
+25. `pte analysis topic-stability-readiness` now audits the frozen cohort without
+    inference or analytical writes. It binds the result to the exact cohort and
+    current per-video projection-gate fingerprints, requires one reviewed
+    effective speaker profile per pastor, requires every selected sermon to be
+    projection-eligible on the frozen question pack, and requires at least two
+    declared series and periods without inventing missing dates. The Stage 3
+    manifest now records the known series and title-supported period strata and
+    accurately marks all twelve v3 analyses present. The current read-only audit
+    blocks Stage 4 for concrete reasons: David P Ryder spans profiles 117 and
+    268; Rusty Williams spans 80 and 273; Ron Clouzet spans 130 and 263; John
+    Bradshaw's videos 4312 and 4317 have `review_required` dispositions while
+    4589 lacks effective profile membership. Ryder, Clouzet, and Bradshaw also
+    lack enough trustworthy period metadata. These are identity, disposition,
+    and sampling prerequisites; the implementation does not bypass them by
+    grouping titles or pastor names.
 
 ### Next iteration
 
-1. Evaluate Stage 4 repeatability across independent sermon series and periods
-   before treating pastor-level topic differences as stable.
-2. Once projection is credible, implement `salvation-relationships-v1` as the
+1. Prepare bounded review actions for the exact Stage 4 identity and disposition
+   blockers, and fill period strata only from trustworthy recording metadata.
+   Do not run a broad reclassification or infer membership from titles.
+2. Once readiness passes, evaluate Stage 4 repeatability across independent
+   sermon series and periods before treating pastor-level topic differences as
+   stable.
+3. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 

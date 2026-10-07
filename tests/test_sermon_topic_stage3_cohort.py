@@ -32,8 +32,13 @@ class SermonTopicStage3CohortTests(unittest.TestCase):
             set(cohort["selection_contract"]["double_review_video_ids"]),
         )
         self.assertEqual(
-            8,
+            0,
             sum(not sermon["v3_topic_analysis_present"] for sermon in sermons),
+        )
+        self.assertTrue(all(sermon.get("series_key") for sermon in sermons))
+        self.assertEqual(
+            4,
+            sum(sermon.get("period_key") is not None for sermon in sermons),
         )
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Mapping
 
 import typer
 from rich.console import Console
@@ -65,6 +66,11 @@ from pastor_transcript_extractor.sermon_topic_profile_analysis import (
     TOPIC_PROFILE_ANALYZER_KEY,
     TOPIC_PROFILE_ANALYZER_VERSION,
     build_profile_topic_analysis,
+)
+from pastor_transcript_extractor.sermon_topic_stage4 import (
+    DEFAULT_TOPIC_STAGE4_COHORT,
+    assess_topic_stage4_readiness,
+    load_topic_stage4_cohort,
 )
 from pastor_transcript_extractor.recording_verifier_typesafe import (
     TypeSafeSdkAdapter,
@@ -146,6 +152,34 @@ def _print_topic_profile(database, run) -> None:
     console.print(
         f"Provenance: profile_analysis=#{run.id}; version={run.analyzer_version}; "
         f"membership={run.membership_fingerprint}; input={run.input_fingerprint}"
+    )
+
+
+def _print_topic_stage4_readiness(report: Mapping[str, object]) -> None:
+    table = Table(title="TypeSafe Topic Stage 4 Readiness")
+    table.add_column("Pastor")
+    table.add_column("Profiles")
+    table.add_column("Eligible", justify="right")
+    table.add_column("Series", justify="right")
+    table.add_column("Periods", justify="right")
+    table.add_column("State")
+    for pastor in report["pastors"]:
+        sermons = pastor["sermons"]
+        eligible = sum(bool(item["eligible"]) for item in sermons)
+        blockers = pastor["blockers"]
+        table.add_row(
+            str(pastor.get("display_name") or pastor.get("slug") or "unknown"),
+            ",".join(str(value) for value in pastor["effective_profile_ids"])
+            or "—",
+            f"{eligible}/{len(sermons)}",
+            str(len(pastor["series_keys"])),
+            str(len(pastor["period_keys"])),
+            "ready" if not blockers else ", ".join(str(item) for item in blockers),
+        )
+    console.print(table)
+    console.print(
+        f"Overall: {'ready' if report['ready'] else 'blocked'}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…"
     )
 
 
@@ -853,6 +887,36 @@ def analysis_topic_show_profile(
             "'pte analysis topic-summarize-profile' first."
         )
     _print_topic_profile(database, run)
+
+
+@analysis_app.command(
+    "topic-stability-readiness",
+    help=(
+        "Audit reviewed identity, cached topic projections, and Stage 4 series/"
+        "period strata without inference or writes."
+    ),
+)
+def analysis_topic_stability_readiness(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Frozen topic cohort JSON with series and period metadata.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        report = assess_topic_stage4_readiness(database, cohort)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    _print_topic_stage4_readiness(report)
+    if not report["ready"]:
+        raise typer.Exit(code=1)
 
 
 @analysis_app.command(
