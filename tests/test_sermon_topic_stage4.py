@@ -216,6 +216,37 @@ class SermonTopicStage4Tests(unittest.TestCase):
             action["action_type"] for action in actions
         })
 
+    def test_boundary_action_carries_dependent_topic_evidence_reasons(self) -> None:
+        actions = build_topic_stage4_review_actions(
+            [
+                {
+                    "blockers": ["disposition_not_accepted"],
+                    "display_name": "Test Pastor",
+                    "pastor_id": 1,
+                    "slug": "test-pastor",
+                    "sermons": [
+                        {
+                            "period_key": "period-a",
+                            "profile_id": 7,
+                            "reason_codes": [
+                                "disposition_not_accepted",
+                                "whole_sermon_review_unavailable",
+                            ],
+                            "video_id": 3,
+                            "youtube_video_id": "youtube-3",
+                        }
+                    ],
+                }
+            ]
+        )
+
+        self.assertEqual(1, len(actions))
+        self.assertEqual("review_sermon_boundary", actions[0]["action_type"])
+        self.assertEqual(
+            ["whole_sermon_review_unavailable"],
+            actions[0]["pending_topic_reason_codes"],
+        )
+
     def test_loader_rejects_duplicate_videos_and_fingerprints_exact_file(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir) / "cohort.json"

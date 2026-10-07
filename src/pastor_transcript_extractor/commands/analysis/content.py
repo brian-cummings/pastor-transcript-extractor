@@ -159,6 +159,21 @@ def _print_topic_profile(database, run) -> None:
     )
 
 
+def _topic_review_command(*, video_id: object, base_dir: Path) -> str:
+    return shlex.join(
+        [
+            "pte",
+            "analysis",
+            "topic-review",
+            "--video-id",
+            str(video_id),
+            "--whole-sermon",
+            "--base-dir",
+            str(base_dir),
+        ]
+    )
+
+
 def _print_topic_stage4_readiness(
     report: Mapping[str, object],
     *,
@@ -246,17 +261,8 @@ def _print_topic_stage4_readiness(
                     str(resolved_base_dir),
                 ]
             )
-            review = shlex.join(
-                [
-                    "pte",
-                    "analysis",
-                    "topic-review",
-                    "--video-id",
-                    str(action["video_id"]),
-                    "--whole-sermon",
-                    "--base-dir",
-                    str(resolved_base_dir),
-                ]
+            review = _topic_review_command(
+                video_id=action["video_id"], base_dir=resolved_base_dir
             )
             console.print(
                 f"{index}. Cached topic evidence for {pastor_name}:\n"
@@ -289,11 +295,24 @@ def _print_topic_stage4_readiness(
                     str(resolved_base_dir),
                 ]
             )
+            pending_topic_reasons = action.get("pending_topic_reason_codes")
+            topic_follow_up = ""
+            if isinstance(pending_topic_reasons, list) and pending_topic_reasons:
+                review_command = _topic_review_command(
+                    video_id=action["video_id"], base_dir=resolved_base_dir
+                )
+                topic_follow_up = (
+                    "\n   After the correction succeeds, prepare the final "
+                    "fingerprint-bound topic packet:\n"
+                    f"   {review_command}\n"
+                    "   Packet creation does not count as review; return the "
+                    "packet for a fingerprinted decision."
+                )
             console.print(
                 f"{index}. Sermon-boundary review for {pastor_name}:\n"
                 f"   {command}\n"
                 "   If that review approves one continuous sermon window:\n"
-                f"   {apply_command}",
+                f"   {apply_command}{topic_follow_up}",
                 markup=False,
             )
         elif action_type == "supply_period_metadata":
