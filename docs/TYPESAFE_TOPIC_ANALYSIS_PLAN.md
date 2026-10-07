@@ -896,6 +896,13 @@ theological stance.
     explicitly dated and attributed video 281 (`The American Experiment`, 2026
     H2), preserving three independent Bradshaw series and the required two period
     strata without weakening the identity or topic-evidence gates.
+32. Stage 4 readiness now distinguishes missing TypeSafe observations from
+    missing human adjudication of observations that are already current. Only a
+    question-pack mismatch or absent topic analysis schedules reclassification;
+    a missing or stale whole-sermon review instead schedules provider-free packet
+    reuse and protected draft preparation. The readiness-policy fingerprint was
+    advanced so the old inference-heavy handoff cannot be mistaken for the new
+    cache-aware plan.
 
 ### Next iteration
 

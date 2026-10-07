@@ -21,19 +21,26 @@ from pastor_transcript_extractor.storage import Database
 
 TOPIC_STAGE4_READINESS_SCHEMA_VERSION = 2
 TOPIC_STAGE4_READINESS_POLICY_VERSION = (
-    "production-eligible-reviewed-profile-two-series-two-periods-v2"
+    "production-eligible-cache-aware-reviewed-profile-two-series-two-periods-v3"
 )
 TOPIC_STAGE4_EVALUATION_SCHEMA_VERSION = 1
 TOPIC_STAGE4_EVALUATION_POLICY_VERSION = (
     "equal-sermon-series-period-diagnostics-v1"
 )
-TOPIC_EVIDENCE_REASON_CODES = frozenset(
+TOPIC_REFRESH_REASON_CODES = frozenset(
     {
         "question_pack_mismatch",
         "topic_analysis_unavailable",
+    }
+)
+TOPIC_REVIEW_REASON_CODES = frozenset(
+    {
         "whole_sermon_review_evidence_stale",
         "whole_sermon_review_unavailable",
     }
+)
+TOPIC_EVIDENCE_REASON_CODES = (
+    TOPIC_REFRESH_REASON_CODES | TOPIC_REVIEW_REASON_CODES
 )
 DEFAULT_TOPIC_STAGE4_COHORT = (
     Path(__file__).resolve().parents[2]
@@ -173,6 +180,7 @@ def build_topic_stage4_review_actions(
     until the existing review workflows are adjudicated and synchronized.
     """
     topic_actions: list[dict[str, Any]] = []
+    topic_review_actions: list[dict[str, Any]] = []
     boundary_actions: list[dict[str, Any]] = []
     identity_actions: list[dict[str, Any]] = []
     metadata_actions: list[dict[str, Any]] = []
@@ -247,15 +255,25 @@ def build_topic_stage4_review_actions(
                 for reason in sermon_reason_codes
                 if reason in TOPIC_EVIDENCE_REASON_CODES
             ]
+            refresh_reasons = [
+                reason
+                for reason in sermon_reason_codes
+                if reason in TOPIC_REFRESH_REASON_CODES
+            ]
+            review_reasons = [
+                reason
+                for reason in sermon_reason_codes
+                if reason in TOPIC_REVIEW_REASON_CODES
+            ]
             if (
                 "disposition_not_accepted" not in sermon_reason_codes
-                and pending_topic_reasons
+                and refresh_reasons
             ):
                 topic_actions.append(
                     {
                         "action_type": "prepare_topic_evidence",
                         "pastor": pastor_ref,
-                        "reason_codes": pending_topic_reasons,
+                        "reason_codes": refresh_reasons,
                         "video_id": sermon.get("video_id"),
                         "youtube_video_id": sermon.get("youtube_video_id"),
                         "instruction": (
@@ -263,6 +281,25 @@ def build_topic_stage4_review_actions(
                             "frozen TypeSafe pack. Prepare its whole-sermon "
                             "packet only if the refreshed disposition remains "
                             "accepted; otherwise review its boundary first."
+                        ),
+                    }
+                )
+            elif (
+                "disposition_not_accepted" not in sermon_reason_codes
+                and review_reasons
+            ):
+                topic_review_actions.append(
+                    {
+                        "action_type": "review_topic_evidence",
+                        "pastor": pastor_ref,
+                        "packet_path": sermon.get("topic_review_packet_path"),
+                        "reason_codes": review_reasons,
+                        "video_id": sermon.get("video_id"),
+                        "youtube_video_id": sermon.get("youtube_video_id"),
+                        "instruction": (
+                            "Reuse the current cached topic observations and "
+                            "adjudicate their fingerprint-bound whole-sermon "
+                            "packet; do not reclassify this sermon."
                         ),
                     }
                 )
@@ -311,6 +348,7 @@ def build_topic_stage4_review_actions(
     # Complete those before exact-span identity review and registry sync.
     return [
         *topic_actions,
+        *topic_review_actions,
         *boundary_actions,
         *identity_actions,
         *metadata_actions,
@@ -501,6 +539,15 @@ def assess_topic_stage4_readiness(
                     "review_evidence": sermon_review,
                     "series_key": series_key,
                     "period_key": period_key,
+                    "topic_review_packet_path": (
+                        str(
+                            Path(getattr(gate, "source_path")).with_name(
+                                "topic-whole-sermon-review-v1.json"
+                            )
+                        )
+                        if isinstance(getattr(gate, "source_path", None), str)
+                        else None
+                    ),
                     "video_id": video_id,
                     "youtube_video_id": video.youtube_video_id,
                 }
