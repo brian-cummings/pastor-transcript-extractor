@@ -1947,6 +1947,44 @@ class HybridClassificationTests(unittest.TestCase):
             )
         )
 
+    def test_manual_override_keeps_abstaining_typesafe_result(self) -> None:
+        typesafe_result = HybridSermonResult(
+            method="typesafe_first_v11",
+            model="jev-1.13.0",
+            prompt_version="typesafe-test-v1",
+            confidence_tier="low",
+            retained_segment_indexes=[],
+            excluded_segment_indexes=[0],
+            uncertain_block_ids=[],
+            warnings=["weak automatic boundary evidence"],
+            blocks=[],
+            classifications=[],
+            search={"candidates": [], "selected_rank": 1, "discovery": {}},
+            confidence_reasons=[{"code": "typesafe_probability_map", "tier": "low"}],
+        )
+        semantic_classifier = MagicMock()
+        semantic_classifier.classify_sermon.return_value = typesafe_result
+        rule_window = SermonWindowResult(
+            0.0, 350.0, 0.8, [], "rule_based_v1", [0], [], False, []
+        )
+
+        with patch(
+            "pastor_transcript_extractor.extraction.classify_sermon_content_adaptive"
+        ) as fallback:
+            classification, hybrid = _classify_with_fallback(
+                [draft(0.0, 350.0, "sermon")],
+                rule_window,
+                classifier="typesafe",
+                llm_client=FakeAdaptiveLlmClient(),
+                prompt_version="test-v1",
+                semantic_classifier=semantic_classifier,
+                manual_override_present=True,
+            )
+
+        self.assertIs(typesafe_result, hybrid)
+        self.assertEqual("typesafe_first_v11", classification["method"])
+        fallback.assert_not_called()
+
     def test_successful_typesafe_first_pass_does_not_force_verifier(self) -> None:
         classification = {
             "search": {

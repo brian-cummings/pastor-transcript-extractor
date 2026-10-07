@@ -402,8 +402,13 @@ def _classify_with_fallback(
                     return result, typesafe_result
                 if (
                     isinstance(typesafe_result, HybridSermonResult)
-                    and typesafe_result.retained_segment_indexes
-                    and typesafe_result.confidence_tier in {"high", "medium"}
+                    and (
+                        manual_override_present
+                        or (
+                            typesafe_result.retained_segment_indexes
+                            and typesafe_result.confidence_tier in {"high", "medium"}
+                        )
+                    )
                 ):
                     result = typesafe_result.to_dict()
                     result["window_arbitration_policy_version"] = (
