@@ -855,17 +855,15 @@ theological stance.
     disabled: no stability cutoff is invented before the reviewed cohort is
     ready and its observed diagnostics can be interpreted.
 27. Stage 4 preserves the immutable Stage 3 cohort and uses a separate explicit,
-    fingerprinted twelve-sermon snapshot. The Stage 4 snapshot records the Stage 3
-    source hash, source-backed period evidence for every sermon, and one deliberate
-    substitution: already-accepted video 1037 supplies Ron Clouzet coverage from
-    an independent H1 series, while same-half video 1033 remains in the reviewed
-    Stage 3 cohort. Only replacement video 1037 lacks the frozen topic pack and
-    whole-sermon review evidence. The readiness result deterministically emits the
-    minimum existing-workflow handoff: four exact-span speaker-pair reviews, two
-    sermon-boundary reviews, and that one bounded cached-topic refresh. It does not
-    infer identity from titles, group unbound observations together, or create a
-    second review/cache system. Cohort and readiness fingerprints bind date and
-    exact review-evidence hashes plus every current projection gate.
+    fingerprinted twelve-sermon snapshot. The snapshot records the Stage 3 source
+    hash, source-backed period evidence for every sermon, and every deliberate
+    replacement. Video 1037 supplies Ron Clouzet coverage from an independent H1
+    series, while same-half video 1033 remains in the reviewed Stage 3 cohort.
+    Replacement sermons receive no eligibility from their titles or cohort slot:
+    disposition, reviewed effective identity, the current question pack, and
+    whole-sermon review evidence must still pass the same readiness gate. Cohort
+    and readiness fingerprints bind date and exact review-evidence hashes plus
+    every current projection gate.
 28. The readiness handoff now preserves dependent topic work when a refreshed
     sermon is no longer disposition-eligible. Its single boundary-review action
     carries any pending topic-evidence reasons and prints the existing
@@ -873,12 +871,22 @@ theological stance.
     command. This keeps the review order fail-closed, avoids an otherwise
     redundant readiness round trip, and reuses the same packet generator and
     immutable TypeSafe cache rather than creating a special recovery path.
+29. Transcript inspection invalidated Stage 4's two Hope for Humanity selections
+    as John Bradshaw samples before Brian spent time approving their boundaries.
+    Video 4312's preacher refers to Bradshaw in the third person and is addressed
+    as Pastor Brian after the sermon; video 4317 contains the same preacher and a
+    post-sermon handoff to Wes Peppers. The Stage 3 review remains immutable, while
+    the separate Stage 4 snapshot replaces those recordings with explicitly dated
+    and attributed videos 599 (`Separation`, 2026 H1) and 3973 (`The Shaking`,
+    2026 H2). Those titles are candidate provenance, not identity approval. Both
+    replacements must still be refreshed, reviewed, and joined to video 4589 only
+    through exact-span speaker adjudication.
 
 ### Next iteration
 
 1. Execute the readiness command's bounded handoff: adjudicate and synchronize
-   the four exact identity pairs, review and apply any approved boundary fixtures
-   for videos 4312 and 4317, and refresh/review only replacement video 1037.
+   its exact identity pairs, review and apply only approved boundary fixtures,
+   and refresh/review replacement videos 1037, 599, and 3973.
    Re-run readiness after those reviewed inputs change; do not run a broad
    reclassification or infer membership from titles.
 2. Once readiness passes, run and interpret the prepared Stage 4 repeatability

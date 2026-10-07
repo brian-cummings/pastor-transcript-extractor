@@ -272,6 +272,16 @@ class SermonTopicStage4Tests(unittest.TestCase):
         self.assertEqual(12, len(sermons))
         self.assertIn(1037, {sermon["video_id"] for sermon in sermons})
         self.assertNotIn(1033, {sermon["video_id"] for sermon in sermons})
+        john_sermons = next(
+            pastor["sermons"]
+            for pastor in cohort["pastors"]
+            if pastor["display_name"] == "John Bradshaw"
+        )
+        self.assertEqual(
+            {599, 3973, 4589},
+            {sermon["video_id"] for sermon in john_sermons},
+        )
+        self.assertFalse({4312, 4317} & {sermon["video_id"] for sermon in sermons})
         self.assertTrue(all(sermon["period_key"] for sermon in sermons))
         self.assertTrue(all(sermon["period_evidence"] for sermon in sermons))
         self.assertEqual(
