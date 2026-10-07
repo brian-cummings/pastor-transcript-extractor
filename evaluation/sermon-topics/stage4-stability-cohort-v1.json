@@ -11,11 +11,23 @@
     "cohort_id": "typesafe-topic-stage3-whole-sermon-v1",
     "path": "stage3-whole-sermon-cohort-v1.json",
     "cohort_sha256": "2cab514241b232e9b13e6f576cfe8a1357cbd115f9eda9630a0dd7bd917eae86",
-    "replacement": {
-      "removed_video_id": 1033,
-      "added_video_id": 1037,
-      "reason": "The three reviewed Ron Clouzet sermons all fall in 2026 H2. Video 1037 is an accepted, reviewed-profile H1 sermon from an independent series."
-    }
+    "replacements": [
+      {
+        "removed_video_id": 1033,
+        "added_video_id": 1037,
+        "reason": "The three reviewed Ron Clouzet sermons all fall in 2026 H2. Video 1037 is an independently dated H1 sermon whose disposition, identity, and whole-sermon topic evidence must pass the ordinary readiness gates."
+      },
+      {
+        "removed_video_id": 4312,
+        "added_video_id": 599,
+        "reason": "The main preacher in video 4312 refers to John Bradshaw in the third person and is addressed as Pastor Brian after the sermon. Video 599 explicitly attributes its sermon to John Bradshaw and supplies an independently dated H1 series, but receives no identity or analytical credit until reviewed."
+      },
+      {
+        "removed_video_id": 4317,
+        "added_video_id": 3973,
+        "reason": "Video 4317 contains the same non-Bradshaw preacher and a post-sermon handoff to Wes Peppers. Video 3973 explicitly attributes its sermon to John Bradshaw and supplies an independently dated H2 series, but receives no identity or analytical credit until reviewed."
+      }
+    ]
   },
   "selection_contract": {
     "pastor_count": 4,
@@ -31,7 +43,7 @@
   },
   "whole_sermon_review_evidence": [
     {
-      "video_ids": [1200, 4052, 4458, 4394, 3974, 590, 4430, 350, 4589, 4312, 4317],
+      "video_ids": [1200, 4052, 4458, 4394, 3974, 590, 4430, 350, 4589],
       "path": "stage3-topic-boundary-audit-v1.md",
       "sha256": "57d4d3b448d3dc184470636da3fbe4e3bf2d7c7c808301fc50b52f109afab810"
     }
@@ -204,32 +216,32 @@
           "v3_topic_analysis_present": true
         },
         {
-          "video_id": 4312,
-          "youtube_video_id": "7c828RxOJnw",
-          "title": "If God Is Good, How Can Hell Be Forever? A Biblical Answer | Night 11",
-          "series_key": "hope-for-humanity",
-          "period_key": "2025-h2",
+          "video_id": 599,
+          "youtube_video_id": "kXucVunoG0E",
+          "title": "\"Separation\", Pastor John Bradshaw, May 2, 2026",
+          "series_key": "separation",
+          "period_key": "2026-h1",
           "period_evidence": {
-            "source_kind": "official_event_schedule",
-            "value": "2025-10-03/2025-11-01",
-            "reference": "https://blog.itiswritten.com/blog/2025/08/25/it-is-written-announces-hope-for-humanity-a-new-evangelistic-series-airing-in-october/"
+            "source_kind": "explicit_title_date",
+            "value": "2026-05-02",
+            "reference": "database video #599 title"
           },
-          "selection_reason": "Reviewed Stage 3 sermon with death, suffering, salvation, and divine-character coverage.",
-          "v3_topic_analysis_present": true
+          "selection_reason": "Explicitly attributed John Bradshaw sermon from an independent H1 series; identity, current disposition, and topic evidence remain gated.",
+          "v3_topic_analysis_present": false
         },
         {
-          "video_id": 4317,
-          "youtube_video_id": "y80X08b041Y",
-          "title": "From Creation to Revelation: God’s Forgotten Sign of Love | Night 6",
-          "series_key": "hope-for-humanity",
-          "period_key": "2025-h2",
+          "video_id": 3973,
+          "youtube_video_id": "fM3_vhfZw7w",
+          "title": "\"The Shaking\", Pastor John Bradshaw, Sept 5, 2026 1st Service",
+          "series_key": "the-shaking",
+          "period_key": "2026-h2",
           "period_evidence": {
-            "source_kind": "official_event_schedule",
-            "value": "2025-10-03/2025-11-01",
-            "reference": "https://blog.itiswritten.com/blog/2025/08/25/it-is-written-announces-hope-for-humanity-a-new-evangelistic-series-airing-in-october/"
+            "source_kind": "explicit_title_date",
+            "value": "2026-09-05",
+            "reference": "database video #3973 title"
           },
-          "selection_reason": "Reviewed Stage 3 sermon with creation, Scripture, prophecy, and Adventist-identity coverage.",
-          "v3_topic_analysis_present": true
+          "selection_reason": "Explicitly attributed John Bradshaw sermon from an independent H2 series; identity, current disposition, and topic evidence remain gated.",
+          "v3_topic_analysis_present": false
         }
       ]
     }
