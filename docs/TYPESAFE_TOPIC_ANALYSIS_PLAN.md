@@ -876,11 +876,11 @@ theological stance.
     Video 4312's preacher refers to Bradshaw in the third person and is addressed
     as Pastor Brian after the sermon; video 4317 contains the same preacher and a
     post-sermon handoff to Wes Peppers. The Stage 3 review remains immutable, while
-    the separate Stage 4 snapshot replaces those recordings with explicitly dated
-    and attributed videos 599 (`Separation`, 2026 H1) and 3973 (`The Shaking`,
-    2026 H2). Those titles are candidate provenance, not identity approval. Both
-    replacements must still be refreshed, reviewed, and joined to video 4589 only
-    through exact-span speaker adjudication.
+    the separate Stage 4 snapshot initially replaced those recordings with
+    explicitly dated and attributed videos 599 (`Separation`, 2026 H1) and 3973
+    (`The Shaking`, 2026 H2). Those titles are candidate provenance, not identity
+    approval. Both replacements still required refresh, review, and exact-span
+    speaker adjudication with video 4589.
 30. A currently accepted legacy classification can become `review_required` when
     refreshed on the frozen TypeSafe workflow, as replacement video 1037 did.
     Readiness therefore no longer presents whole-sermon packet generation as an
@@ -888,12 +888,20 @@ theological stance.
     for an `accepted_sermon` result; a `review_required` result routes back through
     the boundary-first action so the cached topic packet is generated once against
     the final reviewed classification fingerprint.
+31. Stage 4 readiness now enforces ordinary production video eligibility before
+    projection or review-action planning and fingerprints the duration/date inputs
+    behind that decision. This exposed video 599 as a four-hour recording above
+    the three-hour production ceiling; it must not have been selected or offered
+    for reclassification. The frozen Stage 4 snapshot replaces it with eligible,
+    explicitly dated and attributed video 281 (`The American Experiment`, 2026
+    H2), preserving three independent Bradshaw series and the required two period
+    strata without weakening the identity or topic-evidence gates.
 
 ### Next iteration
 
 1. Execute the readiness command's bounded handoff: adjudicate and synchronize
    its exact identity pairs, review and apply only approved boundary fixtures,
-   and refresh/review replacement videos 1037, 599, and 3973.
+   and refresh/review replacement videos 1037, 281, and 3973.
    Re-run readiness after those reviewed inputs change; do not run a broad
    reclassification or infer membership from titles.
 2. Once readiness passes, run and interpret the prepared Stage 4 repeatability

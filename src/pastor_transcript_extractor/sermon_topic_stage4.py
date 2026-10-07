@@ -15,12 +15,13 @@ from pastor_transcript_extractor.sermon_topic_projection import (
     assess_topic_profile_projection,
 )
 from pastor_transcript_extractor.sermon_topics import TOPICS
+from pastor_transcript_extractor.sermon_policy import video_is_sermon_eligible
 from pastor_transcript_extractor.storage import Database
 
 
 TOPIC_STAGE4_READINESS_SCHEMA_VERSION = 2
 TOPIC_STAGE4_READINESS_POLICY_VERSION = (
-    "reviewed-profile-two-series-two-periods-v1"
+    "production-eligible-reviewed-profile-two-series-two-periods-v2"
 )
 TOPIC_STAGE4_EVALUATION_SCHEMA_VERSION = 1
 TOPIC_STAGE4_EVALUATION_POLICY_VERSION = (
@@ -382,6 +383,7 @@ def assess_topic_stage4_readiness(
     gate_fingerprints = []
     review_evidence = _topic_stage4_review_evidence(cohort)
     review_evidence_fingerprints = []
+    production_eligibility_inputs = []
 
     for pastor in cohort["pastors"]:
         sermons = pastor["sermons"]
@@ -423,6 +425,36 @@ def assess_topic_stage4_readiness(
                     {
                         "eligible": False,
                         "reason_codes": ["video_identity_mismatch"],
+                        "video_id": video_id,
+                        "youtube_video_id": video.youtube_video_id,
+                    }
+                )
+                continue
+            production_eligible = video_is_sermon_eligible(
+                video.duration_seconds,
+                video.published_at,
+            )
+            production_eligibility_inputs.append(
+                {
+                    "duration_seconds": video.duration_seconds,
+                    "eligible": production_eligible,
+                    "published_at": (
+                        video.published_at.isoformat()
+                        if hasattr(video.published_at, "isoformat")
+                        else video.published_at
+                    ),
+                    "video_id": video_id,
+                }
+            )
+            if not production_eligible:
+                blockers.add("video_ineligible")
+                sermon_results.append(
+                    {
+                        "eligible": False,
+                        "profile_id": None,
+                        "reason_codes": ["video_ineligible"],
+                        "series_key": series_key,
+                        "period_key": period_key,
                         "video_id": video_id,
                         "youtube_video_id": video.youtube_video_id,
                     }
@@ -510,6 +542,10 @@ def assess_topic_stage4_readiness(
                 key=lambda item: int(item["video_id"]),
             ),
             "policy_version": TOPIC_STAGE4_READINESS_POLICY_VERSION,
+            "production_eligibility_inputs": sorted(
+                production_eligibility_inputs,
+                key=lambda item: int(item["video_id"]),
+            ),
             "review_evidence_fingerprints": sorted(
                 review_evidence_fingerprints,
                 key=lambda item: int(item["video_id"]),

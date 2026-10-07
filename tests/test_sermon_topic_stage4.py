@@ -29,7 +29,7 @@ class _Database:
         return self._videos
 
 
-def _video(video_id: int) -> Video:
+def _video(video_id: int, *, duration_seconds: int = 1200) -> Video:
     return Video(
         id=video_id,
         source_id=1,
@@ -39,7 +39,7 @@ def _video(video_id: int) -> Video:
         url=f"https://www.youtube.com/watch?v=youtube-{video_id}",
         channel_name=None,
         published_at=None,
-        duration_seconds=60,
+        duration_seconds=duration_seconds,
         status=VideoStatus.EXTRACTED,
     )
 
@@ -119,6 +119,26 @@ class SermonTopicStage4Tests(unittest.TestCase):
             ["period-a", "period-b"],
             report["pastors"][0]["period_keys"],
         )
+
+    def test_ineligible_video_blocks_readiness_before_projection(self) -> None:
+        database = _Database(
+            [_video(1), _video(2), _video(3, duration_seconds=4 * 60 * 60)]
+        )
+        with patch(
+            "pastor_transcript_extractor.sermon_topic_stage4."
+            "assess_topic_profile_projection",
+            side_effect=lambda _database, video: _gate(video.id),
+        ) as projection:
+            report = assess_topic_stage4_readiness(database, _cohort())
+
+        self.assertFalse(report["ready"])
+        self.assertIn("video_ineligible", report["blockers"])
+        self.assertEqual(
+            ["video_ineligible"],
+            report["pastors"][0]["sermons"][2]["reason_codes"],
+        )
+        self.assertEqual([1, 2], [call.args[1].id for call in projection.call_args_list])
+        self.assertFalse(report["review_actions"])
 
     def test_split_identity_ineligible_sermon_and_missing_period_are_visible(self) -> None:
         gates = {
@@ -278,7 +298,7 @@ class SermonTopicStage4Tests(unittest.TestCase):
             if pastor["display_name"] == "John Bradshaw"
         )
         self.assertEqual(
-            {599, 3973, 4589},
+            {281, 3973, 4589},
             {sermon["video_id"] for sermon in john_sermons},
         )
         self.assertFalse({4312, 4317} & {sermon["video_id"] for sermon in sermons})

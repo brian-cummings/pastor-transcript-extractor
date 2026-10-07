@@ -19,8 +19,8 @@
       },
       {
         "removed_video_id": 4312,
-        "added_video_id": 599,
-        "reason": "The main preacher in video 4312 refers to John Bradshaw in the third person and is addressed as Pastor Brian after the sermon. Video 599 explicitly attributes its sermon to John Bradshaw and supplies an independently dated H1 series, but receives no identity or analytical credit until reviewed."
+        "added_video_id": 281,
+        "reason": "The main preacher in video 4312 refers to John Bradshaw in the third person and is addressed as Pastor Brian after the sermon. The initially proposed replacement video 599 exceeds the production duration ceiling. Video 281 is production-eligible, explicitly attributes its sermon to John Bradshaw, and supplies an independently dated series, but receives no identity or analytical credit until reviewed."
       },
       {
         "removed_video_id": 4317,
@@ -35,6 +35,7 @@
     "sermon_count": 12,
     "requirements": [
       "accepted-sermon disposition",
+      "production-eligible source video",
       "effective reviewed speaker-profile membership",
       "current topics-v3 observations and whole-sermon review evidence",
       "at least two independent series and source-backed periods per pastor",
@@ -216,17 +217,17 @@
           "v3_topic_analysis_present": true
         },
         {
-          "video_id": 599,
-          "youtube_video_id": "kXucVunoG0E",
-          "title": "\"Separation\", Pastor John Bradshaw, May 2, 2026",
-          "series_key": "separation",
-          "period_key": "2026-h1",
+          "video_id": 281,
+          "youtube_video_id": "55ogga-5CGo",
+          "title": "\"The American Experiment: Success or Failure?\", by Pastor John Bradshaw, July 4, 2026",
+          "series_key": "american-experiment",
+          "period_key": "2026-h2",
           "period_evidence": {
             "source_kind": "explicit_title_date",
-            "value": "2026-05-02",
-            "reference": "database video #599 title"
+            "value": "2026-07-04",
+            "reference": "database video #281 title"
           },
-          "selection_reason": "Explicitly attributed John Bradshaw sermon from an independent H1 series; identity, current disposition, and topic evidence remain gated.",
+          "selection_reason": "Production-eligible, explicitly attributed John Bradshaw sermon from an independent series; identity, current disposition, and topic evidence remain gated.",
           "v3_topic_analysis_present": false
         },
         {
