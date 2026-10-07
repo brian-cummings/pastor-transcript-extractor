@@ -371,6 +371,53 @@ class CliContractTests(unittest.TestCase):
         self.assertIn("If it is review_required", result.output)
         self.assertLess(result.output.index("reclassify"), result.output.index("topic-review"))
 
+    def test_topic_review_gap_does_not_reclassify_current_evidence(self) -> None:
+        report = {
+            "ready": False,
+            "input_fingerprint": "f" * 64,
+            "model": "jev-1.13.0",
+            "pastors": [],
+            "review_actions": [
+                {
+                    "action_type": "review_topic_evidence",
+                    "pastor": {"display_name": "Test Pastor"},
+                    "packet_path": "/tmp/topic-whole-sermon-review-v1.json",
+                    "reason_codes": ["whole_sermon_review_unavailable"],
+                    "video_id": 1037,
+                    "youtube_video_id": "youtube-1037",
+                }
+            ],
+        }
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.get_database",
+                return_value=object(),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.load_topic_stage4_cohort",
+                return_value={},
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.assess_topic_stage4_readiness",
+                return_value=report,
+            ),
+        ):
+            result = self.runner.invoke(
+                app,
+                [
+                    "analysis",
+                    "topic-stability-readiness",
+                    "--base-dir",
+                    "/tmp/topic-readiness",
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        self.assertIn("Cached TypeSafe observations are current", result.output)
+        self.assertIn("topic-review --video-id 1037", result.output)
+        self.assertIn("topic-review-draft", result.output)
+        self.assertNotIn("pte reclassify", result.output)
+
     def test_package_and_installed_entry_points_resolve_the_cli(self) -> None:
         self.assertIs(package_main, main)
         entry_points = {

@@ -275,6 +275,38 @@ def _print_topic_stage4_readiness(
                 "eligible packet for a fingerprinted decision.",
                 markup=False,
             )
+        elif action_type == "review_topic_evidence":
+            review = _topic_review_command(
+                video_id=action["video_id"], base_dir=resolved_base_dir
+            )
+            packet_path = action.get("packet_path")
+            draft = (
+                shlex.join(
+                    [
+                        "pte",
+                        "analysis",
+                        "topic-review-draft",
+                        str(packet_path),
+                    ]
+                )
+                if isinstance(packet_path, str) and packet_path.strip()
+                else None
+            )
+            draft_step = (
+                f"\n   Create or reuse its protected review draft:\n   {draft}"
+                if draft is not None
+                else ""
+            )
+            console.print(
+                f"{index}. Whole-sermon topic review for {pastor_name}:\n"
+                "   Cached TypeSafe observations are current; do not "
+                "reclassify this sermon.\n"
+                "   Reuse or prepare its fingerprint-bound packet:\n"
+                f"   {review}{draft_step}\n"
+                "   Inspect the draft Markdown and finalize only after the "
+                "required whole-sermon checks.",
+                markup=False,
+            )
         elif action_type == "review_sermon_boundary":
             model = str(report.get("model") or DEFAULT_TYPESAFE_MODEL)
             command = shlex.join(
