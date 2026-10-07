@@ -276,6 +276,56 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual(0, result.exit_code, msg=result.output)
         self.assertIn("Overall: blocked", result.output)
 
+    def test_boundary_readiness_action_includes_dependent_topic_packet(self) -> None:
+        report = {
+            "ready": False,
+            "input_fingerprint": "f" * 64,
+            "model": "jev-1.13.0",
+            "pastors": [],
+            "review_actions": [
+                {
+                    "action_type": "review_sermon_boundary",
+                    "pastor": {"display_name": "Test Pastor"},
+                    "pending_topic_reason_codes": [
+                        "whole_sermon_review_unavailable"
+                    ],
+                    "video_id": 3,
+                    "youtube_video_id": "youtube-3",
+                }
+            ],
+        }
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.get_database",
+                return_value=object(),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.load_topic_stage4_cohort",
+                return_value={},
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.assess_topic_stage4_readiness",
+                return_value=report,
+            ),
+        ):
+            result = self.runner.invoke(
+                app,
+                [
+                    "analysis",
+                    "topic-stability-readiness",
+                    "--base-dir",
+                    "/tmp/topic-readiness",
+                ],
+            )
+
+        self.assertEqual(0, result.exit_code, msg=result.output)
+        self.assertIn("apply-fixture-correction youtube-3", result.output)
+        self.assertIn("topic-review --video-id 3 --whole-sermon", result.output)
+        self.assertLess(
+            result.output.index("apply-fixture-correction"),
+            result.output.index("topic-review"),
+        )
+
     def test_package_and_installed_entry_points_resolve_the_cli(self) -> None:
         self.assertIs(package_main, main)
         entry_points = {

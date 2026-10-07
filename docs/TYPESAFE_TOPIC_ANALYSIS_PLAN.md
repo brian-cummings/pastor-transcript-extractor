@@ -866,6 +866,13 @@ theological stance.
     infer identity from titles, group unbound observations together, or create a
     second review/cache system. Cohort and readiness fingerprints bind date and
     exact review-evidence hashes plus every current projection gate.
+28. The readiness handoff now preserves dependent topic work when a refreshed
+    sermon is no longer disposition-eligible. Its single boundary-review action
+    carries any pending topic-evidence reasons and prints the existing
+    whole-sermon packet command only after the approved fixture-correction
+    command. This keeps the review order fail-closed, avoids an otherwise
+    redundant readiness round trip, and reuses the same packet generator and
+    immutable TypeSafe cache rather than creating a special recovery path.
 
 ### Next iteration
 

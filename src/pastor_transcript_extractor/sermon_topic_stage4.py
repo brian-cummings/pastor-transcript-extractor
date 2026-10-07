@@ -26,6 +26,14 @@ TOPIC_STAGE4_EVALUATION_SCHEMA_VERSION = 1
 TOPIC_STAGE4_EVALUATION_POLICY_VERSION = (
     "equal-sermon-series-period-diagnostics-v1"
 )
+TOPIC_EVIDENCE_REASON_CODES = frozenset(
+    {
+        "question_pack_mismatch",
+        "topic_analysis_unavailable",
+        "whole_sermon_review_evidence_stale",
+        "whole_sermon_review_unavailable",
+    }
+)
 DEFAULT_TOPIC_STAGE4_COHORT = (
     Path(__file__).resolve().parents[2]
     / "evaluation"
@@ -232,32 +240,21 @@ def build_topic_stage4_review_actions(
                 )
 
         for sermon in sermons:
-            if "disposition_not_accepted" not in sermon.get(
-                "reason_codes", []
-            ) and any(
-                reason in sermon.get("reason_codes", [])
-                for reason in (
-                    "question_pack_mismatch",
-                    "topic_analysis_unavailable",
-                    "whole_sermon_review_evidence_stale",
-                    "whole_sermon_review_unavailable",
-                )
+            sermon_reason_codes = sermon.get("reason_codes", [])
+            pending_topic_reasons = [
+                reason
+                for reason in sermon_reason_codes
+                if reason in TOPIC_EVIDENCE_REASON_CODES
+            ]
+            if (
+                "disposition_not_accepted" not in sermon_reason_codes
+                and pending_topic_reasons
             ):
                 topic_actions.append(
                     {
                         "action_type": "prepare_topic_evidence",
                         "pastor": pastor_ref,
-                        "reason_codes": [
-                            reason
-                            for reason in sermon.get("reason_codes", [])
-                            if reason
-                            in {
-                                "question_pack_mismatch",
-                                "topic_analysis_unavailable",
-                                "whole_sermon_review_evidence_stale",
-                                "whole_sermon_review_unavailable",
-                            }
-                        ],
+                        "reason_codes": pending_topic_reasons,
                         "video_id": sermon.get("video_id"),
                         "youtube_video_id": sermon.get("youtube_video_id"),
                         "instruction": (
@@ -266,16 +263,19 @@ def build_topic_stage4_review_actions(
                         ),
                     }
                 )
-            if "disposition_not_accepted" in sermon.get("reason_codes", []):
+            if "disposition_not_accepted" in sermon_reason_codes:
                 boundary_actions.append(
                     {
                         "action_type": "review_sermon_boundary",
                         "pastor": pastor_ref,
+                        "pending_topic_reason_codes": pending_topic_reasons,
                         "video_id": sermon.get("video_id"),
                         "youtube_video_id": sermon.get("youtube_video_id"),
                         "instruction": (
                             "Review and approve the sermon boundary; apply a "
-                            "fixture correction only after that human review."
+                            "fixture correction only after that human review. "
+                            "If topic evidence is pending, prepare it only after "
+                            "the correction establishes the final fingerprint."
                         ),
                     }
                 )
