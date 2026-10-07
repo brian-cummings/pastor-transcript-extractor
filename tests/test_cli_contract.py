@@ -50,6 +50,7 @@ GROUP_COMMANDS = {
         "evaluate-style",
         "evaluate-style-boundaries",
         "evaluate-topic-behavior",
+        "evaluate-topic-stability",
         "population-build",
         "population-show",
         "refresh-profiles",
@@ -73,6 +74,9 @@ GROUP_COMMANDS = {
         "topic-review",
         "topic-review-draft",
         "topic-review-finalize",
+        "topic-show-profile",
+        "topic-stability-readiness",
+        "topic-summarize-profile",
     },
     "benchmark": {
         "add-profile",

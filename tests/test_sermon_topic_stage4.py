@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,7 +10,9 @@ from unittest.mock import patch
 
 from pastor_transcript_extractor.models import Video, VideoStatus
 from pastor_transcript_extractor.sermon_topic_stage4 import (
+    DEFAULT_TOPIC_STAGE4_COHORT,
     assess_topic_stage4_readiness,
+    build_topic_stage4_review_actions,
     evaluate_topic_stage4,
     load_topic_stage4_cohort,
     summarize_topic_stage4_pastor,
@@ -79,14 +82,19 @@ def _cohort(*, missing_period: bool = False) -> dict[str, object]:
 def _gate(
     video_id: int,
     *,
-    profile_id: int = 7,
+    profile_id: int | None = 7,
     eligible: bool = True,
+    reason_codes: tuple[str, ...] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         eligible=eligible,
         input_fingerprint=f"gate-{video_id}-{profile_id}-{eligible}",
         profile_id=profile_id,
-        reason_codes=() if eligible else ("disposition_not_accepted",),
+        reason_codes=(
+            reason_codes
+            if reason_codes is not None
+            else () if eligible else ("disposition_not_accepted",)
+        ),
         topic_question_pack_version="topics-v3-mission-discourse-boundary",
     )
 
@@ -134,6 +142,79 @@ class SermonTopicStage4Tests(unittest.TestCase):
         self.assertIn("disposition_not_accepted", blockers)
         self.assertIn("incomplete_eligible_sermon_set", blockers)
         self.assertIn("period_metadata_missing", blockers)
+        actions = report["review_actions"]
+        self.assertEqual(
+            [
+                "review_sermon_boundary",
+                "review_speaker_pair",
+                "supply_period_metadata",
+            ],
+            [action["action_type"] for action in actions],
+        )
+        self.assertEqual(3, actions[0]["video_id"])
+        self.assertEqual(2, actions[1]["video_a"]["video_id"])
+        self.assertEqual(1, actions[1]["video_b"]["video_id"])
+        self.assertEqual([2], [item["video_id"] for item in actions[2]["sermons"]])
+
+    def test_review_plan_uses_minimum_pairs_and_keeps_unbound_distinct(self) -> None:
+        pastors = [
+            {
+                "blockers": [
+                    "effective_profile_membership_unavailable",
+                    "split_effective_profile_membership",
+                ],
+                "display_name": "Test Pastor",
+                "pastor_id": 1,
+                "slug": "test-pastor",
+                "sermons": [
+                    {
+                        "period_key": "a",
+                        "profile_id": 7,
+                        "reason_codes": [],
+                        "video_id": 1,
+                        "youtube_video_id": "youtube-1",
+                    },
+                    {
+                        "period_key": "b",
+                        "profile_id": 7,
+                        "reason_codes": [],
+                        "video_id": 2,
+                        "youtube_video_id": "youtube-2",
+                    },
+                    {
+                        "period_key": "c",
+                        "profile_id": None,
+                        "reason_codes": [
+                            "effective_profile_membership_unavailable"
+                        ],
+                        "video_id": 3,
+                        "youtube_video_id": "youtube-3",
+                    },
+                    {
+                        "period_key": "d",
+                        "profile_id": None,
+                        "reason_codes": [
+                            "effective_profile_membership_unavailable"
+                        ],
+                        "video_id": 4,
+                        "youtube_video_id": "youtube-4",
+                    },
+                ],
+            }
+        ]
+
+        actions = build_topic_stage4_review_actions(pastors)
+
+        pairs = [
+            action for action in actions
+            if action["action_type"] == "review_speaker_pair"
+        ]
+        self.assertEqual(2, len(pairs))
+        self.assertEqual([1, 1], [item["video_a"]["video_id"] for item in pairs])
+        self.assertEqual([3, 4], [item["video_b"]["video_id"] for item in pairs])
+        self.assertNotIn("supply_period_metadata", {
+            action["action_type"] for action in actions
+        })
 
     def test_loader_rejects_duplicate_videos_and_fingerprints_exact_file(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -148,6 +229,89 @@ class SermonTopicStage4Tests(unittest.TestCase):
             path.write_text(json.dumps(cohort), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Duplicate"):
                 load_topic_stage4_cohort(path)
+
+    def test_checked_in_stage4_cohort_is_source_bound_and_date_evidenced(self) -> None:
+        cohort = load_topic_stage4_cohort(DEFAULT_TOPIC_STAGE4_COHORT)
+        sermons = [
+            sermon
+            for pastor in cohort["pastors"]
+            for sermon in pastor["sermons"]
+        ]
+
+        self.assertEqual(12, len(sermons))
+        self.assertIn(1037, {sermon["video_id"] for sermon in sermons})
+        self.assertNotIn(1033, {sermon["video_id"] for sermon in sermons})
+        self.assertTrue(all(sermon["period_key"] for sermon in sermons))
+        self.assertTrue(all(sermon["period_evidence"] for sermon in sermons))
+        self.assertEqual(
+            "typesafe-topic-stage3-whole-sermon-v1",
+            cohort["source_cohort"]["cohort_id"],
+        )
+
+    def test_loader_rejects_changed_source_cohort(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            source_path = root / "source.json"
+            source = _cohort()
+            source_path.write_text(json.dumps(source), encoding="utf-8")
+            source_sha256 = hashlib.sha256(
+                json.dumps(
+                    source,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            cohort = _cohort()
+            cohort["source_cohort"] = {
+                "path": "source.json",
+                "cohort_sha256": source_sha256,
+            }
+            cohort_path = root / "cohort.json"
+            cohort_path.write_text(json.dumps(cohort), encoding="utf-8")
+
+            load_topic_stage4_cohort(cohort_path)
+            source["cohort_id"] = "changed"
+            source_path.write_text(json.dumps(source), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "fingerprint"):
+                load_topic_stage4_cohort(cohort_path)
+
+    def test_review_evidence_content_is_required_and_fingerprinted(self) -> None:
+        gates = {video_id: _gate(video_id) for video_id in (1, 2, 3)}
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            evidence_path = root / "review.md"
+            evidence_path.write_text("reviewed\n", encoding="utf-8")
+            evidence_sha256 = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+            cohort = _cohort()
+            cohort["require_whole_sermon_review_evidence"] = True
+            cohort["whole_sermon_review_evidence"] = [
+                {
+                    "video_ids": [1, 2, 3],
+                    "path": "review.md",
+                    "sha256": evidence_sha256,
+                }
+            ]
+            cohort_path = root / "cohort.json"
+            cohort_path.write_text(json.dumps(cohort), encoding="utf-8")
+            loaded = load_topic_stage4_cohort(cohort_path)
+            with patch(
+                "pastor_transcript_extractor.sermon_topic_stage4."
+                "assess_topic_profile_projection",
+                side_effect=lambda _database, video: gates[video.id],
+            ):
+                current = assess_topic_stage4_readiness(self.database, loaded)
+                evidence_path.write_text("changed\n", encoding="utf-8")
+                stale = assess_topic_stage4_readiness(self.database, loaded)
+
+        self.assertTrue(current["ready"])
+        self.assertFalse(stale["ready"])
+        self.assertIn("whole_sermon_review_evidence_stale", stale["blockers"])
+        self.assertNotEqual(
+            current["input_fingerprint"],
+            stale["input_fingerprint"],
+        )
 
     def test_diagnostics_keep_sermons_visible_and_compare_declared_strata(self) -> None:
         sermons = []

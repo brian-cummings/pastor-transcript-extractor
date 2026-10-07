@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "cohort_id": "typesafe-topic-stage4-stability-v1",
+  "model": "jev-1.13.0",
+  "question_pack_version": "topics-v3-mission-discourse-boundary",
+  "review_policy_version": "topic-whole-sermon-review-v1",
+  "require_period_evidence": true,
+  "require_whole_sermon_review_evidence": true,
+  "sampling_policy_version": "independent-series-calendar-half-v1",
+  "source_cohort": {
+    "cohort_id": "typesafe-topic-stage3-whole-sermon-v1",
+    "path": "stage3-whole-sermon-cohort-v1.json",
+    "cohort_sha256": "2cab514241b232e9b13e6f576cfe8a1357cbd115f9eda9630a0dd7bd917eae86",
+    "replacement": {
+      "removed_video_id": 1033,
+      "added_video_id": 1037,
+      "reason": "The three reviewed Ron Clouzet sermons all fall in 2026 H2. Video 1037 is an accepted, reviewed-profile H1 sermon from an independent series."
+    }
+  },
+  "selection_contract": {
+    "pastor_count": 4,
+    "sermons_per_pastor": 3,
+    "sermon_count": 12,
+    "requirements": [
+      "accepted-sermon disposition",
+      "effective reviewed speaker-profile membership",
+      "current topics-v3 observations and whole-sermon review evidence",
+      "at least two independent series and source-backed periods per pastor",
+      "no duplicate selected recording"
+    ]
+  },
+  "whole_sermon_review_evidence": [
+    {
+      "video_ids": [1200, 4052, 4458, 4394, 3974, 590, 4430, 350, 4589, 4312, 4317],
+      "path": "stage3-topic-boundary-audit-v1.md",
+      "sha256": "57d4d3b448d3dc184470636da3fbe4e3bf2d7c7c808301fc50b52f109afab810"
+    }
+  ],
+  "pastors": [
+    {
+      "pastor_id": 39,
+      "display_name": "David P Ryder",
+      "slug": "churchdb-144",
+      "sermons": [
+        {
+          "video_id": 1200,
+          "youtube_video_id": "vBHMiKxBnYs",
+          "title": "Matthew 13:44 Treasure- Pastor Ryder",
+          "series_key": "matthew-parables",
+          "period_key": "2026-h1",
+          "period_evidence": {
+            "source_kind": "youtube_release_date",
+            "value": "2026-06-13",
+            "reference": "https://www.youtube.com/watch?v=vBHMiKxBnYs"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with parable, salvation, and stewardship evidence.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 4052,
+          "youtube_video_id": "DR8tjCIIeIU",
+          "title": "Joseph  Genesis 41  Pastor Dave",
+          "series_key": "joseph-genesis",
+          "period_key": "2026-h2",
+          "period_evidence": {
+            "source_kind": "youtube_release_date",
+            "value": "2026-08-29",
+            "reference": "https://www.youtube.com/watch?v=DR8tjCIIeIU"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with narrative, providence, vocation, and adversity coverage.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 4458,
+          "youtube_video_id": "taLi4yIIaiU",
+          "title": "Reformation Part 1  Wycliffe and Tyndale  Pastor Dave",
+          "series_key": "reformation-history",
+          "period_key": "2026-h2",
+          "period_evidence": {
+            "source_kind": "youtube_release_date",
+            "value": "2026-09-26",
+            "reference": "https://www.youtube.com/watch?v=taLi4yIIaiU"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with Scripture, history, church, and public-life coverage.",
+          "v3_topic_analysis_present": true
+        }
+      ]
+    },
+    {
+      "pastor_id": 16,
+      "display_name": "Rusty Williams",
+      "slug": "churchdb-66",
+      "sermons": [
+        {
+          "video_id": 4394,
+          "youtube_video_id": "6aO_aOaq4Zs",
+          "title": "\"The Problem with AI\", Pastor Rusty Williams, September 26, 2026",
+          "series_key": "problem-with-ai",
+          "period_key": "2026-h2",
+          "period_evidence": {
+            "source_kind": "explicit_title_date",
+            "value": "2026-09-26",
+            "reference": "stage3-whole-sermon-cohort-v1.json#video-4394"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with technology, ethics, identity, and conversion-appeal boundary evidence.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 3974,
+          "youtube_video_id": "YSZXxgk6J6M",
+          "title": "\"As It Is in Heaven\", Pastor Rusty Williams, August 29, 2026",
+          "series_key": "as-it-is-in-heaven",
+          "period_key": "2026-h2",
+          "period_evidence": {
+            "source_kind": "explicit_title_date",
+            "value": "2026-08-29",
+            "reference": "stage3-whole-sermon-cohort-v1.json#video-3974"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon from an independent series.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 590,
+          "youtube_video_id": "y4PshEBQrwU",
+          "title": "\"What More Could I Have Done\", Pastor Rusty Williams, June 6, 2026",
+          "series_key": "what-more-could-i-have-done",
+          "period_key": "2026-h1",
+          "period_evidence": {
+            "source_kind": "explicit_title_date",
+            "value": "2026-06-06",
+            "reference": "stage3-whole-sermon-cohort-v1.json#video-590"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon supplying an independent H1 period.",
+          "v3_topic_analysis_present": true
+        }
+      ]
+    },
+    {
+      "pastor_id": 28,
+      "display_name": "Ron Clouzet",
+      "slug": "churchdb-110",
+      "sermons": [
+        {
+          "video_id": 4430,
+          "youtube_video_id": "U_qCxrDUAsQ",
+          "title": "Breaking Good News - By Dr. Ron Couzet",
+          "series_key": "breaking-good-news",
+          "period_key": "2026-h2",
+          "period_evidence": {
+            "source_kind": "youtube_upload_date",
+            "value": "2026-09-19",
+            "reference": "https://www.youtube.com/watch?v=U_qCxrDUAsQ"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with mission, witness, salvation, and Scripture evidence.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 350,
+          "youtube_video_id": "8YdupMtUtvg",
+          "title": "Jesus and Mary: The Sinner",
+          "series_key": "jesus-and",
+          "period_key": "2026-h2",
+          "period_evidence": {
+            "source_kind": "youtube_upload_date",
+            "value": "2026-07-18",
+            "reference": "https://www.youtube.com/watch?v=8YdupMtUtvg"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with Jesus, sin, salvation, and interpersonal coverage.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 1037,
+          "youtube_video_id": "5Yf-TlFDnD4",
+          "title": "Yours in the Blessed Hope: Hurtling to the End - Last Day Events Today",
+          "series_key": "hurtling-to-the-end",
+          "period_key": "2026-h1",
+          "period_evidence": {
+            "source_kind": "youtube_upload_date",
+            "value": "2026-06-06",
+            "reference": "https://www.youtube.com/watch?v=5Yf-TlFDnD4"
+          },
+          "selection_reason": "Accepted reviewed-profile sermon from an independent H1 series; bounded Stage 4 replacement for same-half video 1033.",
+          "v3_topic_analysis_present": false
+        }
+      ]
+    },
+    {
+      "pastor_id": 67,
+      "display_name": "John Bradshaw",
+      "slug": "john-bradshaw",
+      "sermons": [
+        {
+          "video_id": 4589,
+          "youtube_video_id": "uGQDKn4uNJM",
+          "title": "Demons & Dry Places by John Bradshaw | Partnership 2024 Friday Night Program",
+          "series_key": "partnership-2024",
+          "period_key": "2024",
+          "period_evidence": {
+            "source_kind": "explicit_title_year",
+            "value": "2024",
+            "reference": "stage3-whole-sermon-cohort-v1.json#video-4589"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with spiritual-conflict and formation evidence.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 4312,
+          "youtube_video_id": "7c828RxOJnw",
+          "title": "If God Is Good, How Can Hell Be Forever? A Biblical Answer | Night 11",
+          "series_key": "hope-for-humanity",
+          "period_key": "2025-h2",
+          "period_evidence": {
+            "source_kind": "official_event_schedule",
+            "value": "2025-10-03/2025-11-01",
+            "reference": "https://blog.itiswritten.com/blog/2025/08/25/it-is-written-announces-hope-for-humanity-a-new-evangelistic-series-airing-in-october/"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with death, suffering, salvation, and divine-character coverage.",
+          "v3_topic_analysis_present": true
+        },
+        {
+          "video_id": 4317,
+          "youtube_video_id": "y80X08b041Y",
+          "title": "From Creation to Revelation: God’s Forgotten Sign of Love | Night 6",
+          "series_key": "hope-for-humanity",
+          "period_key": "2025-h2",
+          "period_evidence": {
+            "source_kind": "official_event_schedule",
+            "value": "2025-10-03/2025-11-01",
+            "reference": "https://blog.itiswritten.com/blog/2025/08/25/it-is-written-announces-hope-for-humanity-a-new-evangelistic-series-airing-in-october/"
+          },
+          "selection_reason": "Reviewed Stage 3 sermon with creation, Scripture, prophecy, and Adventist-identity coverage.",
+          "v3_topic_analysis_present": true
+        }
+      ]
+    }
+  ]
+}
