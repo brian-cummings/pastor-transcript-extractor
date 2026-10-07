@@ -881,6 +881,13 @@ theological stance.
     2026 H2). Those titles are candidate provenance, not identity approval. Both
     replacements must still be refreshed, reviewed, and joined to video 4589 only
     through exact-span speaker adjudication.
+30. A currently accepted legacy classification can become `review_required` when
+    refreshed on the frozen TypeSafe workflow, as replacement video 1037 did.
+    Readiness therefore no longer presents whole-sermon packet generation as an
+    unconditional second refresh step. The existing packet command is shown only
+    for an `accepted_sermon` result; a `review_required` result routes back through
+    the boundary-first action so the cached topic packet is generated once against
+    the final reviewed classification fingerprint.
 
 ### Next iteration
 

@@ -258,8 +258,10 @@ def build_topic_stage4_review_actions(
                         "video_id": sermon.get("video_id"),
                         "youtube_video_id": sermon.get("youtube_video_id"),
                         "instruction": (
-                            "Refresh this one accepted sermon on the frozen "
-                            "TypeSafe pack, then prepare its whole-sermon packet."
+                            "Refresh this one currently accepted sermon on the "
+                            "frozen TypeSafe pack. Prepare its whole-sermon "
+                            "packet only if the refreshed disposition remains "
+                            "accepted; otherwise review its boundary first."
                         ),
                     }
                 )

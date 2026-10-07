@@ -266,9 +266,13 @@ def _print_topic_stage4_readiness(
             )
             console.print(
                 f"{index}. Cached topic evidence for {pastor_name}:\n"
-                f"   {reclassify}\n   {review}\n"
-                "   Packet creation does not count as review; return the packet "
-                "for a fingerprinted decision.",
+                f"   {reclassify}\n"
+                "   If the refreshed disposition is accepted_sermon:\n"
+                f"   {review}\n"
+                "   If it is review_required, do not create a provisional "
+                "packet; rerun readiness for the boundary-first handoff.\n"
+                "   Packet creation does not count as review; return an "
+                "eligible packet for a fingerprinted decision.",
                 markup=False,
             )
         elif action_type == "review_sermon_boundary":
