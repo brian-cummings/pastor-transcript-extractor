@@ -18,7 +18,7 @@ from pastor_transcript_extractor.sermon_topics import TOPICS
 from pastor_transcript_extractor.storage import Database
 
 
-TOPIC_STAGE4_READINESS_SCHEMA_VERSION = 1
+TOPIC_STAGE4_READINESS_SCHEMA_VERSION = 2
 TOPIC_STAGE4_READINESS_POLICY_VERSION = (
     "reviewed-profile-two-series-two-periods-v1"
 )
@@ -30,7 +30,7 @@ DEFAULT_TOPIC_STAGE4_COHORT = (
     Path(__file__).resolve().parents[2]
     / "evaluation"
     / "sermon-topics"
-    / "stage3-whole-sermon-cohort-v1.json"
+    / "stage4-stability-cohort-v1.json"
 )
 
 
@@ -45,14 +45,8 @@ def _canonical_hash(value: object) -> str:
     ).hexdigest()
 
 
-def load_topic_stage4_cohort(path: Path) -> dict[str, Any]:
-    resolved = path.expanduser().resolve()
-    try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise ValueError(f"Cannot read topic stability cohort: {resolved}") from error
-    if not isinstance(payload, dict):
-        raise ValueError("Topic stability cohort must be a JSON object")
+def _validate_topic_stage4_cohort(payload: dict[str, Any]) -> None:
+    """Validate the fully resolved cohort, including optional date provenance."""
     pastors = payload.get("pastors")
     if not isinstance(pastors, list) or not pastors:
         raise ValueError("Topic stability cohort must contain pastors")
@@ -69,17 +63,309 @@ def load_topic_stage4_cohort(path: Path) -> dict[str, Any]:
             video_id = sermon.get("video_id")
             youtube_id = sermon.get("youtube_video_id")
             if not isinstance(video_id, int) or isinstance(video_id, bool):
-                raise ValueError("Every topic stability sermon needs an integer video_id")
+                raise ValueError(
+                    "Every topic stability sermon needs an integer video_id"
+                )
             if not isinstance(youtube_id, str) or not youtube_id.strip():
-                raise ValueError("Every topic stability sermon needs a youtube_video_id")
+                raise ValueError(
+                    "Every topic stability sermon needs a youtube_video_id"
+                )
             if video_id in seen_video_ids:
                 raise ValueError(f"Duplicate topic stability video_id: {video_id}")
             seen_video_ids.add(video_id)
+            period_key = sermon.get("period_key")
+            if payload.get("require_period_evidence") and isinstance(
+                period_key, str
+            ) and period_key.strip():
+                evidence = sermon.get("period_evidence")
+                if not isinstance(evidence, Mapping) or any(
+                    not isinstance(evidence.get(key), str)
+                    or not str(evidence[key]).strip()
+                    for key in ("source_kind", "value", "reference")
+                ):
+                    raise ValueError(
+                        "Every populated Stage 4 period_key needs source_kind, "
+                        f"value, and reference evidence (video {video_id})"
+                    )
+
+
+def load_topic_stage4_cohort(path: Path) -> dict[str, Any]:
+    """Load and fingerprint one explicit, immutable Stage 4 cohort."""
+    resolved = path.expanduser().resolve()
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Cannot read topic stability cohort: {resolved}") from error
+    if not isinstance(payload, dict):
+        raise ValueError("Topic stability cohort must be a JSON object")
+    _validate_topic_stage4_cohort(payload)
+    source = payload.get("source_cohort")
+    if source is not None:
+        if not isinstance(source, Mapping):
+            raise ValueError("Topic stability source_cohort must be an object")
+        source_path = source.get("path")
+        expected_sha256 = source.get("cohort_sha256")
+        if (
+            not isinstance(source_path, str)
+            or not source_path.strip()
+            or not isinstance(expected_sha256, str)
+            or len(expected_sha256) != 64
+        ):
+            raise ValueError(
+                "Topic stability source_cohort needs path and cohort_sha256"
+            )
+        source_resolved = (resolved.parent / source_path).resolve()
+        if source_resolved == resolved:
+            raise ValueError("Topic stability cohort cannot source itself")
+        try:
+            source_payload = json.loads(source_resolved.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"Cannot read source topic cohort: {source_resolved}"
+            ) from error
+        if not isinstance(source_payload, dict) or _canonical_hash(
+            source_payload
+        ) != expected_sha256:
+            raise ValueError("Source topic cohort fingerprint does not match")
     payload["cohort_path"] = str(resolved)
     payload["cohort_sha256"] = _canonical_hash(
-        {key: value for key, value in payload.items() if key != "cohort_path"}
+        {
+            key: value
+            for key, value in payload.items()
+            if key not in {"cohort_path", "cohort_sha256"}
+        }
     )
     return payload
+
+
+def _identity_review_components(
+    sermons: list[Mapping[str, Any]],
+) -> list[list[Mapping[str, Any]]]:
+    """Group reviewed profiles while keeping every unbound sermon distinct."""
+    by_profile: dict[int, list[Mapping[str, Any]]] = {}
+    unbound: list[list[Mapping[str, Any]]] = []
+    for sermon in sermons:
+        profile_id = sermon.get("profile_id")
+        if isinstance(profile_id, int) and not isinstance(profile_id, bool):
+            by_profile.setdefault(profile_id, []).append(sermon)
+        else:
+            unbound.append([sermon])
+    return [*by_profile.values(), *unbound]
+
+
+def build_topic_stage4_review_actions(
+    pastors: list[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Derive a minimal, non-adjudicating handoff from readiness evidence.
+
+    The cohort declares which sermons are intended to represent one pastor, but
+    that declaration is not identity evidence. Split or absent memberships are
+    connected with the minimum number of pair reviews; no relation is assumed
+    until the existing review workflows are adjudicated and synchronized.
+    """
+    topic_actions: list[dict[str, Any]] = []
+    boundary_actions: list[dict[str, Any]] = []
+    identity_actions: list[dict[str, Any]] = []
+    metadata_actions: list[dict[str, Any]] = []
+    for pastor in pastors:
+        sermons = [
+            sermon
+            for sermon in pastor.get("sermons", [])
+            if isinstance(sermon, Mapping)
+        ]
+        pastor_ref = {
+            "display_name": pastor.get("display_name"),
+            "pastor_id": pastor.get("pastor_id"),
+            "slug": pastor.get("slug"),
+        }
+
+        identity_sermons = [
+            sermon
+            for sermon in sermons
+            if isinstance(sermon.get("profile_id"), int)
+            or "effective_profile_membership_unavailable"
+            in sermon.get("reason_codes", [])
+        ]
+        components = _identity_review_components(identity_sermons)
+        if len(components) > 1 and (
+            "split_effective_profile_membership" in pastor.get("blockers", [])
+            or any(
+                "effective_profile_membership_unavailable"
+                in sermon.get("reason_codes", [])
+                for sermon in sermons
+            )
+        ):
+            # Prefer the largest already-reviewed component as the anchor. A
+            # tie follows frozen cohort order, not a name or title heuristic.
+            cohort_order = {
+                int(sermon["video_id"]): index
+                for index, sermon in enumerate(sermons)
+            }
+            components.sort(
+                key=lambda component: (
+                    -len(component),
+                    min(cohort_order[int(item["video_id"])] for item in component),
+                )
+            )
+            anchor = components[0][0]
+            for component in components[1:]:
+                candidate = component[0]
+                identity_actions.append(
+                    {
+                        "action_type": "review_speaker_pair",
+                        "pastor": pastor_ref,
+                        "video_a": {
+                            "profile_id": anchor.get("profile_id"),
+                            "video_id": anchor.get("video_id"),
+                            "youtube_video_id": anchor.get("youtube_video_id"),
+                        },
+                        "video_b": {
+                            "profile_id": candidate.get("profile_id"),
+                            "video_id": candidate.get("video_id"),
+                            "youtube_video_id": candidate.get("youtube_video_id"),
+                        },
+                        "instruction": (
+                            "Adjudicate the exact-span pair; do not infer same "
+                            "speaker from the cohort, title, or pastor name."
+                        ),
+                    }
+                )
+
+        for sermon in sermons:
+            if "disposition_not_accepted" not in sermon.get(
+                "reason_codes", []
+            ) and any(
+                reason in sermon.get("reason_codes", [])
+                for reason in (
+                    "question_pack_mismatch",
+                    "topic_analysis_unavailable",
+                    "whole_sermon_review_evidence_stale",
+                    "whole_sermon_review_unavailable",
+                )
+            ):
+                topic_actions.append(
+                    {
+                        "action_type": "prepare_topic_evidence",
+                        "pastor": pastor_ref,
+                        "reason_codes": [
+                            reason
+                            for reason in sermon.get("reason_codes", [])
+                            if reason
+                            in {
+                                "question_pack_mismatch",
+                                "topic_analysis_unavailable",
+                                "whole_sermon_review_evidence_stale",
+                                "whole_sermon_review_unavailable",
+                            }
+                        ],
+                        "video_id": sermon.get("video_id"),
+                        "youtube_video_id": sermon.get("youtube_video_id"),
+                        "instruction": (
+                            "Refresh this one accepted sermon on the frozen "
+                            "TypeSafe pack, then prepare its whole-sermon packet."
+                        ),
+                    }
+                )
+            if "disposition_not_accepted" in sermon.get("reason_codes", []):
+                boundary_actions.append(
+                    {
+                        "action_type": "review_sermon_boundary",
+                        "pastor": pastor_ref,
+                        "video_id": sermon.get("video_id"),
+                        "youtube_video_id": sermon.get("youtube_video_id"),
+                        "instruction": (
+                            "Review and approve the sermon boundary; apply a "
+                            "fixture correction only after that human review."
+                        ),
+                    }
+                )
+
+        missing_periods = [
+            {
+                "video_id": sermon.get("video_id"),
+                "youtube_video_id": sermon.get("youtube_video_id"),
+            }
+            for sermon in sermons
+            if not (
+                isinstance(sermon.get("period_key"), str)
+                and str(sermon["period_key"]).strip()
+            )
+        ]
+        if missing_periods:
+            metadata_actions.append(
+                {
+                    "action_type": "supply_period_metadata",
+                    "pastor": pastor_ref,
+                    "sermons": missing_periods,
+                    "instruction": (
+                        "Populate period_key only from trustworthy recording "
+                        "metadata or an explicit recording date; do not infer "
+                        "a period from sequence, profile, or an undated title."
+                    ),
+                }
+            )
+    # Topic refreshes and boundary corrections can supersede observations.
+    # Complete those before exact-span identity review and registry sync.
+    return [
+        *topic_actions,
+        *boundary_actions,
+        *identity_actions,
+        *metadata_actions,
+    ]
+
+
+def _topic_stage4_review_evidence(
+    cohort: Mapping[str, Any],
+) -> dict[int, dict[str, Any]]:
+    if not cohort.get("require_whole_sermon_review_evidence"):
+        return {}
+    raw_sets = cohort.get("whole_sermon_review_evidence", [])
+    if not isinstance(raw_sets, list):
+        raise ValueError("whole_sermon_review_evidence must be a list")
+    cohort_path = cohort.get("cohort_path")
+    if not isinstance(cohort_path, str):
+        raise ValueError("Resolved topic stability cohort path is unavailable")
+    root = Path(cohort_path).parent
+    by_video: dict[int, dict[str, Any]] = {}
+    for evidence in raw_sets:
+        if not isinstance(evidence, Mapping):
+            raise ValueError("Whole-sermon review evidence entries must be objects")
+        video_ids = evidence.get("video_ids")
+        logical_path = evidence.get("path")
+        expected_sha256 = evidence.get("sha256")
+        if (
+            not isinstance(video_ids, list)
+            or not video_ids
+            or not isinstance(logical_path, str)
+            or not logical_path.strip()
+            or not isinstance(expected_sha256, str)
+            or len(expected_sha256) != 64
+        ):
+            raise ValueError(
+                "Whole-sermon review evidence needs video_ids, path, and sha256"
+            )
+        path = (root / logical_path).resolve()
+        try:
+            actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            actual_sha256 = None
+        current = actual_sha256 == expected_sha256
+        for video_id in video_ids:
+            if not isinstance(video_id, int) or isinstance(video_id, bool):
+                raise ValueError(
+                    "Whole-sermon review evidence video ids must be integers"
+                )
+            if video_id in by_video:
+                raise ValueError(
+                    f"Duplicate whole-sermon review evidence for video {video_id}"
+                )
+            by_video[video_id] = {
+                "actual_sha256": actual_sha256,
+                "current": current,
+                "expected_sha256": expected_sha256,
+                "path": logical_path,
+            }
+    return by_video
 
 
 def assess_topic_stage4_readiness(
@@ -92,6 +378,8 @@ def assess_topic_stage4_readiness(
     pastor_results = []
     cohort_blockers: set[str] = set()
     gate_fingerprints = []
+    review_evidence = _topic_stage4_review_evidence(cohort)
+    review_evidence_fingerprints = []
 
     for pastor in cohort["pastors"]:
         sermons = pastor["sermons"]
@@ -145,6 +433,27 @@ def assess_topic_stage4_readiness(
             reasons = list(gate.reason_codes)
             if gate.topic_question_pack_version != expected_pack:
                 reasons.append("question_pack_mismatch")
+            sermon_review = review_evidence.get(video_id)
+            if cohort.get("require_whole_sermon_review_evidence"):
+                if sermon_review is None:
+                    reasons.append("whole_sermon_review_unavailable")
+                elif not sermon_review["current"]:
+                    reasons.append("whole_sermon_review_evidence_stale")
+            review_evidence_fingerprints.append(
+                {
+                    "actual_sha256": (
+                        sermon_review.get("actual_sha256")
+                        if sermon_review is not None
+                        else None
+                    ),
+                    "expected_sha256": (
+                        sermon_review.get("expected_sha256")
+                        if sermon_review is not None
+                        else None
+                    ),
+                    "video_id": video_id,
+                }
+            )
             eligible = gate.eligible and not reasons
             if gate.profile_id is not None:
                 effective_profile_ids.add(gate.profile_id)
@@ -155,6 +464,7 @@ def assess_topic_stage4_readiness(
                     "eligible": eligible,
                     "profile_id": gate.profile_id,
                     "reason_codes": reasons,
+                    "review_evidence": sermon_review,
                     "series_key": series_key,
                     "period_key": period_key,
                     "video_id": video_id,
@@ -198,18 +508,25 @@ def assess_topic_stage4_readiness(
                 key=lambda item: int(item["video_id"]),
             ),
             "policy_version": TOPIC_STAGE4_READINESS_POLICY_VERSION,
+            "review_evidence_fingerprints": sorted(
+                review_evidence_fingerprints,
+                key=lambda item: int(item["video_id"]),
+            ),
             "schema_version": TOPIC_STAGE4_READINESS_SCHEMA_VERSION,
         }
     )
+    review_actions = build_topic_stage4_review_actions(pastor_results)
     return {
         "schema_version": TOPIC_STAGE4_READINESS_SCHEMA_VERSION,
         "policy_version": TOPIC_STAGE4_READINESS_POLICY_VERSION,
         "input_fingerprint": input_fingerprint,
         "cohort_id": cohort.get("cohort_id"),
         "cohort_sha256": cohort.get("cohort_sha256"),
+        "model": cohort.get("model"),
         "ready": not cohort_blockers,
         "blockers": sorted(cohort_blockers),
         "pastors": pastor_results,
+        "review_actions": review_actions,
         "interpretation": (
             "Readiness only. A ready result permits a stability evaluation; it "
             "does not establish topic stability or theological stance."

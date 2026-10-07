@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shlex
 from typing import Mapping
 
 import typer
@@ -19,6 +20,7 @@ from pastor_transcript_extractor.commands.analysis.common import (
     get_database,
 )
 from pastor_transcript_extractor.commands.apps import analysis_app
+from pastor_transcript_extractor.config import build_paths
 from pastor_transcript_extractor.inference_defaults import DEFAULT_TYPESAFE_MODEL
 from pastor_transcript_extractor.population_analysis import (
     POPULATION_ANALYZER_VERSION,
@@ -157,7 +159,11 @@ def _print_topic_profile(database, run) -> None:
     )
 
 
-def _print_topic_stage4_readiness(report: Mapping[str, object]) -> None:
+def _print_topic_stage4_readiness(
+    report: Mapping[str, object],
+    *,
+    base_dir: Path | None = None,
+) -> None:
     table = Table(title="TypeSafe Topic Stage 4 Readiness")
     table.add_column("Pastor")
     table.add_column("Profiles")
@@ -182,6 +188,154 @@ def _print_topic_stage4_readiness(report: Mapping[str, object]) -> None:
     console.print(
         f"Overall: {'ready' if report['ready'] else 'blocked'}; "
         f"fingerprint={str(report['input_fingerprint'])[:12]}…"
+    )
+    actions = report.get("review_actions")
+    if not isinstance(actions, list) or not actions:
+        return
+
+    resolved_base_dir = build_paths(base_dir).root
+    pair_count = 0
+    console.print("\nBounded next actions (no relation or boundary is pre-approved):")
+    for index, action in enumerate(actions, start=1):
+        if not isinstance(action, Mapping):
+            continue
+        action_type = action.get("action_type")
+        pastor = action.get("pastor")
+        pastor_name = (
+            pastor.get("display_name")
+            if isinstance(pastor, Mapping)
+            else "unknown pastor"
+        )
+        if action_type == "review_speaker_pair":
+            video_a = action.get("video_a")
+            video_b = action.get("video_b")
+            if not isinstance(video_a, Mapping) or not isinstance(video_b, Mapping):
+                continue
+            pair_count += 1
+            command = shlex.join(
+                [
+                    "pte",
+                    "identity",
+                    "review-speaker-pair",
+                    str(video_a["youtube_video_id"]),
+                    str(video_b["youtube_video_id"]),
+                    "--base-dir",
+                    str(resolved_base_dir),
+                ]
+            )
+            console.print(
+                f"{index}. Identity review for {pastor_name}:\n   {command}",
+                markup=False,
+            )
+        elif action_type == "prepare_topic_evidence":
+            model = str(report.get("model") or DEFAULT_TYPESAFE_MODEL)
+            reclassify = shlex.join(
+                [
+                    "pte",
+                    "reclassify",
+                    "--video-id",
+                    str(action["video_id"]),
+                    "--force",
+                    "--jobs",
+                    "1",
+                    "--recording-verifier-backend",
+                    "typesafe",
+                    "--recording-verifier-model",
+                    model,
+                    "--base-dir",
+                    str(resolved_base_dir),
+                ]
+            )
+            review = shlex.join(
+                [
+                    "pte",
+                    "analysis",
+                    "topic-review",
+                    "--video-id",
+                    str(action["video_id"]),
+                    "--whole-sermon",
+                    "--base-dir",
+                    str(resolved_base_dir),
+                ]
+            )
+            console.print(
+                f"{index}. Cached topic evidence for {pastor_name}:\n"
+                f"   {reclassify}\n   {review}\n"
+                "   Packet creation does not count as review; return the packet "
+                "for a fingerprinted decision.",
+                markup=False,
+            )
+        elif action_type == "review_sermon_boundary":
+            model = str(report.get("model") or DEFAULT_TYPESAFE_MODEL)
+            command = shlex.join(
+                [
+                    "pte",
+                    "review-ground-truth",
+                    str(action["youtube_video_id"]),
+                    "--base-dir",
+                    str(resolved_base_dir),
+                ]
+            )
+            apply_command = shlex.join(
+                [
+                    "pte",
+                    "apply-fixture-correction",
+                    str(action["youtube_video_id"]),
+                    "--recording-verifier-backend",
+                    "typesafe",
+                    "--recording-verifier-model",
+                    model,
+                    "--base-dir",
+                    str(resolved_base_dir),
+                ]
+            )
+            console.print(
+                f"{index}. Sermon-boundary review for {pastor_name}:\n"
+                f"   {command}\n"
+                "   If that review approves one continuous sermon window:\n"
+                f"   {apply_command}",
+                markup=False,
+            )
+        elif action_type == "supply_period_metadata":
+            sermons = action.get("sermons")
+            identifiers = ", ".join(
+                f"#{item['video_id']} ({item['youtube_video_id']})"
+                for item in sermons
+                if isinstance(item, Mapping)
+            ) if isinstance(sermons, list) else ""
+            console.print(
+                f"{index}. Trusted period metadata for {pastor_name}: "
+                f"{identifiers or '—'}. Do not infer missing dates from order "
+                "or identity.",
+                markup=False,
+            )
+    if pair_count:
+        sync_command = shlex.join(
+            [
+                "pte",
+                "identity",
+                "sync-reviewed-speaker-evidence",
+                "--base-dir",
+                str(resolved_base_dir),
+            ]
+        )
+        console.print(
+            "\nAfter adjudicating the pair packets, synchronize their reviewed "
+            f"evidence once:\n   {sync_command}",
+            markup=False,
+        )
+    recheck_command = shlex.join(
+        [
+            "pte",
+            "analysis",
+            "topic-stability-readiness",
+            "--base-dir",
+            str(resolved_base_dir),
+        ]
+    )
+    console.print(
+        f"\nThen recheck the immutable readiness inputs:\n   {recheck_command}",
+        markup=False,
     )
 
 
@@ -916,7 +1070,7 @@ def analysis_topic_stability_readiness(
         report = assess_topic_stage4_readiness(database, cohort)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
-    _print_topic_stage4_readiness(report)
+    _print_topic_stage4_readiness(report, base_dir=base_dir)
     if not report["ready"]:
         raise typer.Exit(code=1)
 

@@ -1,11 +1,10 @@
 # TypeSafe Sermon Topic Analysis Plan
 
-Status: observation, cache, sparse-gap recovery, and read-only sermon projection
-contracts implemented, with one naturally processed sermon reviewed as an
-initial field observation. The broad taxonomy remains the `topics-v1` starting
-hypothesis; the current clarified question pack is
-`topics-v3-mission-discourse-boundary`. No version authorizes pastor-level
-conclusions. Profile aggregation and leaf packs remain deferred.
+Status: Stage 1 through Stage 3 validation, immutable sermon/profile topic
+projection, and the gated Stage 4 evaluator are implemented. The current
+clarified question pack is `topics-v3-mission-discourse-boundary`. Stage 4 is
+still blocked on bounded identity, boundary, and one-sermon evidence review, so
+no version authorizes pastor-level comparison. Leaf packs remain deferred.
 
 ## Purpose
 
@@ -855,12 +854,26 @@ theological stance.
     emits `diagnostic_only_threshold_not_calibrated` and leaves comparative use
     disabled: no stability cutoff is invented before the reviewed cohort is
     ready and its observed diagnostics can be interpreted.
+27. Stage 4 preserves the immutable Stage 3 cohort and uses a separate explicit,
+    fingerprinted twelve-sermon snapshot. The Stage 4 snapshot records the Stage 3
+    source hash, source-backed period evidence for every sermon, and one deliberate
+    substitution: already-accepted video 1037 supplies Ron Clouzet coverage from
+    an independent H1 series, while same-half video 1033 remains in the reviewed
+    Stage 3 cohort. Only replacement video 1037 lacks the frozen topic pack and
+    whole-sermon review evidence. The readiness result deterministically emits the
+    minimum existing-workflow handoff: four exact-span speaker-pair reviews, two
+    sermon-boundary reviews, and that one bounded cached-topic refresh. It does not
+    infer identity from titles, group unbound observations together, or create a
+    second review/cache system. Cohort and readiness fingerprints bind date and
+    exact review-evidence hashes plus every current projection gate.
 
 ### Next iteration
 
-1. Prepare bounded review actions for the exact Stage 4 identity and disposition
-   blockers, and fill period strata only from trustworthy recording metadata.
-   Do not run a broad reclassification or infer membership from titles.
+1. Execute the readiness command's bounded handoff: adjudicate and synchronize
+   the four exact identity pairs, review and apply any approved boundary fixtures
+   for videos 4312 and 4317, and refresh/review only replacement video 1037.
+   Re-run readiness after those reviewed inputs change; do not run a broad
+   reclassification or infer membership from titles.
 2. Once readiness passes, run and interpret the prepared Stage 4 repeatability
    report before treating pastor-level topic differences as stable.
 3. Once projection is credible, implement `salvation-relationships-v1` as the
