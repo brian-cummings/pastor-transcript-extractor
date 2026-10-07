@@ -843,15 +843,26 @@ theological stance.
     lack enough trustworthy period metadata. These are identity, disposition,
     and sampling prerequisites; the implementation does not bypass them by
     grouping titles or pastor names.
+26. `pte analysis evaluate-topic-stability` is prepared behind that readiness
+    gate. It materializes or reuses only the immutable sermon-topic cache entries
+    already admitted by reviewed profile membership, binds its report to their
+    content fingerprints and the readiness fingerprint, and exactly reuses an
+    unchanged JSON/Markdown report. For every topic and pastor it keeps the
+    individual sermon values and declared sampling strata visible, then reports
+    equal-sermon means, leave-one-sermon sensitivity, between-series deltas, and
+    between-period deltas for both the primary supporting-or-higher probability
+    and the expected-prominence sensitivity measure. The evaluator deliberately
+    emits `diagnostic_only_threshold_not_calibrated` and leaves comparative use
+    disabled: no stability cutoff is invented before the reviewed cohort is
+    ready and its observed diagnostics can be interpreted.
 
 ### Next iteration
 
 1. Prepare bounded review actions for the exact Stage 4 identity and disposition
    blockers, and fill period strata only from trustworthy recording metadata.
    Do not run a broad reclassification or infer membership from titles.
-2. Once readiness passes, evaluate Stage 4 repeatability across independent
-   sermon series and periods before treating pastor-level topic differences as
-   stable.
+2. Once readiness passes, run and interpret the prepared Stage 4 repeatability
+   report before treating pastor-level topic differences as stable.
 3. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.

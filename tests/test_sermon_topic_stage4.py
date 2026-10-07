@@ -10,8 +10,12 @@ from unittest.mock import patch
 from pastor_transcript_extractor.models import Video, VideoStatus
 from pastor_transcript_extractor.sermon_topic_stage4 import (
     assess_topic_stage4_readiness,
+    evaluate_topic_stage4,
     load_topic_stage4_cohort,
+    summarize_topic_stage4_pastor,
+    write_topic_stage4_report,
 )
+from pastor_transcript_extractor.sermon_topics import TOPICS
 
 
 class _Database:
@@ -144,6 +148,73 @@ class SermonTopicStage4Tests(unittest.TestCase):
             path.write_text(json.dumps(cohort), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Duplicate"):
                 load_topic_stage4_cohort(path)
+
+    def test_diagnostics_keep_sermons_visible_and_compare_declared_strata(self) -> None:
+        sermons = []
+        for video_id, support, expected, series, period in (
+            (1, 0.1, 0.2, "series-a", "period-a"),
+            (2, 0.4, 0.5, "series-b", "period-a"),
+            (3, 0.7, 0.8, "series-b", "period-b"),
+        ):
+            sermons.append(
+                {
+                    "period_key": period,
+                    "profile_id": 7,
+                    "series_key": series,
+                    "sermon_analysis_input_fingerprint": f"run-{video_id}",
+                    "sermon_analysis_run_id": video_id,
+                    "topic_measurements": {
+                        topic: {
+                            "developed_emphasis_probability": support,
+                            "normalized_expected_prominence": expected,
+                        }
+                        for topic in TOPICS
+                    },
+                    "video_id": video_id,
+                    "youtube_video_id": f"youtube-{video_id}",
+                }
+            )
+
+        report = summarize_topic_stage4_pastor(
+            _cohort()["pastors"][0],
+            sermons,
+        )
+        metrics = report["topics"]["discipleship_spiritual_formation"]
+        primary = metrics["developed_emphasis_probability"]
+        sensitivity = metrics["normalized_expected_prominence_sensitivity"]
+
+        self.assertEqual(0.4, primary["equal_sermon_mean"])
+        self.assertEqual(0.15, primary["leave_one_sermon_max_absolute_delta"])
+        self.assertEqual(0.45, primary["maximum_between_series_delta"])
+        self.assertEqual(0.45, primary["maximum_between_period_delta"])
+        self.assertEqual(0.5, sensitivity["equal_sermon_mean"])
+        self.assertEqual(3, len(report["sermons"]))
+
+    def test_report_writer_reuses_exact_fingerprint(self) -> None:
+        report = {
+            "input_fingerprint": "fingerprint",
+            "status": "diagnostic_only_threshold_not_calibrated",
+            "comparative_use_allowed": False,
+            "interpretation": "Diagnostic only.",
+            "pastors": [],
+        }
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir) / "report.json"
+            first = write_topic_stage4_report(path, report)
+            replay = write_topic_stage4_report(path, report)
+
+            self.assertFalse(first[2])
+            self.assertTrue(replay[2])
+            self.assertTrue(path.with_suffix(".md").exists())
+
+    def test_evaluation_fails_before_materialization_when_readiness_blocks(self) -> None:
+        with patch(
+            "pastor_transcript_extractor.sermon_topic_stage4."
+            "assess_topic_stage4_readiness",
+            return_value={"ready": False, "blockers": ["identity"]},
+        ):
+            with self.assertRaisesRegex(ValueError, "identity"):
+                evaluate_topic_stage4(self.database, _cohort())
 
 
 if __name__ == "__main__":
