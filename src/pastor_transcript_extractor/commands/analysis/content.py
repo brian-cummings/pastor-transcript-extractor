@@ -1071,8 +1071,6 @@ def analysis_topic_stability_readiness(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     _print_topic_stage4_readiness(report, base_dir=base_dir)
-    if not report["ready"]:
-        raise typer.Exit(code=1)
 
 
 @analysis_app.command(
