@@ -813,17 +813,27 @@ theological stance.
     The evidence and decision are frozen in
     `evaluation/sermon-topics/stage3-topic-boundary-audit-v1.md`; no provider
     call, cache invalidation, or rerun was needed.
+24. The first topic profile projection now reuses the generic immutable sermon-
+    and profile-analysis cache instead of introducing a topic-specific store.
+    Each eligible cached topic artifact materializes once under its exact topic
+    fingerprint, retains representative and counterevidence excerpts, and is
+    reused until that topic evidence changes. The profile layer is fingerprinted
+    over exact effective membership, every in-scope projection gate (including
+    blocked sermons), the aggregation policy, and the content fingerprints of
+    its sermon inputs. It fails closed on mixed question-pack or projection
+    versions and reports blocked sermons rather than silently dropping them.
+    `pte analysis topic-summarize-profile --profile-id ...` uses an equal-sermon
+    mean, makes supporting-or-higher probability the primary developed-emphasis
+    measurement, preserves normalized expected prominence only as a sensitivity
+    measure, and reuses both cache layers on unchanged replay. Its stored and CLI
+    status remains `exploratory_stage4_repeatability_pending`, with comparative
+    use explicitly disabled until Stage 4.
 
 ### Next iteration
 
-1. Freeze the completed Stage 3 whole-sermon review decisions and carry their
-   evidence constraints into the first profile-aggregation design. Use
-   equal-sermon weighting, make supporting-or-higher probability the primary
-   developed-topic measurement, retain expected prominence as a sensitivity
-   measure, and preserve representative evidence links.
-2. Evaluate Stage 4 repeatability across independent sermon series and periods
+1. Evaluate Stage 4 repeatability across independent sermon series and periods
    before treating pastor-level topic differences as stable.
-3. Once projection is credible, implement `salvation-relationships-v1` as the
+2. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 

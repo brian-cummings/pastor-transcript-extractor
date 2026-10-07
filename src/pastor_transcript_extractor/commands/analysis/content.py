@@ -61,6 +61,11 @@ from pastor_transcript_extractor.sermon_topic_review_adjudication import (
 from pastor_transcript_extractor.sermon_topic_projection import (
     assess_topic_profile_projection,
 )
+from pastor_transcript_extractor.sermon_topic_profile_analysis import (
+    TOPIC_PROFILE_ANALYZER_KEY,
+    TOPIC_PROFILE_ANALYZER_VERSION,
+    build_profile_topic_analysis,
+)
 from pastor_transcript_extractor.recording_verifier_typesafe import (
     TypeSafeSdkAdapter,
 )
@@ -84,6 +89,64 @@ class _LazyTopicBehaviorClient:
                 timeout_seconds=self.timeout_seconds,
             )
         return self._client.assess_blocks(*args, **kwargs)
+
+
+def _print_topic_profile(database, run) -> None:
+    values = {
+        item.metric_key: json.loads(item.value_json)
+        for item in database.list_speaker_profile_analysis_measurements(run.id)
+    }
+    coverage = Table(
+        title=f"TypeSafe Topic Profile — Speaker Profile #{run.profile_id}"
+    )
+    coverage.add_column("Coverage")
+    coverage.add_column("Value", justify="right")
+    coverage.add_row(
+        "Sermons analyzed",
+        f"{values.get('sermons_analyzed', 0)} / {values.get('sermons_attached', 0)}",
+    )
+    coverage.add_row("Sermons blocked", str(values.get("sermons_blocked", 0)))
+    coverage.add_row("Status", str(values.get("analytical_status", "unknown")))
+    console.print(coverage)
+
+    topics = Table(title="Equal-sermon Topic Measurements")
+    topics.add_column("Topic")
+    topics.add_column("Developed emphasis", justify="right")
+    topics.add_column("Expected prominence*", justify="right")
+    topic_profiles = values.get("topic_profiles", {})
+    if isinstance(topic_profiles, dict):
+        ordered = sorted(
+            topic_profiles.items(),
+            key=lambda item: float(
+                item[1].get("developed_emphasis_probability", 0.0)
+                if isinstance(item[1], dict)
+                else 0.0
+            ),
+            reverse=True,
+        )
+        for topic, metrics in ordered:
+            if not isinstance(metrics, dict):
+                continue
+            topics.add_row(
+                str(topic),
+                f"{float(metrics.get('developed_emphasis_probability', 0.0)):.3f}",
+                (
+                    f"{float(metrics.get('normalized_expected_prominence_sensitivity', 0.0)):.3f}"
+                ),
+            )
+    console.print(topics)
+    console.print(
+        "* Expected prominence includes incidental level-1 probability and is a "
+        "secondary sensitivity measure. Developed emphasis is primary."
+    )
+    console.print(
+        "Exploratory only: Stage 4 cross-sermon repeatability is pending, so this "
+        "profile must not be used for pastor comparisons."
+    )
+    console.print(
+        f"Provenance: profile_analysis=#{run.id}; version={run.analyzer_version}; "
+        f"membership={run.membership_fingerprint}; input={run.input_fingerprint}"
+    )
 
 
 def _print_analysis_readiness(report: ReadinessReport) -> None:
@@ -726,6 +789,70 @@ def analysis_topic_review_finalize(
         f"fingerprint={result.review_fingerprint[:12]}…)",
         markup=False,
     )
+
+
+@analysis_app.command(
+    "topic-summarize-profile",
+    help=(
+        "Materialize an exploratory equal-sermon profile from cached TypeSafe "
+        "topic projections."
+    ),
+)
+def analysis_topic_summarize_profile(
+    profile_id: int = typer.Option(..., "--profile-id", help="Speaker profile id."),
+    analyzer_version: str = typer.Option(
+        TOPIC_PROFILE_ANALYZER_VERSION,
+        "--analyzer-version",
+        help="Topic profile analyzer version.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        outcome = build_profile_topic_analysis(
+            database,
+            profile_id,
+            analyzer_version=analyzer_version,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"TypeSafe topic profile analysis #{outcome.run.id} "
+        f"{'created' if outcome.created else 'reused'}."
+    )
+    _print_topic_profile(database, outcome.run)
+
+
+@analysis_app.command(
+    "topic-show-profile",
+    help="Inspect the latest materialized exploratory TypeSafe topic profile.",
+)
+def analysis_topic_show_profile(
+    profile_id: int = typer.Option(..., "--profile-id", help="Speaker profile id."),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        resolved_profile_id = database.resolve_speaker_profile_id(profile_id)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    run = database.get_latest_speaker_profile_analysis_run(
+        resolved_profile_id, TOPIC_PROFILE_ANALYZER_KEY
+    )
+    if run is None:
+        raise typer.BadParameter(
+            "No materialized TypeSafe topic profile. Run "
+            "'pte analysis topic-summarize-profile' first."
+        )
+    _print_topic_profile(database, run)
 
 
 @analysis_app.command(
