@@ -70,7 +70,9 @@ from pastor_transcript_extractor.sermon_topic_profile_analysis import (
 from pastor_transcript_extractor.sermon_topic_stage4 import (
     DEFAULT_TOPIC_STAGE4_COHORT,
     assess_topic_stage4_readiness,
+    evaluate_topic_stage4,
     load_topic_stage4_cohort,
+    write_topic_stage4_report,
 )
 from pastor_transcript_extractor.recording_verifier_typesafe import (
     TypeSafeSdkAdapter,
@@ -917,6 +919,48 @@ def analysis_topic_stability_readiness(
     _print_topic_stage4_readiness(report)
     if not report["ready"]:
         raise typer.Exit(code=1)
+
+
+@analysis_app.command(
+    "evaluate-topic-stability",
+    help=(
+        "Write cached Stage 4 equal-sermon, series, and period repeatability "
+        "diagnostics after readiness passes."
+    ),
+)
+def analysis_evaluate_topic_stability(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Frozen topic cohort JSON with series and period metadata.",
+    ),
+    output_path: Path = typer.Option(
+        Path("evaluation/sermon-topics/stage4-topic-stability-v1.json"),
+        "--output",
+        help="Fingerprint-bound JSON report path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        report = evaluate_topic_stage4(database, cohort)
+        json_path, markdown_path, reused = write_topic_stage4_report(
+            output_path,
+            report,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} TypeSafe topic stability report: "
+        f"{json_path} and {markdown_path}; status={report['status']}; "
+        f"fingerprint={report['input_fingerprint'][:12]}…",
+        markup=False,
+    )
 
 
 @analysis_app.command(

@@ -323,10 +323,11 @@ def materialize_topic_sermon_analysis(
     return TopicSermonAnalysisOutcome(run=run, created=created)
 
 
-def _decoded_sermon_measurements(
+def load_topic_sermon_measurements(
     database: Database,
     run_id: int,
 ) -> dict[str, object]:
+    """Load one immutable materialized topic run's decoded measurements."""
     return {
         measurement.metric_key: json.loads(measurement.value_json)
         for measurement in database.list_sermon_analysis_measurements(run_id)
@@ -413,7 +414,7 @@ def build_profile_topic_analysis(
             video,
             analyzer_version=sermon_analyzer_version,
         )
-        values = _decoded_sermon_measurements(database, outcome.run.id)
+        values = load_topic_sermon_measurements(database, outcome.run.id)
         question_pack = values.get("topic_question_pack_version")
         projection_policy = values.get("sermon_projection_policy_version")
         topic_measurements = values.get("topic_measurements")
