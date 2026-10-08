@@ -1035,14 +1035,25 @@ theological stance.
     `salvation-relationships-v1` inventory now defines twelve independent
     relationship judgments and a deterministic route decision; provider
     execution remains disabled until its bounded review workflow is ready.
+47. The first twelve-case leaf review found the `0.55` router serviceable but
+    imperfect: three of four threshold cases warrant the leaf, while David P
+    Ryder video 4052 block 103 is a false positive. Raising the route would lose
+    reviewed useful cases, so the boundary remains fixed and the false positive
+    is frozen. The leaf judgments are useful overall, but four evidence boundaries
+    require a paired revision: sanctification must not be inferred from repentance,
+    surrender, healing, or forgiveness alone; justification must not be inferred
+    from forgiveness, grace, or non-merit alone; divine initiative must not be
+    inferred from forgiveness alone; and direct sin-bearing must count as atoning
+    work. The other eight questions remain unchanged. V2 reruns the identical
+    twelve targets under a new leaf-only cache identity.
 
 ### Next iteration
 
-1. Add an independently cached, bounded execution path for
-   `salvation-relationships-v1`. Route only projection-eligible blocks at the
-   reviewed `0.55` boundary; do not rerun or invalidate the broad topic pack.
-2. Produce a deterministic cross-pastor leaf-review packet before enabling the
-   leaf pack during ordinary reclassification.
+1. Review the paired `salvation-relationships-v2-evidence-boundaries` packet on
+   the same twelve targets. Confirm that the four revised questions fix the
+   observed semantic boundaries without degrading the strong cases.
+2. If the paired review passes, enable the independently cached leaf pack during
+   ordinary reclassification for projection-eligible blocks routed at `0.55`.
 
 ## Non-goals for `topics-v1`
 

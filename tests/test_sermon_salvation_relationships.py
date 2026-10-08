@@ -4,6 +4,7 @@ import unittest
 
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
+    SALVATION_RELATIONSHIP_SPECS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_ROUTE_THRESHOLD,
     salvation_relationship_pack_digest,
@@ -84,6 +85,30 @@ class SalvationRelationshipsTests(unittest.TestCase):
         self.assertEqual(
             salvation_relationship_pack_digest(),
             salvation_relationship_pack_digest(),
+        )
+
+    def test_revised_evidence_boundaries_are_explicit_and_general(self) -> None:
+        self.assertIn(
+            "bearing people's sins",
+            SALVATION_RELATIONSHIP_SPECS["atonement_as_basis"].true_criteria,
+        )
+        self.assertIn(
+            "forgiveness",
+            SALVATION_RELATIONSHIP_SPECS[
+                "justification_right_standing"
+            ].false_criteria,
+        )
+        self.assertIn(
+            "surrender",
+            SALVATION_RELATIONSHIP_SPECS[
+                "sanctification_transformation"
+            ].false_criteria,
+        )
+        self.assertIn(
+            "forgives",
+            SALVATION_RELATIONSHIP_SPECS[
+                "divine_grace_initiative"
+            ].false_criteria,
         )
 
 

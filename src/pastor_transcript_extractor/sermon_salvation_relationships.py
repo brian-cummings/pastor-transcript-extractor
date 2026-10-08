@@ -12,7 +12,9 @@ from pastor_transcript_extractor.sermon_topics import (
 )
 
 
-SALVATION_RELATIONSHIPS_PACK_VERSION = "salvation-relationships-v1"
+SALVATION_RELATIONSHIPS_PACK_VERSION = (
+    "salvation-relationships-v2-evidence-boundaries"
+)
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 
@@ -31,12 +33,13 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "or gift rather than human earning"
         ),
         true_criteria=(
-            "The target explicitly relates salvation or a saving benefit to God's "
-            "unearned grace, mercy, initiative, or gift."
+            "The target explicitly relates salvation or a saving benefit to grace, "
+            "mercy, God's initiative or gift, or a contrast with human earning."
         ),
         false_criteria=(
-            "The target merely mentions God, grace, mercy, or a gift; attributes "
-            "general help or growth to God; or does not assert this saving relationship."
+            "The target merely says that God or Jesus forgives, helps, heals, accepts, "
+            "or changes someone without asserting unearned grace, mercy, gift, divine "
+            "initiative, or a contrast with human earning."
         ),
     ),
     "atonement_as_basis": SalvationRelationshipSpec(
@@ -46,11 +49,12 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
         ),
         true_criteria=(
             "The target explicitly connects Christ's saving work to salvation, "
-            "reconciliation, forgiveness, or right standing with God."
+            "reconciliation, forgiveness, or right standing with God, or presents "
+            "Christ as bearing people's sins, guilt, or penalty in his death."
         ),
         false_criteria=(
             "The target only mentions the cross, death, resurrection, sacrifice, or "
-            "Jesus without asserting that saving relationship."
+            "Jesus without connecting that work to people's sins or a saving benefit."
         ),
     ),
     "forgiveness_pardon": SalvationRelationshipSpec(
@@ -73,12 +77,14 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "standing with God as a saving benefit"
         ),
         true_criteria=(
-            "The target meaningfully presents justification, credited righteousness, "
-            "acquittal, acceptance, or right standing with God."
+            "The target meaningfully presents people as declared or counted righteous, "
+            "credited with righteousness, acquitted, justified, or explicitly placed "
+            "in right standing with God."
         ),
         false_criteria=(
-            "The target discusses moral conduct, righteousness as character, or divine "
-            "approval without asserting right standing as a saving benefit."
+            "The target discusses forgiveness, grace, mercy, acceptance, cleansing, "
+            "righteous conduct, or salvation apart from works without asserting "
+            "acquittal, credited or declared righteousness, or right standing with God."
         ),
     ),
     "conversion_new_birth": SalvationRelationshipSpec(
@@ -101,12 +107,14 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "result, or lived experience of God's saving work"
         ),
         true_criteria=(
-            "The target explicitly relates holiness, deliverance from sin, or transformed "
-            "life to salvation or God's saving work."
+            "The target explicitly relates holiness, deliverance from sin's power, "
+            "cleansing from unrighteousness, or transformed life to salvation or God's "
+            "saving work."
         ),
         false_criteria=(
-            "The target discusses generic growth, character, discipline, or obedience "
-            "without relating it to salvation or saving work."
+            "The target discusses repentance, surrender, forgiveness, physical or social "
+            "healing, generic growth, character, discipline, or obedience without "
+            "asserting holiness, deliverance, cleansing, or transformation as saving work."
         ),
     ),
     "assurance_security": SalvationRelationshipSpec(
