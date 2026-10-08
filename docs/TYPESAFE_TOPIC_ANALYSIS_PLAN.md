@@ -1,10 +1,11 @@
 # TypeSafe Sermon Topic Analysis Plan
 
-Status: Stage 1 through Stage 3 validation, immutable sermon/profile topic
-projection, and the gated Stage 4 evaluator are implemented. The current
-clarified question pack is `topics-v3-mission-discourse-boundary`. Stage 4 is
-still blocked on bounded identity, boundary, and one-sermon evidence review, so
-no version authorizes pastor-level comparison. Leaf packs remain deferred.
+Status: Stage 1 through Stage 4 validation and immutable sermon/profile topic
+projection are implemented. The current clarified question pack is
+`topics-v3-mission-discourse-boundary`. Stage 4 approves broad observations for
+sermon discovery and conditional leaf routing, but its three-sermon-per-pastor
+cohort does not authorize pastor-level comparison or calibrate a universal
+stability threshold. The first salvation-relationship leaf pack is next.
 
 ## Purpose
 
@@ -997,18 +998,29 @@ theological stance.
     Williams profile 80, Ron Clouzet profile 130, and John Bradshaw profile 318.
     The remaining `ron clouzet`/`ron couzet` warning is an explicit-attribution
     spelling conflict, not an identity, eligibility, or topic-analysis blocker.
+43. The cached Stage 4 evaluator completed without a provider call and wrote
+    fingerprint `7f693aec7881...`. It shows both kinds of behavior the broad
+    layer must preserve: several developed core themes have small deletion
+    sensitivity, while known sermon-specific subjects produce isolated spikes
+    (Ron Clouzet video 1037 on eschatology, John Bradshaw video 281 on public
+    life, and video 4589 on spiritual conflict). This supports sermon discovery
+    and deterministic conditional leaf routing. It does not support stable
+    pastor comparison: every declared series has one sermon, and one of each
+    pastor's two periods has only one sermon. The fingerprint-bound interpretation
+    is frozen in `stage4-topic-stability-audit-v1.md`; report status remains
+    `diagnostic_only_threshold_not_calibrated` and comparative use remains
+    disabled.
 
 ### Next iteration
 
-1. Run the cached `pte analysis evaluate-topic-stability` Stage 4 diagnostic.
-   Inspect its equal-sermon values, leave-one-sermon sensitivity, and declared
-   series/period deltas before proposing any repeatability threshold or allowing
-   comparative use. Do not reclassify the cohort or call TypeSafe again: the
-   evaluator materializes or reuses immutable sermon-topic analysis from the
-   twelve already-reviewed cached inputs.
-2. Once projection is credible, implement `salvation-relationships-v1` as the
-   first routed leaf pack. Keep its cache and question identity independent of
-   the broad topic pack and later revisions.
+1. Prepare a bounded salvation-routing calibration packet from the twelve
+   reviewed sermons' projection-eligible cached blocks. Include clear routes,
+   clear non-routes, and borderline distributions without rerunning the broad
+   pack or calling TypeSafe.
+2. After approving a deterministic route policy, implement
+   `salvation-relationships-v1` as the first conditional leaf pack. Keep its
+   cache and question identity independent of the broad topic pack and later
+   revisions.
 
 ## Non-goals for `topics-v1`
 
