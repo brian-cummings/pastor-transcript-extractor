@@ -952,16 +952,20 @@ theological stance.
     proposals bind these conclusions to packet fingerprints `d7602e72fa87...`
     and `d91f37e1cd1f...`; 3973's separate profile-level projection gate remains
     blocked until effective reviewed identity membership is available.
+37. Brian approved and finalized the corrected 1037 and 3973 packets with all
+    required checks complete and no topic or projection corrections. Their
+    reviewed packet fingerprints are `d7602e72fa87...` and `d91f37e1cd1f...`.
+    The clean-control 281 proposal is prepared, but its draft remains explicitly
+    unreviewed. Do not pin the replacement reviews into the immutable Stage 4
+    cohort evidence or claim readiness until 281 is finalized as well.
 
 ### Next iteration
 
-1. Validate the role-context revision on replacement video 1037 and clean
-   control 281, then finalize their refreshed whole-sermon reviews. Execute the
-   readiness command's remaining bounded handoff: adjudicate and synchronize
-   its exact identity pairs, review and apply only approved boundary fixtures,
-   and refresh/review replacement video 3973 as needed.
-   Re-run readiness after those reviewed inputs change; do not run a broad
-   reclassification or infer membership from titles.
+1. Finalize the prepared clean-control review for video 281. Then add one
+   immutable, fingerprinted Stage 4 evidence artifact covering reviewed videos
+   281, 1037, and 3973 and reference it from the frozen cohort. Re-run readiness
+   and execute only its remaining bounded identity/synchronization actions; do
+   not run a broad reclassification or infer membership from titles.
 2. Once readiness passes, run and interpret the prepared Stage 4 repeatability
    report before treating pastor-level topic differences as stable.
 3. Once projection is credible, implement `salvation-relationships-v1` as the
