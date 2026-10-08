@@ -17,6 +17,7 @@ from pastor_transcript_extractor.commands.apps import identity_app
 from pastor_transcript_extractor.config import AppPaths, build_paths
 from pastor_transcript_extractor.ground_truth_review import format_timestamp
 from pastor_transcript_extractor.media_archive import (
+    load_verified_canonical_clips,
     write_canonical_clip_preparation_manifest,
 )
 from pastor_transcript_extractor.media_artifacts import (
@@ -67,6 +68,7 @@ def _prompt_review_choice(prompt: str, choices: dict[str, object]) -> object:
 
 def _normalize_review_terminal_input() -> None:
     """Restore Enter-to-newline translation before interactive review prompts."""
+    registered_artifacts = [None, None]
     try:
         import termios
     except ImportError:
@@ -317,6 +319,14 @@ def review_speaker_pair(
             get_registered_normalized_media_artifact(database, video.id)
             for video in videos
         ]
+        canonical_clips = [
+            (
+                load_verified_canonical_clips(artifact, observation)
+                if artifact is not None
+                else ()
+            )
+            for artifact, observation in zip(registered_artifacts, observations)
+        ]
         audio_paths = [
             (
                 Path(artifact.artifact_path)
@@ -366,6 +376,8 @@ def review_speaker_pair(
                 if registered_artifacts[1] is not None
                 else None
             ),
+            prepared_clips_a=canonical_clips[0],
+            prepared_clips_b=canonical_clips[1],
             span_cache=AudioSpanCache(cache_dir.expanduser().resolve()),
             evaluation_root=evaluation_root.expanduser().resolve(),
             selection_manifest=selection_manifest,
@@ -373,8 +385,22 @@ def review_speaker_pair(
             metadata_b=_speaker_pair_video_metadata(database, videos[1]),
         )
     except ArchivedMediaUnavailableError as error:
+        artifact = next(
+            (
+                candidate
+                for candidate in registered_artifacts
+                if candidate is not None
+                and Path(candidate.artifact_path).resolve(strict=False)
+                == error.archive_path.resolve(strict=False)
+            ),
+            error.artifact,
+        )
+        contextual_error = ArchivedMediaUnavailableError(
+            artifact,
+            error.archive_path,
+        )
         raise typer.BadParameter(
-            f"{error}. Restore access to the archive mount and retry this command."
+            f"{contextual_error}. Restore access to the archive mount and retry this command."
         ) from error
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         raise typer.BadParameter(str(error)) from error

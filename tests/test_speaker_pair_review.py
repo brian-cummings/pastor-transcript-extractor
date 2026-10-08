@@ -263,6 +263,52 @@ class SpeakerPairReviewTests(unittest.TestCase):
             },
         )
 
+    def test_draft_uses_verified_canonical_clips_without_parent_audio(self):
+        def clips(prefix: str, observation_fingerprint: str):
+            return tuple(
+                CachedSpan(
+                    observation_fingerprint=observation_fingerprint,
+                    start_seconds=100.0 + index * 100.0,
+                    end_seconds=112.0 + index * 100.0,
+                    wav_path=str(self.root / f"{prefix}-{index}.wav"),
+                    wav_sha256=hashlib.sha256(
+                        f"{prefix}-{index}".encode()
+                    ).hexdigest(),
+                    duration_seconds=12.0,
+                    rms_dbfs=-20.0,
+                    clipped_fraction=0.0,
+                    cache_hit=True,
+                    non_silent_fraction=0.9,
+                )
+                for index in range(5)
+            )
+
+        span_cache = Mock()
+        draft = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=self.root / "offline-a.wav",
+            audio_path_b=self.root / "offline-b.wav",
+            audio_sha256_a="1" * 64,
+            audio_sha256_b="2" * 64,
+            prepared_clips_a=clips("a", self.observation_a.input_fingerprint),
+            prepared_clips_b=clips("b", self.observation_b.input_fingerprint),
+            span_cache=span_cache,
+            evaluation_root=self.evaluation_root,
+        )
+
+        span_cache.recording_activity_profile.assert_not_called()
+        span_cache.prepare.assert_not_called()
+        self.assertEqual(
+            {"verified_canonical_clips"},
+            {
+                item["clip_selection"]["evidence_source"]
+                for item in draft.payload["observations"].values()
+            },
+        )
+
     def test_profile_review_packet_links_each_clip_to_youtube_timestamp(self):
         draft = create_review_draft(
             observation_a=self.observation_a,
@@ -1007,6 +1053,11 @@ class SpeakerPairReviewTests(unittest.TestCase):
             ),
             patch(
                 "pastor_transcript_extractor.commands.identity.review."
+                "load_verified_canonical_clips",
+                return_value=(),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
                 "resolve_normalized_audio_path",
             ) as resolve,
             patch(
@@ -1031,6 +1082,73 @@ class SpeakerPairReviewTests(unittest.TestCase):
         resolve.assert_not_called()
         self.assertEqual("1" * 64, create.call_args.kwargs["audio_sha256_a"])
         self.assertEqual("2" * 64, create.call_args.kwargs["audio_sha256_b"])
+
+    def test_registered_archive_error_retains_artifact_identity(self):
+        database = SimpleNamespace(
+            get_video_by_youtube_id=lambda value: SimpleNamespace(id=value),
+            get_latest_speaker_observation_for_video=lambda _video_id: self.observation_a,
+        )
+        artifacts = [
+            SimpleNamespace(
+                id=11,
+                artifact_path=str(self.root / "offline-a.wav"),
+                content_sha256="1" * 64,
+            ),
+            SimpleNamespace(
+                id=22,
+                artifact_path=str(self.root / "offline-b.wav"),
+                content_sha256="2" * 64,
+            ),
+        ]
+        unavailable = ArchivedMediaUnavailableError(
+            None,
+            Path(artifacts[1].artifact_path),
+        )
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.build_paths",
+                return_value=SimpleNamespace(
+                    root=self.root,
+                    database=self.root / "database.sqlite3",
+                ),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.Path.exists",
+                return_value=True,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.Database",
+                return_value=database,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
+                "get_registered_normalized_media_artifact",
+                side_effect=artifacts,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
+                "load_verified_canonical_clips",
+                return_value=(),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.create_review_draft",
+                side_effect=unavailable,
+            ),
+        ):
+            with self.assertRaisesRegex(typer.BadParameter, "media artifact 22"):
+                review_speaker_pair(
+                    "video-a",
+                    "video-b",
+                    reviewer="reviewer-1",
+                    evaluation_root=self.evaluation_root,
+                    cache_dir=self.root / "cache",
+                    open_packet=False,
+                    prepare_only=True,
+                    base_dir=self.root,
+                    selection_manifest_json=None,
+                    observation_fingerprint_a=None,
+                    observation_fingerprint_b=None,
+                )
 
     def test_completed_review_prints_exact_deferred_sync_command(self):
         paths = SimpleNamespace(

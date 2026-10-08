@@ -372,6 +372,8 @@ def create_review_draft(
     evaluation_root: Path,
     audio_sha256_a: str | None = None,
     audio_sha256_b: str | None = None,
+    prepared_clips_a: Sequence[CachedSpan] = (),
+    prepared_clips_b: Sequence[CachedSpan] = (),
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
     min_qualified_spans: int | None = None,
@@ -399,6 +401,7 @@ def create_review_draft(
                 observation_a,
                 audio_path_a,
                 audio_sha256_a,
+                tuple(prepared_clips_a),
                 metadata_a,
             ),
             (
@@ -407,6 +410,7 @@ def create_review_draft(
                 observation_b,
                 audio_path_b,
                 audio_sha256_b,
+                tuple(prepared_clips_b),
                 metadata_b,
             ),
         ),
@@ -469,20 +473,29 @@ def create_review_draft(
         observation,
         audio_path,
         _audio_sha256,
+        prepared_clips,
         source_metadata,
     ) in source_observations.items():
         try:
-            prepared = prepare_review_observation(
+            prepared = _prepare_canonical_review_observation(
                 observation=observation,
-                audio_path=audio_path,
-                span_cache=span_cache,
-                expected_audio_sha256=expected_audio_sha256[source_key],
-                span_count=span_count,
-                span_duration_seconds=span_duration_seconds,
-                min_qualified_spans=min_qualified_spans,
+                clips=prepared_clips,
+                requested_count=span_count,
+                minimum_count=min_qualified_spans,
                 min_non_silent_fraction=min_non_silent_fraction,
-                fallback_candidate_multiplier=fallback_candidate_multiplier,
             )
+            if prepared is None:
+                prepared = prepare_review_observation(
+                    observation=observation,
+                    audio_path=audio_path,
+                    span_cache=span_cache,
+                    expected_audio_sha256=expected_audio_sha256[source_key],
+                    span_count=span_count,
+                    span_duration_seconds=span_duration_seconds,
+                    min_qualified_spans=min_qualified_spans,
+                    min_non_silent_fraction=min_non_silent_fraction,
+                    fallback_candidate_multiplier=fallback_candidate_multiplier,
+                )
         except InsufficientSpeechActivityError as error:
             rejection_path = _record_activity_rejection(
                 pair_id=pair_id,
@@ -947,6 +960,89 @@ def _draft_clip(span: CachedSpan) -> dict[str, Any]:
     }
 
 
+def _prepare_canonical_review_observation(
+    *,
+    observation: SpeakerObservation,
+    clips: Sequence[CachedSpan],
+    requested_count: int,
+    minimum_count: int,
+    min_non_silent_fraction: float,
+) -> PreparedReviewObservation | None:
+    """Reuse verified canonical clips without reopening their parent audio."""
+    if requested_count < 2 or minimum_count < 2 or minimum_count > requested_count:
+        raise ValueError("review clip counts require 2 <= minimum <= requested")
+    if not clips or any(
+        clip.observation_fingerprint != observation.input_fingerprint
+        for clip in clips
+    ):
+        return None
+    ordered = tuple(sorted(clips, key=lambda clip: clip.start_seconds))
+    attempts = []
+    qualified = []
+    for clip in ordered:
+        activity_available = clip.non_silent_fraction is not None
+        accepted = (
+            activity_available
+            and clip.rms_dbfs >= DEFAULT_MIN_CLIP_RMS_DBFS
+            and clip.non_silent_fraction >= min_non_silent_fraction
+        )
+        attempts.append(
+            {
+                "start_seconds": clip.start_seconds,
+                "end_seconds": clip.end_seconds,
+                "wav_sha256": clip.wav_sha256,
+                "rms_dbfs": clip.rms_dbfs,
+                "non_silent_fraction": clip.non_silent_fraction,
+                "accepted": accepted,
+                "reason": (
+                    "qualified"
+                    if accepted
+                    else (
+                        "activity_measurement_unavailable"
+                        if not activity_available
+                        else (
+                            "clip_rms_too_low"
+                            if clip.rms_dbfs < DEFAULT_MIN_CLIP_RMS_DBFS
+                            else "majority_silence"
+                        )
+                    )
+                ),
+            }
+        )
+        if accepted:
+            qualified.append(clip)
+    if len(qualified) < minimum_count:
+        return None
+    if len(qualified) > requested_count:
+        selected = [
+            qualified[
+                round(index * (len(qualified) - 1) / (requested_count - 1))
+            ]
+            for index in range(requested_count)
+        ]
+    else:
+        selected = qualified
+    summary = {
+        "policy_version": CLIP_ACTIVITY_POLICY_VERSION,
+        "evidence_source": "verified_canonical_clips",
+        "requested_clip_count": requested_count,
+        "minimum_clip_count": minimum_count,
+        "candidate_clip_count": len(ordered),
+        "prepared_clip_count": len(ordered),
+        "qualified_clip_count": len(qualified),
+        "selection_outcome": (
+            "complete" if len(selected) == requested_count else "partial"
+        ),
+        "thresholds": {
+            "min_rms_dbfs": DEFAULT_MIN_CLIP_RMS_DBFS,
+            "min_non_silent_fraction": min_non_silent_fraction,
+            "non_silent_measurement_dbfs": -50.0,
+        },
+        "attempts": attempts,
+    }
+    return PreparedReviewObservation(tuple(selected), summary)
+
+
 def _prepare_review_spans(
     *,
     observation: SpeakerObservation,
@@ -1085,6 +1181,7 @@ def _record_activity_rejection(
             SpeakerObservation,
             Path,
             str | None,
+            tuple[CachedSpan, ...],
             dict[str, object] | None,
         ],
     ],
@@ -1107,6 +1204,7 @@ def _record_activity_rejection(
             observation,
             _audio_path,
             _audio_sha256,
+            _prepared_clips,
             _source_metadata,
         ) in source_observations.items()
     }
