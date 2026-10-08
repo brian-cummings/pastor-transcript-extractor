@@ -903,12 +903,31 @@ theological stance.
     reuse and protected draft preparation. The readiness-policy fingerprint was
     advanced so the old inference-heavy handoff cannot be mistaken for the new
     cache-aware plan.
+33. Review of the replacement whole-sermon packets keeps all twenty v3 topic
+    questions unchanged. The strongest apparent `god_character_action` /
+    `jesus_person_work` overlap occurred in performed lyrics and therefore
+    exposed a role-attribution defect before a repeatable topic-boundary defect.
+    Fine-block role judgments now receive a bounded, content-addressed two-block
+    neighborhood on each side so every cache identity carries stable transition
+    evidence independent of provider batch composition. The generic role boundary states
+    that performer identity, instrumentation, thematic alignment, and appeal
+    function do not turn performed lyrics into preacher discourse; it also
+    distinguishes an immediate same-preacher continuation of the concluding
+    appeal from a prayer after a handoff or intervening service material. Only
+    the role pack depends on this new context. Existing topic and homiletic
+    answer packs retain their identities and are reused, while the classifier
+    prompt version makes the changed projection input fail closed until a
+    bounded reclassification is run. Tests bind the semantic policy, bounded
+    neighborhood, provider state, and pack-isolated cache invalidation without
+    naming a recording or block.
 
 ### Next iteration
 
-1. Execute the readiness command's bounded handoff: adjudicate and synchronize
+1. Validate the role-context revision on replacement video 1037 and clean
+   control 281, then finalize their refreshed whole-sermon reviews. Execute the
+   readiness command's remaining bounded handoff: adjudicate and synchronize
    its exact identity pairs, review and apply only approved boundary fixtures,
-   and refresh/review replacement videos 1037, 281, and 3973.
+   and refresh/review replacement video 3973 as needed.
    Re-run readiness after those reviewed inputs change; do not run a broad
    reclassification or infer membership from titles.
 2. Once readiness passes, run and interpret the prepared Stage 4 repeatability
