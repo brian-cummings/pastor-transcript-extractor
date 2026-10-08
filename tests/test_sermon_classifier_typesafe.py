@@ -30,6 +30,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     MAX_FINE_QUESTION_BUDGET,
     ROLE_CONTEXT_MAX_CHARS_PER_BLOCK,
     ROLE_PACK,
+    SALVATION_RELATIONSHIPS_PACK,
     TOPIC_PACK,
     TREATMENT_PACK,
     _boundary_candidates,
@@ -47,6 +48,10 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_ANALYSIS_QUESTION_VERSION,
     SEMANTIC_DIMENSIONS,
     semantic_question_inventory,
+)
+from pastor_transcript_extractor.sermon_salvation_relationships import (
+    SALVATION_RELATIONSHIPS,
+    SALVATION_RELATIONSHIPS_PACK_VERSION,
 )
 from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
@@ -163,6 +168,29 @@ class FakeBlockClient:
                     else {}
                 ),
                 {"request_key": f"request-{self.calls}"},
+                salvation_relationship_probabilities=(
+                    {
+                        relationship: 0.8
+                        for relationship in SALVATION_RELATIONSHIPS
+                    }
+                    if SALVATION_RELATIONSHIPS_PACK in packs
+                    else {}
+                ),
+                salvation_relationship_question_version=(
+                    SALVATION_RELATIONSHIPS_PACK_VERSION
+                    if SALVATION_RELATIONSHIPS_PACK in packs
+                    else None
+                ),
+                salvation_relationship_context=(
+                    {
+                        **topic_contexts[block.block_id].state_payload(),
+                        "diagnostics": dict(
+                            topic_contexts[block.block_id].diagnostics
+                        ),
+                    }
+                    if SALVATION_RELATIONSHIPS_PACK in packs and topic_contexts
+                    else {}
+                ),
             )
         return answers
 
@@ -982,6 +1010,48 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             first[block.block_id].topic_scores,
             replay[block.block_id].topic_scores,
         )
+
+    def test_salvation_relationship_pack_has_independent_replayable_cache(self) -> None:
+        client = FakeBlockClient()
+        block = build_transcript_blocks(
+            drafts(), target_seconds=300.0, max_chars=9000
+        )[0]
+        context = {"metadata": {"title": "Synthetic salvation fixture"}}
+        topic_contexts = {
+            block.block_id: build_topic_context(drafts(), block)
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            first = cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+                topic_contexts=topic_contexts,
+            )
+            replay = cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+                topic_contexts=topic_contexts,
+            )
+
+        self.assertEqual(
+            [frozenset({SALVATION_RELATIONSHIPS_PACK})],
+            client.requested_packs,
+        )
+        self.assertEqual({}, first[block.block_id].topic_scores)
+        self.assertEqual(
+            set(SALVATION_RELATIONSHIPS),
+            set(first[block.block_id].salvation_relationship_probabilities),
+        )
+        self.assertEqual(
+            first[block.block_id].salvation_relationship_probabilities,
+            replay[block.block_id].salvation_relationship_probabilities,
+        )
+        self.assertEqual(1, cache.hits)
+        self.assertEqual(1, cache.misses)
 
     def test_legacy_combined_cache_is_migrated_without_provider_call(self) -> None:
         client = FakeBlockClient()

@@ -32,6 +32,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeRecordingGateAnswer,
     RoleBlockContext,
     ROLE_PACK,
+    SALVATION_RELATIONSHIPS_PACK,
     TOPIC_PACK,
     TREATMENT_PACK,
     recording_gate_question,
@@ -42,6 +43,12 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_DIMENSIONS,
     semantic_question_id,
     semantic_question_inventory,
+)
+from pastor_transcript_extractor.sermon_salvation_relationships import (
+    SALVATION_RELATIONSHIPS,
+    SALVATION_RELATIONSHIPS_PACK_VERSION,
+    salvation_relationship_question_id,
+    salvation_relationship_question_inventory,
 )
 from pastor_transcript_extractor.sermon_classification import HybridSermonResult, TranscriptBlock
 from pastor_transcript_extractor.sermon_topics import (
@@ -325,7 +332,12 @@ class TypeSafeSdkAdapter:
                 *([TOPIC_PACK] if collect_topic_analysis else []),
             }
         )
-        unknown = packs - {ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}
+        unknown = packs - {
+            ROLE_PACK,
+            TREATMENT_PACK,
+            TOPIC_PACK,
+            SALVATION_RELATIONSHIPS_PACK,
+        }
         if unknown:
             raise ValueError(f"Unsupported TypeSafe answer packs: {sorted(unknown)}")
         question = role_question()
@@ -335,17 +347,18 @@ class TypeSafeSdkAdapter:
             if key != FINE_PARENT_CONTEXT_KEY
         }
         role_context_map = role_contexts or {}
-        state = {
-            "recording": shared_recording_context,
-            "target_blocks": [
+        state: dict[str, Any] = {}
+        if ROLE_PACK in packs:
+            state["recording"] = shared_recording_context
+        if ROLE_PACK in packs or TREATMENT_PACK in packs:
+            state["target_blocks"] = [
                 _target_block_state(
                     recording_context,
                     block,
                     role_context_map.get(block.block_id),
                 )
                 for block in blocks
-            ],
-        }
+            ]
         contexts = topic_contexts or {}
         if TOPIC_PACK in packs:
             missing_contexts = [
@@ -356,6 +369,18 @@ class TypeSafeSdkAdapter:
                     f"Missing topic contexts for blocks: {missing_contexts}"
                 )
             state["topic_blocks"] = [
+                contexts[block.block_id].state_payload() for block in blocks
+            ]
+        if SALVATION_RELATIONSHIPS_PACK in packs:
+            missing_contexts = [
+                block.block_id for block in blocks if block.block_id not in contexts
+            ]
+            if missing_contexts:
+                raise ValueError(
+                    "Missing salvation relationship contexts for blocks: "
+                    f"{missing_contexts}"
+                )
+            state["salvation_blocks"] = [
                 contexts[block.block_id].state_payload() for block in blocks
             ]
         questions: dict[str, Any] = {}
@@ -392,6 +417,15 @@ class TypeSafeSdkAdapter:
             for position in range(len(blocks)):
                 for question_id, item in topic_question_inventory(position).items():
                     questions[question_id] = self._Score(
+                        instructions=item["instructions"],
+                        criteria=item["criteria"],
+                    )
+        if SALVATION_RELATIONSHIPS_PACK in packs:
+            for position in range(len(blocks)):
+                for question_id, item in (
+                    salvation_relationship_question_inventory(position).items()
+                ):
+                    questions[question_id] = self._Noul(
                         instructions=item["instructions"],
                         criteria=item["criteria"],
                     )
@@ -525,6 +559,35 @@ class TypeSafeSdkAdapter:
                     else {}
                 ),
                 request_provenance=request_provenance,
+                salvation_relationship_probabilities=(
+                    {
+                        relationship: float(
+                            result.nouls[
+                                salvation_relationship_question_id(
+                                    position, relationship
+                                )
+                            ].noul
+                        )
+                        for relationship in SALVATION_RELATIONSHIPS
+                    }
+                    if SALVATION_RELATIONSHIPS_PACK in packs
+                    else {}
+                ),
+                salvation_relationship_question_version=(
+                    SALVATION_RELATIONSHIPS_PACK_VERSION
+                    if SALVATION_RELATIONSHIPS_PACK in packs
+                    else None
+                ),
+                salvation_relationship_context=(
+                    {
+                        **contexts[block.block_id].state_payload(),
+                        "diagnostics": dict(
+                            contexts[block.block_id].diagnostics
+                        ),
+                    }
+                    if SALVATION_RELATIONSHIPS_PACK in packs
+                    else {}
+                ),
             )
             for position, block in enumerate(blocks)
         }
