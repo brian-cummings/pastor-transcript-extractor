@@ -368,6 +368,7 @@ class TypeSafeBlockCache:
         self.hits = 0
         self.misses = 0
         self.provider_requests = 0
+        self._contextual_treatment_index: dict[str, Path] | None = None
 
     def _read_answer(self, path: Path, answer_type: type[Any]) -> Any | None:
         if not path.exists():
@@ -498,9 +499,6 @@ class TypeSafeBlockCache:
                 {
                     "question_version": SEMANTIC_ANALYSIS_QUESTION_VERSION,
                     "questions": semantic_question_inventory(0),
-                    "recording_context": _recording_context_for_blocks(
-                        recording_context, [block]
-                    ),
                 }
             )
         elif pack == TOPIC_PACK:
@@ -519,6 +517,62 @@ class TypeSafeBlockCache:
         else:
             raise ValueError(f"Unsupported TypeSafe answer pack: {pack}")
         return identity
+
+    def _hydrate_contextual_treatment_pack(
+        self,
+        recording_context: Mapping[str, Any],
+        block: TranscriptBlock,
+        block_packs: dict[str, dict[str, Any]],
+        identities: Mapping[tuple[int, str], tuple[dict[str, Any], Path]],
+    ) -> None:
+        """Migrate the former role-sensitive treatment cache identity."""
+        if TREATMENT_PACK in block_packs:
+            return
+        identity, path = identities[(block.block_id, TREATMENT_PACK)]
+        legacy_identity = {
+            **identity,
+            "recording_context": _recording_context_for_blocks(
+                recording_context, [block]
+            ),
+        }
+        cached = self._read_pack(self._pack_path(TREATMENT_PACK, legacy_identity))
+        if cached is None:
+            indexed_path = self._indexed_contextual_treatment_packs().get(
+                _hash(identity)
+            )
+            cached = (
+                self._read_pack(indexed_path)
+                if indexed_path is not None
+                else None
+            )
+        if cached is None:
+            return
+        self._write_pack(path, identity, cached, count_miss=False)
+        block_packs[TREATMENT_PACK] = cached
+
+    def _indexed_contextual_treatment_packs(self) -> dict[str, Path]:
+        """Index legacy contextual packs once, preferring the newest duplicate."""
+        if self._contextual_treatment_index is not None:
+            return self._contextual_treatment_index
+        indexed: dict[str, Path] = {}
+        directory = self.root / "packs" / TREATMENT_PACK
+        for candidate in directory.glob("*.json") if directory.exists() else ():
+            try:
+                payload = json.loads(candidate.read_text(encoding="utf-8"))
+                legacy_identity = payload["identity"]
+                if not isinstance(legacy_identity, dict):
+                    continue
+                normalized = dict(legacy_identity)
+                if normalized.pop("recording_context", None) is None:
+                    continue
+                key = _hash(normalized)
+                previous = indexed.get(key)
+                if previous is None or candidate.stat().st_mtime > previous.stat().st_mtime:
+                    indexed[key] = candidate
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        self._contextual_treatment_index = indexed
+        return indexed
 
     def _legacy_identity(
         self,
@@ -737,6 +791,13 @@ class TypeSafeBlockCache:
                 else:
                     block_packs[pack] = cached
             cached_packs[block.block_id] = block_packs
+            if TREATMENT_PACK in requested_packs:
+                self._hydrate_contextual_treatment_pack(
+                    recording_context,
+                    block,
+                    block_packs,
+                    identities,
+                )
             self._hydrate_legacy_packs(
                 recording_context,
                 block,

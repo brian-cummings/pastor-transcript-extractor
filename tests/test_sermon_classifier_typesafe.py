@@ -37,6 +37,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     _candidate_components_with_recovery,
     _edge_neighborhood,
     _hash,
+    _recording_context_for_blocks,
     _semantic_analysis_artifact,
     _topic_analysis_artifact,
     build_role_contexts,
@@ -846,7 +847,20 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         changed_role_context = {
             target.block_id: build_role_contexts(changed_neighbors)[target.block_id]
         }
-        context = {"metadata": {"title": "Worship Service"}}
+        context = {
+            "metadata": {"title": "Worship Service"},
+            FINE_PARENT_CONTEXT_KEY: {
+                str(target.block_id): {"selected_role": "principal_sermon"}
+            },
+        }
+        changed_context = {
+            "metadata": {"title": "Worship Service"},
+            FINE_PARENT_CONTEXT_KEY: {
+                str(target.block_id): {
+                    "selected_role": "worship_music_or_service_prayer"
+                }
+            },
+        }
 
         with tempfile.TemporaryDirectory() as tmp:
             cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
@@ -861,7 +875,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             )
             cache.assess(
                 client,
-                context,
+                changed_context,
                 [target],
                 collect_semantic_analysis=True,
                 collect_topic_analysis=True,
@@ -876,6 +890,65 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             ],
             client.requested_packs,
         )
+
+    def test_contextual_treatment_cache_is_migrated_without_provider_call(self) -> None:
+        client = FakeBlockClient()
+        block = TranscriptBlock(7, [1], 60.0, 120.0, "SERMON target text.")
+        context = {
+            "metadata": {"title": "Worship Service"},
+            FINE_PARENT_CONTEXT_KEY: {
+                str(block.block_id): {"selected_role": "principal_sermon"}
+            },
+        }
+        legacy_context = {
+            "metadata": {"title": "Worship Service"},
+            FINE_PARENT_CONTEXT_KEY: {
+                str(block.block_id): {
+                    "selected_role": "administration_or_transition"
+                }
+            },
+        }
+        payload = {
+            "resolved_model_id": "jev-1.13.0",
+            "request_provenance": {"request_key": "legacy-treatment"},
+            "semantic_probabilities": {
+                dimension: 0.25 for dimension in SEMANTIC_DIMENSIONS
+            },
+            "semantic_question_version": SEMANTIC_ANALYSIS_QUESTION_VERSION,
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            identity = cache._pack_identity(
+                context,
+                block,
+                pack=TREATMENT_PACK,
+                role_context=None,
+                topic_context=None,
+            )
+            legacy_identity = {
+                **identity,
+                "recording_context": _recording_context_for_blocks(
+                    legacy_context, [block]
+                ),
+            }
+            cache._write_pack(
+                cache._pack_path(TREATMENT_PACK, legacy_identity),
+                legacy_identity,
+                payload,
+                count_miss=False,
+            )
+            answer = cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({TREATMENT_PACK}),
+            )[block.block_id]
+
+        self.assertEqual(0, client.calls)
+        self.assertEqual(payload["semantic_probabilities"], answer.semantic_probabilities)
+        self.assertEqual(1, cache.hits)
+        self.assertEqual(0, cache.misses)
 
     def test_explicit_pack_assessment_can_request_topics_without_role(self) -> None:
         client = FakeBlockClient()
