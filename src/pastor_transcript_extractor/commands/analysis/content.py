@@ -35,6 +35,11 @@ from pastor_transcript_extractor.sermon_analysis import (
     ANALYZER_VERSION as SERMON_ANALYZER_VERSION,
     analyze_sermon,
 )
+from pastor_transcript_extractor.sermon_salvation_routing import (
+    DEFAULT_SALVATION_ROUTING_REVIEW_OUTPUT,
+    build_salvation_routing_review_packet,
+    write_salvation_routing_review,
+)
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     default_topic_behavior_output_path,
@@ -1166,6 +1171,50 @@ def analysis_evaluate_topic_stability(
         f"{'Reused' if reused else 'Wrote'} TypeSafe topic stability report: "
         f"{json_path} and {markdown_path}; status={report['status']}; "
         f"fingerprint={report['input_fingerprint'][:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-routing-review",
+    help=(
+        "Write a provider-free calibration packet for the proposed conditional "
+        "salvation leaf route."
+    ),
+)
+def analysis_salvation_routing_review(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying cached broad observations.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_ROUTING_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        packet = build_salvation_routing_review_packet(database, cohort)
+        json_path, markdown_path, reused = write_salvation_routing_review(
+            output_path,
+            packet,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation routing review: "
+        f"{json_path} and {markdown_path}; "
+        f"eligible_blocks={packet['candidate_count']}; "
+        f"proposed_routes={packet['proposed_route_count']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )
 

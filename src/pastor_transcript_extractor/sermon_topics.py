@@ -110,6 +110,63 @@ def resolve_topic_block_context(block: Mapping[str, Any]) -> dict[str, Any]:
     return context
 
 
+def validated_topic_scores(
+    block: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Normalize one persisted broad-topic score inventory."""
+    raw_scores = block.get("scores")
+    if not isinstance(raw_scores, Mapping):
+        raise ValueError(
+            f"Topic block {block.get('block_id')} has no score inventory"
+        )
+    missing = [topic for topic in TOPICS if topic not in raw_scores]
+    if missing:
+        raise ValueError(
+            f"Topic block {block.get('block_id')} is missing scores: "
+            + ", ".join(missing)
+        )
+    scores: dict[str, dict[str, Any]] = {}
+    for topic in TOPICS:
+        raw = raw_scores[topic]
+        if not isinstance(raw, Mapping):
+            raise ValueError(
+                f"Topic block {block.get('block_id')} has invalid {topic} score"
+            )
+        probabilities = raw.get("probabilities")
+        if not isinstance(probabilities, Mapping) or any(
+            str(level) not in probabilities for level in range(5)
+        ):
+            raise ValueError(
+                f"Topic block {block.get('block_id')} has incomplete "
+                f"{topic} distribution"
+            )
+        scores[topic] = {
+            "score": float(raw.get("score") or 0.0),
+            "probabilities": {
+                str(level): float(probabilities[str(level)])
+                for level in range(5)
+            },
+            "confidence": (
+                float(raw["confidence"])
+                if isinstance(raw.get("confidence"), (int, float))
+                and not isinstance(raw.get("confidence"), bool)
+                else None
+            ),
+        }
+    return scores
+
+
+def topic_supporting_or_above_probability(score: Mapping[str, Any]) -> float:
+    """Return P(prominence level >= Supporting) from a persisted Score."""
+    probabilities = score.get("probabilities")
+    if not isinstance(probabilities, Mapping):
+        return 0.0
+    return sum(
+        float(probabilities.get(str(level)) or 0.0)
+        for level in (2, 3, 4)
+    )
+
+
 def topic_question_id(position: int, topic: str) -> str:
     if topic not in TOPIC_SPECS:
         raise ValueError(f"Unknown topic: {topic}")

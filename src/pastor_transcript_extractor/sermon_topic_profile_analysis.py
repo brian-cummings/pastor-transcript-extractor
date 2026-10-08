@@ -80,7 +80,7 @@ def _number(value: object, *, label: str) -> float:
     return result
 
 
-def _read_topic_analysis(
+def read_topic_analysis_for_gate(
     gate: TopicProfileProjectionGate,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
     if gate.source_path is None:
@@ -254,7 +254,7 @@ def materialize_topic_sermon_analysis(
             f"Video {video.youtube_video_id} is not eligible for topic projection: "
             f"{reasons}"
         )
-    analysis, projection = _read_topic_analysis(gate)
+    analysis, projection = read_topic_analysis_for_gate(gate)
     measurements = _projection_measurements(projection)
     question_pack_version = analysis.get("question_pack_version")
     projection_policy_version = projection.get("policy_version")
