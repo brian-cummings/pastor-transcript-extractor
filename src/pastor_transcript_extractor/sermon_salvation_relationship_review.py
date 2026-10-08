@@ -38,10 +38,10 @@ from pastor_transcript_extractor.storage import Database
 
 SALVATION_RELATIONSHIP_REVIEW_SCHEMA_VERSION = 1
 SALVATION_RELATIONSHIP_REVIEW_POLICY_VERSION = (
-    "salvation-relationships-cross-pastor-sampler-v1"
+    "salvation-relationships-paired-question-revision-v2"
 )
 DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT = Path(
-    "evaluation/sermon-topics/salvation-relationships-review-v1.json"
+    "evaluation/sermon-topics/salvation-relationships-review-v2.json"
 )
 
 
@@ -304,9 +304,10 @@ def evaluate_salvation_relationship_review(
             "location": "beside_source_classification",
         },
         "interpretation": (
-            "This bounded packet evaluates independent salvation relationship "
-            "judgments. It does not activate leaf collection during ordinary "
-            "reclassification or authorize profile-level theological claims."
+            "This paired revision reruns the same bounded targets after refining "
+            "four relationship evidence boundaries. It does not activate leaf "
+            "collection during ordinary reclassification or authorize profile-level "
+            "theological claims."
         ),
     }
     return packet, {
@@ -318,7 +319,7 @@ def evaluate_salvation_relationship_review(
 
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
-        "# Salvation relationships v1 review",
+        "# Salvation relationships review",
         "",
         f"- Status: `{packet['status']}`",
         f"- Policy effect: `{packet['policy_effect']}`",
