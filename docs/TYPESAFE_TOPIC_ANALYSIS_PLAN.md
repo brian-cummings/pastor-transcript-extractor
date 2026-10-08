@@ -952,20 +952,21 @@ theological stance.
     proposals bind these conclusions to packet fingerprints `d7602e72fa87...`
     and `d91f37e1cd1f...`; 3973's separate profile-level projection gate remains
     blocked until effective reviewed identity membership is available.
-37. Brian approved and finalized the corrected 1037 and 3973 packets with all
-    required checks complete and no topic or projection corrections. Their
-    reviewed packet fingerprints are `d7602e72fa87...` and `d91f37e1cd1f...`.
-    The clean-control 281 proposal is prepared, but its draft remains explicitly
-    unreviewed. Do not pin the replacement reviews into the immutable Stage 4
-    cohort evidence or claim readiness until 281 is finalized as well.
+37. Brian approved and finalized the corrected 1037 and 3973 packets and clean
+    control 281 with all required checks complete and no topic or projection
+    corrections. Their reviewed packet fingerprints are `d7602e72fa87...`,
+    `d91f37e1cd1f...`, and `e4b208c89661...` respectively.
+38. `stage4-replacement-topic-reviews-v1.json` now preserves the three compact
+    reviewed decisions separately from the cached observations. The frozen
+    cohort maps videos 281, 1037, and 3973 to that evidence bundle and pins its
+    SHA-256 `bb431800d495...`. The bundle retains source-packet, source-review,
+    and review fingerprints without duplicating the block-level TypeSafe data.
 
 ### Next iteration
 
-1. Finalize the prepared clean-control review for video 281. Then add one
-   immutable, fingerprinted Stage 4 evidence artifact covering reviewed videos
-   281, 1037, and 3973 and reference it from the frozen cohort. Re-run readiness
-   and execute only its remaining bounded identity/synchronization actions; do
-   not run a broad reclassification or infer membership from titles.
+1. Re-run Stage 4 readiness against the immutable replacement review evidence.
+   Execute only its remaining bounded identity/synchronization actions; do not
+   run a broad reclassification or infer membership from titles.
 2. Once readiness passes, run and interpret the prepared Stage 4 repeatability
    report before treating pastor-level topic differences as stable.
 3. Once projection is credible, implement `salvation-relationships-v1` as the
