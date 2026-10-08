@@ -47,6 +47,11 @@
       "video_ids": [1200, 4052, 4458, 4394, 3974, 590, 4430, 350, 4589],
       "path": "stage3-topic-boundary-audit-v1.md",
       "sha256": "57d4d3b448d3dc184470636da3fbe4e3bf2d7c7c808301fc50b52f109afab810"
+    },
+    {
+      "video_ids": [281, 1037, 3973],
+      "path": "stage4-replacement-topic-reviews-v1.json",
+      "sha256": "bb431800d495a50ff8ac2eff76469b39a0525bad7fc9910ba02205a24efc93c1"
     }
   ],
   "pastors": [
