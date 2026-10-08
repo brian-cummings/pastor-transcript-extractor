@@ -99,6 +99,34 @@ def _gate(
     )
 
 
+def _review_bundle(video_ids: tuple[int, ...] = (1, 2, 3)) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "workflow_version": "topic-review-adjudication-v2",
+        "question_pack_version": "topics-v3-mission-discourse-boundary",
+        "reviews": [
+            {
+                "video_id": video_id,
+                "review_status": "reviewed",
+                "reviewed_at": "2026-10-08T00:00:00+00:00",
+                "reviewed_by": "reviewer",
+                "checks": {
+                    "selected_blocks_reviewed": True,
+                    "missed_topic_episode_search_complete": True,
+                    "projection_boundary_review_complete": True,
+                },
+                "topic_level_corrections": [],
+                "projection_eligibility_corrections": [],
+                "review_fingerprint": "a" * 64,
+                "source_packet_fingerprint": "b" * 64,
+                "source_packet_sha256": "c" * 64,
+                "source_review_sha256": "d" * 64,
+            }
+            for video_id in video_ids
+        ],
+    }
+
+
 class SermonTopicStage4Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.database = _Database([_video(1), _video(2), _video(3)])
@@ -403,6 +431,51 @@ class SermonTopicStage4Tests(unittest.TestCase):
             current["input_fingerprint"],
             stale["input_fingerprint"],
         )
+
+    def test_structured_review_evidence_requires_exact_finalized_reviews(self) -> None:
+        gates = {video_id: _gate(video_id) for video_id in (1, 2, 3)}
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            evidence_path = root / "reviews.json"
+            cohort_path = root / "cohort.json"
+            bundle = _review_bundle()
+            evidence_path.write_text(json.dumps(bundle), encoding="utf-8")
+            cohort = _cohort()
+            cohort["require_whole_sermon_review_evidence"] = True
+            cohort["whole_sermon_review_evidence"] = [
+                {
+                    "format": "topic-review-bundle-v1",
+                    "video_ids": [1, 2, 3],
+                    "path": "reviews.json",
+                    "sha256": hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+                }
+            ]
+            cohort_path.write_text(json.dumps(cohort), encoding="utf-8")
+            loaded = load_topic_stage4_cohort(cohort_path)
+
+            with patch(
+                "pastor_transcript_extractor.sermon_topic_stage4."
+                "assess_topic_profile_projection",
+                side_effect=lambda _database, video: gates[video.id],
+            ):
+                current = assess_topic_stage4_readiness(self.database, loaded)
+                bundle["reviews"][0]["review_status"] = "unreviewed"
+                evidence_path.write_text(json.dumps(bundle), encoding="utf-8")
+                loaded["whole_sermon_review_evidence"][0]["sha256"] = (
+                    hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+                )
+                with self.assertRaisesRegex(ValueError, "is not reviewed"):
+                    assess_topic_stage4_readiness(self.database, loaded)
+                bundle["reviews"][0]["review_status"] = "reviewed"
+                bundle["reviews"][0]["video_id"] = 4
+                evidence_path.write_text(json.dumps(bundle), encoding="utf-8")
+                loaded["whole_sermon_review_evidence"][0]["sha256"] = (
+                    hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+                )
+                with self.assertRaisesRegex(ValueError, "cohort mapping"):
+                    assess_topic_stage4_readiness(self.database, loaded)
+
+        self.assertTrue(current["ready"])
 
     def test_diagnostics_keep_sermons_visible_and_compare_declared_strata(self) -> None:
         sermons = []
