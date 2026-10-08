@@ -3,15 +3,15 @@
   "expected_outcome": "sermon",
   "expected_spans": [
     {
-      "end_seconds": 3254.0,
+      "end_seconds": 3346.92,
       "start_seconds": 142.0
     }
   ],
   "failure_mode": "unknown",
-  "ground_truth_version": 1,
-  "notes": "",
+  "ground_truth_version": 2,
+  "notes": "Extended through the principal preacher's immediate sermon-integrated closing prayer; the prayer continues the concluding appeal and ends at the recording edge.",
   "review_method": "video_and_timestamped_transcript",
-  "reviewed_at": "2026-10-07T22:52:22.047175+00:00",
+  "reviewed_at": "2026-10-08T01:11:54+00:00",
   "reviewed_by": "Brian Cummings",
   "video_id": "5Yf-TlFDnD4"
 }

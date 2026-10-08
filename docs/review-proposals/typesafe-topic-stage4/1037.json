@@ -1,8 +1,0 @@
-{
-  "notes": "Proposed review after the generic local-role-context revision: accept all displayed topic levels and projection decisions. The song introduction and continuing performed blocks are correctly classified as worship music and excluded from preacher-profile attribution even though their theological content legitimately scores Jesus and eschatology. The following mixed song-to-appeal block is conservatively excluded under the full-block attribution policy. The strongest apparent god_character_action / jesus_person_work overlap is therefore outside projection and does not justify changing either topic question. Preserve the remaining probability distributions as uncertainty rather than forcing corrections.",
-  "projection_eligibility_corrections": [],
-  "schema_version": 1,
-  "source_packet_fingerprint": "0592511b3649c050a27eefb7119945432849d792edf9a056abedfbbba7d65b29",
-  "topic_level_corrections": [],
-  "workflow_version": "topic-review-proposal-v1"
-}

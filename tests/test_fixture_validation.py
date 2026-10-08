@@ -109,6 +109,24 @@ class FixtureValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(FixtureValidationError, "expected_outcome"):
             validate_fixture_payload(payload, path=Path("fixture.json"))
 
+    def test_reviewed_closing_prayer_boundaries_are_versioned(self) -> None:
+        fixture_dir = Path(__file__).resolve().parents[1] / "evaluation" / "fixtures"
+        expected_boundaries = {
+            "5Yf-TlFDnD4": (142.0, 3346.92),
+            "fM3_vhfZw7w": (1583.0, 4138.709),
+        }
+
+        for video_id, expected_span in expected_boundaries.items():
+            with self.subTest(video_id=video_id):
+                path = fixture_dir / f"{video_id}.json"
+                fixture = validate_fixture_payload(
+                    json.loads(path.read_text(encoding="utf-8")),
+                    path=path,
+                )
+
+                self.assertEqual(2, fixture.ground_truth_version)
+                self.assertEqual([expected_span], fixture.expected_spans)
+
 
 class FixtureReclassificationCliTests(unittest.TestCase):
     def test_reclassify_requires_exactly_one_video_selector(self) -> None:

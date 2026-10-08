@@ -933,6 +933,16 @@ theological stance.
     also exposed that homiletic-treatment identities still inherited changed
     coarse-role context; the context-independent identity and migration above
     remove that accidental coupling without another provider run.
+35. Follow-up review showed that the remaining excluded closing prayers were not
+    caused by full-block projection. The reviewed version-1 windows themselves
+    ended at 3254.0 for video 1037, before its prayer begins at 3256.0, and at
+    4083.0 for video 3973, where only 9.961 seconds of the 65.67-second final
+    block remained inside. The approved version-2 fixtures extend through the
+    same-preacher integrated prayers to 3346.92 and 4138.709 respectively; the
+    latter ends at amen immediately before the following song. The conservative
+    full-block projection policy remains unchanged. The stale no-correction
+    proposals for those two old packet fingerprints were withdrawn pending
+    fixture application and refreshed packets; clean control 281 remains valid.
 
 ### Next iteration
 
