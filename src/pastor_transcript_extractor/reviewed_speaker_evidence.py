@@ -451,13 +451,13 @@ def sync_reviewed_speaker_evidence(
                 + ", ".join(sorted(unqualified))
             )
             continue
-        profile_ids = {
-            profile_id
-            for observation in component_observations
-            for profile_id in database.list_effective_profile_ids_for_observation(
-                observation.id
-            )
-        }
+        profile_ids = _reviewed_component_profile_ids(
+            database,
+            component_observations=component_observations,
+            conflicts=conflicts,
+        )
+        if profile_ids is None:
+            continue
         component_relations = [
             relation
             for pair, relation in evidence.pair_relations.items()
@@ -615,6 +615,56 @@ def sync_reviewed_speaker_evidence(
         merge_candidates=tuple(sorted(set(merge_candidates))),
         conflicts=tuple(sorted(set(conflicts))),
     )
+
+
+def _reviewed_component_profile_ids(
+    database: Database,
+    *,
+    component_observations: Sequence[Any],
+    conflicts: list[str],
+) -> set[int] | None:
+    """Reuse unambiguous reviewed identity from each observation lineage.
+
+    Reclassification creates a new immutable observation, but a single
+    reviewed profile on an older observation of that video remains the
+    effective identity until contradicted.  Include that cached lineage when
+    synchronizing a newly reviewed same-speaker component so the sync merges
+    the existing profiles instead of manufacturing a parallel identity.
+
+    Multiple canonical inherited profiles are genuinely ambiguous.  Do not
+    turn a review of the current spans into an implicit adjudication of those
+    historical identities.
+    """
+    profile_ids: set[int] = set()
+    for observation in component_observations:
+        direct_profile_ids = {
+            database.resolve_speaker_profile_id(profile_id)
+            for profile_id in database.list_effective_profile_ids_for_observation(
+                observation.id
+            )
+        }
+        inherited_profile_ids = {
+            database.resolve_speaker_profile_id(profile_id)
+            for profile_id in (
+                database.list_effective_profile_ids_for_superseded_observations(
+                    video_id=observation.video_id,
+                    current_observation_id=observation.id,
+                )
+            )
+        }
+        if len(inherited_profile_ids) > 1:
+            conflicts.append(
+                "same component observation has ambiguous inherited profile "
+                f"lineage: {observation.input_fingerprint} -> "
+                + ", ".join(
+                    str(profile_id)
+                    for profile_id in sorted(inherited_profile_ids)
+                )
+            )
+            return None
+        profile_ids.update(direct_profile_ids)
+        profile_ids.update(inherited_profile_ids)
+    return profile_ids
 
 
 def _merge_reviewed_component_profiles(

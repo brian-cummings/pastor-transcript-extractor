@@ -223,6 +223,156 @@ class ReviewedSpeakerEvidenceTests(unittest.TestCase):
         self.assertEqual(0, replay.qualification_events_added)
         self.assertEqual((), replay.conflicts)
 
+    def test_sync_reuses_single_inherited_profile_per_reclassified_video(self) -> None:
+        original_a = self.observations["a"]
+        original_b = self.observations["b"]
+        profile_a = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="reviewed identity a",
+            review_event_key="lineage-profile-a",
+        )
+        profile_b = create_anonymous_profile(
+            self.database,
+            reviewer="reviewer",
+            reason="reviewed identity b",
+            review_event_key="lineage-profile-b",
+        )
+        for profile, observation in (
+            (profile_a, original_a),
+            (profile_b, original_b),
+        ):
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="reviewed historical membership",
+                review_event_key=f"lineage-member:{profile.id}",
+            )
+
+        replacements = {}
+        for fingerprint, original in (("a-v2", original_a), ("b-v2", original_b)):
+            extraction = self.database.add_extraction_result(
+                video_id=original.video_id,
+                version=2,
+                proposed_text_path=f"{fingerprint}.md",
+                proposed_json_path=f"{fingerprint}.json",
+            )
+            replacements[fingerprint] = self.database.add_speaker_observation(
+                video_id=original.video_id,
+                extraction_result_id=extraction.id,
+                role=original.role,
+                multiplicity_state=original.multiplicity_state,
+                start_seconds=original.start_seconds,
+                end_seconds=original.end_seconds,
+                artifact_path=f"{fingerprint}.speaker.json",
+                content_sha256=f"content-{fingerprint}",
+                extractor_version="speaker_evidence_v1",
+                input_fingerprint=fingerprint,
+            )
+        self.observations.update(replacements)
+        self._write_fixture("pair-reclassified", "a-v2", "b-v2", "same_speaker")
+
+        first = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+        replay = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        canonical_profile_id = self.database.resolve_speaker_profile_id(
+            profile_a.id
+        )
+        self.assertEqual(
+            canonical_profile_id,
+            self.database.resolve_speaker_profile_id(profile_b.id),
+        )
+        self.assertEqual(0, first.profiles_added)
+        self.assertEqual(1, first.profile_redirect_events_added)
+        for observation in (*replacements.values(), original_a, original_b):
+            self.assertEqual(
+                [canonical_profile_id],
+                self.database.list_effective_profile_ids_for_observation(
+                    observation.id
+                ),
+            )
+        self.assertEqual(0, replay.membership_events_added)
+        self.assertEqual(0, replay.profile_redirect_events_added)
+        self.assertEqual((), replay.conflicts)
+
+    def test_sync_does_not_guess_through_ambiguous_inherited_lineage(self) -> None:
+        original = self.observations["a"]
+        second_extraction = self.database.add_extraction_result(
+            video_id=original.video_id,
+            version=2,
+            proposed_text_path="a-v2.md",
+            proposed_json_path="a-v2.json",
+        )
+        intermediate = self.database.add_speaker_observation(
+            video_id=original.video_id,
+            extraction_result_id=second_extraction.id,
+            role=original.role,
+            multiplicity_state=original.multiplicity_state,
+            start_seconds=original.start_seconds,
+            end_seconds=original.end_seconds,
+            artifact_path="a-v2.speaker.json",
+            content_sha256="content-a-v2",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="a-v2",
+        )
+        for suffix, observation in (("a", original), ("b", intermediate)):
+            profile = create_anonymous_profile(
+                self.database,
+                reviewer="reviewer",
+                reason=f"reviewed identity {suffix}",
+                review_event_key=f"ambiguous-lineage-profile-{suffix}",
+            )
+            attach_reviewed_observation(
+                self.database,
+                profile_id=profile.id,
+                observation_id=observation.id,
+                reviewer="reviewer",
+                reason="reviewed historical membership",
+                review_event_key=f"ambiguous-lineage-member-{suffix}",
+            )
+        latest_extraction = self.database.add_extraction_result(
+            video_id=original.video_id,
+            version=3,
+            proposed_text_path="a-v3.md",
+            proposed_json_path="a-v3.json",
+        )
+        latest = self.database.add_speaker_observation(
+            video_id=original.video_id,
+            extraction_result_id=latest_extraction.id,
+            role=original.role,
+            multiplicity_state=original.multiplicity_state,
+            start_seconds=original.start_seconds,
+            end_seconds=original.end_seconds,
+            artifact_path="a-v3.speaker.json",
+            content_sha256="content-a-v3",
+            extractor_version="speaker_evidence_v1",
+            input_fingerprint="a-v3",
+        )
+        self.observations["a-v3"] = latest
+        self._write_fixture("pair-ambiguous-lineage", "a-v3", "b", "same_speaker")
+
+        result = sync_reviewed_speaker_evidence(
+            self.database,
+            load_reviewed_speaker_evidence(self.evaluation_root),
+        )
+
+        self.assertEqual(0, result.profiles_added)
+        self.assertEqual(0, result.profile_redirect_events_added)
+        self.assertTrue(
+            any(
+                "ambiguous inherited profile lineage" in conflict
+                for conflict in result.conflicts
+            )
+        )
+
     def test_provenance_invalidation_revokes_review_and_clears_registry_effects(self) -> None:
         pair_id = "pair-ab"
         draft = {
