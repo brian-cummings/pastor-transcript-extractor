@@ -193,6 +193,56 @@ class SermonTopicReviewAdjudicationTests(unittest.TestCase):
                 proposal_path=proposal_path,
             )
 
+    def test_create_replaces_pristine_draft_after_packet_refresh(self) -> None:
+        create_topic_review_adjudication_draft(self.packet_path, self.draft_path)
+        refreshed = _packet()
+        refreshed["input_fingerprint"] = "refreshed-packet-fingerprint"
+        self.packet_path.write_text(
+            json.dumps(refreshed, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        result = create_topic_review_adjudication_draft(
+            self.packet_path, self.draft_path
+        )
+
+        self.assertFalse(result.reused)
+        draft = json.loads(self.draft_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            "refreshed-packet-fingerprint",
+            draft["source_packet"]["input_fingerprint"],
+        )
+
+    def test_create_can_add_proposal_to_pristine_same_packet_draft(self) -> None:
+        proposal_path = self.root / "proposal.json"
+        proposal_path.write_text(json.dumps(_proposal()), encoding="utf-8")
+        create_topic_review_adjudication_draft(self.packet_path, self.draft_path)
+
+        result = create_topic_review_adjudication_draft(
+            self.packet_path,
+            self.draft_path,
+            proposal_path=proposal_path,
+        )
+
+        self.assertFalse(result.reused)
+        draft = json.loads(self.draft_path.read_text(encoding="utf-8"))
+        self.assertIn("proposal_source", draft)
+        self.assertEqual(1, len(draft["topic_level_corrections"]))
+
+    def test_create_preserves_review_edits_after_packet_refresh(self) -> None:
+        create_topic_review_adjudication_draft(self.packet_path, self.draft_path)
+        draft = json.loads(self.draft_path.read_text(encoding="utf-8"))
+        draft["notes"] = "Human review work"
+        self.draft_path.write_text(json.dumps(draft), encoding="utf-8")
+        refreshed = _packet()
+        refreshed["input_fingerprint"] = "refreshed-packet-fingerprint"
+        self.packet_path.write_text(json.dumps(refreshed), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "belongs to another input"):
+            create_topic_review_adjudication_draft(
+                self.packet_path, self.draft_path
+            )
+
     def test_finalize_accepts_review_and_reuses_logical_result(self) -> None:
         create_topic_review_adjudication_draft(self.packet_path, self.draft_path)
         output = self.root / "packet.reviewed.json"

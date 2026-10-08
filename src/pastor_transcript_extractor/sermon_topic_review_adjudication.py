@@ -297,6 +297,30 @@ def _is_unchanged_migratable_draft(
     return normalized == dict(expected)
 
 
+def _is_pristine_unreviewed_draft(draft: Mapping[str, Any]) -> bool:
+    """Return whether a stale generated draft contains no review work to preserve."""
+    if draft.get("schema_version") != TOPIC_REVIEW_ADJUDICATION_SCHEMA_VERSION:
+        return False
+    if draft.get("workflow_version") not in {
+        TOPIC_REVIEW_ADJUDICATION_WORKFLOW_VERSION,
+        *(version for _, version in MIGRATABLE_UNREVIEWED_DRAFT_VERSIONS),
+    }:
+        return False
+    checks = draft.get("checks")
+    return (
+        draft.get("review_status") == "unreviewed"
+        and isinstance(checks, Mapping)
+        and not any(value is True for value in checks.values())
+        and draft.get("topic_level_corrections") == []
+        and draft.get("projection_eligibility_corrections") == []
+        and not str(draft.get("notes") or "").strip()
+        and draft.get("reviewed_by") is None
+        and draft.get("reviewed_at") is None
+        and draft.get("review_fingerprint") is None
+        and "proposal_source" not in draft
+    )
+
+
 def render_topic_review_adjudication_markdown(
     draft: Mapping[str, Any],
     packet: Mapping[str, Any],
@@ -526,11 +550,15 @@ def create_topic_review_adjudication_draft(
             isinstance(existing_source, Mapping)
             and existing_source.get("sha256") == draft["source_packet"]["sha256"]
         )
-        if same_packet and not _is_unchanged_migratable_draft(existing, draft):
+        if (
+            same_packet
+            and not _is_unchanged_migratable_draft(existing, draft)
+            and not _is_pristine_unreviewed_draft(existing)
+        ):
             raise ValueError(
                 "Existing adjudication draft contains review edits; refusing to overwrite it"
             )
-        if not same_packet:
+        if not same_packet and not _is_pristine_unreviewed_draft(existing):
             raise ValueError("Adjudication draft output already belongs to another input")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(expected_json, encoding="utf-8")
