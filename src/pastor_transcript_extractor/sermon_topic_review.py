@@ -17,6 +17,7 @@ from pastor_transcript_extractor.sermon_topics import (
     TOPIC_SPECS,
     TOPICS,
     resolve_topic_analysis_artifact,
+    resolve_topic_block_context,
 )
 
 
@@ -453,8 +454,7 @@ def build_topic_review_packet(
     reviewed_blocks = []
     for block_id in selected_ids:
         block = blocks_by_id[block_id]
-        context = block.get("context")
-        context = dict(context) if isinstance(context, Mapping) else {}
+        context = resolve_topic_block_context(block)
         reviewed_blocks.append(
             {
                 "block_id": block_id,
