@@ -1,0 +1,8 @@
+{
+  "notes": "Proposed review: accept all displayed topic levels and projection decisions. This is a clean control for the revised role boundary. The principal preacher's immediate concluding prayer continues the sermon appeal and remains eligible. The subsequent congregational hymn and later service prayer are separate service elements and remain ineligible. No modal topic interpretation warrants correction, and uncertain fractional scores should remain as model uncertainty rather than be converted into human overrides.",
+  "projection_eligibility_corrections": [],
+  "schema_version": 1,
+  "source_packet_fingerprint": "e4b208c89661b84a9567608a24d53b6919067a36e187b90fac0daa0ba0165e2f",
+  "topic_level_corrections": [],
+  "workflow_version": "topic-review-proposal-v1"
+}
