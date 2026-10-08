@@ -1025,16 +1025,24 @@ theological stance.
     search with two deterministic, previously unused cases near each of `0.60`,
     `0.55`, `0.50`, and `0.40`. It also reports the projected request count at
     each level so semantic recall and provider cost can be assessed together.
+46. Salvation-routing calibration v3 located the transition region. All probes
+    at `0.54` or above warrant the leaf pack, both `0.50` probes are primarily
+    narrative setup or discipleship, and the two `0.40` probes split. Fingerprint
+    `79871cce90a5...` approves the untuned `0.55` operating boundary, routing
+    126/518 eligible blocks. Rusty Williams video 590 block 26 is frozen as a
+    known `0.40` false negative, not a production exception, because another
+    `0.40` block is correctly excluded. The versioned
+    `salvation-relationships-v1` inventory now defines twelve independent
+    relationship judgments and a deterministic route decision; provider
+    execution remains disabled until its bounded review workflow is ready.
 
 ### Next iteration
 
-1. Review the eight-case, cached v3 descending routing packet. Locate the first
-   genuinely mixed or non-route band; do not assume any probe is pre-approved.
-2. Once the evidence establishes a boundary, activate the deterministic route
-   policy and implement
-   `salvation-relationships-v1` as the first conditional leaf pack. Keep its
-   cache and question identity independent of the broad topic pack and later
-   revisions.
+1. Add an independently cached, bounded execution path for
+   `salvation-relationships-v1`. Route only projection-eligible blocks at the
+   reviewed `0.55` boundary; do not rerun or invalidate the broad topic pack.
+2. Produce a deterministic cross-pastor leaf-review packet before enabling the
+   leaf pack during ordinary reclassification.
 
 ## Non-goals for `topics-v1`
 

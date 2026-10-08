@@ -27,6 +27,12 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_DIMENSIONS,
     semantic_question_inventory,
 )
+from pastor_transcript_extractor.sermon_salvation_relationships import (
+    SALVATION_RELATIONSHIPS,
+    SALVATION_RELATIONSHIPS_PACK_VERSION,
+    salvation_relationship_pack_digest,
+    salvation_relationship_question_inventory,
+)
 from pastor_transcript_extractor.sermon_topics import (
     TOPIC_ARTIFACT_SCHEMA_VERSION,
     TOPIC_CONTEXT_POLICY_VERSION,
@@ -77,6 +83,7 @@ STRONG_NONSERMON_SEPARATOR_PROBABILITY = 0.8
 ROLE_PACK = "role"
 TREATMENT_PACK = "homiletic-treatment"
 TOPIC_PACK = TOPIC_PACK_VERSION
+SALVATION_RELATIONSHIPS_PACK = SALVATION_RELATIONSHIPS_PACK_VERSION
 FINE_PARENT_CONTEXT_KEY = "fine_block_coarse_parent_findings"
 
 ROLE_CHOICES = (
@@ -278,6 +285,13 @@ class TypeSafeBlockAnswer:
     topic_question_version: str | None = None
     topic_context: Mapping[str, Any] = field(default_factory=dict)
     request_provenance: Mapping[str, Any] = field(default_factory=dict)
+    salvation_relationship_probabilities: Mapping[str, float] = field(
+        default_factory=dict
+    )
+    salvation_relationship_question_version: str | None = None
+    salvation_relationship_context: Mapping[str, Any] = field(
+        default_factory=dict
+    )
 
     @property
     def sermon_probability(self) -> float:
@@ -514,6 +528,21 @@ class TypeSafeBlockCache:
                     "block_provenance": block_identity,
                 }
             )
+        elif pack == SALVATION_RELATIONSHIPS_PACK:
+            if topic_context is None:
+                raise ValueError(
+                    "Salvation relationship answer pack requires a topic context"
+                )
+            identity.update(
+                {
+                    "question_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+                    "inventory_digest": salvation_relationship_pack_digest(),
+                    "questions": salvation_relationship_question_inventory(0),
+                    "state": topic_context.state_payload(),
+                    "context_diagnostics": dict(topic_context.diagnostics),
+                    "block_provenance": block_identity,
+                }
+            )
         else:
             raise ValueError(f"Unsupported TypeSafe answer pack: {pack}")
         return identity
@@ -668,6 +697,19 @@ class TypeSafeBlockCache:
                 "topic_question_version": answer.topic_question_version,
                 "topic_context": dict(answer.topic_context),
             }
+        if pack == SALVATION_RELATIONSHIPS_PACK:
+            return {
+                **common,
+                "salvation_relationship_probabilities": dict(
+                    answer.salvation_relationship_probabilities
+                ),
+                "salvation_relationship_question_version": (
+                    answer.salvation_relationship_question_version
+                ),
+                "salvation_relationship_context": dict(
+                    answer.salvation_relationship_context
+                ),
+            }
         raise ValueError(f"Unsupported TypeSafe answer pack: {pack}")
 
     @staticmethod
@@ -675,6 +717,7 @@ class TypeSafeBlockCache:
         role = packs.get(ROLE_PACK, {})
         semantic = packs.get(TREATMENT_PACK, {})
         topics = packs.get(TOPIC_PACK, {})
+        salvation = packs.get(SALVATION_RELATIONSHIPS_PACK, {})
         resolved_models = [
             str(pack["resolved_model_id"])
             for pack in packs.values()
@@ -712,6 +755,18 @@ class TypeSafeBlockCache:
             topic_question_version=topics.get("topic_question_version"),
             topic_context=dict(topics.get("topic_context", {})),
             request_provenance=provenance,
+            salvation_relationship_probabilities={
+                str(key): float(value)
+                for key, value in dict(
+                    salvation.get("salvation_relationship_probabilities", {})
+                ).items()
+            },
+            salvation_relationship_question_version=salvation.get(
+                "salvation_relationship_question_version"
+            ),
+            salvation_relationship_context=dict(
+                salvation.get("salvation_relationship_context", {})
+            ),
         )
 
     @staticmethod
@@ -720,6 +775,11 @@ class TypeSafeBlockCache:
             (1 if ROLE_PACK in packs else 0)
             + (len(SEMANTIC_DIMENSIONS) if TREATMENT_PACK in packs else 0)
             + (len(TOPICS) if TOPIC_PACK in packs else 0)
+            + (
+                len(SALVATION_RELATIONSHIPS)
+                if SALVATION_RELATIONSHIPS_PACK in packs
+                else 0
+            )
         )
         if questions_per_block <= 0:
             return BATCH_SIZE
@@ -761,7 +821,12 @@ class TypeSafeBlockCache:
         topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> dict[int, TypeSafeBlockAnswer]:
         """Assess an explicit pack set while reusing production cache identities."""
-        unknown = requested_packs - {ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}
+        unknown = requested_packs - {
+            ROLE_PACK,
+            TREATMENT_PACK,
+            TOPIC_PACK,
+            SALVATION_RELATIONSHIPS_PACK,
+        }
         if not requested_packs or unknown:
             raise ValueError(
                 "TypeSafe answer packs must be a non-empty supported set; "

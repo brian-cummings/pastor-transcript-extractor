@@ -30,11 +30,15 @@ from pastor_transcript_extractor.sermon_classification import TranscriptBlock
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
     FINE_PARENT_CONTEXT_KEY,
     ROLE_PACK,
+    SALVATION_RELATIONSHIPS_PACK,
     TOPIC_PACK,
     TREATMENT_PACK,
     build_role_contexts,
 )
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_DIMENSIONS
+from pastor_transcript_extractor.sermon_salvation_relationships import (
+    SALVATION_RELATIONSHIPS,
+)
 from pastor_transcript_extractor.sermon_topics import TOPICS, TopicBlockContext
 
 
@@ -145,6 +149,59 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
         self.assertEqual(25, result.request_provenance["question_count"])
         self.assertTrue(result.request_provenance["response_complete"])
         self.assertEqual(45.0, result.request_provenance["timeout_seconds"])
+
+    def test_sdk_adapter_composes_and_parses_salvation_leaf_pack(self) -> None:
+        captured = {}
+
+        class FakeSdkClient:
+            def system_one(self, state, questions, **kwargs):
+                captured.update(state=state, questions=questions, kwargs=kwargs)
+                return SimpleNamespace(
+                    choices={},
+                    nouls={
+                        f"salvation_relationship_0_{relationship}": (
+                            SimpleNamespace(noul=0.7)
+                        )
+                        for relationship in SALVATION_RELATIONSHIPS
+                    },
+                    scores={},
+                    model="jev-1.13.0",
+                    usage=SimpleNamespace(input_tokens=80, output_tokens=20),
+                )
+
+        adapter = object.__new__(TypeSafeSdkAdapter)
+        adapter.model = "jev-1.13.0"
+        adapter.timeout_seconds = 45.0
+        adapter._client = FakeSdkClient()
+        adapter._Choice = lambda **kwargs: kwargs
+        adapter._Noul = lambda **kwargs: kwargs
+        adapter._Score = lambda **kwargs: kwargs
+        block = TranscriptBlock(4, [8], 60.0, 120.0, "Grace saves us.")
+        context = TopicBlockContext(
+            "Earlier sentence.",
+            block.text,
+            "Following sentence.",
+            {"policy_version": "topic-context-sentences-v1"},
+        )
+
+        result = adapter.assess_blocks(
+            {"metadata": {"title": "Grace"}},
+            [block],
+            requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+            topic_contexts={block.block_id: context},
+        )[block.block_id]
+
+        self.assertEqual(len(SALVATION_RELATIONSHIPS), len(captured["questions"]))
+        self.assertEqual(
+            {"leading_context", "target_text", "trailing_context"},
+            set(captured["state"]["salvation_blocks"][0]),
+        )
+        self.assertNotIn("topic_blocks", captured["state"])
+        self.assertEqual(
+            set(SALVATION_RELATIONSHIPS),
+            set(result.salvation_relationship_probabilities),
+        )
+        self.assertTrue(result.request_provenance["response_complete"])
 
     def test_target_block_state_attaches_matching_coarse_parent_finding(self) -> None:
         block = TranscriptBlock(12, [3], 60.0, 120.0, "minute transcript")

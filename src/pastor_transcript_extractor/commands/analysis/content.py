@@ -40,6 +40,11 @@ from pastor_transcript_extractor.sermon_salvation_routing import (
     build_salvation_routing_review_packet,
     write_salvation_routing_review,
 )
+from pastor_transcript_extractor.sermon_salvation_relationship_review import (
+    DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT,
+    evaluate_salvation_relationship_review,
+    write_salvation_relationship_review,
+)
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     default_topic_behavior_output_path,
@@ -1218,6 +1223,70 @@ def analysis_salvation_routing_review(
         f"{json_path} and {markdown_path}; "
         f"eligible_blocks={packet['candidate_count']}; "
         f"projected_routes={route_counts}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-relationships-review",
+    help=(
+        "Evaluate a bounded, independently cached salvation relationship leaf sample."
+    ),
+)
+def analysis_salvation_relationships_review(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying cached broad observations.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_TYPESAFE_MODEL,
+        "--model",
+        help="Pinned TypeSafe model id used for the leaf judgments.",
+    ),
+    timeout_seconds: float = typer.Option(
+        45.0,
+        "--timeout-seconds",
+        min=1.0,
+        help="Timeout for each uncached TypeSafe request.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        packet, execution = evaluate_salvation_relationship_review(
+            database,
+            cohort,
+            model=model,
+            client=_LazyTopicBehaviorClient(
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        )
+        json_path, markdown_path, reused = write_salvation_relationship_review(
+            output_path,
+            packet,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation relationship review: "
+        f"{json_path} and {markdown_path}; "
+        f"cases={len(packet['cases'])}; "
+        f"cache_hits={execution['hits']}; "
+        f"cache_misses={execution['misses']}; "
+        f"provider_requests={execution['provider_requests']}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )
