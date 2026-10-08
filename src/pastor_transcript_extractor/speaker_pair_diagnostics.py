@@ -514,6 +514,7 @@ class AudioSpanCache:
         self,
         source_audio_path: Path,
         *,
+        expected_source_audio_sha256: str | None = None,
         policy_version: str,
         frame_duration_ms: float,
         reference_percentile: float,
@@ -527,7 +528,10 @@ class AudioSpanCache:
             )
         if minimum_threshold_dbfs > maximum_threshold_dbfs:
             raise ValueError("activity threshold bounds are reversed")
-        source_sha256 = self._source_audio_sha256(source_audio_path)
+        source_sha256 = (
+            expected_source_audio_sha256
+            or self._source_audio_sha256(source_audio_path)
+        )
         profile_input = {
             "policy_version": policy_version,
             "source_audio_sha256": source_sha256,
@@ -549,6 +553,12 @@ class AudioSpanCache:
                 **payload["profile"],
                 cache_hit=True,
             )
+        if expected_source_audio_sha256 is not None:
+            actual_source_sha256 = self._source_audio_sha256(source_audio_path)
+            if actual_source_sha256 != expected_source_audio_sha256:
+                raise AcousticEvidenceUnavailableError(
+                    "normalized audio checksum does not match its authoritative artifact"
+                )
         frame_levels = _wav_frame_levels_dbfs(
             source_audio_path,
             frame_duration_ms=frame_duration_ms,

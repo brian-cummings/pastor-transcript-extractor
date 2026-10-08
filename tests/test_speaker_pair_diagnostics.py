@@ -569,6 +569,43 @@ class SpeakerPairDiagnosticTests(unittest.TestCase):
             replay.silence_threshold_dbfs,
         )
 
+    def test_recording_activity_profile_replays_while_archive_is_offline(self):
+        archive = self.root / "activity-archive"
+        archive.mkdir()
+        archived_source = archive / "source.wav"
+        with wave.open(str(archived_source), "wb") as destination:
+            destination.setnchannels(1)
+            destination.setsampwidth(2)
+            destination.setframerate(16000)
+            destination.writeframes(
+                (300).to_bytes(2, "little", signed=True) * 16000
+            )
+        source = self.root / "activity-source.wav"
+        source.symlink_to(archived_source)
+        source_hash = hashlib.sha256(archived_source.read_bytes()).hexdigest()
+        cache_root = self.root / "offline-activity-cache"
+        options = {
+            "expected_source_audio_sha256": source_hash,
+            "policy_version": "activity-v3",
+            "frame_duration_ms": 30.0,
+            "reference_percentile": 0.90,
+            "threshold_offset_db": 15.0,
+            "minimum_threshold_dbfs": -60.0,
+            "maximum_threshold_dbfs": -50.0,
+        }
+
+        first = AudioSpanCache(cache_root).recording_activity_profile(
+            source, **options
+        )
+        archive.rename(self.root / "activity-archive-offline")
+        replay = AudioSpanCache(cache_root).recording_activity_profile(
+            source, **options
+        )
+
+        self.assertFalse(first.cache_hit)
+        self.assertTrue(replay.cache_hit)
+        self.assertEqual(first.source_audio_sha256, replay.source_audio_sha256)
+
     def test_approved_policy_has_wide_same_different_and_abstention_regions(self):
         same = self._analyze(
             FakeBackend({"obsA": (1.0, 0.0), "obsB": (1.0, 0.0)}),

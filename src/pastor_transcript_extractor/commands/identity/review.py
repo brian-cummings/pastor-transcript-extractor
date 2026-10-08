@@ -22,6 +22,7 @@ from pastor_transcript_extractor.media_archive import (
 from pastor_transcript_extractor.media_artifacts import (
     ArchivedMediaUnavailableError,
     MediaVerificationCache,
+    get_registered_normalized_media_artifact,
     get_verified_normalized_media_artifact,
     resolve_normalized_audio_path,
 )
@@ -309,13 +310,24 @@ def review_speaker_pair(
         )
     try:
         verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
-        audio_paths = [
-            resolve_normalized_audio_path(
-                database,
-                video.id,
-                verification_cache=verification_cache,
-            )
+        # Registered hashes may identify already-verified cached evidence without
+        # opening an offline archive. Any cache miss verifies the source bytes
+        # against this hash before creating new review evidence.
+        registered_artifacts = [
+            get_registered_normalized_media_artifact(database, video.id)
             for video in videos
+        ]
+        audio_paths = [
+            (
+                Path(artifact.artifact_path)
+                if artifact is not None
+                else resolve_normalized_audio_path(
+                    database,
+                    video.id,
+                    verification_cache=verification_cache,
+                )
+            )
+            for video, artifact in zip(videos, registered_artifacts)
         ]
         if any(path is None for path in audio_paths):
             raise typer.BadParameter("Both observations require local audio")
@@ -344,6 +356,16 @@ def review_speaker_pair(
             video_id_b=video_b,
             audio_path_a=audio_paths[0],
             audio_path_b=audio_paths[1],
+            audio_sha256_a=(
+                registered_artifacts[0].content_sha256
+                if registered_artifacts[0] is not None
+                else None
+            ),
+            audio_sha256_b=(
+                registered_artifacts[1].content_sha256
+                if registered_artifacts[1] is not None
+                else None
+            ),
             span_cache=AudioSpanCache(cache_dir.expanduser().resolve()),
             evaluation_root=evaluation_root.expanduser().resolve(),
             selection_manifest=selection_manifest,

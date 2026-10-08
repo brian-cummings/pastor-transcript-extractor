@@ -228,6 +228,7 @@ def prepare_review_observation(
     observation: SpeakerObservation,
     audio_path: Path,
     span_cache: AudioSpanCache,
+    expected_audio_sha256: str | None = None,
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
     min_qualified_spans: int | None = None,
@@ -258,6 +259,7 @@ def prepare_review_observation(
     candidate_specs = _unique_span_specs((*primary_specs, *fallback_specs))
     activity_profile = span_cache.recording_activity_profile(
         audio_path,
+        expected_source_audio_sha256=expected_audio_sha256,
         policy_version=CLIP_ACTIVITY_POLICY_VERSION,
         frame_duration_ms=ACTIVITY_FRAME_DURATION_MS,
         reference_percentile=ACTIVITY_REFERENCE_PERCENTILE,
@@ -274,6 +276,7 @@ def prepare_review_observation(
         minimum_count=min_qualified_spans,
         min_non_silent_fraction=min_non_silent_fraction,
         activity_profile=activity_profile,
+        expected_audio_sha256=expected_audio_sha256,
     )
     return PreparedReviewObservation(tuple(spans), clip_selection)
 
@@ -367,6 +370,8 @@ def create_review_draft(
     audio_path_b: Path,
     span_cache: AudioSpanCache,
     evaluation_root: Path,
+    audio_sha256_a: str | None = None,
+    audio_sha256_b: str | None = None,
     span_count: int = 5,
     span_duration_seconds: float = 12.0,
     min_qualified_spans: int | None = None,
@@ -393,6 +398,7 @@ def create_review_draft(
                 video_id_a,
                 observation_a,
                 audio_path_a,
+                audio_sha256_a,
                 metadata_a,
             ),
             (
@@ -400,6 +406,7 @@ def create_review_draft(
                 video_id_b,
                 observation_b,
                 audio_path_b,
+                audio_sha256_b,
                 metadata_b,
             ),
         ),
@@ -410,7 +417,11 @@ def create_review_draft(
         "source_b": ordered_inputs[1][1:],
     }
     expected_audio_sha256 = {
-        source_key: _source_audio_identity(Path(values[2]))
+        source_key: (
+            str(values[3])
+            if values[3] is not None
+            else _source_audio_identity(Path(values[2]))
+        )
         for source_key, values in source_observations.items()
     }
     unavailable_paths = [
@@ -457,6 +468,7 @@ def create_review_draft(
         video_id,
         observation,
         audio_path,
+        _audio_sha256,
         source_metadata,
     ) in source_observations.items():
         try:
@@ -464,6 +476,7 @@ def create_review_draft(
                 observation=observation,
                 audio_path=audio_path,
                 span_cache=span_cache,
+                expected_audio_sha256=expected_audio_sha256[source_key],
                 span_count=span_count,
                 span_duration_seconds=span_duration_seconds,
                 min_qualified_spans=min_qualified_spans,
@@ -944,6 +957,7 @@ def _prepare_review_spans(
     minimum_count: int,
     min_non_silent_fraction: float,
     activity_profile: RecordingActivityProfile,
+    expected_audio_sha256: str | None = None,
 ) -> tuple[list[CachedSpan], dict[str, Any]]:
     if requested_count < 2 or minimum_count < 2 or minimum_count > requested_count:
         raise ValueError("review clip counts require 2 <= minimum <= requested")
@@ -956,6 +970,7 @@ def _prepare_review_spans(
             observation=observation,
             source_audio_path=audio_path,
             span=spec,
+            expected_source_audio_sha256=expected_audio_sha256,
         )
         non_silent_fraction = span_cache.measure_span_activity(
             span,
@@ -1065,7 +1080,13 @@ def _record_activity_rejection(
     pair_id: str,
     source_observations: dict[
         str,
-        tuple[str, SpeakerObservation, Path, dict[str, object] | None],
+        tuple[
+            str,
+            SpeakerObservation,
+            Path,
+            str | None,
+            dict[str, object] | None,
+        ],
     ],
     failed_source_key: str,
     error: InsufficientSpeechActivityError,
@@ -1085,6 +1106,7 @@ def _record_activity_rejection(
             video_id,
             observation,
             _audio_path,
+            _audio_sha256,
             _source_metadata,
         ) in source_observations.items()
     }

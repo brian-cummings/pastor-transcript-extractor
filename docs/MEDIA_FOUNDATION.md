@@ -203,8 +203,12 @@ separately. Archived normalized media remains authoritative through its original
 symlink. If the mount is offline, selection returns
 `archived_media_unavailable`: PTE does not choose reconstructed audio, normalize
 again, redownload, mark the archive corrupt, or mutate identity/review state.
-Cached canonical clips remain usable because their manifests are source-hash,
-observation, window, and policy bound.
+Cached canonical and speaker-review clips remain usable because their manifests
+are source-hash, observation, window, and policy bound. Speaker-pair review uses
+the registered authoritative hash to reopen an existing draft or cached packet
+while the archive is offline. It requires the archive only when a needed
+activity profile or clip is absent, and verifies the source bytes before
+creating that missing evidence.
 
 Observation-fingerprint rebinding is metadata-only: it may use the persisted
 identity of a previously verified archived artifact without opening its bytes.
