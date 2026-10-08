@@ -56,6 +56,7 @@ GROUP_COMMANDS = {
         "population-show",
         "refresh-profiles",
         "run",
+        "salvation-routing-review",
         "show",
         "show-profile",
         "status",

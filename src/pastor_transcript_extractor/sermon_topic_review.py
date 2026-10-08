@@ -18,6 +18,8 @@ from pastor_transcript_extractor.sermon_topics import (
     TOPICS,
     resolve_topic_analysis_artifact,
     resolve_topic_block_context,
+    topic_supporting_or_above_probability,
+    validated_topic_scores,
 )
 
 
@@ -114,55 +116,11 @@ def _canonical_hash(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _validated_scores(block: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    raw_scores = block.get("scores")
-    if not isinstance(raw_scores, Mapping):
-        raise ValueError(f"Topic block {block.get('block_id')} has no score inventory")
-    missing = [topic for topic in TOPICS if topic not in raw_scores]
-    if missing:
-        raise ValueError(
-            f"Topic block {block.get('block_id')} is missing scores: {', '.join(missing)}"
-        )
-    scores: dict[str, dict[str, Any]] = {}
-    for topic in TOPICS:
-        raw = raw_scores[topic]
-        if not isinstance(raw, Mapping):
-            raise ValueError(f"Topic block {block.get('block_id')} has invalid {topic} score")
-        probabilities = raw.get("probabilities")
-        if not isinstance(probabilities, Mapping) or any(
-            str(level) not in probabilities for level in range(5)
-        ):
-            raise ValueError(
-                f"Topic block {block.get('block_id')} has incomplete {topic} distribution"
-            )
-        scores[topic] = {
-            "score": float(raw.get("score") or 0.0),
-            "probabilities": {
-                str(level): float(probabilities[str(level)]) for level in range(5)
-            },
-            "confidence": (
-                float(raw["confidence"])
-                if isinstance(raw.get("confidence"), (int, float))
-                else None
-            ),
-        }
-    return scores
-
-
 def _score_number(score: Mapping[str, Any], key: str) -> float | None:
     value = score.get(key)
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     return None
-
-
-def _supporting_probability(score: Mapping[str, Any]) -> float:
-    probabilities = score.get("probabilities")
-    if not isinstance(probabilities, Mapping):
-        return 0.0
-    return sum(
-        float(probabilities.get(str(level)) or 0.0) for level in (2, 3, 4)
-    )
 
 
 def build_topic_review_transcript_provenance(
@@ -252,7 +210,7 @@ def derive_prospective_topic_review_cases(
             "Prospective topic review requires per-block projection eligibility"
         )
     scores_by_block_id = {
-        int(block["block_id"]): _validated_scores(block) for block in blocks
+        int(block["block_id"]): validated_topic_scores(block) for block in blocks
     }
 
     cases: list[TopicReviewCase] = []
@@ -299,7 +257,7 @@ def derive_prospective_topic_review_cases(
         block_id = int(block["block_id"])
         for topic, score in scores_by_block_id[block_id].items():
             expected = float(score["score"])
-            support = _supporting_probability(score)
+            support = topic_supporting_or_above_probability(score)
             confidence = _score_number(score, "confidence")
             if confidence is None or (expected < 1.0 and support < 0.25):
                 continue
@@ -344,7 +302,7 @@ def derive_prospective_topic_review_cases(
                 candidates.append(
                     (
                         float(score["score"]),
-                        _supporting_probability(score),
+                        topic_supporting_or_above_probability(score),
                         block_id,
                         topic,
                     )
@@ -475,7 +433,7 @@ def build_topic_review_packet(
                 "projection_eligibility": dict(
                     block.get("projection_eligibility") or {}
                 ),
-                "scores": _validated_scores(block),
+                "scores": validated_topic_scores(block),
                 "resolved_model_id": block.get("resolved_model_id"),
                 "request_key": block.get("request_key"),
             }
