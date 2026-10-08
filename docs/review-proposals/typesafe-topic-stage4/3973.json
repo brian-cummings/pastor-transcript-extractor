@@ -1,0 +1,8 @@
+{
+  "notes": "Proposed review after applying the approved version-2 sermon window: accept all displayed topic levels and projection decisions. Block 100 now retains the principal preacher's sermon-summary appeal and immediate closing prayer through amen; block 101 begins the following song and remains outside the sermon and ineligible. No modal topic interpretation warrants correction. The packet's profile-level projection gate remains separately blocked on reviewed effective profile membership and is not overridden here.",
+  "projection_eligibility_corrections": [],
+  "schema_version": 1,
+  "source_packet_fingerprint": "d91f37e1cd1f5ab87a9ee74034e86c5295be91bf66f5b65137f32186fc3eceae",
+  "topic_level_corrections": [],
+  "workflow_version": "topic-review-proposal-v1"
+}

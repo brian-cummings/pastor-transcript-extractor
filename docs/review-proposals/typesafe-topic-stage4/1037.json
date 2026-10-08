@@ -1,0 +1,8 @@
+{
+  "notes": "Proposed review after applying the approved version-2 sermon window: accept all displayed topic levels and projection decisions. Blocks 71-72 now retain the principal preacher's concluding appeal and immediate sermon-integrated prayer. The preceding song-to-appeal mixture remains conservatively ineligible under the full-block attribution policy. No modal topic interpretation warrants correction; preserve the displayed probability distributions as uncertainty.",
+  "projection_eligibility_corrections": [],
+  "schema_version": 1,
+  "source_packet_fingerprint": "d7602e72fa87ab405c2c2448eb0e4cf082b4dd1e95cf535810e40160d396c0c4",
+  "topic_level_corrections": [],
+  "workflow_version": "topic-review-proposal-v1"
+}

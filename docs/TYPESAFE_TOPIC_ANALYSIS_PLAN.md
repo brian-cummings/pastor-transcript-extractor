@@ -943,6 +943,15 @@ theological stance.
     full-block projection policy remains unchanged. The stale no-correction
     proposals for those two old packet fingerprints were withdrawn pending
     fixture application and refreshed packets; clean control 281 remains valid.
+36. Applying those version-2 fixtures produced the intended semantic boundary.
+    Video 1037 now retains blocks 71-72, including the preacher's immediate
+    appeal and closing prayer, while the preceding song-to-appeal mixed block
+    remains conservatively excluded. Video 3973 now retains block 100 through
+    amen and excludes block 101, where the following song begins. The refreshed
+    packets expose no warranted modal topic corrections. New no-correction
+    proposals bind these conclusions to packet fingerprints `d7602e72fa87...`
+    and `d91f37e1cd1f...`; 3973's separate profile-level projection gate remains
+    blocked until effective reviewed identity membership is available.
 
 ### Next iteration
 
