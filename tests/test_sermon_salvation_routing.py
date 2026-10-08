@@ -6,10 +6,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from pastor_transcript_extractor.commands.analysis.content import (
+    analysis_salvation_routing_review,
+)
 from pastor_transcript_extractor.models import Video, VideoStatus
 from pastor_transcript_extractor.sermon_salvation_routing import (
     PRIOR_CALIBRATION_FINGERPRINT,
-    PROPOSED_SALVATION_ROUTE_THRESHOLD,
+    SALVATION_ROUTE_PROBE_THRESHOLDS,
     build_salvation_routing_review_packet,
     write_salvation_routing_review,
 )
@@ -104,14 +107,14 @@ class SalvationRoutingReviewTests(unittest.TestCase):
         return {
             "question_pack_version": TOPIC_PACK_VERSION,
             "blocks": [
-                _block(offset + 1, 0.95),
-                _block(offset + 2, 0.02),
-                _block(offset + 3, 0.66),
-                _block(offset + 4, 0.64),
+                _block(offset + 1, 0.60),
+                _block(offset + 2, 0.55),
+                _block(offset + 3, 0.50),
+                _block(offset + 4, 0.40),
             ],
         }
 
-    def test_packet_samples_only_revised_boundary_without_activating_route(
+    def test_packet_samples_descending_probes_without_activating_route(
         self,
     ) -> None:
         gates = {
@@ -154,27 +157,36 @@ class SalvationRoutingReviewTests(unittest.TestCase):
             )
 
         self.assertEqual(8, packet["candidate_count"])
-        self.assertEqual(4, packet["proposed_route_count"])
-        self.assertEqual(0.65, PROPOSED_SALVATION_ROUTE_THRESHOLD)
+        self.assertEqual(
+            {"0.60": 2, "0.55": 4, "0.50": 6, "0.40": 8},
+            packet["route_counts_by_threshold"],
+        )
+        self.assertEqual(
+            list(SALVATION_ROUTE_PROBE_THRESHOLDS),
+            packet["probe_thresholds"],
+        )
         self.assertEqual(
             PRIOR_CALIBRATION_FINGERPRINT,
             packet["prior_calibration"]["input_fingerprint"],
         )
-        self.assertEqual(4, len(packet["cases"]))
+        self.assertEqual(8, len(packet["cases"]))
         self.assertEqual(
             {
-                "boundary_route",
-                "boundary_nonroute",
+                "descending_probe_60",
+                "descending_probe_55",
+                "descending_probe_50",
+                "descending_probe_40",
             },
             {case["stratum"] for case in packet["cases"]},
         )
         self.assertEqual(
-            [0.64, 0.64, 0.66, 0.66],
+            [0.4, 0.4, 0.5, 0.5, 0.55, 0.55, 0.6, 0.6],
             sorted(
                 case["candidate"]["supporting_or_above_probability"]
                 for case in packet["cases"]
             ),
         )
+        self.assertEqual("boundary_search_pending_review", packet["status"])
         self.assertFalse(packet["route_policy_active"])
         self.assertEqual(packet["input_fingerprint"], replay["input_fingerprint"])
 
@@ -201,6 +213,54 @@ class SalvationRoutingReviewTests(unittest.TestCase):
                     self.database,
                     self.cohort,
                 )
+
+    def test_cli_reports_each_probe_count(self) -> None:
+        packet = {
+            "candidate_count": 518,
+            "route_counts_by_threshold": {
+                "0.60": 111,
+                "0.55": 123,
+                "0.50": 135,
+                "0.40": 160,
+            },
+            "input_fingerprint": "fingerprint-value",
+        }
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content."
+                "get_database",
+                return_value=self.database,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content."
+                "load_topic_stage4_cohort",
+                return_value=self.cohort,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content."
+                "build_salvation_routing_review_packet",
+                return_value=packet,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content."
+                "write_salvation_routing_review",
+                return_value=(Path("review.json"), Path("review.md"), False),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.console.print"
+            ) as print_mock,
+        ):
+            analysis_salvation_routing_review(
+                cohort_path=Path("cohort.json"),
+                output_path=Path("review.json"),
+                base_dir=Path("data"),
+            )
+
+        message = print_mock.call_args.args[0]
+        self.assertIn(
+            "projected_routes=0.60:111,0.55:123,0.50:135,0.40:160",
+            message,
+        )
 
 
 if __name__ == "__main__":

@@ -1178,8 +1178,8 @@ def analysis_evaluate_topic_stability(
 @analysis_app.command(
     "salvation-routing-review",
     help=(
-        "Write a provider-free calibration packet for the proposed conditional "
-        "salvation leaf route."
+        "Write a provider-free calibration packet for the conditional salvation "
+        "leaf route."
     ),
 )
 def analysis_salvation_routing_review(
@@ -1209,11 +1209,15 @@ def analysis_salvation_routing_review(
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
+    route_counts = ",".join(
+        f"{threshold}:{count}"
+        for threshold, count in packet["route_counts_by_threshold"].items()
+    )
     console.print(
         f"{'Reused' if reused else 'Wrote'} salvation routing review: "
         f"{json_path} and {markdown_path}; "
         f"eligible_blocks={packet['candidate_count']}; "
-        f"proposed_routes={packet['proposed_route_count']}; "
+        f"projected_routes={route_counts}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )

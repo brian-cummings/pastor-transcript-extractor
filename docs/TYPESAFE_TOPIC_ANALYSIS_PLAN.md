@@ -1018,12 +1018,20 @@ theological stance.
     the signal, rejects the boundary, and leaves routing inactive. The v2
     proposal lowers the boundary to `0.65` and samples only four new boundary
     cases; it does not repeat the eight already-resolved clear anchors.
+45. Salvation-routing calibration v2 found all four boundary cases at `0.64` to
+    `0.66` warrant the leaf pack. Fingerprint `530364ff1050...` therefore rejects
+    `0.65` while retaining the signal and leaving routing inactive. Instead of
+    continuing in five-point increments, v3 performs one cached descending
+    search with two deterministic, previously unused cases near each of `0.60`,
+    `0.55`, `0.50`, and `0.40`. It also reports the projected request count at
+    each level so semantic recall and provider cost can be assessed together.
 
 ### Next iteration
 
-1. Review the four-case, cached v2 salvation-routing boundary packet at `0.65`.
-   Do not rerun the broad pack or call TypeSafe.
-2. If the boundary passes, activate the deterministic route policy and implement
+1. Review the eight-case, cached v3 descending routing packet. Locate the first
+   genuinely mixed or non-route band; do not assume any probe is pre-approved.
+2. Once the evidence establishes a boundary, activate the deterministic route
+   policy and implement
    `salvation-relationships-v1` as the first conditional leaf pack. Keep its
    cache and question identity independent of the broad topic pack and later
    revisions.

@@ -25,14 +25,34 @@ from pastor_transcript_extractor.storage import Database
 
 
 SALVATION_ROUTING_REVIEW_SCHEMA_VERSION = 1
-SALVATION_ROUTING_REVIEW_POLICY_VERSION = "salvation-leaf-route-calibration-v2"
+SALVATION_ROUTING_REVIEW_POLICY_VERSION = "salvation-leaf-route-calibration-v3"
 SALVATION_ROUTING_SIGNAL = "salvation_gospel_supporting_or_above_probability"
-PROPOSED_SALVATION_ROUTE_THRESHOLD = 0.65
+SALVATION_ROUTE_PROBE_THRESHOLDS = (0.60, 0.55, 0.50, 0.40)
 PRIOR_CALIBRATION_FINGERPRINT = (
-    "3a296603f3500f780440f675b2cf9c0daf9065648ee3e358dc258ccbc4563f15"
+    "530364ff1050793f8f42303ca7110552f87551b36fab2b00c1c924abb4e7dcce"
+)
+PRIOR_REVIEWED_CANDIDATE_KEYS = frozenset(
+    {
+        "281:84",
+        "281:122",
+        "281:123",
+        "590:39",
+        "590:43",
+        "1037:21",
+        "1037:58",
+        "1200:22",
+        "1200:37",
+        "3973:77",
+        "3974:84",
+        "4394:46",
+        "4430:41",
+        "4430:55",
+        "4458:70",
+        "4589:32",
+    }
 )
 DEFAULT_SALVATION_ROUTING_REVIEW_OUTPUT = Path(
-    "evaluation/sermon-topics/salvation-routing-calibration-v2.json"
+    "evaluation/sermon-topics/salvation-routing-calibration-v3.json"
 )
 
 
@@ -85,7 +105,6 @@ def _candidate(
         "trailing_context": context.get("trailing_context", ""),
         "salvation_gospel": salvation,
         "supporting_or_above_probability": round(support, 6),
-        "proposed_route": support >= PROPOSED_SALVATION_ROUTE_THRESHOLD,
         "topic_analysis_fingerprint": topic_analysis_fingerprint,
         "source_request_key": block.get("request_key"),
     }
@@ -121,67 +140,53 @@ def _select_unique_pastors(
 
 
 def _review_cases(candidates: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    selected_keys: set[str] = set()
+    selected_keys = set(PRIOR_REVIEWED_CANDIDATE_KEYS)
     cases: list[dict[str, Any]] = []
 
-    def add(stratum: str, rationale: str, candidate: dict[str, Any]) -> None:
+    def add(
+        stratum: str,
+        rationale: str,
+        candidate: dict[str, Any],
+        *,
+        probe_threshold: float,
+    ) -> None:
         cases.append(
             {
                 "case_id": f"{stratum}:{candidate['candidate_key']}",
                 "stratum": stratum,
+                "probe_threshold": probe_threshold,
                 "selection_rationale": rationale,
                 "candidate": candidate,
             }
         )
 
-    above = sorted(
-        (
-            candidate
-            for candidate in candidates
-            if float(candidate["supporting_or_above_probability"])
-            >= PROPOSED_SALVATION_ROUTE_THRESHOLD
-        ),
-        key=lambda item: (
-            float(item["supporting_or_above_probability"])
-            - PROPOSED_SALVATION_ROUTE_THRESHOLD,
-            int(item["video_id"]),
-            int(item["block_id"]),
-        ),
-    )
-    below = sorted(
-        (
-            candidate
-            for candidate in candidates
-            if float(candidate["supporting_or_above_probability"])
-            < PROPOSED_SALVATION_ROUTE_THRESHOLD
-        ),
-        key=lambda item: (
-            PROPOSED_SALVATION_ROUTE_THRESHOLD
-            - float(item["supporting_or_above_probability"]),
-            int(item["video_id"]),
-            int(item["block_id"]),
-        ),
-    )
-    for candidate in _select_unique_pastors(
-        above,
-        count=2,
-        selected_keys=selected_keys,
-    ):
-        add(
-            "boundary_route",
-            "Closest unused block at or above the proposed route boundary.",
-            candidate,
+    for threshold in SALVATION_ROUTE_PROBE_THRESHOLDS:
+        ordered = sorted(
+            candidates,
+            key=lambda item: (
+                abs(
+                    float(item["supporting_or_above_probability"])
+                    - threshold
+                ),
+                int(item["video_id"]),
+                int(item["block_id"]),
+            ),
         )
-    for candidate in _select_unique_pastors(
-        below,
-        count=2,
-        selected_keys=selected_keys,
-    ):
-        add(
-            "boundary_nonroute",
-            "Closest unused block below the proposed route boundary.",
-            candidate,
-        )
+        stratum = f"descending_probe_{int(round(threshold * 100)):02d}"
+        for candidate in _select_unique_pastors(
+            ordered,
+            count=2,
+            selected_keys=selected_keys,
+        ):
+            add(
+                stratum,
+                (
+                    "Closest unused block to the descending route probe at "
+                    f"{threshold:.2f}."
+                ),
+                candidate,
+                probe_threshold=threshold,
+            )
     return cases
 
 
@@ -241,7 +246,13 @@ def build_salvation_routing_review_packet(
                 )
     if not candidates:
         raise ValueError("No projection-eligible salvation routing candidates")
-    route_count = sum(bool(item["proposed_route"]) for item in candidates)
+    route_counts = {
+        f"{threshold:.2f}": sum(
+            float(item["supporting_or_above_probability"]) >= threshold
+            for item in candidates
+        )
+        for threshold in SALVATION_ROUTE_PROBE_THRESHOLDS
+    }
     cases = _review_cases(candidates)
     identity = {
         "schema_version": SALVATION_ROUTING_REVIEW_SCHEMA_VERSION,
@@ -250,25 +261,27 @@ def build_salvation_routing_review_packet(
         "readiness_input_fingerprint": readiness["input_fingerprint"],
         "broad_question_pack_version": TOPIC_PACK_VERSION,
         "routing_signal": SALVATION_ROUTING_SIGNAL,
-        "proposed_route_threshold": PROPOSED_SALVATION_ROUTE_THRESHOLD,
+        "probe_thresholds": list(SALVATION_ROUTE_PROBE_THRESHOLDS),
         "prior_calibration": {
             "input_fingerprint": PRIOR_CALIBRATION_FINGERPRINT,
             "decision": "boundary_rejected_signal_retained",
+            "reviewed_candidate_keys": sorted(PRIOR_REVIEWED_CANDIDATE_KEYS),
         },
         "candidate_count": len(candidates),
-        "proposed_route_count": route_count,
+        "route_counts_by_threshold": route_counts,
         "cases": cases,
     }
     return {
         **identity,
         "input_fingerprint": _canonical_hash(identity),
-        "status": "proposal_pending_review",
+        "status": "boundary_search_pending_review",
         "route_policy_active": False,
         "interpretation": (
-            "The v1 clear strata validated this cached routing signal, but its "
-            "0.70 boundary produced two false non-routes. This boundary-only "
-            "revision tests 0.65 without repeating the approved clear anchors. "
-            "It does not evaluate leaf judgments or authorize provider calls."
+            "The v1 and v2 reviews validated this cached routing signal but "
+            "rejected both 0.70 and 0.65 as too conservative. This one-pass "
+            "descending search probes four lower bands without repeating prior "
+            "cases. It does not evaluate leaf judgments or authorize provider "
+            "calls."
         ),
     }
 
@@ -281,20 +294,27 @@ def render_salvation_routing_review(packet: Mapping[str, Any]) -> str:
         f"- Route policy active: `{str(packet['route_policy_active']).lower()}`",
         f"- Broad pack: `{packet['broad_question_pack_version']}`",
         f"- Signal: `{packet['routing_signal']}`",
-        f"- Proposed route boundary: `{packet['proposed_route_threshold']:.2f}`",
+        "- Descending probes: `"
+        + "`, `".join(f"{value:.2f}" for value in packet["probe_thresholds"])
+        + "`",
         "- Prior calibration: "
         f"`{packet['prior_calibration']['input_fingerprint']}` "
         f"(`{packet['prior_calibration']['decision']}`)",
         f"- Eligible cached blocks: `{packet['candidate_count']}`",
-        f"- Blocks that would route: `{packet['proposed_route_count']}`",
+        "- Blocks that would route: "
+        + ", ".join(
+            f"{threshold} -> {count}"
+            for threshold, count in packet["route_counts_by_threshold"].items()
+        ),
         f"- Packet fingerprint: `{packet['input_fingerprint']}`",
         "",
         str(packet["interpretation"]),
         "",
-        "Review only these four boundary targets. Decide whether each contains "
+        "Review these eight descending probes. Decide whether each contains "
         "enough developed salvation content to justify a separate relationship "
-        "pack. Context may clarify the target but cannot independently establish "
-        "the route.",
+        "pack. The purpose is to locate the first genuinely mixed or non-route "
+        "band, not to pre-approve a threshold. Context may clarify the target "
+        "but cannot independently establish the route.",
         "",
     ]
     for case in packet["cases"]:
@@ -311,6 +331,7 @@ def render_salvation_routing_review(packet: Mapping[str, Any]) -> str:
                 f"- Recording: `{candidate['youtube_video_id']}` — {candidate['title']}",
                 f"- Time: `{candidate['start_seconds']}`–`{candidate['end_seconds']}`",
                 f"- Role: `{candidate['content_role']}`",
+                f"- Probe threshold: `{float(case['probe_threshold']):.2f}`",
                 f"- Broad salvation Score: `{float(score['score']):.3f}`",
                 "- Distribution: "
                 + ", ".join(
@@ -321,7 +342,6 @@ def render_salvation_routing_review(packet: Mapping[str, Any]) -> str:
                     "- Supporting-or-above probability: "
                     f"`{float(candidate['supporting_or_above_probability']):.3f}`"
                 ),
-                f"- Proposed route: `{str(candidate['proposed_route']).lower()}`",
                 "",
                 "Leading context:",
                 "",
