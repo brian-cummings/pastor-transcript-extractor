@@ -914,12 +914,25 @@ theological stance.
     function do not turn performed lyrics into preacher discourse; it also
     distinguishes an immediate same-preacher continuation of the concluding
     appeal from a prayer after a handoff or intervening service material. Only
-    the role pack depends on this new context. Existing topic and homiletic
-    answer packs retain their identities and are reused, while the classifier
-    prompt version makes the changed projection input fail closed until a
-    bounded reclassification is run. Tests bind the semantic policy, bounded
-    neighborhood, provider state, and pack-isolated cache invalidation without
-    naming a recording or block.
+    the role pack depends on this new context. Existing topic answer packs retain
+    their identities. Homiletic-treatment packs now use the target block and
+    question inventory rather than role-sensitive recording context; the former
+    contextual identity is migrated provider-free on first access. The classifier
+    prompt version makes the changed projection input fail closed until a bounded
+    reclassification is run. Tests bind the semantic policy, bounded neighborhood,
+    provider state, migration, and pack-isolated cache invalidation without naming
+    a recording or block.
+34. The bounded validation passed both sides of the role distinction. In video
+    1037 the song introduction and three continuing performed blocks are now
+    `worship_music_or_service_prayer` with probabilities 0.84, 0.92, 0.92, and
+    0.63, so their still-valid theological topic scores are no longer preacher
+    evidence. In clean control 281, the immediate concluding prayer remains
+    `sermon_integrated_prayer_or_scripture` and eligible, while the subsequent
+    hymn and later service prayer remain excluded. All sixty cached 1037 topic
+    packs and all seventy-six cached 281 topic packs were reused. The validation
+    also exposed that homiletic-treatment identities still inherited changed
+    coarse-role context; the context-independent identity and migration above
+    remove that accidental coupling without another provider run.
 
 ### Next iteration
 
