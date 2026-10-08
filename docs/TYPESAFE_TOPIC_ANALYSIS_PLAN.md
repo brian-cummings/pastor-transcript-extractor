@@ -982,15 +982,31 @@ theological stance.
     error instead of a traceback. It neither reconstructs nor redownloads audio;
     the immutable archive remains authoritative and the review retries after the
     mount is restored.
+42. Brian approved all five exact-span identity pairs as `same_speaker`. Their
+    first registry synchronization exposed a lineage-reuse defect: the reviewed
+    current observations were placed in new profiles while readiness also
+    inherited the older reviewed profile from each reclassified video, producing
+    artificial ambiguity despite zero pair conflicts. Reviewed-component sync
+    now includes each current observation's single canonical inherited profile,
+    merging cached lineage instead of manufacturing a parallel identity. It
+    still fails closed when one observation inherits multiple canonical profiles
+    or when a different-speaker constraint blocks the merge. Replaying the same
+    immutable reviews added no profiles, reconciled five profile lineages, and
+    made all twelve sermons ready under one profile per pastor. Readiness
+    fingerprint `3b8763eea4ec...` is `ready`: David P Ryder profile 117, Rusty
+    Williams profile 80, Ron Clouzet profile 130, and John Bradshaw profile 318.
+    The remaining `ron clouzet`/`ron couzet` warning is an explicit-attribution
+    spelling conflict, not an identity, eligibility, or topic-analysis blocker.
 
 ### Next iteration
 
-1. Adjudicate the five exact identity pairs emitted by readiness, synchronize
-   the reviewed evidence once, and re-run readiness. Do not infer a same-speaker
-   relation from titles or run a broad reclassification.
-2. Once readiness passes, run and interpret the prepared Stage 4 repeatability
-   report before treating pastor-level topic differences as stable.
-3. Once projection is credible, implement `salvation-relationships-v1` as the
+1. Run the cached `pte analysis evaluate-topic-stability` Stage 4 diagnostic.
+   Inspect its equal-sermon values, leave-one-sermon sensitivity, and declared
+   series/period deltas before proposing any repeatability threshold or allowing
+   comparative use. Do not reclassify the cohort or call TypeSafe again: the
+   evaluator materializes or reuses immutable sermon-topic analysis from the
+   twelve already-reviewed cached inputs.
+2. Once projection is credible, implement `salvation-relationships-v1` as the
    first routed leaf pack. Keep its cache and question identity independent of
    the broad topic pack and later revisions.
 
