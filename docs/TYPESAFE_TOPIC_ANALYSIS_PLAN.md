@@ -966,12 +966,20 @@ theological stance.
     videos, finalized review status, all three whole-sermon checks, reviewer
     provenance, correction lists, and packet/review hashes. Legacy narrative
     audit evidence remains supported without duplicating its established path.
+40. Readiness fingerprint `4d5b0e3a8396...` confirms that topic evidence is now
+    current for all twelve sermons. Ron Clouzet advanced from 2/3 to 3/3; David
+    P Ryder, Rusty Williams, and Ron Clouzet are blocked only by two effective
+    profiles each. John Bradshaw's three sermons remain unbound. The five
+    requested current-fingerprint pair reviews have no existing exact draft,
+    review, or fixture to reuse. They are the minimum identity handoff: one
+    bridge for each split pastor and two edges connecting Bradshaw's three
+    components. No topic reclassification is scheduled.
 
 ### Next iteration
 
-1. Re-run Stage 4 readiness against the immutable replacement review evidence.
-   Execute only its remaining bounded identity/synchronization actions; do not
-   run a broad reclassification or infer membership from titles.
+1. Adjudicate the five exact identity pairs emitted by readiness, synchronize
+   the reviewed evidence once, and re-run readiness. Do not infer a same-speaker
+   relation from titles or run a broad reclassification.
 2. Once readiness passes, run and interpret the prepared Stage 4 repeatability
    report before treating pastor-level topic differences as stable.
 3. Once projection is credible, implement `salvation-relationships-v1` as the
