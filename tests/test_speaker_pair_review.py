@@ -52,7 +52,14 @@ class FakeSpanCache:
         self.silent_starts = silent_starts or set()
         self.quiet_recording = quiet_recording
 
-    def prepare(self, *, observation, source_audio_path, span):
+    def prepare(
+        self,
+        *,
+        observation,
+        source_audio_path,
+        span,
+        expected_source_audio_sha256=None,
+    ):
         key = f"{observation.input_fingerprint}-{span.start_seconds:.3f}"
         digest = hashlib.sha256(key.encode()).hexdigest()
         wav_path = self.root / f"{digest}.wav"
@@ -79,6 +86,7 @@ class FakeSpanCache:
         self,
         source_audio_path,
         *,
+        expected_source_audio_sha256=None,
         policy_version,
         frame_duration_ms,
         reference_percentile,
@@ -226,6 +234,33 @@ class SpeakerPairReviewTests(unittest.TestCase):
             first.payload["observations"]["source_a"]["clip_selection"][
                 "selection_outcome"
             ],
+        )
+
+    def test_draft_uses_authoritative_hashes_while_archive_is_offline(self):
+        audio_a = self.root / "audio-a.wav"
+        audio_b = self.root / "audio-b.wav"
+        audio_a.symlink_to(self.root / "offline-archive-a.wav")
+        audio_b.symlink_to(self.root / "offline-archive-b.wav")
+
+        draft = create_review_draft(
+            observation_a=self.observation_a,
+            observation_b=self.observation_b,
+            video_id_a="video-a",
+            video_id_b="video-b",
+            audio_path_a=audio_a,
+            audio_path_b=audio_b,
+            audio_sha256_a="1" * 64,
+            audio_sha256_b="2" * 64,
+            span_cache=self.span_cache,
+            evaluation_root=self.evaluation_root,
+        )
+
+        self.assertEqual(
+            {"1" * 64, "2" * 64},
+            {
+                item["normalized_audio_sha256"]
+                for item in draft.payload["observations"].values()
+            },
         )
 
     def test_profile_review_packet_links_each_clip_to_youtube_timestamp(self):
@@ -830,6 +865,11 @@ class SpeakerPairReviewTests(unittest.TestCase):
             patch("pastor_transcript_extractor.commands.identity.review.Path.exists", return_value=True),
             patch("pastor_transcript_extractor.commands.identity.review.Database", return_value=database),
             patch(
+                "pastor_transcript_extractor.commands.identity.review."
+                "get_registered_normalized_media_artifact",
+                return_value=None,
+            ),
+            patch(
                 "pastor_transcript_extractor.commands.identity.review.resolve_normalized_audio_path",
                 return_value=self.root / "audio.wav",
             ),
@@ -898,6 +938,11 @@ class SpeakerPairReviewTests(unittest.TestCase):
             ),
             patch(
                 "pastor_transcript_extractor.commands.identity.review."
+                "get_registered_normalized_media_artifact",
+                return_value=None,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
                 "resolve_normalized_audio_path",
                 side_effect=unavailable,
             ),
@@ -919,6 +964,73 @@ class SpeakerPairReviewTests(unittest.TestCase):
                     observation_fingerprint_a=None,
                     observation_fingerprint_b=None,
                 )
+
+    def test_registered_review_audio_defers_byte_access_to_draft_preparation(self):
+        database = SimpleNamespace(
+            get_video_by_youtube_id=lambda value: SimpleNamespace(id=value),
+            get_latest_speaker_observation_for_video=lambda _video_id: self.observation_a,
+        )
+        draft = SimpleNamespace(
+            packet_path=self.evaluation_root / "drafts" / "pair.html",
+            payload={"pair_id": "pair"},
+        )
+        artifacts = [
+            SimpleNamespace(
+                artifact_path=str(self.root / "offline-a.wav"),
+                content_sha256="1" * 64,
+            ),
+            SimpleNamespace(
+                artifact_path=str(self.root / "offline-b.wav"),
+                content_sha256="2" * 64,
+            ),
+        ]
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.build_paths",
+                return_value=SimpleNamespace(
+                    root=self.root,
+                    database=self.root / "database.sqlite3",
+                ),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.Path.exists",
+                return_value=True,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.Database",
+                return_value=database,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
+                "get_registered_normalized_media_artifact",
+                side_effect=artifacts,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
+                "resolve_normalized_audio_path",
+            ) as resolve,
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.create_review_draft",
+                return_value=draft,
+            ) as create,
+        ):
+            review_speaker_pair(
+                "video-a",
+                "video-b",
+                reviewer="reviewer-1",
+                evaluation_root=self.evaluation_root,
+                cache_dir=self.root / "cache",
+                open_packet=False,
+                prepare_only=True,
+                base_dir=self.root,
+                selection_manifest_json=None,
+                observation_fingerprint_a=None,
+                observation_fingerprint_b=None,
+            )
+
+        resolve.assert_not_called()
+        self.assertEqual("1" * 64, create.call_args.kwargs["audio_sha256_a"])
+        self.assertEqual("2" * 64, create.call_args.kwargs["audio_sha256_b"])
 
     def test_completed_review_prints_exact_deferred_sync_command(self):
         paths = SimpleNamespace(
@@ -989,6 +1101,11 @@ class SpeakerPairReviewTests(unittest.TestCase):
             patch(
                 "pastor_transcript_extractor.commands.identity.review.Database",
                 return_value=database,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
+                "get_registered_normalized_media_artifact",
+                return_value=None,
             ),
             patch(
                 "pastor_transcript_extractor.commands.identity.review.resolve_normalized_audio_path",
