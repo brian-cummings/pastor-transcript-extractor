@@ -1,0 +1,962 @@
+{
+  "broad_question_pack_version": "topics-v3-mission-discourse-boundary",
+  "candidate_count": 518,
+  "cases": [
+    {
+      "candidate": {
+        "block_id": 41,
+        "candidate_key": "4430:41",
+        "content_role": "principal_sermon",
+        "end_seconds": 1920.0,
+        "leading_context": "He just forgave the whole thing. That's what God has done with us.",
+        "pastor": {
+          "display_name": "Ron Clouzet",
+          "pastor_id": 28,
+          "slug": "churchdb-110"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": true,
+        "reliability": {
+          "analyzable_lexical_word_count": 82,
+          "analyzable_words_per_minute": 82.0,
+          "block_duration_seconds": 60.0,
+          "final_sermon_overlap_seconds": 60.0,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            62,
+            63
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.98,
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "3": 0.02,
+            "4": 0.98
+          },
+          "score": 3.98
+        },
+        "source_request_key": "8db7346e4cb91925b56801b8558fd45b1094aaff5e18a70eb653c8fcf17023ed",
+        "start_seconds": 1860.0,
+        "supporting_or_above_probability": 1.0,
+        "target_text": "That is the news that the entire world needs to hear. We are forgiven. Not we will be forgiven. We are already forgiven. Based on what God has done at the cross, we are forgiven. And that's why you find texts like this that boggle the mind.\nNotice that. He will subdue our inequities. Not ignore our inequities. Not forget that he will subdue it. In other words, his love is such that will smother our inequities and reduce them to nothing.",
+        "title": "Breaking Good News - By Dr. Ron Couzet",
+        "topic_analysis_fingerprint": "b8056cfe4595fe330b3a94a71f6dcb2b39f0640183a65219443fcf965d325a64",
+        "trailing_context": "That is called victory in Christ. You will cast all our sins into the depths of the sea.",
+        "video_id": 4430,
+        "youtube_video_id": "U_qCxrDUAsQ"
+      },
+      "case_id": "clear_route:4430:41",
+      "selection_rationale": "Strongest projection-eligible salvation evidence for this pastor.",
+      "stratum": "clear_route"
+    },
+    {
+      "candidate": {
+        "block_id": 55,
+        "candidate_key": "4430:55",
+        "content_role": "principal_sermon",
+        "end_seconds": 2760.0,
+        "leading_context": "And if any of you, I don't expect any of you to have read any of my articles in Ministry Magazine, which is a professional magazine for pastors, a number of my articles have to do with that. How to reach out",
+        "pastor": {
+          "display_name": "Ron Clouzet",
+          "pastor_id": 28,
+          "slug": "churchdb-110"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": false,
+        "reliability": {
+          "analyzable_lexical_word_count": 134,
+          "analyzable_words_per_minute": 134.0,
+          "block_duration_seconds": 60.0,
+          "final_sermon_overlap_seconds": 60.0,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            90,
+            91
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.83,
+          "probabilities": {
+            "0": 0.19,
+            "1": 0.8,
+            "2": 0.01,
+            "3": 0.0,
+            "4": 0.0
+          },
+          "score": 0.83
+        },
+        "source_request_key": "8c9e8754566bc43259088d5b5b17e8e6bca7fa743c9fdddff73a0a10549487e9",
+        "start_seconds": 2700.0,
+        "supporting_or_above_probability": 0.01,
+        "target_text": "to others. Well, a few years later, this was 1984, okay, some time ago. A few years later, they asked me to actually be the director of NATI. So I was converted by the engagement I did in NATI, and then I was asked to be the director. In 2006, I was asked to be the director of NATI. At that time,\nI had moved from Chicago to the seminary in Michigan. So, we did that. But one of the field schools, and so I did field schools, and I trained students to reach out to others and to put all of these things together, which are fairly complex when you do it well. And then in 2010, we had a field school in North Aurora. That meant I had a number of students working with me,",
+        "title": "Breaking Good News - By Dr. Ron Couzet",
+        "topic_analysis_fingerprint": "b8056cfe4595fe330b3a94a71f6dcb2b39f0640183a65219443fcf965d325a64",
+        "trailing_context": "and we were going to evangelize that town west of Chicago. And we preached every night, and we preached for a month, and we did some work ahead of time, a few weeks ahead of time, and the students were involved.",
+        "video_id": 4430,
+        "youtube_video_id": "U_qCxrDUAsQ"
+      },
+      "case_id": "clear_nonroute:4430:55",
+      "selection_rationale": "Highest incidental-level probability among this pastor's blocks with at most 0.05 Supporting-or-above mass.",
+      "stratum": "clear_nonroute"
+    },
+    {
+      "candidate": {
+        "block_id": 70,
+        "candidate_key": "4458:70",
+        "content_role": "principal_sermon",
+        "end_seconds": 3780.0,
+        "leading_context": "Oh, man. Freely.",
+        "pastor": {
+          "display_name": "David P Ryder",
+          "pastor_id": 39,
+          "slug": "churchdb-144"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": true,
+        "reliability": {
+          "analyzable_lexical_word_count": 158,
+          "analyzable_words_per_minute": 158.0,
+          "block_duration_seconds": 60.0,
+          "final_sermon_overlap_seconds": 60.0,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            88,
+            89
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.94,
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "3": 0.06,
+            "4": 0.94
+          },
+          "score": 3.93
+        },
+        "source_request_key": "fc4d919385af64cec6b0652aa369a27ff73c296dcb3065c4ffe70a9a01aea842",
+        "start_seconds": 3720.0,
+        "supporting_or_above_probability": 1.0,
+        "target_text": "Abundant, merciful grace. Psalms 86, verse five. I like Psalms 55, six and seven. Seek the Lord while he may be found. Call upon him while he was near. Let the wicked forsake his way. That's you and I. Right. And the unrighteous person is thought. Let us return to the Lord and he will have mercy on us and to our God. And he will abundantly pardon. Beautiful.\nBeautiful gospel messages from the word of God. First, John one nine. If we confess our sins, he is faithful and just to forgive us our sins and to cleanse us from all unrighteousness. So why in the world would we doubt the word of God and say, did he really forgive me? I mean, it's a horrible sin I committed. How in the world did he forgive me for that? Why would we doubt it when the Bible claims it, when the Bible proclaims it, when the Bible states it?",
+        "title": "Reformation Part 1  Wycliffe and Tyndale  Pastor Dave",
+        "topic_analysis_fingerprint": "6dbce469db772d340e346b669bb9862ed205263bf84c4f38c76a56d48f132fd0",
+        "trailing_context": "Why would we doubt this? Notice that John Wycliffe was also opposed to the practice of praying to dead saints.",
+        "video_id": 4458,
+        "youtube_video_id": "taLi4yIIaiU"
+      },
+      "case_id": "clear_route:4458:70",
+      "selection_rationale": "Strongest projection-eligible salvation evidence for this pastor.",
+      "stratum": "clear_route"
+    },
+    {
+      "candidate": {
+        "block_id": 22,
+        "candidate_key": "1200:22",
+        "content_role": "principal_sermon",
+        "end_seconds": 722.36,
+        "leading_context": "And his disciples came to him. And so, now he's going to be explaining something more detailed about these parables, okay?",
+        "pastor": {
+          "display_name": "David P Ryder",
+          "pastor_id": 39,
+          "slug": "churchdb-144"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": false,
+        "reliability": {
+          "analyzable_lexical_word_count": 79,
+          "analyzable_words_per_minute": 166.433,
+          "block_duration_seconds": 28.48,
+          "final_sermon_overlap_seconds": 28.48,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            547,
+            548,
+            549,
+            550,
+            551,
+            552,
+            553,
+            554,
+            555,
+            556,
+            557,
+            558,
+            559,
+            560,
+            561,
+            562,
+            563,
+            564,
+            565,
+            566,
+            567,
+            568
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.86,
+          "probabilities": {
+            "0": 0.14,
+            "1": 0.85,
+            "2": 0.0,
+            "3": 0.01,
+            "4": 0.0
+          },
+          "score": 0.9
+        },
+        "source_request_key": "f6987eb77ba7ee368b3678b1b779b6a8cddb408f74f43fcced08e2b48ba5c306",
+        "start_seconds": 693.88,
+        "supporting_or_above_probability": 0.01,
+        "target_text": "parables, okay? So, that's who he's talking to now is the disciples in Matthew chapter 13 verse 44.\nverse 44. So, notice it says the kingdom of heaven is like. How many of you are members of the kingdom of heaven?\nOkay, we got a few. How about How many How many of you think we got 50%? Can we make it 100%? Is that possible? Can we Okay, good. All right. All right. I saw a few hands come up a little late.",
+        "title": "Matthew 13:44 Treasure- Pastor Ryder",
+        "topic_analysis_fingerprint": "b18e4b1161f98873531c52c656e699d39c98c3d2fdb22a01f4da0d00164e15a0",
+        "trailing_context": "little late. Okay, what are you talking about Pastor Dave?",
+        "video_id": 1200,
+        "youtube_video_id": "vBHMiKxBnYs"
+      },
+      "case_id": "clear_nonroute:1200:22",
+      "selection_rationale": "Highest incidental-level probability among this pastor's blocks with at most 0.05 Supporting-or-above mass.",
+      "stratum": "clear_nonroute"
+    },
+    {
+      "candidate": {
+        "block_id": 46,
+        "candidate_key": "4394:46",
+        "content_role": "principal_sermon",
+        "end_seconds": 2550.0,
+        "leading_context": "Who come to Christ and find that Jesus meant exactly what he said that we have to forsake all. And then when we come to him, we realize that God has",
+        "pastor": {
+          "display_name": "Rusty Williams",
+          "pastor_id": 16,
+          "slug": "churchdb-66"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": true,
+        "reliability": {
+          "analyzable_lexical_word_count": 142,
+          "analyzable_words_per_minute": 142.0,
+          "block_duration_seconds": 60.0,
+          "final_sermon_overlap_seconds": 60.0,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            66,
+            67
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.9,
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.01,
+            "2": 0.01,
+            "3": 0.07,
+            "4": 0.91
+          },
+          "score": 3.88
+        },
+        "source_request_key": "c186aac65c78ce608acb1ce5fde78775a5a25fc2fecdaf7f5adda859f3754eaf",
+        "start_seconds": 2490.0,
+        "supporting_or_above_probability": 0.99,
+        "target_text": "given everything for us. I mean, do you feel that this sacrifice he gave is too great a sacrifice to yield everything to Christ. Think about it. Ask yourself the question. What has Christ done for you? What is Christ done for you? People forget the suffering. Of the Son of God. They forget the man of sorrows who is acquainted with grief and had nowhere to lay his head.\nThey don't care to remember that holy brow that was pierced with thorns. They forget him who bearing his own cross fell under its weight. Not merely the burden of the wooden cross. But the heavy burden of sins your sins and my sins. It was laid upon him. They forget the cruel nails that were driven through his tender hands and feet. They forget his agonizing cries. My God, my God.",
+        "title": "\"The Problem with AI\", Pastor Rusty Williams, September 26, 2026",
+        "topic_analysis_fingerprint": "3cfa2cbd8ef69732fa70b498eee4dc5176efd6c9e58ca8ccf3a0033d3e2d35c9",
+        "trailing_context": "Why have you forsaken me? After all the suffering he endured.",
+        "video_id": 4394,
+        "youtube_video_id": "6aO_aOaq4Zs"
+      },
+      "case_id": "clear_route:4394:46",
+      "selection_rationale": "Strongest projection-eligible salvation evidence for this pastor.",
+      "stratum": "clear_route"
+    },
+    {
+      "candidate": {
+        "block_id": 84,
+        "candidate_key": "3974:84",
+        "content_role": "principal_sermon",
+        "end_seconds": 4353.92,
+        "leading_context": "Pastor Spurgeon says to think about it, to think about it. And if we go to the verse that he was speaking of 1 Corinthians chapter 15",
+        "pastor": {
+          "display_name": "Rusty Williams",
+          "pastor_id": 16,
+          "slug": "churchdb-66"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": false,
+        "reliability": {
+          "analyzable_lexical_word_count": 76,
+          "analyzable_words_per_minute": 122.845,
+          "block_duration_seconds": 37.12,
+          "final_sermon_overlap_seconds": 37.12,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            2802,
+            2803,
+            2804,
+            2805,
+            2806,
+            2807,
+            2808,
+            2809,
+            2810,
+            2811,
+            2812,
+            2813,
+            2814,
+            2815,
+            2816,
+            2817,
+            2818,
+            2819,
+            2820,
+            2821,
+            2822,
+            2823,
+            2824
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.78,
+          "probabilities": {
+            "0": 0.2,
+            "1": 0.76,
+            "2": 0.02,
+            "3": 0.01,
+            "4": 0.01
+          },
+          "score": 0.87
+        },
+        "source_request_key": "b03f4cf174e42a0ba165bb438170dfd255ff06a5074ce913ea35d12d7e665a9a",
+        "start_seconds": 4316.8,
+        "supporting_or_above_probability": 0.04,
+        "target_text": "and verse 31, we will find a single\na single sentence with three words. And if you were to wonder what I'm talking about, this is it. I die daily. He gets it right here. We don't have time to get into the the context of 1 Corinthians 15, but Paul says this. He says in 1 Corinthians 15 and verse 31, he says,\"I affirm by the boasting in you which I have in Christ Jesus our Lord, I die daily.\"",
+        "title": "\"As It Is in Heaven\", Pastor Rusty Williams, August 29, 2026",
+        "topic_analysis_fingerprint": "cbdcec5aed7069cf2983668c2bdc99c1035c7ca6ca2aec28ff0251d03b34d418",
+        "trailing_context": "die daily.\" That's it.",
+        "video_id": 3974,
+        "youtube_video_id": "YSZXxgk6J6M"
+      },
+      "case_id": "clear_nonroute:3974:84",
+      "selection_rationale": "Highest incidental-level probability among this pastor's blocks with at most 0.05 Supporting-or-above mass.",
+      "stratum": "clear_nonroute"
+    },
+    {
+      "candidate": {
+        "block_id": 123,
+        "candidate_key": "281:123",
+        "content_role": "principal_sermon",
+        "end_seconds": 5961.84,
+        "leading_context": "Freedom from brokenness and dysfunction and heartache and heartbreak. Freedom",
+        "pastor": {
+          "display_name": "John Bradshaw",
+          "pastor_id": 67,
+          "slug": "john-bradshaw"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": true,
+        "reliability": {
+          "analyzable_lexical_word_count": 139,
+          "analyzable_words_per_minute": 209.759,
+          "block_duration_seconds": 39.76,
+          "final_sermon_overlap_seconds": 39.76,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            4011,
+            4012,
+            4013,
+            4014,
+            4015,
+            4016,
+            4017,
+            4018,
+            4019,
+            4020,
+            4021,
+            4022,
+            4023,
+            4024,
+            4025,
+            4026,
+            4027,
+            4028,
+            4029,
+            4030,
+            4031,
+            4032,
+            4033,
+            4034,
+            4035,
+            4036,
+            4037,
+            4038,
+            4039,
+            4040,
+            4041,
+            4042,
+            4043,
+            4044,
+            4045,
+            4046,
+            4047,
+            4048,
+            4049,
+            4050
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.99,
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "3": 0.01,
+            "4": 0.99
+          },
+          "score": 3.98
+        },
+        "source_request_key": "2003238ef507b0be69c73970c9da384d467e8718ae50351cc4c7f981d84157ab",
+        "start_seconds": 5922.08,
+        "supporting_or_above_probability": 1.0,
+        "target_text": "heartbreak. Freedom because of Jesus who died to set us free. Can you respond to that freedom now? Can you look beyond the the dysfunction of your life and say, \"Jesus, I want you to be my righteousness.\" Can you look beyond uh the missteps and the mistakes and say, \"God will forgive me.\" Can you look at what shouldn't be in your life right now and say, \"I trust Jesus to take it away.\" Can you look towards the mansions in heaven and say, \"There's one there with my name plate on it. He's there preparing a place for me.\" Can you look towards heaven and say, \"I want that more than anything because I looked at the cross and I want him more than anything because on that cross, he decided he wanted me more than anything.\"",
+        "title": "\"The American Experiment: Success or Failure?\", by Pastor John Bradshaw, July 4, 2026",
+        "topic_analysis_fingerprint": "f0f89f4000f3864e8383b739e055b7d1afd2e56a8019ffee75ce87ff6cc9a3db",
+        "trailing_context": "anything.\" What a savior.",
+        "video_id": 281,
+        "youtube_video_id": "55ogga-5CGo"
+      },
+      "case_id": "clear_route:281:123",
+      "selection_rationale": "Strongest projection-eligible salvation evidence for this pastor.",
+      "stratum": "clear_route"
+    },
+    {
+      "candidate": {
+        "block_id": 84,
+        "candidate_key": "281:84",
+        "content_role": "principal_sermon",
+        "end_seconds": 3847.28,
+        "leading_context": "This year, abortion will stop 1.1 million beating hearts. That's the population of Charlotte, North Carolina, and Chattanooga, Tennessee combined.",
+        "pastor": {
+          "display_name": "John Bradshaw",
+          "pastor_id": 67,
+          "slug": "john-bradshaw"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": false,
+        "reliability": {
+          "analyzable_lexical_word_count": 215,
+          "analyzable_words_per_minute": 161.409,
+          "block_duration_seconds": 79.921,
+          "final_sermon_overlap_seconds": 79.921,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            2300,
+            2301,
+            2302,
+            2303,
+            2304,
+            2305,
+            2306,
+            2307,
+            2308,
+            2309,
+            2310,
+            2311,
+            2312,
+            2313,
+            2314,
+            2315,
+            2316,
+            2317,
+            2318,
+            2319,
+            2320,
+            2321,
+            2322,
+            2323,
+            2324,
+            2325,
+            2326,
+            2327,
+            2328,
+            2329,
+            2330,
+            2331,
+            2332,
+            2333,
+            2334,
+            2335,
+            2336,
+            2337,
+            2338,
+            2339,
+            2340,
+            2341,
+            2342,
+            2343,
+            2344,
+            2345,
+            2346,
+            2347,
+            2348,
+            2349,
+            2350,
+            2351,
+            2352,
+            2353,
+            2354,
+            2355,
+            2356,
+            2357,
+            2358,
+            2359,
+            2360,
+            2361,
+            2362,
+            2363,
+            2364,
+            2365
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.98,
+          "probabilities": {
+            "0": 0.01,
+            "1": 0.98,
+            "2": 0.01,
+            "3": 0.0,
+            "4": 0.0
+          },
+          "score": 1.0
+        },
+        "source_request_key": "105df48c4603f7172a45f6eafc1ceddda2d9d86567913f1f72d43d09f031ed84",
+        "start_seconds": 3767.359,
+        "supporting_or_above_probability": 0.01,
+        "target_text": "Tennessee combined. Is that what the framers envisioned? Oh, we don't know anything about contraception, but one day we will, and you can use this for contraception. Be honest. That's what it mostly is. I'm not attacking anyone. I'm simply and I certainly wouldn't attack anyone who's had an abortion. You would need grace and you would want to know that God loves you and forgives you for those things are true. But this is where we the people have taken the country. So that it is a considered a right to end the life of a little human being with a beating heart. Life is supposed to be an unalienable right. And I guess it is unless of course you live inside your mother at which case in which case you have no rights. How are we doing this great American experiment? Institutions of higher learning have become hotbeds of atheism and religious skepticism. Harvard, Yale, Princeton, all founded as schools where ministers of religion should be trained. That's what the intent was of those and others of the Ivy League schools. Today, are we training ministers of religion? I I met a young fellow once. He said, \"I I have a religion degree from Oxford University.\" My first thought was, \"You poor thing.\"",
+        "title": "\"The American Experiment: Success or Failure?\", by Pastor John Bradshaw, July 4, 2026",
+        "topic_analysis_fingerprint": "f0f89f4000f3864e8383b739e055b7d1afd2e56a8019ffee75ce87ff6cc9a3db",
+        "trailing_context": "poor thing.\" And I wanted to say it.",
+        "video_id": 281,
+        "youtube_video_id": "55ogga-5CGo"
+      },
+      "case_id": "clear_nonroute:281:84",
+      "selection_rationale": "Highest incidental-level probability among this pastor's blocks with at most 0.05 Supporting-or-above mass.",
+      "stratum": "clear_nonroute"
+    },
+    {
+      "candidate": {
+        "block_id": 122,
+        "candidate_key": "281:122",
+        "content_role": "principal_sermon",
+        "end_seconds": 5922.08,
+        "leading_context": "all. But how's the experiment working for you?",
+        "pastor": {
+          "display_name": "John Bradshaw",
+          "pastor_id": 67,
+          "slug": "john-bradshaw"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": true,
+        "reliability": {
+          "analyzable_lexical_word_count": 205,
+          "analyzable_words_per_minute": 172.559,
+          "block_duration_seconds": 71.28,
+          "final_sermon_overlap_seconds": 71.28,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            3951,
+            3952,
+            3953,
+            3954,
+            3955,
+            3956,
+            3957,
+            3958,
+            3959,
+            3960,
+            3961,
+            3962,
+            3963,
+            3964,
+            3965,
+            3966,
+            3967,
+            3968,
+            3969,
+            3970,
+            3971,
+            3972,
+            3973,
+            3974,
+            3975,
+            3976,
+            3977,
+            3978,
+            3979,
+            3980,
+            3981,
+            3982,
+            3983,
+            3984,
+            3985,
+            3986,
+            3987,
+            3988,
+            3989,
+            3990,
+            3991,
+            3992,
+            3993,
+            3994,
+            3995,
+            3996,
+            3997,
+            3998,
+            3999,
+            4000,
+            4001,
+            4002,
+            4003,
+            4004,
+            4005,
+            4006,
+            4007,
+            4008,
+            4009,
+            4010
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.13,
+          "probabilities": {
+            "0": 0.05,
+            "1": 0.25,
+            "2": 0.2,
+            "3": 0.31,
+            "4": 0.19
+          },
+          "score": 2.34
+        },
+        "source_request_key": "c9058ce155019ed05a94fe35c4a7145eafe3d626772b904c8893b33be80c38bf",
+        "start_seconds": 5850.8,
+        "supporting_or_above_probability": 0.7,
+        "target_text": "you? How's it working in your life today? When God said, \"I will give you freedom.\" him. He could have taken taken it away. God could have said, \"Here are all the rules for your life. You must follow them.\" He didn't. He said, \"I've given you the Bible to show you what I'm like. I've given you a life to make of it what you will. And I've given you Calvary to inspire you, motivate you, move you in the direction of heaven so that God's will can be done in your life and you can realize your potential.\" Anything short of standing on the sea of glass, what a tragedy. Anything short of singing the song of Moses and the lamb, what a tragedy. Anything short of the first resurrection, anything short of translation, what a tragedy. He's coming back soon. Jesus is coming back soon. What a day it's going to be. You don't want to miss that. You think you experience freedom now. You do to some extent, but wait till that day. Freedom from the penalty of sin. Freedom from the power of sin. Freedom from the presence of sin. Freedom from brokenness and dysfunction and heartache and heartbreak. Freedom",
+        "title": "\"The American Experiment: Success or Failure?\", by Pastor John Bradshaw, July 4, 2026",
+        "topic_analysis_fingerprint": "f0f89f4000f3864e8383b739e055b7d1afd2e56a8019ffee75ce87ff6cc9a3db",
+        "trailing_context": "heartbreak. Freedom because of Jesus who died to set us free.",
+        "video_id": 281,
+        "youtube_video_id": "55ogga-5CGo"
+      },
+      "case_id": "boundary_route:281:122",
+      "selection_rationale": "Closest unused block at or above the proposed route boundary.",
+      "stratum": "boundary_route"
+    },
+    {
+      "candidate": {
+        "block_id": 37,
+        "candidate_key": "1200:37",
+        "content_role": "principal_sermon",
+        "end_seconds": 1523.59,
+        "leading_context": "But if our gospel be hid, right? If our gospel be hid, >> [clears throat]",
+        "pastor": {
+          "display_name": "David P Ryder",
+          "pastor_id": 39,
+          "slug": "churchdb-144"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": true,
+        "reliability": {
+          "analyzable_lexical_word_count": 197,
+          "analyzable_words_per_minute": 148.213,
+          "block_duration_seconds": 79.75,
+          "final_sermon_overlap_seconds": 79.75,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            1211,
+            1212,
+            1213,
+            1214,
+            1215,
+            1216,
+            1217,
+            1218,
+            1219,
+            1220,
+            1221,
+            1222,
+            1223,
+            1224,
+            1225,
+            1226,
+            1227,
+            1228,
+            1229,
+            1230,
+            1231,
+            1232,
+            1233,
+            1234,
+            1235,
+            1236,
+            1237,
+            1238,
+            1239,
+            1240,
+            1241,
+            1242,
+            1243,
+            1244,
+            1245,
+            1246,
+            1247,
+            1248,
+            1249,
+            1250,
+            1251,
+            1252,
+            1253,
+            1254,
+            1255,
+            1256,
+            1257,
+            1258,
+            1259,
+            1260,
+            1261,
+            1262,
+            1263,
+            1264,
+            1265,
+            1266,
+            1267,
+            1268,
+            1269,
+            1270,
+            1271
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.39,
+          "probabilities": {
+            "0": 0.02,
+            "1": 0.28,
+            "2": 0.36,
+            "3": 0.26,
+            "4": 0.08
+          },
+          "score": 2.09
+        },
+        "source_request_key": "4c5e134de43e47841d5c993a06561776fc111ac2ed4aa9bdb2e3f4517e2f8fc3",
+        "start_seconds": 1443.84,
+        "supporting_or_above_probability": 0.7,
+        "target_text": ">> [clears throat] >> it is hid to them that are lost, lost, in whom the god of this world had Who's the god of this world? Satan. It's little g, you see that? Hath blinded the minds of them which believed not, lest the light of the glorious gospel of Christ, who is the image of God, should shine upon them. The devil does a good job of hiding the gospel, doesn't he? Look at the religious elites of Jesus' day. Why didn't they accept him as the Messiah? Why didn't they accept him as the Christ? Why didn't they see that he was the one fulfilling the scriptures, right? Because of their pride, worldly ambition, thirst for power, selfishness, secular philosophy, human interpretations, traditions not in harmony with the scriptures, our cherished sins. Notice John 12:42 and 43. Nevertheless, even among the rulers, many believed in him, but because of the Pharisees, they did not confess Christ lest they should be put out of the synagogue, for they loved the praise of men more than the praise of God. What was their focus? They were searching for worldly treasure that passes away instead of heavenly treasure that endures forever.",
+        "title": "Matthew 13:44 Treasure- Pastor Ryder",
+        "topic_analysis_fingerprint": "b18e4b1161f98873531c52c656e699d39c98c3d2fdb22a01f4da0d00164e15a0",
+        "trailing_context": "So, the pride of the these religious leaders kept them from understanding the truths in the scriptures. So, here's Jesus talking with the scribes and the Pharisees.",
+        "video_id": 1200,
+        "youtube_video_id": "vBHMiKxBnYs"
+      },
+      "case_id": "boundary_route:1200:37",
+      "selection_rationale": "Closest unused block at or above the proposed route boundary.",
+      "stratum": "boundary_route"
+    },
+    {
+      "candidate": {
+        "block_id": 32,
+        "candidate_key": "4589:32",
+        "content_role": "principal_sermon",
+        "end_seconds": 1440.0,
+        "leading_context": "ing and falling on your knees nothing glamorous about that taking time to read your bible when you might not feel like it nothing glamorous about that but these are the the routine mundane things that we just gotta do in order for there to be victory now temptation comes and Jesus is calling you to surrender and that doesn't always sound exciting but that's when we say not my will thy will be done",
+        "pastor": {
+          "display_name": "John Bradshaw",
+          "pastor_id": 67,
+          "slug": "john-bradshaw"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": false,
+        "reliability": {
+          "analyzable_lexical_word_count": 169,
+          "analyzable_words_per_minute": 169.0,
+          "block_duration_seconds": 60.0,
+          "final_sermon_overlap_seconds": 60.0,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            46,
+            47
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.44,
+          "probabilities": {
+            "0": 0.01,
+            "1": 0.3,
+            "2": 0.41,
+            "3": 0.21,
+            "4": 0.07
+          },
+          "score": 2.04
+        },
+        "source_request_key": "68728c0f9323377a47b29c543f3e8b69f11da0f5da1e089ea82b858f697b9a97",
+        "start_seconds": 1380.0,
+        "supporting_or_above_probability": 0.69,
+        "target_text": "we turn control of our lives over to Jesus and the power of God reasserts itself in that situation and we are delivered from sin rather than being delivered into sin you don't want to get tired of doing those things that you might have been doing every day many times a day all your life hang in there with Jesus and keep on letting Jesus do his work don't get tired of the basics read your bible pray every day\ncome to church get involved in bible study share your faith the battle doesn't end and thank God you don't want it to end and you don't need it to end because the battle is not yours but it is God's here's the big problem I'm gonna tell you the big problem devil goes back goes back to the person he once inhabited and finds that person empty and swept and garnished I wondered about that word garnish yeah that's not the word that appears in every translation",
+        "title": "Demons & Dry Places by John Bradshaw | Partnership 2024 Friday Night Program",
+        "topic_analysis_fingerprint": "aa4aee37ec7375f7490162c89b1ae48a7d059e7b8c106601465848d8a689e0b2",
+        "trailing_context": "garnished now it's the word the Greek word cosmos or cosmeo it depends on how you see this thing cosmos that's where we get the word well cosmos from which means order so the devil finds this person in order but I think I heard it said over here we also get the word cosmetics from that word meaning where Jesus is saying empty and swept and garnished it's as though that person has been made to look",
+        "video_id": 4589,
+        "youtube_video_id": "uGQDKn4uNJM"
+      },
+      "case_id": "boundary_nonroute:4589:32",
+      "selection_rationale": "Closest unused block below the proposed route boundary.",
+      "stratum": "boundary_nonroute"
+    },
+    {
+      "candidate": {
+        "block_id": 39,
+        "candidate_key": "590:39",
+        "content_role": "principal_sermon",
+        "end_seconds": 1735.72,
+        "leading_context": "They were not given But we find that the law was written on their hearts. Wow.",
+        "pastor": {
+          "display_name": "Rusty Williams",
+          "pastor_id": 16,
+          "slug": "churchdb-66"
+        },
+        "projection_eligibility": {
+          "eligible": true,
+          "exclusion_reasons": [],
+          "policy_version": "sermon-topic-full-block-role-density-v1"
+        },
+        "proposed_route": false,
+        "reliability": {
+          "analyzable_lexical_word_count": 159,
+          "analyzable_words_per_minute": 163.918,
+          "block_duration_seconds": 58.2,
+          "final_sermon_overlap_seconds": 58.2,
+          "non_analyzable": false,
+          "retained_source_segment_indexes": [
+            313,
+            314,
+            315,
+            316,
+            317,
+            318,
+            319,
+            320,
+            321,
+            322,
+            323,
+            324,
+            325,
+            326
+          ],
+          "sparse": false,
+          "version": "topic-density-v1"
+        },
+        "salvation_gospel": {
+          "confidence": 0.0,
+          "probabilities": {
+            "0": 0.03,
+            "1": 0.3,
+            "2": 0.18,
+            "3": 0.26,
+            "4": 0.23
+          },
+          "score": 2.35
+        },
+        "source_request_key": "c5b730c880ca38f234252134f62e74cd3d7b56c076c1a7441e38ab1576cd473c",
+        "start_seconds": 1677.52,
+        "supporting_or_above_probability": 0.67,
+        "target_text": "law, though not having a law of themselves show the work of the law\nwritten in their hearts. And their conscience, guess what? Either\naccusing or And here's the catch, perhaps excusing them\nin the day of judgment. I believe there will be\npeople there in God's kingdom\nthat are followers after the spirit of God because I believe God is very fair\nand he will judge every human being fairly.\nWhether they were born in a great place and heard everything like this United\nStates where you've got a church around every corner.\nI mean, church is everywhere. Or they just were born in this very odd\nplace and sought the spirit of God and followed the\nspirit of God. I believe there will be people in the heaven according to Paul\nwho followed after the spirit of God. They didn't know about it, but they knew\nthat was the right way. And they'll be in the kingdom.",
+        "title": "\"What More Could I Have Done\", Pastor Rusty Williams, June 6, 2026",
+        "topic_analysis_fingerprint": "ab15a84954df61de19f1b2da84a88ed8dc18e7b48fa55d398ce824a4c4d7d036",
+        "trailing_context": "in the early '50s, traveling back from Palestine to relieve the poor, and he intended to visit the church in Rome and then go on to Spain, but he wants them to understand about the universal sinfulness of man and the universal grace of God. And in providing a way where sinners may not only be pardoned from sin, but restored to perfection and holiness and that the way the way is Jesus Christ.",
+        "video_id": 590,
+        "youtube_video_id": "y4PshEBQrwU"
+      },
+      "case_id": "boundary_nonroute:590:39",
+      "selection_rationale": "Closest unused block below the proposed route boundary.",
+      "stratum": "boundary_nonroute"
+    }
+  ],
+  "clear_nonroute_maximum": 0.05,
+  "cohort_sha256": "60d7bab6f8bddb3d154a333ae050446e1439ac737b1930c31c73614631c9c439",
+  "input_fingerprint": "3a296603f3500f780440f675b2cf9c0daf9065648ee3e358dc258ccbc4563f15",
+  "interpretation": "This packet calibrates whether cached broad salvation evidence is sufficient to request a separate leaf pack. It does not evaluate the leaf judgments and does not authorize provider calls.",
+  "policy_version": "salvation-leaf-route-calibration-v1",
+  "proposed_route_count": 94,
+  "proposed_route_threshold": 0.7,
+  "readiness_input_fingerprint": "3b8763eea4ecce4c1830a9a29351873ced29d4b7ef8b977635b24de85e190122",
+  "route_policy_active": false,
+  "routing_signal": "salvation_gospel_supporting_or_above_probability",
+  "schema_version": 1,
+  "status": "proposal_pending_review"
+}

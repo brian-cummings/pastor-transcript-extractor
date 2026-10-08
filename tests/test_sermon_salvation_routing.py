@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 from pastor_transcript_extractor.models import Video, VideoStatus
 from pastor_transcript_extractor.sermon_salvation_routing import (
+    PRIOR_CALIBRATION_FINGERPRINT,
+    PROPOSED_SALVATION_ROUTE_THRESHOLD,
     build_salvation_routing_review_packet,
     write_salvation_routing_review,
 )
@@ -104,12 +106,12 @@ class SalvationRoutingReviewTests(unittest.TestCase):
             "blocks": [
                 _block(offset + 1, 0.95),
                 _block(offset + 2, 0.02),
-                _block(offset + 3, 0.71),
-                _block(offset + 4, 0.69),
+                _block(offset + 3, 0.66),
+                _block(offset + 4, 0.64),
             ],
         }
 
-    def test_packet_samples_clear_and_boundary_cases_without_activating_route(
+    def test_packet_samples_only_revised_boundary_without_activating_route(
         self,
     ) -> None:
         gates = {
@@ -153,15 +155,25 @@ class SalvationRoutingReviewTests(unittest.TestCase):
 
         self.assertEqual(8, packet["candidate_count"])
         self.assertEqual(4, packet["proposed_route_count"])
-        self.assertEqual(8, len(packet["cases"]))
+        self.assertEqual(0.65, PROPOSED_SALVATION_ROUTE_THRESHOLD)
+        self.assertEqual(
+            PRIOR_CALIBRATION_FINGERPRINT,
+            packet["prior_calibration"]["input_fingerprint"],
+        )
+        self.assertEqual(4, len(packet["cases"]))
         self.assertEqual(
             {
-                "clear_route",
-                "clear_nonroute",
                 "boundary_route",
                 "boundary_nonroute",
             },
             {case["stratum"] for case in packet["cases"]},
+        )
+        self.assertEqual(
+            [0.64, 0.64, 0.66, 0.66],
+            sorted(
+                case["candidate"]["supporting_or_above_probability"]
+                for case in packet["cases"]
+            ),
         )
         self.assertFalse(packet["route_policy_active"])
         self.assertEqual(packet["input_fingerprint"], replay["input_fingerprint"])

@@ -1010,14 +1010,20 @@ theological stance.
     is frozen in `stage4-topic-stability-audit-v1.md`; report status remains
     `diagnostic_only_threshold_not_calibrated` and comparative use remains
     disabled.
+44. Salvation-routing calibration v1 reused all 518 projection-eligible cached
+    blocks and called no provider. Its clear route and incidental strata
+    validated `P(salvation_gospel >= Supporting)` as the conditional leaf
+    signal, but the proposed `0.70` boundary rejected two genuine leaf cases at
+    `0.69` and `0.67`. Audit fingerprint `3a296603f350...` therefore retains
+    the signal, rejects the boundary, and leaves routing inactive. The v2
+    proposal lowers the boundary to `0.65` and samples only four new boundary
+    cases; it does not repeat the eight already-resolved clear anchors.
 
 ### Next iteration
 
-1. Prepare a bounded salvation-routing calibration packet from the twelve
-   reviewed sermons' projection-eligible cached blocks. Include clear routes,
-   clear non-routes, and borderline distributions without rerunning the broad
-   pack or calling TypeSafe.
-2. After approving a deterministic route policy, implement
+1. Review the four-case, cached v2 salvation-routing boundary packet at `0.65`.
+   Do not rerun the broad pack or call TypeSafe.
+2. If the boundary passes, activate the deterministic route policy and implement
    `salvation-relationships-v1` as the first conditional leaf pack. Keep its
    cache and question identity independent of the broad topic pack and later
    revisions.
