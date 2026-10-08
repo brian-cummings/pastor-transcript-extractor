@@ -1,8 +1,0 @@
-{
-  "notes": "Proposed review: accept all displayed topic levels and projection decisions for the reviewed first-service sermon window. The final mixed block crosses the exact reviewed boundary and is conservatively excluded by the full-block policy; the following music and later service material remain outside preacher attribution. No topic-level disagreement in the reviewed sermon is strong enough to override its modal interpretation. Preserve low-confidence distributions as genuine uncertainty.",
-  "projection_eligibility_corrections": [],
-  "schema_version": 1,
-  "source_packet_fingerprint": "71fbf6d7517ce62d1855d0ac6006c80e848bc8152172a25e77b502ce00b67a8b",
-  "topic_level_corrections": [],
-  "workflow_version": "topic-review-proposal-v1"
-}
