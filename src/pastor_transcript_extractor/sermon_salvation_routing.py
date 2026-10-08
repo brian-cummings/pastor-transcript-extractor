@@ -25,12 +25,14 @@ from pastor_transcript_extractor.storage import Database
 
 
 SALVATION_ROUTING_REVIEW_SCHEMA_VERSION = 1
-SALVATION_ROUTING_REVIEW_POLICY_VERSION = "salvation-leaf-route-calibration-v1"
+SALVATION_ROUTING_REVIEW_POLICY_VERSION = "salvation-leaf-route-calibration-v2"
 SALVATION_ROUTING_SIGNAL = "salvation_gospel_supporting_or_above_probability"
-PROPOSED_SALVATION_ROUTE_THRESHOLD = 0.70
-CLEAR_NONROUTE_MAXIMUM = 0.05
+PROPOSED_SALVATION_ROUTE_THRESHOLD = 0.65
+PRIOR_CALIBRATION_FINGERPRINT = (
+    "3a296603f3500f780440f675b2cf9c0daf9065648ee3e358dc258ccbc4563f15"
+)
 DEFAULT_SALVATION_ROUTING_REVIEW_OUTPUT = Path(
-    "evaluation/sermon-topics/salvation-routing-calibration-v1.json"
+    "evaluation/sermon-topics/salvation-routing-calibration-v2.json"
 )
 
 
@@ -130,60 +132,6 @@ def _review_cases(candidates: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
                 "selection_rationale": rationale,
                 "candidate": candidate,
             }
-        )
-
-    pastors = sorted(
-        {str(candidate["pastor"].get("slug")) for candidate in candidates}
-    )
-    for pastor in pastors:
-        pastor_candidates = [
-            candidate
-            for candidate in candidates
-            if str(candidate["pastor"].get("slug")) == pastor
-        ]
-        strongest = max(
-            pastor_candidates,
-            key=lambda item: (
-                float(item["supporting_or_above_probability"]),
-                float(item["salvation_gospel"]["score"]),
-                -int(item["video_id"]),
-                -int(item["block_id"]),
-            ),
-        )
-        selected_keys.add(str(strongest["candidate_key"]))
-        add(
-            "clear_route",
-            "Strongest projection-eligible salvation evidence for this pastor.",
-            strongest,
-        )
-
-        nonroutes = [
-            candidate
-            for candidate in pastor_candidates
-            if float(candidate["supporting_or_above_probability"])
-            <= CLEAR_NONROUTE_MAXIMUM
-        ]
-        if not nonroutes:
-            raise ValueError(
-                f"No clear salvation non-route is available for pastor {pastor}"
-            )
-        hard_nonroute = max(
-            nonroutes,
-            key=lambda item: (
-                float(item["salvation_gospel"]["probabilities"]["1"]),
-                float(item["salvation_gospel"]["score"]),
-                -int(item["video_id"]),
-                -int(item["block_id"]),
-            ),
-        )
-        selected_keys.add(str(hard_nonroute["candidate_key"]))
-        add(
-            "clear_nonroute",
-            (
-                "Highest incidental-level probability among this pastor's blocks "
-                "with at most 0.05 Supporting-or-above mass."
-            ),
-            hard_nonroute,
         )
 
     above = sorted(
@@ -303,7 +251,10 @@ def build_salvation_routing_review_packet(
         "broad_question_pack_version": TOPIC_PACK_VERSION,
         "routing_signal": SALVATION_ROUTING_SIGNAL,
         "proposed_route_threshold": PROPOSED_SALVATION_ROUTE_THRESHOLD,
-        "clear_nonroute_maximum": CLEAR_NONROUTE_MAXIMUM,
+        "prior_calibration": {
+            "input_fingerprint": PRIOR_CALIBRATION_FINGERPRINT,
+            "decision": "boundary_rejected_signal_retained",
+        },
         "candidate_count": len(candidates),
         "proposed_route_count": route_count,
         "cases": cases,
@@ -314,9 +265,10 @@ def build_salvation_routing_review_packet(
         "status": "proposal_pending_review",
         "route_policy_active": False,
         "interpretation": (
-            "This packet calibrates whether cached broad salvation evidence is "
-            "sufficient to request a separate leaf pack. It does not evaluate "
-            "the leaf judgments and does not authorize provider calls."
+            "The v1 clear strata validated this cached routing signal, but its "
+            "0.70 boundary produced two false non-routes. This boundary-only "
+            "revision tests 0.65 without repeating the approved clear anchors. "
+            "It does not evaluate leaf judgments or authorize provider calls."
         ),
     }
 
@@ -330,15 +282,19 @@ def render_salvation_routing_review(packet: Mapping[str, Any]) -> str:
         f"- Broad pack: `{packet['broad_question_pack_version']}`",
         f"- Signal: `{packet['routing_signal']}`",
         f"- Proposed route boundary: `{packet['proposed_route_threshold']:.2f}`",
+        "- Prior calibration: "
+        f"`{packet['prior_calibration']['input_fingerprint']}` "
+        f"(`{packet['prior_calibration']['decision']}`)",
         f"- Eligible cached blocks: `{packet['candidate_count']}`",
         f"- Blocks that would route: `{packet['proposed_route_count']}`",
         f"- Packet fingerprint: `{packet['input_fingerprint']}`",
         "",
         str(packet["interpretation"]),
         "",
-        "Review whether each target contains enough developed salvation content "
-        "to justify the cost of a separate relationship pack. Context may clarify "
-        "the target but cannot independently establish the route.",
+        "Review only these four boundary targets. Decide whether each contains "
+        "enough developed salvation content to justify a separate relationship "
+        "pack. Context may clarify the target but cannot independently establish "
+        "the route.",
         "",
     ]
     for case in packet["cases"]:
