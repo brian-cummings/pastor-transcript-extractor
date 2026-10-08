@@ -23,6 +23,7 @@ from pastor_transcript_extractor.sermon_topic_projection import (
 from pastor_transcript_extractor.sermon_topics import (
     TOPICS,
     resolve_topic_analysis_artifact,
+    resolve_topic_block_context,
 )
 from pastor_transcript_extractor.storage import Database
 
@@ -205,7 +206,7 @@ def _evidence_rows(
                     )
                 start = block.get("start_seconds")
                 end = block.get("end_seconds")
-                excerpt = block.get("target_text")
+                excerpt = resolve_topic_block_context(block).get("target_text")
                 if not isinstance(excerpt, str):
                     raise ValueError(
                         f"TypeSafe topic evidence block {block_id!r} has no text"

@@ -98,7 +98,11 @@ class SermonTopicProfileAnalysisTests(unittest.TestCase):
                     "block_id": 1,
                     "start_seconds": 0.0,
                     "end_seconds": 60.0,
-                    "target_text": "A cached sermon topic evidence block.",
+                    "context": {
+                        "leading_context": "",
+                        "target_text": "A cached sermon topic evidence block.",
+                        "trailing_context": "",
+                    },
                     "content_role": "principal_sermon",
                     "projection_eligibility": {
                         "eligible": True,

@@ -93,6 +93,23 @@ def resolve_topic_analysis_artifact(
     raise ValueError("Classification has no cached TypeSafe topic analysis")
 
 
+def resolve_topic_block_context(block: Mapping[str, Any]) -> dict[str, Any]:
+    """Return one topic block's context across supported artifact layouts."""
+    raw_context = block.get("context")
+    context = dict(raw_context) if isinstance(raw_context, Mapping) else {}
+    # Early cached/test artifacts placed these fields directly on the block.
+    # Keep that layout readable without duplicating compatibility branches in
+    # every downstream cached-evidence consumer.
+    for key in ("leading_context", "target_text", "trailing_context"):
+        if key not in context and isinstance(block.get(key), str):
+            context[key] = block[key]
+    if "diagnostics" not in context and isinstance(
+        block.get("context_diagnostics"), Mapping
+    ):
+        context["diagnostics"] = dict(block["context_diagnostics"])
+    return context
+
+
 def topic_question_id(position: int, topic: str) -> str:
     if topic not in TOPIC_SPECS:
         raise ValueError(f"Unknown topic: {topic}")
