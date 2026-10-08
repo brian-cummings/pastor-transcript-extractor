@@ -28,6 +28,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeFirstPassSermonClassifier,
     TypeSafeRecordingGateAnswer,
     MAX_FINE_QUESTION_BUDGET,
+    ROLE_CONTEXT_MAX_CHARS_PER_BLOCK,
     ROLE_PACK,
     TOPIC_PACK,
     TREATMENT_PACK,
@@ -38,6 +39,8 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     _hash,
     _semantic_analysis_artifact,
     _topic_analysis_artifact,
+    build_role_contexts,
+    role_question,
 )
 from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_ANALYSIS_QUESTION_VERSION,
@@ -90,6 +93,7 @@ class FakeBlockClient:
         collect_semantic_analysis=False,
         collect_topic_analysis=False,
         requested_packs=None,
+        role_contexts=None,
         topic_contexts=None,
     ):
         self.recording_contexts.append(dict(recording_context))
@@ -368,6 +372,55 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertLessEqual(
             context.diagnostics["trailing"]["selected_sentence_units"], 2
         )
+
+    def test_role_context_is_bounded_stable_and_preserves_two_block_continuity(self) -> None:
+        blocks = [
+            TranscriptBlock(
+                index,
+                [index],
+                float(index * 60),
+                float((index + 1) * 60),
+                text,
+            )
+            for index, text in enumerate(
+                (
+                    "Spoken sermon conclusion.",
+                    "The speaker announces a performed selection. " + "x" * 700,
+                    "Performed theological words continue.",
+                    "More performed words continue.",
+                    "The speaker returns to spoken exhortation.",
+                )
+            )
+        ]
+
+        context = build_role_contexts(blocks)[3].state_payload()
+
+        self.assertEqual(
+            [1, 2],
+            [item["block_id"] for item in context["preceding_blocks"]],
+        )
+        self.assertEqual(
+            [4],
+            [item["block_id"] for item in context["following_blocks"]],
+        )
+        self.assertTrue(
+            all(
+                len(item["text"]) <= ROLE_CONTEXT_MAX_CHARS_PER_BLOCK
+                for side in ("preceding_blocks", "following_blocks")
+                for item in context[side]
+            )
+        )
+        self.assertEqual("role-adjacent-fine-blocks-v1", context["policy_version"])
+
+    def test_role_question_states_general_music_and_prayer_boundaries(self) -> None:
+        boundary = role_question()["instructions"]["boundary"]
+
+        self.assertIn("regardless of instrumentation", boundary)
+        self.assertIn("performer identity", boundary)
+        self.assertIn("theological alignment", boundary)
+        self.assertIn("clear return to spoken exhortation", boundary)
+        self.assertIn("immediately continues the concluding appeal", boundary)
+        self.assertIn("intervening service material", boundary)
 
     def test_topic_context_normalizes_rolling_caption_fragments(self) -> None:
         transcript = [
@@ -743,6 +796,85 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(
             enriched[block.block_id].topic_scores,
             replay[block.block_id].topic_scores,
+        )
+
+    def test_changed_role_context_recomputes_only_role_pack(self) -> None:
+        client = FakeBlockClient()
+        blocks = [
+            TranscriptBlock(1, [0], 0.0, 60.0, "Music is introduced."),
+            TranscriptBlock(2, [1], 60.0, 120.0, "SERMON target text."),
+            TranscriptBlock(3, [2], 120.0, 180.0, "Spoken conclusion."),
+        ]
+        target = blocks[1]
+        topic_contexts = {
+            target.block_id: build_topic_context(
+                [
+                    SegmentDraft(
+                        0.0,
+                        60.0,
+                        blocks[0].text,
+                        None,
+                        TranscriptSegmentLabel.UNKNOWN,
+                        0.5,
+                    ),
+                    SegmentDraft(
+                        60.0,
+                        120.0,
+                        target.text,
+                        None,
+                        TranscriptSegmentLabel.UNKNOWN,
+                        0.5,
+                    ),
+                    SegmentDraft(
+                        120.0,
+                        180.0,
+                        blocks[2].text,
+                        None,
+                        TranscriptSegmentLabel.UNKNOWN,
+                        0.5,
+                    ),
+                ],
+                target,
+            )
+        }
+        first_role_context = {target.block_id: build_role_contexts(blocks)[target.block_id]}
+        changed_neighbors = [
+            TranscriptBlock(1, [0], 0.0, 60.0, "A service prayer is introduced."),
+            target,
+            blocks[2],
+        ]
+        changed_role_context = {
+            target.block_id: build_role_contexts(changed_neighbors)[target.block_id]
+        }
+        context = {"metadata": {"title": "Worship Service"}}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            cache.assess(
+                client,
+                context,
+                [target],
+                collect_semantic_analysis=True,
+                collect_topic_analysis=True,
+                role_contexts=first_role_context,
+                topic_contexts=topic_contexts,
+            )
+            cache.assess(
+                client,
+                context,
+                [target],
+                collect_semantic_analysis=True,
+                collect_topic_analysis=True,
+                role_contexts=changed_role_context,
+                topic_contexts=topic_contexts,
+            )
+
+        self.assertEqual(
+            [
+                frozenset({ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}),
+                frozenset({ROLE_PACK}),
+            ],
+            client.requested_packs,
         )
 
     def test_explicit_pack_assessment_can_request_topics_without_role(self) -> None:

@@ -32,6 +32,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     ROLE_PACK,
     TOPIC_PACK,
     TREATMENT_PACK,
+    build_role_contexts,
 )
 from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_DIMENSIONS
 from pastor_transcript_extractor.sermon_topics import TOPICS, TopicBlockContext
@@ -124,6 +125,7 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
             {"metadata": {"title": "Grace"}},
             [block],
             requested_packs=frozenset({ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}),
+            role_contexts={block.block_id: build_role_contexts([block])[block.block_id]},
             topic_contexts={block.block_id: topic_context},
         )[block.block_id]
 
@@ -131,6 +133,12 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
         self.assertEqual(
             {"leading_context", "target_text", "trailing_context"},
             set(captured["state"]["topic_blocks"][0]),
+        )
+        self.assertEqual(
+            "role-adjacent-fine-blocks-v1",
+            captured["state"]["target_blocks"][0]["adjacent_context"][
+                "policy_version"
+            ],
         )
         self.assertEqual(set(TOPICS), set(result.topic_scores))
         self.assertEqual({"0", "1", "2", "3", "4"}, set(result.topic_scores[TOPICS[0]]["probabilities"]))

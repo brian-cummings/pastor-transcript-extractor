@@ -53,6 +53,7 @@ class FixtureAnswerClient:
         collect_semantic_analysis=False,
         collect_topic_analysis=False,
         requested_packs=None,
+        role_contexts=None,
         topic_contexts=None,
     ):
         del recording_context, collect_semantic_analysis, collect_topic_analysis

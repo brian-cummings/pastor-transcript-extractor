@@ -46,7 +46,7 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SEARCH_ALGORITHM_VERSION = "typesafe_first_v16_topic_review_packets"
-QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v3-coarse-parent-aware"
+QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v4-local-role-context"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
 BLOCK_BUILDER_VERSION = "typesafe-normalized-component-bounded-boundaries-v6"
 COARSE_DISCOVERY_VERSION = "typesafe-batched-recording-aware-role-map-v2"
@@ -68,6 +68,9 @@ BATCH_SIZE = 6
 # Field runs with the full role + treatment + topic pack showed that 150 output
 # questions can exceed Jev's request budget even when the target text is bounded.
 MAX_FINE_QUESTION_BUDGET = 75
+ROLE_CONTEXT_POLICY_VERSION = "role-adjacent-fine-blocks-v1"
+ROLE_CONTEXT_BLOCKS_PER_SIDE = 2
+ROLE_CONTEXT_MAX_CHARS_PER_BLOCK = 500
 MAX_SPARSE_CLOSING_PRAYER_GAP_BLOCKS = 3
 MAX_SPARSE_CLOSING_PRAYER_GAP_SECONDS = 180.0
 STRONG_NONSERMON_SEPARATOR_PROBABILITY = 0.8
@@ -115,14 +118,24 @@ def role_question() -> dict[str, Any]:
                 "Judge whether the principal worship-service sermon is underway in "
                 "this block. Use the supplied recording metadata, recording outline, "
                 "block position, deterministic candidate, and any supplied coarse-parent "
-                "finding as supporting context. A coarse-parent finding is an advisory "
-                "prior, not ground truth; independently judge the finer transcript block."
+                "finding or adjacent fine blocks as supporting context. Adjacent blocks "
+                "clarify continuity and transitions but are not part of the target block. "
+                "A coarse-parent finding is an advisory prior, not ground truth; "
+                "independently judge the finer transcript block."
             ),
             "boundary": (
                 "A children's feature, lesson study, Bible class, announcements, "
                 "music, or a standalone service prayer is not the principal sermon. "
+                "Performed or sung lyrics remain music regardless of instrumentation, "
+                "performer identity, theological alignment with the sermon, or rhetorical "
+                "function. A clear return to spoken exhortation can resume the principal "
+                "sermon. "
                 "Brief prayer, Scripture reading, illustration, or audience response "
-                "inside one sustained preacher's message remains part of the sermon."
+                "inside one sustained preacher's message remains part of the sermon. "
+                "Treat a closing prayer as sermon-integrated only when the same preacher "
+                "immediately continues the concluding appeal and its themes; a prayer "
+                "after a handoff, intervening service material, or by another speaker is "
+                "a separate service element."
             ),
         },
         "criteria": {
@@ -149,6 +162,64 @@ def role_question() -> dict[str, Any]:
             ),
             "unclear": "The block lacks enough coherent evidence for another role.",
         },
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class RoleBlockContext:
+    """Bounded neighboring fine blocks used only to classify content role."""
+
+    preceding_blocks: tuple[Mapping[str, Any], ...]
+    following_blocks: tuple[Mapping[str, Any], ...]
+
+    def state_payload(self) -> dict[str, Any]:
+        return {
+            "policy_version": ROLE_CONTEXT_POLICY_VERSION,
+            "preceding_blocks": [dict(item) for item in self.preceding_blocks],
+            "following_blocks": [dict(item) for item in self.following_blocks],
+        }
+
+
+def _role_neighbor_payload(
+    block: TranscriptBlock,
+    *,
+    preceding: bool,
+) -> dict[str, Any]:
+    text = re.sub(r"\s+", " ", block.text).strip()
+    if len(text) > ROLE_CONTEXT_MAX_CHARS_PER_BLOCK:
+        text = (
+            text[-ROLE_CONTEXT_MAX_CHARS_PER_BLOCK :].lstrip()
+            if preceding
+            else text[:ROLE_CONTEXT_MAX_CHARS_PER_BLOCK].rstrip()
+        )
+    return {
+        "block_id": block.block_id,
+        "start_seconds": block.start_seconds,
+        "end_seconds": block.end_seconds,
+        "text": text,
+    }
+
+
+def build_role_contexts(
+    blocks: list[TranscriptBlock],
+) -> dict[int, RoleBlockContext]:
+    """Build stable per-block neighborhoods independent of provider batching."""
+    return {
+        block.block_id: RoleBlockContext(
+            preceding_blocks=tuple(
+                _role_neighbor_payload(neighbor, preceding=True)
+                for neighbor in blocks[
+                    max(0, position - ROLE_CONTEXT_BLOCKS_PER_SIDE) : position
+                ]
+            ),
+            following_blocks=tuple(
+                _role_neighbor_payload(neighbor, preceding=False)
+                for neighbor in blocks[
+                    position + 1 : position + 1 + ROLE_CONTEXT_BLOCKS_PER_SIDE
+                ]
+            ),
+        )
+        for position, block in enumerate(blocks)
     }
 
 
@@ -258,6 +329,7 @@ class TypeSafeBlockClient(Protocol):
         collect_semantic_analysis: bool = False,
         collect_topic_analysis: bool = False,
         requested_packs: frozenset[str] | None = None,
+        role_contexts: Mapping[int, RoleBlockContext] | None = None,
         topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> Mapping[int, TypeSafeBlockAnswer]: ...
 
@@ -383,6 +455,7 @@ class TypeSafeBlockCache:
         block: TranscriptBlock,
         *,
         pack: str,
+        role_context: RoleBlockContext | None,
         topic_context: TopicBlockContext | None,
     ) -> dict[str, Any]:
         block_identity = {
@@ -412,6 +485,11 @@ class TypeSafeBlockCache:
                     "question": role_question(),
                     "recording_context": _recording_context_for_blocks(
                         recording_context, [block]
+                    ),
+                    "role_context": (
+                        role_context.state_payload()
+                        if role_context is not None
+                        else None
                     ),
                 }
             )
@@ -601,6 +679,7 @@ class TypeSafeBlockCache:
         *,
         collect_semantic_analysis: bool = False,
         collect_topic_analysis: bool = False,
+        role_contexts: Mapping[int, RoleBlockContext] | None = None,
         topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> dict[int, TypeSafeBlockAnswer]:
         requested = {ROLE_PACK}
@@ -613,6 +692,7 @@ class TypeSafeBlockCache:
             recording_context,
             blocks,
             requested_packs=frozenset(requested),
+            role_contexts=role_contexts,
             topic_contexts=topic_contexts,
         )
 
@@ -623,6 +703,7 @@ class TypeSafeBlockCache:
         blocks: list[TranscriptBlock],
         *,
         requested_packs: frozenset[str],
+        role_contexts: Mapping[int, RoleBlockContext] | None = None,
         topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> dict[int, TypeSafeBlockAnswer]:
         """Assess an explicit pack set while reusing production cache identities."""
@@ -632,6 +713,7 @@ class TypeSafeBlockCache:
                 "TypeSafe answer packs must be a non-empty supported set; "
                 f"unsupported={sorted(unknown)}"
             )
+        role_context_map = role_contexts or {}
         contexts = topic_contexts or {}
         cached_packs: dict[int, dict[str, dict[str, Any]]] = {}
         missing_by_set: dict[frozenset[str], list[TranscriptBlock]] = {}
@@ -644,6 +726,7 @@ class TypeSafeBlockCache:
                     recording_context,
                     block,
                     pack=pack,
+                    role_context=role_context_map.get(block.block_id),
                     topic_context=contexts.get(block.block_id),
                 )
                 path = self._pack_path(pack, identity)
@@ -677,6 +760,11 @@ class TypeSafeBlockCache:
                     collect_semantic_analysis=TREATMENT_PACK in missing_packs,
                     collect_topic_analysis=TOPIC_PACK in missing_packs,
                     requested_packs=missing_packs,
+                    role_contexts={
+                        block.block_id: role_context_map[block.block_id]
+                        for block in batch
+                        if block.block_id in role_context_map
+                    },
                     topic_contexts={
                         block.block_id: contexts[block.block_id]
                         for block in batch
@@ -1615,6 +1703,7 @@ class TypeSafeFirstPassSermonClassifier:
             block.block_id: build_topic_context(drafts, block)
             for block in fine_blocks
         }
+        role_contexts = build_role_contexts(fine_blocks)
         if progress is not None:
             progress("typesafe-boundary", 0, len(fine_blocks))
         with self._lock:
@@ -1624,6 +1713,7 @@ class TypeSafeFirstPassSermonClassifier:
                 fine_blocks,
                 collect_semantic_analysis=True,
                 collect_topic_analysis=True,
+                role_contexts=role_contexts,
                 topic_contexts=topic_contexts,
             )
         if progress is not None:

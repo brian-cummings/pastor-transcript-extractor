@@ -30,6 +30,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockAnswer,
     TypeSafeFirstPassSermonClassifier,
     TypeSafeRecordingGateAnswer,
+    RoleBlockContext,
     ROLE_PACK,
     TOPIC_PACK,
     TREATMENT_PACK,
@@ -229,6 +230,7 @@ class CostRate:
 def _target_block_state(
     recording_context: Mapping[str, Any],
     block: TranscriptBlock,
+    role_context: RoleBlockContext | None = None,
 ) -> dict[str, Any]:
     """Build one TypeSafe target block with its optional coarse-parent prior."""
     state = {
@@ -237,6 +239,8 @@ def _target_block_state(
         "end_seconds": block.end_seconds,
         "text": block.text,
     }
+    if role_context is not None:
+        state["adjacent_context"] = role_context.state_payload()
     parent_findings = recording_context.get(FINE_PARENT_CONTEXT_KEY, {})
     if isinstance(parent_findings, Mapping):
         parent_finding = parent_findings.get(str(block.block_id))
@@ -311,6 +315,7 @@ class TypeSafeSdkAdapter:
         collect_semantic_analysis: bool = False,
         collect_topic_analysis: bool = False,
         requested_packs: frozenset[str] | None = None,
+        role_contexts: Mapping[int, RoleBlockContext] | None = None,
         topic_contexts: Mapping[int, TopicBlockContext] | None = None,
     ) -> Mapping[int, TypeSafeBlockAnswer]:
         packs = requested_packs or frozenset(
@@ -329,10 +334,16 @@ class TypeSafeSdkAdapter:
             for key, value in recording_context.items()
             if key != FINE_PARENT_CONTEXT_KEY
         }
+        role_context_map = role_contexts or {}
         state = {
             "recording": shared_recording_context,
             "target_blocks": [
-                _target_block_state(recording_context, block) for block in blocks
+                _target_block_state(
+                    recording_context,
+                    block,
+                    role_context_map.get(block.block_id),
+                )
+                for block in blocks
             ],
         }
         contexts = topic_contexts or {}
@@ -359,7 +370,10 @@ class TypeSafeSdkAdapter:
                                 "of `recording`. When `target_blocks["
                                 f"{position}].coarse_parent_finding` is present, treat it as "
                                 "an advisory prior rather than a conclusion. Independently "
-                                "judge the fine block and correct conflicting coarse evidence."
+                                "judge the fine block and correct conflicting coarse evidence. "
+                                "When present, use `target_blocks["
+                                f"{position}].adjacent_context` only to resolve continuity or "
+                                "a transition into or out of the target block."
                             ),
                         },
                         criteria=question["criteria"],
