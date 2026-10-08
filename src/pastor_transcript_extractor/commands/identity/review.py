@@ -307,18 +307,18 @@ def review_speaker_pair(
         raise typer.BadParameter(
             "selected observation fingerprint does not belong to its video"
         )
-    verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
-    audio_paths = [
-        resolve_normalized_audio_path(
-            database,
-            video.id,
-            verification_cache=verification_cache,
-        )
-        for video in videos
-    ]
-    if any(path is None for path in audio_paths):
-        raise typer.BadParameter("Both observations require local audio")
     try:
+        verification_cache = MediaVerificationCache(cache_dir.expanduser().resolve())
+        audio_paths = [
+            resolve_normalized_audio_path(
+                database,
+                video.id,
+                verification_cache=verification_cache,
+            )
+            for video in videos
+        ]
+        if any(path is None for path in audio_paths):
+            raise typer.BadParameter("Both observations require local audio")
         selection_manifest = (
             json.loads(selection_manifest_json) if selection_manifest_json is not None else None
         )
@@ -350,6 +350,10 @@ def review_speaker_pair(
             metadata_a=_speaker_pair_video_metadata(database, videos[0]),
             metadata_b=_speaker_pair_video_metadata(database, videos[1]),
         )
+    except ArchivedMediaUnavailableError as error:
+        raise typer.BadParameter(
+            f"{error}. Restore access to the archive mount and retry this command."
+        ) from error
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         raise typer.BadParameter(str(error)) from error
     evidence_mode = ReviewEvidenceMode(

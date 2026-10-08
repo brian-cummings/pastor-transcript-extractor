@@ -974,6 +974,14 @@ theological stance.
     review, or fixture to reuse. They are the minimum identity handoff: one
     bridge for each split pastor and two edges connecting Bradshaw's three
     components. No topic reclassification is scheduled.
+41. The first identity handoff exposed offline archive storage, not an
+    ineligible cohort sermon: all nine pair members have authoritative audio on
+    `/Volumes/home/SermonExtractorAudio`, and that mount was unavailable. The
+    pair-review command now resolves audio inside its existing CLI error boundary,
+    converting `archived_media_unavailable` into a normal actionable parameter
+    error instead of a traceback. It neither reconstructs nor redownloads audio;
+    the immutable archive remains authoritative and the review retries after the
+    mount is restored.
 
 ### Next iteration
 

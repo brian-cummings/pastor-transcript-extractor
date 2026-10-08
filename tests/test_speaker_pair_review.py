@@ -11,11 +11,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import typer
+
 from pastor_transcript_extractor.commands.identity.review import (
     _normalize_review_terminal_input,
     _reviewed_evidence_sync_command,
     review_speaker_pair,
 )
+from pastor_transcript_extractor.media_artifacts import ArchivedMediaUnavailableError
 from pastor_transcript_extractor.models import SpeakerObservation
 from pastor_transcript_extractor.speaker_pair_diagnostics import (
     CachedSpan,
@@ -867,6 +870,55 @@ class SpeakerPairReviewTests(unittest.TestCase):
             "Evidence was not synchronized",
             "\n".join(str(call.args[0]) for call in output.call_args_list),
         )
+
+    def test_archived_review_audio_reports_clean_cli_error(self):
+        database = SimpleNamespace(
+            get_video_by_youtube_id=lambda value: SimpleNamespace(id=value),
+            get_latest_speaker_observation_for_video=lambda _video_id: self.observation_a,
+        )
+        unavailable = ArchivedMediaUnavailableError(
+            SimpleNamespace(id=42),
+            Path("/Volumes/archive/video-a/normalized.wav"),
+        )
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.build_paths",
+                return_value=SimpleNamespace(
+                    root=self.root,
+                    database=self.root / "database.sqlite3",
+                ),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.Path.exists",
+                return_value=True,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review.Database",
+                return_value=database,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.identity.review."
+                "resolve_normalized_audio_path",
+                side_effect=unavailable,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                typer.BadParameter,
+                "archived_media_unavailable.*normalized.wav",
+            ):
+                review_speaker_pair(
+                    "video-a",
+                    "video-b",
+                    reviewer="reviewer-1",
+                    evaluation_root=self.evaluation_root,
+                    cache_dir=self.root / "cache",
+                    open_packet=False,
+                    prepare_only=True,
+                    base_dir=self.root,
+                    selection_manifest_json=None,
+                    observation_fingerprint_a=None,
+                    observation_fingerprint_b=None,
+                )
 
     def test_completed_review_prints_exact_deferred_sync_command(self):
         paths = SimpleNamespace(
