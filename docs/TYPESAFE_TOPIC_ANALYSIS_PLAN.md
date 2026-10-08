@@ -961,6 +961,11 @@ theological stance.
     cohort maps videos 281, 1037, and 3973 to that evidence bundle and pins its
     SHA-256 `bb431800d495...`. The bundle retains source-packet, source-review,
     and review fingerprints without duplicating the block-level TypeSafe data.
+39. Structured Stage 4 review evidence is now validated as well as hash-pinned.
+    The cohort's `topic-review-bundle-v1` format requires exactly its declared
+    videos, finalized review status, all three whole-sermon checks, reviewer
+    provenance, correction lists, and packet/review hashes. Legacy narrative
+    audit evidence remains supported without duplicating its established path.
 
 ### Next iteration
 

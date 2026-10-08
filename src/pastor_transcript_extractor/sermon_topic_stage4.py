@@ -27,6 +27,7 @@ TOPIC_STAGE4_EVALUATION_SCHEMA_VERSION = 1
 TOPIC_STAGE4_EVALUATION_POLICY_VERSION = (
     "equal-sermon-series-period-diagnostics-v1"
 )
+TOPIC_REVIEW_BUNDLE_FORMAT = "topic-review-bundle-v1"
 TOPIC_REFRESH_REASON_CODES = frozenset(
     {
         "question_pack_mismatch",
@@ -374,9 +375,14 @@ def _topic_stage4_review_evidence(
         video_ids = evidence.get("video_ids")
         logical_path = evidence.get("path")
         expected_sha256 = evidence.get("sha256")
+        evidence_format = evidence.get("format")
         if (
             not isinstance(video_ids, list)
             or not video_ids
+            or any(
+                not isinstance(video_id, int) or isinstance(video_id, bool)
+                for video_id in video_ids
+            )
             or not isinstance(logical_path, str)
             or not logical_path.strip()
             or not isinstance(expected_sha256, str)
@@ -385,17 +391,31 @@ def _topic_stage4_review_evidence(
             raise ValueError(
                 "Whole-sermon review evidence needs video_ids, path, and sha256"
             )
+        if evidence_format not in {None, TOPIC_REVIEW_BUNDLE_FORMAT}:
+            raise ValueError(
+                f"Unsupported whole-sermon review evidence format: {evidence_format}"
+            )
         path = (root / logical_path).resolve()
         try:
-            actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            content = path.read_bytes()
+            actual_sha256 = hashlib.sha256(content).hexdigest()
         except OSError:
+            content = None
             actual_sha256 = None
         current = actual_sha256 == expected_sha256
-        for video_id in video_ids:
-            if not isinstance(video_id, int) or isinstance(video_id, bool):
+        if current and evidence_format == TOPIC_REVIEW_BUNDLE_FORMAT:
+            try:
+                bundle = json.loads(content)
+            except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
                 raise ValueError(
-                    "Whole-sermon review evidence video ids must be integers"
-                )
+                    f"Cannot read topic review evidence bundle: {path}"
+                ) from error
+            _validate_topic_review_bundle(
+                bundle,
+                expected_question_pack=cohort.get("question_pack_version"),
+                expected_video_ids=video_ids,
+            )
+        for video_id in video_ids:
             if video_id in by_video:
                 raise ValueError(
                     f"Duplicate whole-sermon review evidence for video {video_id}"
@@ -407,6 +427,82 @@ def _topic_stage4_review_evidence(
                 "path": logical_path,
             }
     return by_video
+
+
+def _validate_topic_review_bundle(
+    payload: object,
+    *,
+    expected_question_pack: object,
+    expected_video_ids: list[object],
+) -> None:
+    """Validate finalized review decisions without duplicating model evidence."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("Topic review evidence bundle must be an object")
+    if payload.get("schema_version") != 1:
+        raise ValueError("Unsupported topic review evidence bundle schema_version")
+    if payload.get("workflow_version") != "topic-review-adjudication-v2":
+        raise ValueError("Unsupported topic review evidence bundle workflow_version")
+    if payload.get("question_pack_version") != expected_question_pack:
+        raise ValueError("Topic review evidence bundle question pack does not match")
+    reviews = payload.get("reviews")
+    if not isinstance(reviews, list) or not reviews:
+        raise ValueError("Topic review evidence bundle must contain reviews")
+
+    expected_ids = set(expected_video_ids)
+    required_checks = {
+        "missed_topic_episode_search_complete",
+        "projection_boundary_review_complete",
+        "selected_blocks_reviewed",
+    }
+    reviewed_ids: set[int] = set()
+    for review in reviews:
+        if not isinstance(review, Mapping):
+            raise ValueError("Topic review evidence bundle reviews must be objects")
+        video_id = review.get("video_id")
+        if not isinstance(video_id, int) or isinstance(video_id, bool):
+            raise ValueError("Topic review evidence bundle video_id must be an integer")
+        if video_id in reviewed_ids:
+            raise ValueError(f"Duplicate topic review evidence for video {video_id}")
+        reviewed_ids.add(video_id)
+        if review.get("review_status") != "reviewed":
+            raise ValueError(f"Topic review evidence for video {video_id} is not reviewed")
+        checks = review.get("checks")
+        if not isinstance(checks, Mapping) or not all(
+            checks.get(check) is True for check in required_checks
+        ):
+            raise ValueError(
+                f"Topic review evidence for video {video_id} has incomplete checks"
+            )
+        for field in ("reviewed_at", "reviewed_by"):
+            value = review.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"Topic review evidence for video {video_id} needs {field}"
+                )
+        for field in (
+            "projection_eligibility_corrections",
+            "topic_level_corrections",
+        ):
+            if not isinstance(review.get(field), list):
+                raise ValueError(
+                    f"Topic review evidence for video {video_id} needs {field}"
+                )
+        for field in (
+            "review_fingerprint",
+            "source_packet_fingerprint",
+            "source_packet_sha256",
+            "source_review_sha256",
+        ):
+            value = review.get(field)
+            if not isinstance(value, str) or len(value) != 64:
+                raise ValueError(
+                    f"Topic review evidence for video {video_id} needs {field}"
+                )
+
+    if reviewed_ids != expected_ids:
+        raise ValueError(
+            "Topic review evidence bundle videos do not match its cohort mapping"
+        )
 
 
 def assess_topic_stage4_readiness(
