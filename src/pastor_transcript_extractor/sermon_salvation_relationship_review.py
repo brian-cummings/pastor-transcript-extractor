@@ -136,7 +136,7 @@ def _routed_candidates(
                             gate.topic_analysis_fingerprint
                         ),
                         "cache_dir": str(
-                            gate.source_path.parent / "inference-cache"
+                            Path(gate.source_path).parent / "inference-cache"
                         ),
                     }
                 )

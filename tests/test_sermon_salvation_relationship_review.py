@@ -165,7 +165,9 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
             gates = {
                 video.id: SimpleNamespace(
                     eligible=True,
-                    source_path=root / str(video.id) / "classification.json",
+                    source_path=str(
+                        root / str(video.id) / "classification.json"
+                    ),
                     topic_analysis_fingerprint=f"topic-{video.id}",
                 )
                 for video in videos
