@@ -34,6 +34,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
     SALVATION_ROUTE_POLICY_VERSION,
     SALVATION_ROUTE_THRESHOLD,
+    collected_salvation_relationships,
     salvation_relationship_pack_digest,
     salvation_relationship_question_inventory,
     salvation_route_decision,
@@ -1757,14 +1758,12 @@ def _salvation_relationship_analysis_artifact(
         observations = [
             {
                 "relationship": relationship,
-                "probability": probability,
+                "probability": probabilities[relationship],
                 "threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
                     relationship
                 ],
             }
-            for relationship, probability in probabilities.items()
-            if probability
-            >= SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            for relationship in collected_salvation_relationships(probabilities)
         ]
         observation_count += len(observations)
         provenance = answer.request_provenance.get(

@@ -234,6 +234,24 @@ def salvation_relationship_observation_threshold(
     return SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
 
 
+def collected_salvation_relationships(
+    probabilities: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Apply the frozen per-leaf collection policy to reusable raw judgments."""
+    if set(probabilities) != set(SALVATION_RELATIONSHIPS):
+        raise ValueError("Salvation relationship probabilities have the wrong inventory")
+    collected: list[str] = []
+    for relationship in SALVATION_RELATIONSHIPS:
+        probability = float(probabilities[relationship])
+        if not 0.0 <= probability <= 1.0:
+            raise ValueError(
+                f"Salvation relationship probability is out of range: {relationship}"
+            )
+        if probability >= salvation_relationship_observation_threshold(relationship):
+            collected.append(relationship)
+    return tuple(collected)
+
+
 def resolve_salvation_relationship_analysis_artifact(
     classification: Mapping[str, Any],
 ) -> Mapping[str, Any]:

@@ -11,6 +11,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    collected_salvation_relationships,
     resolve_salvation_relationship_analysis_artifact,
 )
 from pastor_transcript_extractor.sermon_topic_profile_analysis import (
@@ -77,9 +78,7 @@ def _validated_source_judgments(
                 f"Video {source['video_id']} has a malformed relationship block"
             )
         probabilities = block.get("probabilities")
-        if not isinstance(probabilities, Mapping) or set(probabilities) != set(
-            SALVATION_RELATIONSHIPS
-        ):
+        if not isinstance(probabilities, Mapping):
             raise ValueError(
                 f"Video {source['video_id']} block {block.get('block_id')} has the "
                 "wrong relationship inventory"
@@ -95,12 +94,13 @@ def _validated_source_judgments(
             for item in raw_observations
             if isinstance(item, Mapping)
         }
-        expected = {
-            relationship
-            for relationship in SALVATION_RELATIONSHIPS
-            if float(probabilities[relationship])
-            >= SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
-        }
+        try:
+            expected = set(collected_salvation_relationships(probabilities))
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"Video {source['video_id']} block {block.get('block_id')} has "
+                "invalid relationship probabilities"
+            ) from error
         if stored != expected:
             raise ValueError(
                 f"Video {source['video_id']} block {block.get('block_id')} has "

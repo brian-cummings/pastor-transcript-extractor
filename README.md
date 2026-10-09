@@ -420,6 +420,32 @@ partial or mixed, sparse, and non-sermon-role blocks, reports its eligible-time
 denominator, and links aggregate measurements back to evidence blocks. Pastor-level
 aggregation remains blocked pending reviewed profile membership.
 
+Projection-eligible blocks whose cached `salvation_gospel` supporting-or-above
+probability is at least `0.55` also enter the independently cached
+`salvation-relationships-v2-evidence-boundaries` leaf pack. The twelve Noul
+probabilities are stored under
+`classification.search.salvation_relationship_analysis`; code derives affirmative
+observations from the frozen
+`salvation-relationship-observation-thresholds-v1` per-leaf thresholds. The raw
+probabilities remain policy-independent evidence, so changing a collection
+threshold does not require another provider request. Relationship observations are
+still observation-only: they do not change sermon boundaries, disposition, or a
+pastor profile.
+
+After refreshing the frozen twelve-sermon validation cohort through ordinary
+`pte reclassify`, build its bounded collected-observation review without calling a
+provider:
+
+```bash
+pte analysis salvation-collected-observations-review \
+  --base-dir /path/to/app-data
+```
+
+The command rejects missing or stale question packs and threshold policies,
+recomputes every stored collection decision from the raw probability, and writes a
+fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
+judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
+
 Prepare the bounded review packet for the named video 4548 regression cases
 without making another provider request:
 

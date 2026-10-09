@@ -1100,6 +1100,13 @@ theological stance.
     rejected plus weakest collected judgment for each leaf. This yields at most
     twenty-four boundary probes across the twelve-sermon cohort without rerunning
     TypeSafe or pre-approving sermon- or pastor-level aggregation.
+54. Production collection and provider-free verification now call the same frozen
+    per-leaf policy function. It validates the complete twelve-leaf probability
+    inventory and the `[0, 1]` range before returning observations in canonical
+    relationship order, preventing the writer and auditor from drifting while
+    leaving the raw cached judgments untouched. The production and review commands
+    are documented together so the normal TypeSafe defaults, conditional routing,
+    observation-only effect, and zero-provider replay contract are explicit.
 
 ### Next iteration
 

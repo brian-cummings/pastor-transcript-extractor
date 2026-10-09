@@ -9,6 +9,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_ROUTE_THRESHOLD,
     UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
+    collected_salvation_relationships,
     salvation_relationship_pack_digest,
     salvation_relationship_observation_threshold,
     salvation_relationship_pack_inventory,
@@ -101,6 +102,34 @@ class SalvationRelationshipsTests(unittest.TestCase):
                 "obedience_as_consequence_or_evidence"
             ),
         )
+
+    def test_collection_policy_is_shared_and_validates_raw_inventory(self) -> None:
+        probabilities = {
+            relationship: threshold - 0.01
+            for relationship, threshold in (
+                SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.items()
+            )
+        }
+        probabilities["assurance_security"] = 0.55
+        probabilities["atonement_as_basis"] = 0.70
+
+        self.assertEqual(
+            ("atonement_as_basis", "assurance_security"),
+            collected_salvation_relationships(probabilities),
+        )
+
+        probabilities.pop("atonement_as_basis")
+        with self.assertRaisesRegex(ValueError, "wrong inventory"):
+            collected_salvation_relationships(probabilities)
+
+    def test_collection_policy_rejects_out_of_range_probability(self) -> None:
+        probabilities = {
+            relationship: 0.0 for relationship in SALVATION_RELATIONSHIPS
+        }
+        probabilities["assurance_security"] = 1.01
+
+        with self.assertRaisesRegex(ValueError, "out of range"):
+            collected_salvation_relationships(probabilities)
 
     def test_reviewed_route_uses_supporting_mass_and_projection_eligibility(
         self,
