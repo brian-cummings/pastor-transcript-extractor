@@ -18,7 +18,7 @@ SALVATION_RELATIONSHIPS_PACK_VERSION = (
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v1-calibrating-consequence"
+    "salvation-relationship-observation-thresholds-v1"
 )
 
 
@@ -221,18 +221,17 @@ SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "faith_as_receiving_response": 0.65,
     "repentance_as_receiving_response": 0.70,
     "obedience_as_condition_or_means": 0.70,
+    "obedience_as_consequence_or_evidence": 0.55,
 }
-UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS = frozenset(
-    {"obedience_as_consequence_or_evidence"}
-)
+UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS: frozenset[str] = frozenset()
 
 
 def salvation_relationship_observation_threshold(
     relationship: str,
-) -> float | None:
+) -> float:
     if relationship not in SALVATION_RELATIONSHIP_SPECS:
         raise ValueError(f"Unknown salvation relationship: {relationship}")
-    return SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(relationship)
+    return SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
 
 
 def salvation_relationship_question_id(position: int, relationship: str) -> str:

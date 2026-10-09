@@ -30,8 +30,13 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
+    SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
+    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    SALVATION_ROUTE_POLICY_VERSION,
+    SALVATION_ROUTE_THRESHOLD,
     salvation_relationship_pack_digest,
     salvation_relationship_question_inventory,
+    salvation_route_decision,
 )
 from pastor_transcript_extractor.sermon_topics import (
     TOPIC_ARTIFACT_SCHEMA_VERSION,
@@ -51,7 +56,7 @@ from pastor_transcript_extractor.sermon_topics import (
 )
 
 
-SEARCH_ALGORITHM_VERSION = "typesafe_first_v16_topic_review_packets"
+SEARCH_ALGORITHM_VERSION = "typesafe_first_v17_salvation_relationship_observations"
 QUESTION_SET_VERSION = "sermon-classifier-typesafe-questions-v4-local-role-context"
 RECORDING_GATE_VERSION = "typesafe-recording-gate-v1"
 BLOCK_BUILDER_VERSION = "typesafe-normalized-component-bounded-boundaries-v6"
@@ -1701,6 +1706,113 @@ def _topic_analysis_artifact(
     return artifact
 
 
+def _routed_salvation_relationship_blocks(
+    topic_analysis: Mapping[str, Any],
+    blocks: list[TranscriptBlock],
+) -> tuple[list[TranscriptBlock], dict[int, dict[str, Any]]]:
+    blocks_by_id = {block.block_id: block for block in blocks}
+    routes: dict[int, dict[str, Any]] = {}
+    selected: list[TranscriptBlock] = []
+    for raw_block in topic_analysis.get("blocks", []):
+        if not isinstance(raw_block, Mapping):
+            continue
+        route = salvation_route_decision(raw_block)
+        if not route["route"]:
+            continue
+        block_id = int(raw_block["block_id"])
+        block = blocks_by_id.get(block_id)
+        if block is None:
+            raise ValueError(
+                f"Routed salvation relationship block {block_id} is unavailable"
+            )
+        selected.append(block)
+        routes[block_id] = route
+    return selected, routes
+
+
+def _salvation_relationship_analysis_artifact(
+    blocks: list[TranscriptBlock],
+    answers: Mapping[int, TypeSafeBlockAnswer],
+    routes: Mapping[int, Mapping[str, Any]],
+    *,
+    requested_model_id: str,
+) -> dict[str, Any]:
+    """Persist raw leaf evidence and derive thresholded observations in code."""
+    raw_blocks: list[dict[str, Any]] = []
+    provider_requests: dict[str, dict[str, Any]] = {}
+    observation_count = 0
+    for block in blocks:
+        answer = answers.get(block.block_id)
+        if answer is None or not answer.salvation_relationship_probabilities:
+            raise ValueError(
+                f"Routed block {block.block_id} has no salvation relationship answer"
+            )
+        probabilities = {
+            relationship: round(
+                float(answer.salvation_relationship_probabilities[relationship]),
+                6,
+            )
+            for relationship in SALVATION_RELATIONSHIPS
+        }
+        observations = [
+            {
+                "relationship": relationship,
+                "probability": probability,
+                "threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                    relationship
+                ],
+            }
+            for relationship, probability in probabilities.items()
+            if probability
+            >= SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+        ]
+        observation_count += len(observations)
+        provenance = answer.request_provenance.get(
+            SALVATION_RELATIONSHIPS_PACK, {}
+        )
+        provenance = provenance if isinstance(provenance, Mapping) else {}
+        request_key = provenance.get("request_key")
+        if isinstance(request_key, str):
+            provider_requests[request_key] = dict(provenance)
+        raw_blocks.append(
+            {
+                "block_id": block.block_id,
+                "start_seconds": block.start_seconds,
+                "end_seconds": block.end_seconds,
+                "segment_indexes": list(block.segment_indexes),
+                "context": dict(answer.salvation_relationship_context),
+                "context_identity": _hash(answer.salvation_relationship_context),
+                "route": dict(routes[block.block_id]),
+                "probabilities": probabilities,
+                "observations": observations,
+                "resolved_model_id": answer.resolved_model_id,
+                "request_key": request_key,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "status": "observations_only" if raw_blocks else "not_routed",
+        "source": "typesafe_conditional_salvation_relationship_fanout",
+        "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "question_pack_digest": salvation_relationship_pack_digest(),
+        "route_policy_version": SALVATION_ROUTE_POLICY_VERSION,
+        "route_threshold": SALVATION_ROUTE_THRESHOLD,
+        "observation_policy_version": (
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        ),
+        "observation_thresholds": dict(
+            SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
+        ),
+        "policy_effect": "observation_collection_only",
+        "activation_requirement": PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT,
+        "requested_model_id": requested_model_id,
+        "provider_requests": list(provider_requests.values()),
+        "routed_block_count": len(raw_blocks),
+        "observation_count": observation_count,
+        "blocks": raw_blocks,
+    }
+
+
 class TypeSafeFirstPassSermonClassifier:
     """Map the recording first, then refine only plausible sermon regions."""
 
@@ -2177,6 +2289,40 @@ class TypeSafeFirstPassSermonClassifier:
             selected_start_seconds=selected_start,
             selected_end_seconds=selected_end,
         )
+        salvation_blocks, salvation_routes = _routed_salvation_relationship_blocks(
+            topic_analysis,
+            fine_blocks,
+        )
+        if progress is not None:
+            progress("typesafe-salvation-relationships", 0, len(salvation_blocks))
+        if salvation_blocks:
+            with self._lock:
+                salvation_answers = cache.assess_packs(
+                    self.client,
+                    fine_recording_context,
+                    salvation_blocks,
+                    requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+                    topic_contexts={
+                        block.block_id: topic_contexts[block.block_id]
+                        for block in salvation_blocks
+                    },
+                )
+        else:
+            salvation_answers = {}
+        if progress is not None:
+            progress(
+                "typesafe-salvation-relationships",
+                len(salvation_blocks),
+                len(salvation_blocks),
+            )
+        salvation_relationship_analysis = (
+            _salvation_relationship_analysis_artifact(
+                salvation_blocks,
+                salvation_answers,
+                salvation_routes,
+                requested_model_id=self.model,
+            )
+        )
         return HybridSermonResult(
             method=self.method,
             model=self.model,
@@ -2200,6 +2346,9 @@ class TypeSafeFirstPassSermonClassifier:
                     selected_block_ids=selected_ids,
                 ),
                 "topic_analysis": topic_analysis,
+                "salvation_relationship_analysis": (
+                    salvation_relationship_analysis
+                ),
                 "model_digest": self.model,
                 "rule_baseline_source": "recomputed_rules",
                 "rule_baseline_algorithm_version": "rule_based_v1",
@@ -2222,6 +2371,22 @@ class TypeSafeFirstPassSermonClassifier:
                             topic_analysis["provider_requests"]
                         ),
                         "policy_effect": "none",
+                    },
+                    "salvation_relationship_collection": {
+                        "status": salvation_relationship_analysis["status"],
+                        "question_pack_version": (
+                            SALVATION_RELATIONSHIPS_PACK_VERSION
+                        ),
+                        "routed_block_count": (
+                            salvation_relationship_analysis["routed_block_count"]
+                        ),
+                        "observation_count": (
+                            salvation_relationship_analysis["observation_count"]
+                        ),
+                        "provider_request_count": len(
+                            salvation_relationship_analysis["provider_requests"]
+                        ),
+                        "policy_effect": "observation_collection_only",
                     },
                     "segment_boundary_refinement": bool(boundary_candidate_count),
                     "transcript_input": transcript_input,
@@ -2280,6 +2445,14 @@ class TypeSafeFirstPassSermonClassifier:
                     answers,
                     requested_model_id=self.model,
                 ),
+                "salvation_relationship_analysis": (
+                    _salvation_relationship_analysis_artifact(
+                        [],
+                        {},
+                        {},
+                        requested_model_id=self.model,
+                    )
+                ),
                 "discovery": {
                     "selected_mode": "typesafe_first_no_candidate",
                     "recording_gate": dict(gate),
@@ -2326,6 +2499,14 @@ class TypeSafeFirstPassSermonClassifier:
                     [],
                     {},
                     requested_model_id=self.model,
+                ),
+                "salvation_relationship_analysis": (
+                    _salvation_relationship_analysis_artifact(
+                        [],
+                        {},
+                        {},
+                        requested_model_id=self.model,
+                    )
                 ),
                 "discovery": {
                     "selected_mode": "typesafe_recording_gate_bypass",

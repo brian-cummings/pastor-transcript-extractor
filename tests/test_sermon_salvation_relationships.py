@@ -52,16 +52,12 @@ def _block(*, support: float, eligible: bool = True) -> dict[str, object]:
 
 
 class SalvationRelationshipsTests(unittest.TestCase):
-    def test_reviewed_observation_thresholds_leave_only_consequence_unresolved(
+    def test_reviewed_observation_thresholds_cover_every_relationship(
         self,
     ) -> None:
+        self.assertFalse(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS)
         self.assertEqual(
-            {"obedience_as_consequence_or_evidence"},
-            set(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS),
-        )
-        self.assertEqual(
-            set(SALVATION_RELATIONSHIPS)
-            - set(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS),
+            set(SALVATION_RELATIONSHIPS),
             set(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS),
         )
         self.assertEqual(
@@ -74,10 +70,11 @@ class SalvationRelationshipsTests(unittest.TestCase):
             0.55,
             salvation_relationship_observation_threshold("assurance_security"),
         )
-        self.assertIsNone(
+        self.assertEqual(
+            0.55,
             salvation_relationship_observation_threshold(
                 "obedience_as_consequence_or_evidence"
-            )
+            ),
         )
 
     def test_reviewed_route_uses_supporting_mass_and_projection_eligibility(

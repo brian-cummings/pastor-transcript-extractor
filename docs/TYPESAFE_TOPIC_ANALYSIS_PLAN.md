@@ -1082,16 +1082,26 @@ theological stance.
     consequence/evidence cues, caps selection at three per pastor, and presents
     at most six new answers in the `0.55`–`0.65` window. It changes no production
     policy and replays from the normal per-video cache after the first run.
+52. The final obedience-as-consequence calibration settles the last boundary at
+    `0.55`. Although only two fresh cases fell inside `0.55`–`0.65`, both were
+    affirmative, and the wider fresh sample supplied strong positive anchors at
+    `0.80` and above. The complete policy is frozen as
+    `salvation-relationship-observation-thresholds-v1`: seven leaves at `0.70`,
+    divine grace/final destiny/faith at `0.65`, and assurance plus
+    obedience-as-consequence at `0.55`. Ordinary TypeSafe reclassification now
+    routes projection-eligible salvation blocks at `0.55`, evaluates the existing
+    independently cached leaf pack, persists every raw probability, and derives
+    affirmative observations through the per-leaf map. These remain
+    observation-only and make no profile-level theological claim.
 
 ### Next iteration
 
-1. Run and review the final bounded obedience-as-consequence calibration. If the
-   new `0.55`–`0.65` cases separate around `0.60`, use `0.60`; if they remain
-   intermixed, record the leaf as poorly discriminated and stop threshold tuning.
-2. Freeze the complete twelve-leaf policy and enable the independently cached leaf
-   pack during ordinary reclassification for projection-eligible blocks routed
-   at `0.55`. Persist raw probabilities so later policy changes do not rerun
-   inference.
+1. Reclassify the frozen twelve-sermon cohort once so ordinary artifacts collect
+   the now-enabled relationship pack, reusing the 36 already cached leaf answers.
+2. Build a bounded provider-free review of the resulting collected observations.
+   Evaluate the usefulness of the observation layer before designing sermon- or
+   pastor-level aggregation; do not resume prompt or threshold calibration from
+   isolated examples.
 
 ## Non-goals for `topics-v1`
 

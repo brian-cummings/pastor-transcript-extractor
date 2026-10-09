@@ -39,6 +39,8 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     _edge_neighborhood,
     _hash,
     _recording_context_for_blocks,
+    _routed_salvation_relationship_blocks,
+    _salvation_relationship_analysis_artifact,
     _semantic_analysis_artifact,
     _topic_analysis_artifact,
     build_role_contexts,
@@ -52,6 +54,8 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
+    SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
+    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
 )
 from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
@@ -254,6 +258,97 @@ def rule_window() -> SermonWindowResult:
 
 
 class TypeSafeFirstPassTests(unittest.TestCase):
+    def test_salvation_leaf_route_uses_projected_broad_topic_evidence(self) -> None:
+        block = TranscriptBlock(7, [3], 10.0, 20.0, "Grace saves.")
+        topic_analysis = {
+            "blocks": [
+                {
+                    "block_id": 7,
+                    "scores": {
+                        topic: {
+                            "score": 2.0 if topic == "salvation_gospel" else 0.0,
+                            "probabilities": (
+                                {
+                                    "0": 0.1,
+                                    "1": 0.2,
+                                    "2": 0.6,
+                                    "3": 0.1,
+                                    "4": 0.0,
+                                }
+                                if topic == "salvation_gospel"
+                                else {
+                                    "0": 1.0,
+                                    "1": 0.0,
+                                    "2": 0.0,
+                                    "3": 0.0,
+                                    "4": 0.0,
+                                }
+                            ),
+                        }
+                        for topic in TOPICS
+                    },
+                    "projection_eligibility": {"eligible": True},
+                }
+            ]
+        }
+
+        selected, routes = _routed_salvation_relationship_blocks(
+            topic_analysis,
+            [block],
+        )
+
+        self.assertEqual([block], selected)
+        self.assertTrue(routes[7]["route"])
+        self.assertEqual(0.7, routes[7]["supporting_or_above_probability"])
+
+    def test_salvation_artifact_preserves_raw_values_and_collects_by_leaf(self) -> None:
+        block = TranscriptBlock(7, [3], 10.0, 20.0, "Grace changes conduct.")
+        probabilities = {
+            relationship: 0.69 for relationship in SALVATION_RELATIONSHIPS
+        }
+        probabilities["assurance_security"] = 0.55
+        probabilities["obedience_as_consequence_or_evidence"] = 0.55
+        answer = TypeSafeBlockAnswer(
+            "principal_sermon",
+            {"principal_sermon": 1.0},
+            1.0,
+            "jev-1.13.0",
+            request_provenance={
+                SALVATION_RELATIONSHIPS_PACK: {"request_key": "salvation-1"}
+            },
+            salvation_relationship_probabilities=probabilities,
+            salvation_relationship_question_version=(
+                SALVATION_RELATIONSHIPS_PACK_VERSION
+            ),
+            salvation_relationship_context={"target_text": block.text},
+        )
+
+        artifact = _salvation_relationship_analysis_artifact(
+            [block],
+            {7: answer},
+            {7: {"route": True, "supporting_or_above_probability": 0.8}},
+            requested_model_id="jev-1.13.0",
+        )
+
+        self.assertEqual("observations_only", artifact["status"])
+        self.assertEqual(
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
+            artifact["observation_policy_version"],
+        )
+        self.assertEqual(
+            SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+            artifact["observation_thresholds"],
+        )
+        raw = artifact["blocks"][0]
+        self.assertEqual(probabilities, raw["probabilities"])
+        collected = {
+            item["relationship"] for item in raw["observations"]
+        }
+        self.assertIn("assurance_security", collected)
+        self.assertIn("obedience_as_consequence_or_evidence", collected)
+        self.assertNotIn("atonement_as_basis", collected)
+        self.assertEqual(1, len(artifact["provider_requests"]))
+
     def test_finds_span_not_limited_to_rule_window(self) -> None:
         client = FakeBlockClient()
         classifier = TypeSafeFirstPassSermonClassifier(
@@ -328,6 +423,10 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             set(SEMANTIC_DIMENSIONS),
             set(semantic["blocks"][0]["probabilities"]),
         )
+        salvation = result.search["salvation_relationship_analysis"]
+        self.assertEqual("not_routed", salvation["status"])
+        self.assertEqual(0, salvation["routed_block_count"])
+        self.assertFalse(salvation["blocks"])
 
     def test_semantic_question_inventory_uses_shared_dimension_inventory(self) -> None:
         inventory = semantic_question_inventory(2)
