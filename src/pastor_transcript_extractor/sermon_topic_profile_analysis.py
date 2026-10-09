@@ -83,6 +83,18 @@ def _number(value: object, *, label: str) -> float:
 def read_topic_analysis_for_gate(
     gate: TopicProfileProjectionGate,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    classification = read_classification_for_gate(gate)
+    analysis = resolve_topic_analysis_artifact(classification)
+    projection = _mapping(
+        analysis.get("sermon_projection"),
+        label="sermon projection",
+    )
+    return analysis, projection
+
+
+def read_classification_for_gate(
+    gate: TopicProfileProjectionGate,
+) -> Mapping[str, Any]:
     if gate.source_path is None:
         raise ValueError("TypeSafe topic source artifact is unavailable")
     source_path = Path(gate.source_path)
@@ -94,13 +106,10 @@ def read_topic_analysis_for_gate(
         ) from error
     if not isinstance(payload, Mapping):
         raise ValueError("TypeSafe topic source artifact is malformed")
-    classification = _mapping(payload.get("classification"), label="classification")
-    analysis = resolve_topic_analysis_artifact(classification)
-    projection = _mapping(
-        analysis.get("sermon_projection"),
-        label="sermon projection",
+    return _mapping(
+        payload.get("classification"),
+        label="classification",
     )
-    return analysis, projection
 
 
 def _projection_measurements(

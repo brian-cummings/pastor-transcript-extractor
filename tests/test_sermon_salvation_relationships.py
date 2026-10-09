@@ -14,6 +14,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     salvation_relationship_pack_inventory,
     salvation_relationship_question_inventory,
     salvation_route_decision,
+    resolve_salvation_relationship_analysis_artifact,
 )
 from pastor_transcript_extractor.sermon_topics import TOPICS
 
@@ -52,6 +53,30 @@ def _block(*, support: float, eligible: bool = True) -> dict[str, object]:
 
 
 class SalvationRelationshipsTests(unittest.TestCase):
+    def test_resolves_direct_and_fallback_relationship_artifacts(self) -> None:
+        artifact = {"status": "observations_only"}
+
+        self.assertIs(
+            artifact,
+            resolve_salvation_relationship_analysis_artifact(
+                {"search": {"salvation_relationship_analysis": artifact}}
+            ),
+        )
+        self.assertIs(
+            artifact,
+            resolve_salvation_relationship_analysis_artifact(
+                {
+                    "search": {
+                        "discovery": {
+                            "typesafe_first_attempt": {
+                                "salvation_relationship_analysis": artifact
+                            }
+                        }
+                    }
+                }
+            ),
+        )
+
     def test_reviewed_observation_thresholds_cover_every_relationship(
         self,
     ) -> None:

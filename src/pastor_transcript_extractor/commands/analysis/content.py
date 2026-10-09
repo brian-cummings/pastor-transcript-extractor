@@ -58,6 +58,11 @@ from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     write_salvation_observation_boundaries_review,
     write_salvation_observation_threshold_review,
 )
+from pastor_transcript_extractor.sermon_salvation_observation_review import (
+    DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+    evaluate_salvation_collected_observations_review,
+    write_salvation_collected_observations_review,
+)
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     default_topic_behavior_output_path,
@@ -1449,6 +1454,57 @@ def analysis_salvation_observation_boundaries_review(
         f"{json_path} and {markdown_path}; "
         f"settled_leaves={len(packet['settled_thresholds'])}; "
         f"ambiguous_leaves={len(packet['ambiguous_calibration'])}; "
+        f"probes={len(packet['probes'])}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-collected-observations-review",
+    help=(
+        "Build a provider-free boundary review from collected salvation observations."
+    ),
+)
+def analysis_salvation_collected_observations_review(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying ordinary classification artifacts.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        packet = evaluate_salvation_collected_observations_review(
+            database,
+            cohort,
+        )
+        json_path, markdown_path, reused = (
+            write_salvation_collected_observations_review(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    collected = sum(
+        int(counts["collected"])
+        for counts in packet["counts_by_relationship"].values()
+    )
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation collected observations review: "
+        f"{json_path} and {markdown_path}; "
+        f"videos={packet['source_video_count']}; "
+        f"routed_blocks={packet['routed_block_count']}; "
+        f"collected_observations={collected}; "
         f"probes={len(packet['probes'])}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,

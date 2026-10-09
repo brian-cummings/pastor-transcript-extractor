@@ -1093,12 +1093,20 @@ theological stance.
     independently cached leaf pack, persists every raw probability, and derives
     affirmative observations through the per-leaf map. These remain
     observation-only and make no profile-level theological claim.
+53. Collected relationship evidence has a provider-free review path. It reads the
+    ordinary classification artifacts, rejects missing or stale question/policy
+    versions, verifies every stored observation by recomputing the frozen
+    per-leaf threshold decision from raw probabilities, and selects the strongest
+    rejected plus weakest collected judgment for each leaf. This yields at most
+    twenty-four boundary probes across the twelve-sermon cohort without rerunning
+    TypeSafe or pre-approving sermon- or pastor-level aggregation.
 
 ### Next iteration
 
 1. Reclassify the frozen twelve-sermon cohort once so ordinary artifacts collect
    the now-enabled relationship pack, reusing the 36 already cached leaf answers.
-2. Build a bounded provider-free review of the resulting collected observations.
+2. Run `pte analysis salvation-collected-observations-review` to build a bounded
+   provider-free review of the resulting collected observations.
    Evaluate the usefulness of the observation layer before designing sermon- or
    pastor-level aggregation; do not resume prompt or threshold calibration from
    isolated examples.

@@ -234,6 +234,27 @@ def salvation_relationship_observation_threshold(
     return SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
 
 
+def resolve_salvation_relationship_analysis_artifact(
+    classification: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Return cached relationship evidence from either classifier layout."""
+    search = classification.get("search")
+    search = search if isinstance(search, Mapping) else {}
+    direct = search.get("salvation_relationship_analysis")
+    if isinstance(direct, Mapping):
+        return direct
+    discovery = search.get("discovery")
+    discovery = discovery if isinstance(discovery, Mapping) else {}
+    attempt = discovery.get("typesafe_first_attempt")
+    attempt = attempt if isinstance(attempt, Mapping) else {}
+    fallback = attempt.get("salvation_relationship_analysis")
+    if isinstance(fallback, Mapping):
+        return fallback
+    raise ValueError(
+        "Classification has no cached TypeSafe salvation relationship analysis"
+    )
+
+
 def salvation_relationship_question_id(position: int, relationship: str) -> str:
     if relationship not in SALVATION_RELATIONSHIP_SPECS:
         raise ValueError(f"Unknown salvation relationship: {relationship}")
