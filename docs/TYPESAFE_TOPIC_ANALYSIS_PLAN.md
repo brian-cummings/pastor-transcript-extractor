@@ -1115,6 +1115,16 @@ theological stance.
     pack then replays without another provider request. The same validator runs
     before writes, so an incomplete provider response fails explicitly and is never
     persisted as reusable evidence.
+56. An abstained TypeSafe-first attempt now preserves its cached relationship
+    artifact beside the already-preserved semantic and broad-topic artifacts when
+    Ollama supplies the final classification. Every direct or fallback relationship
+    artifact is then reconciled deterministically against the final refreshed topic
+    projection: raw leaf probabilities remain unchanged, observations from blocks
+    no longer routed by the final sermon window are deactivated, and newly routed
+    blocks without leaf evidence are reported explicitly as incomplete. The review
+    command can construct this same effective view in memory for a batch produced
+    immediately before this change and fingerprints both stored and reconciled
+    artifacts, avoiding an otherwise unnecessary provider rerun.
 
 ### Next iteration
 

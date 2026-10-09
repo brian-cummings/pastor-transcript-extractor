@@ -10,6 +10,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_ROUTE_THRESHOLD,
     UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
     collected_salvation_relationships,
+    refresh_salvation_relationship_projection,
     salvation_relationship_pack_digest,
     salvation_relationship_observation_threshold,
     salvation_relationship_pack_inventory,
@@ -142,6 +143,61 @@ class SalvationRelationshipsTests(unittest.TestCase):
         )
         self.assertFalse(ineligible["route"])
         self.assertIn("projection_ineligible", ineligible["exclusion_reasons"])
+
+    def test_final_projection_reconciles_observations_without_changing_raw_values(
+        self,
+    ) -> None:
+        probabilities = {
+            relationship: 0.0 for relationship in SALVATION_RELATIONSHIPS
+        }
+        probabilities["assurance_security"] = 0.55
+        artifact = {
+            "blocks": [
+                {
+                    "block_id": 7,
+                    "probabilities": probabilities,
+                    "observations": [],
+                    "route": {"route": True},
+                }
+            ]
+        }
+
+        refresh_salvation_relationship_projection(
+            artifact,
+            {"blocks": [_block(support=0.8)]},
+        )
+
+        self.assertEqual(probabilities, artifact["blocks"][0]["probabilities"])
+        self.assertEqual(
+            ["assurance_security"],
+            [
+                item["relationship"]
+                for item in artifact["blocks"][0]["observations"]
+            ],
+        )
+        self.assertEqual("observations_only", artifact["status"])
+        self.assertTrue(artifact["final_projection_reconciled"])
+        self.assertEqual([], artifact["missing_current_routed_block_ids"])
+
+        refresh_salvation_relationship_projection(
+            artifact,
+            {"blocks": [_block(support=0.8, eligible=False)]},
+        )
+
+        self.assertEqual([], artifact["blocks"][0]["observations"])
+        self.assertEqual("not_routed", artifact["status"])
+        self.assertEqual([7], artifact["inactive_evaluated_block_ids"])
+
+    def test_final_projection_reports_new_route_without_leaf_evidence(self) -> None:
+        artifact = {"blocks": []}
+
+        refresh_salvation_relationship_projection(
+            artifact,
+            {"blocks": [_block(support=0.8)]},
+        )
+
+        self.assertEqual("incomplete_current_route_evidence", artifact["status"])
+        self.assertEqual([7], artifact["missing_current_routed_block_ids"])
 
     def test_leaf_inventory_is_independent_versioned_and_deterministic(self) -> None:
         inventory = salvation_relationship_pack_inventory()

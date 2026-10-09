@@ -59,11 +59,14 @@ def _source() -> dict[str, object]:
         "video_id": 1,
         "youtube_video_id": "youtube-1",
         "title": "Sermon",
+        "stored_artifact_sha256": "stored",
         "artifact": {
             "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
             "observation_policy_version": (
                 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
             ),
+            "final_projection_reconciled": True,
+            "missing_current_routed_block_ids": [],
             "observation_thresholds": dict(
                 SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
             ),
@@ -82,6 +85,14 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
 
         self.assertEqual(2 * len(SALVATION_RELATIONSHIPS), len(packet["probes"]))
         self.assertEqual(2, packet["routed_block_count"])
+        self.assertEqual(
+            "stored",
+            packet["source_artifacts"][0]["stored_artifact_sha256"],
+        )
+        self.assertIn(
+            "effective_artifact_sha256",
+            packet["source_artifacts"][0],
+        )
         for relationship in SALVATION_RELATIONSHIPS:
             self.assertEqual(
                 {"strongest_rejected", "weakest_collected"},
@@ -108,6 +119,17 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
         source["artifact"]["blocks"][1]["observations"] = []
 
         with self.assertRaisesRegex(ValueError, "inconsistent"):
+            build_salvation_collected_observations_review(
+                [source],
+                cohort_sha256="cohort",
+                readiness_input_fingerprint="readiness",
+            )
+
+    def test_rejects_missing_current_route_evidence(self) -> None:
+        source = _source()
+        source["artifact"]["missing_current_routed_block_ids"] = [9]
+
+        with self.assertRaisesRegex(ValueError, "missing relationship evidence"):
             build_salvation_collected_observations_review(
                 [source],
                 cohort_sha256="cohort",

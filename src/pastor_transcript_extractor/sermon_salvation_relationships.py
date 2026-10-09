@@ -273,6 +273,97 @@ def resolve_salvation_relationship_analysis_artifact(
     )
 
 
+def refresh_salvation_relationship_projection(
+    artifact: dict[str, Any],
+    topic_analysis: Mapping[str, Any],
+) -> None:
+    """Reconcile cached leaf evidence with the final broad-topic projection."""
+    raw_topic_blocks = topic_analysis.get("blocks")
+    raw_leaf_blocks = artifact.get("blocks")
+    if not isinstance(raw_topic_blocks, list) or not isinstance(raw_leaf_blocks, list):
+        raise ValueError("Salvation relationship projection artifacts are malformed")
+    topic_blocks = {
+        int(block["block_id"]): block
+        for block in raw_topic_blocks
+        if isinstance(block, Mapping) and block.get("block_id") is not None
+    }
+    current_routes = {
+        block_id: salvation_route_decision(block)
+        for block_id, block in topic_blocks.items()
+    }
+    current_routed_ids = {
+        block_id for block_id, route in current_routes.items() if route["route"]
+    }
+    evaluated_ids: set[int] = set()
+    active_evaluated_ids: set[int] = set()
+    observation_count = 0
+    for block in raw_leaf_blocks:
+        if not isinstance(block, dict) or block.get("block_id") is None:
+            raise ValueError("Salvation relationship leaf block is malformed")
+        block_id = int(block["block_id"])
+        route = current_routes.get(block_id)
+        if route is None:
+            raise ValueError(
+                f"Salvation relationship block {block_id} has no topic evidence"
+            )
+        probabilities = block.get("probabilities")
+        if not isinstance(probabilities, Mapping):
+            raise ValueError(
+                f"Salvation relationship block {block_id} has no probabilities"
+            )
+        collected = collected_salvation_relationships(probabilities)
+        block["route"] = route
+        block["observations"] = (
+            [
+                {
+                    "relationship": relationship,
+                    "probability": round(float(probabilities[relationship]), 6),
+                    "threshold": salvation_relationship_observation_threshold(
+                        relationship
+                    ),
+                }
+                for relationship in collected
+            ]
+            if route["route"]
+            else []
+        )
+        evaluated_ids.add(block_id)
+        if route["route"]:
+            active_evaluated_ids.add(block_id)
+            observation_count += len(block["observations"])
+    missing = sorted(current_routed_ids - evaluated_ids)
+    inactive = sorted(evaluated_ids - current_routed_ids)
+    topic_projection = topic_analysis.get("sermon_projection")
+    topic_projection = (
+        topic_projection if isinstance(topic_projection, Mapping) else {}
+    )
+    artifact.update(
+        {
+            "status": (
+                "incomplete_current_route_evidence"
+                if missing
+                else "observations_only"
+                if active_evaluated_ids
+                else "not_routed"
+            ),
+            "final_projection_reconciled": True,
+            "evaluated_block_count": len(evaluated_ids),
+            "routed_block_count": len(active_evaluated_ids),
+            "current_routed_block_count": len(current_routed_ids),
+            "observation_count": observation_count,
+            "missing_current_routed_block_ids": missing,
+            "inactive_evaluated_block_ids": inactive,
+            "topic_projection_policy_version": topic_projection.get(
+                "policy_version"
+            ),
+            "final_disposition_status": topic_projection.get(
+                "final_disposition_status"
+            ),
+            "window_source": topic_projection.get("window_source"),
+        }
+    )
+
+
 def salvation_relationship_question_id(position: int, relationship: str) -> str:
     if relationship not in SALVATION_RELATIONSHIP_SPECS:
         raise ValueError(f"Unknown salvation relationship: {relationship}")

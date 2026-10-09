@@ -44,6 +44,9 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     SERMON_ROLES as TYPESAFE_SERMON_ROLES,
     SEARCH_ALGORITHM_VERSION as TYPESAFE_SEARCH_ALGORITHM_VERSION,
 )
+from pastor_transcript_extractor.sermon_salvation_relationships import (
+    refresh_salvation_relationship_projection,
+)
 from pastor_transcript_extractor.sermon_topics import (
     refresh_topic_analysis_projection,
 )
@@ -147,6 +150,12 @@ def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
     )
     topic_analysis = search.get("topic_analysis")
     topic_analysis = topic_analysis if isinstance(topic_analysis, dict) else None
+    salvation_relationship_analysis = search.get("salvation_relationship_analysis")
+    salvation_relationship_analysis = (
+        salvation_relationship_analysis
+        if isinstance(salvation_relationship_analysis, dict)
+        else None
+    )
     discovery = search.get("discovery")
     discovery = discovery if isinstance(discovery, dict) else {}
     candidates = search.get("candidates")
@@ -194,6 +203,7 @@ def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
         "confidence_reasons": list(result.confidence_reasons or []),
         "semantic_analysis": semantic_analysis,
         "topic_analysis": topic_analysis,
+        "salvation_relationship_analysis": salvation_relationship_analysis,
         "discovery": {
             key: discovery[key]
             for key in (
@@ -237,10 +247,16 @@ def _refresh_typesafe_topic_projections(
     search = classification.get("search")
     if not isinstance(search, dict):
         return
-    analyses: list[dict[str, Any]] = []
+    analyses: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
     direct = search.get("topic_analysis")
     if isinstance(direct, dict):
-        analyses.append(direct)
+        direct_salvation = search.get("salvation_relationship_analysis")
+        analyses.append(
+            (
+                direct,
+                direct_salvation if isinstance(direct_salvation, dict) else None,
+            )
+        )
     discovery = search.get("discovery")
     attempt = (
         discovery.get("typesafe_first_attempt")
@@ -249,8 +265,14 @@ def _refresh_typesafe_topic_projections(
     )
     fallback = attempt.get("topic_analysis") if isinstance(attempt, dict) else None
     if isinstance(fallback, dict):
-        analyses.append(fallback)
-    for analysis in analyses:
+        fallback_salvation = attempt.get("salvation_relationship_analysis")
+        analyses.append(
+            (
+                fallback,
+                fallback_salvation if isinstance(fallback_salvation, dict) else None,
+            )
+        )
+    for analysis, salvation_analysis in analyses:
         refresh_topic_analysis_projection(
             analysis,
             retained_segment_indexes=retained,
@@ -264,6 +286,11 @@ def _refresh_typesafe_topic_projections(
                 else None
             ),
         )
+        if salvation_analysis is not None:
+            refresh_salvation_relationship_projection(
+                salvation_analysis,
+                analysis,
+            )
 
 
 def _typesafe_first_requires_verification(classification: object) -> bool:

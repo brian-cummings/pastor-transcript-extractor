@@ -430,7 +430,11 @@ observations from the frozen
 probabilities remain policy-independent evidence, so changing a collection
 threshold does not require another provider request. Relationship observations are
 still observation-only: they do not change sermon boundaries, disposition, or a
-pastor profile.
+pastor profile. If TypeSafe abstains and classification falls back, its raw leaf
+evidence is preserved and reconciled with the final sermon projection: blocks that
+are no longer routed stop contributing observations, while a newly routed block
+without cached leaf evidence is reported as incomplete rather than silently
+treated as negative.
 
 After refreshing the frozen twelve-sermon validation cohort through ordinary
 `pte reclassify`, build its bounded collected-observation review without calling a

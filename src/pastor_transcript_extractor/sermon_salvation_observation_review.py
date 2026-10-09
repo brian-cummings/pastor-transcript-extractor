@@ -1,6 +1,7 @@
 """Provider-free review of collected salvation relationship observations."""
 from __future__ import annotations
 
+from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
@@ -12,6 +13,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
     collected_salvation_relationships,
+    refresh_salvation_relationship_projection,
     resolve_salvation_relationship_analysis_artifact,
 )
 from pastor_transcript_extractor.sermon_topic_profile_analysis import (
@@ -23,6 +25,7 @@ from pastor_transcript_extractor.sermon_topic_projection import (
 from pastor_transcript_extractor.sermon_topic_stage4 import (
     assess_topic_stage4_readiness,
 )
+from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact
 from pastor_transcript_extractor.storage import Database
 
 
@@ -62,6 +65,17 @@ def _validated_source_judgments(
     ):
         raise ValueError(
             f"Video {source['video_id']} uses a different observation policy"
+        )
+    if artifact.get("final_projection_reconciled") is not True:
+        raise ValueError(
+            f"Video {source['video_id']} relationship evidence is not reconciled "
+            "to the final sermon projection"
+        )
+    missing_routes = artifact.get("missing_current_routed_block_ids")
+    if missing_routes not in ([], ()):
+        raise ValueError(
+            f"Video {source['video_id']} is missing relationship evidence for "
+            f"current routed blocks: {missing_routes}"
         )
     raw_thresholds = artifact.get("observation_thresholds")
     if raw_thresholds != SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS:
@@ -198,7 +212,11 @@ def build_salvation_collected_observations_review(
     source_fingerprints = [
         {
             "video_id": int(source["video_id"]),
-            "artifact_sha256": _canonical_hash(source["artifact"]),
+            "stored_artifact_sha256": str(
+                source.get("stored_artifact_sha256")
+                or _canonical_hash(source["artifact"])
+            ),
+            "effective_artifact_sha256": _canonical_hash(source["artifact"]),
         }
         for source in sources
     ]
@@ -264,12 +282,18 @@ def evaluate_salvation_collected_observations_review(
                 )
             classification = read_classification_for_gate(gate)
             try:
-                artifact = resolve_salvation_relationship_analysis_artifact(
+                stored_artifact = resolve_salvation_relationship_analysis_artifact(
                     classification
                 )
+                topic_analysis = resolve_topic_analysis_artifact(classification)
             except ValueError:
                 missing.append(video_id)
                 continue
+            artifact = deepcopy(dict(stored_artifact))
+            refresh_salvation_relationship_projection(
+                artifact,
+                topic_analysis,
+            )
             sources.append(
                 {
                     "pastor": {
@@ -281,6 +305,7 @@ def evaluate_salvation_collected_observations_review(
                     "youtube_video_id": video.youtube_video_id,
                     "title": video.title,
                     "artifact": artifact,
+                    "stored_artifact_sha256": _canonical_hash(stored_artifact),
                 }
             )
     if missing:

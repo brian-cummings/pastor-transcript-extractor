@@ -2021,6 +2021,17 @@ class HybridClassificationTests(unittest.TestCase):
             "policy_effect": "none",
             "blocks": [{"block_id": 4, "scores": {"salvation_gospel": {"score": 3.0}}}],
         }
+        salvation_relationship_analysis = {
+            "schema_version": 1,
+            "status": "observations_only",
+            "policy_effect": "observation_collection_only",
+            "blocks": [
+                {
+                    "block_id": 4,
+                    "probabilities": {"assurance_security": 0.75},
+                }
+            ],
+        }
         attempt = _typesafe_first_attempt(
             HybridSermonResult(
                 method="typesafe_first_v11",
@@ -2038,6 +2049,9 @@ class HybridClassificationTests(unittest.TestCase):
                     "selected_rank": None,
                     "semantic_analysis": semantic_analysis,
                     "topic_analysis": topic_analysis,
+                    "salvation_relationship_analysis": (
+                        salvation_relationship_analysis
+                    ),
                     "discovery": {},
                 },
             )
@@ -2048,6 +2062,10 @@ class HybridClassificationTests(unittest.TestCase):
         )
         self.assertEqual(semantic_analysis, attempt["semantic_analysis"])
         self.assertEqual(topic_analysis, attempt["topic_analysis"])
+        self.assertEqual(
+            salvation_relationship_analysis,
+            attempt["salvation_relationship_analysis"],
+        )
 
     def test_strict_llm_mode_propagates_failure(self) -> None:
         drafts = [draft(0.0, 120.0, "sermon")]
