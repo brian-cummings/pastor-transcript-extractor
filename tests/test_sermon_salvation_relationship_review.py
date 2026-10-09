@@ -12,9 +12,11 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockAnswer,
 )
 from pastor_transcript_extractor.sermon_salvation_relationship_review import (
+    ALL_REVIEWED_CANDIDATE_KEYS,
     PRIOR_REVIEWED_CANDIDATE_KEYS,
     _select_review_candidates,
     evaluate_salvation_relationship_review,
+    select_obedience_consequence_calibration_candidates,
     write_salvation_relationship_review,
 )
 from pastor_transcript_extractor.sermon_salvation_relationships import (
@@ -133,6 +135,46 @@ def _block(block_id: int, support: float) -> dict[str, object]:
 
 
 class SalvationRelationshipReviewTests(unittest.TestCase):
+    def test_obedience_calibration_selects_fresh_diverse_cue_cases(self) -> None:
+        candidates = [
+            {
+                "candidate_key": f"{pastor_index}:{case_index}",
+                "pastor": {"slug": f"pastor-{pastor_index}"},
+                "target_text": "obedience " * (5 - case_index),
+            }
+            for pastor_index in range(1, 5)
+            for case_index in range(1, 5)
+        ]
+        candidates.append(
+            {
+                "candidate_key": "4430:49",
+                "pastor": {"slug": "pastor-1"},
+                "target_text": "obedience " * 20,
+            }
+        )
+
+        selected = select_obedience_consequence_calibration_candidates(
+            candidates
+        )
+
+        self.assertEqual(12, len(selected))
+        self.assertTrue(
+            all(
+                candidate["candidate_key"] not in ALL_REVIEWED_CANDIDATE_KEYS
+                for candidate in selected
+            )
+        )
+        self.assertEqual(
+            {f"pastor-{index}": 3 for index in range(1, 5)},
+            {
+                slug: sum(
+                    candidate["pastor"]["slug"] == slug
+                    for candidate in selected
+                )
+                for slug in {candidate["pastor"]["slug"] for candidate in selected}
+            },
+        )
+
     def test_sampler_excludes_every_prior_development_case(self) -> None:
         supports = (0.55, 0.6, 0.7, 0.8, 0.9)
         candidates = [

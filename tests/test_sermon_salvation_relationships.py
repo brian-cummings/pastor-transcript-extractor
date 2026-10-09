@@ -4,10 +4,13 @@ import unittest
 
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
+    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
     SALVATION_RELATIONSHIP_SPECS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_ROUTE_THRESHOLD,
+    UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
     salvation_relationship_pack_digest,
+    salvation_relationship_observation_threshold,
     salvation_relationship_pack_inventory,
     salvation_relationship_question_inventory,
     salvation_route_decision,
@@ -49,6 +52,34 @@ def _block(*, support: float, eligible: bool = True) -> dict[str, object]:
 
 
 class SalvationRelationshipsTests(unittest.TestCase):
+    def test_reviewed_observation_thresholds_leave_only_consequence_unresolved(
+        self,
+    ) -> None:
+        self.assertEqual(
+            {"obedience_as_consequence_or_evidence"},
+            set(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS),
+        )
+        self.assertEqual(
+            set(SALVATION_RELATIONSHIPS)
+            - set(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS),
+            set(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS),
+        )
+        self.assertEqual(
+            0.65,
+            salvation_relationship_observation_threshold(
+                "divine_grace_initiative"
+            ),
+        )
+        self.assertEqual(
+            0.55,
+            salvation_relationship_observation_threshold("assurance_security"),
+        )
+        self.assertIsNone(
+            salvation_relationship_observation_threshold(
+                "obedience_as_consequence_or_evidence"
+            )
+        )
+
     def test_reviewed_route_uses_supporting_mass_and_projection_eligibility(
         self,
     ) -> None:

@@ -1072,13 +1072,23 @@ theological stance.
     grace, final destiny, faith, assurance, and obedience as consequence. Final
     thresholds will be stored per relationship while raw probabilities remain
     policy-independent cached evidence.
+51. The focused per-relationship review settles eleven boundaries: atonement,
+    forgiveness, justification, conversion, sanctification, repentance, and
+    obedience-as-condition at `0.70`; divine grace, final destiny, and faith at
+    `0.65`; and assurance at `0.55`. Obedience-as-consequence remains unresolved
+    because its reviewed scores intermix positives and negatives. The existing
+    cache contains no unreviewed v2 leaf answers, so a final cache-first command
+    deterministically selects twelve fresh routed blocks with explicit
+    consequence/evidence cues, caps selection at three per pastor, and presents
+    at most six new answers in the `0.55`–`0.65` window. It changes no production
+    policy and replays from the normal per-video cache after the first run.
 
 ### Next iteration
 
-1. Review the provider-free per-relationship boundary packet for the five
-   ambiguous leaves. Choose the lowest defensible candidate boundary for each;
-   do not reopen the frozen questions or the seven provisionally settled leaves.
-2. Freeze the twelve-leaf threshold map and enable the independently cached leaf
+1. Run and review the final bounded obedience-as-consequence calibration. If the
+   new `0.55`–`0.65` cases separate around `0.60`, use `0.60`; if they remain
+   intermixed, record the leaf as poorly discriminated and stop threshold tuning.
+2. Freeze the complete twelve-leaf policy and enable the independently cached leaf
    pack during ordinary reclassification for projection-eligible blocks routed
    at `0.55`. Persist raw probabilities so later policy changes do not rerun
    inference.

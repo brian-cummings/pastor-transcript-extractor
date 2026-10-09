@@ -56,6 +56,7 @@ GROUP_COMMANDS = {
         "population-show",
         "refresh-profiles",
         "run",
+        "salvation-obedience-calibration",
         "salvation-observation-boundaries-review",
         "salvation-observation-threshold-review",
         "salvation-relationships-review",

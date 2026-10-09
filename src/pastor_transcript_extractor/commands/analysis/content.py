@@ -41,8 +41,11 @@ from pastor_transcript_extractor.sermon_salvation_routing import (
     write_salvation_routing_review,
 )
 from pastor_transcript_extractor.sermon_salvation_relationship_review import (
+    DEFAULT_SALVATION_OBEDIENCE_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT,
+    evaluate_obedience_consequence_calibration,
     evaluate_salvation_relationship_review,
+    write_obedience_consequence_calibration,
     write_salvation_relationship_review,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
@@ -1297,6 +1300,72 @@ def analysis_salvation_relationships_review(
         f"cache_hits={execution['hits']}; "
         f"cache_misses={execution['misses']}; "
         f"provider_requests={execution['provider_requests']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-obedience-calibration",
+    help=(
+        "Evaluate a final cache-first sample for obedience as consequence or "
+        "evidence."
+    ),
+)
+def analysis_salvation_obedience_calibration(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying cached broad observations.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_OBEDIENCE_CALIBRATION_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_TYPESAFE_MODEL,
+        "--model",
+        help="Pinned TypeSafe model id used for the leaf judgments.",
+    ),
+    timeout_seconds: float = typer.Option(
+        45.0,
+        "--timeout-seconds",
+        min=1.0,
+        help="Timeout for each uncached TypeSafe request.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        packet, execution = evaluate_obedience_consequence_calibration(
+            database,
+            cohort,
+            model=model,
+            client=_LazyTopicBehaviorClient(
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        )
+        json_path, markdown_path, reused = (
+            write_obedience_consequence_calibration(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} obedience-consequence calibration: "
+        f"{json_path} and {markdown_path}; "
+        f"attempted={len(packet['attempted_cases'])}; "
+        f"probes={len(packet['probes'])}; "
+        f"cache_hits={execution['hits']}; "
+        f"cache_misses={execution['misses']}; "
+        f"provider_requests={execution['provider_requests']}; "
+        f"status={packet['status']}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )
