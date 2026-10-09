@@ -1139,6 +1139,11 @@ theological stance.
     weakest-collected decisions with materially less repeated transcript text. This
     changes only the provider-free review artifact and leaves inference and block
     cache identities untouched.
+59. Collected-observation review now reports the shared Stage 4 readiness table
+    and its bounded remediation commands before failing closed. The command passes
+    that same immutable readiness snapshot into packet evaluation, so diagnostics
+    neither duplicate readiness logic nor repeat the database audit. No TypeSafe
+    request is made when an ineligible or non-accepted cohort sermon blocks review.
 
 ### Next iteration
 

@@ -303,8 +303,11 @@ def build_salvation_collected_observations_review(
 def evaluate_salvation_collected_observations_review(
     database: Database,
     cohort: Mapping[str, Any],
+    *,
+    readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    readiness = assess_topic_stage4_readiness(database, cohort)
+    if readiness is None:
+        readiness = assess_topic_stage4_readiness(database, cohort)
     if not readiness["ready"]:
         raise ValueError(
             "Salvation observation review requires ready Stage 4 inputs: "

@@ -1486,9 +1486,13 @@ def analysis_salvation_collected_observations_review(
     database = get_database(base_dir)
     try:
         cohort = load_topic_stage4_cohort(cohort_path)
+        readiness = assess_topic_stage4_readiness(database, cohort)
+        if not readiness["ready"]:
+            _print_topic_stage4_readiness(readiness, base_dir=base_dir)
         packet = evaluate_salvation_collected_observations_review(
             database,
             cohort,
+            readiness=readiness,
         )
         json_path, markdown_path, reused = (
             write_salvation_collected_observations_review(output_path, packet)

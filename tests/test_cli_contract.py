@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from importlib.metadata import distribution
 import unittest
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from typer.core import TyperGroup
 from typer.main import get_command
@@ -423,6 +423,68 @@ class CliContractTests(unittest.TestCase):
         self.assertIn("topic-review --video-id 1037", result.output)
         self.assertIn("topic-review-draft", result.output)
         self.assertNotIn("pte reclassify", result.output)
+
+    def test_salvation_observation_review_prints_bounded_readiness_actions(self) -> None:
+        report = {
+            "ready": False,
+            "blockers": ["disposition_not_accepted"],
+            "input_fingerprint": "f" * 64,
+            "model": "jev-1.13.0",
+            "pastors": [
+                {
+                    "display_name": "Test Pastor",
+                    "effective_profile_ids": [],
+                    "sermons": [{"eligible": False}],
+                    "series_keys": ["series"],
+                    "period_keys": ["period"],
+                    "blockers": ["disposition_not_accepted"],
+                }
+            ],
+            "review_actions": [
+                {
+                    "action_type": "prepare_topic_evidence",
+                    "pastor": {"display_name": "Test Pastor"},
+                    "reason_codes": ["disposition_not_accepted"],
+                    "video_id": 599,
+                    "youtube_video_id": "youtube-599",
+                }
+            ],
+        }
+        with (
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.get_database",
+                return_value=object(),
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.load_topic_stage4_cohort",
+                return_value={},
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.assess_topic_stage4_readiness",
+                return_value=report,
+            ),
+            patch(
+                "pastor_transcript_extractor.commands.analysis.content.evaluate_salvation_collected_observations_review",
+                side_effect=ValueError(
+                    "Salvation observation review requires ready Stage 4 inputs: "
+                    "disposition_not_accepted"
+                ),
+            ) as evaluate,
+        ):
+            result = self.runner.invoke(
+                app,
+                [
+                    "analysis",
+                    "salvation-collected-observations-review",
+                    "--base-dir",
+                    "/tmp/topic-readiness",
+                ],
+            )
+
+        self.assertNotEqual(0, result.exit_code)
+        self.assertIn("Overall: blocked", result.output)
+        self.assertIn("reclassify --video-id 599", result.output)
+        evaluate.assert_called_once_with(ANY, {}, readiness=report)
 
     def test_package_and_installed_entry_points_resolve_the_cli(self) -> None:
         self.assertIs(package_main, main)
