@@ -1107,6 +1107,14 @@ theological stance.
     leaving the raw cached judgments untouched. The production and review commands
     are documented together so the normal TypeSafe defaults, conditional routing,
     observation-only effect, and zero-provider replay contract are explicit.
+55. Relationship-pack cache replay now validates the frozen question version,
+    complete twelve-leaf probability inventory, probability ranges, and stored
+    context before counting a hit. A malformed or partial leaf cache is treated as
+    one missing pack and repaired through the existing bounded request path; its
+    valid role, treatment, and topic sibling packs remain reusable. The repaired
+    pack then replays without another provider request. The same validator runs
+    before writes, so an incomplete provider response fails explicitly and is never
+    persisted as reusable evidence.
 
 ### Next iteration
 

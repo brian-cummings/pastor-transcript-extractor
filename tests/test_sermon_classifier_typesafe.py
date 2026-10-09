@@ -1152,6 +1152,97 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(1, cache.hits)
         self.assertEqual(1, cache.misses)
 
+    def test_malformed_salvation_relationship_cache_is_repaired_once(self) -> None:
+        client = FakeBlockClient()
+        block = build_transcript_blocks(
+            drafts(), target_seconds=300.0, max_chars=9000
+        )[0]
+        context = {"metadata": {"title": "Synthetic salvation fixture"}}
+        topic_contexts = {
+            block.block_id: build_topic_context(drafts(), block)
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache = TypeSafeBlockCache(root, model="jev-1.13.0")
+            cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+                topic_contexts=topic_contexts,
+            )
+            pack_path = next(
+                (cache.root / "packs" / SALVATION_RELATIONSHIPS_PACK).glob("*.json")
+            )
+            payload = json.loads(pack_path.read_text(encoding="utf-8"))
+            payload["answer"]["salvation_relationship_probabilities"].pop(
+                "assurance_security"
+            )
+            pack_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            repair_cache = TypeSafeBlockCache(root, model="jev-1.13.0")
+            repaired = repair_cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+                topic_contexts=topic_contexts,
+            )
+            calls_after_repair = client.calls
+            replay = repair_cache.assess_packs(
+                client,
+                context,
+                [block],
+                requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+                topic_contexts=topic_contexts,
+            )
+
+        self.assertEqual(
+            set(SALVATION_RELATIONSHIPS),
+            set(repaired[block.block_id].salvation_relationship_probabilities),
+        )
+        self.assertEqual(calls_after_repair, client.calls)
+        self.assertEqual(
+            repaired[block.block_id].salvation_relationship_probabilities,
+            replay[block.block_id].salvation_relationship_probabilities,
+        )
+        self.assertEqual(1, repair_cache.misses)
+        self.assertEqual(1, repair_cache.hits)
+
+    def test_malformed_provider_relationship_pack_is_not_cached(self) -> None:
+        class IncompleteRelationshipClient(FakeBlockClient):
+            def assess_blocks(self, recording_context, blocks, **kwargs):
+                answers = super().assess_blocks(recording_context, blocks, **kwargs)
+                malformed = {}
+                for block_id, answer in answers.items():
+                    payload = asdict(answer)
+                    payload["salvation_relationship_probabilities"].pop(
+                        "assurance_security"
+                    )
+                    malformed[block_id] = TypeSafeBlockAnswer(**payload)
+                return malformed
+
+        block = build_transcript_blocks(
+            drafts(), target_seconds=300.0, max_chars=9000
+        )[0]
+        context = {"metadata": {"title": "Synthetic salvation fixture"}}
+        topic_contexts = {
+            block.block_id: build_topic_context(drafts(), block)
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            with self.assertRaisesRegex(ValueError, "malformed answer pack"):
+                cache.assess_packs(
+                    IncompleteRelationshipClient(),
+                    context,
+                    [block],
+                    requested_packs=frozenset({SALVATION_RELATIONSHIPS_PACK}),
+                    topic_contexts=topic_contexts,
+                )
+
+            pack_directory = cache.root / "packs" / SALVATION_RELATIONSHIPS_PACK
+            self.assertFalse(list(pack_directory.glob("*.json")))
+
     def test_legacy_combined_cache_is_migrated_without_provider_call(self) -> None:
         client = FakeBlockClient()
         block = build_transcript_blocks(

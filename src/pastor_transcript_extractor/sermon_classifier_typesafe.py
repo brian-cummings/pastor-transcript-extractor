@@ -418,7 +418,12 @@ class TypeSafeBlockCache:
         )
         self.misses += 1
 
-    def _read_pack(self, path: Path) -> dict[str, Any] | None:
+    def _read_pack(
+        self,
+        path: Path,
+        *,
+        pack: str | None = None,
+    ) -> dict[str, Any] | None:
         if not path.exists():
             return None
         try:
@@ -428,8 +433,28 @@ class TypeSafeBlockCache:
                 return None
         except (OSError, ValueError, KeyError, TypeError):
             return None
+        if pack is not None and not self._pack_payload_is_valid(pack, answer):
+            return None
         self.hits += 1
         return answer
+
+    @staticmethod
+    def _pack_payload_is_valid(pack: str, answer: Mapping[str, Any]) -> bool:
+        if pack != SALVATION_RELATIONSHIPS_PACK:
+            return True
+        probabilities = answer.get("salvation_relationship_probabilities")
+        if (
+            answer.get("salvation_relationship_question_version")
+            != SALVATION_RELATIONSHIPS_PACK_VERSION
+            or not isinstance(probabilities, Mapping)
+            or not isinstance(answer.get("salvation_relationship_context"), Mapping)
+        ):
+            return False
+        try:
+            collected_salvation_relationships(probabilities)
+        except (TypeError, ValueError):
+            return False
+        return True
 
     def _write_pack(
         self,
@@ -856,7 +881,7 @@ class TypeSafeBlockCache:
                 )
                 path = self._pack_path(pack, identity)
                 identities[(block.block_id, pack)] = (identity, path)
-                cached = self._read_pack(path)
+                cached = self._read_pack(path, pack=pack)
                 if cached is None:
                     missing.add(pack)
                 else:
@@ -924,6 +949,11 @@ class TypeSafeBlockCache:
                 answer = assessed[block.block_id]
                 for pack in missing_packs:
                     payload = self._pack_payload(answer, pack)
+                    if not self._pack_payload_is_valid(pack, payload):
+                        raise ValueError(
+                            "TypeSafe returned a malformed answer pack: "
+                            f"block={block.block_id}, pack={pack}"
+                        )
                     identity, path = identities[(block.block_id, pack)]
                     self._write_pack(path, identity, payload)
                     cached_packs[block.block_id][pack] = payload
