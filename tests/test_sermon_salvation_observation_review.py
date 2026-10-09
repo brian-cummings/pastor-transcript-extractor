@@ -6,6 +6,7 @@ import unittest
 
 from pastor_transcript_extractor.sermon_salvation_observation_review import (
     build_salvation_collected_observations_review,
+    render_salvation_collected_observations_review,
     write_salvation_collected_observations_review,
 )
 from pastor_transcript_extractor.sermon_salvation_relationships import (
@@ -93,6 +94,12 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
             "effective_artifact_sha256",
             packet["source_artifacts"][0],
         )
+        markdown = render_salvation_collected_observations_review(packet)
+        assurance = packet["relationship_definitions"]["assurance_security"]
+        self.assertIn(assurance["description"], markdown)
+        self.assertIn(assurance["true_criteria"], markdown)
+        self.assertIn(assurance["false_criteria"], markdown)
+        self.assertIn("not the intensity of the doctrine", markdown)
         for relationship in SALVATION_RELATIONSHIPS:
             self.assertEqual(
                 {"strongest_rejected", "weakest_collected"},

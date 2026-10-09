@@ -1125,6 +1125,13 @@ theological stance.
     command can construct this same effective view in memory for a batch produced
     immediately before this change and fingerprints both stored and reconciled
     artifacts, avoiding an otherwise unnecessary provider rerun.
+57. The collected-observation packet is self-contained for external review. Its
+    fingerprinted JSON embeds the frozen meaning and true/false evidence boundary
+    for every leaf, and its Markdown repeats those definitions beside each probe,
+    explains that a Noul value is a yes probability rather than doctrinal intensity
+    or a separate confidence score, and specifies the exact review response needed.
+    This prevents reviewers from reconstructing semantics from terse relationship
+    ids and does not duplicate the definitions outside the canonical pack inventory.
 
 ### Next iteration
 

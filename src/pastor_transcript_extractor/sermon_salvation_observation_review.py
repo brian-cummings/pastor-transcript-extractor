@@ -15,6 +15,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     collected_salvation_relationships,
     refresh_salvation_relationship_projection,
     resolve_salvation_relationship_analysis_artifact,
+    salvation_relationship_pack_inventory,
 )
 from pastor_transcript_extractor.sermon_topic_profile_analysis import (
     read_classification_for_gate,
@@ -234,6 +235,9 @@ def build_salvation_collected_observations_review(
         "observation_thresholds": dict(
             SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
         ),
+        "relationship_definitions": salvation_relationship_pack_inventory()[
+            "relationships"
+        ],
         "source_artifacts": source_fingerprints,
         "source_video_count": len(sources),
         "routed_block_count": len(judgments) // len(SALVATION_RELATIONSHIPS),
@@ -347,6 +351,20 @@ def render_salvation_collected_observations_review(
         "miss. Context may clarify the target but cannot independently establish the "
         "relationship.",
         "",
+        "Each probability is the Noul probability that the named yes/no relationship "
+        "is asserted; it is not the intensity of the doctrine and has no separate "
+        "confidence score. Apply the relationship-specific true/false boundary below "
+        "to the target text, using adjacent context only for clarification.",
+        "",
+        "## How to return the review",
+        "",
+        "For every `weakest_collected` probe, say whether it is a useful affirmative "
+        "observation or a false positive. For every `strongest_rejected` probe, say "
+        "whether rejection is appropriate or loses a material affirmative observation. "
+        "Then give one overall verdict: approve the frozen collection policy, or name "
+        "the specific relationship boundary that needs another bounded calibration. "
+        "Do not infer a sermon-level or pastor-level theological claim from this packet.",
+        "",
         "## Collection counts",
         "",
         "| Relationship | Threshold | Collected | Rejected |",
@@ -360,7 +378,26 @@ def render_salvation_collected_observations_review(
             f"{counts['collected']} | {counts['rejected']} |"
         )
     for relationship in SALVATION_RELATIONSHIPS:
-        lines.extend(["", f"## {relationship}", ""])
+        definition = packet["relationship_definitions"][relationship]
+        counts = packet["counts_by_relationship"][relationship]
+        lines.extend(
+            [
+                "",
+                f"## {relationship}",
+                "",
+                f"**Meaning:** {definition['description']}",
+                "",
+                f"**Count as yes:** {definition['true_criteria']}",
+                "",
+                f"**Count as no:** {definition['false_criteria']}",
+                "",
+                f"Collection threshold: "
+                f"`{float(packet['observation_thresholds'][relationship]):.2f}`; "
+                f"collected: `{counts['collected']}`; rejected: "
+                f"`{counts['rejected']}`.",
+                "",
+            ]
+        )
         for probe in packet["probes"]:
             if probe["relationship"] != relationship:
                 continue
