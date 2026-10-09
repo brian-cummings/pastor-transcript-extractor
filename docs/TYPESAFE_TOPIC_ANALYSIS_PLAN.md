@@ -1132,6 +1132,13 @@ theological stance.
     or a separate confidence score, and specifies the exact review response needed.
     This prevents reviewers from reconstructing semantics from terse relationship
     ids and does not duplicate the definitions outside the canonical pack inventory.
+58. Collected-observation review schema/policy v2 normalizes repeated evidence.
+    Each selected leaf judgment references a stable `video_id:block_id` case, while
+    transcript context and recording metadata appear once in a deduplicated case
+    table. The JSON and Markdown retain the same bounded strongest-rejected and
+    weakest-collected decisions with materially less repeated transcript text. This
+    changes only the provider-free review artifact and leaves inference and block
+    cache identities untouched.
 
 ### Next iteration
 

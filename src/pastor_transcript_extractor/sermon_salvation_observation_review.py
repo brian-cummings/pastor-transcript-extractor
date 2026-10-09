@@ -30,12 +30,25 @@ from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_art
 from pastor_transcript_extractor.storage import Database
 
 
-SALVATION_COLLECTED_OBSERVATION_REVIEW_SCHEMA_VERSION = 1
+SALVATION_COLLECTED_OBSERVATION_REVIEW_SCHEMA_VERSION = 2
 SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION = (
-    "salvation-collected-observation-boundaries-v1"
+    "salvation-collected-observation-boundaries-v2-deduplicated-evidence"
 )
 DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT = Path(
-    "evaluation/sermon-topics/salvation-collected-observations-review-v1.json"
+    "evaluation/sermon-topics/salvation-collected-observations-review-v2.json"
+)
+
+_CASE_FIELDS = (
+    "pastor",
+    "video_id",
+    "youtube_video_id",
+    "title",
+    "block_id",
+    "start_seconds",
+    "end_seconds",
+    "leading_context",
+    "target_text",
+    "trailing_context",
 )
 
 
@@ -172,7 +185,7 @@ def build_salvation_collected_observations_review(
     ]
     if not judgments:
         raise ValueError("No routed salvation relationship blocks are available")
-    probes: list[dict[str, Any]] = []
+    selected_probes: list[dict[str, Any]] = []
     counts: dict[str, dict[str, int]] = {}
     for relationship in SALVATION_RELATIONSHIPS:
         candidates = [
@@ -185,7 +198,7 @@ def build_salvation_collected_observations_review(
             "rejected": len(rejected),
         }
         if rejected:
-            probes.append(
+            selected_probes.append(
                 {
                     **max(
                         rejected,
@@ -198,7 +211,7 @@ def build_salvation_collected_observations_review(
                 }
             )
         if collected:
-            probes.append(
+            selected_probes.append(
                 {
                     **min(
                         collected,
@@ -210,6 +223,32 @@ def build_salvation_collected_observations_review(
                     "boundary_side": "weakest_collected",
                 }
             )
+    cases_by_key: dict[str, dict[str, Any]] = {}
+    probes: list[dict[str, Any]] = []
+    for probe in selected_probes:
+        case_key = f"{int(probe['video_id'])}:{int(probe['block_id'])}"
+        case = {field: probe[field] for field in _CASE_FIELDS}
+        previous = cases_by_key.setdefault(case_key, case)
+        if previous != case:
+            raise ValueError(f"Conflicting salvation review case: {case_key}")
+        probes.append(
+            {
+                key: value
+                for key, value in probe.items()
+                if key not in _CASE_FIELDS
+            }
+            | {"case_key": case_key}
+        )
+    cases = [
+        {"case_key": case_key, **case}
+        for case_key, case in sorted(
+            cases_by_key.items(),
+            key=lambda item: (
+                int(item[1]["video_id"]),
+                int(item[1]["block_id"]),
+            ),
+        )
+    ]
     source_fingerprints = [
         {
             "video_id": int(source["video_id"]),
@@ -243,6 +282,7 @@ def build_salvation_collected_observations_review(
         "routed_block_count": len(judgments) // len(SALVATION_RELATIONSHIPS),
         "judgment_count": len(judgments),
         "counts_by_relationship": counts,
+        "cases": cases,
         "probes": probes,
     }
     return {
@@ -342,6 +382,7 @@ def render_salvation_collected_observations_review(
         f"- Routed blocks: `{packet['routed_block_count']}`",
         f"- Raw judgments: `{packet['judgment_count']}`",
         f"- Boundary probes: `{len(packet['probes'])}`",
+        f"- Unique evidence cases: `{len(packet['cases'])}`",
         f"- Packet fingerprint: `{packet['input_fingerprint']}`",
         "",
         str(packet["interpretation"]),
@@ -370,6 +411,9 @@ def render_salvation_collected_observations_review(
         "| Relationship | Threshold | Collected | Rejected |",
         "| --- | ---: | ---: | ---: |",
     ]
+    cases_by_key = {
+        str(case["case_key"]): case for case in packet["cases"]
+    }
     for relationship in SALVATION_RELATIONSHIPS:
         counts = packet["counts_by_relationship"][relationship]
         lines.append(
@@ -401,31 +445,43 @@ def render_salvation_collected_observations_review(
         for probe in packet["probes"]:
             if probe["relationship"] != relationship:
                 continue
+            case = cases_by_key[str(probe["case_key"])]
             lines.extend(
                 [
                     f"### {probe['boundary_side']} / "
                     f"{float(probe['probability']):.3f}",
                     "",
                     f"- Threshold: `{float(probe['threshold']):.2f}`",
-                    f"- Case: `{probe['video_id']}:{probe['block_id']}` — "
-                    f"{probe['pastor']['display_name']}",
-                    f"- Recording: `{probe['youtube_video_id']}` — {probe['title']}",
-                    f"- Time: `{probe['start_seconds']}`–`{probe['end_seconds']}`",
-                    "",
-                    "Leading context:",
-                    "",
-                    f"> {str(probe['leading_context']).replace(chr(10), ' ')}",
-                    "",
-                    "Target text:",
-                    "",
-                    f"> {str(probe['target_text']).replace(chr(10), ' ')}",
-                    "",
-                    "Trailing context:",
-                    "",
-                    f"> {str(probe['trailing_context']).replace(chr(10), ' ')}",
+                    f"- Evidence case: `{probe['case_key']}` — "
+                    f"{case['pastor']['display_name']}",
+                    f"- Recording: `{case['youtube_video_id']}` — {case['title']}",
+                    f"- Time: `{case['start_seconds']}`–`{case['end_seconds']}`",
                     "",
                 ]
             )
+    lines.extend(["", "## Deduplicated evidence cases", ""])
+    for case in packet["cases"]:
+        lines.extend(
+            [
+                f"### {case['case_key']} — {case['pastor']['display_name']}",
+                "",
+                f"- Recording: `{case['youtube_video_id']}` — {case['title']}",
+                f"- Time: `{case['start_seconds']}`–`{case['end_seconds']}`",
+                "",
+                "Leading context:",
+                "",
+                f"> {str(case['leading_context']).replace(chr(10), ' ')}",
+                "",
+                "Target text:",
+                "",
+                f"> {str(case['target_text']).replace(chr(10), ' ')}",
+                "",
+                "Trailing context:",
+                "",
+                f"> {str(case['trailing_context']).replace(chr(10), ' ')}",
+                "",
+            ]
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 

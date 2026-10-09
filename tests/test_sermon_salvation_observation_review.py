@@ -86,6 +86,11 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
 
         self.assertEqual(2 * len(SALVATION_RELATIONSHIPS), len(packet["probes"]))
         self.assertEqual(2, packet["routed_block_count"])
+        self.assertEqual(2, len(packet["cases"]))
+        self.assertTrue(
+            all("target_text" not in probe for probe in packet["probes"])
+        )
+        self.assertTrue(all("case_key" in probe for probe in packet["probes"]))
         self.assertEqual(
             "stored",
             packet["source_artifacts"][0]["stored_artifact_sha256"],
@@ -100,6 +105,8 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
         self.assertIn(assurance["true_criteria"], markdown)
         self.assertIn(assurance["false_criteria"], markdown)
         self.assertIn("not the intensity of the doctrine", markdown)
+        self.assertEqual(1, markdown.count("> Target 1."))
+        self.assertEqual(1, markdown.count("> Target 2."))
         for relationship in SALVATION_RELATIONSHIPS:
             self.assertEqual(
                 {"strongest_rejected", "weakest_collected"},
