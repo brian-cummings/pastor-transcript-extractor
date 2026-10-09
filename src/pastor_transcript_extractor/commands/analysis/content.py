@@ -45,6 +45,13 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     evaluate_salvation_relationship_review,
     write_salvation_relationship_review,
 )
+from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
+    DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
+    DEFAULT_SALVATION_OBSERVATION_THRESHOLD_REVIEW_OUTPUT,
+    DEFAULT_SALVATION_RELATIONSHIP_REVIEW_INPUTS,
+    build_salvation_observation_threshold_review,
+    write_salvation_observation_threshold_review,
+)
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     default_topic_behavior_output_path,
@@ -1287,6 +1294,53 @@ def analysis_salvation_relationships_review(
         f"cache_hits={execution['hits']}; "
         f"cache_misses={execution['misses']}; "
         f"provider_requests={execution['provider_requests']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-observation-threshold-review",
+    help=(
+        "Build a provider-free boundary review for the salvation leaf collection "
+        "threshold."
+    ),
+)
+def analysis_salvation_observation_threshold_review(
+    input_paths: list[Path] = typer.Option(
+        list(DEFAULT_SALVATION_RELATIONSHIP_REVIEW_INPUTS),
+        "--input",
+        help="Reviewed salvation relationship packet; repeat for each packet.",
+    ),
+    candidate_threshold: float = typer.Option(
+        DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
+        "--candidate-threshold",
+        min=0.01,
+        max=0.99,
+        help="Proposed probability boundary for affirmative leaf observations.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_OBSERVATION_THRESHOLD_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+) -> None:
+    try:
+        packet = build_salvation_observation_threshold_review(
+            input_paths,
+            candidate_threshold=candidate_threshold,
+        )
+        json_path, markdown_path, reused = (
+            write_salvation_observation_threshold_review(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation observation threshold review: "
+        f"{json_path} and {markdown_path}; "
+        f"judgments={packet['judgment_count']}; "
+        f"probes={len(packet['probes'])}; "
+        f"candidate_threshold={float(packet['candidate_threshold']):.2f}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )
