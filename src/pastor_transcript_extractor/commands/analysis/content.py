@@ -47,9 +47,12 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
+    DEFAULT_SALVATION_OBSERVATION_BOUNDARIES_REVIEW_OUTPUT,
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD_REVIEW_OUTPUT,
     DEFAULT_SALVATION_RELATIONSHIP_REVIEW_INPUTS,
+    build_salvation_observation_boundaries_review,
     build_salvation_observation_threshold_review,
+    write_salvation_observation_boundaries_review,
     write_salvation_observation_threshold_review,
 )
 from pastor_transcript_extractor.sermon_topic_evaluation import (
@@ -1341,6 +1344,43 @@ def analysis_salvation_observation_threshold_review(
         f"judgments={packet['judgment_count']}; "
         f"probes={len(packet['probes'])}; "
         f"candidate_threshold={float(packet['candidate_threshold']):.2f}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-observation-boundaries-review",
+    help=(
+        "Build a provider-free focused review for per-relationship salvation leaf "
+        "boundaries."
+    ),
+)
+def analysis_salvation_observation_boundaries_review(
+    input_paths: list[Path] = typer.Option(
+        list(DEFAULT_SALVATION_RELATIONSHIP_REVIEW_INPUTS),
+        "--input",
+        help="Reviewed salvation relationship packet; repeat for each packet.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_OBSERVATION_BOUNDARIES_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+) -> None:
+    try:
+        packet = build_salvation_observation_boundaries_review(input_paths)
+        json_path, markdown_path, reused = (
+            write_salvation_observation_boundaries_review(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation observation boundaries review: "
+        f"{json_path} and {markdown_path}; "
+        f"settled_leaves={len(packet['settled_thresholds'])}; "
+        f"ambiguous_leaves={len(packet['ambiguous_calibration'])}; "
+        f"probes={len(packet['probes'])}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )
