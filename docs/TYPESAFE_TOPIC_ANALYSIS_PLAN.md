@@ -1063,14 +1063,22 @@ theological stance.
     probabilities and pairs the nearest judgment below `0.70` with the nearest
     judgment at or above it for each leaf. This calibrates only the code-owned
     affirmative-observation threshold and does not rerun TypeSafe.
+50. The universal `0.70` observation-threshold hypothesis failed. Independent
+    Noul questions exhibit different empirical probability ranges: a defensible
+    `obedience_as_consequence_or_evidence` observation scored `0.62`, while other
+    leaves show clean semantic separation around `0.70`. Seven leaves retain a
+    provisional `0.70` boundary. A second provider-free packet restricts review
+    to five ambiguous leaves and their relevant cached probability windows:
+    grace, final destiny, faith, assurance, and obedience as consequence. Final
+    thresholds will be stored per relationship while raw probabilities remain
+    policy-independent cached evidence.
 
 ### Next iteration
 
-1. Review the provider-free `0.70` leaf observation boundary packet. Confirm that
-   the closest judgments at or above the candidate threshold are affirmative
-   observations and that the closest judgments below it do not expose systematic
-   false negatives.
-2. If the boundary passes, freeze it and enable the independently cached leaf
+1. Review the provider-free per-relationship boundary packet for the five
+   ambiguous leaves. Choose the lowest defensible candidate boundary for each;
+   do not reopen the frozen questions or the seven provisionally settled leaves.
+2. Freeze the twelve-leaf threshold map and enable the independently cached leaf
    pack during ordinary reclassification for projection-eligible blocks routed
    at `0.55`. Persist raw probabilities so later policy changes do not rerun
    inference.

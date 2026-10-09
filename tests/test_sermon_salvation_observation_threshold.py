@@ -6,7 +6,11 @@ import tempfile
 import unittest
 
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
+    AMBIGUOUS_SALVATION_OBSERVATION_CALIBRATION,
+    SETTLED_SALVATION_OBSERVATION_THRESHOLDS,
+    build_salvation_observation_boundaries_review,
     build_salvation_observation_threshold_review,
+    write_salvation_observation_boundaries_review,
     write_salvation_observation_threshold_review,
 )
 from pastor_transcript_extractor.sermon_salvation_relationships import (
@@ -35,6 +39,60 @@ def _case(video_id: int, block_id: int, probability: float) -> dict[str, object]
 
 
 class SalvationObservationThresholdTests(unittest.TestCase):
+    def test_focuses_per_relationship_review_on_ambiguous_windows(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            paths = (root / "v2.json", root / "v3.json")
+            packets = (
+                {
+                    "input_fingerprint": "v2-fingerprint",
+                    "leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+                    "cases": [_case(1, 10, 0.59)],
+                },
+                {
+                    "input_fingerprint": "v3-fingerprint",
+                    "leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+                    "cases": [_case(2, 20, 0.69)],
+                },
+            )
+            for path, packet in zip(paths, packets, strict=True):
+                path.write_text(json.dumps(packet), encoding="utf-8")
+
+            review = build_salvation_observation_boundaries_review(paths)
+
+            self.assertEqual(
+                set(SETTLED_SALVATION_OBSERVATION_THRESHOLDS),
+                set(review["settled_thresholds"]),
+            )
+            self.assertEqual(
+                set(AMBIGUOUS_SALVATION_OBSERVATION_CALIBRATION),
+                set(review["ambiguous_calibration"]),
+            )
+            self.assertTrue(
+                all(
+                    probe["relationship"]
+                    in AMBIGUOUS_SALVATION_OBSERVATION_CALIBRATION
+                    for probe in review["probes"]
+                )
+            )
+            self.assertFalse(
+                any(
+                    probe["relationship"]
+                    in SETTLED_SALVATION_OBSERVATION_THRESHOLDS
+                    for probe in review["probes"]
+                )
+            )
+
+            output = root / "boundaries.json"
+            _json_path, _markdown_path, reused = (
+                write_salvation_observation_boundaries_review(output, review)
+            )
+            self.assertFalse(reused)
+            _json_path, _markdown_path, reused = (
+                write_salvation_observation_boundaries_review(output, review)
+            )
+            self.assertTrue(reused)
+
     def test_builds_two_sided_probe_for_every_relationship(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
