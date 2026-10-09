@@ -1046,14 +1046,23 @@ theological stance.
     inferred from forgiveness alone; and direct sin-bearing must count as atoning
     work. The other eight questions remain unchanged. V2 reruns the identical
     twelve targets under a new leaf-only cache identity.
+48. The paired v2 leaf review passed. The four revised questions corrected the
+    observed overclaims and atonement miss while preserving strong relationships
+    in the clearest passages. The known false route at David P Ryder video 4052
+    block 103 produced no leaf probability above `0.44`, supporting a
+    recall-oriented router followed by a more discriminating leaf pack. V3 keeps
+    the exact `salvation-relationships-v2-evidence-boundaries` questions and
+    `0.55` route but excludes all twelve development cases, selecting fresh
+    threshold, median, and strongest blocks per pastor for an out-of-sample check.
 
 ### Next iteration
 
-1. Review the paired `salvation-relationships-v2-evidence-boundaries` packet on
-   the same twelve targets. Confirm that the four revised questions fix the
-   observed semantic boundaries without degrading the strong cases.
-2. If the paired review passes, enable the independently cached leaf pack during
-   ordinary reclassification for projection-eligible blocks routed at `0.55`.
+1. Review the out-of-sample v3 packet without changing the leaf questions or
+   route. Confirm that relationship precision generalizes to the twelve fresh
+   blocks.
+2. If the out-of-sample review passes, enable the independently cached leaf pack
+   during ordinary reclassification for projection-eligible blocks routed at
+   `0.55`.
 
 ## Non-goals for `topics-v1`
 

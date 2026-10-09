@@ -12,6 +12,8 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TypeSafeBlockAnswer,
 )
 from pastor_transcript_extractor.sermon_salvation_relationship_review import (
+    PRIOR_REVIEWED_CANDIDATE_KEYS,
+    _select_review_candidates,
     evaluate_salvation_relationship_review,
     write_salvation_relationship_review,
 )
@@ -131,6 +133,43 @@ def _block(block_id: int, support: float) -> dict[str, object]:
 
 
 class SalvationRelationshipReviewTests(unittest.TestCase):
+    def test_sampler_excludes_every_prior_development_case(self) -> None:
+        supports = (0.55, 0.6, 0.7, 0.8, 0.9)
+        candidates = [
+            {
+                "candidate_key": key,
+                "pastor": {"slug": "pastor"},
+                "video_id": 1,
+                "block_id": index,
+                "route": {"supporting_or_above_probability": support},
+            }
+            for index, (key, support) in enumerate(
+                zip(
+                    (
+                        "4430:49",
+                        "fresh:2",
+                        "fresh:3",
+                        "fresh:4",
+                        "4589:47",
+                    ),
+                    supports,
+                    strict=True,
+                ),
+                start=1,
+            )
+        ]
+
+        selected = _select_review_candidates(candidates)
+
+        self.assertEqual(3, len(selected))
+        self.assertTrue(
+            all(
+                candidate["candidate_key"]
+                not in PRIOR_REVIEWED_CANDIDATE_KEYS
+                for candidate in selected
+            )
+        )
+
     def test_bounded_sample_replays_from_per_video_leaf_caches(self) -> None:
         videos = [_video(1), _video(2)]
         database = _Database(videos)
