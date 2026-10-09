@@ -1054,15 +1054,26 @@ theological stance.
     the exact `salvation-relationships-v2-evidence-boundaries` questions and
     `0.55` route but excludes all twelve development cases, selecting fresh
     threshold, median, and strongest blocks per pastor for an out-of-sample check.
+49. The unchanged leaf pack and `0.55` route passed the twelve-case out-of-sample
+    review. The retained questions discriminate among salvation relationships,
+    and a marginal broad false route produced no specialized probability above
+    `0.36`. Three debatable leaf scores remain observations for collection-policy
+    calibration, not reasons for more prompt tuning. The questions and broad route
+    are now frozen. A provider-free boundary packet combines the v2 and v3 raw
+    probabilities and pairs the nearest judgment below `0.70` with the nearest
+    judgment at or above it for each leaf. This calibrates only the code-owned
+    affirmative-observation threshold and does not rerun TypeSafe.
 
 ### Next iteration
 
-1. Review the out-of-sample v3 packet without changing the leaf questions or
-   route. Confirm that relationship precision generalizes to the twelve fresh
-   blocks.
-2. If the out-of-sample review passes, enable the independently cached leaf pack
-   during ordinary reclassification for projection-eligible blocks routed at
-   `0.55`.
+1. Review the provider-free `0.70` leaf observation boundary packet. Confirm that
+   the closest judgments at or above the candidate threshold are affirmative
+   observations and that the closest judgments below it do not expose systematic
+   false negatives.
+2. If the boundary passes, freeze it and enable the independently cached leaf
+   pack during ordinary reclassification for projection-eligible blocks routed
+   at `0.55`. Persist raw probabilities so later policy changes do not rerun
+   inference.
 
 ## Non-goals for `topics-v1`
 
