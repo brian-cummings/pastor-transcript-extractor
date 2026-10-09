@@ -38,10 +38,29 @@ from pastor_transcript_extractor.storage import Database
 
 SALVATION_RELATIONSHIP_REVIEW_SCHEMA_VERSION = 1
 SALVATION_RELATIONSHIP_REVIEW_POLICY_VERSION = (
-    "salvation-relationships-paired-question-revision-v2"
+    "salvation-relationships-out-of-sample-v3"
 )
 DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT = Path(
-    "evaluation/sermon-topics/salvation-relationships-review-v2.json"
+    "evaluation/sermon-topics/salvation-relationships-review-v3.json"
+)
+PRIOR_REVIEW_FINGERPRINT = (
+    "e6ef7c6b8e8e6ee92588c3a7a045794694dac1941546043b1e0b0f6f92ce2980"
+)
+PRIOR_REVIEWED_CANDIDATE_KEYS = frozenset(
+    {
+        "281:124",
+        "350:44",
+        "1200:35",
+        "3974:81",
+        "4052:103",
+        "4394:46",
+        "4394:49",
+        "4430:49",
+        "4430:57",
+        "4458:70",
+        "4589:38",
+        "4589:47",
+    }
 )
 
 
@@ -148,14 +167,23 @@ def _routed_candidates(
 def _select_review_candidates(
     candidates: Sequence[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    fresh_candidates = [
+        candidate
+        for candidate in candidates
+        if str(candidate["candidate_key"])
+        not in PRIOR_REVIEWED_CANDIDATE_KEYS
+    ]
     selected: list[dict[str, Any]] = []
     for pastor_slug in sorted(
-        {str(candidate["pastor"].get("slug")) for candidate in candidates}
+        {
+            str(candidate["pastor"].get("slug"))
+            for candidate in fresh_candidates
+        }
     ):
         pastor_candidates = sorted(
             (
                 candidate
-                for candidate in candidates
+                for candidate in fresh_candidates
                 if str(candidate["pastor"].get("slug")) == pastor_slug
             ),
             key=lambda candidate: (
@@ -292,6 +320,12 @@ def evaluate_salvation_relationship_review(
         "leaf_pack_digest": salvation_relationship_pack_digest(),
         "requested_model_id": model,
         "routed_candidate_count": len(candidates),
+        "prior_review": {
+            "input_fingerprint": PRIOR_REVIEW_FINGERPRINT,
+            "excluded_candidate_keys": sorted(
+                PRIOR_REVIEWED_CANDIDATE_KEYS
+            ),
+        },
         "cases": evaluated,
     }
     packet = {
@@ -304,10 +338,10 @@ def evaluate_salvation_relationship_review(
             "location": "beside_source_classification",
         },
         "interpretation": (
-            "This paired revision reruns the same bounded targets after refining "
-            "four relationship evidence boundaries. It does not activate leaf "
-            "collection during ordinary reclassification or authorize profile-level "
-            "theological claims."
+            "This out-of-sample packet keeps the accepted leaf questions and route "
+            "unchanged while excluding every development case. It does not activate "
+            "leaf collection during ordinary reclassification or authorize "
+            "profile-level theological claims."
         ),
     }
     return packet, {
@@ -327,6 +361,9 @@ def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
         f"- Leaf pack: `{packet['leaf_pack_version']}`",
         f"- Routed cached blocks: `{packet['routed_candidate_count']}`",
         f"- Review cases: `{len(packet['cases'])}`",
+        "- Prior review: "
+        f"`{packet['prior_review']['input_fingerprint']}` "
+        f"(`{len(packet['prior_review']['excluded_candidate_keys'])}` cases excluded)",
         f"- Cache identity: `{packet['cache']['identity']}`",
         f"- Cache location: `{packet['cache']['location']}`",
         f"- Packet fingerprint: `{packet['input_fingerprint']}`",
