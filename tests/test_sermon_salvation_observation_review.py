@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 import tempfile
 import unittest
 
 from pastor_transcript_extractor.sermon_salvation_observation_review import (
+    SALVATION_COLLECTION_RECALIBRATION_RELATIONSHIPS,
+    SALVATION_COLLECTION_REVIEWED_ANCHORS,
+    build_salvation_collection_recalibration,
     build_salvation_collected_observations_review,
+    render_salvation_collection_recalibration,
     render_salvation_collected_observations_review,
+    write_salvation_collection_recalibration,
     write_salvation_collected_observations_review,
 )
 from pastor_transcript_extractor.sermon_salvation_relationships import (
@@ -149,6 +155,61 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
                 cohort_sha256="cohort",
                 readiness_input_fingerprint="readiness",
             )
+
+    def test_recalibration_selects_only_fresh_unsettled_leaf_probes(self) -> None:
+        source = deepcopy(_source())
+        source["artifact"]["blocks"] = [
+            *[_block(block_id, collected=False) for block_id in range(1, 7)],
+            *[_block(block_id, collected=True) for block_id in range(7, 13)],
+        ]
+        prior = build_salvation_collected_observations_review(
+            [source],
+            cohort_sha256="cohort",
+            readiness_input_fingerprint="readiness",
+        )
+        prior["probes"].extend(
+            {"judgment_key": judgment_key}
+            for judgment_key in SALVATION_COLLECTION_REVIEWED_ANCHORS
+        )
+
+        packet = build_salvation_collection_recalibration(
+            [source],
+            cohort_sha256="cohort",
+            readiness_input_fingerprint="readiness",
+            prior_review=prior,
+        )
+
+        self.assertEqual(18, len(packet["probes"]))
+        self.assertEqual(
+            set(SALVATION_COLLECTION_RECALIBRATION_RELATIONSHIPS),
+            {probe["relationship"] for probe in packet["probes"]},
+        )
+        self.assertTrue(
+            set(SALVATION_COLLECTION_REVIEWED_ANCHORS).isdisjoint(
+                {probe["judgment_key"] for probe in packet["probes"]}
+            )
+        )
+        self.assertEqual(
+            6,
+            sum(
+                probe["relationship"] == "repentance_as_receiving_response"
+                for probe in packet["probes"]
+            ),
+        )
+        markdown = render_salvation_collection_recalibration(packet)
+        self.assertIn("semantic-ordering defect", markdown)
+        self.assertIn("eight clean relationship", packet["interpretation"])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "recalibration.json"
+            _json_path, _markdown_path, reused = (
+                write_salvation_collection_recalibration(output, packet)
+            )
+            self.assertFalse(reused)
+            _json_path, _markdown_path, reused = (
+                write_salvation_collection_recalibration(output, packet)
+            )
+            self.assertTrue(reused)
 
 
 if __name__ == "__main__":

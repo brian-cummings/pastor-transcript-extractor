@@ -1152,16 +1152,27 @@ theological stance.
     remains authoritative, so a replay makes no provider request. This closes the
     gap where final reconciliation correctly exposed a newly routed block but an
     identical forced reclassification could not populate its leaf evidence.
+61. The first ordinary-classification collection review does not approve the full
+    threshold table. Eight leaves are frozen at their existing boundaries;
+    sanctification stays at `0.70` with `4589:50` retained as a false-negative
+    watch fixture. Assurance, receiving faith, receiving repentance, and obedience
+    as consequence remain unsettled. Their reviewed boundary anchors include false
+    positives in all four leaves and a repentance inversion (`0.69` affirmative
+    below a `0.71` negative), so no blanket numeric adjustment is applied. A
+    provider-free follow-up selects eighteen fresh cached judgments: two per side
+    for three leaves and three per side for repentance, preferring pastor diversity
+    and excluding the eight already reviewed anchors. The follow-up is fingerprinted
+    to the reviewed packet and current source artifacts and changes no inference
+    policy.
 
 ### Next iteration
 
-1. Reclassify only video 1037 once to collect the single relationship pack newly
-   routed by its reviewed sermon window; do not rerun the other eleven sermons.
-2. Run `pte analysis salvation-collected-observations-review` to build a bounded
-   provider-free review of the resulting collected observations.
-   Evaluate the usefulness of the observation layer before designing sermon- or
-   pastor-level aggregation; do not resume prompt or threshold calibration from
-   isolated examples.
+1. Review `salvation-collection-recalibration-v1.md` and adjudicate its eighteen
+   fresh probes. For each unsettled leaf, choose between keeping the boundary,
+   changing only the numeric boundary, or revising its evidence wording.
+2. Apply only the leaf-specific decisions supported by that packet, then repeat a
+   bounded held-out check if any question wording changes. Do not design sermon- or
+   pastor-level aggregation until the collection policy passes.
 
 ## Non-goals for `topics-v1`
 

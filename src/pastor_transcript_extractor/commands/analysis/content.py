@@ -59,8 +59,12 @@ from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     write_salvation_observation_threshold_review,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_review import (
+    DEFAULT_SALVATION_COLLECTION_RECALIBRATION_OUTPUT,
     DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+    evaluate_salvation_collection_recalibration,
     evaluate_salvation_collected_observations_review,
+    load_salvation_collected_observations_review,
+    write_salvation_collection_recalibration,
     write_salvation_collected_observations_review,
 )
 from pastor_transcript_extractor.sermon_topic_evaluation import (
@@ -1510,6 +1514,65 @@ def analysis_salvation_collected_observations_review(
         f"routed_blocks={packet['routed_block_count']}; "
         f"collected_observations={collected}; "
         f"probes={len(packet['probes'])}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-collection-recalibration",
+    help=(
+        "Build a provider-free follow-up for the four unsettled salvation leaves."
+    ),
+)
+def analysis_salvation_collection_recalibration(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying ordinary classification artifacts.",
+    ),
+    prior_review_path: Path = typer.Option(
+        DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+        "--prior-review",
+        help="Reviewed ordinary-classification boundary packet.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_COLLECTION_RECALIBRATION_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        prior_review = load_salvation_collected_observations_review(
+            prior_review_path
+        )
+        readiness = assess_topic_stage4_readiness(database, cohort)
+        if not readiness["ready"]:
+            _print_topic_stage4_readiness(readiness, base_dir=base_dir)
+        packet = evaluate_salvation_collection_recalibration(
+            database,
+            cohort,
+            prior_review,
+            readiness=readiness,
+        )
+        json_path, markdown_path, reused = (
+            write_salvation_collection_recalibration(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation collection recalibration: "
+        f"{json_path} and {markdown_path}; "
+        f"leaves={len(packet['current_thresholds'])}; "
+        f"probes={len(packet['probes'])}; "
+        f"provider_requests=0; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )
