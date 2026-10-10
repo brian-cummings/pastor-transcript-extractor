@@ -226,6 +226,10 @@ class SalvationRelationshipsTests(unittest.TestCase):
         )
 
     def test_revised_evidence_boundaries_are_explicit_and_general(self) -> None:
+        self.assertEqual(
+            "salvation-relationships-v3-receiving-and-fruit-boundaries",
+            SALVATION_RELATIONSHIPS_PACK_VERSION,
+        )
         self.assertIn(
             "bearing people's sins",
             SALVATION_RELATIONSHIP_SPECS["atonement_as_basis"].true_criteria,
@@ -246,6 +250,24 @@ class SalvationRelationshipsTests(unittest.TestCase):
             "forgives",
             SALVATION_RELATIONSHIP_SPECS[
                 "divine_grace_initiative"
+            ].false_criteria,
+        )
+        self.assertIn(
+            "means by which",
+            SALVATION_RELATIONSHIP_SPECS[
+                "faith_as_receiving_response"
+            ].true_criteria,
+        )
+        self.assertIn(
+            "perseverance after conversion",
+            SALVATION_RELATIONSHIP_SPECS[
+                "repentance_as_receiving_response"
+            ].true_criteria,
+        )
+        self.assertIn(
+            "generic transformation",
+            SALVATION_RELATIONSHIP_SPECS[
+                "obedience_as_consequence_or_evidence"
             ].false_criteria,
         )
 

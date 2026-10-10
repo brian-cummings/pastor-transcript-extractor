@@ -1164,15 +1164,29 @@ theological stance.
     and excluding the eight already reviewed anchors. The follow-up is fingerprinted
     to the reviewed packet and current source artifacts and changes no inference
     policy.
+62. The four-leaf follow-up localizes the remaining work without changing any
+    numeric boundary. Assurance keeps its question and will search upward from
+    `0.59` using unused cached v2 judgments. Receiving faith, receiving repentance,
+    and obedience as consequence receive narrower evidence boundaries in
+    `salvation-relationships-v3-receiving-and-fruit-boundaries`: faith must be the
+    means of receiving a saving benefit; repentance must be repentant confession
+    or turning rather than generic decision, surrender, or perseverance; and
+    consequence-obedience must identify conduct, works, holiness, or changed
+    behavior as fruit or evidence rather than generic transformation. A single
+    bounded calibration command reuses the shared pack cache and evaluator, reruns
+    the fourteen reviewed semantic probes, adds twelve fresh held-out boundary
+    probes, and presents six provider-free assurance candidates. Thresholds and
+    production observation policy remain unchanged until that packet is reviewed.
 
 ### Next iteration
 
-1. Review `salvation-collection-recalibration-v1.md` and adjudicate its eighteen
-   fresh probes. For each unsettled leaf, choose between keeping the boundary,
-   changing only the numeric boundary, or revising its evidence wording.
-2. Apply only the leaf-specific decisions supported by that packet, then repeat a
-   bounded held-out check if any question wording changes. Do not design sermon- or
-   pastor-level aggregation until the collection policy passes.
+1. Run `pte analysis salvation-semantic-calibration` once before reclassifying the
+   cohort with the v3 leaf pack. Review the known regression cases, then the fresh
+   held-out cases, and identify the first genuine assurance assertion in the
+   ascending cached assurance section.
+2. Freeze or adjust only the affected per-leaf numeric boundaries after the revised
+   semantic ordering passes. Do not design sermon- or pastor-level aggregation
+   until the collection policy passes.
 
 ## Non-goals for `topics-v1`
 

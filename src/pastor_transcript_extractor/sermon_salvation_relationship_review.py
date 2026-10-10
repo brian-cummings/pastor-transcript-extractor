@@ -20,8 +20,10 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_ROUTE_POLICY_VERSION,
     salvation_relationship_pack_digest,
     salvation_route_decision,
+    resolve_salvation_relationship_analysis_artifact,
 )
 from pastor_transcript_extractor.sermon_topic_profile_analysis import (
+    read_classification_for_gate,
     read_topic_analysis_for_gate,
 )
 from pastor_transcript_extractor.sermon_topic_projection import (
@@ -47,6 +49,34 @@ DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT = Path(
 )
 DEFAULT_SALVATION_OBEDIENCE_CALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-obedience-consequence-calibration-v1.json"
+)
+DEFAULT_SALVATION_SEMANTIC_CALIBRATION_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-semantic-calibration-v1.json"
+)
+PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
+    "salvation-relationships-v2-evidence-boundaries"
+)
+SEMANTIC_CALIBRATION_RELATIONSHIPS = (
+    "faith_as_receiving_response",
+    "repentance_as_receiving_response",
+    "obedience_as_consequence_or_evidence",
+)
+SEMANTIC_REGRESSION_CASES = {
+    "faith_as_receiving_response": frozenset(
+        {"281:115", "281:124", "4394:37", "4394:50"}
+    ),
+    "repentance_as_receiving_response": frozenset(
+        {"350:47", "350:65", "3973:89", "3974:66", "3974:91", "4589:28"}
+    ),
+    "obedience_as_consequence_or_evidence": frozenset(
+        {"350:58", "3973:99", "4052:100", "1200:44"}
+    ),
+}
+SEMANTIC_REGRESSION_CANDIDATE_KEYS = frozenset().union(
+    *SEMANTIC_REGRESSION_CASES.values()
+)
+RECALIBRATION_REVIEWED_CANDIDATE_KEYS = SEMANTIC_REGRESSION_CANDIDATE_KEYS | frozenset(
+    {"4430:31", "590:44", "4589:41", "4430:44"}
 )
 PRIOR_REVIEW_FINGERPRINT = (
     "e6ef7c6b8e8e6ee92588c3a7a045794694dac1941546043b1e0b0f6f92ce2980"
@@ -442,6 +472,232 @@ def evaluate_salvation_relationship_candidates(
     }
 
 
+def _legacy_relationship_probabilities(
+    database: Database,
+    cohort: Mapping[str, Any],
+) -> dict[str, dict[str, float]]:
+    """Load the reviewed v2 probabilities without applying current-pack policy."""
+    videos = {video.id: video for video in database.list_videos()}
+    probabilities: dict[str, dict[str, float]] = {}
+    for pastor in cohort["pastors"]:
+        for sermon in pastor["sermons"]:
+            video_id = int(sermon["video_id"])
+            video = videos.get(video_id)
+            if video is None:
+                raise ValueError(f"Unknown semantic calibration video: {video_id}")
+            gate = assess_topic_profile_projection(database, video)
+            if not gate.eligible:
+                raise ValueError(
+                    f"Video {video_id} is not eligible for semantic calibration"
+                )
+            classification = read_classification_for_gate(gate)
+            artifact = resolve_salvation_relationship_analysis_artifact(classification)
+            if (
+                artifact.get("question_pack_version")
+                != PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION
+            ):
+                raise ValueError(
+                    f"Video {video_id} does not contain the reviewed v2 salvation "
+                    "relationship evidence; run this bounded calibration before "
+                    "reclassifying the cohort with v3"
+                )
+            blocks = artifact.get("blocks")
+            if not isinstance(blocks, list):
+                raise ValueError(f"Video {video_id} has malformed v2 relationship evidence")
+            for block in blocks:
+                if not isinstance(block, Mapping):
+                    continue
+                raw = block.get("probabilities")
+                if not isinstance(raw, Mapping):
+                    continue
+                key = f"{video_id}:{int(block['block_id'])}"
+                probabilities[key] = {
+                    relationship: float(raw[relationship])
+                    for relationship in SALVATION_RELATIONSHIPS
+                }
+    return probabilities
+
+
+def _select_semantic_heldout_probes(
+    candidates: Sequence[Mapping[str, Any]],
+    legacy: Mapping[str, Mapping[str, float]],
+) -> list[dict[str, Any]]:
+    excluded = ALL_REVIEWED_CANDIDATE_KEYS | RECALIBRATION_REVIEWED_CANDIDATE_KEYS
+    probes: list[dict[str, Any]] = []
+    for relationship in SEMANTIC_CALIBRATION_RELATIONSHIPS:
+        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+        available = [
+            item
+            for item in candidates
+            if str(item["candidate_key"]) not in excluded
+            and str(item["candidate_key"]) in legacy
+        ]
+        for side, filtered in (
+            (
+                "below",
+                [
+                    item
+                    for item in available
+                    if legacy[str(item["candidate_key"])][relationship] < threshold
+                ],
+            ),
+            (
+                "at_or_above",
+                [
+                    item
+                    for item in available
+                    if legacy[str(item["candidate_key"])][relationship] >= threshold
+                ],
+            ),
+        ):
+            ordered = sorted(
+                filtered,
+                key=lambda item: (
+                    abs(
+                        legacy[str(item["candidate_key"])][relationship]
+                        - threshold
+                    ),
+                    str(item["candidate_key"]),
+                ),
+            )
+            selected: list[Mapping[str, Any]] = []
+            represented: set[str] = set()
+            for require_new_pastor in (True, False):
+                for item in ordered:
+                    key = str(item["candidate_key"])
+                    pastor = str(item["pastor"].get("slug"))
+                    if any(str(chosen["candidate_key"]) == key for chosen in selected):
+                        continue
+                    if require_new_pastor and pastor in represented:
+                        continue
+                    selected.append(item)
+                    represented.add(pastor)
+                    if len(selected) == 2:
+                        break
+                if len(selected) == 2:
+                    break
+            if len(selected) < 2:
+                raise ValueError(
+                    f"Semantic calibration lacks two fresh {side} probes for "
+                    f"{relationship}"
+                )
+            for item in selected:
+                probes.append(
+                    {
+                        "candidate_key": str(item["candidate_key"]),
+                        "relationship": relationship,
+                        "boundary_side": side,
+                        "prior_probability": round(
+                            legacy[str(item["candidate_key"])][relationship], 6
+                        ),
+                    }
+                )
+    return probes
+
+
+def evaluate_salvation_semantic_calibration(
+    database: Database,
+    cohort: Mapping[str, Any],
+    *,
+    model: str,
+    client: TypeSafeBlockClient,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Compare revised semantics on regressions and fresh held-out boundaries."""
+    candidates, readiness_fingerprint = _routed_candidates(database, cohort)
+    by_key = {str(item["candidate_key"]): item for item in candidates}
+    missing = sorted(SEMANTIC_REGRESSION_CANDIDATE_KEYS - set(by_key))
+    if missing:
+        raise ValueError(
+            "Semantic calibration regression cases are no longer routed: "
+            + ", ".join(missing)
+        )
+    legacy = _legacy_relationship_probabilities(database, cohort)
+    heldout_probes = _select_semantic_heldout_probes(candidates, legacy)
+    heldout_keys = {str(probe["candidate_key"]) for probe in heldout_probes}
+    evaluation_keys = sorted(SEMANTIC_REGRESSION_CANDIDATE_KEYS | heldout_keys)
+    evaluated, execution = evaluate_salvation_relationship_candidates(
+        [by_key[key] for key in evaluation_keys],
+        model=model,
+        client=client,
+    )
+    evaluated_by_key = {
+        str(item["candidate_key"]): item for item in evaluated
+    }
+    regression_probes = [
+        {
+            "candidate_key": key,
+            "relationship": relationship,
+            "prior_probability": round(legacy[key][relationship], 6),
+            "revised_probability": round(
+                float(evaluated_by_key[key]["leaf_probabilities"][relationship]), 6
+            ),
+        }
+        for relationship in SEMANTIC_CALIBRATION_RELATIONSHIPS
+        for key in sorted(SEMANTIC_REGRESSION_CASES[relationship])
+    ]
+    for probe in heldout_probes:
+        key = str(probe["candidate_key"])
+        probe["revised_probability"] = round(
+            float(
+                evaluated_by_key[key]["leaf_probabilities"][probe["relationship"]]
+            ),
+            6,
+        )
+    assurance_candidates = sorted(
+        (
+            {
+                "candidate_key": key,
+                "probability": round(values["assurance_security"], 6),
+            }
+            for key, values in legacy.items()
+            if values["assurance_security"] > 0.59
+            and key not in ALL_REVIEWED_CANDIDATE_KEYS
+            and key not in RECALIBRATION_REVIEWED_CANDIDATE_KEYS
+            and key in by_key
+        ),
+        key=lambda item: (float(item["probability"]), str(item["candidate_key"])),
+    )[:6]
+    case_keys = {
+        str(probe["candidate_key"])
+        for probe in [*regression_probes, *heldout_probes, *assurance_candidates]
+    }
+    cases = [
+        {
+            key: value
+            for key, value in by_key[candidate_key].items()
+            if key not in {"cache_dir", "context_diagnostics", "segment_indexes"}
+        }
+        for candidate_key in sorted(case_keys)
+    ]
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": "salvation-semantic-calibration-v1",
+        "cohort_sha256": cohort.get("cohort_sha256"),
+        "readiness_input_fingerprint": readiness_fingerprint,
+        "prior_leaf_pack_version": PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
+        "requested_model_id": model,
+        "unchanged_thresholds": dict(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS),
+        "regression_probes": regression_probes,
+        "heldout_probes": heldout_probes,
+        "assurance_upward_probes": assurance_candidates,
+        "cases": cases,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "semantic_calibration_pending_review",
+        "policy_effect": "none",
+        "interpretation": (
+            "The three revised questions are compared against their reviewed regression "
+            "cases and a separate fresh held-out boundary set. Assurance is unchanged "
+            "and uses only prior cached judgments above 0.59. No threshold or production "
+            "observation policy changes in this packet."
+        ),
+    }, execution
+
+
 def evaluate_obedience_consequence_calibration(
     database: Database,
     cohort: Mapping[str, Any],
@@ -605,6 +861,96 @@ def render_obedience_consequence_calibration(packet: Mapping[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_salvation_semantic_calibration(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    lines = [
+        "# Salvation semantic calibration",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Prior leaf pack: `{packet['prior_leaf_pack_version']}`",
+        f"- Revised leaf pack: `{packet['revised_leaf_pack_version']}`",
+        f"- Regression probes: `{len(packet['regression_probes'])}`",
+        f"- Fresh held-out probes: `{len(packet['heldout_probes'])}`",
+        f"- Assurance upward probes: `{len(packet['assurance_upward_probes'])}`",
+        f"- Unique evidence cases: `{len(packet['cases'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "Review the three revised leaves semantically before considering any numeric "
+        "threshold change. For regressions, confirm that known positives now rank above "
+        "known negatives. For held-out probes, label each target affirmative or negative. "
+        "For assurance, inspect the cached cases in ascending order and identify the first "
+        "genuine assertion of assurance or security.",
+        "",
+        "## Revised-question regression probes",
+        "",
+        "| Relationship | Case | Prior p | Revised p |",
+        "| --- | --- | ---: | ---: |",
+    ]
+    for probe in packet["regression_probes"]:
+        lines.append(
+            f"| {probe['relationship']} | {probe['candidate_key']} | "
+            f"{float(probe['prior_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Fresh held-out boundary probes",
+            "",
+            "| Relationship | Side under prior policy | Case | Prior p | Revised p |",
+            "| --- | --- | --- | ---: | ---: |",
+        ]
+    )
+    for probe in packet["heldout_probes"]:
+        lines.append(
+            f"| {probe['relationship']} | {probe['boundary_side']} | "
+            f"{probe['candidate_key']} | {float(probe['prior_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Assurance upward search (cached v2 judgments)",
+            "",
+            "| Order | Case | Probability |",
+            "| ---: | --- | ---: |",
+        ]
+    )
+    for index, probe in enumerate(packet["assurance_upward_probes"], start=1):
+        lines.append(
+            f"| {index} | {probe['candidate_key']} | "
+            f"{float(probe['probability']):.3f} |"
+        )
+    lines.extend(["", "## Deduplicated evidence cases", ""])
+    for candidate_key in sorted(cases):
+        case = cases[candidate_key]
+        lines.extend(
+            [
+                f"### {candidate_key} — {case['pastor']['display_name']}",
+                "",
+                f"- Recording: `{case['youtube_video_id']}` — {case['title']}",
+                f"- Time: `{case['start_seconds']}`–`{case['end_seconds']}`",
+                "",
+                "Leading context:",
+                "",
+                f"> {str(case['leading_context']).replace(chr(10), ' ')}",
+                "",
+                "Target text:",
+                "",
+                f"> {str(case['target_text']).replace(chr(10), ' ')}",
+                "",
+                "Trailing context:",
+                "",
+                f"> {str(case['trailing_context']).replace(chr(10), ' ')}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
         "# Salvation relationships review",
@@ -713,4 +1059,15 @@ def write_obedience_consequence_calibration(
         path,
         packet,
         render_obedience_consequence_calibration,
+    )
+
+
+def write_salvation_semantic_calibration(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_semantic_calibration,
     )

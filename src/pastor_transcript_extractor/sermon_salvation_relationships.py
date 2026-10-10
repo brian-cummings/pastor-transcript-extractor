@@ -13,7 +13,7 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SALVATION_RELATIONSHIPS_PACK_VERSION = (
-    "salvation-relationships-v2-evidence-boundaries"
+    "salvation-relationships-v3-receiving-and-fruit-boundaries"
 )
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
@@ -154,12 +154,14 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "saving benefit is received"
         ),
         true_criteria=(
-            "The target explicitly relates faith, belief, or trust to receiving salvation "
-            "or a saving benefit."
+            "The target explicitly presents faith, belief, trust, or an unmistakable "
+            "equivalent as the means by which a person receives salvation or a saving "
+            "benefit."
         ),
         false_criteria=(
-            "The target discusses faith or trust as general discipleship, confidence, or "
-            "loyalty without relating it to receiving salvation."
+            "The target merely says yes to Jesus, seeks God, follows Jesus, surrenders, "
+            "or describes faith, trust, confidence, or loyalty in Christian life after "
+            "conversion without making faith or trust the receiving response."
         ),
     ),
     "repentance_as_receiving_response": SalvationRelationshipSpec(
@@ -168,12 +170,17 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "to receiving salvation or a saving benefit"
         ),
         true_criteria=(
-            "The target explicitly relates repentance, confession, turning, or surrender "
-            "to receiving salvation, forgiveness, or restored relationship with God."
+            "The target explicitly presents repentance, confession of sin, or turning "
+            "from sin toward God as the response by which a person receives salvation, "
+            "forgiveness, or restored relationship with God. Surrender counts only when "
+            "the target identifies it as that repentant turn, not merely as devotion or "
+            "perseverance after conversion."
         ),
         false_criteria=(
-            "The target calls for generic change, surrender, honesty, or renewed practice "
-            "without relating that response to a saving benefit."
+            "The target merely calls for a decision, generic surrender, following Jesus, "
+            "honesty, renewed practice, perseverance, or transformation after forgiveness "
+            "without presenting repentance, confession, or turning from sin as the "
+            "receiving response."
         ),
     ),
     "obedience_as_condition_or_means": SalvationRelationshipSpec(
@@ -198,12 +205,14 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "sign, or evidence of salvation rather than its earning cause"
         ),
         true_criteria=(
-            "The target explicitly presents obedience, works, holiness, or transformed "
-            "conduct as a result, fruit, sign, or evidence of salvation or grace."
+            "The target explicitly identifies obedience, works, conduct, holiness, or "
+            "changed behavior as a result, fruit, sign, or evidence produced by salvation "
+            "or grace."
         ),
         false_criteria=(
-            "The target merely commands good conduct, discusses formation without "
-            "salvation, or presents conduct only as a condition or means of salvation."
+            "The target merely commands good conduct; describes repentance, surrender, a "
+            "decision, conversion, or generic transformation; discusses formation without "
+            "salvation; or presents conduct only as a condition or means of salvation."
         ),
     ),
 }

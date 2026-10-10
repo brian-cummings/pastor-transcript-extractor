@@ -43,10 +43,13 @@ from pastor_transcript_extractor.sermon_salvation_routing import (
 from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     DEFAULT_SALVATION_OBEDIENCE_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT,
+    DEFAULT_SALVATION_SEMANTIC_CALIBRATION_OUTPUT,
     evaluate_obedience_consequence_calibration,
     evaluate_salvation_relationship_review,
+    evaluate_salvation_semantic_calibration,
     write_obedience_consequence_calibration,
     write_salvation_relationship_review,
+    write_salvation_semantic_calibration,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
@@ -1375,6 +1378,73 @@ def analysis_salvation_obedience_calibration(
         f"cache_misses={execution['misses']}; "
         f"provider_requests={execution['provider_requests']}; "
         f"status={packet['status']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-semantic-calibration",
+    help=(
+        "Evaluate revised salvation leaf semantics on regressions and fresh held-out "
+        "boundaries, plus a cached assurance search."
+    ),
+)
+def analysis_salvation_semantic_calibration(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying routed blocks and reviewed v2 evidence.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_SEMANTIC_CALIBRATION_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_TYPESAFE_MODEL,
+        "--model",
+        help="Pinned TypeSafe model id used for revised leaf judgments.",
+    ),
+    timeout_seconds: float = typer.Option(
+        45.0,
+        "--timeout-seconds",
+        min=1.0,
+        help="Timeout for each uncached TypeSafe request.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        packet, execution = evaluate_salvation_semantic_calibration(
+            database,
+            cohort,
+            model=model,
+            client=_LazyTopicBehaviorClient(
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        )
+        json_path, markdown_path, reused = write_salvation_semantic_calibration(
+            output_path,
+            packet,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation semantic calibration: "
+        f"{json_path} and {markdown_path}; "
+        f"regressions={len(packet['regression_probes'])}; "
+        f"held_out={len(packet['heldout_probes'])}; "
+        f"assurance_cached={len(packet['assurance_upward_probes'])}; "
+        f"cache_hits={execution['hits']}; "
+        f"cache_misses={execution['misses']}; "
+        f"provider_requests={execution['provider_requests']}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )

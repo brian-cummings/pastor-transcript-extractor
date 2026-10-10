@@ -14,6 +14,8 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
 from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     ALL_REVIEWED_CANDIDATE_KEYS,
     PRIOR_REVIEWED_CANDIDATE_KEYS,
+    SEMANTIC_CALIBRATION_RELATIONSHIPS,
+    _select_semantic_heldout_probes,
     _select_review_candidates,
     evaluate_salvation_relationship_review,
     select_obedience_consequence_calibration_candidates,
@@ -135,6 +137,44 @@ def _block(block_id: int, support: float) -> dict[str, object]:
 
 
 class SalvationRelationshipReviewTests(unittest.TestCase):
+    def test_semantic_calibration_selects_fresh_probes_on_both_sides(self) -> None:
+        candidates = [
+            {
+                "candidate_key": f"900{pastor}:{block}",
+                "pastor": {"slug": f"pastor-{pastor}"},
+            }
+            for pastor in range(4)
+            for block in range(4)
+        ]
+        legacy = {}
+        for index, candidate in enumerate(candidates):
+            legacy[candidate["candidate_key"]] = {
+                "faith_as_receiving_response": (0.64, 0.66)[index % 2],
+                "repentance_as_receiving_response": (0.69, 0.71)[index % 2],
+                "obedience_as_consequence_or_evidence": (0.54, 0.56)[index % 2],
+            }
+
+        probes = _select_semantic_heldout_probes(candidates, legacy)
+
+        self.assertEqual(12, len(probes))
+        for relationship in SEMANTIC_CALIBRATION_RELATIONSHIPS:
+            relationship_probes = [
+                probe
+                for probe in probes
+                if probe["relationship"] == relationship
+            ]
+            self.assertEqual(4, len(relationship_probes))
+            self.assertEqual(
+                {"below": 2, "at_or_above": 2},
+                {
+                    side: sum(
+                        probe["boundary_side"] == side
+                        for probe in relationship_probes
+                    )
+                    for side in ("below", "at_or_above")
+                },
+            )
+
     def test_obedience_calibration_selects_fresh_diverse_cue_cases(self) -> None:
         candidates = [
             {

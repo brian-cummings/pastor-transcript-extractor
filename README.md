@@ -422,7 +422,7 @@ aggregation remains blocked pending reviewed profile membership.
 
 Projection-eligible blocks whose cached `salvation_gospel` supporting-or-above
 probability is at least `0.55` also enter the independently cached
-`salvation-relationships-v2-evidence-boundaries` leaf pack. The twelve Noul
+`salvation-relationships-v3-receiving-and-fruit-boundaries` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the frozen
@@ -449,6 +449,21 @@ The command rejects missing or stale question packs and threshold policies,
 recomputes every stored collection decision from the raw probability, and writes a
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
+
+When revising a relationship question, validate the new pack before refreshing the
+cohort classifications. The bounded semantic calibration reuses the normal
+per-video pack cache, compares the revised questions on fourteen reviewed
+regressions and twelve fresh held-out leaf probes, and selects the next six
+assurance candidates from the existing v2 probabilities without a provider call:
+
+```bash
+pte analysis salvation-semantic-calibration \
+  --base-dir /path/to/app-data
+```
+
+An unchanged rerun is fully cached. The command does not change thresholds or
+production observations; reclassification happens only after the packet is
+reviewed.
 
 Prepare the bounded review packet for the named video 4548 regression cases
 without making another provider request:
