@@ -1,0 +1,17 @@
+{
+  "allowed_interruptions": [],
+  "expected_outcome": "sermon",
+  "expected_spans": [
+    {
+      "end_seconds": 2900.0,
+      "start_seconds": 72.0
+    }
+  ],
+  "failure_mode": "unknown",
+  "ground_truth_version": 1,
+  "notes": "",
+  "review_method": "video_and_timestamped_transcript",
+  "reviewed_at": "2026-10-10T23:30:26.226538+00:00",
+  "reviewed_by": "Brian",
+  "video_id": "8YdupMtUtvg"
+}

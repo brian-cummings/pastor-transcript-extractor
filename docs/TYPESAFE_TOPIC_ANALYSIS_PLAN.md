@@ -1144,11 +1144,19 @@ theological stance.
     that same immutable readiness snapshot into packet evaluation, so diagnostics
     neither duplicate readiness logic nor repeat the database audit. No TypeSafe
     request is made when an ineligible or non-accepted cohort sermon blocks review.
+60. Human-reviewed sermon windows now participate in the initial topic projection
+    used to plan conditional salvation-leaf fan-out. Automatic boundary discovery
+    remains independent and unchanged, but a reviewed window can make additional
+    already-scored topic blocks profile-eligible; those blocks now receive only the
+    missing leaf pack during the same classification pass. The per-block pack cache
+    remains authoritative, so a replay makes no provider request. This closes the
+    gap where final reconciliation correctly exposed a newly routed block but an
+    identical forced reclassification could not populate its leaf evidence.
 
 ### Next iteration
 
-1. Reclassify the frozen twelve-sermon cohort once so ordinary artifacts collect
-   the now-enabled relationship pack, reusing the 36 already cached leaf answers.
+1. Reclassify only video 1037 once to collect the single relationship pack newly
+   routed by its reviewed sermon window; do not rerun the other eleven sermons.
 2. Run `pte analysis salvation-collected-observations-review` to build a bounded
    provider-free review of the resulting collected observations.
    Evaluate the usefulness of the observation layer before designing sermon- or

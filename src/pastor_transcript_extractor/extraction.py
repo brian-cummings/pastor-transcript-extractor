@@ -333,6 +333,7 @@ def _classify_with_fallback(
     normalize_rolling_captions: bool = False,
     semantic_classifier: Any | None = None,
     manual_override_present: bool = False,
+    semantic_projection_window: SermonWindowResult | None = None,
 ) -> tuple[dict[str, Any], HybridSermonResult | None]:
     rule_candidate = (
         {
@@ -405,6 +406,7 @@ def _classify_with_fallback(
                     detected_window,
                     title=video_title or "",
                     cache_dir=(cache_dir or Path(".typesafe-inference-cache")),
+                    projection_window=semantic_projection_window,
                     recording_metadata=recording_metadata,
                     normalize_rolling_captions=normalize_rolling_captions,
                     progress=progress,
@@ -1663,6 +1665,7 @@ def reclassify_video(
         normalize_rolling_captions=should_normalize_rolling_captions(payload),
         semantic_classifier=verifier if typesafe_first else None,
         manual_override_present=override is not None,
+        semantic_projection_window=(detected_window if override is not None else None),
     )
     if hybrid is None:
         raise RuntimeError("No semantic classifier produced a sermon candidate")
@@ -2049,6 +2052,13 @@ def extract_video(
     drafts = segment_transcript(raw_text, raw_json)
     persisted_segments = [_segment_to_storage(database, video.id, transcript_artifact, draft) for draft in drafts]
     detected_window = detect_sermon_window(drafts, transcript_source=transcript_artifact.source_kind)
+    override_path = video_paths.review / "window_override.json"
+    override, override_error = _load_window_override(override_path)
+    semantic_projection_window = (
+        _manual_override_window_result(drafts, detected_window, override)
+        if override is not None
+        else None
+    )
     verifier = _recording_verifier_runner(
         recording_verifier,
         recording_verifier_client,
@@ -2071,9 +2081,9 @@ def extract_video(
             and isinstance(verifier, TypeSafeProductionRecordingVerifier)
             else None
         ),
+        manual_override_present=override is not None,
+        semantic_projection_window=semantic_projection_window,
     )
-    override_path = video_paths.review / "window_override.json"
-    override, override_error = _load_window_override(override_path)
     sermon_window = _effective_sermon_window(detected_window, override, override_error)
     if hybrid_result is not None and override is None and hybrid_result.retained_segment_indexes:
         classification["window_arbitration"] = _arbitrate_hybrid_window(

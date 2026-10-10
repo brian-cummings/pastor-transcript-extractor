@@ -1979,10 +1979,17 @@ class HybridClassificationTests(unittest.TestCase):
                 prompt_version="test-v1",
                 semantic_classifier=semantic_classifier,
                 manual_override_present=True,
+                semantic_projection_window=rule_window,
             )
 
         self.assertIs(typesafe_result, hybrid)
         self.assertEqual("typesafe_first_v11", classification["method"])
+        self.assertIs(
+            rule_window,
+            semantic_classifier.classify_sermon.call_args.kwargs[
+                "projection_window"
+            ],
+        )
         fallback.assert_not_called()
 
     def test_successful_typesafe_first_pass_does_not_force_verifier(self) -> None:

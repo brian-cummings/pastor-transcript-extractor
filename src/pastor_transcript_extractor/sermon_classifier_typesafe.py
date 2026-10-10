@@ -1651,6 +1651,7 @@ def _topic_analysis_artifact(
     retained_segment_indexes: set[int] | None = None,
     selected_start_seconds: float | None = None,
     selected_end_seconds: float | None = None,
+    window_source: str = "typesafe_candidate",
 ) -> dict[str, Any]:
     """Persist raw topic observations and deterministic reliability separately."""
     retained = retained_segment_indexes or set()
@@ -1732,7 +1733,7 @@ def _topic_analysis_artifact(
         selected_start_seconds=selected_start_seconds,
         selected_end_seconds=selected_end_seconds,
         eligible_roles=SERMON_ROLES,
-        window_source="typesafe_candidate",
+        window_source=window_source,
     )
     return artifact
 
@@ -1869,6 +1870,7 @@ class TypeSafeFirstPassSermonClassifier:
         *,
         title: str,
         cache_dir: Path,
+        projection_window: SermonWindowResult | None = None,
         recording_metadata: Mapping[str, Any] | None = None,
         normalize_rolling_captions: bool = False,
         progress: Any | None = None,
@@ -2310,13 +2312,33 @@ class TypeSafeFirstPassSermonClassifier:
             warnings.append(
                 "TypeSafe segment boundary refinement failed; retained block boundary"
             )
+        projected_indexes = (
+            set(projection_window.included_segment_indexes)
+            if projection_window is not None
+            else set(selected_indexes)
+        )
+        projected_start = (
+            projection_window.start_seconds
+            if projection_window is not None
+            and projection_window.start_seconds is not None
+            else selected_start
+        )
+        projected_end = (
+            projection_window.end_seconds
+            if projection_window is not None
+            and projection_window.end_seconds is not None
+            else selected_end
+        )
         topic_analysis = _topic_analysis_artifact(
             fine_blocks,
             fine_answers,
             requested_model_id=self.model,
-            retained_segment_indexes=set(selected_indexes),
-            selected_start_seconds=selected_start,
-            selected_end_seconds=selected_end,
+            retained_segment_indexes=projected_indexes,
+            selected_start_seconds=projected_start,
+            selected_end_seconds=projected_end,
+            window_source=(
+                "override" if projection_window is not None else "typesafe_candidate"
+            ),
         )
         salvation_blocks, salvation_routes = _routed_salvation_relationship_blocks(
             topic_analysis,

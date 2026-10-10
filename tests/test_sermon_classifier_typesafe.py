@@ -428,6 +428,76 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(0, salvation["routed_block_count"])
         self.assertFalse(salvation["blocks"])
 
+    def test_manual_window_routes_relationships_from_final_projection(self) -> None:
+        transcript = drafts()
+        for index in (34, 35):
+            transcript[index] = SegmentDraft(
+                index * 30.0,
+                (index + 1) * 30.0,
+                "SERMON isolated reviewed conclusion about salvation " * 8,
+                None,
+                TranscriptSegmentLabel.UNKNOWN,
+                0.5,
+            )
+        projection_window = SermonWindowResult(
+            300.0,
+            1080.0,
+            1.0,
+            ["manual review override applied"],
+            "manual_override_v1",
+            list(range(10, 36)),
+            [*range(10), *range(36, 40)],
+            False,
+            [],
+        )
+        client = FakeBlockClient()
+        classifier = TypeSafeFirstPassSermonClassifier(
+            model="jev-1.13.0",
+            client=client,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = classifier.classify_sermon(
+                transcript,
+                rule_window(),
+                title="Worship Service",
+                cache_dir=Path(tmp),
+                projection_window=projection_window,
+            )
+            calls_after_collection = client.calls
+            replay = classifier.classify_sermon(
+                transcript,
+                rule_window(),
+                title="Worship Service",
+                cache_dir=Path(tmp),
+                projection_window=projection_window,
+            )
+
+        self.assertEqual(list(range(10, 30)), result.retained_segment_indexes)
+        topic_analysis = result.search["topic_analysis"]
+        self.assertEqual(
+            "override",
+            topic_analysis["sermon_projection"]["window_source"],
+        )
+        conclusion = next(
+            block
+            for block in topic_analysis["blocks"]
+            if block["segment_indexes"] == [34, 35]
+        )
+        self.assertIn(
+            conclusion["block_id"],
+            topic_analysis["sermon_projection"]["eligible_block_ids"],
+        )
+        relationship_blocks = result.search["salvation_relationship_analysis"][
+            "blocks"
+        ]
+        self.assertIn(
+            conclusion["block_id"],
+            [block["block_id"] for block in relationship_blocks],
+        )
+        self.assertEqual(calls_after_collection, client.calls)
+        self.assertEqual(0, replay.cache_stats["misses"])
+
     def test_semantic_question_inventory_uses_shared_dimension_inventory(self) -> None:
         inventory = semantic_question_inventory(2)
 
