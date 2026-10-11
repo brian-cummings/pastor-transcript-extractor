@@ -1316,17 +1316,28 @@ theological stance.
     `4589:51`, and `4430:53`. Validate them with eight fresh held-outs selected from
     saved V7 probabilities. Keep `0.55` provisional, the other ten thresholded
     leaves frozen, and unresolved repentance excluded.
+75. V8 at fingerprint
+    `39555a590061e1f93342983d2a0030dde847b28369a8693651be0a6fe2fd56e7`
+    passes and is frozen. The two affirmative regressions rise to `0.75` and `0.71`;
+    all four negative regressions fall to `0.23`–`0.46`. Seven of eight held-outs
+    are cleanly ordered for policy purposes: the clear positive `4052:91` is `0.78`,
+    every clear negative and both ambiguities are below `0.55`. Keep the conversion
+    threshold at `0.55`. Record `4394:43` at `0.20` as a false-negative watch and
+    `590:52` / `4589:50` as ambiguity watches; none authorizes more prompt tuning.
+    Version the frozen collection policy as
+    `salvation-relationship-observation-thresholds-v8-eleven-leaf-final`, archive
+    V8 calibration, and refresh the twelve-sermon cohort through ordinary cache-aware
+    reclassification before pastor aggregation.
 
 ### Next iteration
 
-1. Run `salvation-v8-conversion-calibration` against the still-V7 cohort. It evaluates
-   only fourteen bounded cases through the shared per-video cache; do not reclassify
-   the cohort first.
-2. Review semantic ordering on the six regressions, then label the eight fresh
-   held-outs. Do not reopen another leaf or change `.55` in this step.
-3. If V8 restores ordering, build a provider-free numeric boundary review from the
-   saved V8 probabilities. Only then freeze conversion and reclassify the cohort for
-   pastor-level aggregation. Keep unresolved repentance out of projection.
+1. Refresh the twelve-sermon cohort through ordinary cache-aware `pte reclassify`.
+   The V8 calibration blocks reuse their current answer packs; unrelated packs retain
+   their existing identities. Keep unresolved repentance out of projection.
+2. Rerun `salvation-collected-observations-review` against the refreshed artifacts.
+3. If the frozen-policy review is internally consistent, proceed to pastor-level
+   aggregation and inspect distributions and evidence-linked outliers before any
+   broader corpus expansion.
 
 ## Non-goals for `topics-v1`
 

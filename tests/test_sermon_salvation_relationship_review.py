@@ -548,6 +548,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
 
         with (
             patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION",
+                "salvation-relationship-observation-thresholds-v7-eleven-leaf-final",
+            ),
+            patch(
                 "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
                 return_value=(candidates, "readiness-fingerprint"),
             ),
@@ -596,6 +600,16 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                 for side in ("below", "at_or_above")
             },
         )
+
+    def test_v8_conversion_calibration_is_archived_after_freeze(self) -> None:
+        with self.assertRaisesRegex(ValueError, "archived after conversion was frozen"):
+            evaluate_salvation_v8_conversion_calibration(
+                None,
+                {},
+                {},
+                model="jev-1.13.0",
+                client=_Client(),
+            )
 
     def test_v5_calibration_assembles_current_relationship_definitions(self) -> None:
         case_keys = sorted(

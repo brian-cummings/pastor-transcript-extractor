@@ -427,9 +427,8 @@ probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the provisional
 `salvation-relationship-observation-thresholds-v7-eleven-leaf-final` policy. Eleven
-relationships have per-leaf thresholds. Ten are frozen; `conversion_new_birth` has
-one bounded semantic revision pending review while its threshold remains `0.55`.
-Repentance is marked
+relationships have frozen per-leaf thresholds, including `conversion_new_birth` at
+`0.55`. Repentance is marked
 `block_level_unresolved`: its raw probability is retained for research and debugging
 but it cannot produce a collected or pastor-level observation. The raw
 probabilities remain policy-independent evidence, so changing a collection
@@ -452,7 +451,9 @@ ranked below a reviewed negative at `0.55`. Fresh cached neighbors reproduced th
 semantic-ordering defect: saving vocabulary, figurative conversion, or later growth
 could outrank a genuine saving-state transition. V8 therefore strengthens only the
 requirement for an asserted entry or transition into saving life; the other ten
-leaves remain frozen.
+leaves remain unchanged. Its regression and held-out review passes, so V8 and the
+`0.55` conversion threshold are frozen. One unconventional affirmative at `0.20`
+is retained as a false-negative watch rather than a prompt-tuning target.
 
 After refreshing the frozen twelve-sermon validation cohort through ordinary
 `pte reclassify`, build its bounded collected-observation review without calling a
@@ -468,29 +469,31 @@ recomputes every stored collection decision from the raw probability, and writes
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
 
-The completed provider-free conversion packet authorized one narrow semantic
-revision. Validate V8 on six labeled regressions and eight fresh held-outs before
-reclassifying the cohort:
+After the accepted V8 calibration, refresh the frozen twelve-sermon cohort through
+ordinary cache-aware reclassification. The V8 calibration blocks reuse their answer
+packs; unaffected recording, topic, role, and treatment packs retain their existing
+cache identities:
 
 ```bash
-pte analysis salvation-v8-conversion-calibration \
-  --model jev-1.13.0 \
-  --base-dir /path/to/app-data
+for video_id in 1200 4052 4458 4394 3974 590 4430 350 1037 4589 281 3973; do
+  pte reclassify --video-id "$video_id" --force --jobs 1 \
+    --recording-verifier-backend typesafe \
+    --recording-verifier-model jev-1.13.0 \
+    --base-dir /path/to/app-data
+done
 ```
 
-The command keeps the current `0.55` threshold unchanged and uses saved V7
-probabilities to select four genuinely fresh cases on each side. Only the V8 answer
-packs for those fourteen blocks can miss the shared content-addressed cache; an
-unchanged rerun is provider-free. If semantic ordering passes, calibrate conversion
-numerically from the saved V8 probabilities before any cohort reclassification.
+Then rerun `salvation-collected-observations-review` to verify the refreshed V8
+artifacts and inspect the resulting pastor-level distributions. The completed V8
+calibration command is archived so it cannot overwrite the reviewed packet.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
 twelve-question V7 pack through the normal content-addressed cache, preserves the
 unresolved repentance probability, and projects the eleven thresholded leaves.
 
-The other relationship questions remain frozen, as do ten per-leaf boundaries;
-only conversion is in the bounded semantic audit above. Historical semantic and
+All eleven measurable relationship questions and per-leaf boundaries are frozen.
+Historical semantic and
 final-calibration commands fail closed after the freeze so they cannot overwrite
 their fingerprinted review packets with a later policy.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected

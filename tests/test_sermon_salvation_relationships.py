@@ -5,6 +5,7 @@ import unittest
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES,
     SALVATION_RELATIONSHIP_SPECS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
@@ -124,6 +125,10 @@ class SalvationRelationshipsTests(unittest.TestCase):
             )
 
     def test_collection_policy_is_shared_and_validates_raw_inventory(self) -> None:
+        self.assertEqual(
+            "salvation-relationship-observation-thresholds-v8-eleven-leaf-final",
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
+        )
         probabilities = {
             relationship: threshold - 0.01
             for relationship, threshold in (

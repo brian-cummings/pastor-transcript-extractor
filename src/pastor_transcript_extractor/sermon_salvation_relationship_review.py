@@ -114,6 +114,9 @@ SALVATION_V8_CONVERSION_SOURCE_POLICY_VERSION = (
 SALVATION_V8_CONVERSION_SOURCE_FINGERPRINT = (
     "767d08880a0ced5c2ba4bd519f4944d6a1728c799d905c0a5d076ae374f04003"
 )
+SALVATION_V8_FINAL_OBSERVATION_POLICY_VERSION = (
+    "salvation-relationship-observation-thresholds-v8-eleven-leaf-final"
+)
 SALVATION_V8_CONVERSION_REGRESSION_LABELS = {
     "590:34:conversion_new_birth": "affirmative",
     "350:41:conversion_new_birth": "affirmative",
@@ -1885,6 +1888,13 @@ def evaluate_salvation_v8_conversion_calibration(
     client: TypeSafeBlockClient,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """Evaluate only the revised conversion boundary on regressions and held-outs."""
+    if (
+        SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        == SALVATION_V8_FINAL_OBSERVATION_POLICY_VERSION
+    ):
+        raise ValueError(
+            "V8 conversion calibration is archived after conversion was frozen"
+        )
     if (
         SALVATION_RELATIONSHIPS_PACK_VERSION
         != SALVATION_V8_CONVERSION_REVISED_PACK_VERSION
