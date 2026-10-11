@@ -1345,7 +1345,9 @@ theological stance.
 ### Next iteration
 
 1. Run `salvation-final-boundary-calibration` against the still-V8 cohort; do not
-   reclassify first.
+   reclassify first. Include every cached case in each requested numeric window;
+   sparse neighborhoods remain reviewable evidence and do not justify widening the
+   windows or failing packet construction.
 2. Review the cached atonement and judgment neighborhoods, the two V9 consequence
    regressions plus eight fresh held-outs, and the timestamped `1037:58` audio phrase.
 3. Freeze only the boundaries supported by that packet, then refresh the cohort and

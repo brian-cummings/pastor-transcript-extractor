@@ -484,8 +484,10 @@ pte analysis salvation-final-boundary-calibration \
 
 Do not reclassify the cohort first. The packet changes no threshold. It reviews
 atonement only in `0.66`–`0.71`, judgment only in `0.62`–`0.68`, and leaves every
-other measurable relationship frozen. The completed V8 calibration command is
-archived so it cannot overwrite its reviewed packet.
+other measurable relationship frozen. It includes every cached case available in
+each requested window and reports a sparse neighborhood instead of widening the
+window or aborting. The completed V8 calibration command is archived so it cannot
+overwrite its reviewed packet.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full

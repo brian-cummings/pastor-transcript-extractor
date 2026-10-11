@@ -2187,10 +2187,6 @@ def evaluate_salvation_final_boundary_calibration(
             raise ValueError(
                 f"Final boundary calibration lacks {relationship} review anchors"
             )
-        if len(relationship_probes) < 3:
-            raise ValueError(
-                f"Final boundary calibration lacks a {relationship} neighborhood"
-            )
         numeric_probes.extend(relationship_probes)
 
     reviewed_case_keys = set(ALL_REVIEWED_CANDIDATE_KEYS) | set(
@@ -2331,6 +2327,13 @@ def evaluate_salvation_final_boundary_calibration(
         "numeric_windows": {
             key: list(value)
             for key, value in SALVATION_FINAL_BOUNDARY_NUMERIC_WINDOWS.items()
+        },
+        "numeric_probe_counts": {
+            relationship: sum(
+                probe["relationship"] == relationship
+                for probe in numeric_probes
+            )
+            for relationship in SALVATION_FINAL_BOUNDARY_NUMERIC_WINDOWS
         },
         "numeric_probes": numeric_probes,
         "consequence_definition": salvation_relationship_pack_inventory()[
@@ -2979,7 +2982,9 @@ def render_salvation_final_boundary_calibration(packet: Mapping[str, Any]) -> st
         "",
         "Label each unlabeled probe affirmative, negative, or ambiguous. Do not "
         "rewrite either question. Recommend a threshold only if the cached ordering "
-        "supports one; otherwise retain the current boundary and record overlap.",
+        "supports one; otherwise retain the current boundary and record overlap. "
+        "Every cached case in the requested window is included; a sparse window is "
+        "reported as evidence rather than treated as an execution error.",
         "",
         "| Relationship | Case | V8 p | Reviewed label |",
         "| --- | --- | ---: | --- |",

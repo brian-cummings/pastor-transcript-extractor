@@ -629,7 +629,7 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         numeric_keys = {
             key.rsplit(":", 1)[0]
             for key in SALVATION_FINAL_BOUNDARY_REVIEW_LABELS
-        } | {"9001:1", "9002:1"}
+        }
         fresh_keys = [f"final-fresh:{index}" for index in range(12)]
         all_keys = sorted(
             regression_keys
@@ -666,10 +666,8 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         }
         prior["281:124"]["atonement_as_basis"] = 0.68
         prior["4458:72"]["atonement_as_basis"] = 0.71
-        prior["9001:1"]["atonement_as_basis"] = 0.69
         prior["4394:51"]["judgment_final_destiny"] = 0.64
         prior["4394:43"]["judgment_final_destiny"] = 0.66
-        prior["9002:1"]["judgment_final_destiny"] = 0.65
         prior["4589:41"][relationship] = 0.54
         prior["4430:28"][relationship] = 0.56
         for index, key in enumerate(fresh_keys):
@@ -720,7 +718,11 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                 client=_Client(),
             )
 
-        self.assertEqual(6, len(packet["numeric_probes"]))
+        self.assertEqual(4, len(packet["numeric_probes"]))
+        self.assertEqual(
+            {"atonement_as_basis": 2, "judgment_final_destiny": 2},
+            packet["numeric_probe_counts"],
+        )
         self.assertEqual(2, len(packet["consequence_regression_probes"]))
         self.assertEqual(8, len(packet["consequence_heldout_probes"]))
         self.assertEqual(8, len(packet["frozen_relationships"]))
