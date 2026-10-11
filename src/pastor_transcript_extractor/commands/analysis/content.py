@@ -46,16 +46,20 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     DEFAULT_SALVATION_RELATIONSHIP_REVIEW_OUTPUT,
     DEFAULT_SALVATION_SEMANTIC_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_V5_CALIBRATION_OUTPUT,
+    DEFAULT_SALVATION_V5_THRESHOLD_REVIEW_OUTPUT,
+    build_salvation_v5_threshold_review,
     evaluate_obedience_consequence_calibration,
     evaluate_salvation_final_calibration,
     evaluate_salvation_relationship_review,
     evaluate_salvation_semantic_calibration,
     evaluate_salvation_v5_calibration,
+    load_salvation_v5_calibration,
     write_obedience_consequence_calibration,
     write_salvation_final_calibration,
     write_salvation_relationship_review,
     write_salvation_semantic_calibration,
     write_salvation_v5_calibration,
+    write_salvation_v5_threshold_review,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
@@ -1602,6 +1606,42 @@ def analysis_salvation_v5_calibration(
         f"cache_hits={execution['hits']}; "
         f"cache_misses={execution['misses']}; "
         f"provider_requests={execution['provider_requests']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-v5-threshold-review",
+    help="Build the provider-free final threshold review from cached v5 judgments.",
+)
+def analysis_salvation_v5_threshold_review(
+    input_path: Path = typer.Option(
+        DEFAULT_SALVATION_V5_CALIBRATION_OUTPUT,
+        "--input",
+        help="Reviewed v5 calibration packet.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_V5_THRESHOLD_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+) -> None:
+    try:
+        calibration = load_salvation_v5_calibration(input_path)
+        packet = build_salvation_v5_threshold_review(calibration)
+        json_path, markdown_path, reused = write_salvation_v5_threshold_review(
+            output_path,
+            packet,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation v5 threshold review: "
+        f"{json_path} and {markdown_path}; "
+        f"probes={len(packet['probes'])}; "
+        f"cases={len(packet['cases'])}; "
+        "provider_requests=0; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )

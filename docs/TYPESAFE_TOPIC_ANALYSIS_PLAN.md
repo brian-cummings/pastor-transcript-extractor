@@ -1224,15 +1224,25 @@ theological stance.
     threshold remain frozen. A bounded cache-first packet reruns all twenty-four
     labeled v4 probes and adds sixteen fresh held-out neighbors before any policy
     adjustment.
+67. V5 review freezes all four revised question meanings. Divine initiative now
+    separates divine supply from human response, conversion separates entry into
+    saving life from later conduct, condition-obedience cleanly rejects surrender
+    and discipleship prerequisites, and consequence-obedience recognizes its
+    canonical salvation-to-conduct case. Conversion's `0.70` boundary is rejected
+    because reviewed affirmative evidence extends to `0.54`; the other three
+    boundaries remain plausible but unapproved. A final provider-free packet reads
+    fingerprint `b7e52b68d97c...`, includes every conversion judgment from `0.45`
+    through `0.70`, and adds four nearest boundary judgments for each other revised
+    leaf. It changes neither inference nor collection policy.
 
 ### Next iteration
 
-1. Run and review `salvation-v5-calibration-v1.md`. Confirm that the revised
-   questions restore useful human-positive versus human-negative ordering on the
-   regressions and generalize to the held-out cases.
-2. Keep final destiny watch-only and every threshold unchanged until that review.
-   Do not aggregate salvation relationships into pastor-level theology profiles
-   until the four-leaf collection boundary passes.
+1. Review `salvation-v5-threshold-review-v1.md` and choose the final numeric
+   boundaries. Conversion is the only boundary already known to require movement;
+   do not reopen the frozen question meanings.
+2. Apply the reviewed boundaries once, reclassify the frozen cohort through the
+   ordinary cache-aware path, and inspect collected observations and pastor-level
+   distributions before authorizing any theology-profile aggregation.
 
 ## Non-goals for `topics-v1`
 

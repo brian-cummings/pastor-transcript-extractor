@@ -21,6 +21,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     _select_semantic_heldout_probes,
     _select_v5_heldout_probes,
     _select_review_candidates,
+    build_salvation_v5_threshold_review,
     evaluate_salvation_final_calibration,
     evaluate_salvation_semantic_calibration,
     evaluate_salvation_relationship_review,
@@ -32,6 +33,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    salvation_relationship_pack_digest,
 )
 from pastor_transcript_extractor.sermon_topics import TOPICS, TOPIC_PACK_VERSION
 
@@ -309,6 +311,65 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
             set(V5_CALIBRATION_RELATIONSHIPS),
             set(packet["relationship_definitions"]),
         )
+
+    def test_v5_threshold_review_uses_conversion_window_and_sparse_boundaries(
+        self,
+    ) -> None:
+        probabilities = (0.44, 0.45, 0.50, 0.54, 0.55, 0.60, 0.70, 0.71)
+        cases = [
+            {
+                "candidate_key": f"case:{index}",
+                "pastor": {"slug": f"pastor-{index % 4}"},
+                "leaf_probabilities": {
+                    "divine_grace_initiative": probability,
+                    "conversion_new_birth": probability,
+                    "obedience_as_condition_or_means": (
+                        0.78 if index == len(probabilities) - 1 else probability / 2
+                    ),
+                    "obedience_as_consequence_or_evidence": probability,
+                },
+            }
+            for index, probability in enumerate(probabilities)
+        ]
+        calibration = {
+            "review_policy_version": "salvation-v5-causal-boundaries-calibration-v1",
+            "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
+            "input_fingerprint": "v5-fingerprint",
+            "cases": cases,
+            "regression_probes": [],
+        }
+
+        packet = build_salvation_v5_threshold_review(calibration)
+
+        conversion = [
+            probe
+            for probe in packet["probes"]
+            if probe["relationship"] == "conversion_new_birth"
+        ]
+        self.assertEqual(
+            [0.45, 0.50, 0.54, 0.55, 0.60, 0.70],
+            [probe["probability"] for probe in conversion],
+        )
+        for relationship in V5_CALIBRATION_RELATIONSHIPS:
+            if relationship != "conversion_new_birth":
+                self.assertEqual(
+                    4,
+                    sum(
+                        probe["relationship"] == relationship
+                        for probe in packet["probes"]
+                    ),
+                )
+        condition = [
+            probe
+            for probe in packet["probes"]
+            if probe["relationship"] == "obedience_as_condition_or_means"
+        ]
+        self.assertEqual(
+            1,
+            sum(probe["selection"] == "nearest_at_or_above" for probe in condition),
+        )
+        self.assertEqual(0, packet["provider_requests"])
 
     def test_archived_final_calibration_fails_closed_after_policy_freeze(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived for the reviewed pre-freeze"):

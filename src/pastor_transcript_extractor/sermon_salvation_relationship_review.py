@@ -60,6 +60,9 @@ DEFAULT_SALVATION_FINAL_CALIBRATION_OUTPUT = Path(
 DEFAULT_SALVATION_V5_CALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-v5-calibration-v1.json"
 )
+DEFAULT_SALVATION_V5_THRESHOLD_REVIEW_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-v5-threshold-review-v1.json"
+)
 PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v2-evidence-boundaries"
 )
@@ -1186,6 +1189,173 @@ def evaluate_salvation_v5_calibration(
     }, execution
 
 
+def load_salvation_v5_calibration(path: Path) -> Mapping[str, Any]:
+    try:
+        value = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Could not read salvation v5 calibration: {path}") from error
+    if not isinstance(value, Mapping):
+        raise ValueError("Salvation v5 calibration must be a JSON object")
+    return value
+
+
+def build_salvation_v5_threshold_review(
+    calibration: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the final provider-free threshold packet from reviewed v5 answers."""
+    if (
+        calibration.get("review_policy_version")
+        != "salvation-v5-causal-boundaries-calibration-v1"
+        or calibration.get("revised_leaf_pack_version")
+        != SALVATION_RELATIONSHIPS_PACK_VERSION
+        or calibration.get("revised_leaf_pack_digest")
+        != salvation_relationship_pack_digest()
+    ):
+        raise ValueError("Threshold review requires the current v5 calibration packet")
+    source_fingerprint = calibration.get("input_fingerprint")
+    if not isinstance(source_fingerprint, str) or not source_fingerprint:
+        raise ValueError("V5 calibration has no input fingerprint")
+    source_cases = calibration.get("cases")
+    if not isinstance(source_cases, list):
+        raise ValueError("V5 calibration cases must be a list")
+    cases_by_key: dict[str, Mapping[str, Any]] = {}
+    for case in source_cases:
+        if not isinstance(case, Mapping):
+            raise ValueError("V5 calibration contains a malformed case")
+        key = str(case.get("candidate_key"))
+        probabilities = case.get("leaf_probabilities")
+        if not key or not isinstance(probabilities, Mapping):
+            raise ValueError("V5 calibration case lacks leaf probabilities")
+        for relationship in V5_CALIBRATION_RELATIONSHIPS:
+            probability = probabilities.get(relationship)
+            if not isinstance(probability, (int, float)) or not 0 <= probability <= 1:
+                raise ValueError(
+                    f"V5 calibration case {key} has invalid {relationship} probability"
+                )
+        if key in cases_by_key:
+            raise ValueError(f"V5 calibration repeats case {key}")
+        cases_by_key[key] = case
+
+    prior_labels = {
+        (str(probe["candidate_key"]), str(probe["relationship"])): str(
+            probe["review_label"]
+        )
+        for probe in calibration.get("regression_probes", [])
+        if isinstance(probe, Mapping)
+        and probe.get("candidate_key") is not None
+        and probe.get("relationship") is not None
+        and probe.get("review_label") is not None
+    }
+    probes: list[dict[str, Any]] = []
+    conversion = "conversion_new_birth"
+    for key, case in cases_by_key.items():
+        probability = float(case["leaf_probabilities"][conversion])
+        if 0.45 <= probability <= 0.70:
+            probes.append(
+                {
+                    "candidate_key": key,
+                    "relationship": conversion,
+                    "probability": round(probability, 6),
+                    "selection": "conversion_0.45_to_0.70",
+                    "prior_review_label": prior_labels.get((key, conversion)),
+                }
+            )
+
+    for relationship in V5_CALIBRATION_RELATIONSHIPS:
+        if relationship == conversion:
+            continue
+        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+        values = [
+            (key, float(case["leaf_probabilities"][relationship]))
+            for key, case in cases_by_key.items()
+        ]
+        ordered_by_side = {
+            side: sorted(
+                (
+                    (key, probability)
+                    for key, probability in values
+                    if (probability < threshold) == (side == "below")
+                ),
+                key=lambda item: (abs(item[1] - threshold), item[0]),
+            )
+            for side in ("below", "at_or_above")
+        }
+        selected: list[tuple[str, float, str]] = []
+        selected_keys: set[str] = set()
+        for side in ("below", "at_or_above"):
+            for key, probability in ordered_by_side[side][:2]:
+                selected.append((key, probability, side))
+                selected_keys.add(key)
+        if len(selected) < 4:
+            nearest = sorted(
+                (
+                    (key, float(case["leaf_probabilities"][relationship]))
+                    for key, case in cases_by_key.items()
+                    if key not in selected_keys
+                ),
+                key=lambda item: (abs(item[1] - threshold), item[0]),
+            )
+            for key, probability in nearest[: 4 - len(selected)]:
+                side = "at_or_above" if probability >= threshold else "below"
+                selected.append((key, probability, side))
+        if len(selected) < 4:
+            raise ValueError(
+                f"V5 threshold review requires four {relationship} probes"
+            )
+        for key, probability, side in selected:
+            probes.append(
+                {
+                    "candidate_key": key,
+                    "relationship": relationship,
+                    "probability": round(probability, 6),
+                    "selection": f"nearest_{side}",
+                    "prior_review_label": prior_labels.get((key, relationship)),
+                }
+            )
+
+    probes.sort(
+        key=lambda probe: (
+            V5_CALIBRATION_RELATIONSHIPS.index(str(probe["relationship"])),
+            float(probe["probability"]),
+            str(probe["candidate_key"]),
+        )
+    )
+    selected_keys = {str(probe["candidate_key"]) for probe in probes}
+    cases = [cases_by_key[key] for key in sorted(selected_keys)]
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": "salvation-v5-final-threshold-review-v1",
+        "source_calibration_fingerprint": source_fingerprint,
+        "leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "leaf_pack_digest": salvation_relationship_pack_digest(),
+        "current_thresholds": {
+            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            for relationship in V5_CALIBRATION_RELATIONSHIPS
+        },
+        "relationship_definitions": {
+            relationship: salvation_relationship_pack_inventory()["relationships"][
+                relationship
+            ]
+            for relationship in V5_CALIBRATION_RELATIONSHIPS
+        },
+        "probes": probes,
+        "cases": cases,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "final_v5_threshold_calibration_pending_review",
+        "policy_effect": "none",
+        "provider_requests": 0,
+        "interpretation": (
+            "The four v5 question definitions are frozen. This provider-free packet "
+            "reviews every existing v5 conversion judgment from 0.45 through 0.70 "
+            "and four nearest boundary judgments for each other revised leaf. It "
+            "does not change a threshold or reclassify the cohort."
+        ),
+    }
+
+
 def evaluate_obedience_consequence_calibration(
     database: Database,
     cohort: Mapping[str, Any],
@@ -1563,6 +1733,62 @@ def render_salvation_v5_calibration(packet: Mapping[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_salvation_v5_threshold_review(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    lines = [
+        "# Salvation v5 final threshold review",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Leaf pack: `{packet['leaf_pack_version']}`",
+        f"- Source calibration: `{packet['source_calibration_fingerprint']}`",
+        f"- Provider requests: `{packet['provider_requests']}`",
+        f"- Review judgments: `{len(packet['probes'])}`",
+        f"- Unique evidence cases: `{len(packet['cases'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "For every probe, label the target affirmative, negative, or ambiguous for "
+        "the named relationship. Choose a numeric boundary only after checking "
+        "whether reviewed positives and negatives are ordered well enough for one "
+        "threshold. Raw probabilities remain stored independently of that policy.",
+    ]
+    for relationship in V5_CALIBRATION_RELATIONSHIPS:
+        definition = packet["relationship_definitions"][relationship]
+        relationship_probes = [
+            probe
+            for probe in packet["probes"]
+            if probe["relationship"] == relationship
+        ]
+        lines.extend(
+            [
+                "",
+                f"## {relationship}",
+                "",
+                f"**Meaning:** {definition['description']}",
+                "",
+                f"**Count as yes:** {definition['true_criteria']}",
+                "",
+                f"**Count as no:** {definition['false_criteria']}",
+                "",
+                "Current threshold: "
+                f"`{float(packet['current_thresholds'][relationship]):.2f}`.",
+                "",
+                "| Case | Selection | V5 p | Prior reviewed label |",
+                "| --- | --- | ---: | --- |",
+            ]
+        )
+        for probe in relationship_probes:
+            lines.append(
+                f"| {probe['candidate_key']} | {probe['selection']} | "
+                f"{float(probe['probability']):.3f} | "
+                f"{probe.get('prior_review_label') or '—'} |"
+            )
+    lines.extend(_render_deduplicated_evidence_cases(cases))
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
         "# Salvation relationships review",
@@ -1704,4 +1930,15 @@ def write_salvation_v5_calibration(
         path,
         packet,
         render_salvation_v5_calibration,
+    )
+
+
+def write_salvation_v5_threshold_review(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_v5_threshold_review,
     )

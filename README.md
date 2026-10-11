@@ -468,6 +468,18 @@ pte analysis salvation-v5-calibration \
 The command leaves every threshold unchanged, uses the shared per-video pack cache,
 and becomes provider-free after its first bounded run.
 
+After reviewing that packet and freezing the v5 question meanings, build the final
+numeric-boundary packet entirely from its saved probabilities:
+
+```bash
+pte analysis salvation-v5-threshold-review
+```
+
+This command makes no provider request and needs no application database. It reviews
+every existing v5 conversion judgment from `0.45` through `0.70`, plus four nearest
+boundary judgments for each of the other three revised leaves. An unchanged rerun
+reuses the fingerprinted JSON/Markdown output byte-for-byte.
+
 Prepare the bounded review packet for the named video 4548 regression cases
 without making another provider request:
 
