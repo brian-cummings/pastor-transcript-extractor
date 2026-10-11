@@ -66,6 +66,7 @@ GROUP_COMMANDS = {
         "salvation-v5-threshold-review",
         "salvation-v6-repentance-calibration",
         "salvation-v7-repentance-calibration",
+        "salvation-v8-conversion-calibration",
         "salvation-collected-observations-review",
         "salvation-conversion-recalibration",
         "salvation-obedience-calibration",

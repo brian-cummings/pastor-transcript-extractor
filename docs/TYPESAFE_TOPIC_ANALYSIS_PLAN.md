@@ -1303,16 +1303,30 @@ theological stance.
     If the fresh conversion evidence does not reveal a systematic repairable
     ordering defect, accept local measurement noise, freeze `0.55`, and proceed to
     pastor-level aggregation.
+74. The conversion-only packet at fingerprint
+    `767d08880a0ced5c2ba4bd519f4944d6a1728c799d905c0a5d076ae374f04003`
+    reproduces a systematic semantic-ordering defect. All four fresh cases below
+    `0.55` are negatives, while fresh negatives at `0.55`, `0.56`, and `0.58`
+    precede a strong affirmative at `0.60`; the prior strong affirmative at `0.54`
+    prevents a numeric repair. V8 therefore revises only `conversion_new_birth` to
+    require an asserted entry or state transition into saving life. Forgiveness,
+    freedom from sin, surrender, prayer for salvation, baptism, repentance, or the
+    word converted do not establish conversion without that transition. Regressions
+    are positives `590:34` and `350:41`, and negatives `350:42`, `4430:21`,
+    `4589:51`, and `4430:53`. Validate them with eight fresh held-outs selected from
+    saved V7 probabilities. Keep `0.55` provisional, the other ten thresholded
+    leaves frozen, and unresolved repentance excluded.
 
 ### Next iteration
 
-1. Run `salvation-conversion-recalibration` against the already refreshed cohort.
-   It requires no reclassification and makes no provider request.
-2. Review only its eight fresh conversion probes against the two labeled anchors.
-   The six frozen-leaf watches are documentary and non-authorizing.
-3. If no systematic repairable conversion defect emerges, freeze conversion at
-   `0.55` and begin pastor-level aggregation for the ten frozen leaves plus
-   conversion. Keep unresolved repentance out of projection.
+1. Run `salvation-v8-conversion-calibration` against the still-V7 cohort. It evaluates
+   only fourteen bounded cases through the shared per-video cache; do not reclassify
+   the cohort first.
+2. Review semantic ordering on the six regressions, then label the eight fresh
+   held-outs. Do not reopen another leaf or change `.55` in this step.
+3. If V8 restores ordering, build a provider-free numeric boundary review from the
+   saved V8 probabilities. Only then freeze conversion and reclassify the cohort for
+   pastor-level aggregation. Keep unresolved repentance out of projection.
 
 ## Non-goals for `topics-v1`
 

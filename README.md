@@ -422,14 +422,14 @@ aggregation remains blocked pending reviewed profile membership.
 
 Projection-eligible blocks whose cached `salvation_gospel` supporting-or-above
 probability is at least `0.55` also enter the independently cached
-`salvation-relationships-v7-repentance-response-context` leaf pack. The twelve Noul
+`salvation-relationships-v8-conversion-saving-state-transition` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the provisional
 `salvation-relationship-observation-thresholds-v7-eleven-leaf-final` policy. Eleven
-relationships have per-leaf thresholds. Ten are frozen; `conversion_new_birth` is
-reopened for one bounded, provider-free ordering check while its threshold remains
-`0.55`. Repentance is marked
+relationships have per-leaf thresholds. Ten are frozen; `conversion_new_birth` has
+one bounded semantic revision pending review while its threshold remains `0.55`.
+Repentance is marked
 `block_level_unresolved`: its raw probability is retained for research and debugging
 but it cannot produce a collected or pastor-level observation. The raw
 probabilities remain policy-independent evidence, so changing a collection
@@ -448,7 +448,11 @@ divine grace `0.65`, receiving faith `0.65`, forgiveness `0.68`, final destiny
 separate repentance as a salvation response from repentance discussed in salvation
 context at this block size. Prompt tuning stops at V7. The ordinary-classification
 audit subsequently reopened only conversion because a reviewed positive at `0.54`
-ranked below a reviewed negative at `0.55`; the other ten leaves remain frozen.
+ranked below a reviewed negative at `0.55`. Fresh cached neighbors reproduced the
+semantic-ordering defect: saving vocabulary, figurative conversion, or later growth
+could outrank a genuine saving-state transition. V8 therefore strengthens only the
+requirement for an asserted entry or transition into saving life; the other ten
+leaves remain frozen.
 
 After refreshing the frozen twelve-sermon validation cohort through ordinary
 `pte reclassify`, build its bounded collected-observation review without calling a
@@ -464,26 +468,29 @@ recomputes every stored collection decision from the raw probability, and writes
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
 
-The current ordinary-classification packet exposes a localized conversion ordering
-question. Build its bounded follow-up without reclassification or a provider call:
+The completed provider-free conversion packet authorized one narrow semantic
+revision. Validate V8 on six labeled regressions and eight fresh held-outs before
+reclassifying the cohort:
 
 ```bash
-pte analysis salvation-conversion-recalibration \
+pte analysis salvation-v8-conversion-calibration \
+  --model jev-1.13.0 \
   --base-dir /path/to/app-data
 ```
 
-The packet keeps the current `0.55` threshold unchanged, carries the two reviewed
-conversion regressions, and selects four fresh cached neighbors on each side from
-`0.45`–`0.65`. It also records six isolated errors in frozen leaves as watch-only
-fixtures; those cases cannot authorize broader tuning.
+The command keeps the current `0.55` threshold unchanged and uses saved V7
+probabilities to select four genuinely fresh cases on each side. Only the V8 answer
+packs for those fourteen blocks can miss the shared content-addressed cache; an
+unchanged rerun is provider-free. If semantic ordering passes, calibrate conversion
+numerically from the saved V8 probabilities before any cohort reclassification.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
 twelve-question V7 pack through the normal content-addressed cache, preserves the
 unresolved repentance probability, and projects the eleven thresholded leaves.
 
-The reviewed relationship questions remain frozen, as do ten per-leaf boundaries;
-only conversion is in the bounded collection audit above. Historical semantic and
+The other relationship questions remain frozen, as do ten per-leaf boundaries;
+only conversion is in the bounded semantic audit above. Historical semantic and
 final-calibration commands fail closed after the freeze so they cannot overwrite
 their fingerprinted review packets with a later policy.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected

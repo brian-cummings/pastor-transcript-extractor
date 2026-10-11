@@ -257,7 +257,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
 
     def test_revised_evidence_boundaries_are_explicit_and_general(self) -> None:
         self.assertEqual(
-            "salvation-relationships-v7-repentance-response-context",
+            "salvation-relationships-v8-conversion-saving-state-transition",
             SALVATION_RELATIONSHIPS_PACK_VERSION,
         )
         self.assertIn(
@@ -314,6 +314,14 @@ class SalvationRelationshipsTests(unittest.TestCase):
         )
         self.assertIn(
             "already saved or justified",
+            SALVATION_RELATIONSHIP_SPECS["conversion_new_birth"].false_criteria,
+        )
+        self.assertIn(
+            "saving-state transition",
+            SALVATION_RELATIONSHIP_SPECS["conversion_new_birth"].true_criteria,
+        )
+        self.assertIn(
+            "word converted",
             SALVATION_RELATIONSHIP_SPECS["conversion_new_birth"].false_criteria,
         )
         self.assertIn(

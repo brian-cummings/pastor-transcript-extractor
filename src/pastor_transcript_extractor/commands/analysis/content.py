@@ -49,6 +49,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     DEFAULT_SALVATION_V5_THRESHOLD_REVIEW_OUTPUT,
     DEFAULT_SALVATION_V6_REPENTANCE_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_V7_REPENTANCE_CALIBRATION_OUTPUT,
+    DEFAULT_SALVATION_V8_CONVERSION_CALIBRATION_OUTPUT,
     build_salvation_v5_threshold_review,
     evaluate_obedience_consequence_calibration,
     evaluate_salvation_final_calibration,
@@ -57,6 +58,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     evaluate_salvation_v5_calibration,
     evaluate_salvation_v6_repentance_calibration,
     evaluate_salvation_v7_repentance_calibration,
+    evaluate_salvation_v8_conversion_calibration,
     load_salvation_v5_calibration,
     load_salvation_v6_repentance_calibration,
     write_obedience_consequence_calibration,
@@ -67,6 +69,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     write_salvation_v5_threshold_review,
     write_salvation_v6_repentance_calibration,
     write_salvation_v7_repentance_calibration,
+    write_salvation_v8_conversion_calibration,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
@@ -1805,6 +1808,77 @@ def analysis_salvation_v7_repentance_calibration(
         raise typer.BadParameter(str(error)) from error
     console.print(
         f"{'Reused' if reused else 'Wrote'} salvation v7 repentance calibration: "
+        f"{json_path} and {markdown_path}; "
+        f"regressions={len(packet['regression_probes'])}; "
+        f"held_out={len(packet['heldout_probes'])}; "
+        f"cache_hits={execution['hits']}; "
+        f"cache_misses={execution['misses']}; "
+        f"provider_requests={execution['provider_requests']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-v8-conversion-calibration",
+    help="Run the bounded v8 saving-state-transition conversion calibration.",
+)
+def analysis_salvation_v8_conversion_calibration(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying routed v7 evidence.",
+    ),
+    conversion_review_path: Path = typer.Option(
+        DEFAULT_SALVATION_CONVERSION_RECALIBRATION_OUTPUT,
+        "--conversion-review",
+        help="Reviewed conversion-only packet supplying regressions and exclusions.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_V8_CONVERSION_CALIBRATION_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_TYPESAFE_MODEL,
+        "--model",
+        help="Pinned TypeSafe model id used for revised leaf judgments.",
+    ),
+    timeout_seconds: float = typer.Option(
+        45.0,
+        "--timeout-seconds",
+        min=1.0,
+        help="Timeout for each uncached TypeSafe request.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        conversion_review = load_salvation_collected_observations_review(
+            conversion_review_path
+        )
+        packet, execution = evaluate_salvation_v8_conversion_calibration(
+            database,
+            cohort,
+            conversion_review,
+            model=model,
+            client=_LazyTopicBehaviorClient(
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        )
+        json_path, markdown_path, reused = (
+            write_salvation_v8_conversion_calibration(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation v8 conversion calibration: "
         f"{json_path} and {markdown_path}; "
         f"regressions={len(packet['regression_probes'])}; "
         f"held_out={len(packet['heldout_probes'])}; "

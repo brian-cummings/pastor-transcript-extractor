@@ -168,7 +168,9 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
             "review_policy_version": (
                 SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
             ),
-            "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "question_pack_version": (
+                "salvation-relationships-v7-repentance-response-context"
+            ),
             "observation_policy_version": (
                 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
             ),
@@ -176,10 +178,17 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
             "source_artifacts": _source_artifact_fingerprints([source]),
             "cases": [],
         }
-        with patch(
-            "pastor_transcript_extractor.sermon_salvation_observation_review."
-            "_validated_source_judgments",
-            return_value=judgments,
+        with (
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_observation_review."
+                "SALVATION_RELATIONSHIPS_PACK_VERSION",
+                "salvation-relationships-v7-repentance-response-context",
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_observation_review."
+                "_validated_source_judgments",
+                return_value=judgments,
+            ),
         ):
             packet = build_salvation_conversion_recalibration(
                 [source],
@@ -224,6 +233,15 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
                 write_salvation_conversion_recalibration(output, packet)
             )
             self.assertTrue(reused)
+
+    def test_conversion_recalibration_is_archived_after_v8(self) -> None:
+        with self.assertRaisesRegex(ValueError, "archived after the v8"):
+            build_salvation_conversion_recalibration(
+                [],
+                cohort_sha256="cohort",
+                readiness_input_fingerprint="readiness",
+                prior_review={},
+            )
 
     def test_final_collection_check_is_bounded_and_provider_free(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived"):

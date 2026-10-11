@@ -46,6 +46,9 @@ SALVATION_CONVERSION_RECALIBRATION_SCHEMA_VERSION = 1
 SALVATION_CONVERSION_RECALIBRATION_POLICY_VERSION = (
     "salvation-conversion-local-ordering-recalibration-v1"
 )
+SALVATION_CONVERSION_RECALIBRATION_SOURCE_PACK_VERSION = (
+    "salvation-relationships-v7-repentance-response-context"
+)
 SALVATION_CONVERSION_RECALIBRATION_WINDOW = (0.45, 0.65)
 SALVATION_CONVERSION_RECALIBRATION_ANCHORS = {
     "590:34:conversion_new_birth": "affirmative_rejected",
@@ -500,10 +503,17 @@ def build_salvation_conversion_recalibration(
 ) -> dict[str, Any]:
     """Build a provider-free conversion-only ordering check from cached judgments."""
     if (
+        SALVATION_RELATIONSHIPS_PACK_VERSION
+        != SALVATION_CONVERSION_RECALIBRATION_SOURCE_PACK_VERSION
+    ):
+        raise ValueError(
+            "Conversion-only recalibration is archived after the v8 semantic revision"
+        )
+    if (
         prior_review.get("review_policy_version")
         != SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
         or prior_review.get("question_pack_version")
-        != SALVATION_RELATIONSHIPS_PACK_VERSION
+        != SALVATION_CONVERSION_RECALIBRATION_SOURCE_PACK_VERSION
         or prior_review.get("observation_policy_version")
         != SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
     ):

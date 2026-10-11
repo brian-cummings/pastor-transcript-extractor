@@ -13,7 +13,7 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SALVATION_RELATIONSHIPS_PACK_VERSION = (
-    "salvation-relationships-v7-repentance-response-context"
+    "salvation-relationships-v8-conversion-saving-state-transition"
 )
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
@@ -95,18 +95,23 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
     ),
     "conversion_new_birth": SalvationRelationshipSpec(
         description=(
-            "conversion, new birth, reconciliation, adoption, or passage from lost to "
-            "saved as entry into saving life"
+            "an asserted entry or state transition into saving life through conversion, "
+            "new birth, reconciliation, adoption, or passage from lost to saved"
         ),
         true_criteria=(
-            "The target meaningfully presents entry into saving life through conversion, "
-            "new birth, a new heart or new life, Christ entering or beginning to live in "
-            "the person, reconciliation, adoption, or movement from lost to saved."
+            "The target explicitly presents a person entering or moving into saving life: "
+            "for example, from lost, ruined, separated, or unsaved to saved, reconciled, "
+            "adopted, newly born, or given a new saving life. Receiving Jesus, Christ "
+            "entering or beginning to live in the person, a new heart, or a changed life "
+            "counts only when the target presents it as that saving-state transition."
         ),
         false_criteria=(
-            "The target uses conversion figuratively, gives generic decision or response "
-            "language without a saving-life transition, or describes people who are "
-            "already saved or justified subsequently living differently."
+            "Do not infer conversion from saving vocabulary or benefits alone. Forgiveness, "
+            "remission, pardon, freedom from sin, surrender, a prayer to be saved, baptism, "
+            "repentance, or the word converted does not by itself establish entry into "
+            "saving life. Exclude figurative conversion, generic decisions or responses, "
+            "and people already saved or justified subsequently growing or living "
+            "differently when no saving-state transition is asserted."
         ),
     ),
     "sanctification_transformation": SalvationRelationshipSpec(

@@ -17,11 +17,15 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION,
     PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION,
     PRIOR_V6_SALVATION_RELATIONSHIPS_PACK_VERSION,
+    PRIOR_V8_SALVATION_RELATIONSHIPS_PACK_VERSION,
     SEMANTIC_CALIBRATION_RELATIONSHIPS,
     V5_CALIBRATION_RELATIONSHIPS,
     V5_REVIEW_LABELS,
     V6_REPENTANCE_REGRESSION_LABELS,
     V7_REPENTANCE_REGRESSION_LABELS,
+    SALVATION_V8_CONVERSION_REGRESSION_LABELS,
+    SALVATION_V8_CONVERSION_SOURCE_FINGERPRINT,
+    SALVATION_V8_CONVERSION_SOURCE_POLICY_VERSION,
     _select_semantic_heldout_probes,
     _select_v5_heldout_probes,
     _select_repentance_heldout_probes,
@@ -33,6 +37,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     evaluate_salvation_v5_calibration,
     evaluate_salvation_v6_repentance_calibration,
     evaluate_salvation_v7_repentance_calibration,
+    evaluate_salvation_v8_conversion_calibration,
     select_obedience_consequence_calibration_candidates,
     write_salvation_relationship_review,
 )
@@ -489,6 +494,107 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
             set(regression_keys).isdisjoint(
                 {probe["candidate_key"] for probe in packet["heldout_probes"]}
             )
+        )
+
+    def test_v8_conversion_calibration_is_bounded_fresh_and_cache_first(
+        self,
+    ) -> None:
+        regression_keys = sorted(
+            judgment_key.rsplit(":", 1)[0]
+            for judgment_key in SALVATION_V8_CONVERSION_REGRESSION_LABELS
+        )
+        fresh_keys = [f"v8-fresh:{index}" for index in range(12)]
+        candidates = [
+            {
+                "candidate_key": key,
+                "pastor": {"slug": f"pastor-{index % 4}"},
+            }
+            for index, key in enumerate(regression_keys + fresh_keys)
+        ]
+        prior = {
+            key: {
+                "conversion_new_birth": 0.54 if index < 6 else 0.56,
+            }
+            for index, key in enumerate(fresh_keys)
+        }
+        prior.update(
+            {
+                key: {"conversion_new_birth": 0.55}
+                for key in regression_keys
+            }
+        )
+        evaluated = [
+            {
+                **candidate,
+                "leaf_probabilities": {"conversion_new_birth": 0.75},
+            }
+            for candidate in candidates
+        ]
+        conversion_review = {
+            "review_policy_version": SALVATION_V8_CONVERSION_SOURCE_POLICY_VERSION,
+            "question_pack_version": PRIOR_V8_SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "input_fingerprint": SALVATION_V8_CONVERSION_SOURCE_FINGERPRINT,
+            "excluded_reviewed_case_keys": [],
+            "probes": [
+                {
+                    "judgment_key": judgment_key,
+                    "relationship": "conversion_new_birth",
+                    "probability": 0.54,
+                }
+                for judgment_key in SALVATION_V8_CONVERSION_REGRESSION_LABELS
+            ],
+            "cases": [{"case_key": key} for key in regression_keys],
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
+                return_value=(candidates, "readiness-fingerprint"),
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._relationship_probabilities_for_pack",
+                return_value=prior,
+            ) as probability_loader,
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.evaluate_salvation_relationship_candidates",
+                return_value=(
+                    evaluated,
+                    {"hits": 14, "misses": 0, "provider_requests": 0},
+                ),
+            ),
+        ):
+            packet, execution = evaluate_salvation_v8_conversion_calibration(
+                None,
+                {"cohort_sha256": "cohort"},
+                conversion_review,
+                model="jev-1.13.0",
+                client=_Client(),
+            )
+
+        probability_loader.assert_called_once_with(
+            None,
+            {"cohort_sha256": "cohort"},
+            expected_pack_version=PRIOR_V8_SALVATION_RELATIONSHIPS_PACK_VERSION,
+        )
+        self.assertEqual(6, len(packet["regression_probes"]))
+        self.assertEqual(8, len(packet["heldout_probes"]))
+        self.assertEqual(14, len(packet["cases"]))
+        self.assertEqual(10, len(packet["frozen_relationships"]))
+        self.assertEqual(0, execution["provider_requests"])
+        self.assertTrue(
+            set(regression_keys).isdisjoint(
+                {probe["candidate_key"] for probe in packet["heldout_probes"]}
+            )
+        )
+        self.assertEqual(
+            {"below": 4, "at_or_above": 4},
+            {
+                side: sum(
+                    probe["prior_boundary_side"] == side
+                    for probe in packet["heldout_probes"]
+                )
+                for side in ("below", "at_or_above")
+            },
         )
 
     def test_v5_calibration_assembles_current_relationship_definitions(self) -> None:
