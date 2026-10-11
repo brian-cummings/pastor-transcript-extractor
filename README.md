@@ -426,7 +426,7 @@ probability is at least `0.55` also enter the independently cached
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the frozen
-`salvation-relationship-observation-thresholds-v2-assurance` per-leaf thresholds. The raw
+`salvation-relationship-observation-thresholds-v3-final` per-leaf thresholds. The raw
 probabilities remain policy-independent evidence, so changing a collection
 threshold does not require another provider request. Relationship observations are
 still observation-only: they do not change sermon boundaries, disposition, or a
@@ -450,17 +450,12 @@ recomputes every stored collection decision from the raw probability, and writes
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
 
-Before refreshing cohort classifications with the revised relationship pack, run
-the final bounded acceptance check:
-
-```bash
-pte analysis salvation-final-calibration \
-  --base-dir /path/to/app-data
-```
-
-It evaluates six faith positive-recall candidates and the six decisive repentance
-ordering regressions. It uses the same per-video pack cache and makes no broad
-corpus pass.
+The reviewed v4 relationship questions and final per-leaf boundaries are frozen.
+Historical semantic and final-calibration commands fail closed after the freeze so
+they cannot overwrite their fingerprinted review packets with a later policy.
+Refresh cohort classifications through ordinary `pte reclassify`; unaffected
+recording, topic, role, and treatment packs continue to replay from their existing
+per-video caches.
 
 Prepare the bounded review packet for the named video 4548 regression cases
 without making another provider request:

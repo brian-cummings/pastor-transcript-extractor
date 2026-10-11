@@ -1190,15 +1190,26 @@ theological stance.
     faith anchors plus four strongest prior candidates and reruns the three decisive
     affirmative and three negative repentance cases. No cohort reclassification is
     authorized until both checks pass.
+64. Final calibration passes both remaining checks and freezes the relationship
+    layer. Receiving-faith preserves clear affirmative recall at `0.76`–`0.88`
+    while leaving a preacher-identified repentance/surrender case below its `0.65`
+    boundary. Repentance v4 restores correct ordering: reviewed affirmatives score
+    `0.57`, `0.58`, and `0.87`, all above reviewed negatives at `0.26`, `0.42`,
+    and `0.55`. Freeze repentance at `0.57`, assurance at `0.62`,
+    obedience-as-consequence at `0.55`, grace/final-destiny/faith at `0.65`, and
+    the remaining seven leaves at `0.70` under
+    `salvation-relationship-observation-thresholds-v3-final`. The broad route stays
+    `0.55`, the raw probabilities remain policy-independent, and no more prompt
+    tuning should use this calibration corpus.
 
 ### Next iteration
 
-1. Run `pte analysis salvation-final-calibration` before reclassifying the cohort.
-   Confirm that receiving-faith retains affirmative recall and that all three
-   reviewed repentance affirmatives rank above all three reviewed negatives.
-2. If both checks pass, freeze the twelve-leaf observation layer and refresh the
-   twelve-sermon cohort through ordinary reclassification. Do not design sermon- or
-   pastor-level aggregation until the refreshed collection policy passes.
+1. Refresh the twelve-sermon cohort through ordinary TypeSafe reclassification so
+   every routed block carries the frozen v4 pack and final per-leaf observation
+   policy. Preserve and reuse all unaffected pack caches.
+2. Inspect the resulting pastor-level relationship distributions and unusual
+   outliers. Treat only new out-of-sample failure modes as grounds for revisiting
+   the frozen layer.
 
 ## Non-goals for `topics-v1`
 

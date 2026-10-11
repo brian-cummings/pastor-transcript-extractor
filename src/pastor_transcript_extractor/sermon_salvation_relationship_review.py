@@ -67,6 +67,9 @@ SEMANTIC_CALIBRATION_RELATIONSHIPS = (
 SEMANTIC_CALIBRATION_REVISED_PACK_VERSION = (
     "salvation-relationships-v3-receiving-and-fruit-boundaries"
 )
+FINAL_CALIBRATION_OBSERVATION_POLICY_VERSION = (
+    "salvation-relationship-observation-thresholds-v2-assurance"
+)
 SEMANTIC_REGRESSION_CASES = {
     "faith_as_receiving_response": frozenset(
         {"281:115", "281:124", "4394:37", "4394:50"}
@@ -738,6 +741,14 @@ def evaluate_salvation_final_calibration(
     client: TypeSafeBlockClient,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """Run the last bounded faith-recall and repentance-ordering check."""
+    if (
+        SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        != FINAL_CALIBRATION_OBSERVATION_POLICY_VERSION
+    ):
+        raise ValueError(
+            "Final salvation calibration v1 is archived for the reviewed pre-freeze "
+            "policy; reclassify the cohort with the frozen policy"
+        )
     candidates, readiness_fingerprint = _routed_candidates(database, cohort)
     by_key = {str(item["candidate_key"]): item for item in candidates}
     legacy = _legacy_relationship_probabilities(database, cohort)

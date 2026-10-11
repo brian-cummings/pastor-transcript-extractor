@@ -17,6 +17,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     SEMANTIC_CALIBRATION_RELATIONSHIPS,
     _select_semantic_heldout_probes,
     _select_review_candidates,
+    evaluate_salvation_final_calibration,
     evaluate_salvation_semantic_calibration,
     evaluate_salvation_relationship_review,
     select_obedience_consequence_calibration_candidates,
@@ -25,6 +26,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
+    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
 )
 from pastor_transcript_extractor.sermon_topics import TOPICS, TOPIC_PACK_VERSION
 
@@ -138,6 +140,15 @@ def _block(block_id: int, support: float) -> dict[str, object]:
 
 
 class SalvationRelationshipReviewTests(unittest.TestCase):
+    def test_archived_final_calibration_fails_closed_after_policy_freeze(self) -> None:
+        with self.assertRaisesRegex(ValueError, "archived for the reviewed pre-freeze"):
+            evaluate_salvation_final_calibration(
+                None,
+                {},
+                model="jev-1.13.0",
+                client=_Client(),
+            )
+
     def test_archived_semantic_calibration_fails_closed_after_pack_revision(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived for the reviewed v3 pack"):
             evaluate_salvation_semantic_calibration(
@@ -159,9 +170,12 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         legacy = {}
         for index, candidate in enumerate(candidates):
             legacy[candidate["candidate_key"]] = {
-                "faith_as_receiving_response": (0.64, 0.66)[index % 2],
-                "repentance_as_receiving_response": (0.69, 0.71)[index % 2],
-                "obedience_as_consequence_or_evidence": (0.54, 0.56)[index % 2],
+                relationship: round(
+                    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+                    + (-0.01, 0.01)[index % 2],
+                    2,
+                )
+                for relationship in SEMANTIC_CALIBRATION_RELATIONSHIPS
             }
 
         probes = _select_semantic_heldout_probes(candidates, legacy)

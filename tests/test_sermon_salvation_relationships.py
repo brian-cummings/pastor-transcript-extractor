@@ -103,6 +103,12 @@ class SalvationRelationshipsTests(unittest.TestCase):
                 "obedience_as_consequence_or_evidence"
             ),
         )
+        self.assertEqual(
+            0.57,
+            salvation_relationship_observation_threshold(
+                "repentance_as_receiving_response"
+            ),
+        )
 
     def test_collection_policy_is_shared_and_validates_raw_inventory(self) -> None:
         probabilities = {
