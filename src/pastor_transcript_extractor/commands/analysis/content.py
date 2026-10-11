@@ -50,6 +50,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     DEFAULT_SALVATION_V6_REPENTANCE_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_V7_REPENTANCE_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_V8_CONVERSION_CALIBRATION_OUTPUT,
+    DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT,
     build_salvation_v5_threshold_review,
     evaluate_obedience_consequence_calibration,
     evaluate_salvation_final_calibration,
@@ -59,6 +60,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     evaluate_salvation_v6_repentance_calibration,
     evaluate_salvation_v7_repentance_calibration,
     evaluate_salvation_v8_conversion_calibration,
+    evaluate_salvation_final_boundary_calibration,
     load_salvation_v5_calibration,
     load_salvation_v6_repentance_calibration,
     write_obedience_consequence_calibration,
@@ -70,6 +72,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     write_salvation_v6_repentance_calibration,
     write_salvation_v7_repentance_calibration,
     write_salvation_v8_conversion_calibration,
+    write_salvation_final_boundary_calibration,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
@@ -1882,6 +1885,78 @@ def analysis_salvation_v8_conversion_calibration(
         f"{json_path} and {markdown_path}; "
         f"regressions={len(packet['regression_probes'])}; "
         f"held_out={len(packet['heldout_probes'])}; "
+        f"cache_hits={execution['hits']}; "
+        f"cache_misses={execution['misses']}; "
+        f"provider_requests={execution['provider_requests']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-final-boundary-calibration",
+    help="Run the final bounded atonement, judgment, consequence, and transcript review.",
+)
+def analysis_salvation_final_boundary_calibration(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying routed V8 evidence.",
+    ),
+    collection_review_path: Path = typer.Option(
+        DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+        "--collection-review",
+        help="Reviewed V8 ordinary-classification boundary packet.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    model: str = typer.Option(
+        DEFAULT_TYPESAFE_MODEL,
+        "--model",
+        help="Pinned TypeSafe model id used for revised consequence judgments.",
+    ),
+    timeout_seconds: float = typer.Option(
+        45.0,
+        "--timeout-seconds",
+        min=1.0,
+        help="Timeout for each uncached TypeSafe request.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        collection_review = load_salvation_collected_observations_review(
+            collection_review_path
+        )
+        packet, execution = evaluate_salvation_final_boundary_calibration(
+            database,
+            cohort,
+            collection_review,
+            model=model,
+            client=_LazyTopicBehaviorClient(
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        )
+        json_path, markdown_path, reused = (
+            write_salvation_final_boundary_calibration(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} final salvation boundary calibration: "
+        f"{json_path} and {markdown_path}; "
+        f"numeric={len(packet['numeric_probes'])}; "
+        f"consequence_regressions={len(packet['consequence_regression_probes'])}; "
+        f"consequence_held_out={len(packet['consequence_heldout_probes'])}; "
         f"cache_hits={execution['hits']}; "
         f"cache_misses={execution['misses']}; "
         f"provider_requests={execution['provider_requests']}; "

@@ -13,7 +13,7 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SALVATION_RELATIONSHIPS_PACK_VERSION = (
-    "salvation-relationships-v8-conversion-saving-state-transition"
+    "salvation-relationships-v9-consequence-conduct-boundary"
 )
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
@@ -217,14 +217,17 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
         true_criteria=(
             "The target explicitly gives the causal or evidentiary direction from "
             "salvation, grace, mercy, or justification to subsequent obedience, works, "
-            "conduct, holiness, or changed behavior, including God working in a saved "
-            "person to will and to do."
+            "conduct, holiness, or changed behavior. This includes baptism or union with "
+            "Christ leading to walking or living in newness of life, Christ living "
+            "through the person, or God working in a saved person to will and to do."
         ),
         false_criteria=(
             "The target merely commands conduct; describes repentance, surrender, a "
             "decision, conversion, or generic transformation; uses a healing, invitation, "
-            "or other non-conduct event as evidence of forgiveness; discusses formation "
-            "without salvation; or makes conduct a condition or means of salvation."
+            "or other non-conduct event as evidence of forgiveness; declares freedom, "
+            "release, deliverance, or a changed status without naming subsequent conduct; "
+            "discusses formation without salvation; or makes conduct a condition or means "
+            "of salvation."
         ),
     ),
 }

@@ -73,6 +73,9 @@ DEFAULT_SALVATION_V7_REPENTANCE_CALIBRATION_OUTPUT = Path(
 DEFAULT_SALVATION_V8_CONVERSION_CALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-v8-conversion-calibration-v1.json"
 )
+DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-final-boundary-calibration-v1.json"
+)
 PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v2-evidence-boundaries"
 )
@@ -125,6 +128,51 @@ SALVATION_V8_CONVERSION_REGRESSION_LABELS = {
     "4589:51:conversion_new_birth": "negative",
     "4430:53:conversion_new_birth": "negative",
 }
+PRIOR_V9_SALVATION_RELATIONSHIPS_PACK_VERSION = (
+    "salvation-relationships-v8-conversion-saving-state-transition"
+)
+SALVATION_FINAL_BOUNDARY_CALIBRATION_POLICY_VERSION = (
+    "salvation-final-atonement-judgment-consequence-calibration-v1"
+)
+SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_FINGERPRINT = (
+    "f948ffcb5940a79dee4469afdb6b1cb43067243792cb644f06f2361468ad3491"
+)
+SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_POLICY_VERSION = (
+    "salvation-collected-observation-boundaries-v2-deduplicated-evidence"
+)
+SALVATION_FINAL_BOUNDARY_NUMERIC_WINDOWS = {
+    "atonement_as_basis": (0.66, 0.71),
+    "judgment_final_destiny": (0.62, 0.68),
+}
+SALVATION_FINAL_BOUNDARY_REVIEW_LABELS = {
+    "281:124:atonement_as_basis": "affirmative_rejected",
+    "4458:72:atonement_as_basis": "affirmative_collected",
+    "4394:51:judgment_final_destiny": "negative_rejected",
+    "4394:43:judgment_final_destiny": "negative_collected",
+}
+SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS = {
+    "4589:41:obedience_as_consequence_or_evidence": "affirmative",
+    "4430:28:obedience_as_consequence_or_evidence": "negative",
+}
+SALVATION_V8_CONVERSION_REVIEWED_CASE_KEYS = frozenset(
+    {
+        "590:34",
+        "350:41",
+        "350:42",
+        "4430:21",
+        "4589:51",
+        "4430:53",
+        "3973:75",
+        "350:50",
+        "590:52",
+        "1200:34",
+        "350:46",
+        "4589:50",
+        "4394:43",
+        "4052:91",
+    }
+)
+SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY = "1037:58"
 PRIOR_REPENTANCE_OBSERVATION_THRESHOLD = 0.57
 V5_CALIBRATION_RELATIONSHIPS = (
     "divine_grace_initiative",
@@ -2052,6 +2100,267 @@ def evaluate_salvation_v8_conversion_calibration(
     }, execution
 
 
+def evaluate_salvation_final_boundary_calibration(
+    database: Database,
+    cohort: Mapping[str, Any],
+    collection_review: Mapping[str, Any],
+    *,
+    model: str,
+    client: TypeSafeBlockClient,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Build the bounded final numeric, semantic, and transcription review."""
+    if (
+        collection_review.get("review_policy_version")
+        != SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_POLICY_VERSION
+        or collection_review.get("input_fingerprint")
+        != SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_FINGERPRINT
+        or collection_review.get("question_pack_version")
+        != PRIOR_V9_SALVATION_RELATIONSHIPS_PACK_VERSION
+        or collection_review.get("observation_policy_version")
+        != SALVATION_V8_FINAL_OBSERVATION_POLICY_VERSION
+    ):
+        raise ValueError(
+            "Final boundary calibration requires the reviewed V8 collection packet"
+        )
+    expected_pack = "salvation-relationships-v9-consequence-conduct-boundary"
+    if SALVATION_RELATIONSHIPS_PACK_VERSION != expected_pack:
+        raise ValueError("Final boundary calibration is archived after the v9 leaf pack")
+
+    candidates, readiness_fingerprint = _routed_candidates(database, cohort)
+    by_key = {str(item["candidate_key"]): item for item in candidates}
+    prior_probabilities = _relationship_probabilities_for_pack(
+        database,
+        cohort,
+        expected_pack_version=PRIOR_V9_SALVATION_RELATIONSHIPS_PACK_VERSION,
+    )
+    required_case_keys = {
+        judgment_key.rsplit(":", 1)[0]
+        for judgment_key in (
+            *SALVATION_FINAL_BOUNDARY_REVIEW_LABELS,
+            *SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS,
+        )
+    } | {SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY}
+    missing = sorted(required_case_keys - set(by_key))
+    if missing:
+        raise ValueError(
+            "Final boundary calibration cases are no longer routed: "
+            + ", ".join(missing)
+        )
+
+    numeric_probes: list[dict[str, Any]] = []
+    for relationship, (lower, upper) in (
+        SALVATION_FINAL_BOUNDARY_NUMERIC_WINDOWS.items()
+    ):
+        relationship_probes = []
+        for candidate_key, probabilities in prior_probabilities.items():
+            probability = float(probabilities[relationship])
+            if lower <= probability <= upper:
+                judgment_key = f"{candidate_key}:{relationship}"
+                relationship_probes.append(
+                    {
+                        "judgment_key": judgment_key,
+                        "candidate_key": candidate_key,
+                        "relationship": relationship,
+                        "probability": round(probability, 6),
+                        "review_label": (
+                            SALVATION_FINAL_BOUNDARY_REVIEW_LABELS.get(
+                                judgment_key
+                            )
+                        ),
+                    }
+                )
+        relationship_probes.sort(
+            key=lambda probe: (
+                float(probe["probability"]),
+                str(probe["candidate_key"]),
+            )
+        )
+        labeled_keys = {
+            key
+            for key in SALVATION_FINAL_BOUNDARY_REVIEW_LABELS
+            if key.endswith(f":{relationship}")
+        }
+        selected_keys = {
+            str(probe["judgment_key"]) for probe in relationship_probes
+        }
+        if not labeled_keys.issubset(selected_keys):
+            raise ValueError(
+                f"Final boundary calibration lacks {relationship} review anchors"
+            )
+        if len(relationship_probes) < 3:
+            raise ValueError(
+                f"Final boundary calibration lacks a {relationship} neighborhood"
+            )
+        numeric_probes.extend(relationship_probes)
+
+    reviewed_case_keys = set(ALL_REVIEWED_CANDIDATE_KEYS) | set(
+        RECALIBRATION_REVIEWED_CANDIDATE_KEYS
+    )
+    reviewed_case_keys.update(
+        judgment_key.rsplit(":", 1)[0] for judgment_key in V5_REVIEW_LABELS
+    )
+    reviewed_case_keys.update(
+        judgment_key.rsplit(":", 1)[0]
+        for judgment_key in V7_REPENTANCE_REGRESSION_LABELS
+    )
+    reviewed_case_keys.update(SALVATION_V8_CONVERSION_REVIEWED_CASE_KEYS)
+    reviewed_case_keys.update(
+        str(case.get("case_key"))
+        for case in collection_review.get("cases", [])
+        if isinstance(case, Mapping) and case.get("case_key") is not None
+    )
+    consequence = "obedience_as_consequence_or_evidence"
+    consequence_regression_case_keys = {
+        judgment_key.rsplit(":", 1)[0]
+        for judgment_key in SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS
+    }
+    reviewed_case_keys.update(consequence_regression_case_keys)
+    heldout = _select_relationship_heldout_probes(
+        candidates,
+        prior_probabilities,
+        relationship=consequence,
+        excluded_case_keys=reviewed_case_keys,
+        threshold=SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[consequence],
+        calibration_version="V9",
+    )
+    evaluation_keys = sorted(
+        consequence_regression_case_keys
+        | {str(probe["candidate_key"]) for probe in heldout}
+    )
+    evaluated, execution = evaluate_salvation_relationship_candidates(
+        [by_key[key] for key in evaluation_keys],
+        model=model,
+        client=client,
+    )
+    evaluated_by_key = {
+        str(item["candidate_key"]): item for item in evaluated
+    }
+    regression_probes = []
+    for judgment_key, review_label in (
+        SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS.items()
+    ):
+        candidate_key = judgment_key.rsplit(":", 1)[0]
+        regression_probes.append(
+            {
+                "judgment_key": judgment_key,
+                "candidate_key": candidate_key,
+                "relationship": consequence,
+                "review_label": review_label,
+                "prior_probability": round(
+                    prior_probabilities[candidate_key][consequence],
+                    6,
+                ),
+                "revised_probability": round(
+                    float(
+                        evaluated_by_key[candidate_key]["leaf_probabilities"][
+                            consequence
+                        ]
+                    ),
+                    6,
+                ),
+            }
+        )
+    for probe in heldout:
+        candidate_key = str(probe["candidate_key"])
+        probe["revised_probability"] = round(
+            float(
+                evaluated_by_key[candidate_key]["leaf_probabilities"][consequence]
+            ),
+            6,
+        )
+
+    selected_case_keys = (
+        {str(probe["candidate_key"]) for probe in numeric_probes}
+        | set(evaluation_keys)
+        | {SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY}
+    )
+    cases = []
+    for candidate_key in sorted(selected_case_keys):
+        source = evaluated_by_key.get(candidate_key, by_key[candidate_key])
+        cases.append(
+            {
+                key: value
+                for key, value in source.items()
+                if key not in {"cache_dir", "context_diagnostics", "segment_indexes"}
+            }
+        )
+    transcription_case = by_key[SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY]
+    listen_at = max(0, int(float(transcription_case["start_seconds"])) - 5)
+    transcription_review = {
+        "candidate_key": SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY,
+        "relationship": "obedience_as_condition_or_means",
+        "status": "transcription_review_required",
+        "youtube_url": (
+            f"https://youtu.be/{transcription_case['youtube_video_id']}?t={listen_at}"
+        ),
+        "start_seconds": float(transcription_case["start_seconds"]),
+        "end_seconds": float(transcription_case["end_seconds"]),
+        "question": (
+            "What exact words are spoken where the transcript says "
+            "'we can userve his salvation on our behalf by being asleep'?"
+        ),
+        "decision_rule": (
+            "Keep this case ambiguous unless the audio clearly says that sleep or "
+            "unresponsiveness can lose, forfeit, refuse, or otherwise condition "
+            "obtaining or retaining salvation."
+        ),
+    }
+    frozen_relationships = sorted(
+        set(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS)
+        - {
+            "atonement_as_basis",
+            "judgment_final_destiny",
+            consequence,
+        }
+    )
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": SALVATION_FINAL_BOUNDARY_CALIBRATION_POLICY_VERSION,
+        "cohort_sha256": cohort.get("cohort_sha256"),
+        "readiness_input_fingerprint": readiness_fingerprint,
+        "source_collection_review_fingerprint": collection_review.get(
+            "input_fingerprint"
+        ),
+        "prior_leaf_pack_version": PRIOR_V9_SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
+        "observation_policy_version": (
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        ),
+        "requested_model_id": model,
+        "numeric_windows": {
+            key: list(value)
+            for key, value in SALVATION_FINAL_BOUNDARY_NUMERIC_WINDOWS.items()
+        },
+        "numeric_probes": numeric_probes,
+        "consequence_definition": salvation_relationship_pack_inventory()[
+            "relationships"
+        ][consequence],
+        "consequence_regression_probes": regression_probes,
+        "consequence_heldout_probes": heldout,
+        "transcription_review": transcription_review,
+        "frozen_relationships": frozen_relationships,
+        "unresolved_relationships": sorted(
+            UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+        ),
+        "excluded_reviewed_case_keys": sorted(reviewed_case_keys),
+        "cases": cases,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "final_bounded_salvation_review_pending",
+        "policy_effect": "none",
+        "interpretation": (
+            "Conversion V8 and eight other measurable leaves stay frozen. This "
+            "single bounded packet uses cached V8 probabilities for atonement and "
+            "judgment, evaluates only the revised consequence-obedience boundary on "
+            "two regressions plus eight fresh cases, and isolates one garbled audio "
+            "phrase for transcription review. No threshold changes here."
+        ),
+    }, execution
+
+
 def evaluate_obedience_consequence_calibration(
     database: Database,
     cohort: Mapping[str, Any],
@@ -2646,6 +2955,90 @@ def render_salvation_v8_conversion_calibration(packet: Mapping[str, Any]) -> str
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_salvation_final_boundary_calibration(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    definition = packet["consequence_definition"]
+    transcription = packet["transcription_review"]
+    lines = [
+        "# Final bounded salvation boundary calibration",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Prior leaf pack: `{packet['prior_leaf_pack_version']}`",
+        f"- Revised leaf pack: `{packet['revised_leaf_pack_version']}`",
+        f"- Numeric probes: `{len(packet['numeric_probes'])}`",
+        "- Consequence-obedience regressions: "
+        f"`{len(packet['consequence_regression_probes'])}`",
+        "- Fresh consequence-obedience probes: "
+        f"`{len(packet['consequence_heldout_probes'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "## Atonement and judgment numeric neighborhoods",
+        "",
+        "Label each unlabeled probe affirmative, negative, or ambiguous. Do not "
+        "rewrite either question. Recommend a threshold only if the cached ordering "
+        "supports one; otherwise retain the current boundary and record overlap.",
+        "",
+        "| Relationship | Case | V8 p | Reviewed label |",
+        "| --- | --- | ---: | --- |",
+    ]
+    for probe in packet["numeric_probes"]:
+        lines.append(
+            f"| {probe['relationship']} | {probe['candidate_key']} | "
+            f"{float(probe['probability']):.3f} | "
+            f"{probe.get('review_label') or '—'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Obedience as consequence or evidence: V9 semantic check",
+            "",
+            "**Meaning:** " + str(definition["description"]),
+            "",
+            "**Count as yes:** " + str(definition["true_criteria"]),
+            "",
+            "**Count as no:** " + str(definition["false_criteria"]),
+            "",
+            "First confirm that the affirmative regression ranks above the negative. "
+            "Then label every fresh case affirmative, negative, or ambiguous. Do not "
+            "select a new threshold unless semantic ordering passes.",
+            "",
+            "| Set | Case | Label / V8 side | V8 p | V9 p |",
+            "| --- | --- | --- | ---: | ---: |",
+        ]
+    )
+    for probe in packet["consequence_regression_probes"]:
+        lines.append(
+            f"| regression | {probe['candidate_key']} | {probe['review_label']} | "
+            f"{float(probe['prior_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    for probe in packet["consequence_heldout_probes"]:
+        lines.append(
+            f"| held_out | {probe['candidate_key']} | "
+            f"{probe['prior_boundary_side']} | "
+            f"{float(probe['prior_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Transcription review required",
+            "",
+            f"- Case: `{transcription['candidate_key']}`",
+            f"- Listen: [{transcription['youtube_url']}]({transcription['youtube_url']})",
+            f"- Time: `{transcription['start_seconds']}`–"
+            f"`{transcription['end_seconds']}`",
+            f"- Question: {transcription['question']}",
+            f"- Decision rule: {transcription['decision_rule']}",
+        ]
+    )
+    lines.extend(_render_deduplicated_evidence_cases(cases))
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
         "# Salvation relationships review",
@@ -2831,4 +3224,15 @@ def write_salvation_v8_conversion_calibration(
         path,
         packet,
         render_salvation_v8_conversion_calibration,
+    )
+
+
+def write_salvation_final_boundary_calibration(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_final_boundary_calibration,
     )

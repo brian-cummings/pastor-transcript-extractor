@@ -2910,6 +2910,28 @@ pte analysis salvation-v8-conversion-calibration [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-final-boundary-calibration`
+
+Run the final bounded atonement, judgment, consequence, and transcript review.
+
+#### Usage
+
+```console
+pte analysis salvation-final-boundary-calibration [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying routed V8 evidence.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--collection-review PATH` | Reviewed V8 ordinary-classification boundary packet.  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-final-boundary-calibration-v1.json] | no | evaluation/sermon-topics/salvation-final-boundary-calibration-v1.json |
+| `--model TEXT` | Pinned TypeSafe model id used for revised consequence judgments.  [default: jev-1.13.0] | no | jev-1.13.0 |
+| `--timeout-seconds FLOAT RANGE` | Timeout for each uncached TypeSafe request.  [default: 45.0; x>=1.0] | no | 45.0 |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-observation-threshold-review`
 
 Build a provider-free boundary review for the salvation leaf collection threshold.

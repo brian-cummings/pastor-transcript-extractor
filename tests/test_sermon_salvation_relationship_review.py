@@ -26,6 +26,10 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     SALVATION_V8_CONVERSION_REGRESSION_LABELS,
     SALVATION_V8_CONVERSION_SOURCE_FINGERPRINT,
     SALVATION_V8_CONVERSION_SOURCE_POLICY_VERSION,
+    SALVATION_FINAL_BOUNDARY_REVIEW_LABELS,
+    SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_FINGERPRINT,
+    SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_POLICY_VERSION,
+    SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS,
     _select_semantic_heldout_probes,
     _select_v5_heldout_probes,
     _select_repentance_heldout_probes,
@@ -38,6 +42,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     evaluate_salvation_v6_repentance_calibration,
     evaluate_salvation_v7_repentance_calibration,
     evaluate_salvation_v8_conversion_calibration,
+    evaluate_salvation_final_boundary_calibration,
     select_obedience_consequence_calibration_candidates,
     write_salvation_relationship_review,
 )
@@ -552,6 +557,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                 "salvation-relationship-observation-thresholds-v7-eleven-leaf-final",
             ),
             patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.SALVATION_RELATIONSHIPS_PACK_VERSION",
+                "salvation-relationships-v8-conversion-saving-state-transition",
+            ),
+            patch(
                 "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
                 return_value=(candidates, "readiness-fingerprint"),
             ),
@@ -610,6 +619,121 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                 model="jev-1.13.0",
                 client=_Client(),
             )
+
+    def test_final_boundary_calibration_is_bounded_and_mixed_mode(self) -> None:
+        relationship = "obedience_as_consequence_or_evidence"
+        regression_keys = {
+            key.rsplit(":", 1)[0]
+            for key in SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS
+        }
+        numeric_keys = {
+            key.rsplit(":", 1)[0]
+            for key in SALVATION_FINAL_BOUNDARY_REVIEW_LABELS
+        } | {"9001:1", "9002:1"}
+        fresh_keys = [f"final-fresh:{index}" for index in range(12)]
+        all_keys = sorted(
+            regression_keys
+            | numeric_keys
+            | {"1037:58"}
+            | set(fresh_keys)
+        )
+        candidates = [
+            {
+                "candidate_key": key,
+                "pastor": {
+                    "display_name": f"Pastor {index % 4}",
+                    "slug": f"pastor-{index % 4}",
+                },
+                "video_id": 1037 if key == "1037:58" else index + 1,
+                "youtube_video_id": "5Yf-TlFDnD4" if key == "1037:58" else f"yt-{index}",
+                "title": f"Sermon {index}",
+                "block_id": 58 if key == "1037:58" else index,
+                "start_seconds": 2552.319 if key == "1037:58" else float(index),
+                "end_seconds": 2621.589 if key == "1037:58" else float(index + 1),
+                "leading_context": "Leading.",
+                "target_text": "Target.",
+                "trailing_context": "Trailing.",
+            }
+            for index, key in enumerate(all_keys)
+        ]
+        prior = {
+            key: {
+                "atonement_as_basis": 0.1,
+                "judgment_final_destiny": 0.1,
+                relationship: 0.54 if index < 6 else 0.56,
+            }
+            for index, key in enumerate(all_keys)
+        }
+        prior["281:124"]["atonement_as_basis"] = 0.68
+        prior["4458:72"]["atonement_as_basis"] = 0.71
+        prior["9001:1"]["atonement_as_basis"] = 0.69
+        prior["4394:51"]["judgment_final_destiny"] = 0.64
+        prior["4394:43"]["judgment_final_destiny"] = 0.66
+        prior["9002:1"]["judgment_final_destiny"] = 0.65
+        prior["4589:41"][relationship] = 0.54
+        prior["4430:28"][relationship] = 0.56
+        for index, key in enumerate(fresh_keys):
+            prior[key][relationship] = 0.54 if index < 6 else 0.56
+        evaluated = [
+            {
+                **candidate,
+                "leaf_probabilities": {relationship: 0.75},
+            }
+            for candidate in candidates
+        ]
+        collection_review = {
+            "review_policy_version": (
+                SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_POLICY_VERSION
+            ),
+            "input_fingerprint": SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_FINGERPRINT,
+            "question_pack_version": (
+                "salvation-relationships-v8-conversion-saving-state-transition"
+            ),
+            "observation_policy_version": (
+                "salvation-relationship-observation-thresholds-v8-eleven-leaf-final"
+            ),
+            "cases": [],
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
+                return_value=(candidates, "readiness-fingerprint"),
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._relationship_probabilities_for_pack",
+                return_value=prior,
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.evaluate_salvation_relationship_candidates",
+                return_value=(
+                    evaluated,
+                    {"hits": 10, "misses": 0, "provider_requests": 0},
+                ),
+            ),
+        ):
+            packet, execution = evaluate_salvation_final_boundary_calibration(
+                None,
+                {"cohort_sha256": "cohort"},
+                collection_review,
+                model="jev-1.13.0",
+                client=_Client(),
+            )
+
+        self.assertEqual(6, len(packet["numeric_probes"]))
+        self.assertEqual(2, len(packet["consequence_regression_probes"]))
+        self.assertEqual(8, len(packet["consequence_heldout_probes"]))
+        self.assertEqual(8, len(packet["frozen_relationships"]))
+        self.assertEqual(0, execution["provider_requests"])
+        self.assertIn("5Yf-TlFDnD4", packet["transcription_review"]["youtube_url"])
+        self.assertTrue(
+            regression_keys.isdisjoint(
+                {
+                    probe["candidate_key"]
+                    for probe in packet["consequence_heldout_probes"]
+                }
+            )
+        )
 
     def test_v5_calibration_assembles_current_relationship_definitions(self) -> None:
         case_keys = sorted(

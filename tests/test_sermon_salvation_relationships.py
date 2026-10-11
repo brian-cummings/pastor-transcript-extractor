@@ -262,7 +262,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
 
     def test_revised_evidence_boundaries_are_explicit_and_general(self) -> None:
         self.assertEqual(
-            "salvation-relationships-v8-conversion-saving-state-transition",
+            "salvation-relationships-v9-consequence-conduct-boundary",
             SALVATION_RELATIONSHIPS_PACK_VERSION,
         )
         self.assertIn(
@@ -337,6 +337,18 @@ class SalvationRelationshipsTests(unittest.TestCase):
         )
         self.assertIn(
             "non-conduct event",
+            SALVATION_RELATIONSHIP_SPECS[
+                "obedience_as_consequence_or_evidence"
+            ].false_criteria,
+        )
+        self.assertIn(
+            "walking or living in newness of life",
+            SALVATION_RELATIONSHIP_SPECS[
+                "obedience_as_consequence_or_evidence"
+            ].true_criteria,
+        )
+        self.assertIn(
+            "changed status",
             SALVATION_RELATIONSHIP_SPECS[
                 "obedience_as_consequence_or_evidence"
             ].false_criteria,

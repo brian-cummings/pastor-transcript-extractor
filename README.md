@@ -422,13 +422,15 @@ aggregation remains blocked pending reviewed profile membership.
 
 Projection-eligible blocks whose cached `salvation_gospel` supporting-or-above
 probability is at least `0.55` also enter the independently cached
-`salvation-relationships-v8-conversion-saving-state-transition` leaf pack. The twelve Noul
+`salvation-relationships-v9-consequence-conduct-boundary` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the provisional
-`salvation-relationship-observation-thresholds-v7-eleven-leaf-final` policy. Eleven
-relationships have frozen per-leaf thresholds, including `conversion_new_birth` at
-`0.55`. Repentance is marked
+`salvation-relationship-observation-thresholds-v8-eleven-leaf-final` policy. Eleven
+relationships retain explicit per-leaf thresholds, including the now-frozen
+`conversion_new_birth` at `0.55`. Atonement has a bounded numeric review pending,
+judgment has a provider-free overlap check pending, and only the
+obedience-as-consequence wording changes in V9. Repentance is marked
 `block_level_unresolved`: its raw probability is retained for research and debugging
 but it cannot produce a collected or pastor-level observation. The raw
 probabilities remain policy-independent evidence, so changing a collection
@@ -469,31 +471,28 @@ recomputes every stored collection decision from the raw probability, and writes
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
 
-After the accepted V8 calibration, refresh the frozen twelve-sermon cohort through
-ordinary cache-aware reclassification. The V8 calibration blocks reuse their answer
-packs; unaffected recording, topic, role, and treatment packs retain their existing
-cache identities:
+The post-V8 ordinary-classification audit authorizes one final bounded packet before
+another cohort refresh. It uses cached V8 probabilities for atonement and judgment,
+evaluates the revised V9 consequence-obedience question on two regressions plus eight
+fresh held-outs, and includes a timestamped transcription check for one garbled case:
 
 ```bash
-for video_id in 1200 4052 4458 4394 3974 590 4430 350 1037 4589 281 3973; do
-  pte reclassify --video-id "$video_id" --force --jobs 1 \
-    --recording-verifier-backend typesafe \
-    --recording-verifier-model jev-1.13.0 \
-    --base-dir /path/to/app-data
-done
+pte analysis salvation-final-boundary-calibration \
+  --model jev-1.13.0 \
+  --base-dir /path/to/app-data
 ```
 
-Then rerun `salvation-collected-observations-review` to verify the refreshed V8
-artifacts and inspect the resulting pastor-level distributions. The completed V8
-calibration command is archived so it cannot overwrite the reviewed packet.
+Do not reclassify the cohort first. The packet changes no threshold. It reviews
+atonement only in `0.66`–`0.71`, judgment only in `0.62`–`0.68`, and leaves every
+other measurable relationship frozen. The completed V8 calibration command is
+archived so it cannot overwrite its reviewed packet.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
 twelve-question V7 pack through the normal content-addressed cache, preserves the
 unresolved repentance probability, and projects the eleven thresholded leaves.
 
-All eleven measurable relationship questions and per-leaf boundaries are frozen.
-Historical semantic and
+Conversion V8 and eight other measurable leaves are frozen. Historical semantic and
 final-calibration commands fail closed after the freeze so they cannot overwrite
 their fingerprinted review packets with a later policy.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected

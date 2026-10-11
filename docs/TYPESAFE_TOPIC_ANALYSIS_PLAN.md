@@ -1328,16 +1328,28 @@ theological stance.
     `salvation-relationship-observation-thresholds-v8-eleven-leaf-final`, archive
     V8 calibration, and refresh the twelve-sermon cohort through ordinary cache-aware
     reclassification before pastor aggregation.
+76. The post-V8 ordinary-classification review at fingerprint
+    `f948ffcb5940a79dee4469afdb6b1cb43067243792cb644f06f2361468ad3491`
+    confirms conversion V8 at `0.55`, but does not approve the whole collection
+    policy. Reopen atonement numerically only in `0.66`–`0.71`: `281:124` at `0.68`
+    is a material affirmative miss. Check judgment provider-free in `0.62`–`0.68`,
+    with `4394:43` at `0.66` labeled negative, before deciding whether its single
+    false positive is tolerable overlap. Revise only consequence-obedience in V9:
+    count baptism or union with Christ leading to walking in newness of life or
+    Christ living through the person, but exclude declared freedom or changed status
+    without named subsequent conduct. Regressions are affirmative `4589:41` at
+    `0.54` and negative `4430:28` at `0.56`, plus eight fresh held-outs. Keep
+    `1037:58` condition-obedience ambiguous until the garbled audio phrase is
+    resolved. All other measurable leaves remain frozen.
 
 ### Next iteration
 
-1. Refresh the twelve-sermon cohort through ordinary cache-aware `pte reclassify`.
-   The V8 calibration blocks reuse their current answer packs; unrelated packs retain
-   their existing identities. Keep unresolved repentance out of projection.
-2. Rerun `salvation-collected-observations-review` against the refreshed artifacts.
-3. If the frozen-policy review is internally consistent, proceed to pastor-level
-   aggregation and inspect distributions and evidence-linked outliers before any
-   broader corpus expansion.
+1. Run `salvation-final-boundary-calibration` against the still-V8 cohort; do not
+   reclassify first.
+2. Review the cached atonement and judgment neighborhoods, the two V9 consequence
+   regressions plus eight fresh held-outs, and the timestamped `1037:58` audio phrase.
+3. Freeze only the boundaries supported by that packet, then refresh the cohort and
+   rerun `salvation-collected-observations-review` before pastor aggregation.
 
 ## Non-goals for `topics-v1`
 
