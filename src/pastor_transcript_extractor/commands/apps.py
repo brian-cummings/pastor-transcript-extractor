@@ -16,6 +16,7 @@ analysis_app = typer.Typer(help="Analyze already-identified sermon content.")
 source_ownership_app = typer.Typer(help="Migrate and audit source ownership data.")
 benchmark_app = typer.Typer(help="Manage reviewed profile reference panels.")
 storage_app = typer.Typer(help="Compact, verify, and restore generated storage.")
+docs_app = typer.Typer(help="Generate documentation from the CLI definition.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +36,7 @@ COMMAND_GROUPS = (
     CommandGroup("source-ownership", source_ownership_app),
     CommandGroup("benchmark", benchmark_app),
     CommandGroup("storage", storage_app),
+    CommandGroup("docs", docs_app),
 )
 
 

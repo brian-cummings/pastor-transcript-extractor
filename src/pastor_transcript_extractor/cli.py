@@ -52,6 +52,7 @@ from pastor_transcript_extractor.commands.analysis import style as _analysis_sty
 from pastor_transcript_extractor.commands import benchmark as _benchmark_commands
 from pastor_transcript_extractor.commands import catalog as _catalog_commands
 from pastor_transcript_extractor.commands import church_import as _church_import_commands
+from pastor_transcript_extractor.commands import cli_docs as _cli_docs
 from pastor_transcript_extractor.commands import diagnostics as _diagnostic_commands
 from pastor_transcript_extractor.commands import doctor as _doctor_commands
 from pastor_transcript_extractor.commands import media as _media_commands

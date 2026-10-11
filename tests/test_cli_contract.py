@@ -22,6 +22,7 @@ ROOT_COMMANDS = {
     "diagnose-system",
     "discover",
     "doctor",
+    "docs",
     "evaluate",
     "extract",
     "fetch",
