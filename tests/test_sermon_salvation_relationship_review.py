@@ -15,7 +15,9 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     ALL_REVIEWED_CANDIDATE_KEYS,
     PRIOR_REVIEWED_CANDIDATE_KEYS,
     SEMANTIC_CALIBRATION_RELATIONSHIPS,
+    V5_CALIBRATION_RELATIONSHIPS,
     _select_semantic_heldout_probes,
+    _select_v5_heldout_probes,
     _select_review_candidates,
     evaluate_salvation_final_calibration,
     evaluate_salvation_semantic_calibration,
@@ -140,6 +142,44 @@ def _block(block_id: int, support: float) -> dict[str, object]:
 
 
 class SalvationRelationshipReviewTests(unittest.TestCase):
+    def test_v5_calibration_selects_fresh_diverse_probes_on_both_sides(self) -> None:
+        candidates = [
+            {
+                "candidate_key": f"800{pastor}:{block}",
+                "pastor": {"slug": f"pastor-{pastor}"},
+            }
+            for pastor in range(4)
+            for block in range(4)
+        ]
+        prior = {
+            candidate["candidate_key"]: {
+                relationship: round(
+                    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+                    + (-0.01, 0.01)[index % 2],
+                    2,
+                )
+                for relationship in V5_CALIBRATION_RELATIONSHIPS
+            }
+            for index, candidate in enumerate(candidates)
+        }
+
+        probes = _select_v5_heldout_probes(
+            candidates,
+            prior,
+            excluded_case_keys=set(),
+        )
+
+        self.assertEqual(16, len(probes))
+        for relationship in V5_CALIBRATION_RELATIONSHIPS:
+            selected = [
+                probe for probe in probes if probe["relationship"] == relationship
+            ]
+            self.assertEqual(4, len(selected))
+            self.assertEqual(
+                {"below", "at_or_above"},
+                {probe["prior_boundary_side"] for probe in selected},
+            )
+
     def test_archived_final_calibration_fails_closed_after_policy_freeze(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived for the reviewed pre-freeze"):
             evaluate_salvation_final_calibration(

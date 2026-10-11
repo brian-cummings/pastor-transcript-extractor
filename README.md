@@ -422,7 +422,7 @@ aggregation remains blocked pending reviewed profile membership.
 
 Projection-eligible blocks whose cached `salvation_gospel` supporting-or-above
 probability is at least `0.55` also enter the independently cached
-`salvation-relationships-v4-repentant-surrender-boundary` leaf pack. The twelve Noul
+`salvation-relationships-v5-causal-boundaries` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the frozen
@@ -456,6 +456,17 @@ they cannot overwrite their fingerprinted review packets with a later policy.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected
 recording, topic, role, and treatment packs continue to replay from their existing
 per-video caches.
+
+When a refreshed collection review exposes a question-ordering defect, validate the
+revised four-question v5 pack on the reviewed regressions and fresh held-out cases:
+
+```bash
+pte analysis salvation-v5-calibration \
+  --base-dir /path/to/app-data
+```
+
+The command leaves every threshold unchanged, uses the shared per-video pack cache,
+and becomes provider-free after its first bounded run.
 
 Prepare the bounded review packet for the named video 4548 regression cases
 without making another provider request:

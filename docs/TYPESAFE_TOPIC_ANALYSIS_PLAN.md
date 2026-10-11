@@ -1212,15 +1212,27 @@ theological stance.
     questions and thresholds unchanged, combines the eight named boundary anchors
     with two fresh cached judgments on each side of each affected threshold, and
     includes final destiny only as a non-authorizing watch probe.
+66. Fresh cached neighbors confirm semantic-ordering defects in all four reopened
+    leaves, so no threshold changes are authorized. V5 sharpens divine initiative
+    to the divine origin or supply of saving benefit; conversion to entry through
+    new-heart/new-life/Christ-entering language rather than the later life of the
+    already saved; condition-obedience to conduct causally necessary for salvation,
+    justification, retention, or final acceptance rather than sanctification or
+    discipleship prerequisites; and consequence-obedience to an explicit saving
+    benefit-to-subsequent-conduct chain rather than conversion, generic
+    transformation, or non-conduct evidence. The other eight questions and every
+    threshold remain frozen. A bounded cache-first packet reruns all twenty-four
+    labeled v4 probes and adds sixteen fresh held-out neighbors before any policy
+    adjustment.
 
 ### Next iteration
 
-1. Review `salvation-boundary-recalibration-v1.md`. For each of the four affected
-   leaves, distinguish a semantic-ordering defect from a numeric boundary issue or
-   a harmless ambiguous edge. Do not adjust any threshold before that review.
-2. Keep final destiny watch-only unless fresh evidence demonstrates an ordering
-   failure. Do not aggregate salvation relationships into pastor-level theology
-   profiles until the four-leaf collection boundary passes.
+1. Run and review `salvation-v5-calibration-v1.md`. Confirm that the revised
+   questions restore useful human-positive versus human-negative ordering on the
+   regressions and generalize to the held-out cases.
+2. Keep final destiny watch-only and every threshold unchanged until that review.
+   Do not aggregate salvation relationships into pastor-level theology profiles
+   until the four-leaf collection boundary passes.
 
 ## Non-goals for `topics-v1`
 

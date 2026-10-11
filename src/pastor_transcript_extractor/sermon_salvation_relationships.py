@@ -13,7 +13,7 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SALVATION_RELATIONSHIPS_PACK_VERSION = (
-    "salvation-relationships-v4-repentant-surrender-boundary"
+    "salvation-relationships-v5-causal-boundaries"
 )
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
@@ -36,13 +36,16 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "or gift rather than human earning"
         ),
         true_criteria=(
-            "The target explicitly relates salvation or a saving benefit to grace, "
-            "mercy, God's initiative or gift, or a contrast with human earning."
+            "The target explicitly presents God's grace, mercy, Spirit, action, or gift "
+            "as originating, enabling, offering, or freely supplying salvation or a "
+            "saving benefit, including divine saving action already at work before a "
+            "person's response."
         ),
         false_criteria=(
-            "The target merely says that God or Jesus forgives, helps, heals, accepts, "
-            "or changes someone without asserting unearned grace, mercy, gift, divine "
-            "initiative, or a contrast with human earning."
+            "The target merely describes a human response to forgiveness or something "
+            "gracious God has done, or says that God forgives, helps, heals, accepts, or "
+            "changes someone, without asserting that divine grace, mercy, initiative, "
+            "or gift originates or supplies the saving benefit."
         ),
     ),
     "atonement_as_basis": SalvationRelationshipSpec(
@@ -96,12 +99,14 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "saved as entry into saving life"
         ),
         true_criteria=(
-            "The target meaningfully presents conversion, new birth, reconciliation, "
-            "adoption, or movement from lost to saved as entry into saving life."
+            "The target meaningfully presents entry into saving life through conversion, "
+            "new birth, a new heart or new life, Christ entering or beginning to live in "
+            "the person, reconciliation, adoption, or movement from lost to saved."
         ),
         false_criteria=(
-            "The target uses conversion figuratively, recounts a changed opinion, or "
-            "discusses later growth without asserting entry into saving life."
+            "The target uses conversion figuratively, gives generic decision or response "
+            "language without a saving-life transition, or describes people who are "
+            "already saved or justified subsequently living differently."
         ),
     ),
     "sanctification_transformation": SalvationRelationshipSpec(
@@ -191,13 +196,14 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
         ),
         true_criteria=(
             "The target explicitly presents obedience, works, law-keeping, merit, or "
-            "conduct as a condition, means, cause, or requirement for obtaining or "
-            "retaining salvation."
+            "conduct as causally necessary for obtaining or retaining salvation, "
+            "justification, right standing, or final acceptance with God."
         ),
         false_criteria=(
-            "The target merely commands obedience, describes judgment according to deeds, "
-            "or presents conduct as fruit or evidence without making it a condition or "
-            "means of salvation."
+            "The target merely commands obedience, makes surrender a prerequisite for "
+            "sanctification, states a condition of discipleship, calls for repentance or "
+            "conversion, describes judgment according to deeds, or presents conduct as "
+            "fruit or evidence without making conduct a means of saving acceptance."
         ),
     ),
     "obedience_as_consequence_or_evidence": SalvationRelationshipSpec(
@@ -206,14 +212,16 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "sign, or evidence of salvation rather than its earning cause"
         ),
         true_criteria=(
-            "The target explicitly identifies obedience, works, conduct, holiness, or "
-            "changed behavior as a result, fruit, sign, or evidence produced by salvation "
-            "or grace."
+            "The target explicitly gives the causal or evidentiary direction from "
+            "salvation, grace, mercy, or justification to subsequent obedience, works, "
+            "conduct, holiness, or changed behavior, including God working in a saved "
+            "person to will and to do."
         ),
         false_criteria=(
-            "The target merely commands good conduct; describes repentance, surrender, a "
-            "decision, conversion, or generic transformation; discusses formation without "
-            "salvation; or presents conduct only as a condition or means of salvation."
+            "The target merely commands conduct; describes repentance, surrender, a "
+            "decision, conversion, or generic transformation; uses a healing, invitation, "
+            "or other non-conduct event as evidence of forgiveness; discusses formation "
+            "without salvation; or makes conduct a condition or means of salvation."
         ),
     ),
 }

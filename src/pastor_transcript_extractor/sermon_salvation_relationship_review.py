@@ -56,6 +56,9 @@ DEFAULT_SALVATION_SEMANTIC_CALIBRATION_OUTPUT = Path(
 DEFAULT_SALVATION_FINAL_CALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-final-calibration-v1.json"
 )
+DEFAULT_SALVATION_V5_CALIBRATION_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-v5-calibration-v1.json"
+)
 PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v2-evidence-boundaries"
 )
@@ -70,6 +73,41 @@ SEMANTIC_CALIBRATION_REVISED_PACK_VERSION = (
 FINAL_CALIBRATION_OBSERVATION_POLICY_VERSION = (
     "salvation-relationship-observation-thresholds-v2-assurance"
 )
+PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION = (
+    "salvation-relationships-v4-repentant-surrender-boundary"
+)
+V5_CALIBRATION_RELATIONSHIPS = (
+    "divine_grace_initiative",
+    "conversion_new_birth",
+    "obedience_as_condition_or_means",
+    "obedience_as_consequence_or_evidence",
+)
+V5_REVIEW_LABELS = {
+    "281:113:divine_grace_initiative": "negative",
+    "1037:72:divine_grace_initiative": "negative",
+    "590:43:divine_grace_initiative": "affirmative",
+    "4430:47:divine_grace_initiative": "negative",
+    "350:34:divine_grace_initiative": "affirmative",
+    "590:52:divine_grace_initiative": "affirmative",
+    "281:115:conversion_new_birth": "affirmative",
+    "350:50:conversion_new_birth": "negative",
+    "4394:50:conversion_new_birth": "affirmative",
+    "281:124:conversion_new_birth": "affirmative_provisional",
+    "4589:47:conversion_new_birth": "affirmative",
+    "590:35:conversion_new_birth": "negative",
+    "1200:45:obedience_as_condition_or_means": "ambiguous",
+    "590:31:obedience_as_condition_or_means": "affirmative",
+    "1037:58:obedience_as_condition_or_means": "ambiguous",
+    "3973:99:obedience_as_condition_or_means": "negative",
+    "4394:39:obedience_as_condition_or_means": "negative",
+    "4394:44:obedience_as_condition_or_means": "negative",
+    "4589:32:obedience_as_consequence_or_evidence": "negative",
+    "4430:47:obedience_as_consequence_or_evidence": "negative",
+    "4589:47:obedience_as_consequence_or_evidence": "affirmative",
+    "4589:40:obedience_as_consequence_or_evidence": "negative",
+    "350:36:obedience_as_consequence_or_evidence": "negative",
+    "4394:50:obedience_as_consequence_or_evidence": "negative",
+}
 SEMANTIC_REGRESSION_CASES = {
     "faith_as_receiving_response": frozenset(
         {"281:115", "281:124", "4394:37", "4394:50"}
@@ -502,11 +540,13 @@ def evaluate_salvation_relationship_candidates(
     }
 
 
-def _legacy_relationship_probabilities(
+def _relationship_probabilities_for_pack(
     database: Database,
     cohort: Mapping[str, Any],
+    *,
+    expected_pack_version: str,
 ) -> dict[str, dict[str, float]]:
-    """Load the reviewed v2 probabilities without applying current-pack policy."""
+    """Load cached raw probabilities for an exact historical question pack."""
     videos = {video.id: video for video in database.list_videos()}
     probabilities: dict[str, dict[str, float]] = {}
     for pastor in cohort["pastors"]:
@@ -523,17 +563,18 @@ def _legacy_relationship_probabilities(
             classification = read_classification_for_gate(gate)
             artifact = resolve_salvation_relationship_analysis_artifact(classification)
             if (
-                artifact.get("question_pack_version")
-                != PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION
+                artifact.get("question_pack_version") != expected_pack_version
             ):
                 raise ValueError(
-                    f"Video {video_id} does not contain the reviewed v2 salvation "
-                    "relationship evidence; run this bounded calibration before "
-                    "reclassifying the cohort with v3"
+                    f"Video {video_id} does not contain salvation relationship "
+                    f"evidence for {expected_pack_version}; run this bounded "
+                    "calibration before reclassifying the cohort"
                 )
             blocks = artifact.get("blocks")
             if not isinstance(blocks, list):
-                raise ValueError(f"Video {video_id} has malformed v2 relationship evidence")
+                raise ValueError(
+                    f"Video {video_id} has malformed relationship evidence"
+                )
             for block in blocks:
                 if not isinstance(block, Mapping):
                     continue
@@ -546,6 +587,17 @@ def _legacy_relationship_probabilities(
                     for relationship in SALVATION_RELATIONSHIPS
                 }
     return probabilities
+
+
+def _legacy_relationship_probabilities(
+    database: Database,
+    cohort: Mapping[str, Any],
+) -> dict[str, dict[str, float]]:
+    return _relationship_probabilities_for_pack(
+        database,
+        cohort,
+        expected_pack_version=PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION,
+    )
 
 
 def _select_semantic_heldout_probes(
@@ -868,6 +920,223 @@ def evaluate_salvation_final_calibration(
     }, execution
 
 
+def _select_v5_heldout_probes(
+    candidates: Sequence[Mapping[str, Any]],
+    prior_probabilities: Mapping[str, Mapping[str, float]],
+    *,
+    excluded_case_keys: set[str],
+) -> list[dict[str, Any]]:
+    probes: list[dict[str, Any]] = []
+    for relationship in V5_CALIBRATION_RELATIONSHIPS:
+        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+        available = [
+            item
+            for item in candidates
+            if str(item["candidate_key"]) not in excluded_case_keys
+            and str(item["candidate_key"]) in prior_probabilities
+        ]
+        for side, predicate in (
+            ("below", lambda value: value < threshold),
+            ("at_or_above", lambda value: value >= threshold),
+        ):
+            ordered = sorted(
+                (
+                    item
+                    for item in available
+                    if predicate(
+                        prior_probabilities[str(item["candidate_key"])][relationship]
+                    )
+                ),
+                key=lambda item: (
+                    abs(
+                        prior_probabilities[str(item["candidate_key"])][relationship]
+                        - threshold
+                    ),
+                    str(item["candidate_key"]),
+                ),
+            )
+            selected: list[Mapping[str, Any]] = []
+            represented: set[str] = set()
+            for require_new_pastor in (True, False):
+                for item in ordered:
+                    key = str(item["candidate_key"])
+                    pastor = str(item["pastor"].get("slug"))
+                    if any(str(chosen["candidate_key"]) == key for chosen in selected):
+                        continue
+                    if require_new_pastor and pastor in represented:
+                        continue
+                    selected.append(item)
+                    represented.add(pastor)
+                    if len(selected) == 2:
+                        break
+                if len(selected) == 2:
+                    break
+            if len(selected) < 2:
+                raise ValueError(
+                    f"V5 calibration lacks two fresh {side} probes for {relationship}"
+                )
+            for rank, item in enumerate(selected, start=1):
+                key = str(item["candidate_key"])
+                probes.append(
+                    {
+                        "candidate_key": key,
+                        "relationship": relationship,
+                        "prior_probability": round(
+                            prior_probabilities[key][relationship], 6
+                        ),
+                        "prior_boundary_side": side,
+                        "side_rank": rank,
+                    }
+                )
+    return probes
+
+
+def evaluate_salvation_v5_calibration(
+    database: Database,
+    cohort: Mapping[str, Any],
+    boundary_review: Mapping[str, Any],
+    collection_review: Mapping[str, Any],
+    *,
+    model: str,
+    client: TypeSafeBlockClient,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Evaluate the four revised v5 questions on regressions and held-out cases."""
+    if (
+        boundary_review.get("review_policy_version")
+        != "salvation-four-leaf-boundary-recalibration-v1"
+        or boundary_review.get("question_pack_version")
+        != PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION
+    ):
+        raise ValueError("V5 calibration requires the reviewed v4 boundary packet")
+    reviewed_probe_keys = {
+        str(probe.get("judgment_key"))
+        for probe in boundary_review.get("probes", [])
+        if isinstance(probe, Mapping)
+        and probe.get("relationship") in V5_CALIBRATION_RELATIONSHIPS
+    }
+    if reviewed_probe_keys != set(V5_REVIEW_LABELS):
+        raise ValueError("V4 boundary packet does not match the reviewed probe set")
+    candidates, readiness_fingerprint = _routed_candidates(database, cohort)
+    by_key = {str(item["candidate_key"]): item for item in candidates}
+    prior_probabilities = _relationship_probabilities_for_pack(
+        database,
+        cohort,
+        expected_pack_version=PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION,
+    )
+    reviewed_case_keys = {
+        str(case.get("case_key"))
+        for packet in (boundary_review, collection_review)
+        for case in packet.get("cases", [])
+        if isinstance(case, Mapping)
+    }
+    regression_case_keys = {
+        judgment_key.rsplit(":", 1)[0] for judgment_key in V5_REVIEW_LABELS
+    }
+    missing = sorted(regression_case_keys - set(by_key))
+    if missing:
+        raise ValueError(
+            "V5 calibration regression cases are no longer routed: "
+            + ", ".join(missing)
+        )
+    heldout = _select_v5_heldout_probes(
+        candidates,
+        prior_probabilities,
+        excluded_case_keys=reviewed_case_keys,
+    )
+    evaluation_keys = sorted(
+        regression_case_keys
+        | {str(probe["candidate_key"]) for probe in heldout}
+    )
+    evaluated, execution = evaluate_salvation_relationship_candidates(
+        [by_key[key] for key in evaluation_keys],
+        model=model,
+        client=client,
+    )
+    evaluated_by_key = {
+        str(item["candidate_key"]): item for item in evaluated
+    }
+    regression_probes = []
+    for judgment_key, review_label in V5_REVIEW_LABELS.items():
+        case_key, relationship = judgment_key.rsplit(":", 1)
+        regression_probes.append(
+            {
+                "judgment_key": judgment_key,
+                "candidate_key": case_key,
+                "relationship": relationship,
+                "review_label": review_label,
+                "prior_probability": round(
+                    prior_probabilities[case_key][relationship], 6
+                ),
+                "revised_probability": round(
+                    float(
+                        evaluated_by_key[case_key]["leaf_probabilities"][relationship]
+                    ),
+                    6,
+                ),
+            }
+        )
+    for probe in heldout:
+        key = str(probe["candidate_key"])
+        probe["revised_probability"] = round(
+            float(
+                evaluated_by_key[key]["leaf_probabilities"][probe["relationship"]]
+            ),
+            6,
+        )
+    cases = [
+        {
+            key: value
+            for key, value in evaluated_by_key[candidate_key].items()
+            if key not in {"cache_dir", "context_diagnostics", "segment_indexes"}
+        }
+        for candidate_key in evaluation_keys
+    ]
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": "salvation-v5-causal-boundaries-calibration-v1",
+        "cohort_sha256": cohort.get("cohort_sha256"),
+        "readiness_input_fingerprint": readiness_fingerprint,
+        "prior_boundary_review_fingerprint": boundary_review.get("input_fingerprint"),
+        "prior_collection_review_fingerprint": collection_review.get(
+            "input_fingerprint"
+        ),
+        "prior_leaf_pack_version": PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
+        "requested_model_id": model,
+        "unchanged_thresholds": {
+            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                relationship
+            ]
+            for relationship in V5_CALIBRATION_RELATIONSHIPS
+        },
+        "relationship_definitions": {
+            relationship: {
+                key: value
+                for key, value in salvation_relationship_pack_inventory()[
+                    "relationships"
+                ][relationship].items()
+            }
+            for relationship in V5_CALIBRATION_RELATIONSHIPS
+        },
+        "regression_probes": regression_probes,
+        "heldout_probes": heldout,
+        "cases": cases,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "v5_question_calibration_pending_review",
+        "policy_effect": "none",
+        "interpretation": (
+            "Only four relationship questions changed. This bounded packet reruns all "
+            "twenty-four human-labeled v4 probes and adds sixteen fresh held-out "
+            "probability neighbors. All thresholds remain unchanged, and the shared "
+            "per-video pack cache makes an unchanged replay provider-free."
+        ),
+    }, execution
+
+
 def evaluate_obedience_consequence_calibration(
     database: Database,
     cohort: Mapping[str, Any],
@@ -1183,6 +1452,68 @@ def render_salvation_final_calibration(packet: Mapping[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_salvation_v5_calibration(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    lines = [
+        "# Salvation v5 causal-boundaries calibration",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Prior leaf pack: `{packet['prior_leaf_pack_version']}`",
+        f"- Revised leaf pack: `{packet['revised_leaf_pack_version']}`",
+        f"- Reviewed regression probes: `{len(packet['regression_probes'])}`",
+        f"- Fresh held-out probes: `{len(packet['heldout_probes'])}`",
+        f"- Unique evidence cases: `{len(packet['cases'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "Review ordering before thresholds. For each relationship, affirmative "
+        "regressions should generally rank above negatives; ambiguous probes do not "
+        "establish either side. Then label every fresh held-out probe affirmative, "
+        "negative, or ambiguous. Do not change thresholds unless semantic ordering "
+        "passes on both regression and held-out evidence.",
+    ]
+    for relationship in V5_CALIBRATION_RELATIONSHIPS:
+        definition = packet["relationship_definitions"][relationship]
+        lines.extend(
+            [
+                "",
+                f"## {relationship}",
+                "",
+                f"**Meaning:** {definition['description']}",
+                "",
+                f"**Count as yes:** {definition['true_criteria']}",
+                "",
+                f"**Count as no:** {definition['false_criteria']}",
+                "",
+                "Unchanged threshold: "
+                f"`{float(packet['unchanged_thresholds'][relationship]):.2f}`.",
+                "",
+                "| Set | Case | Human label / prior side | V4 p | V5 p |",
+                "| --- | --- | --- | ---: | ---: |",
+            ]
+        )
+        for probe in packet["regression_probes"]:
+            if probe["relationship"] == relationship:
+                lines.append(
+                    f"| regression | {probe['candidate_key']} | "
+                    f"{probe['review_label']} | "
+                    f"{float(probe['prior_probability']):.3f} | "
+                    f"{float(probe['revised_probability']):.3f} |"
+                )
+        for probe in packet["heldout_probes"]:
+            if probe["relationship"] == relationship:
+                lines.append(
+                    f"| held_out | {probe['candidate_key']} | "
+                    f"{probe['prior_boundary_side']} | "
+                    f"{float(probe['prior_probability']):.3f} | "
+                    f"{float(probe['revised_probability']):.3f} |"
+                )
+    lines.extend(_render_deduplicated_evidence_cases(cases))
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
         "# Salvation relationships review",
@@ -1313,4 +1644,15 @@ def write_salvation_final_calibration(
         path,
         packet,
         render_salvation_final_calibration,
+    )
+
+
+def write_salvation_v5_calibration(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_v5_calibration,
     )

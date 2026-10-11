@@ -233,7 +233,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
 
     def test_revised_evidence_boundaries_are_explicit_and_general(self) -> None:
         self.assertEqual(
-            "salvation-relationships-v4-repentant-surrender-boundary",
+            "salvation-relationships-v5-causal-boundaries",
             SALVATION_RELATIONSHIPS_PACK_VERSION,
         )
         self.assertIn(
@@ -272,6 +272,28 @@ class SalvationRelationshipsTests(unittest.TestCase):
         )
         self.assertIn(
             "generic transformation",
+            SALVATION_RELATIONSHIP_SPECS[
+                "obedience_as_consequence_or_evidence"
+            ].false_criteria,
+        )
+        self.assertIn(
+            "already at work before",
+            SALVATION_RELATIONSHIP_SPECS[
+                "divine_grace_initiative"
+            ].true_criteria,
+        )
+        self.assertIn(
+            "already saved or justified",
+            SALVATION_RELATIONSHIP_SPECS["conversion_new_birth"].false_criteria,
+        )
+        self.assertIn(
+            "causally necessary",
+            SALVATION_RELATIONSHIP_SPECS[
+                "obedience_as_condition_or_means"
+            ].true_criteria,
+        )
+        self.assertIn(
+            "non-conduct event",
             SALVATION_RELATIONSHIP_SPECS[
                 "obedience_as_consequence_or_evidence"
             ].false_criteria,

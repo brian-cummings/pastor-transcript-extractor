@@ -61,6 +61,7 @@ GROUP_COMMANDS = {
         "salvation-boundary-recalibration",
         "salvation-final-calibration",
         "salvation-semantic-calibration",
+        "salvation-v5-calibration",
         "salvation-collected-observations-review",
         "salvation-obedience-calibration",
         "salvation-observation-boundaries-review",
