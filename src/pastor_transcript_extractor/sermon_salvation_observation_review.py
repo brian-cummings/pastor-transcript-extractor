@@ -44,6 +44,30 @@ SALVATION_COLLECTION_RECALIBRATION_POLICY_VERSION = (
 DEFAULT_SALVATION_COLLECTION_RECALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-collection-recalibration-v1.json"
 )
+SALVATION_BOUNDARY_RECALIBRATION_SCHEMA_VERSION = 1
+SALVATION_BOUNDARY_RECALIBRATION_POLICY_VERSION = (
+    "salvation-four-leaf-boundary-recalibration-v1"
+)
+DEFAULT_SALVATION_BOUNDARY_RECALIBRATION_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-boundary-recalibration-v1.json"
+)
+SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS = (
+    "divine_grace_initiative",
+    "conversion_new_birth",
+    "obedience_as_condition_or_means",
+    "obedience_as_consequence_or_evidence",
+)
+SALVATION_BOUNDARY_RECALIBRATION_ANCHORS = {
+    "590:43:divine_grace_initiative": "affirmative_rejected",
+    "4430:47:divine_grace_initiative": "questionable_collected",
+    "4394:50:conversion_new_birth": "affirmative_rejected",
+    "281:124:conversion_new_birth": "questionable_collected",
+    "1037:58:obedience_as_condition_or_means": "questionable_rejected",
+    "3973:99:obedience_as_condition_or_means": "questionable_collected",
+    "4589:47:obedience_as_consequence_or_evidence": "affirmative_rejected",
+    "4589:40:obedience_as_consequence_or_evidence": "questionable_collected",
+}
+SALVATION_JUDGMENT_WATCH_KEY = "4589:51:judgment_final_destiny"
 SALVATION_COLLECTION_RECALIBRATION_RELATIONSHIPS = (
     "assurance_security",
     "faith_as_receiving_response",
@@ -534,6 +558,162 @@ def build_salvation_collection_recalibration(
     }
 
 
+def build_salvation_boundary_recalibration(
+    sources: Sequence[Mapping[str, Any]],
+    *,
+    cohort_sha256: str | None,
+    readiness_input_fingerprint: str,
+    prior_review: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Select current cached anchors and fresh probes for four disputed leaves."""
+    if (
+        prior_review.get("review_policy_version")
+        != SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
+    ):
+        raise ValueError("Prior salvation collection review has the wrong policy")
+    prior_fingerprint = prior_review.get("input_fingerprint")
+    if not isinstance(prior_fingerprint, str):
+        raise ValueError("Prior salvation collection review has no fingerprint")
+    current_sources = _source_artifact_fingerprints(sources)
+    if prior_review.get("source_artifacts") != current_sources:
+        raise ValueError(
+            "Prior salvation collection review does not match current artifacts"
+        )
+    prior_probe_keys = {
+        str(probe.get("judgment_key"))
+        for probe in prior_review.get("probes", [])
+        if isinstance(probe, Mapping)
+    }
+    required = set(SALVATION_BOUNDARY_RECALIBRATION_ANCHORS) | {
+        SALVATION_JUDGMENT_WATCH_KEY
+    }
+    if not required.issubset(prior_probe_keys):
+        raise ValueError(
+            "Prior salvation collection review lacks required boundary anchors"
+        )
+    judgments = [
+        judgment
+        for source in sources
+        for judgment in _validated_source_judgments(source)
+    ]
+    by_key = {str(item["judgment_key"]): item for item in judgments}
+    missing = sorted(required - set(by_key))
+    if missing:
+        raise ValueError(
+            "Current salvation evidence lacks required boundary anchors: "
+            + ", ".join(missing)
+        )
+    selected: list[dict[str, Any]] = []
+    for judgment_key, review_label in (
+        SALVATION_BOUNDARY_RECALIBRATION_ANCHORS.items()
+    ):
+        selected.append(
+            {
+                **by_key[judgment_key],
+                "probe_role": "reviewed_boundary_anchor",
+                "review_label": review_label,
+            }
+        )
+    fresh_counts: dict[str, dict[str, int]] = {}
+    for relationship in SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS:
+        candidates = [
+            item
+            for item in judgments
+            if item["relationship"] == relationship
+            and item["judgment_key"] not in prior_probe_keys
+        ]
+        rejected = [item for item in candidates if not item["collected"]]
+        collected = [item for item in candidates if item["collected"]]
+        fresh_counts[relationship] = {
+            "rejected_available": len(rejected),
+            "collected_available": len(collected),
+            "selected_per_side": 2,
+        }
+        for boundary_side, side_candidates in (
+            ("fresh_rejected", rejected),
+            ("fresh_collected", collected),
+        ):
+            for side_rank, item in enumerate(
+                _select_nearest_diverse_judgments(side_candidates, count=2),
+                start=1,
+            ):
+                selected.append(
+                    {
+                        **item,
+                        "probe_role": "fresh_probability_neighbor",
+                        "boundary_side": boundary_side,
+                        "side_rank": side_rank,
+                        "distance_from_current_threshold": round(
+                            abs(
+                                float(item["probability"])
+                                - float(item["threshold"])
+                            ),
+                            6,
+                        ),
+                    }
+                )
+    selected.append(
+        {
+            **by_key[SALVATION_JUDGMENT_WATCH_KEY],
+            "probe_role": "watch_only",
+            "review_label": "likely_affirmative_rejected",
+        }
+    )
+    cases, probes = _deduplicate_review_probes(selected)
+    identity = {
+        "schema_version": SALVATION_BOUNDARY_RECALIBRATION_SCHEMA_VERSION,
+        "review_policy_version": SALVATION_BOUNDARY_RECALIBRATION_POLICY_VERSION,
+        "cohort_sha256": cohort_sha256,
+        "readiness_input_fingerprint": readiness_input_fingerprint,
+        "prior_review_fingerprint": prior_fingerprint,
+        "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "observation_policy_version": (
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        ),
+        "unchanged_thresholds": {
+            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                relationship
+            ]
+            for relationship in (
+                *SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS,
+                "judgment_final_destiny",
+            )
+        },
+        "relationship_definitions": {
+            relationship: salvation_relationship_pack_inventory()["relationships"][
+                relationship
+            ]
+            for relationship in (
+                *SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS,
+                "judgment_final_destiny",
+            )
+        },
+        "reviewed_boundary_anchors": dict(
+            SALVATION_BOUNDARY_RECALIBRATION_ANCHORS
+        ),
+        "judgment_watch_key": SALVATION_JUDGMENT_WATCH_KEY,
+        "fresh_selection_counts": fresh_counts,
+        "source_artifacts": current_sources,
+        "source_video_count": len(sources),
+        "judgment_count": len(judgments),
+        "cases": cases,
+        "probes": probes,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "four_leaf_boundary_calibration_pending_review",
+        "policy_effect": "none",
+        "interpretation": (
+            "This provider-free packet keeps every v4 question and final threshold "
+            "unchanged. It combines eight disputed ordinary-classification boundary "
+            "anchors with four fresh cached probability neighbors per affected leaf. "
+            "Judgment/final-destiny is included as one watch-only probe and cannot "
+            "authorize a policy change by itself."
+        ),
+    }
+
+
 def _load_salvation_observation_sources(
     database: Database,
     cohort: Mapping[str, Any],
@@ -644,6 +824,30 @@ def evaluate_salvation_collection_recalibration(
         readiness=readiness,
     )
     return build_salvation_collection_recalibration(
+        sources,
+        cohort_sha256=(
+            str(cohort["cohort_sha256"])
+            if cohort.get("cohort_sha256") is not None
+            else None
+        ),
+        readiness_input_fingerprint=str(readiness["input_fingerprint"]),
+        prior_review=prior_review,
+    )
+
+
+def evaluate_salvation_boundary_recalibration(
+    database: Database,
+    cohort: Mapping[str, Any],
+    prior_review: Mapping[str, Any],
+    *,
+    readiness: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    sources, readiness = _load_salvation_observation_sources(
+        database,
+        cohort,
+        readiness=readiness,
+    )
+    return build_salvation_boundary_recalibration(
         sources,
         cohort_sha256=(
             str(cohort["cohort_sha256"])
@@ -934,4 +1138,133 @@ def write_salvation_collection_recalibration(
         path,
         packet,
         render_salvation_collection_recalibration,
+    )
+
+
+def render_salvation_boundary_recalibration(
+    packet: Mapping[str, Any],
+) -> str:
+    cases = {str(case["case_key"]): case for case in packet["cases"]}
+    lines = [
+        "# Salvation four-leaf boundary recalibration",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Prior review: `{packet['prior_review_fingerprint']}`",
+        f"- Question pack: `{packet['question_pack_version']}`",
+        f"- Observation policy: `{packet['observation_policy_version']}`",
+        f"- Cached raw judgments: `{packet['judgment_count']}`",
+        f"- Probes: `{len(packet['probes'])}`",
+        f"- Unique evidence cases: `{len(packet['cases'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "For each affected leaf, review the two named boundary anchors and four fresh "
+        "neighbors. Decide whether the evidence shows a semantic-ordering defect, a "
+        "numeric-boundary issue, or no material problem. Do not change a threshold "
+        "merely to collect both sides of an ordering inversion.",
+        "",
+        "The final-destiny case is watch-only. It may justify another bounded sample, "
+        "but this packet alone cannot change that question or threshold.",
+    ]
+    for relationship in SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS:
+        definition = packet["relationship_definitions"][relationship]
+        lines.extend(
+            [
+                "",
+                f"## {relationship}",
+                "",
+                f"**Meaning:** {definition['description']}",
+                "",
+                f"**Count as yes:** {definition['true_criteria']}",
+                "",
+                f"**Count as no:** {definition['false_criteria']}",
+                "",
+                "Current threshold: "
+                f"`{float(packet['unchanged_thresholds'][relationship]):.2f}`.",
+                "",
+            ]
+        )
+        for probe in packet["probes"]:
+            if probe["relationship"] != relationship:
+                continue
+            case = cases[str(probe["case_key"])]
+            role = str(probe["probe_role"])
+            detail = str(
+                probe.get("review_label")
+                or f"{probe.get('boundary_side')} {probe.get('side_rank')}"
+            )
+            lines.extend(
+                [
+                    f"### {role} / {detail} / {float(probe['probability']):.3f}",
+                    "",
+                    f"- Evidence case: `{probe['case_key']}` — "
+                    f"{case['pastor']['display_name']}",
+                    f"- Recording: `{case['youtube_video_id']}` — {case['title']}",
+                    f"- Time: `{case['start_seconds']}`–`{case['end_seconds']}`",
+                    "",
+                ]
+            )
+    watch = next(
+        probe for probe in packet["probes"] if probe["probe_role"] == "watch_only"
+    )
+    watch_case = cases[str(watch["case_key"])]
+    watch_definition = packet["relationship_definitions"][
+        "judgment_final_destiny"
+    ]
+    lines.extend(
+        [
+            "",
+            "## judgment_final_destiny — watch only",
+            "",
+            f"**Meaning:** {watch_definition['description']}",
+            "",
+            f"**Count as yes:** {watch_definition['true_criteria']}",
+            "",
+            f"**Count as no:** {watch_definition['false_criteria']}",
+            "",
+            f"### {float(watch['probability']):.3f} / {watch['case_key']}",
+            "",
+            f"- Pastor: {watch_case['pastor']['display_name']}",
+            f"- Recording: `{watch_case['youtube_video_id']}` — {watch_case['title']}",
+            f"- Time: `{watch_case['start_seconds']}`–`{watch_case['end_seconds']}`",
+            "",
+            "## Deduplicated evidence cases",
+            "",
+        ]
+    )
+    for case in packet["cases"]:
+        lines.extend(
+            [
+                f"### {case['case_key']} — {case['pastor']['display_name']}",
+                "",
+                f"- Recording: `{case['youtube_video_id']}` — {case['title']}",
+                f"- Time: `{case['start_seconds']}`–`{case['end_seconds']}`",
+                "",
+                "Leading context:",
+                "",
+                f"> {str(case['leading_context']).replace(chr(10), ' ')}",
+                "",
+                "Target text:",
+                "",
+                f"> {str(case['target_text']).replace(chr(10), ' ')}",
+                "",
+                "Trailing context:",
+                "",
+                f"> {str(case['trailing_context']).replace(chr(10), ' ')}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_salvation_boundary_recalibration(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_packet(
+        path,
+        packet,
+        render_salvation_boundary_recalibration,
     )

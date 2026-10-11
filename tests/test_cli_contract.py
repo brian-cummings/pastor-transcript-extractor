@@ -58,6 +58,7 @@ GROUP_COMMANDS = {
         "refresh-profiles",
         "run",
         "salvation-collection-recalibration",
+        "salvation-boundary-recalibration",
         "salvation-final-calibration",
         "salvation-semantic-calibration",
         "salvation-collected-observations-review",

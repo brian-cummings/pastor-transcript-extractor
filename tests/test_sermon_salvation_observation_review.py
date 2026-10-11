@@ -4,10 +4,17 @@ from copy import deepcopy
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from pastor_transcript_extractor.sermon_salvation_observation_review import (
+    SALVATION_BOUNDARY_RECALIBRATION_ANCHORS,
+    SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS,
+    SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION,
+    SALVATION_JUDGMENT_WATCH_KEY,
     SALVATION_COLLECTION_RECALIBRATION_RELATIONSHIPS,
     SALVATION_COLLECTION_REVIEWED_ANCHORS,
+    _source_artifact_fingerprints,
+    build_salvation_boundary_recalibration,
     build_salvation_collection_recalibration,
     build_salvation_collected_observations_review,
     render_salvation_collection_recalibration,
@@ -83,6 +90,106 @@ def _source() -> dict[str, object]:
 
 
 class SalvationCollectedObservationReviewTests(unittest.TestCase):
+    def test_boundary_recalibration_combines_anchors_fresh_probes_and_watch(self) -> None:
+        source = {
+            "video_id": 1,
+            "stored_artifact_sha256": "stored",
+            "artifact": {},
+        }
+        judgments = []
+
+        def judgment(key, relationship, probability, collected, pastor):
+            video_id, block_id, _leaf = key.split(":")
+            return {
+                "judgment_key": key,
+                "relationship": relationship,
+                "probability": probability,
+                "threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                    relationship
+                ],
+                "collected": collected,
+                "pastor": {"display_name": pastor, "slug": pastor.lower()},
+                "video_id": int(video_id),
+                "youtube_video_id": f"youtube-{video_id}",
+                "title": f"Sermon {video_id}",
+                "block_id": int(block_id),
+                "start_seconds": float(block_id),
+                "end_seconds": float(block_id) + 1.0,
+                "leading_context": "Leading.",
+                "target_text": f"Target {key}.",
+                "trailing_context": "Trailing.",
+            }
+
+        for key in SALVATION_BOUNDARY_RECALIBRATION_ANCHORS:
+            relationship = key.rsplit(":", 1)[1]
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            judgments.append(
+                judgment(key, relationship, threshold, True, "Anchor")
+            )
+        judgments.append(
+            judgment(
+                SALVATION_JUDGMENT_WATCH_KEY,
+                "judgment_final_destiny",
+                0.62,
+                False,
+                "Watch",
+            )
+        )
+        fresh_index = 9000
+        for relationship in SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS:
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            for side, collected in ((-1, False), (1, True)):
+                for rank in range(2):
+                    fresh_index += 1
+                    judgments.append(
+                        judgment(
+                            f"{fresh_index}:{rank}:{relationship}",
+                            relationship,
+                            round(threshold + side * (rank + 1) / 100, 2),
+                            collected,
+                            f"Pastor {rank}",
+                        )
+                    )
+        prior = {
+            "review_policy_version": (
+                SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
+            ),
+            "input_fingerprint": "prior",
+            "source_artifacts": _source_artifact_fingerprints([source]),
+            "probes": [
+                {"judgment_key": key}
+                for key in (
+                    *SALVATION_BOUNDARY_RECALIBRATION_ANCHORS,
+                    SALVATION_JUDGMENT_WATCH_KEY,
+                )
+            ],
+        }
+        with patch(
+            "pastor_transcript_extractor.sermon_salvation_observation_review."
+            "_validated_source_judgments",
+            return_value=judgments,
+        ):
+            packet = build_salvation_boundary_recalibration(
+                [source],
+                cohort_sha256="cohort",
+                readiness_input_fingerprint="readiness",
+                prior_review=prior,
+            )
+
+        self.assertEqual(25, len(packet["probes"]))
+        self.assertEqual(
+            16,
+            sum(
+                probe["probe_role"] == "fresh_probability_neighbor"
+                for probe in packet["probes"]
+            ),
+        )
+        self.assertEqual(
+            1,
+            sum(probe["probe_role"] == "watch_only" for probe in packet["probes"]),
+        )
+        self.assertEqual("none", packet["policy_effect"])
+
     def test_selects_both_policy_sides_for_every_relationship(self) -> None:
         packet = build_salvation_collected_observations_review(
             [_source()],

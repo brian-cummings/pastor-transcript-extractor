@@ -1201,15 +1201,26 @@ theological stance.
     `salvation-relationship-observation-thresholds-v3-final`. The broad route stays
     `0.55`, the raw probabilities remain policy-independent, and no more prompt
     tuning should use this calibration corpus.
+65. The refreshed ordinary-classification review reopens only four localized
+    boundaries. Grace initiative, conversion/new birth, obedience as condition,
+    and obedience as consequence each show a reviewed affirmative or questionable
+    rejection at or below a questionable collected case; threshold movement alone
+    cannot resolve those orderings. Seven other leaves pass, including the newly
+    calibrated faith, repentance, and assurance boundaries. Final destiny retains
+    one likely affirmative `0.62` rejection as a watch case because its `0.66`
+    collected boundary is also affirmative. A provider-free follow-up keeps all
+    questions and thresholds unchanged, combines the eight named boundary anchors
+    with two fresh cached judgments on each side of each affected threshold, and
+    includes final destiny only as a non-authorizing watch probe.
 
 ### Next iteration
 
-1. Refresh the twelve-sermon cohort through ordinary TypeSafe reclassification so
-   every routed block carries the frozen v4 pack and final per-leaf observation
-   policy. Preserve and reuse all unaffected pack caches.
-2. Inspect the resulting pastor-level relationship distributions and unusual
-   outliers. Treat only new out-of-sample failure modes as grounds for revisiting
-   the frozen layer.
+1. Review `salvation-boundary-recalibration-v1.md`. For each of the four affected
+   leaves, distinguish a semantic-ordering defect from a numeric boundary issue or
+   a harmless ambiguous edge. Do not adjust any threshold before that review.
+2. Keep final destiny watch-only unless fresh evidence demonstrates an ordering
+   failure. Do not aggregate salvation relationships into pastor-level theology
+   profiles until the four-leaf collection boundary passes.
 
 ## Non-goals for `topics-v1`
 
