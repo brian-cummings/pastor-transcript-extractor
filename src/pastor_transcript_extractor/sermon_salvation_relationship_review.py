@@ -63,6 +63,9 @@ DEFAULT_SALVATION_V5_CALIBRATION_OUTPUT = Path(
 DEFAULT_SALVATION_V5_THRESHOLD_REVIEW_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-v5-threshold-review-v1.json"
 )
+DEFAULT_SALVATION_V6_REPENTANCE_CALIBRATION_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-v6-repentance-calibration-v1.json"
+)
 PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v2-evidence-boundaries"
 )
@@ -79,6 +82,12 @@ FINAL_CALIBRATION_OBSERVATION_POLICY_VERSION = (
 )
 PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v4-repentant-surrender-boundary"
+)
+PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION = (
+    "salvation-relationships-v5-causal-boundaries"
+)
+PRIOR_V5_OBSERVATION_POLICY_VERSION = (
+    "salvation-relationship-observation-thresholds-v4-v5-final"
 )
 V5_CALIBRATION_RELATIONSHIPS = (
     "divine_grace_initiative",
@@ -111,6 +120,16 @@ V5_REVIEW_LABELS = {
     "4589:40:obedience_as_consequence_or_evidence": "negative",
     "350:36:obedience_as_consequence_or_evidence": "negative",
     "4394:50:obedience_as_consequence_or_evidence": "negative",
+}
+V6_REPENTANCE_REGRESSION_LABELS = {
+    "4394:49:repentance_as_receiving_response": "affirmative_borderline",
+    "3973:75:repentance_as_receiving_response": "negative",
+    "350:61:repentance_as_receiving_response": "negative",
+    "4394:45:repentance_as_receiving_response": "affirmative",
+    "350:50:repentance_as_receiving_response": "negative",
+    "4589:46:repentance_as_receiving_response": "negative",
+    "3974:81:repentance_as_receiving_response": "ambiguous_negative",
+    "350:47:repentance_as_receiving_response": "negative",
 }
 SEMANTIC_REGRESSION_CASES = {
     "faith_as_receiving_response": frozenset(
@@ -1053,6 +1072,8 @@ def evaluate_salvation_v5_calibration(
     client: TypeSafeBlockClient,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """Evaluate the four revised v5 questions on regressions and held-out cases."""
+    if SALVATION_RELATIONSHIPS_PACK_VERSION != PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION:
+        raise ValueError("V5 calibration is archived after the v6 repentance revision")
     if (
         boundary_review.get("review_policy_version")
         != "salvation-four-leaf-boundary-recalibration-v1"
@@ -1203,6 +1224,8 @@ def build_salvation_v5_threshold_review(
     calibration: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Build the final provider-free threshold packet from reviewed v5 answers."""
+    if SALVATION_RELATIONSHIPS_PACK_VERSION != PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION:
+        raise ValueError("V5 threshold review is archived after the v6 revision")
     if (
         calibration.get("review_policy_version")
         != "salvation-v5-causal-boundaries-calibration-v1"
@@ -1362,6 +1385,258 @@ def build_salvation_v5_threshold_review(
             "does not change a threshold or reclassify the cohort."
         ),
     }
+
+
+def _select_v6_repentance_heldout_probes(
+    candidates: Sequence[Mapping[str, Any]],
+    prior_probabilities: Mapping[str, Mapping[str, float]],
+    *,
+    excluded_case_keys: set[str],
+    threshold: float,
+) -> list[dict[str, Any]]:
+    relationship = "repentance_as_receiving_response"
+    available = [
+        item
+        for item in candidates
+        if str(item["candidate_key"]) not in excluded_case_keys
+        and str(item["candidate_key"]) in prior_probabilities
+    ]
+    probes: list[dict[str, Any]] = []
+    for side, predicate in (
+        ("below", lambda value: value < threshold),
+        ("at_or_above", lambda value: value >= threshold),
+    ):
+        ordered = sorted(
+            (
+                item
+                for item in available
+                if predicate(
+                    prior_probabilities[str(item["candidate_key"])][relationship]
+                )
+            ),
+            key=lambda item: (
+                abs(
+                    prior_probabilities[str(item["candidate_key"])][relationship]
+                    - threshold
+                ),
+                str(item["candidate_key"]),
+            ),
+        )
+        selected: list[Mapping[str, Any]] = []
+        selected_keys: set[str] = set()
+        represented_pastors: set[str] = set()
+        for require_new_pastor in (True, False):
+            for item in ordered:
+                key = str(item["candidate_key"])
+                pastor = str(item["pastor"].get("slug"))
+                if key in selected_keys:
+                    continue
+                if require_new_pastor and pastor in represented_pastors:
+                    continue
+                selected.append(item)
+                selected_keys.add(key)
+                represented_pastors.add(pastor)
+                if len(selected) == 4:
+                    break
+            if len(selected) == 4:
+                break
+        if len(selected) < 4:
+            raise ValueError(
+                f"V6 repentance calibration lacks four fresh {side} probes"
+            )
+        for side_rank, item in enumerate(selected, start=1):
+            key = str(item["candidate_key"])
+            probes.append(
+                {
+                    "candidate_key": key,
+                    "relationship": relationship,
+                    "prior_probability": round(
+                        prior_probabilities[key][relationship],
+                        6,
+                    ),
+                    "prior_boundary_side": side,
+                    "side_rank": side_rank,
+                }
+            )
+    return probes
+
+
+def evaluate_salvation_v6_repentance_calibration(
+    database: Database,
+    cohort: Mapping[str, Any],
+    final_check: Mapping[str, Any],
+    v5_calibration: Mapping[str, Any],
+    collection_review: Mapping[str, Any],
+    *,
+    model: str,
+    client: TypeSafeBlockClient,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Evaluate only the revised repentance boundary on labeled and fresh cases."""
+    if (
+        final_check.get("review_policy_version")
+        != "salvation-final-collection-boundary-check-v1"
+        or final_check.get("question_pack_version")
+        != PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION
+        or final_check.get("observation_policy_version")
+        != PRIOR_V5_OBSERVATION_POLICY_VERSION
+    ):
+        raise ValueError("V6 calibration requires the reviewed final collection check")
+    final_probe_keys = {
+        str(probe.get("judgment_key"))
+        for probe in final_check.get("probes", [])
+        if isinstance(probe, Mapping)
+        and probe.get("relationship") == "repentance_as_receiving_response"
+    }
+    if not set(V6_REPENTANCE_REGRESSION_LABELS).issubset(final_probe_keys):
+        raise ValueError("Final collection check lacks v6 repentance regressions")
+    if (
+        v5_calibration.get("review_policy_version")
+        != "salvation-v5-causal-boundaries-calibration-v1"
+        or v5_calibration.get("revised_leaf_pack_version")
+        != PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION
+    ):
+        raise ValueError("V6 calibration requires the reviewed v5 calibration")
+    if (
+        collection_review.get("review_policy_version")
+        != "salvation-collected-observation-boundaries-v2-deduplicated-evidence"
+        or collection_review.get("question_pack_version")
+        != PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION
+    ):
+        raise ValueError("V6 calibration requires the reviewed v5 collection packet")
+
+    candidates, readiness_fingerprint = _routed_candidates(database, cohort)
+    by_key = {str(item["candidate_key"]): item for item in candidates}
+    prior_probabilities = _relationship_probabilities_for_pack(
+        database,
+        cohort,
+        expected_pack_version=PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION,
+    )
+    regression_case_keys = {
+        judgment_key.rsplit(":", 1)[0]
+        for judgment_key in V6_REPENTANCE_REGRESSION_LABELS
+    }
+    missing = sorted(regression_case_keys - set(by_key))
+    if missing:
+        raise ValueError(
+            "V6 repentance regressions are no longer routed: " + ", ".join(missing)
+        )
+    reviewed_case_keys = set(ALL_REVIEWED_CANDIDATE_KEYS) | set(
+        RECALIBRATION_REVIEWED_CANDIDATE_KEYS
+    )
+    for packet in (final_check, v5_calibration, collection_review):
+        reviewed_case_keys.update(
+            str(case.get("case_key") or case.get("candidate_key"))
+            for case in packet.get("cases", [])
+            if isinstance(case, Mapping)
+        )
+    reviewed_case_keys.update(regression_case_keys)
+    prior_threshold = float(
+        final_check["current_thresholds"]["repentance_as_receiving_response"]
+    )
+    heldout = _select_v6_repentance_heldout_probes(
+        candidates,
+        prior_probabilities,
+        excluded_case_keys=reviewed_case_keys,
+        threshold=prior_threshold,
+    )
+    evaluation_keys = sorted(
+        regression_case_keys
+        | {str(probe["candidate_key"]) for probe in heldout}
+    )
+    evaluated, execution = evaluate_salvation_relationship_candidates(
+        [by_key[key] for key in evaluation_keys],
+        model=model,
+        client=client,
+    )
+    evaluated_by_key = {
+        str(item["candidate_key"]): item for item in evaluated
+    }
+    relationship = "repentance_as_receiving_response"
+    regression_probes = []
+    for judgment_key, review_label in V6_REPENTANCE_REGRESSION_LABELS.items():
+        case_key, _relationship = judgment_key.rsplit(":", 1)
+        regression_probes.append(
+            {
+                "judgment_key": judgment_key,
+                "candidate_key": case_key,
+                "relationship": relationship,
+                "review_label": review_label,
+                "prior_probability": round(
+                    prior_probabilities[case_key][relationship],
+                    6,
+                ),
+                "revised_probability": round(
+                    float(
+                        evaluated_by_key[case_key]["leaf_probabilities"][relationship]
+                    ),
+                    6,
+                ),
+            }
+        )
+    for probe in heldout:
+        key = str(probe["candidate_key"])
+        probe["revised_probability"] = round(
+            float(evaluated_by_key[key]["leaf_probabilities"][relationship]),
+            6,
+        )
+    cases = [
+        {
+            key: value
+            for key, value in evaluated_by_key[candidate_key].items()
+            if key not in {"cache_dir", "context_diagnostics", "segment_indexes"}
+        }
+        for candidate_key in evaluation_keys
+    ]
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": "salvation-v6-repentance-entry-calibration-v1",
+        "cohort_sha256": cohort.get("cohort_sha256"),
+        "readiness_input_fingerprint": readiness_fingerprint,
+        "prior_final_check_fingerprint": final_check.get("input_fingerprint"),
+        "prior_v5_calibration_fingerprint": v5_calibration.get(
+            "input_fingerprint"
+        ),
+        "prior_collection_review_fingerprint": collection_review.get(
+            "input_fingerprint"
+        ),
+        "prior_leaf_pack_version": PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
+        "requested_model_id": model,
+        "repentance_threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+            relationship
+        ],
+        "approved_numeric_changes": {
+            "conversion_new_birth": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                "conversion_new_birth"
+            ],
+            "forgiveness_pardon": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                "forgiveness_pardon"
+            ],
+            "assurance_security": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                "assurance_security"
+            ],
+        },
+        "repentance_definition": salvation_relationship_pack_inventory()[
+            "relationships"
+        ][relationship],
+        "regression_probes": regression_probes,
+        "heldout_probes": heldout,
+        "excluded_reviewed_case_keys": sorted(reviewed_case_keys),
+        "cases": cases,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "v6_repentance_calibration_pending_review",
+        "policy_effect": "none",
+        "interpretation": (
+            "Only the repentance evidence boundary changed. This bounded packet "
+            "reruns eight labeled regressions and eight genuinely fresh cases, four "
+            "on each side of the prior 0.57 boundary. The three approved numeric "
+            "changes are recorded but do not affect probe selection."
+        ),
+    }, execution
 
 
 def evaluate_obedience_consequence_calibration(
@@ -1797,6 +2072,65 @@ def render_salvation_v5_threshold_review(packet: Mapping[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_salvation_v6_repentance_calibration(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    definition = packet["repentance_definition"]
+    lines = [
+        "# Salvation v6 repentance-entry calibration",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Prior leaf pack: `{packet['prior_leaf_pack_version']}`",
+        f"- Revised leaf pack: `{packet['revised_leaf_pack_version']}`",
+        f"- Regression probes: `{len(packet['regression_probes'])}`",
+        f"- Fresh held-out probes: `{len(packet['heldout_probes'])}`",
+        f"- Unique evidence cases: `{len(packet['cases'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "**Meaning:** " + str(definition["description"]),
+        "",
+        "**Count as yes:** " + str(definition["true_criteria"]),
+        "",
+        "**Count as no:** " + str(definition["false_criteria"]),
+        "",
+        "Review causal and temporal ordering, not keywords. Affirmative regressions "
+        "should rank above negatives, and fresh affirmatives should distinguish entry "
+        "or restoration from post-conversion growth. Label every fresh case "
+        "affirmative, negative, or ambiguous. Do not revisit the other eleven "
+        "questions or the three approved numeric changes.",
+        "",
+        "## Labeled regressions",
+        "",
+        "| Case | Label | V5 p | V6 p |",
+        "| --- | --- | ---: | ---: |",
+    ]
+    for probe in packet["regression_probes"]:
+        lines.append(
+            f"| {probe['candidate_key']} | {probe['review_label']} | "
+            f"{float(probe['prior_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Genuinely fresh held-out cases",
+            "",
+            "| Case | Prior side | V5 p | V6 p |",
+            "| --- | --- | ---: | ---: |",
+        ]
+    )
+    for probe in packet["heldout_probes"]:
+        lines.append(
+            f"| {probe['candidate_key']} | {probe['prior_boundary_side']} | "
+            f"{float(probe['prior_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    lines.extend(_render_deduplicated_evidence_cases(cases))
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
         "# Salvation relationships review",
@@ -1949,4 +2283,15 @@ def write_salvation_v5_threshold_review(
         path,
         packet,
         render_salvation_v5_threshold_review,
+    )
+
+
+def write_salvation_v6_repentance_calibration(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_v6_repentance_calibration,
     )

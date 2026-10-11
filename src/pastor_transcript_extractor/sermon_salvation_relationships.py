@@ -13,12 +13,12 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SALVATION_RELATIONSHIPS_PACK_VERSION = (
-    "salvation-relationships-v5-causal-boundaries"
+    "salvation-relationships-v6-repentance-entry-boundary"
 )
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v4-v5-final"
+    "salvation-relationship-observation-thresholds-v5-repentance-pending"
 )
 
 
@@ -175,18 +175,21 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
             "to receiving salvation or a saving benefit"
         ),
         true_criteria=(
-            "The target explicitly presents repentance, confession of sin, or turning "
-            "from sin toward God as the response by which a person receives salvation, "
-            "forgiveness, or restored relationship with God. Surrender or yielding to "
-            "God also counts when the target contrasts it with surrender to sin or "
-            "explicitly connects it to entering God's kingdom, receiving God's "
-            "indwelling presence, or another saving benefit."
+            "The target explicitly presents repentance, confession of sin, turning "
+            "from sin toward God, surrender, or yielding as part of entering, receiving, "
+            "or restoring saving relationship with God—for example receiving salvation, "
+            "forgiveness, restored relationship, God's indwelling presence, or entry "
+            "into God's kingdom. The response must function causally or temporally as "
+            "the receiving or restoring response, not merely describe later Christian "
+            "growth."
         ),
         false_criteria=(
-            "The target merely calls for a decision, generic surrender, following Jesus, "
-            "honesty, renewed practice, perseverance, or transformation after forgiveness "
-            "without presenting repentance, confession, turning from sin, or "
-            "salvation-linked surrender as the receiving response."
+            "Explicit words such as repent, surrender, yield, turn, or decision are not "
+            "sufficient by themselves. Do not count surrender, yielding, dying to self, "
+            "resisting sin, renewed commitment, or perseverance that describes how an "
+            "already-Christian person should live, grow, or remain faithful, or a call "
+            "to respond that does not make repentance or surrender function as receiving "
+            "salvation, forgiveness, restored relationship, or entry into saving life."
         ),
     ),
     "obedience_as_condition_or_means": SalvationRelationshipSpec(
@@ -230,11 +233,11 @@ SALVATION_RELATIONSHIPS = tuple(SALVATION_RELATIONSHIP_SPECS)
 SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "divine_grace_initiative": 0.65,
     "atonement_as_basis": 0.70,
-    "forgiveness_pardon": 0.70,
+    "forgiveness_pardon": 0.68,
     "justification_right_standing": 0.70,
-    "conversion_new_birth": 0.54,
+    "conversion_new_birth": 0.55,
     "sanctification_transformation": 0.70,
-    "assurance_security": 0.62,
+    "assurance_security": 0.61,
     "judgment_final_destiny": 0.65,
     "faith_as_receiving_response": 0.65,
     "repentance_as_receiving_response": 0.57,

@@ -1254,15 +1254,27 @@ theological stance.
     samples only conversion `0.54`–`0.58`, forgiveness `0.68`–`0.70`, and assurance
     `0.61`–`0.62`. Justification `4589:48`, sanctification `3973:75`, and the known
     consequence false positive `4430:47` remain non-authorizing watch fixtures.
+70. The provider-free final collection check at fingerprint
+    `20c92d3e4f674771ac62b668403abba079c98fe3d69a23bc4e43e83e69d52624`
+    authorizes only three numeric adjustments: conversion `0.54` to `0.55`,
+    forgiveness `0.70` to `0.68`, and assurance `0.62` to `0.61`. Fresh cases
+    confirm that repentance has a semantic-ordering defect rather than a numeric
+    boundary problem. V6 therefore revises only repentance: the affirmative must
+    function as entry into, receipt of, or restoration of saving relationship;
+    later surrender, yielding, resistance to sin, and Christian growth are not
+    sufficient. The other eleven questions remain frozen. Before any cohort
+    reclassification, a bounded cache-first check reruns eight labeled regressions
+    and tests eight genuinely fresh, pastor-diverse cases around the prior `0.57`
+    boundary. The observation policy is provisional until that check passes.
 
 ### Next iteration
 
-1. Run and review `salvation-final-collection-check-v1.md`. For repentance, decide
-   whether fresh cases reproduce the inversion before changing wording or policy;
-   for conversion, forgiveness, and assurance, choose numeric boundaries only.
-2. Apply any approved localized change, refresh the frozen cohort through the
-   cache-aware path, and rerun collected-observation review before authorizing any
-   theology-profile aggregation.
+1. Run and review `salvation-v6-repentance-calibration-v1.md`. Approve V6 only if
+   the labeled ordering regressions are corrected and the fresh held-out cases
+   preserve the entry/restoration boundary. Do not tune the other eleven leaves.
+2. If V6 passes, freeze the repentance threshold from that packet, refresh the
+   twelve-sermon cohort through ordinary cache-aware `pte reclassify`, and rerun
+   collected-observation review before authorizing theology-profile aggregation.
 
 ## Non-goals for `topics-v1`
 

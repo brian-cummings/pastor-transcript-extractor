@@ -64,6 +64,7 @@ GROUP_COMMANDS = {
         "salvation-semantic-calibration",
         "salvation-v5-calibration",
         "salvation-v5-threshold-review",
+        "salvation-v6-repentance-calibration",
         "salvation-collected-observations-review",
         "salvation-obedience-calibration",
         "salvation-observation-boundaries-review",

@@ -2801,6 +2801,71 @@ pte analysis salvation-final-calibration [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-v5-calibration`
+
+Evaluate four revised salvation questions on reviewed and held-out cases.
+
+#### Usage
+
+```console
+pte analysis salvation-v5-calibration [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying routed blocks and v4 evidence.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--boundary-review PATH` | Reviewed four-leaf v4 boundary packet.  [default: evaluation/sermon-topics/salvation-boundary-recalibration-v1.json] | no | evaluation/sermon-topics/salvation-boundary-recalibration-v1.json |
+| `--collection-review PATH` | Reviewed ordinary-classification packet used to exclude prior cases.  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-v5-calibration-v1.json] | no | evaluation/sermon-topics/salvation-v5-calibration-v1.json |
+| `--model TEXT` | Pinned TypeSafe model id used for revised leaf judgments.  [default: jev-1.13.0] | no | jev-1.13.0 |
+| `--timeout-seconds FLOAT RANGE` | Timeout for each uncached TypeSafe request.  [default: 45.0; x>=1.0] | no | 45.0 |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis salvation-v5-threshold-review`
+
+Build the provider-free final threshold review from cached v5 judgments.
+
+#### Usage
+
+```console
+pte analysis salvation-v5-threshold-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--input PATH` | Reviewed v5 calibration packet.  [default: evaluation/sermon-topics/salvation-v5-calibration-v1.json] | no | evaluation/sermon-topics/salvation-v5-calibration-v1.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-v5-threshold-review-v1.json] | no | evaluation/sermon-topics/salvation-v5-threshold-review-v1.json |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis salvation-v6-repentance-calibration`
+
+Run the bounded v6 repentance-entry regression and held-out check.
+
+#### Usage
+
+```console
+pte analysis salvation-v6-repentance-calibration [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying routed evidence.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--final-check PATH` | Reviewed final collection boundary check.  [default: evaluation/sermon-topics/salvation-final-collection-check-v1.json] | no | evaluation/sermon-topics/salvation-final-collection-check-v1.json |
+| `--v5-calibration PATH` | Reviewed v5 semantic calibration used to exclude prior cases.  [default: evaluation/sermon-topics/salvation-v5-calibration-v1.json] | no | evaluation/sermon-topics/salvation-v5-calibration-v1.json |
+| `--collection-review PATH` | Reviewed ordinary-classification packet used to exclude prior cases.  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-v6-repentance-calibration-v1.json] | no | evaluation/sermon-topics/salvation-v6-repentance-calibration-v1.json |
+| `--model TEXT` | Pinned TypeSafe model id used for revised leaf judgments.  [default: jev-1.13.0] | no | jev-1.13.0 |
+| `--timeout-seconds FLOAT RANGE` | Timeout for each uncached TypeSafe request.  [default: 45.0; x>=1.0] | no | 45.0 |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-observation-threshold-review`
 
 Build a provider-free boundary review for the salvation leaf collection threshold.
@@ -2857,6 +2922,26 @@ pte analysis salvation-collected-observations-review [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-final-collection-check`
+
+Build the provider-free final check for four localized leaf boundaries.
+
+#### Usage
+
+```console
+pte analysis salvation-final-collection-check [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying ordinary classification artifacts.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--prior-review PATH` | Reviewed ordinary-classification boundary packet.  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-final-collection-check-v1.json] | no | evaluation/sermon-topics/salvation-final-collection-check-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-collection-recalibration`
 
 Build a provider-free follow-up for the four unsettled salvation leaves.
@@ -2874,6 +2959,26 @@ pte analysis salvation-collection-recalibration [OPTIONS]
 | `--cohort PATH` | Ready frozen topic cohort supplying ordinary classification artifacts.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
 | `--prior-review PATH` | Reviewed ordinary-classification boundary packet.  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
 | `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-collection-recalibration-v1.json] | no | evaluation/sermon-topics/salvation-collection-recalibration-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis salvation-boundary-recalibration`
+
+Build a provider-free focused review for four disputed salvation leaves.
+
+#### Usage
+
+```console
+pte analysis salvation-boundary-recalibration [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying ordinary classification artifacts.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--prior-review PATH` | Reviewed ordinary-classification boundary packet.  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-boundary-recalibration-v1.json] | no | evaluation/sermon-topics/salvation-boundary-recalibration-v1.json |
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 

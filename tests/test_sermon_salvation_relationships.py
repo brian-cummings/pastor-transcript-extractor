@@ -94,7 +94,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            0.62,
+            0.61,
             salvation_relationship_observation_threshold("assurance_security"),
         )
         self.assertEqual(
@@ -104,7 +104,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            0.54,
+            0.55,
             salvation_relationship_observation_threshold("conversion_new_birth"),
         )
         self.assertEqual(
@@ -237,7 +237,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
 
     def test_revised_evidence_boundaries_are_explicit_and_general(self) -> None:
         self.assertEqual(
-            "salvation-relationships-v5-causal-boundaries",
+            "salvation-relationships-v6-repentance-entry-boundary",
             SALVATION_RELATIONSHIPS_PACK_VERSION,
         )
         self.assertIn(
@@ -269,10 +269,16 @@ class SalvationRelationshipsTests(unittest.TestCase):
             ].true_criteria,
         )
         self.assertIn(
-            "surrender to sin",
+            "causally or temporally",
             SALVATION_RELATIONSHIP_SPECS[
                 "repentance_as_receiving_response"
             ].true_criteria,
+        )
+        self.assertIn(
+            "already-Christian",
+            SALVATION_RELATIONSHIP_SPECS[
+                "repentance_as_receiving_response"
+            ].false_criteria,
         )
         self.assertIn(
             "generic transformation",
