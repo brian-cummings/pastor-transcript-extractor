@@ -935,11 +935,12 @@ def _select_v5_heldout_probes(
             if str(item["candidate_key"]) not in excluded_case_keys
             and str(item["candidate_key"]) in prior_probabilities
         ]
+        ordered_by_side: dict[str, list[Mapping[str, Any]]] = {}
         for side, predicate in (
             ("below", lambda value: value < threshold),
             ("at_or_above", lambda value: value >= threshold),
         ):
-            ordered = sorted(
+            ordered_by_side[side] = sorted(
                 (
                     item
                     for item in available
@@ -955,39 +956,86 @@ def _select_v5_heldout_probes(
                     str(item["candidate_key"]),
                 ),
             )
-            selected: list[Mapping[str, Any]] = []
-            represented: set[str] = set()
+
+        selected: list[tuple[Mapping[str, Any], str]] = []
+        selected_keys: set[str] = set()
+
+        def select_diverse(
+            ordered: Sequence[Mapping[str, Any]],
+            *,
+            limit: int,
+            selection_mode: str,
+            represented: set[str],
+        ) -> None:
+            """Append nearby unused cases, preferring pastors not yet represented."""
             for require_new_pastor in (True, False):
                 for item in ordered:
                     key = str(item["candidate_key"])
                     pastor = str(item["pastor"].get("slug"))
-                    if any(str(chosen["candidate_key"]) == key for chosen in selected):
+                    if key in selected_keys:
                         continue
                     if require_new_pastor and pastor in represented:
                         continue
-                    selected.append(item)
+                    selected.append((item, selection_mode))
+                    selected_keys.add(key)
                     represented.add(pastor)
-                    if len(selected) == 2:
-                        break
-                if len(selected) == 2:
-                    break
-            if len(selected) < 2:
-                raise ValueError(
-                    f"V5 calibration lacks two fresh {side} probes for {relationship}"
-                )
-            for rank, item in enumerate(selected, start=1):
-                key = str(item["candidate_key"])
-                probes.append(
-                    {
-                        "candidate_key": key,
-                        "relationship": relationship,
-                        "prior_probability": round(
-                            prior_probabilities[key][relationship], 6
-                        ),
-                        "prior_boundary_side": side,
-                        "side_rank": rank,
-                    }
-                )
+                    if len(selected) == limit:
+                        return
+
+        # Preserve the intended two-per-side boundary sample whenever the cached
+        # evidence supports it. Sparse leaves may not have two fresh observations
+        # on both sides, so the second pass fills the fixed four-case quota from
+        # the nearest unused evidence on either side.
+        for side in ("below", "at_or_above"):
+            represented: set[str] = set()
+            side_limit = len(selected) + min(2, len(ordered_by_side[side]))
+            select_diverse(
+                ordered_by_side[side],
+                limit=side_limit,
+                selection_mode="balanced_side",
+                represented=represented,
+            )
+
+        if len(selected) < 4:
+            nearest_unused = sorted(
+                available,
+                key=lambda item: (
+                    abs(
+                        prior_probabilities[str(item["candidate_key"])][relationship]
+                        - threshold
+                    ),
+                    str(item["candidate_key"]),
+                ),
+            )
+            select_diverse(
+                nearest_unused,
+                limit=4,
+                selection_mode="quota_fill",
+                represented={
+                    str(item["pastor"].get("slug")) for item, _mode in selected
+                },
+            )
+        if len(selected) < 4:
+            raise ValueError(
+                f"V5 calibration requires four fresh probes for {relationship}"
+            )
+
+        side_ranks = {"below": 0, "at_or_above": 0}
+        for item, selection_mode in selected:
+            key = str(item["candidate_key"])
+            probability = prior_probabilities[key][relationship]
+            side = "at_or_above" if probability >= threshold else "below"
+            side_ranks[side] += 1
+            probes.append(
+                {
+                    "candidate_key": key,
+                    "relationship": relationship,
+                    "prior_probability": round(probability, 6),
+                    "prior_boundary_side": side,
+                    "side_rank": side_ranks[side],
+                    "selection_mode": selection_mode,
+                }
+            )
     return probes
 
 

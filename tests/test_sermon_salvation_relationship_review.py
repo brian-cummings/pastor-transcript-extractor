@@ -180,6 +180,54 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                 {probe["prior_boundary_side"] for probe in selected},
             )
 
+    def test_v5_calibration_fills_sparse_side_from_nearest_fresh_cases(self) -> None:
+        candidates = [
+            {
+                "candidate_key": f"900{index}:{index}",
+                "pastor": {"slug": f"pastor-{index}"},
+            }
+            for index in range(8)
+        ]
+        sparse_relationship = "obedience_as_condition_or_means"
+        prior = {
+            candidate["candidate_key"]: {
+                relationship: (
+                    0.71
+                    if relationship == sparse_relationship and index == 0
+                    else 0.69
+                    if relationship == sparse_relationship
+                    else SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+                    + (-0.01, 0.01)[index % 2]
+                )
+                for relationship in V5_CALIBRATION_RELATIONSHIPS
+            }
+            for index, candidate in enumerate(candidates)
+        }
+
+        probes = _select_v5_heldout_probes(
+            candidates,
+            prior,
+            excluded_case_keys=set(),
+        )
+
+        selected = [
+            probe
+            for probe in probes
+            if probe["relationship"] == sparse_relationship
+        ]
+        self.assertEqual(4, len(selected))
+        self.assertEqual(
+            1,
+            sum(
+                probe["prior_boundary_side"] == "at_or_above"
+                for probe in selected
+            ),
+        )
+        self.assertEqual(
+            1,
+            sum(probe["selection_mode"] == "quota_fill" for probe in selected),
+        )
+
     def test_archived_final_calibration_fails_closed_after_policy_freeze(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived for the reviewed pre-freeze"):
             evaluate_salvation_final_calibration(
