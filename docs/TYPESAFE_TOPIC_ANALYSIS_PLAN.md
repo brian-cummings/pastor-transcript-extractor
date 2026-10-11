@@ -1244,16 +1244,25 @@ theological stance.
     measurement limitations, not prompt-rewrite targets. The production policy is
     versioned as `salvation-relationship-observation-thresholds-v4-v5-final`; raw
     probabilities and the v5 question pack remain unchanged.
+69. The first ordinary-classification pass under v5 validates eight leaves but
+    does not yet approve collection. Repentance shows a semantic inversion between
+    `4394:45` (`0.55`, affirmative rejected) and `350:50` (`0.57`, negative
+    collected). Conversion's first collection at `4394:51` (`0.54`) is too weak,
+    while forgiveness `4430:44` (`0.68`) and assurance `4458:69` (`0.61`) are
+    material numeric misses. A final provider-free packet keeps the other eight
+    leaves frozen, adds three fresh repentance neighbors per policy side, and
+    samples only conversion `0.54`–`0.58`, forgiveness `0.68`–`0.70`, and assurance
+    `0.61`–`0.62`. Justification `4589:48`, sanctification `3973:75`, and the known
+    consequence false positive `4430:47` remain non-authorizing watch fixtures.
 
 ### Next iteration
 
-1. Reclassify the frozen twelve-sermon cohort through the ordinary cache-aware
-   path. Unchanged role, treatment, topic, and recording-verifier packs replay.
-   The 36 blocks evaluated during v5 calibration reuse their leaf answers; other
-   routed cohort blocks request the missing v5 pack once. The numeric threshold
-   change itself makes no provider request.
-2. Build the provider-free collected-observation review and inspect distributions
-   and outliers before authorizing any theology-profile aggregation.
+1. Run and review `salvation-final-collection-check-v1.md`. For repentance, decide
+   whether fresh cases reproduce the inversion before changing wording or policy;
+   for conversion, forgiveness, and assurance, choose numeric boundaries only.
+2. Apply any approved localized change, refresh the frozen cohort through the
+   cache-aware path, and rerun collected-observation review before authorizing any
+   theology-profile aggregation.
 
 ## Non-goals for `topics-v1`
 

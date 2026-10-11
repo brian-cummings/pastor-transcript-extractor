@@ -456,6 +456,18 @@ recomputes every stored collection decision from the raw probability, and writes
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
 
+If that ordinary-classification packet exposes only localized final boundary
+questions, build the bounded follow-up without reclassification or a provider call:
+
+```bash
+pte analysis salvation-final-collection-check \
+  --base-dir /path/to/app-data
+```
+
+The current follow-up keeps eight leaves frozen, checks repentance ordering against
+six fresh neighbors, and samples only the reviewed numeric windows for conversion,
+forgiveness, and assurance.
+
 The reviewed v4 relationship questions and final per-leaf boundaries are frozen.
 Historical semantic and final-calibration commands fail closed after the freeze so
 they cannot overwrite their fingerprinted review packets with a later policy.

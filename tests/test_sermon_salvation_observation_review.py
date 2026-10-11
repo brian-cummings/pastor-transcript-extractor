@@ -10,6 +10,8 @@ from pastor_transcript_extractor.sermon_salvation_observation_review import (
     SALVATION_BOUNDARY_RECALIBRATION_ANCHORS,
     SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS,
     SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION,
+    SALVATION_FINAL_COLLECTION_CHECK_ANCHORS,
+    SALVATION_FINAL_COLLECTION_CHECK_RELATIONSHIPS,
     SALVATION_JUDGMENT_WATCH_KEY,
     SALVATION_COLLECTION_RECALIBRATION_RELATIONSHIPS,
     SALVATION_COLLECTION_REVIEWED_ANCHORS,
@@ -17,6 +19,7 @@ from pastor_transcript_extractor.sermon_salvation_observation_review import (
     build_salvation_boundary_recalibration,
     build_salvation_collection_recalibration,
     build_salvation_collected_observations_review,
+    build_salvation_final_collection_check,
     render_salvation_collection_recalibration,
     render_salvation_collected_observations_review,
     write_salvation_collection_recalibration,
@@ -90,6 +93,107 @@ def _source() -> dict[str, object]:
 
 
 class SalvationCollectedObservationReviewTests(unittest.TestCase):
+    def test_final_collection_check_is_bounded_and_provider_free(self) -> None:
+        source = {
+            "video_id": 1,
+            "stored_artifact_sha256": "stored",
+            "artifact": {},
+        }
+
+        def judgment(key, relationship, probability, pastor):
+            video_id, block_id, _leaf = key.split(":")
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            return {
+                "judgment_key": key,
+                "relationship": relationship,
+                "probability": probability,
+                "threshold": threshold,
+                "collected": probability >= threshold,
+                "pastor": {"display_name": pastor, "slug": pastor.lower()},
+                "video_id": int(video_id),
+                "youtube_video_id": f"youtube-{video_id}",
+                "title": f"Sermon {video_id}",
+                "block_id": int(block_id),
+                "start_seconds": float(block_id),
+                "end_seconds": float(block_id) + 1.0,
+                "leading_context": "Leading.",
+                "target_text": f"Target {key}.",
+                "trailing_context": "Trailing.",
+            }
+
+        judgments = []
+        for key in SALVATION_FINAL_COLLECTION_CHECK_ANCHORS:
+            relationship = key.rsplit(":", 1)[1]
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            judgments.append(judgment(key, relationship, threshold, "Anchor"))
+        fresh_id = 8000
+        for relationship, probabilities in {
+            "conversion_new_birth": (0.54, 0.56),
+            "forgiveness_pardon": (0.68, 0.69),
+            "assurance_security": (0.61, 0.62),
+        }.items():
+            for probability in probabilities:
+                fresh_id += 1
+                judgments.append(
+                    judgment(
+                        f"{fresh_id}:1:{relationship}",
+                        relationship,
+                        probability,
+                        f"Pastor {fresh_id}",
+                    )
+                )
+        repentance = "repentance_as_receiving_response"
+        repentance_threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+            repentance
+        ]
+        for direction in (-1, 1):
+            for rank in range(3):
+                fresh_id += 1
+                judgments.append(
+                    judgment(
+                        f"{fresh_id}:1:{repentance}",
+                        repentance,
+                        round(repentance_threshold + direction * (rank + 1) / 100, 2),
+                        f"Pastor {rank}",
+                    )
+                )
+        prior = {
+            "review_policy_version": (
+                SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
+            ),
+            "input_fingerprint": "prior",
+            "source_artifacts": _source_artifact_fingerprints([source]),
+            "probes": [
+                {"judgment_key": key}
+                for key in SALVATION_FINAL_COLLECTION_CHECK_ANCHORS
+            ],
+        }
+        with patch(
+            "pastor_transcript_extractor.sermon_salvation_observation_review."
+            "_validated_source_judgments",
+            return_value=judgments,
+        ):
+            packet = build_salvation_final_collection_check(
+                [source],
+                cohort_sha256="cohort",
+                readiness_input_fingerprint="readiness",
+                prior_review=prior,
+            )
+
+        self.assertEqual(
+            set(SALVATION_FINAL_COLLECTION_CHECK_RELATIONSHIPS),
+            {probe["relationship"] for probe in packet["probes"]},
+        )
+        self.assertEqual(
+            8,
+            sum(
+                probe["relationship"] == repentance
+                for probe in packet["probes"]
+            ),
+        )
+        self.assertEqual(8, len(packet["frozen_relationships"]))
+        self.assertEqual(0, packet["provider_requests"])
+
     def test_boundary_recalibration_combines_anchors_fresh_probes_and_watch(self) -> None:
         source = {
             "video_id": 1,
