@@ -13,12 +13,12 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SALVATION_RELATIONSHIPS_PACK_VERSION = (
-    "salvation-relationships-v3-receiving-and-fruit-boundaries"
+    "salvation-relationships-v4-repentant-surrender-boundary"
 )
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v1"
+    "salvation-relationship-observation-thresholds-v2-assurance"
 )
 
 
@@ -172,15 +172,16 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
         true_criteria=(
             "The target explicitly presents repentance, confession of sin, or turning "
             "from sin toward God as the response by which a person receives salvation, "
-            "forgiveness, or restored relationship with God. Surrender counts only when "
-            "the target identifies it as that repentant turn, not merely as devotion or "
-            "perseverance after conversion."
+            "forgiveness, or restored relationship with God. Surrender or yielding to "
+            "God also counts when the target contrasts it with surrender to sin or "
+            "explicitly connects it to entering God's kingdom, receiving God's "
+            "indwelling presence, or another saving benefit."
         ),
         false_criteria=(
             "The target merely calls for a decision, generic surrender, following Jesus, "
             "honesty, renewed practice, perseverance, or transformation after forgiveness "
-            "without presenting repentance, confession, or turning from sin as the "
-            "receiving response."
+            "without presenting repentance, confession, turning from sin, or "
+            "salvation-linked surrender as the receiving response."
         ),
     ),
     "obedience_as_condition_or_means": SalvationRelationshipSpec(
@@ -225,7 +226,7 @@ SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "justification_right_standing": 0.70,
     "conversion_new_birth": 0.70,
     "sanctification_transformation": 0.70,
-    "assurance_security": 0.55,
+    "assurance_security": 0.62,
     "judgment_final_destiny": 0.65,
     "faith_as_receiving_response": 0.65,
     "repentance_as_receiving_response": 0.70,

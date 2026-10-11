@@ -53,6 +53,9 @@ DEFAULT_SALVATION_OBEDIENCE_CALIBRATION_OUTPUT = Path(
 DEFAULT_SALVATION_SEMANTIC_CALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-semantic-calibration-v1.json"
 )
+DEFAULT_SALVATION_FINAL_CALIBRATION_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-final-calibration-v1.json"
+)
 PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v2-evidence-boundaries"
 )
@@ -60,6 +63,9 @@ SEMANTIC_CALIBRATION_RELATIONSHIPS = (
     "faith_as_receiving_response",
     "repentance_as_receiving_response",
     "obedience_as_consequence_or_evidence",
+)
+SEMANTIC_CALIBRATION_REVISED_PACK_VERSION = (
+    "salvation-relationships-v3-receiving-and-fruit-boundaries"
 )
 SEMANTIC_REGRESSION_CASES = {
     "faith_as_receiving_response": frozenset(
@@ -78,6 +84,27 @@ SEMANTIC_REGRESSION_CANDIDATE_KEYS = frozenset().union(
 RECALIBRATION_REVIEWED_CANDIDATE_KEYS = SEMANTIC_REGRESSION_CANDIDATE_KEYS | frozenset(
     {"4430:31", "590:44", "4589:41", "4430:44"}
 )
+FAITH_POSITIVE_RECALL_ANCHORS = frozenset({"281:123", "4430:48"})
+FAITH_REVIEWED_NEGATIVE_KEYS = frozenset(
+    {
+        "281:115",
+        "281:124",
+        "350:31",
+        "4394:37",
+        "4394:47",
+        "4394:50",
+        "4394:52",
+        "4589:42",
+    }
+)
+REPENTANCE_FINAL_REGRESSION_LABELS = {
+    "350:47": "affirmative",
+    "3973:89": "affirmative",
+    "3974:91": "affirmative",
+    "350:65": "negative",
+    "3974:66": "negative",
+    "4589:28": "negative",
+}
 PRIOR_REVIEW_FINGERPRINT = (
     "e6ef7c6b8e8e6ee92588c3a7a045794694dac1941546043b1e0b0f6f92ce2980"
 )
@@ -603,6 +630,11 @@ def evaluate_salvation_semantic_calibration(
     client: TypeSafeBlockClient,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """Compare revised semantics on regressions and fresh held-out boundaries."""
+    if SALVATION_RELATIONSHIPS_PACK_VERSION != SEMANTIC_CALIBRATION_REVISED_PACK_VERSION:
+        raise ValueError(
+            "Semantic calibration v1 is archived for the reviewed v3 pack; use "
+            "salvation-final-calibration for the current pack"
+        )
     candidates, readiness_fingerprint = _routed_candidates(database, cohort)
     by_key = {str(item["candidate_key"]): item for item in candidates}
     missing = sorted(SEMANTIC_REGRESSION_CANDIDATE_KEYS - set(by_key))
@@ -694,6 +726,133 @@ def evaluate_salvation_semantic_calibration(
             "cases and a separate fresh held-out boundary set. Assurance is unchanged "
             "and uses only prior cached judgments above 0.59. No threshold or production "
             "observation policy changes in this packet."
+        ),
+    }, execution
+
+
+def evaluate_salvation_final_calibration(
+    database: Database,
+    cohort: Mapping[str, Any],
+    *,
+    model: str,
+    client: TypeSafeBlockClient,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Run the last bounded faith-recall and repentance-ordering check."""
+    candidates, readiness_fingerprint = _routed_candidates(database, cohort)
+    by_key = {str(item["candidate_key"]): item for item in candidates}
+    legacy = _legacy_relationship_probabilities(database, cohort)
+    required = FAITH_POSITIVE_RECALL_ANCHORS | frozenset(
+        REPENTANCE_FINAL_REGRESSION_LABELS
+    )
+    missing = sorted(required - set(by_key) | required - set(legacy))
+    if missing:
+        raise ValueError(
+            "Final salvation calibration cases are unavailable: "
+            + ", ".join(missing)
+        )
+    strongest_faith = [
+        key
+        for key, _values in sorted(
+            legacy.items(),
+            key=lambda item: (
+                -float(item[1]["faith_as_receiving_response"]),
+                item[0],
+            ),
+        )
+        if key in by_key
+        and key not in FAITH_POSITIVE_RECALL_ANCHORS
+        and key not in FAITH_REVIEWED_NEGATIVE_KEYS
+    ][:4]
+    if len(strongest_faith) < 4:
+        raise ValueError("Final calibration requires four strong faith candidates")
+    faith_keys = sorted(FAITH_POSITIVE_RECALL_ANCHORS | set(strongest_faith))
+    evaluation_keys = sorted(set(faith_keys) | set(REPENTANCE_FINAL_REGRESSION_LABELS))
+    evaluated, execution = evaluate_salvation_relationship_candidates(
+        [by_key[key] for key in evaluation_keys],
+        model=model,
+        client=client,
+    )
+    evaluated_by_key = {
+        str(item["candidate_key"]): item for item in evaluated
+    }
+    faith_probes = [
+        {
+            "candidate_key": key,
+            "selection": (
+                "reviewed_affirmative_anchor"
+                if key in FAITH_POSITIVE_RECALL_ANCHORS
+                else "strongest_prior_candidate"
+            ),
+            "prior_probability": round(
+                legacy[key]["faith_as_receiving_response"], 6
+            ),
+            "revised_probability": round(
+                float(
+                    evaluated_by_key[key]["leaf_probabilities"][
+                        "faith_as_receiving_response"
+                    ]
+                ),
+                6,
+            ),
+        }
+        for key in faith_keys
+    ]
+    repentance_probes = [
+        {
+            "candidate_key": key,
+            "review_label": label,
+            "v2_probability": round(
+                legacy[key]["repentance_as_receiving_response"], 6
+            ),
+            "revised_probability": round(
+                float(
+                    evaluated_by_key[key]["leaf_probabilities"][
+                        "repentance_as_receiving_response"
+                    ]
+                ),
+                6,
+            ),
+        }
+        for key, label in sorted(REPENTANCE_FINAL_REGRESSION_LABELS.items())
+    ]
+    cases = [
+        {
+            key: value
+            for key, value in evaluated_by_key[candidate_key].items()
+            if key not in {"cache_dir", "context_diagnostics", "segment_indexes"}
+        }
+        for candidate_key in evaluation_keys
+    ]
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": "salvation-final-calibration-v1",
+        "cohort_sha256": cohort.get("cohort_sha256"),
+        "readiness_input_fingerprint": readiness_fingerprint,
+        "prior_leaf_pack_version": PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
+        "requested_model_id": model,
+        "observation_policy_version": (
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        ),
+        "unchanged_except_assurance_thresholds": dict(
+            SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
+        ),
+        "faith_probes": faith_probes,
+        "repentance_probes": repentance_probes,
+        "cases": cases,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "final_leaf_calibration_pending_review",
+        "policy_effect": "assurance_threshold_only",
+        "interpretation": (
+            "Assurance is now collected at 0.62 and obedience-as-consequence is "
+            "frozen at 0.55. This packet makes no further threshold change. It checks "
+            "faith positive recall on two reviewed anchors plus four strongest prior "
+            "candidates, and reruns the six decisive repentance regressions under the "
+            "revised salvation-linked surrender boundary."
         ),
     }, execution
 
@@ -924,7 +1083,14 @@ def render_salvation_semantic_calibration(packet: Mapping[str, Any]) -> str:
             f"| {index} | {probe['candidate_key']} | "
             f"{float(probe['probability']):.3f} |"
         )
-    lines.extend(["", "## Deduplicated evidence cases", ""])
+    lines.extend(_render_deduplicated_evidence_cases(cases))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_deduplicated_evidence_cases(
+    cases: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    lines = ["", "## Deduplicated evidence cases", ""]
     for candidate_key in sorted(cases):
         case = cases[candidate_key]
         lines.extend(
@@ -948,6 +1114,61 @@ def render_salvation_semantic_calibration(packet: Mapping[str, Any]) -> str:
                 "",
             ]
         )
+    return lines
+
+
+def render_salvation_final_calibration(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    lines = [
+        "# Salvation final leaf calibration",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Revised leaf pack: `{packet['revised_leaf_pack_version']}`",
+        f"- Observation policy: `{packet['observation_policy_version']}`",
+        f"- Faith probes: `{len(packet['faith_probes'])}`",
+        f"- Repentance probes: `{len(packet['repentance_probes'])}`",
+        f"- Unique evidence cases: `{len(packet['cases'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "Faith acceptance criterion: the reviewed affirmative anchors must remain "
+        "affirmative under the narrowed receiving-faith wording. Review the four "
+        "strong prior candidates independently; a high prior score does not pre-approve "
+        "them.",
+        "",
+        "Repentance acceptance criterion: the three reviewed affirmatives must rank "
+        "above the three reviewed negatives. Do not repair an ordering failure by "
+        "changing the threshold.",
+        "",
+        "## Faith positive-recall probes",
+        "",
+        "| Case | Selection | Prior v2 p | Revised p |",
+        "| --- | --- | ---: | ---: |",
+    ]
+    for probe in packet["faith_probes"]:
+        lines.append(
+            f"| {probe['candidate_key']} | {probe['selection']} | "
+            f"{float(probe['prior_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Repentance ordering regressions",
+            "",
+            "| Case | Reviewed label | Prior v2 p | Revised p |",
+            "| --- | --- | ---: | ---: |",
+        ]
+    )
+    for probe in packet["repentance_probes"]:
+        lines.append(
+            f"| {probe['candidate_key']} | {probe['review_label']} | "
+            f"{float(probe['v2_probability']):.3f} | "
+            f"{float(probe['revised_probability']):.3f} |"
+        )
+    lines.extend(_render_deduplicated_evidence_cases(cases))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1070,4 +1291,15 @@ def write_salvation_semantic_calibration(
         path,
         packet,
         render_salvation_semantic_calibration,
+    )
+
+
+def write_salvation_final_calibration(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_final_calibration,
     )

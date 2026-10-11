@@ -17,6 +17,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     SEMANTIC_CALIBRATION_RELATIONSHIPS,
     _select_semantic_heldout_probes,
     _select_review_candidates,
+    evaluate_salvation_semantic_calibration,
     evaluate_salvation_relationship_review,
     select_obedience_consequence_calibration_candidates,
     write_salvation_relationship_review,
@@ -137,6 +138,15 @@ def _block(block_id: int, support: float) -> dict[str, object]:
 
 
 class SalvationRelationshipReviewTests(unittest.TestCase):
+    def test_archived_semantic_calibration_fails_closed_after_pack_revision(self) -> None:
+        with self.assertRaisesRegex(ValueError, "archived for the reviewed v3 pack"):
+            evaluate_salvation_semantic_calibration(
+                None,
+                {},
+                model="jev-1.13.0",
+                client=_Client(),
+            )
+
     def test_semantic_calibration_selects_fresh_probes_on_both_sides(self) -> None:
         candidates = [
             {

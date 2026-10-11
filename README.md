@@ -422,11 +422,11 @@ aggregation remains blocked pending reviewed profile membership.
 
 Projection-eligible blocks whose cached `salvation_gospel` supporting-or-above
 probability is at least `0.55` also enter the independently cached
-`salvation-relationships-v3-receiving-and-fruit-boundaries` leaf pack. The twelve Noul
+`salvation-relationships-v4-repentant-surrender-boundary` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the frozen
-`salvation-relationship-observation-thresholds-v1` per-leaf thresholds. The raw
+`salvation-relationship-observation-thresholds-v2-assurance` per-leaf thresholds. The raw
 probabilities remain policy-independent evidence, so changing a collection
 threshold does not require another provider request. Relationship observations are
 still observation-only: they do not change sermon boundaries, disposition, or a
@@ -450,20 +450,17 @@ recomputes every stored collection decision from the raw probability, and writes
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
 
-When revising a relationship question, validate the new pack before refreshing the
-cohort classifications. The bounded semantic calibration reuses the normal
-per-video pack cache, compares the revised questions on fourteen reviewed
-regressions and twelve fresh held-out leaf probes, and selects the next six
-assurance candidates from the existing v2 probabilities without a provider call:
+Before refreshing cohort classifications with the revised relationship pack, run
+the final bounded acceptance check:
 
 ```bash
-pte analysis salvation-semantic-calibration \
+pte analysis salvation-final-calibration \
   --base-dir /path/to/app-data
 ```
 
-An unchanged rerun is fully cached. The command does not change thresholds or
-production observations; reclassification happens only after the packet is
-reviewed.
+It evaluates six faith positive-recall candidates and the six decisive repentance
+ordering regressions. It uses the same per-video pack cache and makes no broad
+corpus pass.
 
 Prepare the bounded review packet for the named video 4548 regression cases
 without making another provider request:

@@ -1177,16 +1177,28 @@ theological stance.
     the fourteen reviewed semantic probes, adds twelve fresh held-out boundary
     probes, and presents six provider-free assurance candidates. Thresholds and
     production observation policy remain unchanged until that packet is reviewed.
+63. Semantic calibration v1 approves two leaves and narrows the final check to two.
+    Assurance moves from `0.55` to `0.62` under
+    `salvation-relationship-observation-thresholds-v2-assurance`, based on reviewed
+    negatives through `0.59` and the first clear affirmative at `0.62`.
+    Obedience-as-consequence freezes the v3 wording at `0.55`. Receiving-faith keeps
+    the v3 wording but remains provisional because every regression and held-out
+    probe was negative. Repentance v3 failed its ordering criterion, so v4 restores
+    surrender or yielding only when explicitly contrasted with surrender to sin or
+    tied to entering God's kingdom, receiving God's indwelling presence, or another
+    saving benefit. The final bounded packet evaluates two reviewed affirmative
+    faith anchors plus four strongest prior candidates and reruns the three decisive
+    affirmative and three negative repentance cases. No cohort reclassification is
+    authorized until both checks pass.
 
 ### Next iteration
 
-1. Run `pte analysis salvation-semantic-calibration` once before reclassifying the
-   cohort with the v3 leaf pack. Review the known regression cases, then the fresh
-   held-out cases, and identify the first genuine assurance assertion in the
-   ascending cached assurance section.
-2. Freeze or adjust only the affected per-leaf numeric boundaries after the revised
-   semantic ordering passes. Do not design sermon- or pastor-level aggregation
-   until the collection policy passes.
+1. Run `pte analysis salvation-final-calibration` before reclassifying the cohort.
+   Confirm that receiving-faith retains affirmative recall and that all three
+   reviewed repentance affirmatives rank above all three reviewed negatives.
+2. If both checks pass, freeze the twelve-leaf observation layer and refresh the
+   twelve-sermon cohort through ordinary reclassification. Do not design sermon- or
+   pastor-level aggregation until the refreshed collection policy passes.
 
 ## Non-goals for `topics-v1`
 
