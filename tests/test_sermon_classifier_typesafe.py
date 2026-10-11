@@ -307,7 +307,8 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             relationship: 0.69 for relationship in SALVATION_RELATIONSHIPS
         }
         probabilities["assurance_security"] = 0.62
-        probabilities["obedience_as_consequence_or_evidence"] = 0.55
+        probabilities["conversion_new_birth"] = 0.54
+        probabilities["obedience_as_consequence_or_evidence"] = 0.60
         answer = TypeSafeBlockAnswer(
             "principal_sermon",
             {"principal_sermon": 1.0},
@@ -345,6 +346,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             item["relationship"] for item in raw["observations"]
         }
         self.assertIn("assurance_security", collected)
+        self.assertIn("conversion_new_birth", collected)
         self.assertIn("obedience_as_consequence_or_evidence", collected)
         self.assertNotIn("atonement_as_basis", collected)
         self.assertEqual(1, len(artifact["provider_requests"]))

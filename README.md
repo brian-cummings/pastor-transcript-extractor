@@ -426,7 +426,7 @@ probability is at least `0.55` also enter the independently cached
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the frozen
-`salvation-relationship-observation-thresholds-v3-final` per-leaf thresholds. The raw
+`salvation-relationship-observation-thresholds-v4-v5-final` per-leaf thresholds. The raw
 probabilities remain policy-independent evidence, so changing a collection
 threshold does not require another provider request. Relationship observations are
 still observation-only: they do not change sermon boundaries, disposition, or a
@@ -435,6 +435,12 @@ evidence is preserved and reconciled with the final sermon projection: blocks th
 are no longer routed stop contributing observations, while a newly routed block
 without cached leaf evidence is reported as incomplete rather than silently
 treated as negative.
+
+The final v5 numeric calibration sets conversion/new birth to `0.54` and obedience
+as consequence/evidence to `0.60`; divine grace remains `0.65` and obedience as
+condition/means remains `0.70`. The reviewed conversion and consequence cases have
+real positive/negative overlap, so these are operating boundaries over noisy
+measurements rather than claims of perfect classification.
 
 After refreshing the frozen twelve-sermon validation cohort through ordinary
 `pte reclassify`, build its bounded collected-observation review without calling a

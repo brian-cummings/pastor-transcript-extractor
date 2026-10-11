@@ -336,6 +336,12 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
             "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
             "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
             "input_fingerprint": "v5-fingerprint",
+            "unchanged_thresholds": {
+                relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+                    relationship
+                ]
+                for relationship in V5_CALIBRATION_RELATIONSHIPS
+            },
             "cases": cases,
             "regression_probes": [],
         }

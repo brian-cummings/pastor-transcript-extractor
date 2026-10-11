@@ -1234,15 +1234,26 @@ theological stance.
     fingerprint `b7e52b68d97c...`, includes every conversion judgment from `0.45`
     through `0.70`, and adds four nearest boundary judgments for each other revised
     leaf. It changes neither inference nor collection policy.
+68. Final numeric review freezes the v5 observation policy. Divine initiative
+    remains `0.65` and obedience-as-condition remains `0.70`. Conversion moves
+    from `0.70` to `0.54` to retain the clearest new-life transition evidence,
+    knowingly leaving one affirmative `0.51` case uncollected and accepting noisy
+    negatives above the boundary. Obedience-as-consequence moves from `0.55` to
+    `0.60`, excluding the reviewed `0.54` negative while accepting that one
+    affirmative and one negative both score `0.61`. These overlaps are frozen as
+    measurement limitations, not prompt-rewrite targets. The production policy is
+    versioned as `salvation-relationship-observation-thresholds-v4-v5-final`; raw
+    probabilities and the v5 question pack remain unchanged.
 
 ### Next iteration
 
-1. Review `salvation-v5-threshold-review-v1.md` and choose the final numeric
-   boundaries. Conversion is the only boundary already known to require movement;
-   do not reopen the frozen question meanings.
-2. Apply the reviewed boundaries once, reclassify the frozen cohort through the
-   ordinary cache-aware path, and inspect collected observations and pastor-level
-   distributions before authorizing any theology-profile aggregation.
+1. Reclassify the frozen twelve-sermon cohort through the ordinary cache-aware
+   path. Unchanged role, treatment, topic, and recording-verifier packs replay.
+   The 36 blocks evaluated during v5 calibration reuse their leaf answers; other
+   routed cohort blocks request the missing v5 pack once. The numeric threshold
+   change itself makes no provider request.
+2. Build the provider-free collected-observation review and inspect distributions
+   and outliers before authorizing any theology-profile aggregation.
 
 ## Non-goals for `topics-v1`
 

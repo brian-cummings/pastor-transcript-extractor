@@ -1218,6 +1218,17 @@ def build_salvation_v5_threshold_review(
     source_cases = calibration.get("cases")
     if not isinstance(source_cases, list):
         raise ValueError("V5 calibration cases must be a list")
+    source_thresholds = calibration.get("unchanged_thresholds")
+    if not isinstance(source_thresholds, Mapping):
+        raise ValueError("V5 calibration has no threshold snapshot")
+    threshold_snapshot: dict[str, float] = {}
+    for relationship in V5_CALIBRATION_RELATIONSHIPS:
+        threshold = source_thresholds.get(relationship)
+        if not isinstance(threshold, (int, float)) or not 0 < threshold < 1:
+            raise ValueError(
+                f"V5 calibration has invalid {relationship} threshold"
+            )
+        threshold_snapshot[relationship] = float(threshold)
     cases_by_key: dict[str, Mapping[str, Any]] = {}
     for case in source_cases:
         if not isinstance(case, Mapping):
@@ -1264,7 +1275,7 @@ def build_salvation_v5_threshold_review(
     for relationship in V5_CALIBRATION_RELATIONSHIPS:
         if relationship == conversion:
             continue
-        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+        threshold = threshold_snapshot[relationship]
         values = [
             (key, float(case["leaf_probabilities"][relationship]))
             for key, case in cases_by_key.items()
@@ -1328,10 +1339,7 @@ def build_salvation_v5_threshold_review(
         "source_calibration_fingerprint": source_fingerprint,
         "leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
         "leaf_pack_digest": salvation_relationship_pack_digest(),
-        "current_thresholds": {
-            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
-            for relationship in V5_CALIBRATION_RELATIONSHIPS
-        },
+        "current_thresholds": threshold_snapshot,
         "relationship_definitions": {
             relationship: salvation_relationship_pack_inventory()["relationships"][
                 relationship

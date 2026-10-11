@@ -18,7 +18,7 @@ SALVATION_RELATIONSHIPS_PACK_VERSION = (
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v3-final"
+    "salvation-relationship-observation-thresholds-v4-v5-final"
 )
 
 
@@ -232,14 +232,14 @@ SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "atonement_as_basis": 0.70,
     "forgiveness_pardon": 0.70,
     "justification_right_standing": 0.70,
-    "conversion_new_birth": 0.70,
+    "conversion_new_birth": 0.54,
     "sanctification_transformation": 0.70,
     "assurance_security": 0.62,
     "judgment_final_destiny": 0.65,
     "faith_as_receiving_response": 0.65,
     "repentance_as_receiving_response": 0.57,
     "obedience_as_condition_or_means": 0.70,
-    "obedience_as_consequence_or_evidence": 0.55,
+    "obedience_as_consequence_or_evidence": 0.60,
 }
 UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS: frozenset[str] = frozenset()
 

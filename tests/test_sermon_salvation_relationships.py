@@ -98,10 +98,14 @@ class SalvationRelationshipsTests(unittest.TestCase):
             salvation_relationship_observation_threshold("assurance_security"),
         )
         self.assertEqual(
-            0.55,
+            0.60,
             salvation_relationship_observation_threshold(
                 "obedience_as_consequence_or_evidence"
             ),
+        )
+        self.assertEqual(
+            0.54,
+            salvation_relationship_observation_threshold("conversion_new_birth"),
         )
         self.assertEqual(
             0.57,
