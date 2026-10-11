@@ -16,13 +16,15 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     PRIOR_REVIEWED_CANDIDATE_KEYS,
     PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION,
     PRIOR_V5_SALVATION_RELATIONSHIPS_PACK_VERSION,
+    PRIOR_V6_SALVATION_RELATIONSHIPS_PACK_VERSION,
     SEMANTIC_CALIBRATION_RELATIONSHIPS,
     V5_CALIBRATION_RELATIONSHIPS,
     V5_REVIEW_LABELS,
     V6_REPENTANCE_REGRESSION_LABELS,
+    V7_REPENTANCE_REGRESSION_LABELS,
     _select_semantic_heldout_probes,
     _select_v5_heldout_probes,
-    _select_v6_repentance_heldout_probes,
+    _select_repentance_heldout_probes,
     _select_review_candidates,
     build_salvation_v5_threshold_review,
     evaluate_salvation_final_calibration,
@@ -30,6 +32,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     evaluate_salvation_relationship_review,
     evaluate_salvation_v5_calibration,
     evaluate_salvation_v6_repentance_calibration,
+    evaluate_salvation_v7_repentance_calibration,
     select_obedience_consequence_calibration_candidates,
     write_salvation_relationship_review,
 )
@@ -252,11 +255,12 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
             for index, candidate in enumerate(candidates)
         }
 
-        probes = _select_v6_repentance_heldout_probes(
+        probes = _select_repentance_heldout_probes(
             candidates,
             prior,
             excluded_case_keys={"v6:0", "v6:9"},
             threshold=0.57,
+            calibration_version="V6",
         )
 
         self.assertEqual(8, len(probes))
@@ -350,6 +354,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
 
         with (
             patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.SALVATION_RELATIONSHIPS_PACK_VERSION",
+                PRIOR_V6_SALVATION_RELATIONSHIPS_PACK_VERSION,
+            ),
+            patch(
                 "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
                 return_value=(candidates, "readiness-fingerprint"),
             ),
@@ -379,6 +387,97 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         self.assertEqual(8, len(packet["heldout_probes"]))
         self.assertEqual(16, len(packet["cases"]))
         self.assertEqual(16, execution["provider_requests"])
+        self.assertTrue(
+            set(regression_keys).isdisjoint(
+                {probe["candidate_key"] for probe in packet["heldout_probes"]}
+            )
+        )
+
+    def test_v7_repentance_calibration_reuses_all_v6_cases_as_regressions(
+        self,
+    ) -> None:
+        regression_keys = sorted(
+            judgment_key.rsplit(":", 1)[0]
+            for judgment_key in V7_REPENTANCE_REGRESSION_LABELS
+        )
+        fresh_keys = [f"v7-fresh:{index}" for index in range(20)]
+        candidates = [
+            {
+                "candidate_key": key,
+                "pastor": {"slug": f"pastor-{index % 4}"},
+            }
+            for index, key in enumerate(regression_keys + fresh_keys)
+        ]
+        prior = {
+            key: {
+                "repentance_as_receiving_response": (
+                    0.56 if index < 10 else 0.58
+                )
+            }
+            for index, key in enumerate(fresh_keys)
+        }
+        prior.update(
+            {
+                key: {"repentance_as_receiving_response": 0.57}
+                for key in regression_keys
+            }
+        )
+        evaluated = [
+            {
+                **candidate,
+                "leaf_probabilities": {
+                    "repentance_as_receiving_response": 0.75,
+                },
+            }
+            for candidate in candidates
+        ]
+        v6_calibration = {
+            "review_policy_version": "salvation-v6-repentance-entry-calibration-v1",
+            "revised_leaf_pack_version": PRIOR_V6_SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "input_fingerprint": "v6-calibration",
+            "repentance_threshold": 0.57,
+            "approved_numeric_changes": {},
+            "excluded_reviewed_case_keys": [],
+            "cases": [
+                {
+                    "candidate_key": key,
+                    "leaf_probabilities": {
+                        "repentance_as_receiving_response": 0.57,
+                    },
+                }
+                for key in regression_keys
+            ],
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
+                return_value=(candidates, "readiness-fingerprint"),
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._relationship_probabilities_for_pack",
+                return_value=prior,
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.evaluate_salvation_relationship_candidates",
+                return_value=(
+                    evaluated,
+                    {"hits": 0, "misses": 24, "provider_requests": 24},
+                ),
+            ),
+        ):
+            packet, execution = evaluate_salvation_v7_repentance_calibration(
+                None,
+                {"cohort_sha256": "cohort"},
+                v6_calibration,
+                model="jev-1.13.0",
+                client=_Client(),
+            )
+
+        self.assertEqual(16, len(packet["regression_probes"]))
+        self.assertEqual(8, len(packet["heldout_probes"]))
+        self.assertEqual(24, len(packet["cases"]))
+        self.assertEqual(24, execution["provider_requests"])
         self.assertTrue(
             set(regression_keys).isdisjoint(
                 {probe["candidate_key"] for probe in packet["heldout_probes"]}

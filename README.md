@@ -422,11 +422,11 @@ aggregation remains blocked pending reviewed profile membership.
 
 Projection-eligible blocks whose cached `salvation_gospel` supporting-or-above
 probability is at least `0.55` also enter the independently cached
-`salvation-relationships-v6-repentance-entry-boundary` leaf pack. The twelve Noul
+`salvation-relationships-v7-repentance-response-context` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the provisional
-`salvation-relationship-observation-thresholds-v5-repentance-pending` per-leaf thresholds. The raw
+`salvation-relationship-observation-thresholds-v6-v7-repentance-pending` per-leaf thresholds. The raw
 probabilities remain policy-independent evidence, so changing a collection
 threshold does not require another provider request. Relationship observations are
 still observation-only: they do not change sermon boundaries, disposition, or a
@@ -439,9 +439,11 @@ treated as negative.
 The final provider-free boundary check sets conversion/new birth to `0.55`,
 forgiveness/pardon to `0.68`, and assurance/security to `0.61`. The other numeric
 boundaries remain frozen. Repentance stays provisionally at `0.57` while a bounded
-V6 check tests revised entry/restoration wording; it distinguishes repentance as a
-receiving or restoring response from surrender and growth in an already-Christian
-life. No other leaf question is reopened.
+V7 check tests a final, more observational entry/restoration wording. It asks whether
+repentance or surrender is presented as the human response within the saving appeal,
+without inferring that response from nearby sin, forgiveness, or salvation language.
+It still excludes growth and surrender after entry into saving relationship. No
+other leaf question is reopened.
 
 After refreshing the frozen twelve-sermon validation cohort through ordinary
 `pte reclassify`, build its bounded collected-observation review without calling a
@@ -465,19 +467,20 @@ pte analysis salvation-final-collection-check \
   --base-dir /path/to/app-data
 ```
 
-That provider-free follow-up has now been reviewed. It authorized the three numeric
-changes above and confirmed a repentance semantic inversion. Run only the bounded
-V6 repentance regression and held-out check before reclassifying the cohort:
+V6 corrected the post-conversion surrender failures but retained a semantic inversion
+between explicit restoration repentance and nearby salvation language. Run the final
+bounded V7 check before reclassifying the cohort:
 
 ```bash
-pte analysis salvation-v6-repentance-calibration \
+pte analysis salvation-v7-repentance-calibration \
   --model jev-1.13.0 \
   --base-dir /path/to/app-data
 ```
 
-The command evaluates eight labeled regressions and eight genuinely fresh cases.
+The command evaluates all sixteen V6 cases as labeled regressions and eight genuinely
+fresh cases.
 It uses the normal content-addressed per-video relationship cache; the full twelve-
-leaf V6 answer is cached for each selected block even though repentance alone is
+leaf V7 answer is cached for each selected block even though repentance alone is
 being adjudicated. An unchanged rerun therefore makes no provider request.
 
 The reviewed v4 relationship questions and final per-leaf boundaries are frozen.

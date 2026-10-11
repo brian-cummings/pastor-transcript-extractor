@@ -237,7 +237,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
 
     def test_revised_evidence_boundaries_are_explicit_and_general(self) -> None:
         self.assertEqual(
-            "salvation-relationships-v6-repentance-entry-boundary",
+            "salvation-relationships-v7-repentance-response-context",
             SALVATION_RELATIONSHIPS_PACK_VERSION,
         )
         self.assertIn(
@@ -269,13 +269,13 @@ class SalvationRelationshipsTests(unittest.TestCase):
             ].true_criteria,
         )
         self.assertIn(
-            "causally or temporally",
+            "human response within",
             SALVATION_RELATIONSHIP_SPECS[
                 "repentance_as_receiving_response"
             ].true_criteria,
         )
         self.assertIn(
-            "already-Christian",
+            "Do not infer repentance",
             SALVATION_RELATIONSHIP_SPECS[
                 "repentance_as_receiving_response"
             ].false_criteria,

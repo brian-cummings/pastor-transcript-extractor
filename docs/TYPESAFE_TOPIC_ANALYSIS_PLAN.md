@@ -1266,13 +1266,25 @@ theological stance.
     reclassification, a bounded cache-first check reruns eight labeled regressions
     and tests eight genuinely fresh, pastor-diverse cases around the prior `0.57`
     boundary. The observation policy is provisional until that check passes.
+71. V6 at fingerprint
+    `8162cfddecbe574217364e88e86186edc0b748522fb20cd2c54b756f372f13a7`
+    substantially improves the post-conversion boundary, but it still ranks two
+    salvation-context negatives above an explicit restoration-oriented repentance
+    positive. No threshold can repair that inversion. V7 makes the final authorized
+    semantic change: observe whether repentance, confession, turning, or surrender
+    is presented as the human response within a salvation-entry or restoration appeal
+    or explanation. It explicitly forbids inference from nearby sin, forgiveness,
+    salvation, or coming-to-Christ language and continues to exclude post-conversion
+    growth. All sixteen V6 cases become labeled regressions and eight new cases are
+    held out. If clear fresh positives do not rank above clear fresh negatives, stop
+    prompt tuning and record the block-level measurement limitation.
 
 ### Next iteration
 
-1. Run and review `salvation-v6-repentance-calibration-v1.md`. Approve V6 only if
-   the labeled ordering regressions are corrected and the fresh held-out cases
-   preserve the entry/restoration boundary. Do not tune the other eleven leaves.
-2. If V6 passes, freeze the repentance threshold from that packet, refresh the
+1. Run and review `salvation-v7-repentance-calibration-v1.md`. Approve V7 only if
+   clear fresh positives rank above clear fresh negatives; explicitly designated
+   ambiguous cases may overlap. Do not tune the other eleven leaves.
+2. If V7 passes, freeze the repentance threshold from that packet, refresh the
    twelve-sermon cohort through ordinary cache-aware `pte reclassify`, and rerun
    collected-observation review before authorizing theology-profile aggregation.
 

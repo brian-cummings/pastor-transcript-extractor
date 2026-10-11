@@ -13,12 +13,12 @@ from pastor_transcript_extractor.sermon_topics import (
 
 
 SALVATION_RELATIONSHIPS_PACK_VERSION = (
-    "salvation-relationships-v6-repentance-entry-boundary"
+    "salvation-relationships-v7-repentance-response-context"
 )
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v5-repentance-pending"
+    "salvation-relationship-observation-thresholds-v6-v7-repentance-pending"
 )
 
 
@@ -171,25 +171,20 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
     ),
     "repentance_as_receiving_response": SalvationRelationshipSpec(
         description=(
-            "repentance, confession, turning, or surrender as a human response related "
-            "to receiving salvation or a saving benefit"
+            "repentance, confession, turning, or surrender as a human response within "
+            "an appeal or explanation about entering or restoring saving relationship"
         ),
         true_criteria=(
-            "The target explicitly presents repentance, confession of sin, turning "
-            "from sin toward God, surrender, or yielding as part of entering, receiving, "
-            "or restoring saving relationship with God—for example receiving salvation, "
-            "forgiveness, restored relationship, God's indwelling presence, or entry "
-            "into God's kingdom. The response must function causally or temporally as "
-            "the receiving or restoring response, not merely describe later Christian "
-            "growth."
+            "The target presents repentance, confession of sin, turning from sin toward "
+            "God, surrender, or yielding to God as the human response within an appeal "
+            "or explanation about entering or restoring saving relationship with God."
         ),
         false_criteria=(
-            "Explicit words such as repent, surrender, yield, turn, or decision are not "
-            "sufficient by themselves. Do not count surrender, yielding, dying to self, "
-            "resisting sin, renewed commitment, or perseverance that describes how an "
-            "already-Christian person should live, grow, or remain faithful, or a call "
-            "to respond that does not make repentance or surrender function as receiving "
-            "salvation, forgiveness, restored relationship, or entry into saving life."
+            "Do not infer repentance merely because the target discusses sin, forgiveness, "
+            "salvation, coming to Christ, or another saving benefit. Do not count "
+            "repentance, surrender, yielding, dying to self, resisting sin, or renewed "
+            "commitment whose stated function is ongoing Christian growth, holiness, "
+            "faithfulness, or practice after entry into saving relationship."
         ),
     ),
     "obedience_as_condition_or_means": SalvationRelationshipSpec(
