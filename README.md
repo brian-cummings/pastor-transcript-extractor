@@ -426,7 +426,10 @@ probability is at least `0.55` also enter the independently cached
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the provisional
-`salvation-relationship-observation-thresholds-v6-v7-repentance-pending` per-leaf thresholds. The raw
+`salvation-relationship-observation-thresholds-v7-eleven-leaf-final` policy. Eleven
+relationships have reviewed per-leaf thresholds. Repentance is marked
+`block_level_unresolved`: its raw probability is retained for research and debugging
+but it cannot produce a collected or pastor-level observation. The raw
 probabilities remain policy-independent evidence, so changing a collection
 threshold does not require another provider request. Relationship observations are
 still observation-only: they do not change sermon boundaries, disposition, or a
@@ -436,14 +439,13 @@ are no longer routed stop contributing observations, while a newly routed block
 without cached leaf evidence is reported as incomplete rather than silently
 treated as negative.
 
-The final provider-free boundary check sets conversion/new birth to `0.55`,
-forgiveness/pardon to `0.68`, and assurance/security to `0.61`. The other numeric
-boundaries remain frozen. Repentance stays provisionally at `0.57` while a bounded
-V7 check tests a final, more observational entry/restoration wording. It asks whether
-repentance or surrender is presented as the human response within the saving appeal,
-without inferring that response from nearby sin, forgiveness, or salvation language.
-It still excludes growth and surrender after entry into saving relationship. No
-other leaf question is reopened.
+The final thresholds are assurance `0.61`, atonement `0.70`, conversion `0.55`,
+divine grace `0.65`, receiving faith `0.65`, forgiveness `0.68`, final destiny
+`0.65`, justification `0.70`, obedience-as-condition `0.70`, obedience-as-consequence
+`0.55`, and sanctification `0.70`. V7 demonstrated that no defensible threshold can
+separate repentance as a salvation response from repentance discussed in salvation
+context at this block size. Prompt tuning stops at V7; the other eleven leaves no
+longer wait on that unresolved measurement.
 
 After refreshing the frozen twelve-sermon validation cohort through ordinary
 `pte reclassify`, build its bounded collected-observation review without calling a
@@ -467,21 +469,10 @@ pte analysis salvation-final-collection-check \
   --base-dir /path/to/app-data
 ```
 
-V6 corrected the post-conversion surrender failures but retained a semantic inversion
-between explicit restoration repentance and nearby salvation language. Run the final
-bounded V7 check before reclassifying the cohort:
-
-```bash
-pte analysis salvation-v7-repentance-calibration \
-  --model jev-1.13.0 \
-  --base-dir /path/to/app-data
-```
-
-The command evaluates all sixteen V6 cases as labeled regressions and eight genuinely
-fresh cases.
-It uses the normal content-addressed per-video relationship cache; the full twelve-
-leaf V7 answer is cached for each selected block even though repentance alone is
-being adjudicated. An unchanged rerun therefore makes no provider request.
+The V7 calibration command is archived after its terminal review so it cannot
+overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
+twelve-question V7 pack through the normal content-addressed cache, preserves the
+unresolved repentance probability, and projects only the eleven validated leaves.
 
 The reviewed v4 relationship questions and final per-leaf boundaries are frozen.
 Historical semantic and final-calibration commands fail closed after the freeze so

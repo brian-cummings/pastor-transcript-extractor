@@ -166,7 +166,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         prior = {
             candidate["candidate_key"]: {
                 relationship: round(
-                    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+                    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                        relationship,
+                        0.57,
+                    )
                     + (-0.01, 0.01)[index % 2],
                     2,
                 )
@@ -451,6 +454,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
 
         with (
             patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS",
+                frozenset(),
+            ),
+            patch(
                 "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
                 return_value=(candidates, "readiness-fingerprint"),
             ),
@@ -667,7 +674,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         for index, candidate in enumerate(candidates):
             legacy[candidate["candidate_key"]] = {
                 relationship: round(
-                    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+                    SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                        relationship,
+                        0.57,
+                    )
                     + (-0.01, 0.01)[index % 2],
                     2,
                 )

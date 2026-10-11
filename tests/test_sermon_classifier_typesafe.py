@@ -56,6 +56,8 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES,
+    UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
 )
 from pastor_transcript_extractor.sermon_classification import (
     TranscriptBlock,
@@ -308,7 +310,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         }
         probabilities["assurance_security"] = 0.61
         probabilities["conversion_new_birth"] = 0.55
-        probabilities["obedience_as_consequence_or_evidence"] = 0.60
+        probabilities["obedience_as_consequence_or_evidence"] = 0.55
         answer = TypeSafeBlockAnswer(
             "principal_sermon",
             {"principal_sermon": 1.0},
@@ -340,6 +342,14 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
             artifact["observation_thresholds"],
         )
+        self.assertEqual(
+            SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES,
+            artifact["measurement_statuses"],
+        )
+        self.assertEqual(
+            sorted(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS),
+            artifact["projection_excluded_relationships"],
+        )
         raw = artifact["blocks"][0]
         self.assertEqual(probabilities, raw["probabilities"])
         collected = {
@@ -349,6 +359,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertIn("conversion_new_birth", collected)
         self.assertIn("forgiveness_pardon", collected)
         self.assertIn("obedience_as_consequence_or_evidence", collected)
+        self.assertNotIn("repentance_as_receiving_response", collected)
         self.assertNotIn("atonement_as_basis", collected)
         self.assertEqual(1, len(artifact["provider_requests"]))
 

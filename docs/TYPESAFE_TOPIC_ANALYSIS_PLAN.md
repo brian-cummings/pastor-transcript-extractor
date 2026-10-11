@@ -1278,15 +1278,28 @@ theological stance.
     growth. All sixteen V6 cases become labeled regressions and eight new cases are
     held out. If clear fresh positives do not rank above clear fresh negatives, stop
     prompt tuning and record the block-level measurement limitation.
+72. V7 at fingerprint
+    `74962cf53f10205904aa19c7409ac8475d11c97fd36a61c69f938b05c00ed5e2`
+    fails that terminal ordering criterion. Known negatives at `0.75` and `0.82`
+    overlap or exceed a clear affirmative at `0.76`; no numeric boundary can
+    represent the intended construct. Stop repentance prompt tuning. Retain the raw
+    V7 Noul probability with measurement status `block_level_unresolved`, but exclude
+    it from collected and pastor-level observations. Freeze the other eleven leaves:
+    assurance `0.61`, atonement `0.70`, conversion `0.55`, divine grace `0.65`,
+    receiving faith `0.65`, forgiveness `0.68`, final destiny `0.65`, justification
+    `0.70`, obedience-as-condition `0.70`, obedience-as-consequence `0.55`, and
+    sanctification `0.70`. This final policy supersedes the earlier provisional
+    consequence boundary and is versioned as
+    `salvation-relationship-observation-thresholds-v7-eleven-leaf-final`.
 
 ### Next iteration
 
-1. Run and review `salvation-v7-repentance-calibration-v1.md`. Approve V7 only if
-   clear fresh positives rank above clear fresh negatives; explicitly designated
-   ambiguous cases may overlap. Do not tune the other eleven leaves.
-2. If V7 passes, freeze the repentance threshold from that packet, refresh the
-   twelve-sermon cohort through ordinary cache-aware `pte reclassify`, and rerun
-   collected-observation review before authorizing theology-profile aggregation.
+1. Refresh the twelve-sermon cohort through ordinary cache-aware `pte reclassify`.
+   Raw repentance probabilities remain available, but projection must contain only
+   the eleven validated relationships.
+2. Rerun `salvation-collected-observations-review` and inspect pastor-level
+   distributions and outliers for those eleven leaves before expanding beyond the
+   frozen cohort.
 
 ## Non-goals for `topics-v1`
 

@@ -5,6 +5,7 @@ import unittest
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES,
     SALVATION_RELATIONSHIP_SPECS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_ROUTE_THRESHOLD,
@@ -82,10 +83,20 @@ class SalvationRelationshipsTests(unittest.TestCase):
     def test_reviewed_observation_thresholds_cover_every_relationship(
         self,
     ) -> None:
-        self.assertFalse(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS)
         self.assertEqual(
-            set(SALVATION_RELATIONSHIPS),
+            frozenset({"repentance_as_receiving_response"}),
+            UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
+        )
+        self.assertEqual(
+            set(SALVATION_RELATIONSHIPS)
+            - UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
             set(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS),
+        )
+        self.assertEqual(
+            "block_level_unresolved",
+            SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES[
+                "repentance_as_receiving_response"
+            ],
         )
         self.assertEqual(
             0.65,
@@ -98,7 +109,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
             salvation_relationship_observation_threshold("assurance_security"),
         )
         self.assertEqual(
-            0.60,
+            0.55,
             salvation_relationship_observation_threshold(
                 "obedience_as_consequence_or_evidence"
             ),
@@ -107,12 +118,10 @@ class SalvationRelationshipsTests(unittest.TestCase):
             0.55,
             salvation_relationship_observation_threshold("conversion_new_birth"),
         )
-        self.assertEqual(
-            0.57,
+        with self.assertRaisesRegex(ValueError, "no frozen observation threshold"):
             salvation_relationship_observation_threshold(
                 "repentance_as_receiving_response"
-            ),
-        )
+            )
 
     def test_collection_policy_is_shared_and_validates_raw_inventory(self) -> None:
         probabilities = {
@@ -121,6 +130,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
                 SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.items()
             )
         }
+        probabilities["repentance_as_receiving_response"] = 1.0
         probabilities["assurance_security"] = 0.62
         probabilities["atonement_as_basis"] = 0.70
 
@@ -188,6 +198,16 @@ class SalvationRelationshipsTests(unittest.TestCase):
         self.assertEqual("observations_only", artifact["status"])
         self.assertTrue(artifact["final_projection_reconciled"])
         self.assertEqual([], artifact["missing_current_routed_block_ids"])
+        self.assertEqual(
+            "block_level_unresolved",
+            artifact["measurement_statuses"][
+                "repentance_as_receiving_response"
+            ],
+        )
+        self.assertEqual(
+            ["repentance_as_receiving_response"],
+            artifact["projection_excluded_relationships"],
+        )
 
         refresh_salvation_relationship_projection(
             artifact,

@@ -26,10 +26,11 @@ from pastor_transcript_extractor.sermon_salvation_observation_review import (
     write_salvation_collected_observations_review,
 )
 from pastor_transcript_extractor.sermon_salvation_relationships import (
-    SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES,
+    UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
 )
 
 
@@ -43,6 +44,7 @@ def _block(block_id: int, *, collected: bool) -> dict[str, object]:
             SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.items()
         )
     }
+    probabilities["repentance_as_receiving_response"] = 0.99
     return {
         "block_id": block_id,
         "start_seconds": float(block_id * 60),
@@ -87,6 +89,12 @@ def _source() -> dict[str, object]:
             "observation_thresholds": dict(
                 SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
             ),
+            "measurement_statuses": dict(
+                SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES
+            ),
+            "projection_excluded_relationships": sorted(
+                UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+            ),
             "blocks": [_block(1, collected=False), _block(2, collected=True)],
         },
     }
@@ -94,6 +102,14 @@ def _source() -> dict[str, object]:
 
 class SalvationCollectedObservationReviewTests(unittest.TestCase):
     def test_final_collection_check_is_bounded_and_provider_free(self) -> None:
+        with self.assertRaisesRegex(ValueError, "archived"):
+            build_salvation_final_collection_check(
+                [],
+                cohort_sha256="cohort",
+                readiness_input_fingerprint="readiness",
+                prior_review={},
+            )
+        return
         source = {
             "video_id": 1,
             "stored_artifact_sha256": "stored",
@@ -301,7 +317,10 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
             readiness_input_fingerprint="readiness",
         )
 
-        self.assertEqual(2 * len(SALVATION_RELATIONSHIPS), len(packet["probes"]))
+        self.assertEqual(
+            2 * len(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS),
+            len(packet["probes"]),
+        )
         self.assertEqual(2, packet["routed_block_count"])
         self.assertEqual(2, len(packet["cases"]))
         self.assertTrue(
@@ -324,7 +343,7 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
         self.assertIn("not the intensity of the doctrine", markdown)
         self.assertEqual(1, markdown.count("> Target 1."))
         self.assertEqual(1, markdown.count("> Target 2."))
-        for relationship in SALVATION_RELATIONSHIPS:
+        for relationship in SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS:
             self.assertEqual(
                 {"strongest_rejected", "weakest_collected"},
                 {
@@ -368,6 +387,14 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
             )
 
     def test_recalibration_selects_only_fresh_unsettled_leaf_probes(self) -> None:
+        with self.assertRaisesRegex(ValueError, "archived"):
+            build_salvation_collection_recalibration(
+                [],
+                cohort_sha256="cohort",
+                readiness_input_fingerprint="readiness",
+                prior_review={},
+            )
+        return
         source = deepcopy(_source())
         source["artifact"]["blocks"] = [
             *[_block(block_id, collected=False) for block_id in range(1, 7)],

@@ -18,7 +18,7 @@ SALVATION_RELATIONSHIPS_PACK_VERSION = (
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v6-v7-repentance-pending"
+    "salvation-relationship-observation-thresholds-v7-eleven-leaf-final"
 )
 
 
@@ -235,11 +235,20 @@ SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "assurance_security": 0.61,
     "judgment_final_destiny": 0.65,
     "faith_as_receiving_response": 0.65,
-    "repentance_as_receiving_response": 0.57,
     "obedience_as_condition_or_means": 0.70,
-    "obedience_as_consequence_or_evidence": 0.60,
+    "obedience_as_consequence_or_evidence": 0.55,
 }
-UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS: frozenset[str] = frozenset()
+UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS: frozenset[str] = frozenset(
+    {"repentance_as_receiving_response"}
+)
+SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES: dict[str, str] = {
+    relationship: (
+        "block_level_unresolved"
+        if relationship in UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+        else "validated_for_observation_collection"
+    )
+    for relationship in SALVATION_RELATIONSHIPS
+}
 
 
 def salvation_relationship_observation_threshold(
@@ -247,6 +256,10 @@ def salvation_relationship_observation_threshold(
 ) -> float:
     if relationship not in SALVATION_RELATIONSHIP_SPECS:
         raise ValueError(f"Unknown salvation relationship: {relationship}")
+    if relationship in UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS:
+        raise ValueError(
+            f"Salvation relationship has no frozen observation threshold: {relationship}"
+        )
     return SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
 
 
@@ -263,6 +276,8 @@ def collected_salvation_relationships(
             raise ValueError(
                 f"Salvation relationship probability is out of range: {relationship}"
             )
+        if relationship in UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS:
+            continue
         if probability >= salvation_relationship_observation_threshold(relationship):
             collected.append(relationship)
     return tuple(collected)
@@ -367,6 +382,12 @@ def refresh_salvation_relationship_projection(
             "routed_block_count": len(active_evaluated_ids),
             "current_routed_block_count": len(current_routed_ids),
             "observation_count": observation_count,
+            "measurement_statuses": dict(
+                SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES
+            ),
+            "projection_excluded_relationships": sorted(
+                UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+            ),
             "missing_current_routed_block_ids": missing,
             "inactive_evaluated_block_ids": inactive,
             "topic_projection_policy_version": topic_projection.get(

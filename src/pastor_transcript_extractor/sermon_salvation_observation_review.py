@@ -12,6 +12,8 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES,
+    UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
     collected_salvation_relationships,
     refresh_salvation_relationship_projection,
     resolve_salvation_relationship_analysis_artifact,
@@ -249,6 +251,16 @@ def _validated_source_judgments(
         raise ValueError(
             f"Video {source['video_id']} has inconsistent observation thresholds"
         )
+    if artifact.get("measurement_statuses") != SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES:
+        raise ValueError(
+            f"Video {source['video_id']} has inconsistent relationship measurement statuses"
+        )
+    if artifact.get("projection_excluded_relationships") != sorted(
+        UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+    ):
+        raise ValueError(
+            f"Video {source['video_id']} has inconsistent projection exclusions"
+        )
     raw_blocks = artifact.get("blocks")
     if not isinstance(raw_blocks, list):
         raise ValueError(f"Video {source['video_id']} has malformed relationship blocks")
@@ -295,7 +307,7 @@ def _validated_source_judgments(
                 f"Video {source['video_id']} block {block.get('block_id')} has no "
                 "relationship target text"
             )
-        for relationship in SALVATION_RELATIONSHIPS:
+        for relationship in SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS:
             probability = round(float(probabilities[relationship]), 6)
             judgments.append(
                 {
@@ -340,7 +352,7 @@ def build_salvation_collected_observations_review(
         raise ValueError("No routed salvation relationship blocks are available")
     selected_probes: list[dict[str, Any]] = []
     counts: dict[str, dict[str, int]] = {}
-    for relationship in SALVATION_RELATIONSHIPS:
+    for relationship in SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS:
         candidates = [
             item for item in judgments if item["relationship"] == relationship
         ]
@@ -392,12 +404,20 @@ def build_salvation_collected_observations_review(
         "observation_thresholds": dict(
             SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
         ),
-        "relationship_definitions": salvation_relationship_pack_inventory()[
-            "relationships"
-        ],
+        "measurement_statuses": dict(SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES),
+        "projection_excluded_relationships": sorted(
+            UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+        ),
+        "relationship_definitions": {
+            relationship: salvation_relationship_pack_inventory()["relationships"][
+                relationship
+            ]
+            for relationship in SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
+        },
         "source_artifacts": source_fingerprints,
         "source_video_count": len(sources),
-        "routed_block_count": len(judgments) // len(SALVATION_RELATIONSHIPS),
+        "routed_block_count": len(judgments)
+        // len(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS),
         "judgment_count": len(judgments),
         "counts_by_relationship": counts,
         "cases": cases,
@@ -459,6 +479,13 @@ def build_salvation_collection_recalibration(
     prior_review: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Select fresh cached boundary probes only for the four unsettled leaves."""
+    if UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS.intersection(
+        SALVATION_COLLECTION_RECALIBRATION_RELATIONSHIPS
+    ):
+        raise ValueError(
+            "Salvation collection recalibration is archived after repentance was "
+            "excluded from observation projection"
+        )
     if (
         prior_review.get("review_policy_version")
         != SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
@@ -770,6 +797,13 @@ def build_salvation_final_collection_check(
     prior_review: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Build one final provider-free check for four localized boundaries."""
+    if UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS.intersection(
+        SALVATION_FINAL_COLLECTION_CHECK_RELATIONSHIPS
+    ):
+        raise ValueError(
+            "Salvation final collection check is archived after repentance was "
+            "excluded from observation projection"
+        )
     if (
         prior_review.get("review_policy_version")
         != SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
@@ -1161,14 +1195,14 @@ def render_salvation_collected_observations_review(
     cases_by_key = {
         str(case["case_key"]): case for case in packet["cases"]
     }
-    for relationship in SALVATION_RELATIONSHIPS:
+    for relationship in SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS:
         counts = packet["counts_by_relationship"][relationship]
         lines.append(
             f"| {relationship} | "
             f"{float(packet['observation_thresholds'][relationship]):.2f} | "
             f"{counts['collected']} | {counts['rejected']} |"
         )
-    for relationship in SALVATION_RELATIONSHIPS:
+    for relationship in SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS:
         definition = packet["relationship_definitions"][relationship]
         counts = packet["counts_by_relationship"][relationship]
         lines.extend(

@@ -32,8 +32,10 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES,
     SALVATION_ROUTE_POLICY_VERSION,
     SALVATION_ROUTE_THRESHOLD,
+    UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
     collected_salvation_relationships,
     salvation_relationship_pack_digest,
     salvation_relationship_question_inventory,
@@ -1832,6 +1834,10 @@ def _salvation_relationship_analysis_artifact(
         ),
         "observation_thresholds": dict(
             SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS
+        ),
+        "measurement_statuses": dict(SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES),
+        "projection_excluded_relationships": sorted(
+            UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
         ),
         "policy_effect": "observation_collection_only",
         "activation_requirement": PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT,

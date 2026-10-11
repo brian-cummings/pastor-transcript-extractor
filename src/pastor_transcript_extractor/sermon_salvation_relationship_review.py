@@ -17,6 +17,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS_PACK_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+    UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
     SALVATION_ROUTE_POLICY_VERSION,
     salvation_relationship_pack_digest,
     salvation_relationship_pack_inventory,
@@ -95,6 +96,7 @@ PRIOR_V5_OBSERVATION_POLICY_VERSION = (
 PRIOR_V6_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v6-repentance-entry-boundary"
 )
+PRIOR_REPENTANCE_OBSERVATION_THRESHOLD = 0.57
 V5_CALIBRATION_RELATIONSHIPS = (
     "divine_grace_initiative",
     "conversion_new_birth",
@@ -647,7 +649,10 @@ def _select_semantic_heldout_probes(
     excluded = ALL_REVIEWED_CANDIDATE_KEYS | RECALIBRATION_REVIEWED_CANDIDATE_KEYS
     probes: list[dict[str, Any]] = []
     for relationship in SEMANTIC_CALIBRATION_RELATIONSHIPS:
-        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+            relationship,
+            PRIOR_REPENTANCE_OBSERVATION_THRESHOLD,
+        )
         available = [
             item
             for item in candidates
@@ -1636,9 +1641,7 @@ def evaluate_salvation_v6_repentance_calibration(
         "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
         "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
         "requested_model_id": model,
-        "repentance_threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
-            relationship
-        ],
+        "repentance_threshold": PRIOR_REPENTANCE_OBSERVATION_THRESHOLD,
         "approved_numeric_changes": {
             "conversion_new_birth": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
                 "conversion_new_birth"
@@ -1681,6 +1684,13 @@ def evaluate_salvation_v7_repentance_calibration(
     client: TypeSafeBlockClient,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """Evaluate the final observational repentance revision on prior and fresh cases."""
+    if "repentance_as_receiving_response" in (
+        UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+    ):
+        raise ValueError(
+            "V7 repentance calibration is archived after the block-level measurement "
+            "was marked unresolved"
+        )
     if (
         v6_calibration.get("review_policy_version")
         != "salvation-v6-repentance-entry-calibration-v1"
@@ -1794,9 +1804,7 @@ def evaluate_salvation_v7_repentance_calibration(
         "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
         "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
         "requested_model_id": model,
-        "repentance_threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
-            relationship
-        ],
+        "repentance_threshold": PRIOR_REPENTANCE_OBSERVATION_THRESHOLD,
         "approved_numeric_changes": dict(
             v6_calibration.get("approved_numeric_changes", {})
         ),
