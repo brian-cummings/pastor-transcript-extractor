@@ -10,6 +10,8 @@ from pastor_transcript_extractor.sermon_salvation_observation_review import (
     SALVATION_BOUNDARY_RECALIBRATION_ANCHORS,
     SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS,
     SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION,
+    SALVATION_CONVERSION_RECALIBRATION_ANCHORS,
+    SALVATION_CONVERSION_WATCH_FIXTURES,
     SALVATION_FINAL_COLLECTION_CHECK_ANCHORS,
     SALVATION_FINAL_COLLECTION_CHECK_RELATIONSHIPS,
     SALVATION_JUDGMENT_WATCH_KEY,
@@ -19,11 +21,14 @@ from pastor_transcript_extractor.sermon_salvation_observation_review import (
     build_salvation_boundary_recalibration,
     build_salvation_collection_recalibration,
     build_salvation_collected_observations_review,
+    build_salvation_conversion_recalibration,
     build_salvation_final_collection_check,
     render_salvation_collection_recalibration,
     render_salvation_collected_observations_review,
+    render_salvation_conversion_recalibration,
     write_salvation_collection_recalibration,
     write_salvation_collected_observations_review,
+    write_salvation_conversion_recalibration,
 )
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS_PACK_VERSION,
@@ -101,6 +106,125 @@ def _source() -> dict[str, object]:
 
 
 class SalvationCollectedObservationReviewTests(unittest.TestCase):
+    def test_conversion_recalibration_is_fresh_bounded_and_provider_free(self) -> None:
+        source = {
+            "video_id": 1,
+            "stored_artifact_sha256": "stored",
+            "artifact": {},
+        }
+
+        def judgment(
+            key: str,
+            relationship: str,
+            probability: float,
+            pastor: str,
+        ) -> dict[str, object]:
+            video_id, block_id, _leaf = key.split(":")
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            return {
+                "judgment_key": key,
+                "relationship": relationship,
+                "probability": probability,
+                "threshold": threshold,
+                "collected": probability >= threshold,
+                "pastor": {"display_name": pastor, "slug": pastor.lower()},
+                "video_id": int(video_id),
+                "youtube_video_id": f"youtube-{video_id}",
+                "title": f"Sermon {video_id}",
+                "block_id": int(block_id),
+                "start_seconds": float(block_id),
+                "end_seconds": float(block_id) + 1.0,
+                "leading_context": "Leading.",
+                "target_text": f"Target {key}.",
+                "trailing_context": "Trailing.",
+            }
+
+        judgments = []
+        for key in SALVATION_CONVERSION_RECALIBRATION_ANCHORS:
+            judgments.append(
+                judgment(
+                    key,
+                    "conversion_new_birth",
+                    0.54 if key.startswith("590:") else 0.55,
+                    "Anchor",
+                )
+            )
+        for key in SALVATION_CONVERSION_WATCH_FIXTURES:
+            relationship = key.rsplit(":", 1)[1]
+            judgments.append(judgment(key, relationship, 0.60, "Watch"))
+        for index, probability in enumerate(
+            (0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58),
+            start=1,
+        ):
+            judgments.append(
+                judgment(
+                    f"9{index:03d}:1:conversion_new_birth",
+                    "conversion_new_birth",
+                    probability,
+                    f"Fresh {index}",
+                )
+            )
+        prior = {
+            "review_policy_version": (
+                SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
+            ),
+            "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "observation_policy_version": (
+                SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+            ),
+            "input_fingerprint": "prior",
+            "source_artifacts": _source_artifact_fingerprints([source]),
+            "cases": [],
+        }
+        with patch(
+            "pastor_transcript_extractor.sermon_salvation_observation_review."
+            "_validated_source_judgments",
+            return_value=judgments,
+        ):
+            packet = build_salvation_conversion_recalibration(
+                [source],
+                cohort_sha256="cohort",
+                readiness_input_fingerprint="readiness",
+                prior_review=prior,
+            )
+
+        fresh = [
+            probe
+            for probe in packet["probes"]
+            if probe["probe_role"] == "fresh_cached_neighbor"
+        ]
+        self.assertEqual(8, len(fresh))
+        self.assertEqual(
+            {"below": 4, "at_or_above": 4},
+            {
+                side: sum(probe["boundary_side"] == side for probe in fresh)
+                for side in ("below", "at_or_above")
+            },
+        )
+        self.assertEqual(
+            {"conversion_new_birth"},
+            {probe["relationship"] for probe in fresh},
+        )
+        self.assertEqual(2, len(packet["regression_anchors"]))
+        self.assertEqual(6, len(packet["frozen_watch_fixtures"]))
+        self.assertEqual(10, len(packet["frozen_relationships"]))
+        self.assertEqual(0, packet["provider_requests"])
+        self.assertEqual("none", packet["policy_effect"])
+        markdown = render_salvation_conversion_recalibration(packet)
+        self.assertIn("eight fresh conversion probes", markdown)
+        self.assertIn("cannot authorize changes here", markdown)
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "conversion.json"
+            _json_path, _markdown_path, reused = (
+                write_salvation_conversion_recalibration(output, packet)
+            )
+            self.assertFalse(reused)
+            _json_path, _markdown_path, reused = (
+                write_salvation_conversion_recalibration(output, packet)
+            )
+            self.assertTrue(reused)
+
     def test_final_collection_check_is_bounded_and_provider_free(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived"):
             build_salvation_final_collection_check(

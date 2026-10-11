@@ -427,7 +427,9 @@ probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
 observations from the provisional
 `salvation-relationship-observation-thresholds-v7-eleven-leaf-final` policy. Eleven
-relationships have reviewed per-leaf thresholds. Repentance is marked
+relationships have per-leaf thresholds. Ten are frozen; `conversion_new_birth` is
+reopened for one bounded, provider-free ordering check while its threshold remains
+`0.55`. Repentance is marked
 `block_level_unresolved`: its raw probability is retained for research and debugging
 but it cannot produce a collected or pastor-level observation. The raw
 probabilities remain policy-independent evidence, so changing a collection
@@ -439,13 +441,14 @@ are no longer routed stop contributing observations, while a newly routed block
 without cached leaf evidence is reported as incomplete rather than silently
 treated as negative.
 
-The final thresholds are assurance `0.61`, atonement `0.70`, conversion `0.55`,
+The configured thresholds are assurance `0.61`, atonement `0.70`, conversion `0.55`,
 divine grace `0.65`, receiving faith `0.65`, forgiveness `0.68`, final destiny
 `0.65`, justification `0.70`, obedience-as-condition `0.70`, obedience-as-consequence
 `0.55`, and sanctification `0.70`. V7 demonstrated that no defensible threshold can
 separate repentance as a salvation response from repentance discussed in salvation
-context at this block size. Prompt tuning stops at V7; the other eleven leaves no
-longer wait on that unresolved measurement.
+context at this block size. Prompt tuning stops at V7. The ordinary-classification
+audit subsequently reopened only conversion because a reviewed positive at `0.54`
+ranked below a reviewed negative at `0.55`; the other ten leaves remain frozen.
 
 After refreshing the frozen twelve-sermon validation cohort through ordinary
 `pte reclassify`, build its bounded collected-observation review without calling a
@@ -461,22 +464,28 @@ recomputes every stored collection decision from the raw probability, and writes
 fingerprinted JSON/Markdown packet with the strongest rejected and weakest collected
 judgment for each leaf. An unchanged rerun reuses the packet byte-for-byte.
 
-If that ordinary-classification packet exposes only localized final boundary
-questions, build the bounded follow-up without reclassification or a provider call:
+The current ordinary-classification packet exposes a localized conversion ordering
+question. Build its bounded follow-up without reclassification or a provider call:
 
 ```bash
-pte analysis salvation-final-collection-check \
+pte analysis salvation-conversion-recalibration \
   --base-dir /path/to/app-data
 ```
+
+The packet keeps the current `0.55` threshold unchanged, carries the two reviewed
+conversion regressions, and selects four fresh cached neighbors on each side from
+`0.45`–`0.65`. It also records six isolated errors in frozen leaves as watch-only
+fixtures; those cases cannot authorize broader tuning.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
 twelve-question V7 pack through the normal content-addressed cache, preserves the
-unresolved repentance probability, and projects only the eleven validated leaves.
+unresolved repentance probability, and projects the eleven thresholded leaves.
 
-The reviewed v4 relationship questions and final per-leaf boundaries are frozen.
-Historical semantic and final-calibration commands fail closed after the freeze so
-they cannot overwrite their fingerprinted review packets with a later policy.
+The reviewed relationship questions remain frozen, as do ten per-leaf boundaries;
+only conversion is in the bounded collection audit above. Historical semantic and
+final-calibration commands fail closed after the freeze so they cannot overwrite
+their fingerprinted review packets with a later policy.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected
 recording, topic, role, and treatment packs continue to replay from their existing
 per-video caches.

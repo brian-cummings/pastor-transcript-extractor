@@ -82,15 +82,18 @@ from pastor_transcript_extractor.sermon_salvation_observation_review import (
     DEFAULT_SALVATION_BOUNDARY_RECALIBRATION_OUTPUT,
     DEFAULT_SALVATION_COLLECTION_RECALIBRATION_OUTPUT,
     DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+    DEFAULT_SALVATION_CONVERSION_RECALIBRATION_OUTPUT,
     DEFAULT_SALVATION_FINAL_COLLECTION_CHECK_OUTPUT,
     evaluate_salvation_boundary_recalibration,
     evaluate_salvation_collection_recalibration,
     evaluate_salvation_collected_observations_review,
+    evaluate_salvation_conversion_recalibration,
     evaluate_salvation_final_collection_check,
     load_salvation_collected_observations_review,
     write_salvation_boundary_recalibration,
     write_salvation_collection_recalibration,
     write_salvation_collected_observations_review,
+    write_salvation_conversion_recalibration,
     write_salvation_final_collection_check,
 )
 from pastor_transcript_extractor.sermon_topic_evaluation import (
@@ -1947,6 +1950,67 @@ def analysis_salvation_collected_observations_review(
         f"routed_blocks={packet['routed_block_count']}; "
         f"collected_observations={collected}; "
         f"probes={len(packet['probes'])}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-conversion-recalibration",
+    help="Build the provider-free conversion-only boundary ordering check.",
+)
+def analysis_salvation_conversion_recalibration(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying ordinary classification artifacts.",
+    ),
+    prior_review_path: Path = typer.Option(
+        DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+        "--prior-review",
+        help="Reviewed current collected-observation packet.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_CONVERSION_RECALIBRATION_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        readiness = assess_topic_stage4_readiness(database, cohort)
+        if not readiness["ready"]:
+            _print_topic_stage4_readiness(readiness, base_dir=base_dir)
+        prior_review = load_salvation_collected_observations_review(
+            prior_review_path
+        )
+        packet = evaluate_salvation_conversion_recalibration(
+            database,
+            cohort,
+            prior_review,
+            readiness=readiness,
+        )
+        json_path, markdown_path, reused = (
+            write_salvation_conversion_recalibration(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    fresh = sum(
+        probe["probe_role"] == "fresh_cached_neighbor"
+        for probe in packet["probes"]
+    )
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation conversion recalibration: "
+        f"{json_path} and {markdown_path}; "
+        f"fresh_probes={fresh}; "
+        f"watch_fixtures={len(packet['frozen_watch_fixtures'])}; "
+        "provider_requests=0; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )

@@ -1291,15 +1291,28 @@ theological stance.
     sanctification `0.70`. This final policy supersedes the earlier provisional
     consequence boundary and is versioned as
     `salvation-relationship-observation-thresholds-v7-eleven-leaf-final`.
+73. The first deduplicated ordinary-classification audit under that policy, at
+    fingerprint
+    `79ff2192909c0137c98529893a3460409997416f4685e2bd569b066b5714a047`,
+    reopens only `conversion_new_birth`. Its reviewed positive `590:34` scores
+    `0.54` and is rejected while reviewed negative `350:42` scores `0.55` and is
+    collected. Keep the configured `0.55` threshold unchanged while a provider-free
+    packet checks four fresh cached neighbors on each side in `0.45`–`0.65`. Freeze
+    the other ten thresholded leaves. Record their six isolated misses or false
+    positives as watch-only fixtures that cannot authorize changes in this packet.
+    If the fresh conversion evidence does not reveal a systematic repairable
+    ordering defect, accept local measurement noise, freeze `0.55`, and proceed to
+    pastor-level aggregation.
 
 ### Next iteration
 
-1. Refresh the twelve-sermon cohort through ordinary cache-aware `pte reclassify`.
-   Raw repentance probabilities remain available, but projection must contain only
-   the eleven validated relationships.
-2. Rerun `salvation-collected-observations-review` and inspect pastor-level
-   distributions and outliers for those eleven leaves before expanding beyond the
-   frozen cohort.
+1. Run `salvation-conversion-recalibration` against the already refreshed cohort.
+   It requires no reclassification and makes no provider request.
+2. Review only its eight fresh conversion probes against the two labeled anchors.
+   The six frozen-leaf watches are documentary and non-authorizing.
+3. If no systematic repairable conversion defect emerges, freeze conversion at
+   `0.55` and begin pastor-level aggregation for the ten frozen leaves plus
+   conversion. Keep unresolved repentance out of projection.
 
 ## Non-goals for `topics-v1`
 

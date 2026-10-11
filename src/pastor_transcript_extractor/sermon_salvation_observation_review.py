@@ -39,6 +39,26 @@ SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION = (
 DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-collected-observations-review-v2.json"
 )
+DEFAULT_SALVATION_CONVERSION_RECALIBRATION_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-conversion-recalibration-v1.json"
+)
+SALVATION_CONVERSION_RECALIBRATION_SCHEMA_VERSION = 1
+SALVATION_CONVERSION_RECALIBRATION_POLICY_VERSION = (
+    "salvation-conversion-local-ordering-recalibration-v1"
+)
+SALVATION_CONVERSION_RECALIBRATION_WINDOW = (0.45, 0.65)
+SALVATION_CONVERSION_RECALIBRATION_ANCHORS = {
+    "590:34:conversion_new_birth": "affirmative_rejected",
+    "350:42:conversion_new_birth": "negative_collected",
+}
+SALVATION_CONVERSION_WATCH_FIXTURES = {
+    "350:36:divine_grace_initiative": "false_positive_watch",
+    "350:61:atonement_as_basis": "affirmative_miss_watch",
+    "4458:72:sanctification_transformation": "affirmative_miss_watch",
+    "4394:51:judgment_final_destiny": "false_positive_borderline_watch",
+    "590:35:faith_as_receiving_response": "affirmative_miss_watch",
+    "4394:50:obedience_as_consequence_or_evidence": "false_positive_watch",
+}
 SALVATION_COLLECTION_RECALIBRATION_SCHEMA_VERSION = 1
 SALVATION_COLLECTION_RECALIBRATION_POLICY_VERSION = (
     "salvation-collection-four-leaf-recalibration-v1"
@@ -469,6 +489,145 @@ def _select_nearest_diverse_judgments(
     raise ValueError(
         f"Salvation recalibration requires {count} fresh judgments on each side"
     )
+
+
+def build_salvation_conversion_recalibration(
+    sources: Sequence[Mapping[str, Any]],
+    *,
+    cohort_sha256: str | None,
+    readiness_input_fingerprint: str,
+    prior_review: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build a provider-free conversion-only ordering check from cached judgments."""
+    if (
+        prior_review.get("review_policy_version")
+        != SALVATION_COLLECTED_OBSERVATION_REVIEW_POLICY_VERSION
+        or prior_review.get("question_pack_version")
+        != SALVATION_RELATIONSHIPS_PACK_VERSION
+        or prior_review.get("observation_policy_version")
+        != SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+    ):
+        raise ValueError("Conversion recalibration requires the current collection review")
+    if prior_review.get("source_artifacts") != _source_artifact_fingerprints(sources):
+        raise ValueError("Conversion recalibration inputs changed after collection review")
+
+    judgments = [
+        judgment
+        for source in sources
+        for judgment in _validated_source_judgments(source)
+    ]
+    by_key = {str(item["judgment_key"]): item for item in judgments}
+    required_keys = set(SALVATION_CONVERSION_RECALIBRATION_ANCHORS) | set(
+        SALVATION_CONVERSION_WATCH_FIXTURES
+    )
+    missing = sorted(required_keys - set(by_key))
+    if missing:
+        raise ValueError(
+            "Conversion recalibration is missing required fixtures: "
+            + ", ".join(missing)
+        )
+
+    from pastor_transcript_extractor.sermon_salvation_relationship_review import (
+        ALL_REVIEWED_CANDIDATE_KEYS,
+        RECALIBRATION_REVIEWED_CANDIDATE_KEYS,
+    )
+
+    excluded_case_keys = set(ALL_REVIEWED_CANDIDATE_KEYS) | set(
+        RECALIBRATION_REVIEWED_CANDIDATE_KEYS
+    )
+    excluded_case_keys.update(
+        str(case.get("case_key"))
+        for case in prior_review.get("cases", [])
+        if isinstance(case, Mapping)
+    )
+    excluded_case_keys.update(
+        key.rsplit(":", 1)[0]
+        for key in SALVATION_CONVERSION_RECALIBRATION_ANCHORS
+    )
+    relationship = "conversion_new_birth"
+    threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+    lower, upper = SALVATION_CONVERSION_RECALIBRATION_WINDOW
+    fresh_candidates = [
+        item
+        for item in judgments
+        if item["relationship"] == relationship
+        and lower <= float(item["probability"]) <= upper
+        and str(item["judgment_key"]).rsplit(":", 1)[0]
+        not in excluded_case_keys
+    ]
+    fresh: list[dict[str, Any]] = []
+    for side, predicate in (
+        ("below", lambda value: value < threshold),
+        ("at_or_above", lambda value: value >= threshold),
+    ):
+        selected = _select_nearest_diverse_judgments(
+            [item for item in fresh_candidates if predicate(float(item["probability"]))],
+            count=4,
+        )
+        fresh.extend(
+            {
+                **item,
+                "probe_role": "fresh_cached_neighbor",
+                "boundary_side": side,
+            }
+            for item in selected
+        )
+    anchors = [
+        {
+            **by_key[key],
+            "probe_role": "reviewed_ordering_anchor",
+            "review_label": label,
+        }
+        for key, label in SALVATION_CONVERSION_RECALIBRATION_ANCHORS.items()
+    ]
+    watches = [
+        {
+            **by_key[key],
+            "probe_role": "frozen_leaf_watch_only",
+            "review_label": label,
+        }
+        for key, label in SALVATION_CONVERSION_WATCH_FIXTURES.items()
+    ]
+    cases, probes = _deduplicate_review_probes([*anchors, *fresh, *watches])
+    identity = {
+        "schema_version": SALVATION_CONVERSION_RECALIBRATION_SCHEMA_VERSION,
+        "review_policy_version": SALVATION_CONVERSION_RECALIBRATION_POLICY_VERSION,
+        "cohort_sha256": cohort_sha256,
+        "readiness_input_fingerprint": readiness_input_fingerprint,
+        "prior_review_fingerprint": prior_review.get("input_fingerprint"),
+        "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "observation_policy_version": SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
+        "relationship": relationship,
+        "current_threshold": threshold,
+        "review_window": list(SALVATION_CONVERSION_RECALIBRATION_WINDOW),
+        "relationship_definition": salvation_relationship_pack_inventory()[
+            "relationships"
+        ][relationship],
+        "regression_anchors": dict(SALVATION_CONVERSION_RECALIBRATION_ANCHORS),
+        "frozen_watch_fixtures": dict(SALVATION_CONVERSION_WATCH_FIXTURES),
+        "frozen_relationships": sorted(
+            set(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS) - {relationship}
+        ),
+        "excluded_reviewed_case_keys": sorted(excluded_case_keys),
+        "judgment_count": len(judgments),
+        "source_artifacts": _source_artifact_fingerprints(sources),
+        "cases": cases,
+        "probes": probes,
+        "provider_requests": 0,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "bounded_recalibration_required_conversion_only",
+        "policy_effect": "none",
+        "interpretation": (
+            "Only conversion_new_birth is reopened. The current 0.55 threshold and "
+            "all question definitions remain unchanged. Two reviewed ordering anchors "
+            "are shown with eight fresh cached neighbors, four on each policy side. "
+            "The other ten validated leaves are frozen; their isolated errors are "
+            "watch fixtures and cannot authorize changes in this packet."
+        ),
+    }
 
 
 def build_salvation_collection_recalibration(
@@ -1065,6 +1224,30 @@ def evaluate_salvation_collected_observations_review(
     )
 
 
+def evaluate_salvation_conversion_recalibration(
+    database: Database,
+    cohort: Mapping[str, Any],
+    prior_review: Mapping[str, Any],
+    *,
+    readiness: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    sources, readiness = _load_salvation_observation_sources(
+        database,
+        cohort,
+        readiness=readiness,
+    )
+    return build_salvation_conversion_recalibration(
+        sources,
+        cohort_sha256=(
+            str(cohort["cohort_sha256"])
+            if cohort.get("cohort_sha256") is not None
+            else None
+        ),
+        readiness_input_fingerprint=str(readiness["input_fingerprint"]),
+        prior_review=prior_review,
+    )
+
+
 def load_salvation_collected_observations_review(
     path: Path,
 ) -> Mapping[str, Any]:
@@ -1274,6 +1457,91 @@ def write_salvation_collected_observations_review(
         path,
         packet,
         render_salvation_collected_observations_review,
+    )
+
+
+def render_salvation_conversion_recalibration(packet: Mapping[str, Any]) -> str:
+    definition = packet["relationship_definition"]
+    cases = {str(case["case_key"]): case for case in packet["cases"]}
+    lines = [
+        "# Salvation conversion-only recalibration",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Prior review: `{packet['prior_review_fingerprint']}`",
+        f"- Current threshold: `{float(packet['current_threshold']):.2f}`",
+        f"- Review window: `{packet['review_window'][0]:.2f}`–"
+        f"`{packet['review_window'][1]:.2f}`",
+        f"- Cached raw judgments: `{packet['judgment_count']}`",
+        f"- Provider requests: `{packet['provider_requests']}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        f"**Meaning:** {definition['description']}",
+        "",
+        f"**Count as yes:** {definition['true_criteria']}",
+        "",
+        f"**Count as no:** {definition['false_criteria']}",
+        "",
+        "Label only the eight fresh conversion probes affirmative, negative, or "
+        "ambiguous. Decide whether they reproduce a systematic semantic ordering "
+        "failure around 0.55. Do not change the threshold from the two anchors alone. "
+        "The watch-only probes document isolated errors in frozen leaves and cannot "
+        "authorize changes here.",
+        "",
+        "## Probes",
+        "",
+        "| Case | Relationship | Role | Probability | Prior label / side |",
+        "| --- | --- | --- | ---: | --- |",
+    ]
+    for probe in packet["probes"]:
+        detail = str(
+            probe.get("review_label") or probe.get("boundary_side") or "—"
+        )
+        lines.append(
+            f"| {probe['case_key']} | {probe['relationship']} | "
+            f"{probe['probe_role']} | {float(probe['probability']):.3f} | "
+            f"{detail} |"
+        )
+    lines.extend(["", "## Deduplicated evidence cases", ""])
+    for case_key in sorted(
+        cases,
+        key=lambda value: tuple(int(part) for part in value.split(":")),
+    ):
+        case = cases[case_key]
+        lines.extend(
+            [
+                f"### {case_key} — {case['pastor']['display_name']}",
+                "",
+                f"- Recording: `{case['youtube_video_id']}` — {case['title']}",
+                f"- Time: `{case['start_seconds']}`–`{case['end_seconds']}`",
+                "",
+                "Leading context:",
+                "",
+                f"> {str(case['leading_context']).replace(chr(10), ' ')}",
+                "",
+                "Target text:",
+                "",
+                f"> {str(case['target_text']).replace(chr(10), ' ')}",
+                "",
+                "Trailing context:",
+                "",
+                f"> {str(case['trailing_context']).replace(chr(10), ' ')}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_salvation_conversion_recalibration(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_packet(
+        path,
+        packet,
+        render_salvation_conversion_recalibration,
     )
 
 

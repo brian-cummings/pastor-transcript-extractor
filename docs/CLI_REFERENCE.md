@@ -2944,6 +2944,26 @@ pte analysis salvation-collected-observations-review [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-conversion-recalibration`
+
+Build the provider-free conversion-only boundary ordering check.
+
+#### Usage
+
+```console
+pte analysis salvation-conversion-recalibration [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying ordinary classification artifacts.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--prior-review PATH` | Reviewed current collected-observation packet.  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-conversion-recalibration-v1.json] | no | evaluation/sermon-topics/salvation-conversion-recalibration-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-final-collection-check`
 
 Build the provider-free final check for four localized leaf boundaries.
