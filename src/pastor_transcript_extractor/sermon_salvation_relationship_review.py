@@ -19,6 +19,7 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
     SALVATION_ROUTE_POLICY_VERSION,
     salvation_relationship_pack_digest,
+    salvation_relationship_pack_inventory,
     salvation_route_decision,
     resolve_salvation_relationship_analysis_artifact,
 )

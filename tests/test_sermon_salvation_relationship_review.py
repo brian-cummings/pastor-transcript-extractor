@@ -14,14 +14,17 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
 from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     ALL_REVIEWED_CANDIDATE_KEYS,
     PRIOR_REVIEWED_CANDIDATE_KEYS,
+    PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION,
     SEMANTIC_CALIBRATION_RELATIONSHIPS,
     V5_CALIBRATION_RELATIONSHIPS,
+    V5_REVIEW_LABELS,
     _select_semantic_heldout_probes,
     _select_v5_heldout_probes,
     _select_review_candidates,
     evaluate_salvation_final_calibration,
     evaluate_salvation_semantic_calibration,
     evaluate_salvation_relationship_review,
+    evaluate_salvation_v5_calibration,
     select_obedience_consequence_calibration_candidates,
     write_salvation_relationship_review,
 )
@@ -226,6 +229,85 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         self.assertEqual(
             1,
             sum(probe["selection_mode"] == "quota_fill" for probe in selected),
+        )
+
+    def test_v5_calibration_assembles_current_relationship_definitions(self) -> None:
+        case_keys = sorted(
+            {judgment_key.rsplit(":", 1)[0] for judgment_key in V5_REVIEW_LABELS}
+        )
+        candidates = [
+            {"candidate_key": case_key, "pastor": {"slug": "pastor"}}
+            for case_key in case_keys
+        ]
+        prior = {
+            case_key: {
+                relationship: 0.5
+                for relationship in V5_CALIBRATION_RELATIONSHIPS
+            }
+            for case_key in case_keys
+        }
+        evaluated = [
+            {
+                **candidate,
+                "case_key": candidate["candidate_key"],
+                "leaf_probabilities": {
+                    relationship: 0.6
+                    for relationship in V5_CALIBRATION_RELATIONSHIPS
+                },
+            }
+            for candidate in candidates
+        ]
+        boundary_review = {
+            "review_policy_version": "salvation-four-leaf-boundary-recalibration-v1",
+            "question_pack_version": PRIOR_V4_SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "input_fingerprint": "boundary-fingerprint",
+            "probes": [
+                {
+                    "judgment_key": judgment_key,
+                    "relationship": judgment_key.rsplit(":", 1)[1],
+                }
+                for judgment_key in V5_REVIEW_LABELS
+            ],
+            "cases": [],
+        }
+        collection_review = {
+            "input_fingerprint": "collection-fingerprint",
+            "cases": [],
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
+                return_value=(candidates, "readiness-fingerprint"),
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._relationship_probabilities_for_pack",
+                return_value=prior,
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._select_v5_heldout_probes",
+                return_value=[],
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.evaluate_salvation_relationship_candidates",
+                return_value=(
+                    evaluated,
+                    {"hits": 0, "misses": 0, "provider_requests": 0},
+                ),
+            ),
+        ):
+            packet, _execution = evaluate_salvation_v5_calibration(
+                None,
+                {"cohort_sha256": "cohort"},
+                boundary_review,
+                collection_review,
+                model="jev-1.13.0",
+                client=_Client(),
+            )
+
+        self.assertEqual(
+            set(V5_CALIBRATION_RELATIONSHIPS),
+            set(packet["relationship_definitions"]),
         )
 
     def test_archived_final_calibration_fails_closed_after_policy_freeze(self) -> None:
