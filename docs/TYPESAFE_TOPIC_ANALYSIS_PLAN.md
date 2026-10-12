@@ -1403,14 +1403,28 @@ theological stance.
     sample. End salvation leaf calibration and proceed to provider-free,
     equal-sermon aggregation and repeatability diagnostics. Keep the three
     unresolved leaves unavailable rather than zero-valued.
+83. The first three-sermon profile diagnostic validates equal-sermon aggregation but
+    does not validate repeatability. Zero detections are insufficient positive
+    evidence, not stable absence. Series deltas are sermon ranges because every
+    series is a singleton, and period deltas confound time with a one-versus-two
+    sermon split. Preserve those values as descriptive diagnostics while marking
+    their replication insufficient. Build a provider-free candidate inventory for
+    a twelve-sermon-per-pastor convergence cohort, targeting at least three series
+    with within-series replication and multiple replicated periods. Estimate
+    convergence per relationship at sample sizes `3, 4, 5, 6, 8, 10, 12`; do not
+    calibrate a repeatability threshold from the three-sermon sample.
 
 ### Next iteration
 
-1. Build the provider-free `salvation-profile-repeatability` report from the exact
-   approved collection packet and current twelve-sermon artifacts.
-2. Inspect equal-sermon means, leave-one-sermon sensitivity, and between-series and
-   between-period deltas before calibrating any profile-level stability rule.
-3. Preserve all three unresolved raw judgments for research and audit; never project
+1. Build the provider-free `salvation-repeatability-expansion-plan` candidate
+   inventory. Use it to prepare an exact proposed twelve-sermon-per-pastor cohort;
+   the operator is not responsible for open-ended selection or series assignment.
+2. Review the proposed cohort's exact series and period evidence before any
+   reclassification. Then run cache-aware classification only for the approved
+   additions.
+3. Measure per-leaf convergence across repeated subsets at `3, 4, 5, 6, 8, 10, 12`
+   sermons. Do not infer stable absence from zero detections.
+4. Preserve all three unresolved raw judgments for research and audit; never project
    them as zero, absence, or theological opposition. Do not compare pastors or infer
    theological stance from this diagnostic cohort.
 

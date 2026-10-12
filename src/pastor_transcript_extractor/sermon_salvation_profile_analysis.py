@@ -22,15 +22,15 @@ from pastor_transcript_extractor.sermon_topic_stage4 import (
 from pastor_transcript_extractor.storage import Database
 
 
-SALVATION_PROFILE_REPEATABILITY_SCHEMA_VERSION = 1
+SALVATION_PROFILE_REPEATABILITY_SCHEMA_VERSION = 2
 SALVATION_PROFILE_REPEATABILITY_POLICY_VERSION = (
-    "salvation-profile-repeatability-v1-equal-sermon"
+    "salvation-profile-repeatability-v2-replication-aware"
 )
 APPROVED_SALVATION_COLLECTION_REVIEW_FINGERPRINT = (
     "7865d2213837191ea50764fddfa93df591434e19911e13d6a6c097a5a16aa8fd"
 )
 DEFAULT_SALVATION_PROFILE_REPEATABILITY_OUTPUT = Path(
-    "evaluation/sermon-topics/salvation-profile-repeatability-v1.json"
+    "evaluation/sermon-topics/salvation-profile-repeatability-v2.json"
 )
 SALVATION_PROFILE_WATCH_FIXTURES = {
     "590:34:faith_as_receiving_response": "isolated_false_negative_watch",
@@ -212,6 +212,11 @@ def build_salvation_profile_repeatability(
                 sermon["relationships"][relationship]["observation_count"]
                 for sermon in sermons
             )
+            diagnostics["evidence_status"] = (
+                "positive_evidence_observed_sample_size_unresolved"
+                if diagnostics["sermons_with_observation"]
+                else "insufficient_positive_evidence"
+            )
             relationships[relationship] = diagnostics
         pastor_reports.append(
             {
@@ -224,6 +229,12 @@ def build_salvation_profile_repeatability(
                 "slug": pastor.get("slug"),
                 "sermons": sermons,
                 "relationships": relationships,
+                "series_replication": next(iter(relationships.values()))[
+                    "series_replication"
+                ],
+                "period_replication": next(iter(relationships.values()))[
+                    "period_replication"
+                ],
             }
         )
     source_artifacts = current_sources
@@ -253,11 +264,15 @@ def build_salvation_profile_repeatability(
         "input_fingerprint": _canonical_hash(identity),
         "status": "diagnostic_only_repeatability_threshold_not_calibrated",
         "comparative_use_allowed": False,
+        "repeatability_interpretation_allowed": False,
         "provider_requests": 0,
         "interpretation": (
-            "Equal-sermon observation-rate diagnostics only. They measure sample "
-            "repeatability, not a pastor's theological stance. The three unresolved "
-            "relationships remain unavailable and are not represented as zero."
+            "Equal-sermon observation-rate diagnostics only. Zero detections mean "
+            "insufficient positive evidence, never stable absence. Series and period "
+            "deltas remain descriptive until their strata have within-group "
+            "replication. These results do not establish repeatability or a pastor's "
+            "theological stance. The three unresolved relationships remain "
+            "unavailable and are not represented as zero."
         ),
     }
 
@@ -285,6 +300,7 @@ def render_salvation_profile_repeatability(report: Mapping[str, Any]) -> str:
         "",
         f"- Status: `{report['status']}`",
         f"- Comparative use allowed: `{str(report['comparative_use_allowed']).lower()}`",
+        f"- Repeatability interpretation allowed: `{str(report['repeatability_interpretation_allowed']).lower()}`",
         f"- Provider requests: `{report['provider_requests']}`",
         f"- Approved collection review: `{report['approved_collection_review_fingerprint']}`",
         f"- Input fingerprint: `{report['input_fingerprint']}`",
@@ -306,15 +322,22 @@ def render_salvation_profile_repeatability(report: Mapping[str, Any]) -> str:
                     f"{pastor['sermon_count']}; series {pastor['series_count']}; "
                     f"periods {pastor['period_count']}."
                 ),
+                (
+                    "Series replication: "
+                    f"`{pastor['series_replication']['status']}`; period replication: "
+                    f"`{pastor['period_replication']['status']}`. Their deltas below "
+                    "are descriptive only."
+                ),
                 "",
-                "| Relationship | Mean routed-block fraction | Sermons observed | Observations | LOO max Δ | Series max Δ | Period max Δ |",
-                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+                "| Relationship | Evidence status | Mean routed-block fraction | Sermons observed | Observations | LOO max Δ | Series max Δ* | Period max Δ* |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
         for relationship in report["measured_relationships"]:
             metrics = pastor["relationships"][relationship]
             lines.append(
-                f"| `{relationship}` | {formatted(metrics['equal_sermon_mean'])} | "
+                f"| `{relationship}` | `{metrics['evidence_status']}` | "
+                f"{formatted(metrics['equal_sermon_mean'])} | "
                 f"{metrics['sermons_with_observation']}/{pastor['sermon_count']} | "
                 f"{metrics['total_observation_count']} | "
                 f"{formatted(metrics['leave_one_sermon_max_absolute_delta'])} | "

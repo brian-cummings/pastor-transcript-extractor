@@ -124,6 +124,22 @@ class SalvationProfileRepeatabilityTests(unittest.TestCase):
         self.assertEqual(1, grace["sermons_with_observation"])
         self.assertEqual(1, grace["total_observation_count"])
         self.assertEqual(
+            "positive_evidence_observed_sample_size_unresolved",
+            grace["evidence_status"],
+        )
+        justification = report["pastors"][0]["relationships"][
+            "justification_right_standing"
+        ]
+        self.assertEqual(
+            "insufficient_positive_evidence",
+            justification["evidence_status"],
+        )
+        self.assertEqual(
+            "insufficient_within_group_replication",
+            report["pastors"][0]["series_replication"]["status"],
+        )
+        self.assertFalse(report["repeatability_interpretation_allowed"])
+        self.assertEqual(
             sorted(UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS),
             report["unresolved_relationships"],
         )

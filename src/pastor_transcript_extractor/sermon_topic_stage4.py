@@ -777,6 +777,27 @@ def measurement_repeatability_diagnostics(
 
     series = grouped("series_key")
     periods = grouped("period_key")
+
+    def replication(groups: list[dict[str, Any]]) -> dict[str, Any]:
+        replicated = sum(int(item["sermon_count"]) >= 2 for item in groups)
+        sufficient = len(groups) >= 2 and replicated == len(groups)
+        return {
+            "group_count": len(groups),
+            "replicated_group_count": replicated,
+            "singleton_group_count": sum(
+                int(item["sermon_count"]) == 1 for item in groups
+            ),
+            "minimum_sermons_per_group": min(
+                (int(item["sermon_count"]) for item in groups),
+                default=0,
+            ),
+            "status": (
+                "replicated_descriptive_only"
+                if sufficient
+                else "insufficient_within_group_replication"
+            ),
+        }
+
     return {
         "equal_sermon_mean": round(center, 6),
         "sermon_values": [
@@ -798,10 +819,12 @@ def measurement_repeatability_diagnostics(
             else None
         ),
         "series": series,
+        "series_replication": replication(series),
         "maximum_between_series_delta": _maximum_pairwise_delta(
             [float(item["mean"]) for item in series]
         ),
         "periods": periods,
+        "period_replication": replication(periods),
         "maximum_between_period_delta": _maximum_pairwise_delta(
             [float(item["mean"]) for item in periods]
         ),

@@ -543,6 +543,21 @@ sensitivity, and reuses an unchanged JSON/Markdown result by fingerprint. It doe
 call TypeSafe, compare pastors, establish a theological stance, or represent the
 three unresolved leaves as zero.
 
+The first three-sermon report is intentionally insufficient for repeatability. In
+the v2 diagnostic, zero detections are labeled `insufficient_positive_evidence`, and
+series/period deltas carry explicit within-stratum replication status. Build the
+provider-free expansion inventory with:
+
+```bash
+pte analysis salvation-repeatability-expansion-plan \
+  --base-dir /path/to/app-data
+```
+
+This command inventories only currently eligible, reviewed-profile sermons for the
+four baseline profiles. It does not call TypeSafe or pretend that similar titles
+prove series membership. Return the generated packet for an exact proposed cohort;
+the operator does not need to select sermons or author cohort JSON.
+
 When a refreshed collection review exposes a question-ordering defect, validate the
 revised four-question v5 pack on the reviewed regressions and fresh held-out cases:
 

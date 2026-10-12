@@ -115,6 +115,11 @@ from pastor_transcript_extractor.sermon_salvation_profile_analysis import (
     evaluate_salvation_profile_repeatability,
     write_salvation_profile_repeatability,
 )
+from pastor_transcript_extractor.sermon_salvation_repeatability_expansion import (
+    DEFAULT_SALVATION_REPEATABILITY_EXPANSION_OUTPUT,
+    evaluate_salvation_repeatability_expansion_plan,
+    write_salvation_repeatability_expansion_plan,
+)
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     default_topic_behavior_output_path,
@@ -2270,6 +2275,50 @@ def analysis_salvation_profile_repeatability(
         f"pastors={len(report['pastors'])}; "
         f"measured_leaves={len(report['measured_relationships'])}; "
         f"unresolved_leaves={len(report['unresolved_relationships'])}; "
+        f"provider_requests={report['provider_requests']}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-repeatability-expansion-plan",
+    help=(
+        "Inventory provider-free eligible candidates for the larger salvation "
+        "repeatability cohort."
+    ),
+)
+def analysis_salvation_repeatability_expansion_plan(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen three-sermon baseline cohort.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_REPEATABILITY_EXPANSION_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON candidate inventory; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        report = evaluate_salvation_repeatability_expansion_plan(database, cohort)
+        json_path, markdown_path, reused = (
+            write_salvation_repeatability_expansion_plan(output_path, report)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation repeatability expansion plan: "
+        f"{json_path} and {markdown_path}; "
+        f"pastors={len(report['pastors'])}; "
+        f"eligible_candidates={sum(int(item['eligible_candidate_count']) for item in report['pastors'])}; "
         f"provider_requests={report['provider_requests']}; "
         f"fingerprint={str(report['input_fingerprint'])[:12]}…",
         markup=False,
