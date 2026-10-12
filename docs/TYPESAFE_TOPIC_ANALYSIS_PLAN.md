@@ -571,6 +571,34 @@ Do not create a universal subtopic tree simply because a leaf can be named.
 Add a pack when it supports a concrete downstream statement and its triggering
 broad evidence can be inspected.
 
+### Current unresolved salvation leaves
+
+Three of the twelve salvation relationship questions are finalized as
+`block_level_unresolved`, not discarded and not awaiting an ordinary numeric
+threshold:
+
+| Relationship | Why the current detector is unresolved | Current handling |
+| --- | --- | --- |
+| `repentance_as_receiving_response` | Repeated calibration could recognize repentance and surrender language but did not reliably rank salvation-entry or restoration response above general confession, surrender, or spiritual response. | Preserve the raw probability; exclude it from sermon/pastor projection. |
+| `obedience_as_condition_or_means` | Reviewed affirmatives occur around `0.30`–`0.51`, interleaved with reverse-direction or negative evidence around `0.36`–`0.40`. No threshold separates conduct presented as necessary for obtaining or retaining salvation from conduct presented as its evidence. | Preserve the raw probability; exclude it from sermon/pastor projection. |
+| `obedience_as_consequence_or_evidence` | Fresh held-out affirmatives at `0.55` and `0.61` ranked below fresh negatives at `0.56` and `0.63`, reproducing the causal-direction inversion after the V9 wording improvement. | Preserve the raw probability; exclude it from sermon/pastor projection. |
+
+These failures are semantic-ordering failures, not merely a shortage of examples.
+Do not lower a threshold, treat an unresolved value as zero, or infer that a pastor
+rejects the relationship. Ordinary classification may continue caching all three
+raw judgments so naturally occurring held-out evidence remains available for
+research, but they must not block repeatability testing of the nine measurable
+leaves.
+
+Reopen one of these relationships only under a separately versioned measurement
+design with fresh held-out evaluation. Candidate designs include a Choice that
+compares causal directions directly, a two-stage claim-extraction then direction
+judgment, more bounded sermon context, or a newly validated model. More examples
+under the unchanged detector may quantify its error rate, but cannot by themselves
+repair an observed positive/negative ordering inversion. Of the three, revisit
+`obedience_as_consequence_or_evidence` first, then repentance response, then
+condition/means; this priority records tractability, not analytical importance.
+
 ## First-class cache architecture
 
 The per-block answer cache keeps logical answer packs under independent
