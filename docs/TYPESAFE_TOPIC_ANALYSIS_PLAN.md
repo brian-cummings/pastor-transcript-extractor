@@ -1492,23 +1492,49 @@ theological stance.
     will remain short after this phase. Do not include configured-but-unlinked videos,
     infer series, or change identity. Refresh the inventory and audit after the
     backfill, then decide whether a separate bounded identity phase is necessary.
+86. The 32-video analytical backfill is complete. The refreshed provider-free
+    inventory at fingerprint
+    `013fcb89dc906d5fc124742ce81fea4872e1f971451501e8b94aaabd4e088084`
+    exposes 12 candidates for profile 117, 13 for profile 80, 15 for profile 130,
+    and 3 for profile 318. These are candidate counts, not yet independent-sermon
+    cohort counts: matching-title pairs such as Ryder `418`/`419` and Williams
+    `587`/`588`, `595`/`597`, and `3981`/`3983` require explicit duplicate or
+    same-service adjudication, while most added candidates still lack reviewed
+    series and period evidence. Do not make another provider call merely to prepare
+    the cohort. Profile 318 is non-blocking for the initial three-pastor experiment.
 
 ### Next iteration
 
-1. Execute the exact 32-video `salvation-analytical-backfill-plan`; continue after
-   individual failures and retain all cache hits.
-2. Rerun `salvation-repeatability-expansion-plan` and
-   `salvation-candidate-discovery-audit`. Report actual candidate counts rather than
-   the plan's projected maxima.
-3. If profile 318 remains short, prepare a separate bounded identity-review phase;
-   do not mix identity adjudication into this analytical backfill.
-4. Only after sufficient candidates exist, review the proposed cohort's exact series
-   and period evidence before cache-aware classification of approved additions.
-5. Measure per-leaf convergence across repeated subsets at `3, 4, 5, 6, 8, 10, 12`
-   sermons. Do not infer stable absence from zero detections.
-6. Preserve all three unresolved raw judgments for research and audit; never project
-   them as zero, absence, or theological opposition. Do not compare pastors or infer
+1. Implement a provider-free exact-cohort proposal for profiles 117, 80, and 130.
+   Preserve each pastor's three reviewed baseline sermons and select additions
+   deterministically; do not ask the operator to hand-pick recordings.
+2. Before counting 12 independent sermons, group and adjudicate possible duplicate,
+   mirrored, or same-service recordings using existing source provenance, transcript
+   similarity, timestamps, and stored artifacts. A matching title may nominate a
+   duplicate check but cannot decide it by itself. The proposal must show every
+   included recording, exclusion, equivalence group, and backing evidence.
+3. Attach reviewed series and period provenance to the exact proposal. Require at
+   least three series with at least two independent sermons each and two periods
+   with at least three independent sermons each. Do not infer either field from a
+   title alone. Report a concrete shortfall if deduplication or missing provenance
+   prevents the contract; do not silently weaken it.
+4. Keep profile 318 out of this initial experiment. Its three candidates do not
+   block a three-pastor repeatability test. Prepare a separate bounded identity phase
+   only if the three-pastor result leaves a material question that a fourth pastor
+   would answer.
+5. Return the fingerprinted exact-cohort packet for one bounded human approval. The
+   packet is a proposal and grants no analytical credit before that approval.
+6. After approval, run provider-free nine-leaf convergence at
+   `3, 4, 5, 6, 8, 10, 12` sermons and report sensitivity to sermon ordering,
+   series, and period. Do not infer stable absence from zero detections or infer a
    theological stance from this diagnostic cohort.
+7. Keep repentance response, obedience as condition/means, and obedience as
+   consequence/evidence `block_level_unresolved`. Their cached raw probabilities may
+   support a separate future detector-design study, but they do not enter this
+   cohort proposal, convergence calculation, or pastor projection.
+8. No TypeSafe call is needed for cohort preparation or convergence. Before adding
+   more broad topics or leaf packs, implement the first-run token-efficiency goals
+   above so taxonomy growth does not multiply transcript/context transmission.
 
 ## Non-goals for `topics-v1`
 
