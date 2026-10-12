@@ -145,7 +145,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
 
     def test_collection_policy_is_shared_and_validates_raw_inventory(self) -> None:
         self.assertEqual(
-            "salvation-relationship-observation-thresholds-v9-ten-leaf-final",
+            "salvation-relationship-observation-thresholds-v9-pending-consequence-review",
             SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
         )
         probabilities = {

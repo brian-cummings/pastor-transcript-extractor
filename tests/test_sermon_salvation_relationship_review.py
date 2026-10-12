@@ -30,6 +30,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_FINGERPRINT,
     SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_POLICY_VERSION,
     SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT,
+    SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_FINGERPRINT,
     SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS,
     _select_semantic_heldout_probes,
     _select_v5_heldout_probes,
@@ -37,6 +38,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     _select_review_candidates,
     build_salvation_v5_threshold_review,
     build_salvation_condition_boundary_review,
+    build_salvation_consequence_boundary_review,
     evaluate_salvation_final_calibration,
     evaluate_salvation_semantic_calibration,
     evaluate_salvation_relationship_review,
@@ -988,6 +990,100 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
             "archived after the policy was finalized",
         ):
             build_salvation_condition_boundary_review(None, {}, {})
+
+    def test_consequence_boundary_review_uses_regressions_and_fresh_cache(self) -> None:
+        relationship = "obedience_as_consequence_or_evidence"
+        anchors = ["4394:52", "350:42"]
+        fresh_keys = [
+            f"fresh-{pastor}-{index}:1"
+            for pastor in range(4)
+            for index in range(4)
+        ]
+        candidate_keys = [*anchors, *fresh_keys]
+        candidates = [
+            {
+                "candidate_key": key,
+                "pastor": {
+                    "display_name": f"Pastor {index % 4}",
+                    "slug": f"pastor-{index % 4}",
+                },
+                "video_id": index + 1,
+                "youtube_video_id": f"youtube-{index}",
+                "title": f"Sermon {index}",
+                "block_id": 1,
+                "start_seconds": float(index),
+                "end_seconds": float(index + 1),
+                "leading_context": "Leading.",
+                "target_text": "Target.",
+                "trailing_context": "Trailing.",
+            }
+            for index, key in enumerate(candidate_keys)
+        ]
+        fresh_probabilities = (0.48, 0.57, 0.61, 0.68)
+        probabilities = {
+            key: {
+                leaf: (
+                    0.59
+                    if key == "4394:52" and leaf == relationship
+                    else 0.61
+                    if key == "350:42" and leaf == relationship
+                    else fresh_probabilities[index % 4]
+                    if leaf == relationship
+                    else 0.0
+                )
+                for leaf in SALVATION_RELATIONSHIPS
+            }
+            for index, key in enumerate(candidate_keys)
+        }
+        collection_review = {
+            "input_fingerprint": SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_FINGERPRINT,
+            "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "observation_policy_version": (
+                "salvation-relationship-observation-thresholds-v9-ten-leaf-final"
+            ),
+            "status": "collected_observations_pending_review",
+            "cohort_sha256": "cohort",
+            "cases": [
+                {"case_key": "4394:52"},
+                {"case_key": "350:42"},
+            ],
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
+                return_value=(candidates, "readiness-fingerprint"),
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._relationship_probabilities_for_pack",
+                return_value=probabilities,
+            ) as probability_loader,
+        ):
+            packet = build_salvation_consequence_boundary_review(
+                None,
+                {"cohort_sha256": "cohort"},
+                collection_review,
+            )
+
+        self.assertEqual(10, len(packet["probes"]))
+        self.assertEqual(8, packet["fresh_probe_count"])
+        self.assertEqual(0, packet["provider_requests"])
+        self.assertEqual(
+            {"affirmative_rejected", "negative_collected"},
+            {
+                probe["review_label"]
+                for probe in packet["probes"]
+                if probe["selection"] == "reviewed_regression_anchor"
+            },
+        )
+        fresh = [
+            probe
+            for probe in packet["probes"]
+            if probe["selection"] == "fresh_cached_neighbor"
+        ]
+        self.assertEqual({"below", "at_or_above"}, {p["boundary_side"] for p in fresh})
+        self.assertTrue(all(p["candidate_key"] not in anchors for p in fresh))
+        probability_loader.assert_called_once()
 
     def test_archived_final_calibration_fails_closed_after_policy_freeze(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived for the reviewed pre-freeze"):

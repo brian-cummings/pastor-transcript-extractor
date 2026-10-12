@@ -79,6 +79,9 @@ DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT = Path(
 DEFAULT_SALVATION_CONDITION_BOUNDARY_REVIEW_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-condition-boundary-review-v1.json"
 )
+DEFAULT_SALVATION_CONSEQUENCE_BOUNDARY_REVIEW_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-consequence-boundary-review-v1.json"
+)
 PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v2-evidence-boundaries"
 )
@@ -189,6 +192,21 @@ SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT = (
 SALVATION_CONDITION_TRANSCRIPTION_CORRECTION = "usurp"
 SALVATION_CONDITION_BOUNDARY_PROBE_COUNT = 12
 PRIOR_CONDITION_OBSERVATION_THRESHOLD = 0.70
+SALVATION_CONSEQUENCE_BOUNDARY_REVIEW_POLICY_VERSION = (
+    "salvation-consequence-provider-free-ordering-v1"
+)
+SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_FINGERPRINT = (
+    "a9f8f419dd4b61c84ac0f997b62fc1e3f4d874a0ec5e55354b53d2e59287e02a"
+)
+SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_POLICY_VERSION = (
+    "salvation-relationship-observation-thresholds-v9-ten-leaf-final"
+)
+SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS = {
+    "4394:52": "affirmative_rejected",
+    "350:42": "negative_collected",
+}
+SALVATION_CONSEQUENCE_BOUNDARY_WINDOW = (0.45, 0.70)
+SALVATION_CONSEQUENCE_BOUNDARY_FRESH_PROBE_COUNT = 8
 PRIOR_REPENTANCE_OBSERVATION_THRESHOLD = 0.57
 V5_CALIBRATION_RELATIONSHIPS = (
     "divine_grace_initiative",
@@ -2538,6 +2556,179 @@ def build_salvation_condition_boundary_review(
     }
 
 
+def _select_consequence_boundary_fresh_probes(
+    candidates: Sequence[Mapping[str, Any]],
+    probabilities: Mapping[str, Mapping[str, float]],
+    *,
+    excluded_case_keys: set[str],
+) -> list[dict[str, Any]]:
+    """Select diverse cached neighbors on both sides of the current boundary."""
+    relationship = "obedience_as_consequence_or_evidence"
+    lower, upper = SALVATION_CONSEQUENCE_BOUNDARY_WINDOW
+    threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+    candidates_in_window = [
+        candidate
+        for candidate in candidates
+        if str(candidate["candidate_key"]) in probabilities
+        and lower
+        <= float(
+            probabilities[str(candidate["candidate_key"])][relationship]
+        )
+        <= upper
+    ]
+    selected = _select_relationship_heldout_probes(
+        candidates_in_window,
+        probabilities,
+        relationship=relationship,
+        excluded_case_keys=excluded_case_keys,
+        threshold=threshold,
+        calibration_version="V9 consequence/evidence boundary",
+    )
+    if len(selected) != SALVATION_CONSEQUENCE_BOUNDARY_FRESH_PROBE_COUNT:
+        raise ValueError("Consequence/evidence boundary review selected the wrong size")
+    by_key = {str(candidate["candidate_key"]): candidate for candidate in candidates}
+    return [dict(by_key[str(probe["candidate_key"])]) for probe in selected]
+
+
+def build_salvation_consequence_boundary_review(
+    database: Database,
+    cohort: Mapping[str, Any],
+    collection_review: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the final provider-free V9 consequence/evidence ordering check."""
+    if (
+        collection_review.get("input_fingerprint")
+        != SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_FINGERPRINT
+        or collection_review.get("question_pack_version")
+        != SALVATION_RELATIONSHIPS_PACK_VERSION
+        or collection_review.get("observation_policy_version")
+        != SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_POLICY_VERSION
+        or collection_review.get("status")
+        != "collected_observations_pending_review"
+    ):
+        raise ValueError(
+            "Consequence/evidence boundary review requires the reviewed V9 "
+            "collected-observation packet"
+        )
+    if collection_review.get("cohort_sha256") != cohort.get("cohort_sha256"):
+        raise ValueError(
+            "Consequence/evidence boundary review cohort does not match its source packet"
+        )
+
+    candidates, readiness_fingerprint = _routed_candidates(database, cohort)
+    by_key = {str(item["candidate_key"]): item for item in candidates}
+    missing_anchors = sorted(
+        set(SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS) - set(by_key)
+    )
+    if missing_anchors:
+        raise ValueError(
+            "Consequence/evidence regression anchors are no longer routed: "
+            + ", ".join(missing_anchors)
+        )
+    probabilities = _relationship_probabilities_for_pack(
+        database,
+        cohort,
+        expected_pack_version=SALVATION_RELATIONSHIPS_PACK_VERSION,
+    )
+    missing_probabilities = sorted(set(by_key) - set(probabilities))
+    if missing_probabilities:
+        raise ValueError(
+            "Consequence/evidence review lacks cached V9 judgments for: "
+            + ", ".join(missing_probabilities)
+        )
+
+    source_case_keys = {
+        str(case["case_key"])
+        for case in collection_review.get("cases", [])
+        if isinstance(case, Mapping) and case.get("case_key") is not None
+    }
+    excluded_case_keys = set(ALL_REVIEWED_CANDIDATE_KEYS) | source_case_keys
+    fresh = _select_consequence_boundary_fresh_probes(
+        candidates,
+        probabilities,
+        excluded_case_keys=excluded_case_keys,
+    )
+    relationship = "obedience_as_consequence_or_evidence"
+    threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+    regression_keys = list(SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS)
+    selected_keys = [*regression_keys, *[str(item["candidate_key"]) for item in fresh]]
+    probes = []
+    for key in selected_keys:
+        probability = round(float(probabilities[key][relationship]), 6)
+        probes.append(
+            {
+                "judgment_key": f"{key}:{relationship}",
+                "candidate_key": key,
+                "relationship": relationship,
+                "probability": probability,
+                "current_threshold": threshold,
+                "collected_at_current_threshold": probability >= threshold,
+                "boundary_side": (
+                    "at_or_above" if probability >= threshold else "below"
+                ),
+                "selection": (
+                    "reviewed_regression_anchor"
+                    if key in SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS
+                    else "fresh_cached_neighbor"
+                ),
+                "review_label": SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS.get(
+                    key
+                ),
+            }
+        )
+    cases = [
+        {
+            key: value
+            for key, value in by_key[candidate_key].items()
+            if key not in {"cache_dir", "context_diagnostics", "segment_indexes"}
+        }
+        for candidate_key in selected_keys
+    ]
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": SALVATION_CONSEQUENCE_BOUNDARY_REVIEW_POLICY_VERSION,
+        "cohort_sha256": cohort.get("cohort_sha256"),
+        "readiness_input_fingerprint": readiness_fingerprint,
+        "source_collection_review_fingerprint": collection_review.get(
+            "input_fingerprint"
+        ),
+        "question_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "observation_policy_version": (
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        ),
+        "relationship": relationship,
+        "current_threshold": threshold,
+        "calibration_window": list(SALVATION_CONSEQUENCE_BOUNDARY_WINDOW),
+        "regression_labels": dict(
+            SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS
+        ),
+        "fresh_probe_count": len(fresh),
+        "excluded_case_keys": sorted(excluded_case_keys),
+        "frozen_measurable_relationships": sorted(
+            set(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS) - {relationship}
+        ),
+        "unresolved_relationships": sorted(
+            UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS
+        ),
+        "probes": probes,
+        "cases": cases,
+        "provider_requests": 0,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "consequence_evidence_ordering_review_pending",
+        "policy_effect": "none",
+        "interpretation": (
+            "V9 wording and the 0.60 boundary remain unchanged. Review whether "
+            "fresh cases repeat the regression inversion: genuine conduct as fruit "
+            "below generic transformation above. Repeated inversion makes this leaf "
+            "block-level unresolved; clean fresh ordering permits one final numeric "
+            "boundary decision. The other nine measurable leaves are out of scope."
+        ),
+    }
+
+
 def evaluate_obedience_consequence_calibration(
     database: Database,
     cohort: Mapping[str, Any],
@@ -3262,6 +3453,43 @@ def render_salvation_condition_boundary_review(packet: Mapping[str, Any]) -> str
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_salvation_consequence_boundary_review(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    lines = [
+        "# Salvation consequence/evidence boundary review",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Relationship: `{packet['relationship']}`",
+        f"- Current threshold: `{float(packet['current_threshold']):.2f}`",
+        f"- Regression anchors: `{len(packet['regression_labels'])}`",
+        f"- Fresh cached neighbors: `{packet['fresh_probe_count']}`",
+        "- Provider requests: `0`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "## Review task",
+        "",
+        "Label each fresh probe affirmative, negative, or ambiguous under the V9 "
+        "definition. Do not change the question or threshold from this packet. If "
+        "fresh positives again fall below fresh negatives, recommend "
+        "`block_level_unresolved`. If fresh cases separate cleanly, recommend one "
+        "numeric boundary and explain the margin.",
+        "",
+        "| Case | Selection | Probability | Boundary side | Reviewed label |",
+        "| --- | --- | ---: | --- | --- |",
+    ]
+    for probe in packet["probes"]:
+        lines.append(
+            f"| {probe['candidate_key']} | {probe['selection']} | "
+            f"{float(probe['probability']):.3f} | {probe['boundary_side']} | "
+            f"{probe.get('review_label') or '—'} |"
+        )
+    lines.extend(_render_deduplicated_evidence_cases(cases))
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
         "# Salvation relationships review",
@@ -3469,4 +3697,15 @@ def write_salvation_condition_boundary_review(
         path,
         packet,
         render_salvation_condition_boundary_review,
+    )
+
+
+def write_salvation_consequence_boundary_review(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_consequence_boundary_review,
     )

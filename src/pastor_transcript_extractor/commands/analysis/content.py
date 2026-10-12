@@ -52,6 +52,8 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     DEFAULT_SALVATION_V8_CONVERSION_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_CONDITION_BOUNDARY_REVIEW_OUTPUT,
+    DEFAULT_SALVATION_CONSEQUENCE_BOUNDARY_REVIEW_OUTPUT,
+    build_salvation_consequence_boundary_review,
     build_salvation_condition_boundary_review,
     build_salvation_v5_threshold_review,
     evaluate_obedience_consequence_calibration,
@@ -77,6 +79,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     write_salvation_v8_conversion_calibration,
     write_salvation_final_boundary_calibration,
     write_salvation_condition_boundary_review,
+    write_salvation_consequence_boundary_review,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
@@ -2016,6 +2019,58 @@ def analysis_salvation_condition_boundary_review(
         f"{'Reused' if reused else 'Wrote'} salvation condition/means boundary review: "
         f"{json_path} and {markdown_path}; "
         f"probes={len(packet['probes'])}; provider_requests=0; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-consequence-boundary-review",
+    help="Build the provider-free final V9 consequence/evidence ordering review.",
+)
+def analysis_salvation_consequence_boundary_review(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying routed V9 evidence.",
+    ),
+    collection_review_path: Path = typer.Option(
+        DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+        "--collection-review",
+        help="Reviewed V9 collected-observation packet containing the regressions.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_CONSEQUENCE_BOUNDARY_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        collection_review = load_salvation_collected_observations_review(
+            collection_review_path
+        )
+        packet = build_salvation_consequence_boundary_review(
+            database,
+            cohort,
+            collection_review,
+        )
+        json_path, markdown_path, reused = (
+            write_salvation_consequence_boundary_review(output_path, packet)
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation consequence/evidence "
+        f"boundary review: {json_path} and {markdown_path}; "
+        f"regressions={len(packet['regression_labels'])}; "
+        f"fresh={packet['fresh_probe_count']}; provider_requests=0; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )

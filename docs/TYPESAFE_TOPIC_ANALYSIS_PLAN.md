@@ -1371,15 +1371,28 @@ theological stance.
     Do not create V10. Freeze the remaining ten leaves under
     `salvation-relationship-observation-thresholds-v9-ten-leaf-final` and archive
     the condition-boundary command.
+80. The refreshed ordinary-classification review at fingerprint
+    `a9f8f419dd4b61c84ac0f997b62fc1e3f4d874a0ec5e55354b53d2e59287e02a`
+    freezes nine measurable leaves but reopens
+    `obedience_as_consequence_or_evidence` only. Regression `4394:52` is a clear
+    affirmative rejected at `0.59`; `350:42` is generic transformation collected
+    at `0.61` despite not naming subsequent conduct. Keep V9 wording and `0.60`
+    unchanged while building one provider-free packet with those two anchors and
+    eight fresh cached neighbors in `0.45`–`0.70`. Version the interim policy as
+    `salvation-relationship-observation-thresholds-v9-pending-consequence-review`.
+    If fresh ordering repeats the inversion, mark this leaf unresolved; if it
+    separates cleanly, make one final numeric decision. Do not reopen the other nine
+    measurable leaves.
 
 ### Next iteration
 
-1. Refresh the frozen twelve-sermon cohort through ordinary cache-aware
-   reclassification so each artifact records the final ten-leaf observation policy.
-2. Rerun `salvation-collected-observations-review` and inspect the resulting ten-leaf
-   collection before pastor aggregation.
-3. Preserve repentance and condition/means raw judgments for research and debugging;
-   do not project them or reopen prompt tuning from this calibration corpus.
+1. Run `salvation-consequence-boundary-review` against the current cohort without
+   reclassification; it reads cached V9 probabilities and makes no provider calls.
+2. Review the eight fresh cases against the frozen V9 causal definition. Resolve the
+   leaf numerically only if their ordering supports it; otherwise mark it unresolved.
+3. Finalize the policy version, refresh the cohort once, and rerun the collected
+   observation review before pastor aggregation. Preserve every unresolved raw
+   judgment without projecting it as zero or opposition.
 
 ## Non-goals for `topics-v1`
 

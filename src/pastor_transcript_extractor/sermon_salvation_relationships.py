@@ -18,7 +18,7 @@ SALVATION_RELATIONSHIPS_PACK_VERSION = (
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v9-ten-leaf-final"
+    "salvation-relationship-observation-thresholds-v9-pending-consequence-review"
 )
 
 

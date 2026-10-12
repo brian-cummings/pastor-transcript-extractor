@@ -425,8 +425,8 @@ probability is at least `0.55` also enter the independently cached
 `salvation-relationships-v9-consequence-conduct-boundary` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
-observations from the frozen
-`salvation-relationship-observation-thresholds-v9-ten-leaf-final`
+observations from the review-pending
+`salvation-relationship-observation-thresholds-v9-pending-consequence-review`
 policy. Ten relationships retain explicit per-leaf thresholds, including the
 frozen `conversion_new_birth` at `0.55`. V9 freezes the revised
 obedience-as-consequence semantics, moves that leaf's boundary to `0.60`, moves
@@ -508,10 +508,25 @@ overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
 twelve-question pack through the normal content-addressed cache, preserves both
 unresolved probabilities, and projects the ten thresholded leaves.
 
-Conversion V8, consequence-obedience V9, and the reviewed numeric boundaries are
-frozen. Historical semantic, final-calibration, and condition-boundary commands fail
+Conversion V8, consequence-obedience V9 wording, and nine measurable boundaries are
+frozen. The consequence/evidence `0.60` boundary remains active but unapproved after
+the collected-observation review found an affirmative at `0.59` below a negative at
+`0.61`. Historical semantic, final-calibration, and condition-boundary commands fail
 closed so they cannot overwrite their fingerprinted review packets with a later
 policy.
+
+Build the one remaining provider-free ordering check without reclassifying:
+
+```bash
+pte analysis salvation-consequence-boundary-review \
+  --base-dir /path/to/app-data
+```
+
+It reuses cached V9 judgments, includes reviewed regressions `4394:52` and `350:42`,
+and selects eight fresh neighbors from `0.45` through `0.70`. Repeated causal-ordering
+inversion makes consequence/evidence the third unresolved leaf; clean held-out
+ordering permits one final numeric boundary decision. It does not change V9 wording,
+the `0.60` boundary, or any production observation.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected
 recording, topic, role, and treatment packs continue to replay from their existing
 per-video caches.
