@@ -89,6 +89,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
                 {
                     "repentance_as_receiving_response",
                     "obedience_as_condition_or_means",
+                    "obedience_as_consequence_or_evidence",
                 }
             ),
             UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
@@ -111,6 +112,12 @@ class SalvationRelationshipsTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
+            "block_level_unresolved",
+            SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES[
+                "obedience_as_consequence_or_evidence"
+            ],
+        )
+        self.assertEqual(
             0.65,
             salvation_relationship_observation_threshold(
                 "divine_grace_initiative"
@@ -125,12 +132,6 @@ class SalvationRelationshipsTests(unittest.TestCase):
             salvation_relationship_observation_threshold("atonement_as_basis"),
         )
         self.assertEqual(
-            0.60,
-            salvation_relationship_observation_threshold(
-                "obedience_as_consequence_or_evidence"
-            ),
-        )
-        self.assertEqual(
             0.55,
             salvation_relationship_observation_threshold("conversion_new_birth"),
         )
@@ -142,10 +143,14 @@ class SalvationRelationshipsTests(unittest.TestCase):
             salvation_relationship_observation_threshold(
                 "obedience_as_condition_or_means"
             )
+        with self.assertRaisesRegex(ValueError, "no frozen observation threshold"):
+            salvation_relationship_observation_threshold(
+                "obedience_as_consequence_or_evidence"
+            )
 
     def test_collection_policy_is_shared_and_validates_raw_inventory(self) -> None:
         self.assertEqual(
-            "salvation-relationship-observation-thresholds-v9-pending-consequence-review",
+            "salvation-relationship-observation-thresholds-v9-nine-leaf-final",
             SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
         )
         probabilities = {
@@ -156,6 +161,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
         }
         probabilities["repentance_as_receiving_response"] = 1.0
         probabilities["obedience_as_condition_or_means"] = 1.0
+        probabilities["obedience_as_consequence_or_evidence"] = 1.0
         probabilities["assurance_security"] = 0.62
         probabilities["atonement_as_basis"] = 0.68
 
@@ -232,6 +238,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
         self.assertEqual(
             [
                 "obedience_as_condition_or_means",
+                "obedience_as_consequence_or_evidence",
                 "repentance_as_receiving_response",
             ],
             artifact["projection_excluded_relationships"],

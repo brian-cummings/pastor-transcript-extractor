@@ -51,6 +51,7 @@ def _block(block_id: int, *, collected: bool) -> dict[str, object]:
     }
     probabilities["repentance_as_receiving_response"] = 0.99
     probabilities["obedience_as_condition_or_means"] = 0.99
+    probabilities["obedience_as_consequence_or_evidence"] = 0.99
     return {
         "block_id": block_id,
         "start_seconds": float(block_id * 60),
@@ -121,7 +122,10 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
             pastor: str,
         ) -> dict[str, object]:
             video_id, block_id, _leaf = key.split(":")
-            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                relationship,
+                0.60,
+            )
             return {
                 "judgment_key": key,
                 "relationship": relationship,
@@ -217,7 +221,7 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
         )
         self.assertEqual(2, len(packet["regression_anchors"]))
         self.assertEqual(6, len(packet["frozen_watch_fixtures"]))
-        self.assertEqual(9, len(packet["frozen_relationships"]))
+        self.assertEqual(8, len(packet["frozen_relationships"]))
         self.assertEqual(0, packet["provider_requests"])
         self.assertEqual("none", packet["policy_effect"])
         markdown = render_salvation_conversion_recalibration(packet)

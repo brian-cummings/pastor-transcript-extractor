@@ -192,6 +192,7 @@ SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT = (
 SALVATION_CONDITION_TRANSCRIPTION_CORRECTION = "usurp"
 SALVATION_CONDITION_BOUNDARY_PROBE_COUNT = 12
 PRIOR_CONDITION_OBSERVATION_THRESHOLD = 0.70
+PRIOR_CONSEQUENCE_OBSERVATION_THRESHOLD = 0.60
 SALVATION_CONSEQUENCE_BOUNDARY_REVIEW_POLICY_VERSION = (
     "salvation-consequence-provider-free-ordering-v1"
 )
@@ -200,6 +201,9 @@ SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_FINGERPRINT = (
 )
 SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_POLICY_VERSION = (
     "salvation-relationship-observation-thresholds-v9-ten-leaf-final"
+)
+SALVATION_CONSEQUENCE_BOUNDARY_PENDING_POLICY_VERSION = (
+    "salvation-relationship-observation-thresholds-v9-pending-consequence-review"
 )
 SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS = {
     "4394:52": "affirmative_rejected",
@@ -365,6 +369,14 @@ def _canonical_hash(value: object) -> str:
             ensure_ascii=False,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _historical_observation_threshold(relationship: str) -> float:
+    if relationship == "obedience_as_condition_or_means":
+        return PRIOR_CONDITION_OBSERVATION_THRESHOLD
+    if relationship == "obedience_as_consequence_or_evidence":
+        return PRIOR_CONSEQUENCE_OBSERVATION_THRESHOLD
+    return SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
 
 
 def _routed_candidates(
@@ -1084,10 +1096,7 @@ def _select_v5_heldout_probes(
 ) -> list[dict[str, Any]]:
     probes: list[dict[str, Any]] = []
     for relationship in V5_CALIBRATION_RELATIONSHIPS:
-        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
-            relationship,
-            PRIOR_CONDITION_OBSERVATION_THRESHOLD,
-        )
+        threshold = _historical_observation_threshold(relationship)
         available = [
             item
             for item in candidates
@@ -1314,10 +1323,7 @@ def evaluate_salvation_v5_calibration(
         "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
         "requested_model_id": model,
         "unchanged_thresholds": {
-            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
-                relationship,
-                PRIOR_CONDITION_OBSERVATION_THRESHOLD,
-            )
+            relationship: _historical_observation_threshold(relationship)
             for relationship in V5_CALIBRATION_RELATIONSHIPS
         },
         "relationship_definitions": {
@@ -2572,7 +2578,7 @@ def _select_consequence_boundary_fresh_probes(
     """Select diverse cached neighbors on both sides of the current boundary."""
     relationship = "obedience_as_consequence_or_evidence"
     lower, upper = SALVATION_CONSEQUENCE_BOUNDARY_WINDOW
-    threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+    threshold = PRIOR_CONSEQUENCE_OBSERVATION_THRESHOLD
     candidates_in_window = [
         candidate
         for candidate in candidates
@@ -2614,6 +2620,14 @@ def build_salvation_consequence_boundary_review(
     collection_review: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Build the final provider-free V9 consequence/evidence ordering check."""
+    if (
+        SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        != SALVATION_CONSEQUENCE_BOUNDARY_PENDING_POLICY_VERSION
+    ):
+        raise ValueError(
+            "Consequence/evidence boundary review is archived after the policy "
+            "was finalized"
+        )
     if (
         collection_review.get("input_fingerprint")
         != SALVATION_CONSEQUENCE_BOUNDARY_SOURCE_FINGERPRINT
@@ -2667,7 +2681,7 @@ def build_salvation_consequence_boundary_review(
         excluded_case_keys=excluded_case_keys,
     )
     relationship = "obedience_as_consequence_or_evidence"
-    threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+    threshold = PRIOR_CONSEQUENCE_OBSERVATION_THRESHOLD
     regression_keys = list(SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS)
     selected_keys = [*regression_keys, *[str(item["candidate_key"]) for item in fresh]]
     probes = []

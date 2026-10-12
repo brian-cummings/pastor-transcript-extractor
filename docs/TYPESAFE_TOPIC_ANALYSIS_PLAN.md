@@ -1383,16 +1383,26 @@ theological stance.
     If fresh ordering repeats the inversion, mark this leaf unresolved; if it
     separates cleanly, make one final numeric decision. Do not reopen the other nine
     measurable leaves.
+81. The provider-free consequence/evidence review at fingerprint
+    `9543eae8eac75482b9430069d5b9905a114ae0ee5513e34184d1ed4930134ad5`
+    reproduces the ordering inversion on eight fresh cases. Clear affirmatives at
+    `0.55`, `0.61`, and `0.67` interleave with clear negatives at `0.49`, `0.50`,
+    `0.56`, and `0.63`; `0.53` is ambiguous. No threshold can recover the positives
+    without admitting the negatives. Mark
+    `obedience_as_consequence_or_evidence` as `block_level_unresolved`, preserve its
+    raw V9 probability, and exclude it from pastor projection without treating it as
+    absent or opposed. Do not create V10. Freeze the nine remaining measurable leaves
+    under `salvation-relationship-observation-thresholds-v9-nine-leaf-final` and
+    archive the consequence-boundary command.
 
 ### Next iteration
 
-1. Run `salvation-consequence-boundary-review` against the current cohort without
-   reclassification; it reads cached V9 probabilities and makes no provider calls.
-2. Review the eight fresh cases against the frozen V9 causal definition. Resolve the
-   leaf numerically only if their ordering supports it; otherwise mark it unresolved.
-3. Finalize the policy version, refresh the cohort once, and rerun the collected
-   observation review before pastor aggregation. Preserve every unresolved raw
-   judgment without projecting it as zero or opposition.
+1. Refresh the twelve-sermon cohort once through ordinary cache-aware
+   reclassification so artifacts record the final nine-leaf policy.
+2. Rerun `salvation-collected-observations-review` and inspect the nine projected
+   relationships before pastor aggregation.
+3. Preserve all three unresolved raw judgments for research and audit; never project
+   them as zero, absence, or theological opposition.
 
 ## Non-goals for `topics-v1`
 

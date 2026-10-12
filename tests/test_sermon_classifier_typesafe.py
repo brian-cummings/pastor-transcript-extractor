@@ -359,7 +359,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertIn("assurance_security", collected)
         self.assertIn("conversion_new_birth", collected)
         self.assertIn("forgiveness_pardon", collected)
-        self.assertIn("obedience_as_consequence_or_evidence", collected)
+        self.assertNotIn("obedience_as_consequence_or_evidence", collected)
         self.assertNotIn("repentance_as_receiving_response", collected)
         self.assertNotIn("obedience_as_condition_or_means", collected)
         self.assertNotIn("atonement_as_basis", collected)

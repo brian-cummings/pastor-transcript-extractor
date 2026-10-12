@@ -182,7 +182,11 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                 relationship: round(
                     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
                         relationship,
-                        0.70,
+                        (
+                            0.70
+                            if relationship == "obedience_as_condition_or_means"
+                            else 0.60
+                        ),
                     )
                     + (-0.01, 0.01)[index % 2],
                     2,
@@ -225,7 +229,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                     if relationship == sparse_relationship and index == 0
                     else 0.69
                     if relationship == sparse_relationship
-                    else SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+                    else SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                        relationship,
+                        0.60,
+                    )
                     + (-0.01, 0.01)[index % 2]
                 )
                 for relationship in V5_CALIBRATION_RELATIONSHIPS
@@ -596,7 +603,7 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         self.assertEqual(6, len(packet["regression_probes"]))
         self.assertEqual(8, len(packet["heldout_probes"]))
         self.assertEqual(14, len(packet["cases"]))
-        self.assertEqual(9, len(packet["frozen_relationships"]))
+        self.assertEqual(8, len(packet["frozen_relationships"]))
         self.assertEqual(0, execution["provider_requests"])
         self.assertTrue(
             set(regression_keys).isdisjoint(
@@ -1056,6 +1063,10 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
 
         with (
             patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review.SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION",
+                "salvation-relationship-observation-thresholds-v9-pending-consequence-review",
+            ),
+            patch(
                 "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
                 return_value=(candidates, "readiness-fingerprint"),
             ),
@@ -1089,6 +1100,13 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
         self.assertEqual({"below", "at_or_above"}, {p["boundary_side"] for p in fresh})
         self.assertTrue(all(p["candidate_key"] not in anchors for p in fresh))
         probability_loader.assert_called_once()
+
+    def test_consequence_boundary_review_is_archived_after_policy_freeze(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "archived after the policy was finalized",
+        ):
+            build_salvation_consequence_boundary_review(None, {}, {})
 
     def test_archived_final_calibration_fails_closed_after_policy_freeze(self) -> None:
         with self.assertRaisesRegex(ValueError, "archived for the reviewed pre-freeze"):
