@@ -485,9 +485,19 @@ pte analysis salvation-final-boundary-calibration \
 
 The reviewed packet freezes V9 consequence-obedience at `0.60`, moves atonement to
 `0.68`, and retains judgment at `0.65`. The command is now archived so it cannot
-overwrite the reviewed packet. Do not reclassify yet: first listen to the linked
-`1037:58` phrase and decide whether it explicitly makes sleep or unresponsiveness a
-condition of obtaining or retaining salvation.
+overwrite the reviewed packet. The `1037:58` caption word was subsequently heard as
+“usurp,” making the case affirmative: spiritual sleep is presented as capable of
+defeating God's intended saving outcome. Because its cached probability is only
+`0.51`, finalize condition/means numerically from the provider-free upper tail:
+
+```bash
+pte analysis salvation-condition-boundary-review \
+  --base-dir /path/to/app-data
+```
+
+Do not reclassify first. This reads the existing V8 judgments for the unchanged
+condition/means question, includes the twelve highest-probability cases, and makes no
+TypeSafe provider requests.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full

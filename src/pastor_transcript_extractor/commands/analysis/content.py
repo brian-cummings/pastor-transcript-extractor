@@ -51,6 +51,8 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     DEFAULT_SALVATION_V7_REPENTANCE_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_V8_CONVERSION_CALIBRATION_OUTPUT,
     DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT,
+    DEFAULT_SALVATION_CONDITION_BOUNDARY_REVIEW_OUTPUT,
+    build_salvation_condition_boundary_review,
     build_salvation_v5_threshold_review,
     evaluate_obedience_consequence_calibration,
     evaluate_salvation_final_calibration,
@@ -63,6 +65,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     evaluate_salvation_final_boundary_calibration,
     load_salvation_v5_calibration,
     load_salvation_v6_repentance_calibration,
+    load_salvation_final_boundary_calibration,
     write_obedience_consequence_calibration,
     write_salvation_final_calibration,
     write_salvation_relationship_review,
@@ -73,6 +76,7 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     write_salvation_v7_repentance_calibration,
     write_salvation_v8_conversion_calibration,
     write_salvation_final_boundary_calibration,
+    write_salvation_condition_boundary_review,
 )
 from pastor_transcript_extractor.sermon_salvation_observation_threshold import (
     DEFAULT_SALVATION_OBSERVATION_THRESHOLD,
@@ -1960,6 +1964,58 @@ def analysis_salvation_final_boundary_calibration(
         f"cache_hits={execution['hits']}; "
         f"cache_misses={execution['misses']}; "
         f"provider_requests={execution['provider_requests']}; "
+        f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-condition-boundary-review",
+    help="Build the provider-free final condition/means probability-tail review.",
+)
+def analysis_salvation_condition_boundary_review(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying routed V8 evidence.",
+    ),
+    final_boundary_path: Path = typer.Option(
+        DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT,
+        "--final-boundary",
+        help="Reviewed final boundary packet containing the transcription case.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_CONDITION_BOUNDARY_REVIEW_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON packet path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        final_boundary = load_salvation_final_boundary_calibration(
+            final_boundary_path
+        )
+        packet = build_salvation_condition_boundary_review(
+            database,
+            cohort,
+            final_boundary,
+        )
+        json_path, markdown_path, reused = write_salvation_condition_boundary_review(
+            output_path,
+            packet,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation condition/means boundary review: "
+        f"{json_path} and {markdown_path}; "
+        f"probes={len(packet['probes'])}; provider_requests=0; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
         markup=False,
     )

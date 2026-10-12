@@ -76,6 +76,9 @@ DEFAULT_SALVATION_V8_CONVERSION_CALIBRATION_OUTPUT = Path(
 DEFAULT_SALVATION_FINAL_BOUNDARY_CALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-final-boundary-calibration-v1.json"
 )
+DEFAULT_SALVATION_CONDITION_BOUNDARY_REVIEW_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-condition-boundary-review-v1.json"
+)
 PRIOR_SALVATION_RELATIONSHIPS_PACK_VERSION = (
     "salvation-relationships-v2-evidence-boundaries"
 )
@@ -174,6 +177,17 @@ SALVATION_V8_CONVERSION_REVIEWED_CASE_KEYS = frozenset(
     }
 )
 SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY = "1037:58"
+SALVATION_CONDITION_BOUNDARY_REVIEW_POLICY_VERSION = (
+    "salvation-condition-means-provider-free-boundary-v1"
+)
+SALVATION_CONDITION_BOUNDARY_PENDING_POLICY_VERSION = (
+    "salvation-relationship-observation-thresholds-v9-pending-condition-transcription"
+)
+SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT = (
+    "557f9742ddb820e4079ec90f26f3a835e7ddfdeda235c2cff63d5038ba1957a7"
+)
+SALVATION_CONDITION_TRANSCRIPTION_CORRECTION = "usurp"
+SALVATION_CONDITION_BOUNDARY_PROBE_COUNT = 12
 PRIOR_REPENTANCE_OBSERVATION_THRESHOLD = 0.57
 V5_CALIBRATION_RELATIONSHIPS = (
     "divine_grace_initiative",
@@ -1331,6 +1345,13 @@ def load_salvation_v6_repentance_calibration(path: Path) -> Mapping[str, Any]:
     )
 
 
+def load_salvation_final_boundary_calibration(path: Path) -> Mapping[str, Any]:
+    return _load_salvation_calibration(
+        path,
+        name="salvation final boundary calibration",
+    )
+
+
 def build_salvation_v5_threshold_review(
     calibration: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -2373,6 +2394,147 @@ def evaluate_salvation_final_boundary_calibration(
     }, execution
 
 
+def build_salvation_condition_boundary_review(
+    database: Database,
+    cohort: Mapping[str, Any],
+    final_boundary_calibration: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the final provider-free condition/means probability-tail review."""
+    if (
+        SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        != SALVATION_CONDITION_BOUNDARY_PENDING_POLICY_VERSION
+    ):
+        raise ValueError(
+            "Condition/means boundary review is archived after the policy was finalized"
+        )
+    if (
+        final_boundary_calibration.get("input_fingerprint")
+        != SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT
+        or final_boundary_calibration.get("revised_leaf_pack_version")
+        != SALVATION_RELATIONSHIPS_PACK_VERSION
+        or final_boundary_calibration.get("status")
+        != "final_bounded_salvation_review_pending"
+    ):
+        raise ValueError(
+            "Condition/means boundary review requires the reviewed final boundary packet"
+        )
+
+    candidates, readiness_fingerprint = _routed_candidates(database, cohort)
+    by_key = {str(item["candidate_key"]): item for item in candidates}
+    if SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY not in by_key:
+        raise ValueError("Transcription-confirmed condition/means anchor is no longer routed")
+    prior_probabilities = _relationship_probabilities_for_pack(
+        database,
+        cohort,
+        expected_pack_version=PRIOR_V9_SALVATION_RELATIONSHIPS_PACK_VERSION,
+    )
+    relationship = "obedience_as_condition_or_means"
+    ranked = sorted(
+        candidates,
+        key=lambda item: (
+            -float(prior_probabilities[str(item["candidate_key"])][relationship]),
+            str(item["candidate_key"]),
+        ),
+    )
+    if (
+        str(ranked[0]["candidate_key"])
+        != SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY
+    ):
+        raise ValueError(
+            "Transcription-confirmed condition/means anchor is no longer the strongest "
+            "cached judgment"
+        )
+    selected_keys = [
+        str(item["candidate_key"])
+        for item in ranked[:SALVATION_CONDITION_BOUNDARY_PROBE_COUNT]
+    ]
+    anchor_key = SALVATION_CONDITION_TRANSCRIPTION_REVIEW_KEY
+    if anchor_key not in selected_keys:
+        selected_keys = [anchor_key, *selected_keys[:-1]]
+    selected_keys = sorted(
+        set(selected_keys),
+        key=lambda key: (-float(prior_probabilities[key][relationship]), key),
+    )
+    probes = [
+        {
+            "rank": index,
+            "judgment_key": f"{candidate_key}:{relationship}",
+            "candidate_key": candidate_key,
+            "relationship": relationship,
+            "probability": round(
+                float(prior_probabilities[candidate_key][relationship]),
+                6,
+            ),
+            "review_label": (
+                "affirmative_transcription_confirmed"
+                if candidate_key == anchor_key
+                else None
+            ),
+            "collected_at_current_threshold": (
+                float(prior_probabilities[candidate_key][relationship])
+                >= SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            ),
+        }
+        for index, candidate_key in enumerate(selected_keys, start=1)
+    ]
+    cases = [
+        {
+            key: value
+            for key, value in by_key[candidate_key].items()
+            if key not in {"cache_dir", "context_diagnostics", "segment_indexes"}
+        }
+        for candidate_key in selected_keys
+    ]
+    identity = {
+        "schema_version": 1,
+        "review_policy_version": SALVATION_CONDITION_BOUNDARY_REVIEW_POLICY_VERSION,
+        "cohort_sha256": cohort.get("cohort_sha256"),
+        "readiness_input_fingerprint": readiness_fingerprint,
+        "source_final_boundary_fingerprint": final_boundary_calibration.get(
+            "input_fingerprint"
+        ),
+        "source_leaf_pack_version": PRIOR_V9_SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "current_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+        "pending_observation_policy_version": (
+            SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        ),
+        "relationship": relationship,
+        "current_threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
+            relationship
+        ],
+        "transcription_adjudication": {
+            "candidate_key": anchor_key,
+            "caption_word": "userve",
+            "heard_word": SALVATION_CONDITION_TRANSCRIPTION_CORRECTION,
+            "review_label": "affirmative",
+            "interpretation": (
+                "In context, spiritual sleep is presented as capable of overriding "
+                "or defeating God's intended saving outcome."
+            ),
+        },
+        "probe_selection": {
+            "method": "highest_cached_probability_tail",
+            "requested_count": SALVATION_CONDITION_BOUNDARY_PROBE_COUNT,
+            "selected_count": len(probes),
+        },
+        "probes": probes,
+        "cases": cases,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "condition_means_boundary_review_pending",
+        "policy_effect": "none",
+        "interpretation": (
+            "The transcription-confirmed affirmative is the strongest cached V8 "
+            "condition/means judgment but falls below the current 0.70 boundary. "
+            "Label the remaining probability tail affirmative, negative, or ambiguous "
+            "before selecting a numeric boundary. This packet makes no provider calls "
+            "and does not change the question wording."
+        ),
+    }
+
+
 def evaluate_obedience_consequence_calibration(
     database: Database,
     cohort: Mapping[str, Any],
@@ -3053,6 +3215,50 @@ def render_salvation_final_boundary_calibration(packet: Mapping[str, Any]) -> st
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_salvation_condition_boundary_review(packet: Mapping[str, Any]) -> str:
+    cases = {str(item["candidate_key"]): item for item in packet["cases"]}
+    transcription = packet["transcription_adjudication"]
+    lines = [
+        "# Salvation condition/means boundary review",
+        "",
+        f"- Status: `{packet['status']}`",
+        f"- Policy effect: `{packet['policy_effect']}`",
+        f"- Relationship: `{packet['relationship']}`",
+        f"- Current threshold: `{float(packet['current_threshold']):.2f}`",
+        f"- Cached probes: `{len(packet['probes'])}`",
+        f"- Packet fingerprint: `{packet['input_fingerprint']}`",
+        "",
+        str(packet["interpretation"]),
+        "",
+        "## Transcription adjudication",
+        "",
+        f"- Case: `{transcription['candidate_key']}`",
+        f"- Caption: `{transcription['caption_word']}`",
+        f"- Heard word: `{transcription['heard_word']}`",
+        f"- Label: `{transcription['review_label']}`",
+        f"- Interpretation: {transcription['interpretation']}",
+        "",
+        "## Highest cached probability tail",
+        "",
+        "Label every unlabeled probe affirmative, negative, or ambiguous. The anchor "
+        "is already affirmative. Recommend a threshold only if the ordering supports "
+        "one; otherwise record overlap or leave this leaf unresolved. Do not revise "
+        "the question from this packet.",
+        "",
+        "| Rank | Case | Probability | Current collection | Reviewed label |",
+        "| ---: | --- | ---: | --- | --- |",
+    ]
+    for probe in packet["probes"]:
+        lines.append(
+            f"| {probe['rank']} | {probe['candidate_key']} | "
+            f"{float(probe['probability']):.3f} | "
+            f"{'yes' if probe['collected_at_current_threshold'] else 'no'} | "
+            f"{probe.get('review_label') or '—'} |"
+        )
+    lines.extend(_render_deduplicated_evidence_cases(cases))
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_salvation_relationship_review(packet: Mapping[str, Any]) -> str:
     lines = [
         "# Salvation relationships review",
@@ -3249,4 +3455,15 @@ def write_salvation_final_boundary_calibration(
         path,
         packet,
         render_salvation_final_boundary_calibration,
+    )
+
+
+def write_salvation_condition_boundary_review(
+    path: Path,
+    packet: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    return _write_review_artifact(
+        path,
+        packet,
+        render_salvation_condition_boundary_review,
     )

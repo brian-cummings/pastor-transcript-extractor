@@ -59,6 +59,7 @@ GROUP_COMMANDS = {
         "run",
         "salvation-collection-recalibration",
         "salvation-boundary-recalibration",
+        "salvation-condition-boundary-review",
         "salvation-final-calibration",
         "salvation-final-boundary-calibration",
         "salvation-final-collection-check",

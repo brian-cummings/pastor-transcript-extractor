@@ -2932,6 +2932,26 @@ pte analysis salvation-final-boundary-calibration [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-condition-boundary-review`
+
+Build the provider-free final condition/means probability-tail review.
+
+#### Usage
+
+```console
+pte analysis salvation-condition-boundary-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying routed V8 evidence.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--final-boundary PATH` | Reviewed final boundary packet containing the transcription case.  [default: evaluation/sermon-topics/salvation-final-boundary-calibration-v1.json] | no | evaluation/sermon-topics/salvation-final-boundary-calibration-v1.json |
+| `--output PATH` | Fingerprint-bound JSON packet path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-condition-boundary-review-v1.json] | no | evaluation/sermon-topics/salvation-condition-boundary-review-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-observation-threshold-review`
 
 Build a provider-free boundary review for the salvation leaf collection threshold.

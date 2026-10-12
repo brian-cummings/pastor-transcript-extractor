@@ -1352,17 +1352,24 @@ theological stance.
     Archive the calibration command. Version the collection policy as
     `salvation-relationship-observation-thresholds-v9-pending-condition-transcription`
     until the garbled `1037:58` audio is adjudicated; do not reclassify before then.
+78. The exact corrupted word in `1037:58` is “usurp.” In context, the preacher says
+    that spiritual sleep can override or defeat God's intended saving outcome, so
+    the case is affirmative for `obedience_as_condition_or_means`. Its `0.51`
+    probability is the strongest cached judgment and exposes a numeric miss against
+    the current `0.70` boundary. Do not revise the unchanged question or call the
+    provider. Build one provider-free packet from the twelve highest cached V8
+    probabilities, with `1037:58` as the reviewed affirmative anchor, before
+    finalizing this last measurable leaf.
 
 ### Next iteration
 
-1. Listen to `1037:58` at <https://youtu.be/5Yf-TlFDnD4?t=2547> and transcribe the
-   garbled phrase currently rendered as “we can userve his salvation on our behalf
-   by being asleep.” Keep it ambiguous unless the audio clearly says that sleep or
-   unresponsiveness can lose, forfeit, refuse, or otherwise condition salvation.
-2. Finalize the policy version from that adjudication. If the case is affirmative,
-   review the condition/means numeric boundary before freezing; otherwise freeze the
-   existing `0.70` boundary.
-3. Only after finalization, refresh the cohort and rerun
+1. Run `salvation-condition-boundary-review` against the still-V8 cohort. It is
+   provider-free and selects the twelve-case upper probability tail; do not
+   reclassify first.
+2. Label the eleven remaining cases affirmative, negative, or ambiguous. Freeze a
+   threshold only if their ordering supports one; otherwise retain raw evidence and
+   mark the leaf unresolved.
+3. Only after that decision, finalize the policy version, refresh the cohort, and rerun
    `salvation-collected-observations-review` before pastor aggregation.
 
 ## Non-goals for `topics-v1`

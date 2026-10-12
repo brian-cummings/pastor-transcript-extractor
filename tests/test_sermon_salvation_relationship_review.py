@@ -29,12 +29,14 @@ from pastor_transcript_extractor.sermon_salvation_relationship_review import (
     SALVATION_FINAL_BOUNDARY_REVIEW_LABELS,
     SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_FINGERPRINT,
     SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_POLICY_VERSION,
+    SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT,
     SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS,
     _select_semantic_heldout_probes,
     _select_v5_heldout_probes,
     _select_repentance_heldout_probes,
     _select_review_candidates,
     build_salvation_v5_threshold_review,
+    build_salvation_condition_boundary_review,
     evaluate_salvation_final_calibration,
     evaluate_salvation_semantic_calibration,
     evaluate_salvation_relationship_review,
@@ -753,6 +755,75 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                 model="jev-1.13.0",
                 client=_Client(),
             )
+
+    def test_condition_boundary_review_uses_cached_probability_tail(self) -> None:
+        relationship = "obedience_as_condition_or_means"
+        candidate_keys = ["1037:58", *[f"tail-{index}:1" for index in range(14)]]
+        candidates = [
+            {
+                "candidate_key": key,
+                "pastor": {
+                    "display_name": f"Pastor {index % 4}",
+                    "slug": f"pastor-{index % 4}",
+                },
+                "video_id": 1037 if key == "1037:58" else index + 1,
+                "youtube_video_id": (
+                    "5Yf-TlFDnD4" if key == "1037:58" else f"yt-{index}"
+                ),
+                "title": f"Sermon {index}",
+                "block_id": 58 if key == "1037:58" else 1,
+                "start_seconds": float(index),
+                "end_seconds": float(index + 1),
+                "leading_context": "Leading.",
+                "target_text": "Target.",
+                "trailing_context": "Trailing.",
+            }
+            for index, key in enumerate(candidate_keys)
+        ]
+        probabilities = {
+            key: {relationship: round(0.50 - index * 0.01, 2)}
+            for index, key in enumerate(candidate_keys)
+        }
+        probabilities["1037:58"][relationship] = 0.51
+        final_boundary = {
+            "input_fingerprint": SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT,
+            "revised_leaf_pack_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
+            "status": "final_bounded_salvation_review_pending",
+        }
+
+        with (
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._routed_candidates",
+                return_value=(candidates, "readiness-fingerprint"),
+            ),
+            patch(
+                "pastor_transcript_extractor.sermon_salvation_relationship_review._relationship_probabilities_for_pack",
+                return_value=probabilities,
+            ) as probability_loader,
+        ):
+            packet = build_salvation_condition_boundary_review(
+                None,
+                {"cohort_sha256": "cohort"},
+                final_boundary,
+            )
+
+        self.assertEqual(12, len(packet["probes"]))
+        self.assertEqual("1037:58", packet["probes"][0]["candidate_key"])
+        self.assertEqual(
+            "affirmative_transcription_confirmed",
+            packet["probes"][0]["review_label"],
+        )
+        self.assertEqual(
+            "usurp",
+            packet["transcription_adjudication"]["heard_word"],
+        )
+        self.assertTrue(
+            all(
+                not item["collected_at_current_threshold"]
+                for item in packet["probes"]
+            )
+        )
+        probability_loader.assert_called_once()
 
     def test_v5_calibration_assembles_current_relationship_definitions(self) -> None:
         case_keys = sorted(
