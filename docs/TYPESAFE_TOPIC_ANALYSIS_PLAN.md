@@ -501,6 +501,38 @@ Therefore taxonomy and scheduling are separate concerns:
 See TypeSafe's
 [speculative fan-out guidance](https://docs.typesafe.ai/patterns/fan-out.md).
 
+### First-run token-efficiency goal
+
+Cache replay is necessary but does not make an uncached sermon efficient. The
+request planner must also minimize transcript-derived input sent on the first
+run. Treat this as an architectural constraint before expanding the broad topic
+inventory or adding more leaf packs:
+
+- Send each coarse target block once during coarse discovery.
+- Send each fine target block once in a combined role, treatment, and broad-topic
+  request. Do not serialize the same target text under separate role and topic
+  state keys merely because different question packs refer to it.
+- A conditional leaf request may resend only its routed target blocks and bounded
+  context. It must not resend the entire sermon or non-routed fine blocks.
+- Do not attach the complete recording outline to every provider batch. Replace it
+  with bounded batch-relevant recording context or another constant-size summary
+  whose size does not grow with both sermon length and batch count.
+- Adding a broad topic may add its question and answer tokens, but must not increase
+  transcript/context bytes per block. If a larger question inventory reduces the
+  blocks per request, shared-context repetition must remain bounded rather than
+  growing once per smaller batch.
+- Record provider request count, input/output tokens, block count, question count,
+  and transcript/context character counts by request stage. Aggregate those fields
+  per sermon so first-run efficiency is observable independently of cache hits.
+
+The target uncached data path is therefore one coarse transcript pass, one fine
+pass over coarse-selected ranges, and one additional pass only over blocks routed
+to a leaf pack. Boundary refinement and recording verification may use bounded
+excerpts, but not another full-transcript representation. Focused request-shape
+tests must fail if fine target text is duplicated, a full length-dependent outline
+is repeated per batch, or adding questions increases transcript-derived input
+other than explicitly bounded context.
+
 ## Leaf-pack policy
 
 The broad topics are routing observations, not the final theological analysis.
