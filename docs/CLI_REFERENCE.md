@@ -3028,6 +3028,26 @@ pte analysis salvation-collected-observations-review [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-profile-repeatability`
+
+Build provider-free equal-sermon repeatability diagnostics for the approved salvation observations.
+
+#### Usage
+
+```console
+pte analysis salvation-profile-repeatability [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen topic cohort supplying current salvation artifacts.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--collection-review PATH` | Approved nine-leaf collection review; its fingerprint must be 7865d2213837….  [default: evaluation/sermon-topics/salvation-collected-observations-review-v2.json] | no | evaluation/sermon-topics/salvation-collected-observations-review-v2.json |
+| `--output PATH` | Fingerprint-bound JSON report path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-profile-repeatability-v1.json] | no | evaluation/sermon-topics/salvation-profile-repeatability-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-conversion-recalibration`
 
 Build the provider-free conversion-only boundary ordering check.

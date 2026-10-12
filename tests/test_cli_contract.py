@@ -75,6 +75,7 @@ GROUP_COMMANDS = {
         "salvation-obedience-calibration",
         "salvation-observation-boundaries-review",
         "salvation-observation-threshold-review",
+        "salvation-profile-repeatability",
         "salvation-relationships-review",
         "salvation-routing-review",
         "show",

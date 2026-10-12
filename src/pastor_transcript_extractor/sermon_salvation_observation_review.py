@@ -1151,7 +1151,7 @@ def build_salvation_final_collection_check(
     }
 
 
-def _load_salvation_observation_sources(
+def load_salvation_observation_sources(
     database: Database,
     cohort: Mapping[str, Any],
     *,
@@ -1220,7 +1220,7 @@ def evaluate_salvation_collected_observations_review(
     *,
     readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    sources, readiness = _load_salvation_observation_sources(
+    sources, readiness = load_salvation_observation_sources(
         database,
         cohort,
         readiness=readiness,
@@ -1243,7 +1243,7 @@ def evaluate_salvation_conversion_recalibration(
     *,
     readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    sources, readiness = _load_salvation_observation_sources(
+    sources, readiness = load_salvation_observation_sources(
         database,
         cohort,
         readiness=readiness,
@@ -1279,7 +1279,7 @@ def evaluate_salvation_collection_recalibration(
     *,
     readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    sources, readiness = _load_salvation_observation_sources(
+    sources, readiness = load_salvation_observation_sources(
         database,
         cohort,
         readiness=readiness,
@@ -1303,7 +1303,7 @@ def evaluate_salvation_boundary_recalibration(
     *,
     readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    sources, readiness = _load_salvation_observation_sources(
+    sources, readiness = load_salvation_observation_sources(
         database,
         cohort,
         readiness=readiness,
@@ -1327,7 +1327,7 @@ def evaluate_salvation_final_collection_check(
     *,
     readiness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    sources, readiness = _load_salvation_observation_sources(
+    sources, readiness = load_salvation_observation_sources(
         database,
         cohort,
         readiness=readiness,

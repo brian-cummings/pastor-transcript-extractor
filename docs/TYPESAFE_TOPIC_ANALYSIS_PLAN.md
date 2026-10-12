@@ -1394,15 +1394,25 @@ theological stance.
     absent or opposed. Do not create V10. Freeze the nine remaining measurable leaves
     under `salvation-relationship-observation-thresholds-v9-nine-leaf-final` and
     archive the consequence-boundary command.
+82. The refreshed ordinary-classification packet at fingerprint
+    `7865d2213837191ea50764fddfa93df591434e19911e13d6a6c097a5a16aa8fd`
+    passes final human review across 1,134 cached judgments and 126 routed blocks.
+    Freeze the nine-leaf collection policy. Record
+    `590:34:faith_as_receiving_response` at `0.64` as an isolated affirmative miss
+    below the `0.65` boundary, not as authority to fit the threshold to the known
+    sample. End salvation leaf calibration and proceed to provider-free,
+    equal-sermon aggregation and repeatability diagnostics. Keep the three
+    unresolved leaves unavailable rather than zero-valued.
 
 ### Next iteration
 
-1. Refresh the twelve-sermon cohort once through ordinary cache-aware
-   reclassification so artifacts record the final nine-leaf policy.
-2. Rerun `salvation-collected-observations-review` and inspect the nine projected
-   relationships before pastor aggregation.
+1. Build the provider-free `salvation-profile-repeatability` report from the exact
+   approved collection packet and current twelve-sermon artifacts.
+2. Inspect equal-sermon means, leave-one-sermon sensitivity, and between-series and
+   between-period deltas before calibrating any profile-level stability rule.
 3. Preserve all three unresolved raw judgments for research and audit; never project
-   them as zero, absence, or theological opposition.
+   them as zero, absence, or theological opposition. Do not compare pastors or infer
+   theological stance from this diagnostic cohort.
 
 ## Non-goals for `topics-v1`
 

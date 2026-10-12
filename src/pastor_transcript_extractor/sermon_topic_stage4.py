@@ -730,7 +730,7 @@ def _maximum_pairwise_delta(values: list[float]) -> float | None:
     return round(max(values) - min(values), 6)
 
 
-def _measurement_diagnostics(
+def measurement_repeatability_diagnostics(
     sermons: list[Mapping[str, Any]],
     *,
     measurement_key: str,
@@ -838,12 +838,12 @@ def summarize_topic_stage4_pastor(
                 }
             )
         topic_diagnostics[topic] = {
-            "developed_emphasis_probability": _measurement_diagnostics(
+            "developed_emphasis_probability": measurement_repeatability_diagnostics(
                 rows,
                 measurement_key="developed_emphasis_probability",
             ),
             "normalized_expected_prominence_sensitivity": (
-                _measurement_diagnostics(
+                measurement_repeatability_diagnostics(
                     rows,
                     measurement_key="normalized_expected_prominence",
                 )

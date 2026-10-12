@@ -528,6 +528,21 @@ Refresh cohort classifications through ordinary `pte reclassify`; unaffected
 recording, topic, role, and treatment packs continue to replay from their existing
 per-video caches.
 
+The refreshed collection packet at fingerprint
+`7865d2213837191ea50764fddfa93df591434e19911e13d6a6c097a5a16aa8fd` is approved as
+the terminal nine-leaf policy review. Build the next provider-free diagnostic with:
+
+```bash
+pte analysis salvation-profile-repeatability \
+  --base-dir /path/to/app-data
+```
+
+This report is bound to that approved packet and the current cached source artifacts.
+It gives every sermon equal weight, reports leave-one-sermon and series/period
+sensitivity, and reuses an unchanged JSON/Markdown result by fingerprint. It does not
+call TypeSafe, compare pastors, establish a theological stance, or represent the
+three unresolved leaves as zero.
+
 When a refreshed collection review exposes a question-ordering defect, validate the
 revised four-question v5 pack on the reviewed regressions and fresh held-out cases:
 

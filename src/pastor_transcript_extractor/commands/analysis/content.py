@@ -109,6 +109,12 @@ from pastor_transcript_extractor.sermon_salvation_observation_review import (
     write_salvation_conversion_recalibration,
     write_salvation_final_collection_check,
 )
+from pastor_transcript_extractor.sermon_salvation_profile_analysis import (
+    APPROVED_SALVATION_COLLECTION_REVIEW_FINGERPRINT,
+    DEFAULT_SALVATION_PROFILE_REPEATABILITY_OUTPUT,
+    evaluate_salvation_profile_repeatability,
+    write_salvation_profile_repeatability,
+)
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     default_topic_behavior_output_path,
@@ -2211,6 +2217,61 @@ def analysis_salvation_collected_observations_review(
         f"collected_observations={collected}; "
         f"probes={len(packet['probes'])}; "
         f"fingerprint={str(packet['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-profile-repeatability",
+    help=(
+        "Build provider-free equal-sermon repeatability diagnostics for the "
+        "approved salvation observations."
+    ),
+)
+def analysis_salvation_profile_repeatability(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen topic cohort supplying current salvation artifacts.",
+    ),
+    review_path: Path = typer.Option(
+        DEFAULT_SALVATION_COLLECTED_OBSERVATION_REVIEW_OUTPUT,
+        "--collection-review",
+        help=(
+            "Approved nine-leaf collection review; its fingerprint must be "
+            f"{APPROVED_SALVATION_COLLECTION_REVIEW_FINGERPRINT[:12]}…."
+        ),
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_PROFILE_REPEATABILITY_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON report path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        review = load_salvation_collected_observations_review(review_path)
+        report = evaluate_salvation_profile_repeatability(database, cohort, review)
+        json_path, markdown_path, reused = write_salvation_profile_repeatability(
+            output_path,
+            report,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation profile repeatability: "
+        f"{json_path} and {markdown_path}; "
+        f"pastors={len(report['pastors'])}; "
+        f"measured_leaves={len(report['measured_relationships'])}; "
+        f"unresolved_leaves={len(report['unresolved_relationships'])}; "
+        f"provider_requests={report['provider_requests']}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…",
         markup=False,
     )
 
