@@ -50,6 +50,7 @@ def _block(block_id: int, *, collected: bool) -> dict[str, object]:
         )
     }
     probabilities["repentance_as_receiving_response"] = 0.99
+    probabilities["obedience_as_condition_or_means"] = 0.99
     return {
         "block_id": block_id,
         "start_seconds": float(block_id * 60),
@@ -216,7 +217,7 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
         )
         self.assertEqual(2, len(packet["regression_anchors"]))
         self.assertEqual(6, len(packet["frozen_watch_fixtures"]))
-        self.assertEqual(10, len(packet["frozen_relationships"]))
+        self.assertEqual(9, len(packet["frozen_relationships"]))
         self.assertEqual(0, packet["provider_requests"])
         self.assertEqual("none", packet["policy_effect"])
         markdown = render_salvation_conversion_recalibration(packet)
@@ -366,9 +367,10 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
                 "judgment_key": key,
                 "relationship": relationship,
                 "probability": probability,
-                "threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
-                    relationship
-                ],
+                "threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                    relationship,
+                    0.70,
+                ),
                 "collected": collected,
                 "pastor": {"display_name": pastor, "slug": pastor.lower()},
                 "video_id": int(video_id),
@@ -384,7 +386,10 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
 
         for key in SALVATION_BOUNDARY_RECALIBRATION_ANCHORS:
             relationship = key.rsplit(":", 1)[1]
-            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                relationship,
+                0.70,
+            )
             judgments.append(
                 judgment(key, relationship, threshold, True, "Anchor")
             )
@@ -399,7 +404,10 @@ class SalvationCollectedObservationReviewTests(unittest.TestCase):
         )
         fresh_index = 9000
         for relationship in SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS:
-            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+            threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                relationship,
+                0.70,
+            )
             for side, collected in ((-1, False), (1, True)):
                 for rank in range(2):
                     fresh_index += 1

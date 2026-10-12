@@ -188,6 +188,7 @@ SALVATION_CONDITION_BOUNDARY_SOURCE_FINGERPRINT = (
 )
 SALVATION_CONDITION_TRANSCRIPTION_CORRECTION = "usurp"
 SALVATION_CONDITION_BOUNDARY_PROBE_COUNT = 12
+PRIOR_CONDITION_OBSERVATION_THRESHOLD = 0.70
 PRIOR_REPENTANCE_OBSERVATION_THRESHOLD = 0.57
 V5_CALIBRATION_RELATIONSHIPS = (
     "divine_grace_initiative",
@@ -1065,7 +1066,10 @@ def _select_v5_heldout_probes(
 ) -> list[dict[str, Any]]:
     probes: list[dict[str, Any]] = []
     for relationship in V5_CALIBRATION_RELATIONSHIPS:
-        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+        threshold = SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+            relationship,
+            PRIOR_CONDITION_OBSERVATION_THRESHOLD,
+        )
         available = [
             item
             for item in candidates
@@ -1292,9 +1296,10 @@ def evaluate_salvation_v5_calibration(
         "revised_leaf_pack_digest": salvation_relationship_pack_digest(),
         "requested_model_id": model,
         "unchanged_thresholds": {
-            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
-                relationship
-            ]
+            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                relationship,
+                PRIOR_CONDITION_OBSERVATION_THRESHOLD,
+            )
             for relationship in V5_CALIBRATION_RELATIONSHIPS
         },
         "relationship_definitions": {
@@ -2472,7 +2477,7 @@ def build_salvation_condition_boundary_review(
             ),
             "collected_at_current_threshold": (
                 float(prior_probabilities[candidate_key][relationship])
-                >= SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[relationship]
+                >= PRIOR_CONDITION_OBSERVATION_THRESHOLD
             ),
         }
         for index, candidate_key in enumerate(selected_keys, start=1)
@@ -2499,9 +2504,7 @@ def build_salvation_condition_boundary_review(
             SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
         ),
         "relationship": relationship,
-        "current_threshold": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
-            relationship
-        ],
+        "current_threshold": PRIOR_CONDITION_OBSERVATION_THRESHOLD,
         "transcription_adjudication": {
             "candidate_key": anchor_key,
             "caption_word": "userve",

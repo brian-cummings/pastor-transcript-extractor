@@ -1360,17 +1360,26 @@ theological stance.
     provider. Build one provider-free packet from the twelve highest cached V8
     probabilities, with `1037:58` as the reviewed affirmative anchor, before
     finalizing this last measurable leaf.
+79. The provider-free condition/means review at fingerprint
+    `935cf0b8183f149f4080247f90cdda6268ebdb68d81ee8f1c66d165f336e0b63`
+    does not support a numeric projection boundary. Affirmatives occur at `0.51`,
+    `0.42`, `0.36`, `0.34`, and `0.30`, while reverse-direction evidence occurs at
+    `0.40` and a negative occurs at `0.36`. Mark
+    `obedience_as_condition_or_means` as `block_level_unresolved`, alongside
+    repentance. Preserve both raw probabilities, exclude both from pastor-level
+    projection, and never interpret unresolved as zero or theological opposition.
+    Do not create V10. Freeze the remaining ten leaves under
+    `salvation-relationship-observation-thresholds-v9-ten-leaf-final` and archive
+    the condition-boundary command.
 
 ### Next iteration
 
-1. Run `salvation-condition-boundary-review` against the still-V8 cohort. It is
-   provider-free and selects the twelve-case upper probability tail; do not
-   reclassify first.
-2. Label the eleven remaining cases affirmative, negative, or ambiguous. Freeze a
-   threshold only if their ordering supports one; otherwise retain raw evidence and
-   mark the leaf unresolved.
-3. Only after that decision, finalize the policy version, refresh the cohort, and rerun
-   `salvation-collected-observations-review` before pastor aggregation.
+1. Refresh the frozen twelve-sermon cohort through ordinary cache-aware
+   reclassification so each artifact records the final ten-leaf observation policy.
+2. Rerun `salvation-collected-observations-review` and inspect the resulting ten-leaf
+   collection before pastor aggregation.
+3. Preserve repentance and condition/means raw judgments for research and debugging;
+   do not project them or reopen prompt tuning from this calibration corpus.
 
 ## Non-goals for `topics-v1`
 

@@ -425,15 +425,16 @@ probability is at least `0.55` also enter the independently cached
 `salvation-relationships-v9-consequence-conduct-boundary` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
-observations from the transcription-pending
-`salvation-relationship-observation-thresholds-v9-pending-condition-transcription`
-policy. Eleven relationships retain explicit per-leaf thresholds, including the
+observations from the frozen
+`salvation-relationship-observation-thresholds-v9-ten-leaf-final`
+policy. Ten relationships retain explicit per-leaf thresholds, including the
 frozen `conversion_new_birth` at `0.55`. V9 freezes the revised
 obedience-as-consequence semantics, moves that leaf's boundary to `0.60`, moves
 atonement to `0.68`, and retains judgment at `0.65` with one known overlap.
-Repentance is marked
-`block_level_unresolved`: its raw probability is retained for research and debugging
-but it cannot produce a collected or pastor-level observation. The raw
+Repentance and obedience-as-condition/means are marked `block_level_unresolved`:
+their raw probabilities are retained for research and debugging, but neither can
+produce a collected or pastor-level observation. Unresolved is not zero and is not
+evidence that a pastor rejects either relationship. The raw
 probabilities remain policy-independent evidence, so changing a collection
 threshold does not require another provider request. Relationship observations are
 still observation-only: they do not change sermon boundaries, disposition, or a
@@ -445,10 +446,13 @@ treated as negative.
 
 The configured thresholds are assurance `0.61`, atonement `0.68`, conversion `0.55`,
 divine grace `0.65`, receiving faith `0.65`, forgiveness `0.68`, final destiny
-`0.65`, justification `0.70`, obedience-as-condition `0.70`, obedience-as-consequence
-`0.60`, and sanctification `0.70`. V7 demonstrated that no defensible threshold can
+`0.65`, justification `0.70`, obedience-as-consequence `0.60`, and sanctification
+`0.70`. V7 demonstrated that no defensible threshold can
 separate repentance as a salvation response from repentance discussed in salvation
-context at this block size. Prompt tuning stops at V7. The ordinary-classification
+context at this block size. The provider-free condition/means upper-tail review
+likewise found affirmatives from `0.30` through `0.51` interleaved with the reverse
+causal relationship at `0.40` and a negative at `0.36`; no numeric boundary supports
+projection. Prompt tuning stops rather than creating V10. The ordinary-classification
 audit subsequently reopened only conversion because a reviewed positive at `0.54`
 ranked below a reviewed negative at `0.55`. Fresh cached neighbors reproduced the
 semantic-ordering defect: saving vocabulary, figurative conversion, or later growth
@@ -488,25 +492,24 @@ The reviewed packet freezes V9 consequence-obedience at `0.60`, moves atonement 
 overwrite the reviewed packet. The `1037:58` caption word was subsequently heard as
 “usurp,” making the case affirmative: spiritual sleep is presented as capable of
 defeating God's intended saving outcome. Because its cached probability is only
-`0.51`, finalize condition/means numerically from the provider-free upper tail:
+`0.51`, the provider-free upper tail was reviewed with:
 
 ```bash
 pte analysis salvation-condition-boundary-review \
   --base-dir /path/to/app-data
 ```
 
-Do not reclassify first. This reads the existing V8 judgments for the unchanged
-condition/means question, includes the twelve highest-probability cases, and makes no
-TypeSafe provider requests.
+The completed review showed that the probability ordering cannot separate
+condition/means from consequence/evidence. The command is now archived, the raw
+condition/means judgments remain available, and the leaf is excluded from projection.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
-twelve-question V7 pack through the normal content-addressed cache, preserves the
-unresolved repentance probability, and projects the eleven thresholded leaves.
+twelve-question pack through the normal content-addressed cache, preserves both
+unresolved probabilities, and projects the ten thresholded leaves.
 
 Conversion V8, consequence-obedience V9, and the reviewed numeric boundaries are
-frozen. The overall observation policy remains explicitly transcription-pending for
-the condition/means leaf. Historical semantic and final-calibration commands fail
+frozen. Historical semantic, final-calibration, and condition-boundary commands fail
 closed so they cannot overwrite their fingerprinted review packets with a later
 policy.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected

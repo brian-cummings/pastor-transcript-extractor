@@ -73,6 +73,7 @@ SALVATION_BOUNDARY_RECALIBRATION_SCHEMA_VERSION = 1
 SALVATION_BOUNDARY_RECALIBRATION_POLICY_VERSION = (
     "salvation-four-leaf-boundary-recalibration-v1"
 )
+PRIOR_CONDITION_OBSERVATION_THRESHOLD = 0.70
 DEFAULT_SALVATION_BOUNDARY_RECALIBRATION_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-boundary-recalibration-v1.json"
 )
@@ -894,9 +895,10 @@ def build_salvation_boundary_recalibration(
             SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
         ),
         "unchanged_thresholds": {
-            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[
-                relationship
-            ]
+            relationship: SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS.get(
+                relationship,
+                PRIOR_CONDITION_OBSERVATION_THRESHOLD,
+            )
             for relationship in (
                 *SALVATION_BOUNDARY_RECALIBRATION_RELATIONSHIPS,
                 "judgment_final_destiny",

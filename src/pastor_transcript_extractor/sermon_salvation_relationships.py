@@ -18,7 +18,7 @@ SALVATION_RELATIONSHIPS_PACK_VERSION = (
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v9-pending-condition-transcription"
+    "salvation-relationship-observation-thresholds-v9-ten-leaf-final"
 )
 
 
@@ -243,11 +243,13 @@ SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "assurance_security": 0.61,
     "judgment_final_destiny": 0.65,
     "faith_as_receiving_response": 0.65,
-    "obedience_as_condition_or_means": 0.70,
     "obedience_as_consequence_or_evidence": 0.60,
 }
 UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS: frozenset[str] = frozenset(
-    {"repentance_as_receiving_response"}
+    {
+        "repentance_as_receiving_response",
+        "obedience_as_condition_or_means",
+    }
 )
 SALVATION_RELATIONSHIP_MEASUREMENT_STATUSES: dict[str, str] = {
     relationship: (

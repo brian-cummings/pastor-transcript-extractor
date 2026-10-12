@@ -361,6 +361,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertIn("forgiveness_pardon", collected)
         self.assertIn("obedience_as_consequence_or_evidence", collected)
         self.assertNotIn("repentance_as_receiving_response", collected)
+        self.assertNotIn("obedience_as_condition_or_means", collected)
         self.assertNotIn("atonement_as_basis", collected)
         self.assertEqual(1, len(artifact["provider_requests"]))
 
