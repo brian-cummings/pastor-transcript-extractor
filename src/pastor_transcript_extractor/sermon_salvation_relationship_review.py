@@ -1542,6 +1542,30 @@ def build_salvation_v5_threshold_review(
     }
 
 
+def _select_diverse_candidates(
+    ordered: Sequence[Mapping[str, Any]],
+    *,
+    count: int,
+) -> list[Mapping[str, Any]]:
+    selected: list[Mapping[str, Any]] = []
+    selected_keys: set[str] = set()
+    represented_pastors: set[str] = set()
+    for require_new_pastor in (True, False):
+        for item in ordered:
+            key = str(item["candidate_key"])
+            pastor = str(item["pastor"].get("slug"))
+            if key in selected_keys:
+                continue
+            if require_new_pastor and pastor in represented_pastors:
+                continue
+            selected.append(item)
+            selected_keys.add(key)
+            represented_pastors.add(pastor)
+            if len(selected) == count:
+                return selected
+    return selected
+
+
 def _select_relationship_heldout_probes(
     candidates: Sequence[Mapping[str, Any]],
     prior_probabilities: Mapping[str, Mapping[str, float]],
@@ -1578,24 +1602,7 @@ def _select_relationship_heldout_probes(
                 str(item["candidate_key"]),
             ),
         )
-        selected: list[Mapping[str, Any]] = []
-        selected_keys: set[str] = set()
-        represented_pastors: set[str] = set()
-        for require_new_pastor in (True, False):
-            for item in ordered:
-                key = str(item["candidate_key"])
-                pastor = str(item["pastor"].get("slug"))
-                if key in selected_keys:
-                    continue
-                if require_new_pastor and pastor in represented_pastors:
-                    continue
-                selected.append(item)
-                selected_keys.add(key)
-                represented_pastors.add(pastor)
-                if len(selected) == 4:
-                    break
-            if len(selected) == 4:
-                break
+        selected = _select_diverse_candidates(ordered, count=4)
         if len(selected) < 4:
             raise ValueError(
                 f"{calibration_version} {relationship} calibration lacks four fresh "
@@ -2570,24 +2577,35 @@ def _select_consequence_boundary_fresh_probes(
         candidate
         for candidate in candidates
         if str(candidate["candidate_key"]) in probabilities
+        and str(candidate["candidate_key"]) not in excluded_case_keys
         and lower
         <= float(
             probabilities[str(candidate["candidate_key"])][relationship]
         )
         <= upper
     ]
-    selected = _select_relationship_heldout_probes(
+    if len(candidates_in_window) < SALVATION_CONSEQUENCE_BOUNDARY_FRESH_PROBE_COUNT:
+        raise ValueError(
+            "Consequence/evidence boundary review lacks eight fresh cached "
+            "neighbors in the 0.45-0.70 window"
+        )
+    ordered = sorted(
         candidates_in_window,
-        probabilities,
-        relationship=relationship,
-        excluded_case_keys=excluded_case_keys,
-        threshold=threshold,
-        calibration_version="V9 consequence/evidence boundary",
+        key=lambda candidate: (
+            abs(
+                float(probabilities[str(candidate["candidate_key"])][relationship])
+                - threshold
+            ),
+            str(candidate["candidate_key"]),
+        ),
+    )
+    selected = _select_diverse_candidates(
+        ordered,
+        count=SALVATION_CONSEQUENCE_BOUNDARY_FRESH_PROBE_COUNT,
     )
     if len(selected) != SALVATION_CONSEQUENCE_BOUNDARY_FRESH_PROBE_COUNT:
         raise ValueError("Consequence/evidence boundary review selected the wrong size")
-    by_key = {str(candidate["candidate_key"]): candidate for candidate in candidates}
-    return [dict(by_key[str(probe["candidate_key"])]) for probe in selected]
+    return [dict(candidate) for candidate in selected]
 
 
 def build_salvation_consequence_boundary_review(
@@ -2703,6 +2721,14 @@ def build_salvation_consequence_boundary_review(
             SALVATION_CONSEQUENCE_BOUNDARY_REGRESSION_LABELS
         ),
         "fresh_probe_count": len(fresh),
+        "fresh_boundary_side_counts": {
+            side: sum(
+                probe["selection"] == "fresh_cached_neighbor"
+                and probe["boundary_side"] == side
+                for probe in probes
+            )
+            for side in ("below", "at_or_above")
+        },
         "excluded_case_keys": sorted(excluded_case_keys),
         "frozen_measurable_relationships": sorted(
             set(SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS) - {relationship}
@@ -3464,6 +3490,9 @@ def render_salvation_consequence_boundary_review(packet: Mapping[str, Any]) -> s
         f"- Current threshold: `{float(packet['current_threshold']):.2f}`",
         f"- Regression anchors: `{len(packet['regression_labels'])}`",
         f"- Fresh cached neighbors: `{packet['fresh_probe_count']}`",
+        "- Fresh boundary sides: "
+        f"`{packet['fresh_boundary_side_counts']['below']}` below / "
+        f"`{packet['fresh_boundary_side_counts']['at_or_above']}` at or above",
         "- Provider requests: `0`",
         f"- Packet fingerprint: `{packet['input_fingerprint']}`",
         "",

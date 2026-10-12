@@ -1019,7 +1019,12 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
             }
             for index, key in enumerate(candidate_keys)
         ]
-        fresh_probabilities = (0.48, 0.57, 0.61, 0.68)
+        fresh_probability_by_key = dict(
+            zip(
+                fresh_keys,
+                (0.48, 0.50, 0.52, 0.55, 0.57, 0.59, 0.61, 0.64, *([0.54] * 8)),
+            )
+        )
         probabilities = {
             key: {
                 leaf: (
@@ -1027,7 +1032,7 @@ class SalvationRelationshipReviewTests(unittest.TestCase):
                     if key == "4394:52" and leaf == relationship
                     else 0.61
                     if key == "350:42" and leaf == relationship
-                    else fresh_probabilities[index % 4]
+                    else fresh_probability_by_key[key]
                     if leaf == relationship
                     else 0.0
                 )
