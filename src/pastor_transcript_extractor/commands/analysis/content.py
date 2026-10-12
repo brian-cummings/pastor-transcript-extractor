@@ -116,8 +116,12 @@ from pastor_transcript_extractor.sermon_salvation_profile_analysis import (
     write_salvation_profile_repeatability,
 )
 from pastor_transcript_extractor.sermon_salvation_repeatability_expansion import (
+    DEFAULT_SALVATION_CANDIDATE_DISCOVERY_AUDIT_OUTPUT,
     DEFAULT_SALVATION_REPEATABILITY_EXPANSION_OUTPUT,
+    evaluate_salvation_candidate_discovery_audit,
     evaluate_salvation_repeatability_expansion_plan,
+    load_salvation_repeatability_expansion_plan,
+    write_salvation_candidate_discovery_audit,
     write_salvation_repeatability_expansion_plan,
 )
 from pastor_transcript_extractor.sermon_topic_evaluation import (
@@ -2319,6 +2323,62 @@ def analysis_salvation_repeatability_expansion_plan(
         f"{json_path} and {markdown_path}; "
         f"pastors={len(report['pastors'])}; "
         f"eligible_candidates={sum(int(item['eligible_candidate_count']) for item in report['pastors'])}; "
+        f"provider_requests={report['provider_requests']}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-candidate-discovery-audit",
+    help=(
+        "Explain whether salvation repeatability candidates are missing at "
+        "ingestion, identity, eligibility, analytical, query, or metadata gates."
+    ),
+)
+def analysis_salvation_candidate_discovery_audit(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT,
+        "--cohort",
+        help="Ready frozen three-sermon baseline cohort.",
+    ),
+    inventory_path: Path = typer.Option(
+        DEFAULT_SALVATION_REPEATABILITY_EXPANSION_OUTPUT,
+        "--inventory",
+        help="Current provider-free expansion candidate inventory.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_CANDIDATE_DISCOVERY_AUDIT_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON audit path; Markdown is written beside it.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db; pass the directory, not the database file.",
+    ),
+) -> None:
+    database = get_database(base_dir)
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        inventory = load_salvation_repeatability_expansion_plan(inventory_path)
+        report = evaluate_salvation_candidate_discovery_audit(
+            database,
+            cohort,
+            inventory,
+        )
+        json_path, markdown_path, reused = write_salvation_candidate_discovery_audit(
+            output_path,
+            report,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation candidate-discovery audit: "
+        f"{json_path} and {markdown_path}; "
+        f"associated_videos={sum(int(item['ingested_associated_count']) for item in report['pastors'])}; "
+        f"current_candidates={sum(len(item['current_candidate_video_ids']) for item in report['pastors'])}; "
+        f"blockers={','.join(report['blockers']) or 'none'}; "
         f"provider_requests={report['provider_requests']}; "
         f"fingerprint={str(report['input_fingerprint'])[:12]}…",
         markup=False,

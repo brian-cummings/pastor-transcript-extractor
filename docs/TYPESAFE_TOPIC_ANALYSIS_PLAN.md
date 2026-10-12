@@ -1413,18 +1413,29 @@ theological stance.
     with within-series replication and multiple replicated periods. Estimate
     convergence per relationship at sample sizes `3, 4, 5, 6, 8, 10, 12`; do not
     calibrate a repeatability threshold from the three-sermon sample.
+84. The first expansion inventory at fingerprint
+    `211d807550464b837dfa832f10cc7a8cdbc6b0349756b8014faf0d400ac190e3`
+    is blocked on data availability: three pastors expose only the three baseline
+    candidates, and Ron Clouzet exposes four. Keep the twelve-sermon replicated
+    series/period design unchanged. Do not infer dates from titles. Carry reviewed
+    baseline period evidence forward when database `published_at` is null, then run
+    a provider-free discovery audit that separates ingestion, canonical identity
+    linkage, production eligibility, analytical gate failures, query parity, and
+    metadata provenance before considering new acquisition or reclassification.
 
 ### Next iteration
 
-1. Build the provider-free `salvation-repeatability-expansion-plan` candidate
-   inventory. Use it to prepare an exact proposed twelve-sermon-per-pastor cohort;
-   the operator is not responsible for open-ended selection or series assignment.
-2. Review the proposed cohort's exact series and period evidence before any
-   reclassification. Then run cache-aware classification only for the approved
-   additions.
-3. Measure per-leaf convergence across repeated subsets at `3, 4, 5, 6, 8, 10, 12`
+1. Rerun `salvation-repeatability-expansion-plan` to propagate reviewed baseline
+   period evidence, then run `salvation-candidate-discovery-audit`.
+2. Use the audit to determine whether the shortfall is ingestion, identity linkage,
+   production eligibility, analytical readiness, query filtering, or missing
+   metadata. Prepare exact bounded remediation actions; do not ask the operator to
+   select sermons or edit cohort JSON.
+3. Only after sufficient candidates exist, review the proposed cohort's exact series
+   and period evidence before cache-aware classification of approved additions.
+4. Measure per-leaf convergence across repeated subsets at `3, 4, 5, 6, 8, 10, 12`
    sermons. Do not infer stable absence from zero detections.
-4. Preserve all three unresolved raw judgments for research and audit; never project
+5. Preserve all three unresolved raw judgments for research and audit; never project
    them as zero, absence, or theological opposition. Do not compare pastors or infer
    theological stance from this diagnostic cohort.
 

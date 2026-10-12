@@ -3063,7 +3063,27 @@ pte analysis salvation-repeatability-expansion-plan [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--cohort PATH` | Ready frozen three-sermon baseline cohort.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
-| `--output PATH` | Fingerprint-bound JSON candidate inventory; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v1.json] | no | evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v1.json |
+| `--output PATH` | Fingerprint-bound JSON candidate inventory; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v2.json] | no | evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v2.json |
+| `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis salvation-candidate-discovery-audit`
+
+Explain whether salvation repeatability candidates are missing at ingestion, identity, eligibility, analytical, query, or metadata gates.
+
+#### Usage
+
+```console
+pte analysis salvation-candidate-discovery-audit [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Ready frozen three-sermon baseline cohort.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--inventory PATH` | Current provider-free expansion candidate inventory.  [default: evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v2.json] | no | evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v2.json |
+| `--output PATH` | Fingerprint-bound JSON audit path; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-candidate-discovery-audit-v1.json] | no | evaluation/sermon-topics/salvation-candidate-discovery-audit-v1.json |
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 

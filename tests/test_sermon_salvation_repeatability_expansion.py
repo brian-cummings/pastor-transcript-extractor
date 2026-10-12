@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from pastor_transcript_extractor.sermon_salvation_repeatability_expansion import (
+    build_salvation_candidate_discovery_audit,
     build_salvation_repeatability_expansion_plan,
     evaluate_salvation_repeatability_expansion_plan,
 )
@@ -20,9 +21,21 @@ class SalvationRepeatabilityExpansionTests(unittest.TestCase):
                     "pastor_id": 7,
                     "slug": "pastor-example",
                     "sermons": [
-                        {"video_id": 1},
-                        {"video_id": 2},
-                        {"video_id": 3},
+                        {
+                            "video_id": 1,
+                            "period_key": "2026-h1",
+                            "period_evidence": {"source_kind": "reviewed"},
+                        },
+                        {
+                            "video_id": 2,
+                            "period_key": "2026-h1",
+                            "period_evidence": {"source_kind": "reviewed"},
+                        },
+                        {
+                            "video_id": 3,
+                            "period_key": "2026-h2",
+                            "period_evidence": {"source_kind": "reviewed"},
+                        },
                     ],
                 }
             ],
@@ -38,8 +51,12 @@ class SalvationRepeatabilityExpansionTests(unittest.TestCase):
                 "video_id": video_id,
                 "youtube_video_id": f"youtube-{video_id}",
                 "title": f"Series-like title {video_id}",
-                "published_at": f"2026-01-{video_id:02d}T00:00:00",
-                "period_key": "2026-h1",
+                "published_at": (
+                    None
+                    if video_id == 1
+                    else f"2026-01-{video_id:02d}T00:00:00"
+                ),
+                "period_key": None if video_id == 1 else "2026-h1",
                 "eligible_block_count": 5,
                 "gate_input_fingerprint": str(video_id) * 64,
             }
@@ -59,6 +76,10 @@ class SalvationRepeatabilityExpansionTests(unittest.TestCase):
             pastor["selection_status"],
         )
         self.assertTrue(pastor["candidates"][0]["already_in_baseline"])
+        self.assertEqual(
+            "reviewed_baseline_cohort",
+            pastor["candidates"][0]["period_provenance"],
+        )
         self.assertNotIn("series_key", pastor["candidates"][0])
         self.assertEqual(0, report["provider_requests"])
         self.assertEqual(
@@ -100,6 +121,92 @@ class SalvationRepeatabilityExpansionTests(unittest.TestCase):
 
         gate.assert_not_called()
         self.assertEqual(0, report["pastors"][0]["eligible_candidate_count"])
+
+    def test_discovery_audit_separates_identity_gate_and_query_failures(self) -> None:
+        cohort = {
+            "cohort_id": "cohort",
+            "cohort_sha256": "c" * 64,
+            "pastors": [
+                {
+                    "display_name": "Pastor Example",
+                    "pastor_id": 7,
+                    "slug": "pastor-example",
+                    "sermons": [
+                        {
+                            "video_id": 1,
+                            "period_key": "2026-h1",
+                            "period_evidence": {"source_kind": "reviewed"},
+                        }
+                    ],
+                }
+            ],
+        }
+        readiness = {
+            "ready": True,
+            "input_fingerprint": "r" * 64,
+            "pastors": [{"effective_profile_ids": [42]}],
+        }
+        records = [
+            {
+                "video_id": 1,
+                "title": "Baseline",
+                "configured_pastor_id": 7,
+                "canonical_effective_profile_ids": [42],
+                "production_eligible": True,
+                "gate_eligible": True,
+                "gate_reason_codes": [],
+                "published_at": None,
+            },
+            {
+                "video_id": 2,
+                "title": "Needs identity",
+                "configured_pastor_id": 7,
+                "canonical_effective_profile_ids": [],
+                "production_eligible": True,
+                "gate_eligible": False,
+                "gate_reason_codes": ["effective_profile_membership_unavailable"],
+                "published_at": None,
+            },
+            {
+                "video_id": 3,
+                "title": "Needs topic refresh",
+                "configured_pastor_id": 7,
+                "canonical_effective_profile_ids": [42],
+                "production_eligible": True,
+                "gate_eligible": False,
+                "gate_reason_codes": ["topic_analysis_unavailable"],
+                "published_at": "2026-01-01T00:00:00",
+            },
+        ]
+        inventory = {
+            "input_fingerprint": "i" * 64,
+            "pastors": [{"profile_id": 42, "candidates": []}],
+        }
+
+        report = build_salvation_candidate_discovery_audit(
+            records,
+            cohort,
+            readiness,
+            inventory,
+        )
+
+        pastor = report["pastors"][0]
+        self.assertEqual(1, pastor["category_counts"]["current_inventory_candidate"])
+        self.assertEqual(
+            1,
+            pastor["category_counts"]["configured_pastor_identity_unlinked"],
+        )
+        self.assertEqual(
+            1,
+            pastor["category_counts"]["profile_linked_analytical_gate_blocked"],
+        )
+        self.assertEqual([1], pastor["missing_from_inventory"])
+        self.assertFalse(pastor["inventory_query_matches"])
+        self.assertEqual(
+            "reviewed_baseline_cohort",
+            pastor["videos"][0]["period_provenance"],
+        )
+        self.assertIn("candidate_query_mismatch", report["blockers"])
 
 
 if __name__ == "__main__":

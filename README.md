@@ -558,6 +558,23 @@ four baseline profiles. It does not call TypeSafe or pretend that similar titles
 prove series membership. Return the generated packet for an exact proposed cohort;
 the operator does not need to select sermons or author cohort JSON.
 
+If that inventory is insufficient, do not relax the twelve-sermon replicated-strata
+design. Refresh the inventory so reviewed baseline period evidence is carried forward
+when database publication metadata is absent, then audit the candidate pipeline:
+
+```bash
+pte analysis salvation-repeatability-expansion-plan \
+  --base-dir /path/to/app-data
+
+pte analysis salvation-candidate-discovery-audit \
+  --base-dir /path/to/app-data
+```
+
+The discovery audit distinguishes configured-pastor ingestion, canonical speaker
+linkage, production eligibility, analytical gate blockers, candidate-query parity,
+and date provenance. It performs no inference and authorizes no identity, boundary,
+or reclassification change.
+
 When a refreshed collection review exposes a question-ordering defect, validate the
 revised four-question v5 pack on the reviewed regressions and fresh held-out cases:
 
