@@ -425,12 +425,13 @@ probability is at least `0.55` also enter the independently cached
 `salvation-relationships-v9-consequence-conduct-boundary` leaf pack. The twelve Noul
 probabilities are stored under
 `classification.search.salvation_relationship_analysis`; code derives affirmative
-observations from the provisional
-`salvation-relationship-observation-thresholds-v8-eleven-leaf-final` policy. Eleven
-relationships retain explicit per-leaf thresholds, including the now-frozen
-`conversion_new_birth` at `0.55`. Atonement has a bounded numeric review pending,
-judgment has a provider-free overlap check pending, and only the
-obedience-as-consequence wording changes in V9. Repentance is marked
+observations from the transcription-pending
+`salvation-relationship-observation-thresholds-v9-pending-condition-transcription`
+policy. Eleven relationships retain explicit per-leaf thresholds, including the
+frozen `conversion_new_birth` at `0.55`. V9 freezes the revised
+obedience-as-consequence semantics, moves that leaf's boundary to `0.60`, moves
+atonement to `0.68`, and retains judgment at `0.65` with one known overlap.
+Repentance is marked
 `block_level_unresolved`: its raw probability is retained for research and debugging
 but it cannot produce a collected or pastor-level observation. The raw
 probabilities remain policy-independent evidence, so changing a collection
@@ -442,10 +443,10 @@ are no longer routed stop contributing observations, while a newly routed block
 without cached leaf evidence is reported as incomplete rather than silently
 treated as negative.
 
-The configured thresholds are assurance `0.61`, atonement `0.70`, conversion `0.55`,
+The configured thresholds are assurance `0.61`, atonement `0.68`, conversion `0.55`,
 divine grace `0.65`, receiving faith `0.65`, forgiveness `0.68`, final destiny
 `0.65`, justification `0.70`, obedience-as-condition `0.70`, obedience-as-consequence
-`0.55`, and sanctification `0.70`. V7 demonstrated that no defensible threshold can
+`0.60`, and sanctification `0.70`. V7 demonstrated that no defensible threshold can
 separate repentance as a salvation response from repentance discussed in salvation
 context at this block size. Prompt tuning stops at V7. The ordinary-classification
 audit subsequently reopened only conversion because a reviewed positive at `0.54`
@@ -482,21 +483,22 @@ pte analysis salvation-final-boundary-calibration \
   --base-dir /path/to/app-data
 ```
 
-Do not reclassify the cohort first. The packet changes no threshold. It reviews
-atonement only in `0.66`–`0.71`, judgment only in `0.62`–`0.68`, and leaves every
-other measurable relationship frozen. It includes every cached case available in
-each requested window and reports a sparse neighborhood instead of widening the
-window or aborting. The completed V8 calibration command is archived so it cannot
-overwrite its reviewed packet.
+The reviewed packet freezes V9 consequence-obedience at `0.60`, moves atonement to
+`0.68`, and retains judgment at `0.65`. The command is now archived so it cannot
+overwrite the reviewed packet. Do not reclassify yet: first listen to the linked
+`1037:58` phrase and decide whether it explicitly makes sleep or unresponsiveness a
+condition of obtaining or retaining salvation.
 
 The V7 calibration command is archived after its terminal review so it cannot
 overwrite the fingerprinted evidence. Refreshing the cohort evaluates the full
 twelve-question V7 pack through the normal content-addressed cache, preserves the
 unresolved repentance probability, and projects the eleven thresholded leaves.
 
-Conversion V8 and eight other measurable leaves are frozen. Historical semantic and
-final-calibration commands fail closed after the freeze so they cannot overwrite
-their fingerprinted review packets with a later policy.
+Conversion V8, consequence-obedience V9, and the reviewed numeric boundaries are
+frozen. The overall observation policy remains explicitly transcription-pending for
+the condition/means leaf. Historical semantic and final-calibration commands fail
+closed so they cannot overwrite their fingerprinted review packets with a later
+policy.
 Refresh cohort classifications through ordinary `pte reclassify`; unaffected
 recording, topic, role, and treatment packs continue to replay from their existing
 per-video caches.

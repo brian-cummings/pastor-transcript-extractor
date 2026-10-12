@@ -18,7 +18,7 @@ SALVATION_RELATIONSHIPS_PACK_VERSION = (
 SALVATION_ROUTE_POLICY_VERSION = "salvation-route-supporting-mass-v1"
 SALVATION_ROUTE_THRESHOLD = 0.55
 SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION = (
-    "salvation-relationship-observation-thresholds-v8-eleven-leaf-final"
+    "salvation-relationship-observation-thresholds-v9-pending-condition-transcription"
 )
 
 
@@ -235,7 +235,7 @@ SALVATION_RELATIONSHIP_SPECS: dict[str, SalvationRelationshipSpec] = {
 SALVATION_RELATIONSHIPS = tuple(SALVATION_RELATIONSHIP_SPECS)
 SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "divine_grace_initiative": 0.65,
-    "atonement_as_basis": 0.70,
+    "atonement_as_basis": 0.68,
     "forgiveness_pardon": 0.68,
     "justification_right_standing": 0.70,
     "conversion_new_birth": 0.55,
@@ -244,7 +244,7 @@ SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS: dict[str, float] = {
     "judgment_final_destiny": 0.65,
     "faith_as_receiving_response": 0.65,
     "obedience_as_condition_or_means": 0.70,
-    "obedience_as_consequence_or_evidence": 0.55,
+    "obedience_as_consequence_or_evidence": 0.60,
 }
 UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS: frozenset[str] = frozenset(
     {"repentance_as_receiving_response"}

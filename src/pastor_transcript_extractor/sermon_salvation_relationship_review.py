@@ -154,6 +154,7 @@ SALVATION_V9_CONSEQUENCE_REGRESSION_LABELS = {
     "4589:41:obedience_as_consequence_or_evidence": "affirmative",
     "4430:28:obedience_as_consequence_or_evidence": "negative",
 }
+SALVATION_V9_CONSEQUENCE_SOURCE_THRESHOLD = 0.55
 SALVATION_V8_CONVERSION_REVIEWED_CASE_KEYS = frozenset(
     {
         "590:34",
@@ -2110,6 +2111,14 @@ def evaluate_salvation_final_boundary_calibration(
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """Build the bounded final numeric, semantic, and transcription review."""
     if (
+        SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION
+        != SALVATION_V8_FINAL_OBSERVATION_POLICY_VERSION
+    ):
+        raise ValueError(
+            "Final boundary calibration is archived after its reviewed numeric and "
+            "semantic decisions were recorded"
+        )
+    if (
         collection_review.get("review_policy_version")
         != SALVATION_FINAL_BOUNDARY_SOURCE_REVIEW_POLICY_VERSION
         or collection_review.get("input_fingerprint")
@@ -2216,7 +2225,7 @@ def evaluate_salvation_final_boundary_calibration(
         prior_probabilities,
         relationship=consequence,
         excluded_case_keys=reviewed_case_keys,
-        threshold=SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS[consequence],
+        threshold=SALVATION_V9_CONSEQUENCE_SOURCE_THRESHOLD,
         calibration_version="V9",
     )
     evaluation_keys = sorted(

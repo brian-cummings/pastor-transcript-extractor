@@ -309,8 +309,9 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             relationship: 0.69 for relationship in SALVATION_RELATIONSHIPS
         }
         probabilities["assurance_security"] = 0.61
+        probabilities["atonement_as_basis"] = 0.67
         probabilities["conversion_new_birth"] = 0.55
-        probabilities["obedience_as_consequence_or_evidence"] = 0.55
+        probabilities["obedience_as_consequence_or_evidence"] = 0.60
         answer = TypeSafeBlockAnswer(
             "principal_sermon",
             {"principal_sermon": 1.0},

@@ -110,7 +110,11 @@ class SalvationRelationshipsTests(unittest.TestCase):
             salvation_relationship_observation_threshold("assurance_security"),
         )
         self.assertEqual(
-            0.55,
+            0.68,
+            salvation_relationship_observation_threshold("atonement_as_basis"),
+        )
+        self.assertEqual(
+            0.60,
             salvation_relationship_observation_threshold(
                 "obedience_as_consequence_or_evidence"
             ),
@@ -126,7 +130,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
 
     def test_collection_policy_is_shared_and_validates_raw_inventory(self) -> None:
         self.assertEqual(
-            "salvation-relationship-observation-thresholds-v8-eleven-leaf-final",
+            "salvation-relationship-observation-thresholds-v9-pending-condition-transcription",
             SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
         )
         probabilities = {
@@ -137,7 +141,7 @@ class SalvationRelationshipsTests(unittest.TestCase):
         }
         probabilities["repentance_as_receiving_response"] = 1.0
         probabilities["assurance_security"] = 0.62
-        probabilities["atonement_as_basis"] = 0.70
+        probabilities["atonement_as_basis"] = 0.68
 
         self.assertEqual(
             ("atonement_as_basis", "assurance_security"),

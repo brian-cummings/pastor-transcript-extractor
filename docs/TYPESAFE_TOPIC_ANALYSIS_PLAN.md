@@ -1341,17 +1341,29 @@ theological stance.
     `0.54` and negative `4430:28` at `0.56`, plus eight fresh held-outs. Keep
     `1037:58` condition-obedience ambiguous until the garbled audio phrase is
     resolved. All other measurable leaves remain frozen.
+77. The final bounded packet at fingerprint
+    `557f9742ddb820e4079ec90f26f3a835e7ddfdeda235c2cff63d5038ba1957a7`
+    passes V9 consequence-obedience semantics: affirmative regression `4589:41`
+    rises from `0.54` to `0.84`, while negative `4430:28` falls from `0.56` to
+    `0.17`. Freeze that wording at `0.60`, accepting the subtle affirmative
+    `590:38` at `0.52` as a retained raw false negative and `350:62` at `0.67` as
+    borderline overlap. Move atonement from `0.70` to `0.68`; retain judgment at
+    `0.65` and record negative `4394:43` at `0.66` as a known false positive.
+    Archive the calibration command. Version the collection policy as
+    `salvation-relationship-observation-thresholds-v9-pending-condition-transcription`
+    until the garbled `1037:58` audio is adjudicated; do not reclassify before then.
 
 ### Next iteration
 
-1. Run `salvation-final-boundary-calibration` against the still-V8 cohort; do not
-   reclassify first. Include every cached case in each requested numeric window;
-   sparse neighborhoods remain reviewable evidence and do not justify widening the
-   windows or failing packet construction.
-2. Review the cached atonement and judgment neighborhoods, the two V9 consequence
-   regressions plus eight fresh held-outs, and the timestamped `1037:58` audio phrase.
-3. Freeze only the boundaries supported by that packet, then refresh the cohort and
-   rerun `salvation-collected-observations-review` before pastor aggregation.
+1. Listen to `1037:58` at <https://youtu.be/5Yf-TlFDnD4?t=2547> and transcribe the
+   garbled phrase currently rendered as “we can userve his salvation on our behalf
+   by being asleep.” Keep it ambiguous unless the audio clearly says that sleep or
+   unresponsiveness can lose, forfeit, refuse, or otherwise condition salvation.
+2. Finalize the policy version from that adjudication. If the case is affirmative,
+   review the condition/means numeric boundary before freezing; otherwise freeze the
+   existing `0.70` boundary.
+3. Only after finalization, refresh the cohort and rerun
+   `salvation-collected-observations-review` before pastor aggregation.
 
 ## Non-goals for `topics-v1`
 
