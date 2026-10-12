@@ -60,6 +60,7 @@ GROUP_COMMANDS = {
         "salvation-collection-recalibration",
         "salvation-boundary-recalibration",
         "salvation-candidate-discovery-audit",
+        "salvation-analytical-backfill-plan",
         "salvation-condition-boundary-review",
         "salvation-consequence-boundary-review",
         "salvation-final-calibration",

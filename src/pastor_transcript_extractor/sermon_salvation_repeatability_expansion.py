@@ -37,6 +37,13 @@ SALVATION_CANDIDATE_DISCOVERY_AUDIT_POLICY_VERSION = (
 DEFAULT_SALVATION_CANDIDATE_DISCOVERY_AUDIT_OUTPUT = Path(
     "evaluation/sermon-topics/salvation-candidate-discovery-audit-v1.json"
 )
+SALVATION_ANALYTICAL_BACKFILL_PLAN_SCHEMA_VERSION = 1
+SALVATION_ANALYTICAL_BACKFILL_PLAN_POLICY_VERSION = (
+    "salvation-linked-topic-analysis-backfill-v1"
+)
+DEFAULT_SALVATION_ANALYTICAL_BACKFILL_PLAN_OUTPUT = Path(
+    "evaluation/sermon-topics/salvation-analytical-backfill-plan-v1.json"
+)
 
 
 def _canonical_hash(value: object) -> str:
@@ -625,6 +632,201 @@ def write_salvation_candidate_discovery_audit(
     )
     markdown_path.write_text(
         render_salvation_candidate_discovery_audit(report),
+        encoding="utf-8",
+    )
+    return json_path, markdown_path, False
+
+
+def load_salvation_candidate_discovery_audit(
+    path: Path,
+) -> Mapping[str, Any]:
+    try:
+        value = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Could not read salvation candidate audit: {path}") from error
+    if not isinstance(value, Mapping):
+        raise ValueError("Salvation candidate audit must be a JSON object")
+    return value
+
+
+def build_salvation_analytical_backfill_plan(
+    audit: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Select only linked, production-eligible, topic-artifact-only blockers."""
+    if audit.get("policy_version") != SALVATION_CANDIDATE_DISCOVERY_AUDIT_POLICY_VERSION:
+        raise ValueError("Analytical backfill requires the current candidate audit policy")
+    pastor_plans = []
+    all_video_ids = []
+    for pastor in audit.get("pastors", []):
+        if not isinstance(pastor, Mapping):
+            raise ValueError("Candidate audit has a malformed pastor entry")
+        targets = []
+        excluded = []
+        for video in pastor.get("videos", []):
+            if not isinstance(video, Mapping):
+                continue
+            if video.get("category") != "profile_linked_analytical_gate_blocked":
+                continue
+            reasons = sorted(str(value) for value in video.get("gate_reason_codes", []))
+            item = {
+                "gate_reason_codes": reasons,
+                "title": str(video.get("title") or ""),
+                "video_id": int(video["video_id"]),
+                "youtube_video_id": str(video.get("youtube_video_id") or ""),
+            }
+            if (
+                video.get("production_eligible") is True
+                and reasons == ["topic_analysis_unavailable"]
+            ):
+                targets.append(item)
+            else:
+                excluded.append(item)
+        targets.sort(key=lambda item: item["video_id"])
+        excluded.sort(key=lambda item: item["video_id"])
+        all_video_ids.extend(int(item["video_id"]) for item in targets)
+        current_count = len(pastor.get("current_candidate_video_ids", []))
+        projected_maximum = current_count + len(targets)
+        pastor_plans.append(
+            {
+                "display_name": pastor.get("display_name"),
+                "profile_id": int(pastor["profile_id"]),
+                "current_candidate_count": current_count,
+                "backfill_target_count": len(targets),
+                "projected_candidate_maximum": projected_maximum,
+                "could_reach_target_after_backfill": (
+                    projected_maximum >= TARGET_SERMONS_PER_PASTOR
+                ),
+                "targets": targets,
+                "excluded_linked_gate_blockers": excluded,
+            }
+        )
+    all_video_ids.sort()
+    identity = {
+        "schema_version": SALVATION_ANALYTICAL_BACKFILL_PLAN_SCHEMA_VERSION,
+        "policy_version": SALVATION_ANALYTICAL_BACKFILL_PLAN_POLICY_VERSION,
+        "source_audit_fingerprint": audit.get("input_fingerprint"),
+        "selection_rule": {
+            "required_category": "profile_linked_analytical_gate_blocked",
+            "production_eligible": True,
+            "required_exact_gate_reason_codes": ["topic_analysis_unavailable"],
+            "identity_changes_allowed": False,
+            "sermon_window_changes_allowed": False,
+            "question_or_threshold_changes_allowed": False,
+            "repeatability_policy_changes_allowed": False,
+        },
+        "video_ids": all_video_ids,
+        "pastors": pastor_plans,
+    }
+    return {
+        **identity,
+        "input_fingerprint": _canonical_hash(identity),
+        "status": "ready_for_operator_backfill",
+        "provider_requests_during_planning": 0,
+        "execution": {
+            "cache_aware": True,
+            "force_reclassification_required": True,
+            "jobs": 1,
+            "recording_verifier_backend": "typesafe",
+            "recording_verifier_model": "jev-1.13.0",
+            "continue_after_individual_failure": True,
+        },
+        "post_backfill_commands": [
+            "pte analysis salvation-repeatability-expansion-plan --base-dir /Users/briancummings/Documents/PastorSearchData",
+            "pte analysis salvation-candidate-discovery-audit --base-dir /Users/briancummings/Documents/PastorSearchData",
+        ],
+        "interpretation": (
+            "This plan refreshes missing analytical artifacts only for recordings "
+            "already canonically linked and production eligible. It does not alter "
+            "identity, sermon windows, questions, thresholds, or the repeatability "
+            "design. A successful reclassification still grants no cohort credit "
+            "until the ordinary gates and later cohort review pass."
+        ),
+    }
+
+
+def render_salvation_analytical_backfill_plan(report: Mapping[str, Any]) -> str:
+    ids = " ".join(str(video_id) for video_id in report["video_ids"])
+    lines = [
+        "# Salvation analytical backfill plan",
+        "",
+        f"- Status: `{report['status']}`",
+        f"- Source audit: `{report['source_audit_fingerprint']}`",
+        f"- Backfill targets: `{len(report['video_ids'])}`",
+        f"- Planning provider requests: `{report['provider_requests_during_planning']}`",
+        f"- Input fingerprint: `{report['input_fingerprint']}`",
+        "",
+        str(report["interpretation"]),
+        "",
+        "## Profile impact",
+        "",
+        "| Pastor | Profile | Current | Targets | Projected maximum | Could reach 12 |",
+        "| --- | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for pastor in report["pastors"]:
+        lines.append(
+            f"| {pastor['display_name']} | {pastor['profile_id']} | "
+            f"{pastor['current_candidate_count']} | {pastor['backfill_target_count']} | "
+            f"{pastor['projected_candidate_maximum']} | "
+            f"{'yes' if pastor['could_reach_target_after_backfill'] else 'no'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Exact cache-aware execution",
+            "",
+            "This loop records failures and continues; it does not terminate the shell session.",
+            "",
+            "```bash",
+            f"video_ids=({ids})",
+            "failed_ids=()",
+            "for video_id in \"${video_ids[@]}\"; do",
+            "  pte reclassify \\",
+            "    --video-id \"$video_id\" \\",
+            "    --force \\",
+            "    --jobs 1 \\",
+            "    --recording-verifier-backend typesafe \\",
+            "    --recording-verifier-model jev-1.13.0 \\",
+            "    --base-dir /Users/briancummings/Documents/PastorSearchData || failed_ids+=(\"$video_id\")",
+            "done",
+            "echo \"Backfill failures: ${failed_ids[*]:-none}\"",
+            "",
+            "pte analysis salvation-repeatability-expansion-plan \\",
+            "  --base-dir /Users/briancummings/Documents/PastorSearchData",
+            "",
+            "pte analysis salvation-candidate-discovery-audit \\",
+            "  --base-dir /Users/briancummings/Documents/PastorSearchData",
+            "```",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def write_salvation_analytical_backfill_plan(
+    path: Path,
+    report: Mapping[str, Any],
+) -> tuple[Path, Path, bool]:
+    json_path = path.expanduser().resolve()
+    markdown_path = json_path.with_suffix(".md")
+    reused = False
+    if json_path.exists() and markdown_path.exists():
+        try:
+            existing = json.loads(json_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            existing = None
+        reused = (
+            isinstance(existing, Mapping)
+            and existing.get("input_fingerprint") == report.get("input_fingerprint")
+        )
+    if reused:
+        return json_path, markdown_path, True
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path.write_text(
+        render_salvation_analytical_backfill_plan(report),
         encoding="utf-8",
     )
     return json_path, markdown_path, False

@@ -575,6 +575,19 @@ linkage, production eligibility, analytical gate blockers, candidate-query parit
 and date provenance. It performs no inference and authorizes no identity, boundary,
 or reclassification change.
 
+When the audit shows recordings that are already production eligible and canonically
+linked but blocked solely by missing topic analysis, build the exact backfill plan:
+
+```bash
+pte analysis salvation-analytical-backfill-plan
+```
+
+The generated Markdown contains a cache-aware loop that continues after individual
+failures and then refreshes the inventory and discovery audit. Its selection rule is
+strict: `profile_linked_analytical_gate_blocked`, production eligible, and exactly
+`topic_analysis_unavailable`. Configured-but-unlinked videos and all identity changes
+remain out of scope.
+
 When a refreshed collection review exposes a question-ordering defect, validate the
 revised four-question v5 pack on the reviewed regressions and fresh held-out cases:
 

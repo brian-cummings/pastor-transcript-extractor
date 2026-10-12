@@ -116,11 +116,15 @@ from pastor_transcript_extractor.sermon_salvation_profile_analysis import (
     write_salvation_profile_repeatability,
 )
 from pastor_transcript_extractor.sermon_salvation_repeatability_expansion import (
+    DEFAULT_SALVATION_ANALYTICAL_BACKFILL_PLAN_OUTPUT,
     DEFAULT_SALVATION_CANDIDATE_DISCOVERY_AUDIT_OUTPUT,
     DEFAULT_SALVATION_REPEATABILITY_EXPANSION_OUTPUT,
+    build_salvation_analytical_backfill_plan,
     evaluate_salvation_candidate_discovery_audit,
     evaluate_salvation_repeatability_expansion_plan,
+    load_salvation_candidate_discovery_audit,
     load_salvation_repeatability_expansion_plan,
+    write_salvation_analytical_backfill_plan,
     write_salvation_candidate_discovery_audit,
     write_salvation_repeatability_expansion_plan,
 )
@@ -2386,6 +2390,45 @@ def analysis_salvation_candidate_discovery_audit(
 
 
 @analysis_app.command(
+    "salvation-analytical-backfill-plan",
+    help=(
+        "Prepare exact cache-aware reclassification commands for linked, "
+        "production-eligible topic-analysis-only blockers."
+    ),
+)
+def analysis_salvation_analytical_backfill_plan(
+    audit_path: Path = typer.Option(
+        DEFAULT_SALVATION_CANDIDATE_DISCOVERY_AUDIT_OUTPUT,
+        "--audit",
+        help="Reviewed provider-free candidate-discovery audit.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_ANALYTICAL_BACKFILL_PLAN_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON backfill plan; Markdown is written beside it.",
+    ),
+) -> None:
+    try:
+        audit = load_salvation_candidate_discovery_audit(audit_path)
+        report = build_salvation_analytical_backfill_plan(audit)
+        json_path, markdown_path, reused = write_salvation_analytical_backfill_plan(
+            output_path,
+            report,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation analytical backfill plan: "
+        f"{json_path} and {markdown_path}; "
+        f"targets={len(report['video_ids'])}; "
+        f"profiles={sum(bool(item['backfill_target_count']) for item in report['pastors'])}; "
+        f"provider_requests={report['provider_requests_during_planning']}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
     "salvation-conversion-recalibration",
     help="Build the provider-free conversion-only boundary ordering check.",
 )
@@ -2713,3 +2756,6 @@ def analysis_evaluate_topic_behavior(
     )
     if report["status"] != "passed":
         raise typer.Exit(code=1)
+    build_salvation_analytical_backfill_plan,
+    load_salvation_candidate_discovery_audit,
+    write_salvation_analytical_backfill_plan,

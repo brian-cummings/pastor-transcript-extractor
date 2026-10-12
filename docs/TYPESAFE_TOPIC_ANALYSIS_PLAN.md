@@ -1422,20 +1422,31 @@ theological stance.
     a provider-free discovery audit that separates ingestion, canonical identity
     linkage, production eligibility, analytical gate failures, query parity, and
     metadata provenance before considering new acquisition or reclassification.
+85. The candidate-discovery audit at fingerprint
+    `0a9074ef6546e7613d00cae42491192ca7d65a0dc1c81470f8729f9ff084e40e`
+    confirms downstream analytical scarcity rather than source scarcity or query
+    filtering. Exactly 32 production-eligible, canonically linked recordings for
+    profiles 117, 80, and 130 are blocked solely by
+    `topic_analysis_unavailable`; prepare a cache-aware forced reclassification plan
+    for those recordings only. Profile 318 has no linked analytical-gate targets and
+    will remain short after this phase. Do not include configured-but-unlinked videos,
+    infer series, or change identity. Refresh the inventory and audit after the
+    backfill, then decide whether a separate bounded identity phase is necessary.
 
 ### Next iteration
 
-1. Rerun `salvation-repeatability-expansion-plan` to propagate reviewed baseline
-   period evidence, then run `salvation-candidate-discovery-audit`.
-2. Use the audit to determine whether the shortfall is ingestion, identity linkage,
-   production eligibility, analytical readiness, query filtering, or missing
-   metadata. Prepare exact bounded remediation actions; do not ask the operator to
-   select sermons or edit cohort JSON.
-3. Only after sufficient candidates exist, review the proposed cohort's exact series
+1. Execute the exact 32-video `salvation-analytical-backfill-plan`; continue after
+   individual failures and retain all cache hits.
+2. Rerun `salvation-repeatability-expansion-plan` and
+   `salvation-candidate-discovery-audit`. Report actual candidate counts rather than
+   the plan's projected maxima.
+3. If profile 318 remains short, prepare a separate bounded identity-review phase;
+   do not mix identity adjudication into this analytical backfill.
+4. Only after sufficient candidates exist, review the proposed cohort's exact series
    and period evidence before cache-aware classification of approved additions.
-4. Measure per-leaf convergence across repeated subsets at `3, 4, 5, 6, 8, 10, 12`
+5. Measure per-leaf convergence across repeated subsets at `3, 4, 5, 6, 8, 10, 12`
    sermons. Do not infer stable absence from zero detections.
-5. Preserve all three unresolved raw judgments for research and audit; never project
+6. Preserve all three unresolved raw judgments for research and audit; never project
    them as zero, absence, or theological opposition. Do not compare pastors or infer
    theological stance from this diagnostic cohort.
 

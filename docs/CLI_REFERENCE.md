@@ -3087,6 +3087,24 @@ pte analysis salvation-candidate-discovery-audit [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-analytical-backfill-plan`
+
+Prepare exact cache-aware reclassification commands for linked, production-eligible topic-analysis-only blockers.
+
+#### Usage
+
+```console
+pte analysis salvation-analytical-backfill-plan [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--audit PATH` | Reviewed provider-free candidate-discovery audit.  [default: evaluation/sermon-topics/salvation-candidate-discovery-audit-v1.json] | no | evaluation/sermon-topics/salvation-candidate-discovery-audit-v1.json |
+| `--output PATH` | Fingerprint-bound JSON backfill plan; Markdown is written beside it.  [default: evaluation/sermon-topics/salvation-analytical-backfill-plan-v1.json] | no | evaluation/sermon-topics/salvation-analytical-backfill-plan-v1.json |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-conversion-recalibration`
 
 Build the provider-free conversion-only boundary ordering check.
