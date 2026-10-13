@@ -1711,21 +1711,48 @@ All 43 content-eligible videos are now ready: 37 have reusable leaf artifacts
 and six have zero routed blocks. There are no missing leaf blocks and the
 inventory made zero provider requests. One immediate inventory attempt
 rejected a changing application database; rerunning after it stabilized
-produced this fingerprinted report. The earlier convergence report still
-records the pre-backfill state, with Clouzet 1033 unmeasured.
+produced this fingerprinted report. The convergence report at the time of the rollout inventory still recorded
+the pre-backfill state, with Clouzet 1033 unmeasured.
+
+### Refreshed nine-leaf convergence
+
+Brian refreshed the provider-free
+[`salvation-nine-leaf-convergence-v1`](../evaluation/sermon-topics/salvation-nine-leaf-convergence-v1.json)
+report against the same frozen cohort proposal. Its fingerprint is
+`86b7f88b6ba43aa09d7be460f2a517df09835696fb53ba11ef1b25517b61a53e`;
+it made zero provider requests. Ryder and Williams remain fully measured at
+11 and 10 independent sermons, respectively, with N=12 unavailable by design.
+Clouzet is now fully measured at 12 of 12, with no unavailable sermons and
+all nine N=12 checkpoints available. His full equal-sermon rates include
+divine grace 0.189, atonement 0.079, forgiveness 0.150, and judgment 0.196.
+The 1033 backfill added observations for divine grace and atonement. His
+justification rate remains 0.000 with 0 of 12 sermons observed; this is
+insufficient positive evidence, not an absence claim.
+
+Three Clouzet sermons (1044, 1045, 1051) have zero routed leaf blocks and
+contribute observed-zero rates under the frozen equal-sermon denominator.
+One selected sermon lacks period and series provenance. The report retains
+order, period, and replicated-series sensitivity diagnostics. For example,
+Clouzet's N=10 judgment rate spans 0.135–0.235 across the report's 5th–95th
+order percentiles before the N=12 full mean of 0.196. The N=12 order spread
+collapses because every selected sermon is included; that identity is not a
+stability finding. The original stage-gate approval still concerns the nine
+questions for broader analysis. The refreshed report's
+`analytical_credit_granted: false` preserves the prior diagnostic state and
+does not revoke that separate decision or grant pastor-level sufficiency.
 
 ### Next iteration
 
-1. Refresh the provider-free nine-leaf convergence report against the frozen
-   exact cohort with `pte analysis salvation-nine-leaf-convergence --base-dir
-   /Users/briancummings/Documents/PastorSearchData`. Review whether Clouzet's
-   selected 12 sermons are now all measured, its N=12 checkpoint, and the
-   order, period, and series diagnostics. Keep the frozen V9 questions and the
-   three unresolved leaves unchanged.
-2. Use the refreshed convergence evidence for a separate pastor sample-size
-   and uncertainty assessment. The nine-question stage gate remains approved
-   for question-level broader analysis; this report does not by itself grant
-   pastor-level theological claims or set a universal stability cutoff.
+Prepare a provider-free pastor uncertainty packet using the frozen
+11/10/12-sermon cohorts. Report each leaf's positive-sermon count, primary
+checkpoint movement, leave-one-sermon-out range, and existing period/series
+comparisons. Add a clearly labeled denominator sensitivity that compares
+observed-zero inclusion of zero-routed sermons with rates conditional on a
+routed sermon; preserve the approved equal-sermon rate as primary. Keep
+unknown provenance visible and treat zero detections as insufficient positive
+evidence. Review the packet before proposing any pastor-level sample-size or
+uncertainty policy; do not fit a universal cutoff or retune the frozen V9 leaf
+questions from these three pastors.
 
 ## Non-goals for `topics-v1`
 
