@@ -5,7 +5,10 @@ projection are implemented. The current clarified question pack is
 `topics-v3-mission-discourse-boundary`. Stage 4 approves broad observations for
 sermon discovery and conditional leaf routing, but its three-sermon-per-pastor
 cohort does not authorize pastor-level comparison or calibrate a universal
-stability threshold. The first salvation-relationship leaf pack is next.
+stability threshold. The provider-free exact-cohort proposal now uses the v3
+series-diversity contract. Clouzet meets its machine-checkable cohort gate;
+Ryder and Williams still need one and two independent sermons respectively.
+Convergence awaits exact-cohort integrity approval.
 
 ## Purpose
 
@@ -533,9 +536,6 @@ tests must fail if fine target text is duplicated, a full length-dependent outli
 is repeated per batch, or adding questions increases transcript-derived input
 other than explicitly bounded context.
 
-## Leaf-pack policy
-
-The broad topics are routing observations, not the final theological analysis.
 #### Implemented and validated on a bounded sermon (2026-10-13)
 
 The first-run request planner now shares each fine target across role, treatment,
@@ -577,6 +577,9 @@ reduction should not be read as an equal token reduction. This bounded case
 proves the intended selective fan-out; another sermon could route every fine
 block to a conditional leaf pass.
 
+## Leaf-pack policy
+
+The broad topics are routing observations, not the final theological analysis.
 The architecture should support leaves now through independent pack identities,
 but `topics-v1` must not contain the leaf questions themselves.
 
@@ -1543,6 +1546,146 @@ theological stance.
     same-service adjudication, while most added candidates still lack reviewed
     series and period evidence. Do not make another provider call merely to prepare
     the cohort. Profile 318 is non-blocking for the initial three-pastor experiment.
+
+### Exact-cohort integrity review and contract revision
+
+The provider-free [v2 proposal](../evaluation/sermon-topics/salvation-exact-cohort-proposal-v2.json),
+[integrity review](../evaluation/sermon-topics/salvation-exact-cohort-integrity-review-v1.json),
+and [targeted gate review](../evaluation/sermon-topics/salvation-exact-cohort-targeted-gaps-v1.md)
+established the independence and provenance facts. Ryder 418/419 are consecutive
+parts of one sermon despite low transcript overlap. Three Williams pairs remain
+conservatively grouped. All three pastors have two periods with at least three
+sermons each. The v2 requirement for **three series with at least two sermons
+per series** left Ryder two series short, Williams two short, and Clouzet one
+short. It was selecting for archive organization and prompting unrelated gate
+work. That series rule is **superseded**, not retroactively changed in v2.
+
+The [v3 proposal](../evaluation/sermon-topics/salvation-exact-cohort-proposal-v3.json)
+(input fingerprint
+`1197f1504cc1171a4ec620582b041f8619dd4d900815350561466bd2a02ee70c`)
+uses this preregistered, auditable stage gate per pastor:
+
+1. Twelve independently counted sermons, preserving the three reviewed
+   baseline sermons and counting at most one recording per unresolved or
+   probable equivalence group.
+2. At least two source-backed periods, each represented by at least three
+   independent sermons.
+3. No **documented** series contributes more than six of the twelve sermons.
+   At least three distinct normalized source titles must sit outside the
+   largest documented series. Unassigned series membership is displayed, not
+   presumed to be a distinct series. Bounded human integrity review must check
+   whether those unassigned recordings conceal a concentration risk before
+   approving an exact cohort.
+
+The series rule is a sampling diversity guard, not a claim that titles prove
+independent series. The diagnostic will compare within-series and
+outside-series convergence for each documented series with at least two
+sermons; it will report where that comparison is unavailable. It will also
+retain sermon-order and period sensitivity. Do not infer pastor-level stability
+from an untested series or from zero detections. No universal stability
+threshold is calibrated from the three-sermon baseline.
+
+The v3 packet was regenerated entirely from the existing fingerprinted
+artifact-evidence cache, without rereading transcripts, running a corpus job,
+or calling TypeSafe. The cache identity is now independent of the cohort-policy
+version so future contract-only revisions reuse it. Its current counts are:
+
+| Pastor | Independent sermons | Replicated periods | Largest documented series | Other distinct titles | Remaining gate |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Ryder (117) | 11 | 2 | Joseph 2/11 | 9 | One independent sermon |
+| Williams (80) | 10 | 2 | Unexpected 2/10 | 8 | Two independent sermons |
+| Clouzet (130) | 12 | 2 | Hurtling to the End 6/12 | 6 | None before bounded human cohort approval |
+
+The [v2 integrity review](../evaluation/sermon-topics/salvation-exact-cohort-integrity-review-v2.json)
+adds source-backed `Hurtling to the End` assignments for 1038, 1039, 1044,
+and 1051, corroborated by the source titles and the 1045/1051 self-references.
+Clouzet's archaeology recording 4432 remains excluded; its speaker and sermon
+gates are not relaxed to satisfy a sampling rule. The three unresolved
+salvation leaves remain `block_level_unresolved` and outside nine-leaf
+projection and convergence. Profile 318 remains outside this initial
+experiment. `analytical_credit` remains `none` before bounded human approval.
+
+### Partial-checkpoint convergence stage gate
+
+Freeze the v3 selection fingerprint above. The twelve-sermon target remains the
+full design, but it no longer withholds the already-supported checkpoints:
+Ryder has 11 independent sermons, Williams 10, and Clouzet 12. The
+provider-free `pte analysis salvation-nine-leaf-convergence` command reads
+their cached classification artifacts and computes nine-leaf equal-sermon
+rates at every *measured* `N=3,4,5,6,8,10,12` checkpoint. Ryder and Williams
+have an explicit unavailable N=12 result. A focused cached-artifact check found
+that Clouzet 1033 has six currently routed topic blocks but no cached
+salvation-relationship artifact. His selected N=12 therefore yields only 11
+measured sermons and also has N=12 explicitly unavailable. This is an evidence
+availability gap, not a reason to score 1033 as zero or silently replace it.
+Ryder's N=11 is retained as a full
+available-sample reference, not inserted as a new preregistered checkpoint.
+The primary order starts with the three reviewed baseline sermons. A fixed
+128-order permutation diagnostic checks dependence on sermon order. Period and
+replicated-series inside/outside means test temporal and archive concentration
+sensitivity; unknown labels stay visible. Zero detections remain insufficient
+positive evidence. Five selected sermons have zero salvation-routed blocks:
+Ryder 4056, Williams 597, and Clouzet 1044, 1045, and 1051. They remain in
+the cohort with an explicitly zero-extended observed rate; the report identifies
+them so this denominator convention can be examined. No stability cutoff is
+fitted from these cohorts.
+
+The convergence report is a diagnostic artifact and retains its original
+`analytical_credit_granted: false` field as a record of the state before
+interpretation. It does not silently substitute candidate recordings or call
+TypeSafe. The separate stage-gate decision below gives the nine questions
+broader-analysis credit without declaring these cohort sizes sufficient for
+pastor-level theological claims.
+
+### Nine-question stage gate passed
+
+Brian's bounded review of the provider-free
+[convergence report](../evaluation/sermon-topics/salvation-nine-leaf-convergence-v1.json)
+(fingerprint
+`3a08c5bab1f60e6d84932c0050f39b1648429bd89dc159ab296ff3a403f828f2`)
+approves the **nine measured salvation relationship questions for broader
+analysis**. The versioned
+[decision](../evaluation/sermon-topics/salvation-nine-leaf-stage-gate-v1.json)
+records this as `salvation_relationship_questions: ready_for_broader_analysis`.
+Its scope is question-level use only. The three unresolved leaves remain
+excluded, zero detections mean insufficient positive evidence rather than
+theological absence, and pastor-level sample-size sufficiency remains a
+separate calibration problem. Do not tune the nine questions or their frozen
+`salvation-relationship-observation-thresholds-v9-nine-leaf-final` policy from
+this experiment. No numerical convergence cutoff is retrofitted.
+
+Ryder contributes 11 measured independent sermons, Williams 10, and Clouzet
+11 of 12 selected. Clouzet 1033 has six routed topic blocks but no cached
+leaf artifact; completing it is routine technical debt, not another stage
+gate. Likewise, do not seek Ryder 1194 or additional Williams sermons merely
+to manufacture N=12. The convergence data show that three-sermon pastor
+estimates can be misleading, notably Williams's faith response, and that
+additional sermons narrow order sensitivity. That is a sampling result, not
+a reason to recalibrate the nine questions.
+
+### Cache-first broader-corpus rollout inventory
+
+The provider-free `pte analysis salvation-broader-rollout-inventory` command
+accepts only the fingerprint-valid approved nine-question stage-gate decision.
+It enumerates the production-eligible corpus using the existing topic/profile
+projection gate while reporting **content readiness separately from pastor
+profile linkage**. Profile membership is not required for question-level sermon
+analysis. It checks each content-eligible recording against the frozen V9 leaf
+pack and currently routed topic blocks. It separates reusable stored
+leaf evidence, legitimately zero-routed recordings, missing/partial/stale leaf
+evidence, and upstream gate blockers. The JSON records video IDs, gate reason
+codes, classification/topic/leaf hashes, and missing routed block IDs.
+
+The work estimate counts missing routed leaf blocks and target-text characters.
+It reports a structural zero-to-recursive-split request range because exact
+local answer-pack cache hits are unknown until replay; it also reports the
+minimum batch count if all packs miss, before token-driven splitting. This
+range excludes transport retries and other failures. Upstream-blocked
+recordings are counted but not assigned a speculative leaf cost. This is not a
+token or dollar quote, and the inventory command makes **zero provider
+requests**. It reuses its fingerprinted report when the database/WAL signature,
+approved decision, policy, and all recorded source-file signatures match; a
+changed input forces a fresh read-only inventory.
 
 ### Next iteration
 

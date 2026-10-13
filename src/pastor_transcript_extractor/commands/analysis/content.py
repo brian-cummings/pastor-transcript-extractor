@@ -128,6 +128,27 @@ from pastor_transcript_extractor.sermon_salvation_repeatability_expansion import
     write_salvation_candidate_discovery_audit,
     write_salvation_repeatability_expansion_plan,
 )
+from pastor_transcript_extractor.sermon_salvation_exact_cohort import (
+    DEFAULT_OUTPUT as DEFAULT_SALVATION_EXACT_COHORT_OUTPUT,
+    DEFAULT_EVIDENCE_CACHE as DEFAULT_SALVATION_EXACT_COHORT_EVIDENCE_CACHE,
+    DEFAULT_INTEGRITY_REVIEW as DEFAULT_SALVATION_EXACT_COHORT_INTEGRITY_REVIEW,
+    build_exact_cohort_proposal,
+    collect_exact_cohort_evidence,
+    write_exact_cohort_proposal,
+)
+from pastor_transcript_extractor.sermon_salvation_convergence import (
+    DEFAULT_OUTPUT as DEFAULT_SALVATION_CONVERGENCE_OUTPUT,
+    evaluate_convergence,
+    write_convergence,
+)
+from pastor_transcript_extractor.sermon_salvation_rollout_inventory import (
+    DEFAULT_DECISION as DEFAULT_SALVATION_ROLLOUT_DECISION,
+    DEFAULT_OUTPUT as DEFAULT_SALVATION_ROLLOUT_INVENTORY_OUTPUT,
+    evaluate_rollout_inventory,
+    reusable_inventory,
+    write_rollout_inventory,
+)
+from pastor_transcript_extractor.storage import Database
 from pastor_transcript_extractor.sermon_topic_evaluation import (
     DEFAULT_TOPIC_BEHAVIOR_FIXTURE,
     default_topic_behavior_output_path,
@@ -2327,6 +2348,134 @@ def analysis_salvation_repeatability_expansion_plan(
         f"{json_path} and {markdown_path}; "
         f"pastors={len(report['pastors'])}; "
         f"eligible_candidates={sum(int(item['eligible_candidate_count']) for item in report['pastors'])}; "
+        f"provider_requests={report['provider_requests']}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-exact-cohort-proposal",
+    help="Build a cached, provider-free exact-cohort packet with provenance and shortfalls.",
+)
+def analysis_salvation_exact_cohort_proposal(
+    cohort_path: Path = typer.Option(
+        DEFAULT_TOPIC_STAGE4_COHORT, "--cohort", help="Reviewed baseline cohort."
+    ),
+    inventory_path: Path = typer.Option(
+        DEFAULT_SALVATION_REPEATABILITY_EXPANSION_OUTPUT,
+        "--inventory", help="Current candidate inventory.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_EXACT_COHORT_OUTPUT,
+        "--output", help="Fingerprint-bound JSON and Markdown proposal.",
+    ),
+    integrity_review_path: Path = typer.Option(
+        DEFAULT_SALVATION_EXACT_COHORT_INTEGRITY_REVIEW,
+        "--integrity-review", help="Bounded source-backed cohort integrity evidence.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None, "--base-dir", help="Application data directory containing app.db."
+    ),
+) -> None:
+    try:
+        cohort = load_topic_stage4_cohort(cohort_path)
+        inventory = load_salvation_repeatability_expansion_plan(inventory_path)
+        integrity_review = json.loads(integrity_review_path.read_text(encoding="utf-8"))
+        database = Database(build_paths(base_dir).database, readonly=True)
+        evidence, cache_hit = collect_exact_cohort_evidence(
+            database, inventory, DEFAULT_SALVATION_EXACT_COHORT_EVIDENCE_CACHE
+        )
+        report = build_exact_cohort_proposal(inventory, cohort, evidence, integrity_review)
+        json_path, markdown_path, reused = write_exact_cohort_proposal(output_path, report)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation exact-cohort proposal: "
+        f"{json_path} and {markdown_path}; status={report['status']}; "
+        f"evidence_cache={'hit' if cache_hit else 'miss'}; "
+        f"provider_requests={report['provider_requests']}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-nine-leaf-convergence",
+    help="Analyze frozen exact cohorts at every supported provider-free checkpoint.",
+)
+def analysis_salvation_nine_leaf_convergence(
+    proposal_path: Path = typer.Option(
+        DEFAULT_SALVATION_EXACT_COHORT_OUTPUT,
+        "--proposal",
+        help="Frozen v3 independent-sermon proposal.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_CONVERGENCE_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON and Markdown convergence report.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db.",
+    ),
+) -> None:
+    try:
+        proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+        database = Database(build_paths(base_dir).database, readonly=True)
+        report = evaluate_convergence(database, proposal)
+        json_path, markdown_path, reused = write_convergence(output_path, report)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation nine-leaf convergence: "
+        f"{json_path} and {markdown_path}; "
+        f"sermons={[pastor['sermon_count'] for pastor in report['pastors']]}; "
+        f"provider_requests={report['provider_requests']}; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…",
+        markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-broader-rollout-inventory",
+    help="Inventory frozen nine-leaf cache coverage and bounded missing work without provider calls.",
+)
+def analysis_salvation_broader_rollout_inventory(
+    decision_path: Path = typer.Option(
+        DEFAULT_SALVATION_ROLLOUT_DECISION,
+        "--decision",
+        help="Approved nine-question stage-gate decision.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_ROLLOUT_INVENTORY_OUTPUT,
+        "--output",
+        help="Fingerprint-bound JSON and Markdown inventory.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Application-data directory containing app.db.",
+    ),
+) -> None:
+    try:
+        decision = json.loads(decision_path.read_text(encoding="utf-8"))
+        database = Database(build_paths(base_dir).database, readonly=True)
+        report = reusable_inventory(output_path, database.database_path, decision)
+        cache_hit = report is not None
+        if report is None:
+            report = evaluate_rollout_inventory(database, decision)
+        json_path, markdown_path, reused = write_rollout_inventory(output_path, report)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation broader rollout inventory: "
+        f"{json_path} and {markdown_path}; "
+        f"cache={'hit' if cache_hit else 'miss'}; "
+        f"ready={report['counts']['nine_leaf_ready']}/"
+        f"{report['counts']['content_gate_eligible']}; "
+        f"missing_blocks={report['work_estimate']['missing_routed_block_count']}; "
         f"provider_requests={report['provider_requests']}; "
         f"fingerprint={str(report['input_fingerprint'])[:12]}…",
         markup=False,
