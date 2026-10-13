@@ -1654,11 +1654,12 @@ separate calibration problem. Do not tune the nine questions or their frozen
 `salvation-relationship-observation-thresholds-v9-nine-leaf-final` policy from
 this experiment. No numerical convergence cutoff is retrofitted.
 
-Ryder contributes 11 measured independent sermons, Williams 10, and Clouzet
-11 of 12 selected. Clouzet 1033 has six routed topic blocks but no cached
-leaf artifact; completing it is routine technical debt, not another stage
-gate. Likewise, do not seek Ryder 1194 or additional Williams sermons merely
-to manufacture N=12. The convergence data show that three-sermon pastor
+At the time of the stage-gate decision, Ryder contributed 11 measured
+independent sermons, Williams 10, and Clouzet 11 of 12 selected. Clouzet
+1033 then had six routed topic blocks but no cached leaf artifact; that
+availability gap has since been closed without reopening the stage gate.
+Likewise, do not seek Ryder 1194 or additional Williams sermons merely to
+manufacture N=12. The convergence data show that three-sermon pastor
 estimates can be misleading, notably Williams's faith response, and that
 additional sermons narrow order sensitivity. That is a sampling result, not
 a reason to recalibrate the nine questions.
@@ -1687,28 +1688,44 @@ requests**. It reuses its fingerprinted report when the database/WAL signature,
 approved decision, policy, and all recorded source-file signatures match; a
 changed input forces a fresh read-only inventory.
 
+### Video 1033 completion and refreshed rollout inventory
+
+Brian reclassified video 1033 (*Jesus and the Devil: The Archenemy*) with
+`pte reclassify --video-id 1033 --recording-verifier-backend typesafe --force
+--jobs 1 --base-dir /Users/briancummings/Documents/PastorSearchData` using its
+per-video cache. The accepted, high-confidence classification retained 1,484
+segments and recorded 97 cache hits, 65 misses, and 12 provider request
+attempts: two coarse, eight fine, one boundary-selection, and one leaf. The
+leaf request evaluated the six routed blocks (43, 49, 50, 54, 56, 57; 4,749
+target characters), with 23,004 measured input tokens and 2,020 output
+tokens. The stored leaf artifact contains all six block answers, two
+collected observations, no missing currently routed blocks, and a reconciled
+projection. These numbers describe the full forced reclassification; the
+existing older role-pack identities caused additional coarse/fine work.
+
+The subsequent provider-free
+[`salvation-broader-rollout-inventory-v1`](../evaluation/sermon-topics/salvation-broader-rollout-inventory-v1.json)
+refresh has fingerprint
+`74362458ba8792db9d682f7eff541fb5f560c54065f51fcfb4b44359cce4db8d`.
+All 43 content-eligible videos are now ready: 37 have reusable leaf artifacts
+and six have zero routed blocks. There are no missing leaf blocks and the
+inventory made zero provider requests. One immediate inventory attempt
+rejected a changing application database; rerunning after it stabilized
+produced this fingerprinted report. The earlier convergence report still
+records the pre-backfill state, with Clouzet 1033 unmeasured.
+
 ### Next iteration
 
-1. **Refresh the provider-free broader-rollout inventory.** The saved inventory
-   identifies video 1033 (*Jesus and the Devil: The Archenemy*) as its sole
-   content-eligible missing-leaf case: six routed blocks, IDs 43, 49, 50, 54,
-   56, and 57, with 4,749 target characters. Video 1046's classification
-   artifact changed during efficiency validation, so that inventory's source
-   fingerprint is stale. Brian runs `pte analysis
-   salvation-broader-rollout-inventory --base-dir
-   /Users/briancummings/Documents/PastorSearchData` from the repository root
-   in the active venv, then Codex reviews the refreshed counts, gate blockers,
-   missing IDs, and stored leaf-evidence status. The command makes zero provider requests.
-2. **Complete the bounded missing-leaf increment if the refresh confirms it.**
-   Prepare a cache-first, video-1033-only reclassification using the existing
-   fine role, treatment, and topic answer packs. Inspect exact local pack
-   identities before estimating remaining provider calls; do not infer a token
-   or dollar cost from the 4,749 target characters. Give Brian the exact
-   command and review the resulting leaf evidence and per-stage usage. Keep
-   the frozen nine-question V9 policy and three unresolved leaves unchanged.
-3. Keep pastor-level sample-size and uncertainty calibration separate from
-   question validation. Completing Clouzet 1033 does not reopen the
-   nine-question stage gate or tune its frozen V9 policy from this cohort.
+1. Refresh the provider-free nine-leaf convergence report against the frozen
+   exact cohort with `pte analysis salvation-nine-leaf-convergence --base-dir
+   /Users/briancummings/Documents/PastorSearchData`. Review whether Clouzet's
+   selected 12 sermons are now all measured, its N=12 checkpoint, and the
+   order, period, and series diagnostics. Keep the frozen V9 questions and the
+   three unresolved leaves unchanged.
+2. Use the refreshed convergence evidence for a separate pastor sample-size
+   and uncertainty assessment. The nine-question stage gate remains approved
+   for question-level broader analysis; this report does not by itself grant
+   pastor-level theological claims or set a universal stability cutoff.
 
 ## Non-goals for `topics-v1`
 
