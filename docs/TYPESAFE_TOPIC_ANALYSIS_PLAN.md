@@ -1,14 +1,18 @@
 # TypeSafe Sermon Topic Analysis Plan
 
 Status: Stage 1 through Stage 4 validation and immutable sermon/profile topic
-projection are implemented. The current clarified question pack is
-`topics-v3-mission-discourse-boundary`. Stage 4 approves broad observations for
-sermon discovery and conditional leaf routing, but its three-sermon-per-pastor
-cohort does not authorize pastor-level comparison or calibrate a universal
-stability threshold. The provider-free exact-cohort proposal now uses the v3
-series-diversity contract. Clouzet meets its machine-checkable cohort gate;
-Ryder and Williams still need one and two independent sermons respectively.
-Convergence awaits exact-cohort integrity approval.
+projection are implemented. The broad question pack remains
+`topics-v3-mission-discourse-boundary`. **Salvation question-set readiness: PASS;
+measurement development is complete as of Brian's 2026-10-13 review.** The nine
+approved leaves, definitions/questions, routing, thresholds, V9 observation
+policy, and measurement semantics are frozen for broader use. The completed
+provider-free uncertainty packet uses 11/10/12 measured independent sermons.
+Pastor-level inference must retain sampling, period/series, and denominator
+uncertainty; no universal sermon-count sufficiency threshold is established.
+The three unresolved salvation leaves remain excluded. **Next: develop the
+listener-directive question set**, following the existing enrichment order and
+[handoff below](#next-iteration). Do not continue salvation calibration or send
+additional salvation material through TypeSafe to complete this milestone.
 
 ## Purpose
 
@@ -1741,18 +1745,142 @@ questions for broader analysis. The refreshed report's
 `analytical_credit_granted: false` preserves the prior diagnostic state and
 does not revoke that separate decision or grant pastor-level sufficiency.
 
+### Completed pastor uncertainty increment
+
+The provider-free uncertainty packet is implemented as
+`pte analysis salvation-pastor-uncertainty`. It uses the frozen 11/10/12-sermon
+proposal by default and reuses the convergence calculations for primary rates,
+checkpoints, order sensitivity, and period/replicated-series comparisons. Each
+leaf adds positive-sermon IDs/counts, signed movement between available primary
+checkpoints, exact leave-one-sermon-out results and their range, and a clearly
+labeled routed-sermon-only denominator comparison. The approved equal-sermon
+rate remains primary. Missing leaf evidence stays unmeasured; zero-routed
+sermons remain observed-zero in the primary denominator. Conditional rates are
+unavailable when there are no routed sermons. Unknown provenance remains
+visible, and zero detections mean insufficient positive evidence. Omission
+ranges describe sample sensitivity, not statistical confidence intervals.
+
+Both convergence and uncertainty commands share
+`salvation-cohort-measurements-v1.json`, with an optional `--measurement-cache`
+override. A hit skips classification reads and projection work. Its contract
+includes the frozen proposal, measurement version, approved review, topic and
+leaf packs, routing/projection policies, thresholds, database/WAL signatures,
+and UTC eligibility hour. Each source classification's size/mtime signature
+must still match, and the cached payload must pass its content fingerprint.
+Changed evidence or policy invalidates the cache; a malformed cache is rebuilt.
+Changes during collection reject the snapshot without writing it. Diagnostic
+policies are separate from the measurement cache, so changing the packet does
+not require reprojecting unchanged evidence. Output pairs are reused only when
+their complete contents match; damaged JSON or Markdown is repaired. No
+provider client is constructed. Current profile membership must still match
+the frozen pastor, and stale routed leaf question packs are rejected.
+
+Completed packet command, retained for reproduction from the repository root:
+
+```bash
+.venv/bin/pte analysis salvation-pastor-uncertainty \
+  --base-dir /Users/briancummings/Documents/PastorSearchData
+```
+
+The command has been run and its completed
+[JSON packet](../evaluation/sermon-topics/salvation-pastor-uncertainty-v1.json)
+and [Markdown companion](../evaluation/sermon-topics/salvation-pastor-uncertainty-v1.md)
+are retained as evidence. The packet fingerprint is
+`9db5d4dd1c31cdf188da1c42a25885bc27cfe39c1d4658bbbba488d2588f10da`,
+bound to the frozen proposal
+`1197f1504cc1171a4ec620582b041f8619dd4d900815350561466bd2a02ee70c`
+and refreshed convergence
+`86b7f88b6ba43aa09d7be460f2a517df09835696fb53ba11ef1b25517b61a53e`.
+It records zero provider requests and fully measured cohorts: Ryder 11/11,
+Williams 10/10, and Clouzet 12/12. The shared
+[cohort measurement cache](../evaluation/sermon-topics/salvation-cohort-measurements-v1.json)
+retains the exact contract and per-sermon evidence. Repeating the command on
+unchanged evidence within its freshness contract reports `measurement_cache=hit`
+and reuses the outputs. The implementation passed 34 focused tests and
+`git diff --check`; no corpus evaluation was run during development.
+
+### Salvation measurement completion decision — 2026-10-13
+
+Brian's explicit review in this chat accepts the completed uncertainty packet
+and records **Salvation question-set readiness: PASS**. The nine leaves are
+validated sufficiently as measurements for broader use. This closes the
+salvation measurement increment; the next development work is a new question
+set. It does not supersede or rewrite the original fingerprinted stage-gate
+and diagnostic artifacts. Their pending-interpretation or sufficiency-false
+fields describe their original diagnostic scope; this dated decision records
+the subsequent human acceptance of measurement readiness.
+
+Freeze the following contract:
+
+- Nine measured leaves: `divine_grace_initiative`, `atonement_as_basis`,
+  `forgiveness_pardon`, `justification_right_standing`, `conversion_new_birth`,
+  `sanctification_transformation`, `assurance_security`,
+  `judgment_final_destiny`, and `faith_as_receiving_response`.
+- Definitions/questions: `salvation-relationships-v9-consequence-conduct-boundary`
+  and its question-pack digest. Preserve independent raw probabilities and
+  cached answers rather than reinterpreting this review as a prompt revision.
+- Routing: `salvation-route-supporting-mass-v1`, with the existing `0.55`
+  Supporting-or-above broad-topic probability threshold and eligibility rules.
+- Per-leaf thresholds and observation policy:
+  `salvation-relationship-observation-thresholds-v9-nine-leaf-final`.
+- Measurement semantics: each sermon's observed fraction of routed blocks;
+  equal-sermon aggregation remains primary, including observed-zero sermons
+  with no routed blocks. Missing evidence remains unmeasured. Routed-sermon-only
+  rates are a labeled sensitivity comparison, not a replacement denominator.
+
+The packet exposes sampling dependence worth retaining, rather than tuning
+away. Ryder's `sanctification_transformation` primary rate is `0.202117`,
+with Joseph-series inside/outside means `0.395834`/`0.159069`. Williams's
+`faith_as_receiving_response` inside/outside means are `0.500000`/`0.096682`.
+Clouzet's faith response is observed in 1/12 sermons and justification in 0/12.
+These are cohort-conditional measurements; series/period differences and sparse
+positives do not establish defective leaves or theological absence.
+
+Pastor-level sample-size sufficiency remains **not established**. Do not infer
+that 10 or 12 sermons universally characterize a pastor, interpret omission
+ranges as confidence intervals, erase unknown provenance, eliminate series
+or period effects through tuning, or infer theological absence from zeros.
+`repentance_as_receiving_response`, `obedience_as_condition_or_means`, and
+`obedience_as_consequence_or_evidence` remain unresolved and excluded from the
+nine-leaf analysis. Completing them is not a prerequisite for moving on.
+
 ### Next iteration
 
-Prepare a provider-free pastor uncertainty packet using the frozen
-11/10/12-sermon cohorts. Report each leaf's positive-sermon count, primary
-checkpoint movement, leave-one-sermon-out range, and existing period/series
-comparisons. Add a clearly labeled denominator sensitivity that compares
-observed-zero inclusion of zero-routed sermons with rates conditional on a
-routed sermon; preserve the approved equal-sermon rate as primary. Keep
-unknown provenance visible and treat zero detections as insufficient positive
-evidence. Review the packet before proposing any pastor-level sample-size or
-uncertainty policy; do not fit a universal cutoff or retune the frozen V9 leaf
-questions from these three pastors.
+Move to **listener directives**, the next question set in the existing
+leaf-pack enrichment order. The concrete downstream question is: *What response
+does the preacher ask the listener to make?* Start from the planned candidate
+inventory: trust, repent, change behavior, undertake a spiritual practice,
+witness, serve, give, participate, and take civic action. This is a proposed
+new pack, not an approved taxonomy or permission to infer theological stance.
+A directive to repent is distinct from the unresolved salvation relationship
+about repentance as a receiving response; do not reopen that leaf by conflating
+the two judgments.
+
+The next agent should prepare the smallest useful behavior contract and bounded
+review cases for this set, then implement it using the existing shared pack,
+routing, persistence, and review mechanisms. Distinguish a request directed to
+the listener from descriptive narrative, quotation, rhetorical language, or a
+rejected instruction. Preserve target-only evidence and current content-role
+and projection eligibility. Keep independent directives independently
+observable; do not force one exclusive action when several are requested.
+Choose and validate a directive-specific routing policy from cached evidence;
+the salvation router is not automatically appropriate for this pack.
+
+Keep the implementation DRY and cache-first: give the new pack its own version
+and digest, reuse existing role/treatment/topic observations, and cache raw
+answers independently of batch composition and downstream thresholds. A new
+pack or policy must not invalidate or rerun unchanged salvation measurements.
+Prepare explicit representative positives, negatives, overlap, and boundary
+cases with defaults and a proposed decision so Brian only needs to execute
+commands and accept/reject concrete results. Run focused unit tests and cheap
+static checks during development; hand Brian exact commands for any dataset
+validation. Do not run or monitor large corpus jobs.
+
+Do not spend the next increment on more salvation inference, larger salvation
+cohorts, threshold/question retuning, a universal pastor sermon-count cutoff,
+or eliminating measured series/time effects. Reopen the frozen measurement
+only if a concrete reviewed production failure warrants a targeted fix; the
+present milestone needs no additional salvation provider calls.
 
 ## Non-goals for `topics-v1`
 
@@ -1786,8 +1914,8 @@ questions from these three pastors.
   decisions. Raw observations may describe lyrics; projection must not attribute
   excluded music to the preacher.
 - Keep leaves out of the one-minute broad request. Add them as independently
-  cached, second-stage packs over qualifying blocks, beginning tentatively with
-  salvation relationships.
+  cached, second-stage packs over qualifying blocks. The nine approved salvation
+  relationships are complete and frozen; listener directives are next.
 - Exclude zero-overlap, partial or mixed, sparse, and non-sermon-role blocks from
   read-only projection; preserve their raw observations for inspection.
 - Keep topic inference observation-only until accepted-sermon and reviewed-profile

@@ -9,6 +9,10 @@ import math
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from pastor_transcript_extractor.analysis_artifact_cache import (
+    database_snapshot as _database_snapshot,
+    file_signature as _file_signature,
+)
 from pastor_transcript_extractor.sermon_classifier_typesafe import (
     BATCH_SIZE,
     MAX_FINE_QUESTION_BUDGET,
@@ -48,25 +52,6 @@ PROFILE_ONLY_REASON_CODES = frozenset({
     "canonical_profile_unavailable",
     "profile_lifecycle_ineligible",
 })
-
-
-def _file_signature(path: str | Path | None) -> dict[str, Any]:
-    if path is None:
-        return {"path": None, "exists": False}
-    file = Path(path).expanduser().resolve()
-    try:
-        stat = file.stat()
-    except OSError:
-        return {"path": str(file), "exists": False}
-    return {"path": str(file), "exists": True, "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns}
-
-
-def _database_snapshot(path: Path, now: datetime) -> dict[str, Any]:
-    resolved = path.expanduser().resolve()
-    return {"database": _file_signature(resolved),
-            "wal": _file_signature(str(resolved) + "-wal"),
-            "as_of_utc_hour": now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")}
 
 
 def _validate_decision(decision: Mapping[str, Any]) -> None:

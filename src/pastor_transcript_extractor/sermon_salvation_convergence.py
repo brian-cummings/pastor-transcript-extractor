@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
 import statistics
 from typing import Any, Mapping
 
+from pastor_transcript_extractor.analysis_artifact_cache import database_snapshot, file_signature, write_json_markdown
 from pastor_transcript_extractor.sermon_salvation_profile_analysis import (
     APPROVED_SALVATION_COLLECTION_REVIEW_FINGERPRINT,
     _sermon_measurements,
@@ -17,23 +19,30 @@ from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
     SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
+    SALVATION_ROUTE_POLICY_VERSION,
+    SALVATION_ROUTE_THRESHOLD,
     UNRESOLVED_SALVATION_RELATIONSHIP_OBSERVATIONS,
     refresh_salvation_relationship_projection,
     resolve_salvation_relationship_analysis_artifact,
     salvation_route_decision,
+    salvation_relationship_pack_digest,
 )
 from pastor_transcript_extractor.sermon_salvation_repeatability_expansion import (
     CONVERGENCE_SAMPLE_SIZES,
 )
 from pastor_transcript_extractor.sermon_topic_profile_analysis import read_classification_for_gate
-from pastor_transcript_extractor.sermon_topic_projection import assess_topic_profile_projection
-from pastor_transcript_extractor.sermon_topics import resolve_topic_analysis_artifact
+from pastor_transcript_extractor.sermon_topic_projection import (
+    TOPIC_PROFILE_PROJECTION_POLICY_VERSION, assess_topic_profile_projection,
+)
+from pastor_transcript_extractor.sermon_topics import TOPIC_PACK_VERSION, resolve_topic_analysis_artifact
 from pastor_transcript_extractor.storage import Database
 
 
 POLICY_VERSION = "salvation-nine-leaf-convergence-v1-partial-checkpoints"
 DEFAULT_OUTPUT = Path("evaluation/sermon-topics/salvation-nine-leaf-convergence-v1.json")
 ORDER_COUNT = 128
+MEASUREMENT_VERSION = "salvation-cohort-measurements-v1"
+DEFAULT_MEASUREMENT_CACHE = Path("evaluation/sermon-topics/salvation-cohort-measurements-v1.json")
 
 
 def _hash(value: object) -> str:
@@ -53,15 +62,19 @@ def _quantile(values: list[float], fraction: float) -> float:
     return round(ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower), 6)
 
 
-def _load_sermon(database: Database, row: Mapping[str, Any], profile_id: int) -> dict[str, Any]:
+def _load_sermon(database: Database, row: Mapping[str, Any], profile_id: int, *, gate: Any = None) -> dict[str, Any]:
     video_id = int(row["video_id"])
     video = database.get_video_by_id(video_id)
     if video is None:
         raise ValueError(f"Frozen cohort video {video_id} is missing")
-    gate = assess_topic_profile_projection(database, video)
-    if not gate.eligible:
+    if gate is None:
+        gate = assess_topic_profile_projection(database, video)
+    if not gate.eligible or gate.profile_id != profile_id:
         raise ValueError(f"Frozen cohort video {video_id} no longer passes the topic gate")
+    source_before = file_signature(gate.source_path)
     classification = read_classification_for_gate(gate)
+    if file_signature(gate.source_path) != source_before:
+        raise ValueError(f"Video {video_id} classification changed while loading; rerun")
     topic = resolve_topic_analysis_artifact(classification)
     routed_topic_blocks = [block for block in topic.get("blocks", [])
                            if isinstance(block, Mapping) and salvation_route_decision(block)["route"]]
@@ -77,6 +90,11 @@ def _load_sermon(database: Database, row: Mapping[str, Any], profile_id: int) ->
                     "topic_artifact_sha256": _hash(topic),
                     "classification_path": str(gate.source_path)}
         stored = None
+    if routed_topic_blocks and stored is not None and (
+        stored.get("question_pack_version") != SALVATION_RELATIONSHIPS_PACK_VERSION
+        or stored.get("question_pack_digest") != salvation_relationship_pack_digest()
+    ):
+        raise ValueError(f"Video {video_id} has stale salvation question evidence")
     artifact = deepcopy(dict(stored)) if stored is not None else {"blocks": []}
     refresh_salvation_relationship_projection(artifact, topic)
     if artifact.get("missing_current_routed_block_ids"):
@@ -115,8 +133,7 @@ def _orders(sermons: list[Mapping[str, Any]], seed: str) -> list[list[int]]:
     return orders
 
 
-def build_convergence(proposal: Mapping[str, Any], sermons_by_profile: Mapping[int, list[Mapping[str, Any]]]) -> dict[str, Any]:
-    """Analyze every supported checkpoint, preserving unavailable N=12 entries."""
+def validate_cohort_proposal(proposal: Mapping[str, Any]) -> None:
     if proposal.get("policy_version") != "salvation-exact-cohort-proposal-v3-diversity":
         raise ValueError("Convergence requires the frozen v3 cohort proposal")
     if proposal.get("provider_requests") != 0:
@@ -126,6 +143,26 @@ def build_convergence(proposal: Mapping[str, Any], sermons_by_profile: Mapping[i
                                         "provider_requests", "excluded_profile_ids"}}
     if _hash(proposal_identity) != proposal.get("input_fingerprint"):
         raise ValueError("Frozen cohort proposal fingerprint does not match its contents")
+
+
+def validate_cohort_measurements(proposal: Mapping[str, Any], sermons_by_profile: Mapping[int, list[Mapping[str, Any]]]) -> None:
+    for pastor in proposal["pastors"]:
+        profile_id = int(pastor["profile_id"])
+        expected = {int(row["video_id"]) for row in pastor["included"]}
+        loaded = sermons_by_profile[profile_id]
+        loaded_ids = [int(item["video_id"]) for item in loaded]
+        if set(loaded_ids) != expected or len(loaded_ids) != len(expected):
+            raise ValueError(f"Profile {profile_id} sermon evidence does not match the frozen proposal")
+        measured = [item for item in loaded if item.get("measurement_status") !=
+                    "unavailable_missing_cached_leaf_artifact"]
+        if len([item for item in measured if item["baseline"]]) != 3:
+            raise ValueError(f"Profile {profile_id} must preserve three baseline sermons")
+
+
+def build_convergence(proposal: Mapping[str, Any], sermons_by_profile: Mapping[int, list[Mapping[str, Any]]]) -> dict[str, Any]:
+    """Analyze every supported checkpoint, preserving unavailable N=12 entries."""
+    validate_cohort_proposal(proposal)
+    validate_cohort_measurements(proposal, sermons_by_profile)
     reports = []
     for pastor in proposal["pastors"]:
         profile_id = int(pastor["profile_id"])
@@ -136,11 +173,6 @@ def build_convergence(proposal: Mapping[str, Any], sermons_by_profile: Mapping[i
         sermons = [item for item in loaded if item.get("measurement_status") !=
                    "unavailable_missing_cached_leaf_artifact"]
         by_id = {int(item["video_id"]): item for item in sermons}
-        loaded_ids = [int(item["video_id"]) for item in loaded]
-        if set(loaded_ids) != expected or len(loaded_ids) != len(expected):
-            raise ValueError(f"Profile {profile_id} sermon evidence does not match the frozen proposal")
-        if len([item for item in sermons if item["baseline"]]) != 3:
-            raise ValueError(f"Profile {profile_id} must preserve three baseline sermons")
         orders = _orders(sermons, str(proposal["input_fingerprint"]))
         full_n = len(sermons)
         relationships = {}
@@ -220,10 +252,71 @@ def build_convergence(proposal: Mapping[str, Any], sermons_by_profile: Mapping[i
             "analytical_credit_granted": False}
 
 
+def collect_cohort_measurements(
+    database: Database, proposal: Mapping[str, Any], cache_path: Path | None = None,
+    now: datetime | None = None,
+) -> tuple[dict[int, list[Mapping[str, Any]]], bool]:
+    """Reuse evidence across diagnostics before reading or projecting classifications."""
+    validate_cohort_proposal(proposal)
+    current = now or datetime.now(timezone.utc)
+    snapshot = database_snapshot(database.database_path, current)
+    contract = {"measurement_version": MEASUREMENT_VERSION,
+                "proposal_fingerprint": proposal["input_fingerprint"],
+                "observation_policy": SALVATION_RELATIONSHIP_OBSERVATION_POLICY_VERSION,
+                "thresholds": SALVATION_RELATIONSHIP_OBSERVATION_THRESHOLDS,
+                "approved_review": APPROVED_SALVATION_COLLECTION_REVIEW_FINGERPRINT,
+                "route_policy": SALVATION_ROUTE_POLICY_VERSION,
+                "route_threshold": SALVATION_ROUTE_THRESHOLD,
+                "topic_pack": TOPIC_PACK_VERSION,
+                "projection_policy": TOPIC_PROFILE_PROJECTION_POLICY_VERSION,
+                "question_pack_digest": salvation_relationship_pack_digest(),
+                "snapshot": snapshot}
+    if cache_path is not None:
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            identity = {key: value for key, value in cached.items() if key != "input_fingerprint"}
+            files = cached["source_files"]
+            if (cached["contract"] == contract and _hash(identity) == cached["input_fingerprint"]
+                    and isinstance(files, list)
+                    and all(file_signature(item["path"]) == item for item in files)
+                    and database_snapshot(database.database_path, current) == snapshot):
+                sermons = {int(key): value for key, value in cached["sermons_by_profile"].items()}
+                validate_cohort_measurements(proposal, sermons)
+                return sermons, True
+        except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
+            pass
+    sermons = {}
+    sources = {}
+    for pastor in proposal["pastors"]:
+        profile_id = int(pastor["profile_id"])
+        sermons[profile_id] = []
+        for row in pastor["included"]:
+            video = database.get_video_by_id(int(row["video_id"]))
+            if video is None:
+                raise ValueError(f"Frozen cohort video {row['video_id']} is missing")
+            gate = assess_topic_profile_projection(database, video)
+            before = file_signature(gate.source_path)
+            sermon = _load_sermon(database, row, profile_id, gate=gate)
+            if file_signature(gate.source_path) != before or sermon["classification_path"] != str(gate.source_path):
+                raise ValueError("Classification changed during cohort measurement; rerun")
+            sources[str(gate.source_path)] = before
+            sermons[profile_id].append(sermon)
+    validate_cohort_measurements(proposal, sermons)
+    files = [sources[key] for key in sorted(sources)]
+    if (database_snapshot(database.database_path, current) != snapshot
+            or any(file_signature(item["path"]) != item for item in files)):
+        raise ValueError("Application evidence changed during cohort measurement; rerun")
+    if cache_path is not None:
+        identity = {"contract": contract, "source_files": files,
+                    "sermons_by_profile": {str(key): value for key, value in sermons.items()}}
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps({**identity, "input_fingerprint": _hash(identity)},
+                                         indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return sermons, False
+
+
 def evaluate_convergence(database: Database, proposal: Mapping[str, Any]) -> dict[str, Any]:
-    sermons = {int(pastor["profile_id"]): [_load_sermon(database, row, int(pastor["profile_id"]))
-                                               for row in pastor["included"]]
-               for pastor in proposal["pastors"]}
+    sermons, _ = collect_cohort_measurements(database, proposal)
     return build_convergence(proposal, sermons)
 
 
@@ -265,17 +358,4 @@ def render_convergence(report: Mapping[str, Any]) -> str:
 
 
 def write_convergence(path: Path, report: Mapping[str, Any]) -> tuple[Path, Path, bool]:
-    path = path.expanduser().resolve()
-    markdown = path.with_suffix(".md")
-    rendered = render_convergence(report)
-    if path.is_file() and markdown.is_file():
-        try:
-            if (json.loads(path.read_text(encoding="utf-8")).get("input_fingerprint") == report["input_fingerprint"]
-                    and markdown.read_text(encoding="utf-8") == rendered):
-                return path, markdown, True
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            pass
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    markdown.write_text(rendered, encoding="utf-8")
-    return path, markdown, False
+    return write_json_markdown(path, report, render_convergence(report))

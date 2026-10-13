@@ -138,8 +138,15 @@ from pastor_transcript_extractor.sermon_salvation_exact_cohort import (
 )
 from pastor_transcript_extractor.sermon_salvation_convergence import (
     DEFAULT_OUTPUT as DEFAULT_SALVATION_CONVERGENCE_OUTPUT,
-    evaluate_convergence,
+    DEFAULT_MEASUREMENT_CACHE as DEFAULT_SALVATION_MEASUREMENT_CACHE,
+    build_convergence,
+    collect_cohort_measurements,
     write_convergence,
+)
+from pastor_transcript_extractor.sermon_salvation_uncertainty import (
+    DEFAULT_OUTPUT as DEFAULT_SALVATION_UNCERTAINTY_OUTPUT,
+    build_uncertainty,
+    write_uncertainty,
 )
 from pastor_transcript_extractor.sermon_salvation_rollout_inventory import (
     DEFAULT_DECISION as DEFAULT_SALVATION_ROLLOUT_DECISION,
@@ -2415,6 +2422,10 @@ def analysis_salvation_nine_leaf_convergence(
         "--output",
         help="Fingerprint-bound JSON and Markdown convergence report.",
     ),
+    cache_path: Path = typer.Option(
+        DEFAULT_SALVATION_MEASUREMENT_CACHE, "--measurement-cache",
+        help="Shared frozen-cohort measurement cache, validated against current source evidence.",
+    ),
     base_dir: Path | None = typer.Option(
         None,
         "--base-dir",
@@ -2424,7 +2435,8 @@ def analysis_salvation_nine_leaf_convergence(
     try:
         proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
         database = Database(build_paths(base_dir).database, readonly=True)
-        report = evaluate_convergence(database, proposal)
+        sermons, cache_hit = collect_cohort_measurements(database, proposal, cache_path)
+        report = build_convergence(proposal, sermons)
         json_path, markdown_path, reused = write_convergence(output_path, report)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
@@ -2432,9 +2444,42 @@ def analysis_salvation_nine_leaf_convergence(
         f"{'Reused' if reused else 'Wrote'} salvation nine-leaf convergence: "
         f"{json_path} and {markdown_path}; "
         f"sermons={[pastor['sermon_count'] for pastor in report['pastors']]}; "
+        f"measurement_cache={'hit' if cache_hit else 'miss'}; "
         f"provider_requests={report['provider_requests']}; "
         f"fingerprint={str(report['input_fingerprint'])[:12]}…",
         markup=False,
+    )
+
+
+@analysis_app.command(
+    "salvation-pastor-uncertainty",
+    help="Prepare frozen-cohort omission, checkpoint, strata, and denominator sensitivity without inference.",
+)
+def analysis_salvation_pastor_uncertainty(
+    proposal_path: Path = typer.Option(
+        DEFAULT_SALVATION_EXACT_COHORT_OUTPUT, "--proposal", help="Frozen v3 independent-sermon proposal.",
+    ),
+    output_path: Path = typer.Option(
+        DEFAULT_SALVATION_UNCERTAINTY_OUTPUT, "--output", help="Fingerprint-bound JSON and Markdown review packet.",
+    ),
+    cache_path: Path = typer.Option(
+        DEFAULT_SALVATION_MEASUREMENT_CACHE, "--measurement-cache",
+        help="Shared frozen-cohort measurement cache, validated against current source evidence.",
+    ),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application-data directory containing app.db."),
+) -> None:
+    try:
+        proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+        database = Database(build_paths(base_dir).database, readonly=True)
+        sermons, cache_hit = collect_cohort_measurements(database, proposal, cache_path)
+        report = build_uncertainty(proposal, sermons)
+        json_path, markdown_path, reused = write_uncertainty(output_path, report)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(
+        f"{'Reused' if reused else 'Wrote'} salvation pastor uncertainty: {json_path} and {markdown_path}; "
+        f"measurement_cache={'hit' if cache_hit else 'miss'}; provider_requests=0; "
+        f"fingerprint={str(report['input_fingerprint'])[:12]}…", markup=False,
     )
 
 

@@ -62,6 +62,7 @@ GROUP_COMMANDS = {
         "salvation-candidate-discovery-audit",
         "salvation-exact-cohort-proposal",
         "salvation-nine-leaf-convergence",
+        "salvation-pastor-uncertainty",
         "salvation-broader-rollout-inventory",
         "salvation-analytical-backfill-plan",
         "salvation-condition-boundary-review",

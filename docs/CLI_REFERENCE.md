@@ -3067,6 +3067,86 @@ pte analysis salvation-repeatability-expansion-plan [OPTIONS]
 | `--base-dir PATH` | Application-data directory containing app.db; pass the directory, not the database file. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis salvation-exact-cohort-proposal`
+
+Build a cached, provider-free exact-cohort packet with provenance and shortfalls.
+
+#### Usage
+
+```console
+pte analysis salvation-exact-cohort-proposal [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--cohort PATH` | Reviewed baseline cohort.  [default: /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json] | no | /Users/briancummings/code/pastor-transcript-extractor/evaluation/sermon-topics/stage4-stability-cohort-v1.json |
+| `--inventory PATH` | Current candidate inventory.  [default: evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v2.json] | no | evaluation/sermon-topics/salvation-repeatability-expansion-candidates-v2.json |
+| `--output PATH` | Fingerprint-bound JSON and Markdown proposal.  [default: evaluation/sermon-topics/salvation-exact-cohort-proposal-v3.json] | no | evaluation/sermon-topics/salvation-exact-cohort-proposal-v3.json |
+| `--integrity-review PATH` | Bounded source-backed cohort integrity evidence.  [default: evaluation/sermon-topics/salvation-exact-cohort-integrity-review-v2.json] | no | evaluation/sermon-topics/salvation-exact-cohort-integrity-review-v2.json |
+| `--base-dir PATH` | Application data directory containing app.db. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis salvation-nine-leaf-convergence`
+
+Analyze frozen exact cohorts at every supported provider-free checkpoint.
+
+#### Usage
+
+```console
+pte analysis salvation-nine-leaf-convergence [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--proposal PATH` | Frozen v3 independent-sermon proposal.  [default: evaluation/sermon-topics/salvation-exact-cohort-proposal-v3.json] | no | evaluation/sermon-topics/salvation-exact-cohort-proposal-v3.json |
+| `--output PATH` | Fingerprint-bound JSON and Markdown convergence report.  [default: evaluation/sermon-topics/salvation-nine-leaf-convergence-v1.json] | no | evaluation/sermon-topics/salvation-nine-leaf-convergence-v1.json |
+| `--measurement-cache PATH` | Shared frozen-cohort measurement cache, validated against current source evidence.  [default: evaluation/sermon-topics/salvation-cohort-measurements-v1.json] | no | evaluation/sermon-topics/salvation-cohort-measurements-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis salvation-pastor-uncertainty`
+
+Prepare frozen-cohort omission, checkpoint, strata, and denominator sensitivity without inference.
+
+#### Usage
+
+```console
+pte analysis salvation-pastor-uncertainty [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--proposal PATH` | Frozen v3 independent-sermon proposal.  [default: evaluation/sermon-topics/salvation-exact-cohort-proposal-v3.json] | no | evaluation/sermon-topics/salvation-exact-cohort-proposal-v3.json |
+| `--output PATH` | Fingerprint-bound JSON and Markdown review packet.  [default: evaluation/sermon-topics/salvation-pastor-uncertainty-v1.json] | no | evaluation/sermon-topics/salvation-pastor-uncertainty-v1.json |
+| `--measurement-cache PATH` | Shared frozen-cohort measurement cache, validated against current source evidence.  [default: evaluation/sermon-topics/salvation-cohort-measurements-v1.json] | no | evaluation/sermon-topics/salvation-cohort-measurements-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis salvation-broader-rollout-inventory`
+
+Inventory frozen nine-leaf cache coverage and bounded missing work without provider calls.
+
+#### Usage
+
+```console
+pte analysis salvation-broader-rollout-inventory [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--decision PATH` | Approved nine-question stage-gate decision.  [default: evaluation/sermon-topics/salvation-nine-leaf-stage-gate-v1.json] | no | evaluation/sermon-topics/salvation-nine-leaf-stage-gate-v1.json |
+| `--output PATH` | Fingerprint-bound JSON and Markdown inventory.  [default: evaluation/sermon-topics/salvation-broader-rollout-inventory-v1.json] | no | evaluation/sermon-topics/salvation-broader-rollout-inventory-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis salvation-candidate-discovery-audit`
 
 Explain whether salvation repeatability candidates are missing at ingestion, identity, eligibility, analytical, query, or metadata gates.

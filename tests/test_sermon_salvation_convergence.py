@@ -70,7 +70,7 @@ class ConvergenceTest(unittest.TestCase):
     def test_zero_routed_sermon_keeps_independent_slot(self):
         database = SimpleNamespace(get_video_by_id=lambda _: SimpleNamespace(
             title="Sermon", youtube_video_id="youtube-id"))
-        gate = SimpleNamespace(eligible=True, source_path="cached.json")
+        gate = SimpleNamespace(eligible=True, source_path="cached.json", profile_id=117)
         def refresh(artifact, topic):
             artifact.update(routed_block_count=0, missing_current_routed_block_ids=[])
         with (patch("pastor_transcript_extractor.sermon_salvation_convergence.assess_topic_profile_projection", return_value=gate),
@@ -84,6 +84,25 @@ class ConvergenceTest(unittest.TestCase):
         self.assertEqual(sermon["routed_block_count"], 0)
         self.assertEqual(len(sermon["relationships"]), 9)
         self.assertTrue(all(row["routed_block_fraction"] == 0 for row in sermon["relationships"].values()))
+
+    def test_current_profile_must_match_frozen_profile(self):
+        database = SimpleNamespace(get_video_by_id=lambda _: object())
+        gate = SimpleNamespace(eligible=True, profile_id=81, source_path="cached.json")
+        with self.assertRaisesRegex(ValueError, "topic gate"):
+            _load_sermon(database, {"video_id": 1}, 80, gate=gate)
+
+    def test_stale_leaf_pack_rejected_before_projection(self):
+        database = SimpleNamespace(get_video_by_id=lambda _: object())
+        gate = SimpleNamespace(eligible=True, profile_id=80, source_path="cached.json")
+        module = "pastor_transcript_extractor.sermon_salvation_convergence"
+        with (patch(module + ".read_classification_for_gate", return_value={}),
+              patch(module + ".resolve_topic_analysis_artifact", return_value={"blocks": [{"block_id": 1}]}),
+              patch(module + ".salvation_route_decision", return_value={"route": True}),
+              patch(module + ".resolve_salvation_relationship_analysis_artifact", return_value={"question_pack_version": "old"}),
+              patch(module + ".refresh_salvation_relationship_projection") as refresh):
+            with self.assertRaisesRegex(ValueError, "stale"):
+                _load_sermon(database, {"video_id": 1}, 80, gate=gate)
+        refresh.assert_not_called()
 
 
 if __name__ == "__main__":

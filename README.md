@@ -706,6 +706,24 @@ requests, and confidence is retained only as distribution concentration—not as
 correctness threshold. This synthetic contract checks question behavior; even a
 pass does not establish whole-sermon or pastor-level analytical validity.
 
+Prepare the provider-free uncertainty packet for the frozen salvation cohorts:
+
+```bash
+pte analysis salvation-pastor-uncertainty --base-dir /path/to/app-data
+```
+
+The JSON/Markdown packet reports positive-sermon counts, checkpoint movement,
+leave-one-sermon-out ranges, period/series comparisons, and routed-sermon-only
+denominator sensitivity. Equal-sermon rates including zero-routed sermons remain
+primary; missing evidence stays unmeasured. Omission ranges are sample sensitivity
+diagnostics, and zero detections mean insufficient positive evidence. The command
+shares a fingerprint-checked measurement cache with `salvation-nine-leaf-convergence`,
+skipping classification reads and projection work on unchanged inputs. See the
+[implementation plan](docs/TYPESAFE_TOPIC_ANALYSIS_PLAN.md#next-iteration) for the
+next-agent handoff. Brian accepted salvation measurement readiness on 2026-10-13:
+the nine V9 leaves are frozen for broader use, while pastor-level sample-size
+sufficiency remains unestablished. The next question set is listener directives.
+
 TypeSafe with `jev-1.13.0` is the default classifier and recording verifier for
 `pte run`, `pte extract`, and `pte reclassify`, so those flags are only needed for
 an explicit override. `--base-dir /path/to/app-data` takes the application-data
