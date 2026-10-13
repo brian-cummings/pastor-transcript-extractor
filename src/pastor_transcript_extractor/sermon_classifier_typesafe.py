@@ -49,6 +49,7 @@ from pastor_transcript_extractor.sermon_topics import (
     TOPICS,
     PROFILE_ANALYSIS_ACTIVATION_REQUIREMENT,
     TopicBlockContext,
+    bounded_context_excerpt,
     build_topic_context,
     topic_pack_digest,
     topic_pack_inventory,
@@ -82,9 +83,9 @@ BATCH_SIZE = 6
 # Field runs with the full role + treatment + topic pack showed that 150 output
 # questions can exceed Jev's request budget even when the target text is bounded.
 MAX_FINE_QUESTION_BUDGET = 75
-ROLE_CONTEXT_POLICY_VERSION = "role-adjacent-fine-blocks-v1"
-ROLE_CONTEXT_BLOCKS_PER_SIDE = 2
-ROLE_CONTEXT_MAX_CHARS_PER_BLOCK = 500
+ROLE_CONTEXT_POLICY_VERSION = "role-adjacent-sentences-v2"
+ROLE_CONTEXT_BLOCKS_PER_SIDE = 1
+ROLE_CONTEXT_MAX_CHARS_PER_BLOCK = 400
 MAX_SPARSE_CLOSING_PRAYER_GAP_BLOCKS = 3
 MAX_SPARSE_CLOSING_PRAYER_GAP_SECONDS = 180.0
 STRONG_NONSERMON_SEPARATOR_PROBABILITY = 0.8
@@ -182,7 +183,7 @@ def role_question() -> dict[str, Any]:
 
 @dataclass(frozen=True, slots=True)
 class RoleBlockContext:
-    """Bounded neighboring fine blocks used only to classify content role."""
+    """Bounded neighboring sentence excerpts used only to classify content role."""
 
     preceding_blocks: tuple[Mapping[str, Any], ...]
     following_blocks: tuple[Mapping[str, Any], ...]
@@ -200,13 +201,12 @@ def _role_neighbor_payload(
     *,
     preceding: bool,
 ) -> dict[str, Any]:
-    text = re.sub(r"\s+", " ", block.text).strip()
-    if len(text) > ROLE_CONTEXT_MAX_CHARS_PER_BLOCK:
-        text = (
-            text[-ROLE_CONTEXT_MAX_CHARS_PER_BLOCK :].lstrip()
-            if preceding
-            else text[:ROLE_CONTEXT_MAX_CHARS_PER_BLOCK].rstrip()
-        )
+    text, _ = bounded_context_excerpt(
+        block.text,
+        leading=preceding,
+        max_chars=ROLE_CONTEXT_MAX_CHARS_PER_BLOCK,
+        max_sentence_units=1,
+    )
     return {
         "block_id": block.block_id,
         "start_seconds": block.start_seconds,
@@ -312,6 +312,7 @@ class TypeSafeRecordingGateAnswer:
     probabilities: Mapping[str, float]
     confidence: float | None
     resolved_model_id: str
+    request_provenance: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,6 +328,7 @@ class TypeSafeBoundaryCandidate:
 class TypeSafeBoundaryAnswer:
     transition_probability: float
     resolved_model_id: str
+    request_provenance: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,6 +337,7 @@ class TypeSafeBoundarySelection:
     probabilities: Mapping[str, float]
     confidence: float | None
     resolved_model_id: str
+    request_provenance: Mapping[str, Any] = field(default_factory=dict)
 
 
 class TypeSafeBlockClient(Protocol):
@@ -390,7 +393,50 @@ class TypeSafeBlockCache:
         self.hits = 0
         self.misses = 0
         self.provider_requests = 0
+        self.request_usage: list[dict[str, Any]] = []
         self._contextual_treatment_index: dict[str, Path] | None = None
+
+    def usage_summary(self) -> dict[str, Any]:
+        """Actual uncached provider requests, grouped by stage."""
+        stages: dict[str, dict[str, Any]] = {}
+        fields = (
+            "block_count", "question_count", "input_tokens", "output_tokens",
+            "target_characters", "context_characters",
+        )
+        for request in self.request_usage:
+            stage = str(request["stage"])
+            totals = stages.setdefault(
+                stage,
+                {
+                    "request_count": 0,
+                    "failed_request_count": 0,
+                    "input_token_measurements": 0,
+                    "output_token_measurements": 0,
+                    **dict.fromkeys(fields, None),
+                },
+            )
+            totals["request_count"] += 1
+            if request.get("status") == "error":
+                totals["failed_request_count"] += 1
+            if isinstance(request.get("input_tokens"), (int, float)):
+                totals["input_token_measurements"] += 1
+            if isinstance(request.get("output_tokens"), (int, float)):
+                totals["output_token_measurements"] += 1
+            for field_name in fields:
+                value = request.get(field_name)
+                if isinstance(value, (int, float)):
+                    totals[field_name] = (totals[field_name] or 0) + int(value)
+        return {
+            "provider_request_attempts": self.provider_requests + sum(
+                1 for request in self.request_usage
+                if request["stage"] in {
+                    "recording_gate", "boundary_selection", "boundary_validation"
+                }
+            ),
+            "block_request_attempts": self.provider_requests,
+            "stages": stages,
+            "requests": list(self.request_usage),
+        }
 
     def _read_answer(self, path: Path, answer_type: type[Any]) -> Any | None:
         if not path.exists():
@@ -495,6 +541,7 @@ class TypeSafeBlockCache:
             return cached
         answer = client.assess_recording_gate(state)
         self._write_answer(path, identity, answer)
+        self.request_usage.append({"stage": "recording_gate", **answer.request_provenance})
         return answer
 
     def _pack_identity(
@@ -555,7 +602,9 @@ class TypeSafeBlockCache:
                 {
                     "question_version": TOPIC_PACK_VERSION,
                     "inventory_digest": topic_pack_digest(),
-                    "questions": topic_question_inventory(0),
+                    "questions": topic_question_inventory(
+                        0, target_path="target_blocks[0].text"
+                    ),
                     "state": topic_context.state_payload(),
                     "context_diagnostics": dict(topic_context.diagnostics),
                     "block_provenance": block_identity,
@@ -579,6 +628,31 @@ class TypeSafeBlockCache:
         else:
             raise ValueError(f"Unsupported TypeSafe answer pack: {pack}")
         return identity
+
+    def _hydrate_previous_transport_pack(
+        self,
+        recording_context: Mapping[str, Any],
+        block: TranscriptBlock,
+        pack: str,
+        block_packs: dict[str, dict[str, Any]],
+        identities: Mapping[tuple[int, str], tuple[dict[str, Any], Path]],
+    ) -> None:
+        """Replay previous answers without rewriting their original provenance."""
+        if pack in block_packs:
+            return
+        identity, _ = identities[(block.block_id, pack)]
+        previous = dict(identity)
+        if pack == ROLE_PACK:
+            previous["recording_context"] = _recording_context_for_blocks(
+                recording_context, [block], bound_outline=False
+            )
+        elif pack == TOPIC_PACK:
+            previous["questions"] = topic_question_inventory(0)
+        else:
+            return
+        cached = self._read_pack(self._pack_path(pack, previous), pack=pack)
+        if cached is not None:
+            block_packs[pack] = cached
 
     def _hydrate_contextual_treatment_pack(
         self,
@@ -803,8 +877,8 @@ class TypeSafeBlockCache:
         )
 
     @staticmethod
-    def _batch_size(packs: frozenset[str]) -> int:
-        questions_per_block = (
+    def _questions_per_block(packs: frozenset[str]) -> int:
+        return (
             (1 if ROLE_PACK in packs else 0)
             + (len(SEMANTIC_DIMENSIONS) if TREATMENT_PACK in packs else 0)
             + (len(TOPICS) if TOPIC_PACK in packs else 0)
@@ -814,6 +888,10 @@ class TypeSafeBlockCache:
                 else 0
             )
         )
+
+    @staticmethod
+    def _batch_size(packs: frozenset[str]) -> int:
+        questions_per_block = TypeSafeBlockCache._questions_per_block(packs)
         if questions_per_block <= 0:
             return BATCH_SIZE
         return max(1, min(BATCH_SIZE, MAX_FINE_QUESTION_BUDGET // questions_per_block))
@@ -889,6 +967,11 @@ class TypeSafeBlockCache:
                 else:
                     block_packs[pack] = cached
             cached_packs[block.block_id] = block_packs
+            for pack in (ROLE_PACK, TOPIC_PACK):
+                if pack in requested_packs:
+                    self._hydrate_previous_transport_pack(
+                        recording_context, block, pack, block_packs, identities
+                    )
             if TREATMENT_PACK in requested_packs:
                 self._hydrate_contextual_treatment_pack(
                     recording_context,
@@ -911,6 +994,11 @@ class TypeSafeBlockCache:
             batch: list[TranscriptBlock],
             missing_packs: frozenset[str],
         ) -> Mapping[int, TypeSafeBlockAnswer]:
+            stage = (
+                "leaf" if SALVATION_RELATIONSHIPS_PACK in missing_packs
+                else "fine" if FINE_PARENT_CONTEXT_KEY in recording_context
+                else "coarse"
+            )
             self.provider_requests += 1
             try:
                 assessed = client.assess_blocks(
@@ -931,6 +1019,21 @@ class TypeSafeBlockCache:
                     },
                 )
             except Exception as error:
+                request_shape = getattr(error, "typesafe_request_shape", {})
+                self.request_usage.append({
+                    "stage": stage,
+                    "status": "error",
+                    "error_type": (
+                        "max_tokens_exceeded"
+                        if _is_request_token_limit_error(error)
+                        else type(error).__name__
+                    ),
+                    "requested_packs": sorted(missing_packs),
+                    "block_count": len(batch),
+                    "question_count": len(batch) * self._questions_per_block(missing_packs),
+                    "target_characters": sum(len(block.text) for block in batch),
+                    "context_characters": request_shape.get("context_characters"),
+                })
                 if len(batch) <= 1 or not _is_request_token_limit_error(error):
                     raise
                 midpoint = len(batch) // 2
@@ -959,6 +1062,12 @@ class TypeSafeBlockCache:
                     identity, path = identities[(block.block_id, pack)]
                     self._write_pack(path, identity, payload)
                     cached_packs[block.block_id][pack] = payload
+            provenance = dict(assessed[batch[0].block_id].request_provenance)
+            self.request_usage.append({
+                "stage": stage,
+                "status": "success",
+                **provenance,
+            })
             return assessed
 
         for missing_packs, missing_blocks in missing_by_set.items():
@@ -980,7 +1089,7 @@ class TypeSafeBlockCache:
         return {
             "model": self.model,
             "question_version": BOUNDARY_SELECTION_VERSION,
-            "recording_context": dict(recording_context),
+            "recording_context": _boundary_recording_context(recording_context),
             "edge": edge,
             "candidates": [
                 {
@@ -1007,14 +1116,21 @@ class TypeSafeBlockCache:
         )
         path = self.root / "boundaries" / "selections" / f"{_hash(identity)}.json"
         cached = self._read_answer(path, TypeSafeBoundarySelection)
+        if cached is None:
+            previous = {**identity, "recording_context": dict(recording_context)}
+            cached = self._read_answer(
+                self.root / "boundaries" / "selections" / f"{_hash(previous)}.json",
+                TypeSafeBoundarySelection,
+            )
         if cached is not None:
             return cached
         answer = client.select_boundary_candidate(
-            recording_context,
+            _boundary_recording_context(recording_context),
             edge,
             candidates,
         )
         self._write_answer(path, identity, answer)
+        self.request_usage.append({"stage": "boundary_selection", **answer.request_provenance})
         return answer
 
     def validate_boundary(
@@ -1027,7 +1143,7 @@ class TypeSafeBlockCache:
         identity = {
             "model": self.model,
             "question_version": BOUNDARY_VALIDATION_VERSION,
-            "recording_context": dict(recording_context),
+            "recording_context": _boundary_recording_context(recording_context),
             "edge": edge,
             "candidate": {
                 "boundary_seconds": candidate.boundary_seconds,
@@ -1037,14 +1153,21 @@ class TypeSafeBlockCache:
         }
         path = self.root / "boundaries" / "validations" / f"{_hash(identity)}.json"
         cached = self._read_answer(path, TypeSafeBoundaryAnswer)
+        if cached is None:
+            previous = {**identity, "recording_context": dict(recording_context)}
+            cached = self._read_answer(
+                self.root / "boundaries" / "validations" / f"{_hash(previous)}.json",
+                TypeSafeBoundaryAnswer,
+            )
         if cached is not None:
             return cached
         answer = client.validate_boundary_candidate(
-            recording_context,
+            _boundary_recording_context(recording_context),
             edge,
             candidate,
         )
         self._write_answer(path, identity, answer)
+        self.request_usage.append({"stage": "boundary_validation", **answer.request_provenance})
         return answer
 
 
@@ -1407,11 +1530,23 @@ def _component_score(
     return mean_probability * math.log2(max(duration, 1.0) + 1.0)
 
 
+def _boundary_recording_context(
+    recording_context: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Boundary questions already carry bounded transition excerpts."""
+    return {
+        key: value for key, value in recording_context.items()
+        if key not in {"recording_outline", FINE_PARENT_CONTEXT_KEY}
+    }
+
+
 def _recording_context_for_blocks(
     recording_context: Mapping[str, Any],
     blocks: list[TranscriptBlock],
+    *,
+    bound_outline: bool = True,
 ) -> dict[str, Any]:
-    """Limit per-block parent evidence to the blocks in one request or cache key."""
+    """Limit transcript-derived context to the relevant block neighborhood."""
     context = dict(recording_context)
     parent_findings = context.get(FINE_PARENT_CONTEXT_KEY)
     if isinstance(parent_findings, Mapping):
@@ -1420,6 +1555,26 @@ def _recording_context_for_blocks(
             for block in blocks
             if str(block.block_id) in parent_findings
         }
+    outline = context.get("recording_outline")
+    if bound_outline and isinstance(outline, list) and blocks:
+        first = min(block.start_seconds for block in blocks)
+        last = max(block.end_seconds for block in blocks)
+        relevant = [
+            index for index, item in enumerate(outline)
+            if isinstance(item, Mapping)
+            and isinstance(item.get("end_seconds"), (int, float))
+            and isinstance(item.get("start_seconds"), (int, float))
+            and item["end_seconds"] > first
+            and item["start_seconds"] < last
+        ]
+        if relevant:
+            context["recording_outline"] = [
+                outline[index]
+                for index in (relevant[0] - 1, relevant[-1] + 1)
+                if 0 <= index < len(outline)
+            ]
+        elif len(outline) > 2:
+            context["recording_outline"] = []
     return context
 
 
@@ -2447,6 +2602,7 @@ class TypeSafeFirstPassSermonClassifier:
                     },
                     "segment_boundary_refinement": bool(boundary_candidate_count),
                     "transcript_input": transcript_input,
+                    "provider_usage": cache.usage_summary(),
                 },
             },
             confidence_reasons=[
@@ -2514,6 +2670,7 @@ class TypeSafeFirstPassSermonClassifier:
                     "selected_mode": "typesafe_first_no_candidate",
                     "recording_gate": dict(gate),
                     "transcript_input": transcript_input,
+                    "provider_usage": cache.usage_summary(),
                 },
             },
             [{"code": "typesafe_probability_map", "tier": "low"}],
@@ -2569,6 +2726,7 @@ class TypeSafeFirstPassSermonClassifier:
                     "selected_mode": "typesafe_recording_gate_bypass",
                     "recording_gate": dict(gate),
                     "transcript_input": transcript_input,
+                    "provider_usage": cache.usage_summary(),
                 },
             },
             [

@@ -37,6 +37,8 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     TREATMENT_PACK,
     recording_gate_question,
     role_question,
+    _boundary_recording_context,
+    _recording_context_for_blocks,
 )
 from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_ANALYSIS_QUESTION_VERSION,
@@ -256,6 +258,39 @@ def _target_block_state(
     return state
 
 
+def _all_strings(value: Any):
+    """Yield serialized text values for provider input accounting."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _all_strings(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _all_strings(item)
+
+
+def _usage_fields(
+    result: Any,
+    state: Mapping[str, Any],
+    *,
+    block_count: int,
+    question_count: int,
+    target_characters: int,
+) -> dict[str, Any]:
+    usage = getattr(result, "usage", None)
+    return {
+        "block_count": block_count,
+        "question_count": question_count,
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+        "target_characters": target_characters,
+        "context_characters": max(
+            0, sum(map(len, _all_strings(state))) - target_characters
+        ),
+    }
+
+
 class TypeSafeSdkAdapter:
     """Thin optional-SDK adapter; isolated for inexpensive mocked tests."""
     def __init__(self, *, model: str, timeout_seconds: float = 45.0) -> None:
@@ -312,6 +347,10 @@ class TypeSafeSdkAdapter:
             probabilities={str(key): float(value) for key, value in probabilities.items()},
             confidence=getattr(answer, "confidence", None),
             resolved_model_id=str(getattr(result, "model", self.model)),
+            request_provenance=_usage_fields(
+                result, state, block_count=0, question_count=1,
+                target_characters=0,
+            ),
         )
 
     def assess_blocks(
@@ -341,16 +380,16 @@ class TypeSafeSdkAdapter:
         if unknown:
             raise ValueError(f"Unsupported TypeSafe answer packs: {sorted(unknown)}")
         question = role_question()
-        shared_recording_context = {
+        shared_recording_context = _recording_context_for_blocks({
             key: value
             for key, value in recording_context.items()
             if key != FINE_PARENT_CONTEXT_KEY
-        }
+        }, blocks)
         role_context_map = role_contexts or {}
         state: dict[str, Any] = {}
         if ROLE_PACK in packs:
             state["recording"] = shared_recording_context
-        if ROLE_PACK in packs or TREATMENT_PACK in packs:
+        if ROLE_PACK in packs or TREATMENT_PACK in packs or TOPIC_PACK in packs:
             state["target_blocks"] = [
                 _target_block_state(
                     recording_context,
@@ -368,8 +407,15 @@ class TypeSafeSdkAdapter:
                 raise ValueError(
                     f"Missing topic contexts for blocks: {missing_contexts}"
                 )
+            # The target already lives in target_blocks. Keep topic context as
+            # context only so adding topics never retransmits target text.
             state["topic_blocks"] = [
-                contexts[block.block_id].state_payload() for block in blocks
+                {
+                    key: value
+                    for key, value in contexts[block.block_id].state_payload().items()
+                    if key != "target_text"
+                }
+                for block in blocks
             ]
         if SALVATION_RELATIONSHIPS_PACK in packs:
             missing_contexts = [
@@ -415,7 +461,10 @@ class TypeSafeSdkAdapter:
                     )
         if TOPIC_PACK in packs:
             for position in range(len(blocks)):
-                for question_id, item in topic_question_inventory(position).items():
+                inventory = topic_question_inventory(
+                    position, target_path=f"target_blocks[{position}].text"
+                )
+                for question_id, item in inventory.items():
                     questions[question_id] = self._Score(
                         instructions=item["instructions"],
                         criteria=item["criteria"],
@@ -429,16 +478,29 @@ class TypeSafeSdkAdapter:
                         instructions=item["instructions"],
                         criteria=item["criteria"],
                     )
-        started = time.perf_counter()
-        result = self._client.system_one(
-            state,
-            questions,
-            model=self.model,
-            timeout=self.timeout_seconds,
+        request_shape = _usage_fields(
+            None, state, block_count=len(blocks),
+            question_count=len(questions),
+            target_characters=sum(len(block.text) for block in blocks),
         )
+        started = time.perf_counter()
+        try:
+            result = self._client.system_one(
+                state,
+                questions,
+                model=self.model,
+                timeout=self.timeout_seconds,
+            )
+        except Exception as error:
+            # The cache records rejected attempts too. Preserve the exact state
+            # character count without rebuilding the request in a second place.
+            try:
+                error.typesafe_request_shape = request_shape
+            except (AttributeError, TypeError):
+                pass
+            raise
         latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
         resolved_model = str(getattr(result, "model", self.model))
-        usage = getattr(result, "usage", None)
         response_count = (
             len(getattr(result, "choices", {}))
             + len(getattr(result, "nouls", {}))
@@ -457,8 +519,11 @@ class TypeSafeSdkAdapter:
             "response_complete": response_count == len(questions),
             "latency_ms": latency_ms,
             "timeout_seconds": self.timeout_seconds,
-            "input_tokens": getattr(usage, "input_tokens", None),
-            "output_tokens": getattr(usage, "output_tokens", None),
+            **_usage_fields(
+                result, state, block_count=len(blocks),
+                question_count=len(questions),
+                target_characters=sum(len(block.text) for block in blocks),
+            ),
         }
         return {
             block.block_id: TypeSafeBlockAnswer(
@@ -608,7 +673,7 @@ class TypeSafeSdkAdapter:
     ) -> TypeSafeBoundarySelection:
         expected_order = self._boundary_order(edge)
         state = {
-            "recording": dict(recording_context),
+            "recording": _boundary_recording_context(recording_context),
             "edge": edge,
         }
         criteria = {
@@ -656,6 +721,14 @@ class TypeSafeSdkAdapter:
             probabilities={str(key): float(value) for key, value in probabilities.items()},
             confidence=getattr(answer, "confidence", None),
             resolved_model_id=resolved_model,
+            request_provenance=_usage_fields(
+                result, state, block_count=0, question_count=1,
+                target_characters=sum(
+                    len(str(item["before_boundary_ends"]))
+                    + len(str(item["after_boundary_begins"]))
+                    for item in criteria.values() if isinstance(item, Mapping)
+                ),
+            ),
         )
 
     def validate_boundary_candidate(
@@ -695,13 +768,14 @@ class TypeSafeSdkAdapter:
                 "the cut; a distinct service activity begins before it; or no semantic "
                 "handoff occurs."
             )
-        result = self._client.system_one(
-            {
-                "recording": dict(recording_context),
+        state = {
+                "recording": _boundary_recording_context(recording_context),
                 "edge": edge,
                 "before_boundary": candidate.before_text,
                 "after_boundary": candidate.after_text,
-            },
+            }
+        result = self._client.system_one(
+            state,
             {
                 "valid_boundary": self._Noul(
                     instructions={
@@ -723,6 +797,10 @@ class TypeSafeSdkAdapter:
         return TypeSafeBoundaryAnswer(
             transition_probability=float(result.nouls["valid_boundary"].noul),
             resolved_model_id=str(getattr(result, "model", self.model)),
+            request_provenance=_usage_fields(
+                result, state, block_count=0, question_count=1,
+                target_characters=len(candidate.before_text) + len(candidate.after_text),
+            ),
         )
 
 

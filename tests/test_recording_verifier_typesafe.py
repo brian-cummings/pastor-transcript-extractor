@@ -39,7 +39,9 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import SEMANTIC_DIME
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
 )
-from pastor_transcript_extractor.sermon_topics import TOPICS, TopicBlockContext
+from pastor_transcript_extractor.sermon_topics import (
+    TOPICS, TopicBlockContext, topic_question_inventory,
+)
 
 
 def proposed() -> dict[str, object]:
@@ -74,6 +76,29 @@ def answers(
 
 
 class TypeSafeRecordingVerifierTests(unittest.TestCase):
+    def test_rejected_block_request_keeps_exact_request_shape(self) -> None:
+        class RejectingSdk:
+            def system_one(self, state, questions, **kwargs):
+                raise RuntimeError('{"error_type":"max_tokens_exceeded"}')
+
+        adapter = object.__new__(TypeSafeSdkAdapter)
+        adapter.model = "jev-1.13.0"
+        adapter.timeout_seconds = 45.0
+        adapter._client = RejectingSdk()
+        adapter._Choice = lambda **kwargs: kwargs
+        adapter._Noul = lambda **kwargs: kwargs
+        adapter._Score = lambda **kwargs: kwargs
+        block = TranscriptBlock(1, [1], 0.0, 60.0, "Grace saves us.")
+
+        with self.assertRaisesRegex(RuntimeError, "max_tokens_exceeded") as caught:
+            adapter.assess_blocks({"metadata": {"title": "Grace"}}, [block])
+
+        shape = caught.exception.typesafe_request_shape
+        self.assertEqual(1, shape["block_count"])
+        self.assertEqual(1, shape["question_count"])
+        self.assertEqual(len(block.text), shape["target_characters"])
+        self.assertGreater(shape["context_characters"], 0)
+
     def test_sdk_adapter_composes_and_parses_all_fine_answer_packs(self) -> None:
         captured = {}
 
@@ -126,7 +151,15 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
         )
 
         result = adapter.assess_blocks(
-            {"metadata": {"title": "Grace"}},
+            {
+                "metadata": {"title": "Grace"},
+                "recording_outline": [
+                    {"start_seconds": float(index * 60),
+                     "end_seconds": float((index + 1) * 60),
+                     "opening": f"opening {index}", "ending": f"ending {index}"}
+                    for index in range(50)
+                ],
+            },
             [block],
             requested_packs=frozenset({ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}),
             role_contexts={block.block_id: build_role_contexts([block])[block.block_id]},
@@ -135,11 +168,23 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
 
         self.assertEqual(25, len(captured["questions"]))
         self.assertEqual(
-            {"leading_context", "target_text", "trailing_context"},
+            {"leading_context", "trailing_context"},
             set(captured["state"]["topic_blocks"][0]),
         )
+        self.assertEqual(block.text, captured["state"]["target_blocks"][0]["text"])
+        self.assertIn(
+            "target_blocks[0].text",
+            str(captured["questions"][f"topic_0_{TOPICS[0]}"]["instructions"]),
+        )
+        self.assertEqual(len(block.text), result.request_provenance["target_characters"])
+        self.assertLessEqual(len(captured["state"]["recording"]["recording_outline"]), 3)
+        self.assertEqual(0.0, captured["state"]["recording"]["recording_outline"][0]["start_seconds"])
+        self.assertNotIn(
+            60.0,
+            [item["start_seconds"] for item in captured["state"]["recording"]["recording_outline"]],
+        )
         self.assertEqual(
-            "role-adjacent-fine-blocks-v1",
+            "role-adjacent-sentences-v2",
             captured["state"]["target_blocks"][0]["adjacent_context"][
                 "policy_version"
             ],
@@ -149,6 +194,31 @@ class TypeSafeRecordingVerifierTests(unittest.TestCase):
         self.assertEqual(25, result.request_provenance["question_count"])
         self.assertTrue(result.request_provenance["response_complete"])
         self.assertEqual(45.0, result.request_provenance["timeout_seconds"])
+
+        first_state = captured["state"]
+        def expanded_topics(position, *, target_path=None):
+            inventory = topic_question_inventory(position, target_path=target_path)
+            inventory["topic_extra"] = inventory[next(iter(inventory))]
+            return inventory
+
+        with patch(
+            "pastor_transcript_extractor.recording_verifier_typesafe.topic_question_inventory",
+            side_effect=expanded_topics,
+        ):
+            adapter.assess_blocks(
+                {"metadata": {"title": "Grace"}, "recording_outline": [
+                    {"start_seconds": float(index * 60),
+                     "end_seconds": float((index + 1) * 60),
+                     "opening": f"opening {index}", "ending": f"ending {index}"}
+                    for index in range(50)
+                ]},
+                [block],
+                requested_packs=frozenset({ROLE_PACK, TREATMENT_PACK, TOPIC_PACK}),
+                role_contexts={block.block_id: build_role_contexts([block])[block.block_id]},
+                topic_contexts={block.block_id: topic_context},
+            )
+        self.assertEqual(first_state, captured["state"])
+        self.assertEqual(26, len(captured["questions"]))
 
     def test_sdk_adapter_composes_and_parses_salvation_leaf_pack(self) -> None:
         captured = {}

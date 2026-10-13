@@ -211,6 +211,7 @@ def _typesafe_first_attempt(result: HybridSermonResult) -> dict[str, Any]:
                 "coarse_component_count",
                 "fine_component_count",
                 "competing_component_ratio",
+                "provider_usage",
             )
             if key in discovery
         },

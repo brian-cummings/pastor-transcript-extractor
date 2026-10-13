@@ -536,6 +536,47 @@ other than explicitly bounded context.
 ## Leaf-pack policy
 
 The broad topics are routing observations, not the final theological analysis.
+#### Implemented and validated on a bounded sermon (2026-10-13)
+
+The first-run request planner now shares each fine target across role, treatment,
+and topic questions; topic state carries context only. Role context uses at most
+one bounded sentence excerpt on either side, and batch-relevant outline context
+is bounded. Conditional salvation questions use a separately cached leaf pack
+over routed blocks only. Per-stage request shape, token usage, and transcript/
+context character counts are persisted with the classification, including
+rejected batch attempts when the provider supplies no token count. Per-block
+cache identities remain independent of provider batch composition.
+
+Brian ran video 1046, *What Does Easter Have to Do with the Second Coming?*,
+with an empty isolated inference cache and then repeated the identical forced
+reclassification against that cache. The uncached run made 10 provider requests:
+
+| Stage | Requests | Blocks | Questions | Target characters | Context characters | Input tokens | Output tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Recording gate | 1 | 0 | 1 | 0 | 254 | 815 | 91 |
+| Coarse discovery | 1 | 5 | 5 | 15,197 | 314 | 7,339 | 478 |
+| Fine role, treatment, topics | 7 | 19 | 475 | 15,183 | 15,931 | 221,811 | 11,979 |
+| Conditional salvation leaf | 1 | 2 | 24 | 2,779 | 354 | 8,089 | 676 |
+| **Total** | **10** | | | **33,159** | **16,853** | **238,054** | **13,224** |
+
+There were no failed requests and all ten input/output token measurements were
+present. The leaf pass covered two of the nineteen fine blocks; it did not send
+the other seventeen. The sermon remained a high-confidence accepted sermon with
+828 retained segments, no uncertain blocks, and no warnings. The exact replay
+reported 65 cache hits, zero misses, and **zero provider requests**, with the
+same disposition, confidence, selected window, and segment count. All 65 saved
+cache identities matched their content-addressed filenames. Focused tests for
+the adapter, classifier, and request shape passed (137 tests).
+
+A provider-free comparison of the previous and implemented request states for
+these persisted blocks measured 97,542 versus 44,880 state-string characters,
+a 53.99% reduction. This is a structural character comparison, **not** a
+measured provider-token saving against an old live run. The fine stage still
+evaluated 475 questions and used 221,811 input tokens, so the character
+reduction should not be read as an equal token reduction. This bounded case
+proves the intended selective fan-out; another sermon could route every fine
+block to a conditional leaf pass.
+
 The architecture should support leaves now through independent pack identities,
 but `topics-v1` must not contain the leaf questions themselves.
 
@@ -1505,36 +1546,26 @@ theological stance.
 
 ### Next iteration
 
-1. Implement a provider-free exact-cohort proposal for profiles 117, 80, and 130.
-   Preserve each pastor's three reviewed baseline sermons and select additions
-   deterministically; do not ask the operator to hand-pick recordings.
-2. Before counting 12 independent sermons, group and adjudicate possible duplicate,
-   mirrored, or same-service recordings using existing source provenance, transcript
-   similarity, timestamps, and stored artifacts. A matching title may nominate a
-   duplicate check but cannot decide it by itself. The proposal must show every
-   included recording, exclusion, equivalence group, and backing evidence.
-3. Attach reviewed series and period provenance to the exact proposal. Require at
-   least three series with at least two independent sermons each and two periods
-   with at least three independent sermons each. Do not infer either field from a
-   title alone. Report a concrete shortfall if deduplication or missing provenance
-   prevents the contract; do not silently weaken it.
-4. Keep profile 318 out of this initial experiment. Its three candidates do not
-   block a three-pastor repeatability test. Prepare a separate bounded identity phase
-   only if the three-pastor result leaves a material question that a fourth pastor
-   would answer.
-5. Return the fingerprinted exact-cohort packet for one bounded human approval. The
-   packet is a proposal and grants no analytical credit before that approval.
-6. After approval, run provider-free nine-leaf convergence at
-   `3, 4, 5, 6, 8, 10, 12` sermons and report sensitivity to sermon ordering,
-   series, and period. Do not infer stable absence from zero detections or infer a
-   theological stance from this diagnostic cohort.
-7. Keep repentance response, obedience as condition/means, and obedience as
-   consequence/evidence `block_level_unresolved`. Their cached raw probabilities may
-   support a separate future detector-design study, but they do not enter this
-   cohort proposal, convergence calculation, or pastor projection.
-8. No TypeSafe call is needed for cohort preparation or convergence. Before adding
-   more broad topics or leaf packs, implement the first-run token-efficiency goals
-   above so taxonomy growth does not multiply transcript/context transmission.
+1. **Refresh the provider-free broader-rollout inventory.** The saved inventory
+   identifies video 1033 (*Jesus and the Devil: The Archenemy*) as its sole
+   content-eligible missing-leaf case: six routed blocks, IDs 43, 49, 50, 54,
+   56, and 57, with 4,749 target characters. Video 1046's classification
+   artifact changed during efficiency validation, so that inventory's source
+   fingerprint is stale. Brian runs `pte analysis
+   salvation-broader-rollout-inventory --base-dir
+   /Users/briancummings/Documents/PastorSearchData` from the repository root
+   in the active venv, then Codex reviews the refreshed counts, gate blockers,
+   missing IDs, and stored leaf-evidence status. The command makes zero provider requests.
+2. **Complete the bounded missing-leaf increment if the refresh confirms it.**
+   Prepare a cache-first, video-1033-only reclassification using the existing
+   fine role, treatment, and topic answer packs. Inspect exact local pack
+   identities before estimating remaining provider calls; do not infer a token
+   or dollar cost from the 4,749 target characters. Give Brian the exact
+   command and review the resulting leaf evidence and per-stage usage. Keep
+   the frozen nine-question V9 policy and three unresolved leaves unchanged.
+3. Keep pastor-level sample-size and uncertainty calibration separate from
+   question validation. Completing Clouzet 1033 does not reopen the
+   nine-question stage gate or tune its frozen V9 policy from this cohort.
 
 ## Non-goals for `topics-v1`
 

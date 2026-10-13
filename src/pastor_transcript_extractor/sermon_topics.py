@@ -173,8 +173,10 @@ def topic_question_id(position: int, topic: str) -> str:
     return f"topic_{position}_{topic}"
 
 
-def topic_question_inventory(position: int) -> dict[str, dict[str, Any]]:
-    target = f"topic_blocks[{position}].target_text"
+def topic_question_inventory(
+    position: int, *, target_path: str | None = None
+) -> dict[str, dict[str, Any]]:
+    target = target_path or f"topic_blocks[{position}].target_text"
     return {
         topic_question_id(position, name): {
             "kind": "score",
@@ -245,7 +247,14 @@ class TopicBlockContext:
 _SENTENCE_END = re.compile(r"[.!?][\"')\]]*(?:\s+|$)")
 
 
-def _bounded_context(text: str, *, leading: bool) -> tuple[str, dict[str, Any]]:
+def bounded_context_excerpt(
+    text: str,
+    *,
+    leading: bool,
+    max_chars: int = TOPIC_CONTEXT_MAX_CHARS,
+    max_sentence_units: int = 2,
+) -> tuple[str, dict[str, Any]]:
+    """Keep only the sentence units nearest a target block boundary."""
     normalized = re.sub(r"\s+", " ", text).strip()
     if not normalized:
         return "", {
@@ -270,16 +279,14 @@ def _bounded_context(text: str, *, leading: bool) -> tuple[str, dict[str, Any]]:
         units.append((remainder, False))
     if not units:
         units = [(normalized, False)]
-    # The boundary-adjacent fragment/sentence plus at most one complete sentence
-    # supplies enough clarification without attaching the neighboring minute.
-    chosen = units[-2:] if leading else units[:2]
+    chosen = units[-max_sentence_units:] if leading else units[:max_sentence_units]
     selected = " ".join(unit for unit, _ in chosen)
-    truncated = len(selected) > TOPIC_CONTEXT_MAX_CHARS
+    truncated = len(selected) > max_chars
     if truncated:
         selected = (
-            selected[-TOPIC_CONTEXT_MAX_CHARS:].lstrip()
+            selected[-max_chars:].lstrip()
             if leading
-            else selected[:TOPIC_CONTEXT_MAX_CHARS].rstrip()
+            else selected[:max_chars].rstrip()
         )
     outer_complete = chosen[0][1] if leading else chosen[-1][1]
     complete = outer_complete and not truncated
@@ -331,8 +338,8 @@ def build_topic_context(drafts: Sequence[SegmentDraft], block: TranscriptBlock) 
         if after_normalized is not None
         else " ".join(text for _, text in after_fragments)
     )
-    leading, leading_diagnostics = _bounded_context(before, leading=True)
-    trailing, trailing_diagnostics = _bounded_context(after, leading=False)
+    leading, leading_diagnostics = bounded_context_excerpt(before, leading=True)
+    trailing, trailing_diagnostics = bounded_context_excerpt(after, leading=False)
     return TopicBlockContext(
         leading,
         block.text,

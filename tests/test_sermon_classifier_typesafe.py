@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from pastor_transcript_extractor.models import TranscriptSegmentLabel
 from pastor_transcript_extractor.extraction import (
@@ -22,6 +23,7 @@ from pastor_transcript_extractor.sermon_classifier_typesafe import (
     ROLE_CHOICES,
     SEARCH_ALGORITHM_VERSION,
     TypeSafeBoundaryAnswer,
+    TypeSafeBoundaryCandidate,
     TypeSafeBoundarySelection,
     TypeSafeBlockAnswer,
     TypeSafeBlockCache,
@@ -260,6 +262,121 @@ def rule_window() -> SermonWindowResult:
 
 
 class TypeSafeFirstPassTests(unittest.TestCase):
+    def test_uncached_request_shape_and_cached_replay(self) -> None:
+        from pastor_transcript_extractor.recording_verifier_typesafe import (
+            TypeSafeSdkAdapter,
+        )
+
+        class CapturingSdk:
+            def __init__(self) -> None:
+                self.requests = []
+
+            def system_one(self, state, questions, **kwargs):
+                self.requests.append((state, questions))
+                choices = {}
+                nouls = {}
+                scores = {}
+                for key in questions:
+                    if key == "recording_type":
+                        choice = "target_worship_service_or_sermon"
+                        choices[key] = SimpleNamespace(
+                            choice=choice, probabilities={choice: 0.99},
+                            confidence=0.99,
+                        )
+                    elif key.startswith("block_"):
+                        position = int(key.split("_")[1])
+                        sermon = "SERMON" in state["target_blocks"][position]["text"]
+                        choice = "principal_sermon" if sermon else "administration_or_transition"
+                        choices[key] = SimpleNamespace(
+                            choice=choice, probabilities={choice: 0.95},
+                            confidence=0.95,
+                        )
+                    elif key.startswith("semantic_") or key.startswith(
+                        "salvation_relationship_"
+                    ):
+                        nouls[key] = SimpleNamespace(noul=0.7)
+                    elif key.startswith("topic_"):
+                        topic = next(
+                            name for name in TOPICS if key.endswith("_" + name)
+                        )
+                        supporting = topic == "salvation_gospel"
+                        scores[key] = SimpleNamespace(
+                            score=3.0 if supporting else 0.0,
+                            probabilities={
+                                0: 0.0 if supporting else 1.0,
+                                1: 0.0, 2: 0.0,
+                                3: 1.0 if supporting else 0.0,
+                                4: 0.0,
+                            },
+                            confidence=0.9,
+                        )
+                return SimpleNamespace(
+                    choices=choices, nouls=nouls, scores=scores,
+                    model="jev-1.13.0",
+                    usage=SimpleNamespace(input_tokens=100, output_tokens=20),
+                )
+
+        sdk = CapturingSdk()
+        adapter = object.__new__(TypeSafeSdkAdapter)
+        adapter.model = "jev-1.13.0"
+        adapter.timeout_seconds = 45.0
+        adapter._client = sdk
+        adapter._Choice = lambda **kwargs: kwargs
+        adapter._Noul = lambda **kwargs: kwargs
+        adapter._Score = lambda **kwargs: kwargs
+        classifier = TypeSafeFirstPassSermonClassifier(
+            model="jev-1.13.0", client=adapter
+        )
+        transcript = [
+            SegmentDraft(
+                draft.start_seconds, draft.end_seconds,
+                draft.text + " grace and mercy explained for this congregation" * 4,
+                draft.speaker_hint, draft.label, draft.confidence,
+            )
+            for draft in drafts()
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            first = classifier.classify_sermon(
+                transcript, rule_window(), title="Service", cache_dir=Path(tmp)
+            )
+            request_count = len(sdk.requests)
+            replay = classifier.classify_sermon(
+                transcript, rule_window(), title="Service", cache_dir=Path(tmp)
+            )
+
+        self.assertEqual(request_count, len(sdk.requests))
+        self.assertEqual(0, replay.cache_stats["misses"])
+        coarse = [state for state, _ in sdk.requests if "target_blocks" in state
+                  and "topic_blocks" not in state and "salvation_blocks" not in state]
+        fine = [state for state, _ in sdk.requests if "topic_blocks" in state]
+        leaves = [state for state, _ in sdk.requests if "salvation_blocks" in state]
+        self.assertTrue(coarse and fine and leaves)
+        coarse_ids = [block["block_id"] for state in coarse for block in state["target_blocks"]]
+        fine_ids = [block["block_id"] for state in fine for block in state["target_blocks"]]
+        self.assertEqual(len(coarse_ids), len(set(coarse_ids)))
+        self.assertEqual(len(fine_ids), len(set(fine_ids)))
+        self.assertEqual(
+            len(first.blocks),
+            len(coarse_ids) + len(fine_ids),
+        )
+        for state in fine:
+            self.assertTrue(all("target_text" not in item for item in state["topic_blocks"]))
+            self.assertEqual(len(state["target_blocks"]), len(state["topic_blocks"]))
+        for state in coarse + fine:
+            self.assertLessEqual(len(state["recording"]["recording_outline"]), 2)
+        self.assertTrue(all("target_blocks" not in state for state in leaves))
+        fine_targets = {
+            block["text"] for state in fine for block in state["target_blocks"]
+        }
+        self.assertTrue(all(
+            item["target_text"] in fine_targets
+            for state in leaves for item in state["salvation_blocks"]
+        ))
+        usage = first.search["discovery"]["provider_usage"]
+        for stage in ("recording_gate", "coarse", "fine", "leaf"):
+            self.assertGreater(usage["stages"][stage]["request_count"], 0)
+            self.assertIsNotNone(usage["stages"][stage]["input_tokens"])
+
     def test_salvation_leaf_route_uses_projected_broad_topic_evidence(self) -> None:
         block = TranscriptBlock(7, [3], 10.0, 20.0, "Grace saves.")
         topic_analysis = {
@@ -385,6 +502,10 @@ class TypeSafeFirstPassTests(unittest.TestCase):
 
         self.assertEqual(SEARCH_ALGORITHM_VERSION, result.method)
         self.assertEqual("high", result.confidence_tier)
+        usage = result.search["discovery"]["provider_usage"]
+        self.assertGreater(usage["provider_request_attempts"], 0)
+        self.assertGreater(usage["stages"]["coarse"]["request_count"], 0)
+        self.assertGreater(usage["stages"]["fine"]["request_count"], 0)
         self.assertEqual(list(range(10, 30)), result.retained_segment_indexes)
         candidate = result.search["candidates"][0]
         self.assertEqual(300.0, candidate["start_seconds"])
@@ -401,7 +522,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         context = client.recording_contexts[0]
         self.assertTrue(context["deterministic_detection"]["window_found"])
         self.assertEqual(300.0, context["deterministic_detection"]["duration_seconds"])
-        self.assertTrue(context["recording_outline"])
+        self.assertLessEqual(len(context["recording_outline"]), 2)
         fine_contexts = [
             item
             for item in client.recording_contexts
@@ -587,7 +708,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
             context.diagnostics["trailing"]["selected_sentence_units"], 2
         )
 
-    def test_role_context_is_bounded_stable_and_preserves_two_block_continuity(self) -> None:
+    def test_role_context_uses_one_bounded_sentence_per_side(self) -> None:
         blocks = [
             TranscriptBlock(
                 index,
@@ -600,9 +721,9 @@ class TypeSafeFirstPassTests(unittest.TestCase):
                 (
                     "Spoken sermon conclusion.",
                     "The speaker announces a performed selection. " + "x" * 700,
-                    "Performed theological words continue.",
-                    "More performed words continue.",
-                    "The speaker returns to spoken exhortation.",
+                    "Earlier performed words. Performed theological words continue.",
+                    "More performed words continue. Latest performed sentence.",
+                    "The speaker returns to spoken exhortation. Later unrelated sentence.",
                 )
             )
         ]
@@ -610,12 +731,20 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         context = build_role_contexts(blocks)[3].state_payload()
 
         self.assertEqual(
-            [1, 2],
+            [2],
             [item["block_id"] for item in context["preceding_blocks"]],
         )
         self.assertEqual(
             [4],
             [item["block_id"] for item in context["following_blocks"]],
+        )
+        self.assertEqual(
+            "Performed theological words continue.",
+            context["preceding_blocks"][0]["text"],
+        )
+        self.assertEqual(
+            "The speaker returns to spoken exhortation.",
+            context["following_blocks"][0]["text"],
         )
         self.assertTrue(
             all(
@@ -624,7 +753,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
                 for item in context[side]
             )
         )
-        self.assertEqual("role-adjacent-fine-blocks-v1", context["policy_version"])
+        self.assertEqual("role-adjacent-sentences-v2", context["policy_version"])
 
     def test_role_question_states_general_music_and_prayer_boundaries(self) -> None:
         boundary = role_question()["instructions"]["boundary"]
@@ -845,13 +974,95 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(2, cache.hits)
         self.assertEqual(len(blocks), cache.misses)
 
+    def test_previous_request_layout_packs_migrate_without_provider_call(self) -> None:
+        block = TranscriptBlock(1, [1], 60.0, 120.0, "SERMON grace")
+        context = {
+            "metadata": {"title": "Service"},
+            "recording_outline": [
+                {"start_seconds": float(index * 60),
+                 "end_seconds": float((index + 1) * 60),
+                 "opening": f"opening {index}"}
+                for index in range(10)
+            ],
+        }
+        topic_context = build_topic_context(drafts(), block)
+        client = FakeBlockClient()
+        answer = client.assess_blocks(
+            context, [block], requested_packs=frozenset({ROLE_PACK, TOPIC_PACK}),
+            topic_contexts={block.block_id: topic_context},
+        )[block.block_id]
+        initial_calls = client.calls
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            role = cache._pack_identity(
+                context, block, pack=ROLE_PACK, role_context=None,
+                topic_context=topic_context,
+            )
+            role["recording_context"] = _recording_context_for_blocks(
+                context, [block], bound_outline=False
+            )
+            topic = cache._pack_identity(
+                context, block, pack=TOPIC_PACK, role_context=None,
+                topic_context=topic_context,
+            )
+            topic["questions"] = topic_question_inventory(0)
+            for pack, identity in ((ROLE_PACK, role), (TOPIC_PACK, topic)):
+                cache._write_pack(
+                    cache._pack_path(pack, identity), identity,
+                    cache._pack_payload(answer, pack), count_miss=False,
+                )
+            result = cache.assess(
+                client, context, [block], collect_topic_analysis=True,
+                topic_contexts={block.block_id: topic_context},
+            )
+        self.assertEqual(initial_calls, client.calls)
+        self.assertEqual(0, cache.misses)
+        self.assertTrue(result[block.block_id].topic_scores)
+
+    def test_boundary_requests_omit_recording_outline_and_replay(self) -> None:
+        class CapturingClient(FakeBlockClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.boundary_contexts = []
+
+            def select_boundary_candidate(self, context, edge, candidates):
+                self.boundary_contexts.append(dict(context))
+                return super().select_boundary_candidate(context, edge, candidates)
+
+            def validate_boundary_candidate(self, context, edge, candidate):
+                self.boundary_contexts.append(dict(context))
+                return super().validate_boundary_candidate(context, edge, candidate)
+
+        client = CapturingClient()
+        context = {
+            "metadata": {"title": "Service"},
+            "recording_outline": [{"opening": "SERMON"}] * 100,
+        }
+        candidate = TypeSafeBoundaryCandidate(
+            "start:60", 60.0, "before", "after", (1,)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = TypeSafeBlockCache(Path(tmp), model="jev-1.13.0")
+            cache.select_boundary(client, context, "start", [candidate])
+            cache.validate_boundary(client, context, "start", candidate)
+            first_calls = client.calls
+            cache.select_boundary(client, context, "start", [candidate])
+            cache.validate_boundary(client, context, "start", candidate)
+            usage = cache.usage_summary()
+        self.assertEqual(first_calls, client.calls)
+        self.assertTrue(all("recording_outline" not in item for item in client.boundary_contexts))
+        self.assertEqual(1, usage["stages"]["boundary_selection"]["request_count"])
+        self.assertEqual(1, usage["stages"]["boundary_validation"]["request_count"])
+
     def test_oversized_provider_batch_splits_without_changing_pack_cache(self) -> None:
         class SizeLimitedClient(FakeBlockClient):
             def assess_blocks(self, recording_context, blocks, **kwargs):
                 self.calls += 1
                 self.block_ids.append([block.block_id for block in blocks])
                 if len(blocks) > 2:
-                    raise RuntimeError('{"error_type":"max_tokens_exceeded"}')
+                    error = RuntimeError('{"error_type":"max_tokens_exceeded"}')
+                    error.typesafe_request_shape = {"context_characters": 7}
+                    raise error
                 # Avoid double-counting successful calls in the base fake.
                 self.calls -= 1
                 self.block_ids.pop()
@@ -875,6 +1086,18 @@ class TypeSafeFirstPassTests(unittest.TestCase):
         self.assertEqual(calls_after_first, cache.provider_requests)
         self.assertEqual(5, cache.misses)
         self.assertEqual(5, cache.hits)
+        usage = cache.usage_summary()
+        self.assertEqual(calls_after_first, usage["stages"]["coarse"]["request_count"])
+        self.assertGreater(usage["stages"]["coarse"]["failed_request_count"], 0)
+        self.assertEqual(
+            7 * usage["stages"]["coarse"]["failed_request_count"],
+            sum(
+                request["context_characters"]
+                for request in usage["requests"]
+                if request["stage"] == "coarse" and request["status"] == "error"
+            ),
+        )
+        self.assertEqual(calls_after_first, usage["provider_request_attempts"])
 
     def test_non_size_provider_failure_is_not_split(self) -> None:
         class FailingClient(FakeBlockClient):
@@ -894,6 +1117,7 @@ class TypeSafeFirstPassTests(unittest.TestCase):
 
         self.assertEqual(1, client.calls)
         self.assertEqual(1, cache.provider_requests)
+        self.assertEqual(1, cache.usage_summary()["stages"]["coarse"]["failed_request_count"])
 
     def test_successful_split_is_cached_before_later_singleton_failure(self) -> None:
         class PartiallyFailingClient(FakeBlockClient):

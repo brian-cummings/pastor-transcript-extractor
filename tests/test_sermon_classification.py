@@ -2059,7 +2059,12 @@ class HybridClassificationTests(unittest.TestCase):
                     "salvation_relationship_analysis": (
                         salvation_relationship_analysis
                     ),
-                    "discovery": {},
+                    "discovery": {
+                        "provider_usage": {
+                            "provider_request_attempts": 3,
+                            "stages": {"fine": {"request_count": 2}},
+                        }
+                    },
                 },
             )
         )
@@ -2072,6 +2077,10 @@ class HybridClassificationTests(unittest.TestCase):
         self.assertEqual(
             salvation_relationship_analysis,
             attempt["salvation_relationship_analysis"],
+        )
+        self.assertEqual(
+            3,
+            attempt["discovery"]["provider_usage"]["provider_request_attempts"],
         )
 
     def test_strict_llm_mode_propagates_failure(self) -> None:
