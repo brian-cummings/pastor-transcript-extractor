@@ -27,6 +27,7 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
     SEMANTIC_DIMENSIONS,
     semantic_question_inventory,
 )
+from pastor_transcript_extractor.sermon_leaf_packs import LEAF_PACKS
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
@@ -293,6 +294,7 @@ class TypeSafeBlockAnswer:
     topic_question_version: str | None = None
     topic_context: Mapping[str, Any] = field(default_factory=dict)
     request_provenance: Mapping[str, Any] = field(default_factory=dict)
+    leaf_answers: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     salvation_relationship_probabilities: Mapping[str, float] = field(
         default_factory=dict
     )
@@ -488,6 +490,26 @@ class TypeSafeBlockCache:
 
     @staticmethod
     def _pack_payload_is_valid(pack: str, answer: Mapping[str, Any]) -> bool:
+        if pack in LEAF_PACKS:
+            payload = answer.get("leaf_answer")
+            if not isinstance(payload, Mapping) or payload.get("version") != pack:
+                return False
+            context = payload.get("context")
+            if not isinstance(context, Mapping):
+                return False
+            if any(not isinstance(context.get(key), str) for key in
+                   ("target_text", "leading_context", "trailing_context")):
+                return False
+            if not isinstance(context.get("diagnostics"), Mapping):
+                return False
+            probabilities = payload.get("probabilities")
+            if not isinstance(probabilities, Mapping):
+                return False
+            try:
+                LEAF_PACKS[pack].validate(probabilities)
+            except (TypeError, ValueError):
+                return False
+            return True
         if pack != SALVATION_RELATIONSHIPS_PACK:
             return True
         probabilities = answer.get("salvation_relationship_probabilities")
@@ -610,16 +632,17 @@ class TypeSafeBlockCache:
                     "block_provenance": block_identity,
                 }
             )
-        elif pack == SALVATION_RELATIONSHIPS_PACK:
+        elif pack == SALVATION_RELATIONSHIPS_PACK or pack in LEAF_PACKS:
             if topic_context is None:
-                raise ValueError(
-                    "Salvation relationship answer pack requires a topic context"
-                )
+                raise ValueError("Leaf answer pack requires a topic context")
+            spec = LEAF_PACKS.get(pack)
+            if spec is not None and topic_context.target_text != block.text:
+                raise ValueError("Leaf context target differs from block text")
             identity.update(
                 {
-                    "question_version": SALVATION_RELATIONSHIPS_PACK_VERSION,
-                    "inventory_digest": salvation_relationship_pack_digest(),
-                    "questions": salvation_relationship_question_inventory(0),
+                    "question_version": spec.version if spec else SALVATION_RELATIONSHIPS_PACK_VERSION,
+                    "inventory_digest": spec.digest() if spec else salvation_relationship_pack_digest(),
+                    "questions": spec.questions(0) if spec else salvation_relationship_question_inventory(0),
                     "state": topic_context.state_payload(),
                     "context_diagnostics": dict(topic_context.diagnostics),
                     "block_provenance": block_identity,
@@ -782,6 +805,8 @@ class TypeSafeBlockCache:
             "resolved_model_id": answer.resolved_model_id,
             "request_provenance": dict(answer.request_provenance),
         }
+        if pack in LEAF_PACKS:
+            return {**common, "leaf_answer": dict(answer.leaf_answers.get(pack, {}))}
         if pack == ROLE_PACK:
             return {
                 **common,
@@ -836,6 +861,8 @@ class TypeSafeBlockCache:
             if pack.get("request_provenance")
         }
         return TypeSafeBlockAnswer(
+            leaf_answers={name: dict(payload["leaf_answer"])
+                          for name, payload in packs.items() if name in LEAF_PACKS},
             choice=str(role.get("choice", "unclear")),
             probabilities={
                 str(key): float(value)
@@ -879,7 +906,8 @@ class TypeSafeBlockCache:
     @staticmethod
     def _questions_per_block(packs: frozenset[str]) -> int:
         return (
-            (1 if ROLE_PACK in packs else 0)
+            sum(len(spec.definitions) for name, spec in LEAF_PACKS.items() if name in packs)
+            + (1 if ROLE_PACK in packs else 0)
             + (len(SEMANTIC_DIMENSIONS) if TREATMENT_PACK in packs else 0)
             + (len(TOPICS) if TOPIC_PACK in packs else 0)
             + (
@@ -937,6 +965,7 @@ class TypeSafeBlockCache:
             TREATMENT_PACK,
             TOPIC_PACK,
             SALVATION_RELATIONSHIPS_PACK,
+            *LEAF_PACKS,
         }
         if not requested_packs or unknown:
             raise ValueError(
@@ -995,7 +1024,7 @@ class TypeSafeBlockCache:
             missing_packs: frozenset[str],
         ) -> Mapping[int, TypeSafeBlockAnswer]:
             stage = (
-                "leaf" if SALVATION_RELATIONSHIPS_PACK in missing_packs
+                "leaf" if SALVATION_RELATIONSHIPS_PACK in missing_packs or missing_packs & LEAF_PACKS.keys()
                 else "fine" if FINE_PARENT_CONTEXT_KEY in recording_context
                 else "coarse"
             )
@@ -1079,6 +1108,51 @@ class TypeSafeBlockCache:
             block.block_id: self._merge_packs(cached_packs[block.block_id])
             for block in blocks
         }
+
+    def compose_leaf_answer(
+        self,
+        block: TranscriptBlock,
+        *,
+        pack: str,
+        topic_context: TopicBlockContext,
+        sources: Mapping[str, tuple[str, TypeSafeBlockAnswer]],
+    ) -> TypeSafeBlockAnswer:
+        """Cache a complete pack from semantically identical independently sourced leaves."""
+        spec = LEAF_PACKS[pack]
+        if set(sources) != set(spec.definitions):
+            raise ValueError("Composed leaf sources have the wrong inventory")
+        probabilities: dict[str, float] = {}
+        provenance: dict[str, Any] = {}
+        expected_context = {**topic_context.state_payload(),
+                            "diagnostics": dict(topic_context.diagnostics)}
+        for leaf, (source_pack, answer) in sources.items():
+            source_spec = LEAF_PACKS[source_pack]
+            source_payload = self._pack_payload(answer, source_pack)
+            if not self._pack_payload_is_valid(source_pack, source_payload):
+                raise ValueError("Composed source has malformed leaf evidence")
+            source = answer.leaf_answers[source_pack]
+            if source["context"] != expected_context or answer.resolved_model_id != self.model:
+                raise ValueError("Composed source context or model differs")
+            question_id = spec.question_id(0, leaf)
+            source_id = source_spec.question_id(0, leaf)
+            if spec.questions(0)[question_id] != source_spec.questions(0)[source_id]:
+                raise ValueError(f"Composed source question semantics differ: {leaf}")
+            probabilities[leaf] = float(source["probabilities"][leaf])
+            provenance[leaf] = {"source_pack": source_pack,
+                                "source_pack_digest": source_spec.digest(),
+                                "request_provenance": dict(answer.request_provenance)}
+        composed = TypeSafeBlockAnswer(
+            choice="unclear", probabilities={}, confidence=None,
+            resolved_model_id=self.model,
+            request_provenance={"leaf_sources": provenance},
+            leaf_answers={pack: {"version": pack, "probabilities": probabilities,
+                                 "context": expected_context, "leaf_sources": provenance}},
+        )
+        identity = self._pack_identity({}, block, pack=pack, role_context=None,
+                                       topic_context=topic_context)
+        self._write_pack(self._pack_path(pack, identity), identity,
+                         self._pack_payload(composed, pack), count_miss=False)
+        return composed
 
     def _boundary_selection_identity(
         self,

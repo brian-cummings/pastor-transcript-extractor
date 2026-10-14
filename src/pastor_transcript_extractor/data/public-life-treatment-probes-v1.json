@@ -1,0 +1,128 @@
+[
+  {
+    "target_text": "The council approved the zoning measure on Monday after two public hearings.",
+    "expected_positive_leaves": [
+      "descriptive"
+    ],
+    "reason": "Informational public account"
+  },
+  {
+    "target_text": "Think of a city budget as an analogy: competing priorities can crowd out what matters, just as they crowd out prayer.",
+    "expected_positive_leaves": [
+      "illustrative"
+    ],
+    "reason": "Public example used to explain another point"
+  },
+  {
+    "target_text": "God remains sovereign over the rulers of every nation.",
+    "expected_positive_leaves": [
+      "theological"
+    ],
+    "reason": "Explicit God-public authority relationship"
+  },
+  {
+    "target_text": "Racial discrimination in housing law is morally wrong and violates human dignity.",
+    "expected_positive_leaves": [
+      "moral",
+      "critical"
+    ],
+    "reason": "Independent ethical judgment and negative evaluation"
+  },
+  {
+    "target_text": "I criticize the city permit process because it is needlessly confusing and ineffective.",
+    "expected_positive_leaves": [
+      "critical"
+    ],
+    "reason": "Pragmatic criticism is not moral judgment"
+  },
+  {
+    "target_text": "I commend this city recycling policy.",
+    "expected_positive_leaves": [
+      "supportive"
+    ],
+    "reason": "Explicit endorsement"
+  },
+  {
+    "target_text": "I support requiring ramps in new public buildings. The city should adopt that requirement.",
+    "expected_positive_leaves": [
+      "supportive",
+      "prescriptive"
+    ],
+    "reason": "Policy recommendation without listener mobilization"
+  },
+  {
+    "target_text": "Contact your city council this week to support this housing ordinance.",
+    "expected_positive_leaves": [
+      "supportive",
+      "advocative"
+    ],
+    "reason": "Listener mobilization and endorsement"
+  },
+  {
+    "target_text": "The governor praised the new law, but I am reporting her remarks without endorsing them.",
+    "expected_positive_leaves": [
+      "descriptive"
+    ],
+    "reason": "Reported praise is not preacher support"
+  },
+  {
+    "target_text": "Some say that all officials are corrupt. I reject that claim.",
+    "expected_positive_leaves": [],
+    "reason": "Rejected criticism and mere reported viewpoint"
+  },
+  {
+    "target_text": "Pray privately every morning and trust Jesus.",
+    "expected_positive_leaves": [],
+    "reason": "Listener directives without public-life treatment"
+  },
+  {
+    "target_text": "Be honest when speaking to your family.",
+    "expected_positive_leaves": [],
+    "reason": "Private morality alone"
+  },
+  {
+    "target_text": "A king is mentioned in the verse; now let us discuss the shepherd tending his sheep.",
+    "expected_positive_leaves": [],
+    "reason": "Passing public vocabulary"
+  },
+  {
+    "target_text": "During the colonial period officials permitted slavery. A trader used that system to enslave local people.",
+    "expected_positive_leaves": [
+      "descriptive"
+    ],
+    "reason": "Narrated harmful conduct does not alone establish preacher evaluation"
+  },
+  {
+    "target_text": "The old law banned public worship. This history illustrates why we must never confuse state power with God's authority.",
+    "expected_positive_leaves": [
+      "descriptive",
+      "illustrative",
+      "theological"
+    ],
+    "reason": "Multiple treatments without inferred civic mobilization"
+  },
+  {
+    "target_text": "I oppose this discriminatory law as unjust. Sign the petition to repeal it.",
+    "expected_positive_leaves": [
+      "critical",
+      "moral",
+      "prescriptive",
+      "advocative"
+    ],
+    "reason": "Negative stance, moral judgment, and listener mobilization"
+  },
+  {
+    "target_text": "Some politicians claim God supports their party. I reject using God's name as a party endorsement.",
+    "expected_positive_leaves": [
+      "theological",
+      "critical"
+    ],
+    "reason": "Own theological criticism distinct from rejected support"
+  },
+  {
+    "target_text": "This is what happened next in the story.",
+    "expected_positive_leaves": [],
+    "reason": "Context cannot supply public treatment",
+    "leading_context": "The city should pass this law; call your officials today."
+  }
+]

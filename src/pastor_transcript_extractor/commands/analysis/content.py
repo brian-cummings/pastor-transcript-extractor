@@ -2953,3 +2953,56 @@ def analysis_evaluate_topic_behavior(
     build_salvation_analytical_backfill_plan,
     load_salvation_candidate_discovery_audit,
     write_salvation_analytical_backfill_plan,
+
+
+@analysis_app.command(
+    "listener-directives-review",
+    help="Record or reuse the approved listener-directive completion decision without inference.",
+)
+def analysis_listener_directives_review(
+    output_path: Path = typer.Option(Path("evaluation/sermon-topics/listener-directive-stage-gate-v3.json"), "--output"),
+) -> None:
+    from pastor_transcript_extractor.sermon_listener_directive_review import (
+        build_listener_completion, write_listener_completion,
+    )
+    try:
+        decision = build_listener_completion()
+        json_path, markdown_path, reused = write_listener_completion(output_path, decision)
+    except (ValueError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"{'Reused' if reused else 'Wrote'} approved listener decision: "
+                  f"{json_path} and {markdown_path}; provider_requests=0", markup=False)
+
+
+@analysis_app.command(
+    "public-life-treatment-review",
+    help="Record or reuse approved public-life question readiness without inference.",
+)
+def analysis_public_life_treatment_review(
+    output_path: Path = typer.Option(Path("evaluation/sermon-topics/public-life-treatment-stage-gate-v2.json"), "--output"),
+) -> None:
+    from pastor_transcript_extractor.sermon_public_life_review import build_public_completion, write_public_policy_report
+    try:
+        report = build_public_completion()
+        json_path, markdown_path, reused = write_public_policy_report(output_path, report)
+    except (ValueError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"{'Reused' if reused else 'Wrote'} public-life question decision: "
+                  f"{json_path} and {markdown_path}; provider_requests=0", markup=False)
+
+
+@analysis_app.command(
+    "public-life-routing-review",
+    help="Compare .55 and eligibility-only routing using saved V2 answers; no inference or database reads.",
+)
+def analysis_public_life_routing_review(
+    output_path: Path = typer.Option(Path("evaluation/sermon-topics/public-life-routing-comparison-v2.json"), "--output"),
+) -> None:
+    from pastor_transcript_extractor.sermon_public_life_review import build_public_routing_comparison, write_public_policy_report
+    try:
+        report = build_public_routing_comparison()
+        json_path, markdown_path, reused = write_public_policy_report(output_path, report)
+    except (ValueError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"{'Reused' if reused else 'Wrote'} public-life routing comparison: "
+                  f"{json_path} and {markdown_path}; provider_requests=0", markup=False)

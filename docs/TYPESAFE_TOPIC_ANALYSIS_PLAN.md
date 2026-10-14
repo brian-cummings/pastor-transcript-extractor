@@ -9,8 +9,9 @@ policy, and measurement semantics are frozen for broader use. The completed
 provider-free uncertainty packet uses 11/10/12 measured independent sermons.
 Pastor-level inference must retain sampling, period/series, and denominator
 uncertainty; no universal sermon-count sufficiency threshold is established.
-The three unresolved salvation leaves remain excluded. **Next: develop the
-listener-directive question set**, following the existing enrichment order and
+The three unresolved salvation leaves remain excluded. **Listener-directive question-set readiness: PASS; validation is closed.
+Public-life treatment-question readiness: PASS.
+Next: develop the source/material question set**, following the existing enrichment order and
 [handoff below](#next-iteration). Do not continue salvation calibration or send
 additional salvation material through TypeSafe to complete this milestone.
 
@@ -1844,43 +1845,212 @@ or period effects through tuning, or infer theological absence from zeros.
 `obedience_as_consequence_or_evidence` remain unresolved and excluded from the
 nine-leaf analysis. Completing them is not a prerequisite for moving on.
 
+### Listener-directive first increment — 2026-10-13
+
+The first listener-directive development increment is implemented for bounded
+review. The [behavior contract and exact handoff commands](LISTENER_DIRECTIVES_BEHAVIOR_CONTRACT.md)
+cover nine independent action questions, a candidate router over every final
+projection-eligible block, up to twelve natural blocks from videos 1200/590/4430,
+and twenty-four prepared boundary probes. Excluded content controls remain
+unevaluated. This starts a new question set; it does not activate production
+collection or claim validated measurement readiness.
+
+The new registry reuses the existing per-block answer-pack cache, provider
+batching/splitting, persistence, and output-pair writer. Complete provider question
+semantics form the new digest. Raw answers are independent of batch composition,
+routing and display thresholds; existing salvation cache identities are unchanged.
+Read-only preparation records source and database/WAL signatures and rejects
+changed evidence. The provider client remains lazy on cache hits.
+
+Next: Brian runs `pte analysis listener-directives-review --evaluate` with the
+base directory in the linked handoff. Codex interprets the resulting prepared
+packet and proposes approval or targeted revisions. No dataset validation or
+provider calls were performed during this development increment. Keep the route,
+taxonomy, and provisional display cutoff pending bounded review.
+
+### Listener-directive V1 review and V2 refinement — 2026-10-13
+
+Brian's bounded review of the V1 packet (fingerprint
+`14d24e6f12e2a4e67fb69860782a4a7b47f23aefd2f57696496e989e4a6aea48`)
+passes the eligible-block router and target-only directive evidence contract.
+Trust, repent, spiritual practice, witness, participate, and civic action pass
+provisionally. Change behavior, give, and serve require revision; the unchanged
+nine-leaf contract is not approved. The [stage-gate record](../evaluation/sermon-topics/listener-directive-stage-gate-v1.json)
+preserves that scope. Repent at .69 is not treated as failure against the
+provisional .70 display cutoff.
+
+`listener-directives-v2-conduct-donation-care` narrows the three definitions to
+specific personal moral conduct, financial/material donation, and direct help
+or care. The same-case rerun requests only these three revised questions, reuses
+six semantically unchanged baseline probabilities, and persists a provenance-rich
+composed nine-leaf V2 cache entry through shared composition code. V1 evidence
+and salvation identities remain unchanged. The report checks all revised-leaf
+probe expectations, the four original overlap failures, and the reviewed natural
+appeals at 590:64 and 4430:22. No larger cohort or repent calibration is planned.
+
+Next: Brian reruns the same command in the [handoff](LISTENER_DIRECTIVES_BEHAVIOR_CONTRACT.md).
+It now writes `listener-directives-review-v2.json` and its Markdown companion.
+Codex interprets that result and recommends broader-analysis readiness if the
+localized overlap failures clear without damaging the independently requested
+natural actions. This refinement has not been sent to TypeSafe during development.
+
+### Listener-directive V2 review and V3 serve-only refinement — 2026-10-13
+
+Brian's V2 review (fingerprint
+`5aa669ea4324bd96a157e554eac51aba10c2bb83ad2e9e3b2aa82f0de7188bc2`)
+finds all four overlap regressions resolved but withholds question-set approval:
+serve on the natural multi-action appeal at 590:64 dropped from .84 to .13.
+The [V2 gate record](../evaluation/sermon-topics/listener-directive-stage-gate-v2.json)
+authorizes one targeted serve revision with every other definition, router,
+threshold, and case preserved.
+
+`listener-directives-v3-help-people-in-need` changes only serve to include explicit
+appeals to help or beneficially impact people in material, social, or spiritual
+need without requiring a concrete care task. Mere participation, donation,
+prayer, witness, or joining an organization remains insufficient. The serve-only
+refinement asks 36 new questions on the exact same 36 cases and reuses eight
+fingerprint- and semantics-checked V2 probabilities through the existing shared
+composition cache. The original V1/V2 packs, answers, reports, and salvation
+identities remain preserved.
+
+Next: Brian runs the unchanged command in the [handoff](LISTENER_DIRECTIVES_BEHAVIOR_CONTRACT.md),
+which now writes `listener-directives-review-v3.json` and `.md`. Codex interprets
+590:64 recovery and retention of the four clean overlap cases before proposing
+broader-analysis readiness. No cohort expansion, threshold tuning, or provider
+calls were performed during this serve-only development increment.
+
+### Listener-directive measurement completion — 2026-10-13
+
+Brian accepts the nine V3 listener-directive measurement questions for broader
+analysis. The [decision](../evaluation/sermon-topics/listener-directive-stage-gate-v3.json)
+is bound to V3 review fingerprint
+`d117434e432c36596e1bc39a22942543e59f9cc9980e483cea850dcf666cff30`
+and frozen question digest
+`471c8c59cbcdb248d7b7af71fb20669a09836c505cda46aaae7cc867a13079d9`.
+All four overlap regressions and all 24 authored overlap checks remain clean.
+The revised interpretation of 590:64 expects participation, spiritual practice,
+and witness; serve=.42 is reasonable secondary ambiguity rather than a failed
+strong positive. The .70 display cutoff and repent question remain unchanged.
+No prompt revision, threshold tuning, additional listener inference, or larger
+cohort is required. Original V1/V2/V3 reports and caches remain unchanged;
+the provider-free completion companion records subsequent acceptance.
+
+### Public-life V1 assessment and V2 refinement — 2026-10-13
+
+The cached V1 review (fingerprint
+`4134e90dd540f5f8bb0d263091ee44605b1dee37944633c472dc1ef15d714b77`)
+exposes two targeted issues: descriptive under-recognizes reporting another
+public actor's praise without endorsement, while prescriptive over-infers public
+ought-claims from moral condemnation and listener advocacy. Preserve useful
+moral, theological, critical, supportive, illustrative, and advocative dimensions;
+correct the incomplete moral expectations in probes 14/16 rather than weakening
+those questions or tuning .69 observations against a display cutoff.
+
+The [assessment](../evaluation/sermon-topics/public-life-v1-semantic-assessment-v1.md)
+and updated [contract](PUBLIC_LIFE_TREATMENT_BEHAVIOR_CONTRACT.md) prepare only
+descriptive/prescriptive revisions. The same 28 cases yield 56 new judgments,
+reusing the other six raw answers and shared composition cache. The V1 raw report
+is preserved; V2 question readiness awaits Brian's bounded run. The .55 route
+remains unapproved for coverage because 1200:26 and 4430:34 have meaningful
+below-route treatment. Keep that sampling policy unchanged during this rerun;
+consider eligibility-only broader routing separately. No cohort expansion or
+collection threshold change is needed to resolve these semantic issues.
+
+The overarching contract remains block-level treatment and expressed perspective.
+These leaves do not bind stance to a named object/proposition; do not derive
+which policy a pastor endorses from topic/treatment co-occurrence alone. No
+single-label classifier or blanket ban on supportive/critical co-occurrence is
+introduced. Readiness should follow semantic interpretation, not validation for
+its own sake.
+
+### Public-life measurement completion and routing proposal — 2026-10-13
+
+Brian approves the eight V2 public-life treatment questions for broader analysis.
+The [completion decision](../evaluation/sermon-topics/public-life-treatment-stage-gate-v2.json)
+is bound to V2 review fingerprint
+`8930a9ad6776bf3267a6593776cd5e1028ce74895211eca871433c666f092048`
+and question digest
+`81bb09e1b660cbd3aa4838b1c528a16ea20bbd66806bca7526856de81d39f079`.
+Freeze V2, including six reused V1 leaves, target-only attribution, legitimate
+multidimensional overlap, and .69 boundary observations. There is no treatment
+V3, threshold tuning, or additional treatment-validation inference to perform.
+Original diagnostic artifacts remain immutable.
+
+The separate [provider-free routing comparison](../evaluation/sermon-topics/public-life-routing-comparison-v2.md)
+compares .55 Supporting-or-above routing with strict current projection
+eligibility on ten saved natural cases. Old routing includes four blocks;
+eligibility-only includes ten and recovers both reviewed misses while excluding
+all saved ineligible controls. Three absent-topic controls have no displayed
+treatment. The extra theological result at 590:60 remains an interpretation case,
+not an independently reviewed third miss. This stratified sample is not a corpus
+recall or workload estimate. Historical source `eligible_block_count` fields
+counted candidate routes; future preparation now distinguishes eligible and routed
+counts. Do not use those archived counts as broader-collection cost evidence.
+
+### Public-life routing handoff
+
+The provider-free comparison is complete. Recommend
+`public-life-route-eligible-v2-candidate`: use current final content projection
+eligibility as the inference gate and public-topic support only as a
+prioritization/sampling diagnostic. The .55 Supporting-or-above policy is not
+suitable as a coverage gate for these treatment measurements. The implemented
+eligibility-only candidate remains a routing proposal; broader collection is
+inactive until that policy is accepted. This does not block development of the
+next question set or require further treatment calibration.
+
+The [routing handoff](PUBLIC_LIFE_TREATMENT_BEHAVIOR_CONTRACT.md) reproduces the
+comparison and completion decision without a provider or database. Routing does
+not enter answer-pack identity; frozen V2 probabilities and per-leaf provenance
+remain reusable. Do not reopen treatment questions, alter the display cutoff,
+or run a broader collection job to move to source/material.
+
 ### Next iteration
 
-Move to **listener directives**, the next question set in the existing
-leaf-pack enrichment order. The concrete downstream question is: *What response
-does the preacher ask the listener to make?* Start from the planned candidate
-inventory: trust, repent, change behavior, undertake a spiritual practice,
-witness, serve, give, participate, and take civic action. This is a proposed
-new pack, not an approved taxonomy or permission to infer theological stance.
-A directive to repent is distinct from the unresolved salvation relationship
-about repentance as a receiving response; do not reopen that leaf by conflating
-the two judgments.
+Move to **source/material**, the next question set in the established enrichment
+order. Brian's direction in this chat advances development to this set. The
+concrete downstream question is: *What source or material carries the preacher's
+point in this block?* Begin with the planned candidates: biblical narrative,
+testimony, historical example, quotation, and explicitly identifiable
+denominational source use. These are candidates for the smallest useful behavior
+contract, not an approved taxonomy or a requirement to implement every distinction.
 
-The next agent should prepare the smallest useful behavior contract and bounded
-review cases for this set, then implement it using the existing shared pack,
-routing, persistence, and review mechanisms. Distinguish a request directed to
-the listener from descriptive narrative, quotation, rhetorical language, or a
-rejected instruction. Preserve target-only evidence and current content-role
-and projection eligibility. Keep independent directives independently
-observable; do not force one exclusive action when several are requested.
-Choose and validate a directive-specific routing policy from cached evidence;
-the salvation router is not automatically appropriate for this pack.
+Keep source/material distinct from topic, rhetorical treatment, listener action,
+and theological position. Biblical narrative or quotation does not establish the
+Scripture/revelation topic. Using a public historical example does not by itself
+establish support or criticism of its actors. An explicitly identified
+Ellen White or other denominational source does not establish the preacher's
+identity, affiliation, or doctrinal agreement. Distinguish the preacher's own
+experience from reported testimony where that distinction is independently useful.
+Do not invent an attribution from familiar wording or nearby religious vocabulary.
 
-Keep the implementation DRY and cache-first: give the new pack its own version
-and digest, reuse existing role/treatment/topic observations, and cache raw
-answers independently of batch composition and downstream thresholds. A new
-pack or policy must not invalidate or rerun unchanged salvation measurements.
-Prepare explicit representative positives, negatives, overlap, and boundary
-cases with defaults and a proposed decision so Brian only needs to execute
-commands and accept/reject concrete results. Run focused unit tests and cheap
-static checks during development; hand Brian exact commands for any dataset
-validation. Do not run or monitor large corpus jobs.
+Prepare concrete positive, negative, overlap, attribution, and context-boundary
+cases with default inputs and a proposed decision. Preserve target-only evidence;
+adjacent context may resolve references but cannot independently supply a source
+or material absent from the target. Keep independently evidenced source and form
+dimensions observable rather than forcing one exclusive source label. Quotation
+and a biblical or denominational source may legitimately coexist.
 
-Do not spend the next increment on more salvation inference, larger salvation
-cohorts, threshold/question retuning, a universal pastor sermon-count cutoff,
-or eliminating measured series/time effects. Reopen the frozen measurement
-only if a concrete reviewed production failure warrants a targeted fix; the
-present milestone needs no additional salvation provider calls.
+Use current content-role and final projection eligibility. Start from a
+coverage-conscious routing proposal and inspect bounded cached evidence; do not
+inherit a broad-topic cutoff as a source-presence gate. In particular, do not gate
+biblical narrative or quotation solely on the Scripture/revelation topic. Routing
+and source-question readiness must be evaluated separately.
+
+Keep the implementation DRY and cache-first. Reuse the shared pack registry,
+preparation, provider adapter, independent per-block answer cache, composition,
+and output-pair writer. Give new question semantics their own version and digest;
+keep raw probabilities independent of batch composition, routing, and downstream
+thresholds. Reuse existing role/treatment/topic observations. A new source pack
+must not invalidate or rerun frozen salvation, listener-directive, or public-life
+treatment measurements. If only some source questions change after review,
+recompute only those and retain the other answers with their original provenance.
+
+Run focused unit tests and inexpensive static checks during development. Hand
+Brian the exact bounded validation command and prepared cases; do not run or
+monitor corpus jobs or ask him to design experiments or author annotations.
+Interpret the results and recommend approval or a narrow revision. Do not tune
+prompts merely to cross a provisional display cutoff, infer pastor-level stance
+from block co-occurrence, or expand into a universal source/subtopic tree.
 
 ## Non-goals for `topics-v1`
 
@@ -1915,7 +2085,9 @@ present milestone needs no additional salvation provider calls.
   excluded music to the preacher.
 - Keep leaves out of the one-minute broad request. Add them as independently
   cached, second-stage packs over qualifying blocks. The nine approved salvation
-  relationships are complete and frozen; listener directives are next.
+  relationships, listener directives, and public-life treatment questions are
+  complete and frozen; source/material is next. Public-life eligibility-only
+  routing is the evaluated recommendation before broader collection.
 - Exclude zero-overlap, partial or mixed, sparse, and non-sermon-role blocks from
   read-only projection; preserve their raw observations for inspection.
 - Keep topic inference observation-only until accepted-sermon and reviewed-profile

@@ -1,0 +1,155 @@
+[
+  {
+    "target_text": "Trust Christ with your future today.",
+    "expected_positive_leaves": [
+      "trust"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Repent of your sin and confess it to God today.",
+    "expected_positive_leaves": [
+      "repent"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Stop lying to your coworkers. Speak honestly this week.",
+    "expected_positive_leaves": [
+      "change_behavior"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Set aside ten minutes every morning to pray and read Scripture.",
+    "expected_positive_leaves": [
+      "spiritual_practice"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Tell your neighbor this week what Jesus has done for you.",
+    "expected_positive_leaves": [
+      "witness"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Bring a meal to the sick neighbor and help her clean her home.",
+    "expected_positive_leaves": [
+      "serve"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Please donate money to the relief fund today.",
+    "expected_positive_leaves": [
+      "give"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Join us for congregational worship next Sabbath.",
+    "expected_positive_leaves": [
+      "participate"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "Contact your city council and ask them to change this housing policy.",
+    "expected_positive_leaves": [
+      "civic_action"
+    ],
+    "reason": "Explicit action positive"
+  },
+  {
+    "target_text": "David trusted God when he faced Goliath.",
+    "expected_positive_leaves": [],
+    "reason": "Narrative is not a listener appeal"
+  },
+  {
+    "target_text": "The crowd shouted, \"Give us your money!\" That demand was wrong.",
+    "expected_positive_leaves": [],
+    "reason": "Rejected quoted instruction"
+  },
+  {
+    "target_text": "Prayer is a powerful gift. Jesus prayed often.",
+    "expected_positive_leaves": [],
+    "reason": "Topic and description alone"
+  },
+  {
+    "target_text": "Do not vote for a candidate just because I mention his name.",
+    "expected_positive_leaves": [],
+    "reason": "Rejected civic action; no concrete affirmative civic appeal"
+  },
+  {
+    "target_text": "Who has never heard the word repentance?",
+    "expected_positive_leaves": [],
+    "reason": "Rhetorical question without appeal"
+  },
+  {
+    "target_text": "He wrote, \"Repent and be baptized.\" That is the sentence we are examining historically.",
+    "expected_positive_leaves": [],
+    "reason": "Quotation without present application"
+  },
+  {
+    "target_text": "Jesus said to pray. That command is for us today: pray each morning.",
+    "expected_positive_leaves": [
+      "spiritual_practice"
+    ],
+    "reason": "Applied endorsed command"
+  },
+  {
+    "target_text": "We should serve our neighbors. Bring meals to the lonely this week.",
+    "expected_positive_leaves": [
+      "serve"
+    ],
+    "reason": "Inclusive listener request"
+  },
+  {
+    "target_text": "Give your heart to Jesus. Trust him today.",
+    "expected_positive_leaves": [
+      "trust"
+    ],
+    "reason": "Figurative giving is not material giving"
+  },
+  {
+    "target_text": "Share your faith with your neighbor and bring her a meal.",
+    "expected_positive_leaves": [
+      "witness",
+      "serve"
+    ],
+    "reason": "Independent overlapping appeals"
+  },
+  {
+    "target_text": "Donate to our food pantry and join its volunteer team.",
+    "expected_positive_leaves": [
+      "give",
+      "participate"
+    ],
+    "reason": "Distinct material and communal requests"
+  },
+  {
+    "target_text": "Father, help these people trust you and pray each morning. Amen.",
+    "expected_positive_leaves": [],
+    "reason": "Prayer to God is not a listener request"
+  },
+  {
+    "target_text": "This is what happened next in the story.",
+    "expected_positive_leaves": [],
+    "reason": "Adjacent appeal cannot establish target evidence",
+    "leading_context": "Please repent and trust Jesus today."
+  },
+  {
+    "target_text": "Will you trust Jesus with your future today? I invite you to do so.",
+    "expected_positive_leaves": [
+      "trust"
+    ],
+    "reason": "Rhetorical form functioning as appeal"
+  },
+  {
+    "target_text": "Forgiveness comes through faith, not by earning it.",
+    "expected_positive_leaves": [],
+    "reason": "Saving relationship alone is not a listener directive"
+  }
+]

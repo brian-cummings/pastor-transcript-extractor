@@ -46,6 +46,7 @@ from pastor_transcript_extractor.sermon_semantic_dimensions import (
     semantic_question_id,
     semantic_question_inventory,
 )
+from pastor_transcript_extractor.sermon_leaf_packs import LEAF_PACKS
 from pastor_transcript_extractor.sermon_salvation_relationships import (
     SALVATION_RELATIONSHIPS,
     SALVATION_RELATIONSHIPS_PACK_VERSION,
@@ -376,6 +377,7 @@ class TypeSafeSdkAdapter:
             TREATMENT_PACK,
             TOPIC_PACK,
             SALVATION_RELATIONSHIPS_PACK,
+            *LEAF_PACKS,
         }
         if unknown:
             raise ValueError(f"Unsupported TypeSafe answer packs: {sorted(unknown)}")
@@ -429,6 +431,13 @@ class TypeSafeSdkAdapter:
             state["salvation_blocks"] = [
                 contexts[block.block_id].state_payload() for block in blocks
             ]
+        for pack in sorted(packs & LEAF_PACKS.keys()):
+            spec = LEAF_PACKS[pack]
+            if any(block.block_id not in contexts for block in blocks):
+                raise ValueError("Missing leaf contexts")
+            if any(contexts[block.block_id].target_text != block.text for block in blocks):
+                raise ValueError("Leaf context target differs from block text")
+            state[spec.state_key] = [contexts[block.block_id].state_payload() for block in blocks]
         questions: dict[str, Any] = {}
         if ROLE_PACK in packs:
             questions.update(
@@ -478,6 +487,13 @@ class TypeSafeSdkAdapter:
                         instructions=item["instructions"],
                         criteria=item["criteria"],
                     )
+        for pack in sorted(packs & LEAF_PACKS.keys()):
+            for position in range(len(blocks)):
+                for question_id, item in LEAF_PACKS[pack].questions(position).items():
+                    if question_id in questions:
+                        raise ValueError("Overlapping leaf question IDs require separate pack requests")
+                    questions[question_id] = self._Noul(
+                        instructions=item["instructions"], criteria=item["criteria"])
         request_shape = _usage_fields(
             None, state, block_count=len(blocks),
             question_count=len(questions),
@@ -624,6 +640,18 @@ class TypeSafeSdkAdapter:
                     else {}
                 ),
                 request_provenance=request_provenance,
+                leaf_answers={
+                    pack: {
+                        "version": pack,
+                        "probabilities": {
+                            leaf: float(result.nouls[spec.question_id(position, leaf)].noul)
+                            for leaf in spec.definitions
+                        },
+                        "context": {**contexts[block.block_id].state_payload(),
+                                    "diagnostics": dict(contexts[block.block_id].diagnostics)},
+                    }
+                    for pack, spec in LEAF_PACKS.items() if pack in packs
+                },
                 salvation_relationship_probabilities=(
                     {
                         relationship: float(
