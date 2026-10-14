@@ -40,7 +40,7 @@ class NoulLeafPack:
                     "task": self.task_template.format(definition=definition, target=target),
                     "evidence_boundary": (
                         f"Only `{target}` establishes a {self.evidence_subject}. Leading and trailing "
-                        "context may resolve references but cannot supply a missing {self.missing_evidence}."
+                        f"context may resolve references but cannot supply a missing {self.missing_evidence}."
                     ),
                     "independence": self.independence,
                 },
@@ -235,7 +235,7 @@ SOURCE_MATERIAL = NoulLeafPack(
         "quotation": "presents another speaker's or text's words as a quotation used in developing the point; explicit attribution or a clear quotation frame can establish this without typographic quote marks. Paraphrase, an indirect report, a title alone, and familiar unattributed wording are insufficient",
         "denominational_source": "uses material explicitly attributed to an identifiable denominational writer, publication, or institutional source, such as Ellen White, the Adventist Church Manual, or a named denominational confession. A denomination mentioned as the subject, generic religious language, familiar wording, or an unattributed quotation is insufficient",
     },
-    task_template="Does the preacher in `{target}` use source or material that {definition}?",
+    task_template="Does the preacher in `{target}` use material in this way: {definition}?",
     positive_template="The target {definition}. {boundary}",
     negative_criteria=(
         "This source or material is not evidenced in the target as part of developing "

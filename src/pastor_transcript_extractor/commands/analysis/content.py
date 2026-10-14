@@ -3006,3 +3006,35 @@ def analysis_public_life_routing_review(
         raise typer.BadParameter(str(error)) from error
     console.print(f"{'Reused' if reused else 'Wrote'} public-life routing comparison: "
                   f"{json_path} and {markdown_path}; provider_requests=0", markup=False)
+
+
+@analysis_app.command(
+    "source-material-review",
+    help="Prepare or evaluate bounded source/material questions using independent cached answers.",
+)
+def analysis_source_material_review(
+    output_path: Path = typer.Option(Path("evaluation/sermon-topics/source-material-review-v1.json"), "--output"),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application-data directory containing app.db."),
+    model: str = typer.Option(DEFAULT_TYPESAFE_MODEL, "--model"),
+    timeout_seconds: float = typer.Option(45.0, "--timeout-seconds", min=1.0),
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Write proposed cases without provider inference."),
+) -> None:
+    from pastor_transcript_extractor.sermon_leaf_packs import SOURCE_MATERIAL
+    from pastor_transcript_extractor.sermon_listener_directive_review import evaluate_review, write_review
+    from pastor_transcript_extractor.sermon_source_material_review import prepare_source_review
+
+    try:
+        packet = prepare_source_review(get_database(base_dir), model=model,
+                                       probe_cache=output_path.parent / "source-material-probe-cache")
+        execution = {"hits": 0, "misses": 0, "provider_requests": 0}
+        if not prepare_only:
+            packet, execution = evaluate_review(packet, pack=SOURCE_MATERIAL,
+                client=_LazyTopicBehaviorClient(model=model, timeout_seconds=timeout_seconds))
+        json_path, markdown_path, reused = write_review(output_path, packet,
+                                                       title="Source/material bounded review V1")
+    except (ValueError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"{'Reused' if reused else 'Wrote'} source/material review: "
+                  f"{json_path} and {markdown_path}; cases={len(packet['cases'])}; "
+                  f"cache_hits={execution['hits']}; cache_misses={execution['misses']}; "
+                  f"provider_requests={execution['provider_requests']}", markup=False)
