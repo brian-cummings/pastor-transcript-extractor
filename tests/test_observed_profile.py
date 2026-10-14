@@ -3,6 +3,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -53,6 +54,14 @@ class ObservedProfileTests(unittest.TestCase):
         case["expected"] = {"fields": "Pretend this is a complete empathetic pastor profile"}
         case["case_id"] = "unseen-case"
         self.assertEqual(baseline, self.view(case))
+
+    def test_changed_packet_is_rejected_before_consumer_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "packet-v1.json").write_text('{"changed":true}')
+            with patch("pastor_transcript_extractor.observed_profile.PACKET_DIR", path):
+                with self.assertRaisesRegex(ValueError, "frozen V1 packet changed"):
+                    load_packet()
 
     def test_useful_local_leaves_with_missing_richer_fields(self):
         self.assertEqual("local_examples", self.field("A01", "C01")["availability"])

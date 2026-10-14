@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pastor_transcript_extractor.observed_profile import ROOT, VERSION, consume, load_packet
+from pastor_transcript_extractor.observed_profile import FROZEN_PACKET_SHA256, ROOT, STATUS_LABELS, VERSION, consume, load_packet
 
 DEFAULT_OUTPUT = ROOT / "evaluation/observed-profile-consumer-v1"
 
@@ -80,7 +80,7 @@ def build_review(packet: dict[str, Any] | None = None) -> dict[str, Any]:
         cases.append(dict(case_id=case["case_id"], purpose=case["purpose"], origin=case["origin"],
                           view=view, acceptance=acceptance(case, view)))
     return dict(version=VERSION, status="rendered_pending_human_review", provider_requests=0,
-                packet_sources=packet["sources"], case_count=len(cases),
+                packet_sha256=FROZEN_PACKET_SHA256, packet_sources=packet["sources"], case_count=len(cases),
                 invariant_passes=sum(c["acceptance"]["invariant_status"] == "PASS" for c in cases),
                 exact_oracle_matches=sum(c["acceptance"]["frozen_oracle_match"] for c in cases),
                 cases=cases)
@@ -108,6 +108,8 @@ def _evidence_cards(case: dict[str, Any], output_dir: Path) -> str:
         e = by_id[ids[0]]
         parts.append(f'<article class="evidence"><h3>Passage {number}</h3><p class="muted">{len(ids)} source locator(s) · {escape(e["provenance"]["origin"].replace("_", " "))}</p>')
         parts.append("<blockquote>" + escape(e["source"]["target_text"]) + "</blockquote>")
+        if e["payload"]["kind"] == "address":
+            parts.append("<p><strong>Assessed address utterance:</strong> “" + escape(e["spans"][0]["text"]) + "”</p>")
         parts.append("<p>" + escape(e["reading_note"]) + "</p>")
         for eid in ids:
             entry = by_id[eid]
@@ -144,7 +146,7 @@ def _field_card(case_id: str, f: dict[str, Any]) -> str:
     content += ["<p>Desired field: " + escape(f["target_statement"]) + ".</p>"]
     for assessment in f["assessments"]:
         eid = assessment["evidence_id"]
-        role_label = {"supporting": "Supports this local observation", "counter": "Counterexample in this unit", "unresolved": "Unresolved/excluded evidence", "related": "Related material; richer field not established"}[assessment["role"]]
+        role_label = {"supporting": "Supports this local observation", "counter": "Counterexample in this unit", "unresolved": STATUS_LABELS[assessment["availability"]], "related": "Related material; richer field not established"}[assessment["role"]]
         content += ['<p><strong>' + escape(role_label) + ':</strong> <a href="#' + escape(case_id + ":" + eid, quote=True) + '">' + escape(eid) + "</a></p>", _list(assessment["reasons"])]
     if not refs:
         content += ["<p>No compatible observation is supplied for this field. No negative characteristic is inferred.</p>"]

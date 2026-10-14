@@ -16,6 +16,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 PACKET_DIR = ROOT / "docs/review-proposals/profile-evidence-v1"
 VERSION = "observed-passage-consumer-v1"
+FROZEN_PACKET_SHA256 = "f9a9d2d3db7fe06650af4cd4f1f5cbcf582d40f75171c9eea95620f79e6824e4"
 UNRESOLVED_SALVATION = [
     "S:repentance_as_receiving_response", "S:obedience_as_condition_or_means",
     "S:obedience_as_consequence_or_evidence",
@@ -56,7 +57,10 @@ def packet_models():
 
 
 def load_packet() -> dict[str, Any]:
-    packet = packet_models().Packet.model_validate_json((PACKET_DIR / "packet-v1.json").read_text()).model_dump()
+    raw = (PACKET_DIR / "packet-v1.json").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != FROZEN_PACKET_SHA256:
+        raise ValueError("The authorized frozen V1 packet changed; consumer review requires the original decisions/withholdings.")
+    packet = packet_models().Packet.model_validate_json(raw).model_dump()
     for source in packet["sources"]:
         if hashlib.sha256((ROOT / source["path"]).read_bytes()).hexdigest() != source["sha256"]:
             raise ValueError(f"Frozen source hash mismatch: {source['path']}")

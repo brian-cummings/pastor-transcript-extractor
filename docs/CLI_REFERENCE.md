@@ -3287,6 +3287,168 @@ pte analysis evaluate-topic-behavior [OPTIONS]
 | `--validate-only` | Validate frozen coverage without calling TypeSafe or writing results. | no | False |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis listener-directives-review`
+
+Record or reuse the approved listener-directive completion decision without inference.
+
+#### Usage
+
+```console
+pte analysis listener-directives-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--output PATH` | [default: evaluation/sermon-topics/listener-directive-stage-gate-v3.json] | no | evaluation/sermon-topics/listener-directive-stage-gate-v3.json |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis public-life-treatment-review`
+
+Record or reuse approved public-life question readiness without inference.
+
+#### Usage
+
+```console
+pte analysis public-life-treatment-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--output PATH` | [default: evaluation/sermon-topics/public-life-treatment-stage-gate-v2.json] | no | evaluation/sermon-topics/public-life-treatment-stage-gate-v2.json |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis public-life-routing-review`
+
+Compare .55 and eligibility-only routing using saved V2 answers; no inference or database reads.
+
+#### Usage
+
+```console
+pte analysis public-life-routing-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--output PATH` | [default: evaluation/sermon-topics/public-life-routing-comparison-v2.json] | no | evaluation/sermon-topics/public-life-routing-comparison-v2.json |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis source-material-review`
+
+Prepare or evaluate bounded source/material questions using independent cached answers.
+
+#### Usage
+
+```console
+pte analysis source-material-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--output PATH` | [default: evaluation/sermon-topics/source-material-review-v1.json] | no | evaluation/sermon-topics/source-material-review-v1.json |
+| `--base-dir PATH` | Application-data directory containing app.db. | no | — |
+| `--model TEXT` | [default: jev-1.13.0] | no | jev-1.13.0 |
+| `--timeout-seconds FLOAT RANGE` | [default: 45.0; x>=1.0] | no | 45.0 |
+| `--prepare-only` | Write proposed cases without provider inference. | no | False |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis source-material-stage-gate`
+
+Record or reuse the accepted source/material V1 PASS from frozen evidence; no inference or database reads.
+
+#### Usage
+
+```console
+pte analysis source-material-stage-gate [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--output PATH` | [default: evaluation/sermon-topics/source-material-stage-gate-v1.json] | no | evaluation/sermon-topics/source-material-stage-gate-v1.json |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis g2-feasibility-review`
+
+Run the fixed bounded G2 semantic-edge pilot; no broader collection or profile projection.
+
+#### Usage
+
+```console
+pte analysis g2-feasibility-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--prepare-only` | Prepare fixed inputs without provider inference. | no | False |
+| `--check-only` | Check local proposal integrity without provider inference. | no | False |
+| `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis profile-evidence-check`
+
+Check the shared evidence/field review packet locally; no provider calls or profile projection.
+
+#### Usage
+
+```console
+pte analysis profile-evidence-check [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis observed-profile-review`
+
+Render and check the 17 supplied-passage consumer cases; no inference, collection or pastor projection.
+
+#### Usage
+
+```console
+pte analysis observed-profile-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--case TEXT` | Case to preview in the terminal; all 17 are checked and included in the report.  [default: A01] | no | A01 |
+| `--output-dir PATH` | Directory for the HTML partial views and JSON acceptance results. | no | — |
+| `--check-only` | Check consumer acceptance without writing reports. | no | False |
+| `--help` | Show this message and exit. | no | — |
+
+### `pte analysis g3-feasibility-review`
+
+Run the fixed bounded G3 address pilot; no collection, projection or scoring.
+
+#### Usage
+
+```console
+pte analysis g3-feasibility-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--prepare-only` | Prepare fixed inputs without provider inference. | no | False |
+| `--check-only` | Check proposal integrity without provider inference. | no | False |
+| `--revision TEXT` | Frozen G3 revision: v1 or the narrow binding revision v2.  [default: v1] | no | v1 |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis show`
 
 Inspect persisted sermon measurements and Scripture evidence.
