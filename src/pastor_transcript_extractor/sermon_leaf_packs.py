@@ -23,6 +23,7 @@ class NoulLeafPack:
         "claim or topic alone does not request an action. Context-only requests do not count."
     )
     evidence_subject: str = "directive"
+    missing_evidence: str = "request"
     independence: str = "Judge each action independently; several may be requested."
 
     def question_id(self, position: int, leaf: str) -> str:
@@ -39,7 +40,7 @@ class NoulLeafPack:
                     "task": self.task_template.format(definition=definition, target=target),
                     "evidence_boundary": (
                         f"Only `{target}` establishes a {self.evidence_subject}. Leading and trailing "
-                        "context may resolve references but cannot supply a missing request."
+                        "context may resolve references but cannot supply a missing {self.missing_evidence}."
                     ),
                     "independence": self.independence,
                 },
@@ -223,11 +224,44 @@ PUBLIC_LIFE_REFINEMENT = replace(
     definitions={leaf: PUBLIC_LIFE_TREATMENT.definitions[leaf] for leaf in PUBLIC_REVISED_LEAVES},
 )
 
+SOURCE_MATERIAL = NoulLeafPack(
+    version="source-material-v1-target-evidence",
+    state_key="source_material_blocks", question_prefix="source_material",
+    definitions={
+        "biblical_narrative": "recounts or develops an identifiable biblical event or story as material for the point; naming a biblical character, citing a verse, or stating doctrine alone is insufficient",
+        "personal_testimony": "uses the preacher's own claimed lived experience of faith, spiritual struggle, or perceived divine action as material for the point; generic first-person speech and mundane autobiographical details alone are insufficient",
+        "reported_testimony": "uses another person's reported lived experience of faith, spiritual struggle, or perceived divine action as material for the point; a biblical story, an invented hypothetical, or a doctrinal quotation alone is insufficient",
+        "historical_example": "uses an identifiable extra-biblical past event or historical episode as material to develop or illustrate the point; dates, names, biblical events, hypothetical examples, and a personal recollection alone are insufficient",
+        "quotation": "presents another speaker's or text's words as a quotation used in developing the point; explicit attribution or a clear quotation frame can establish this without typographic quote marks. Paraphrase, an indirect report, a title alone, and familiar unattributed wording are insufficient",
+        "denominational_source": "uses material explicitly attributed to an identifiable denominational writer, publication, or institutional source, such as Ellen White, the Adventist Church Manual, or a named denominational confession. A denomination mentioned as the subject, generic religious language, familiar wording, or an unattributed quotation is insufficient",
+    },
+    task_template="Does the preacher in `{target}` use source or material that {definition}?",
+    positive_template="The target {definition}. {boundary}",
+    negative_criteria=(
+        "This source or material is not evidenced in the target as part of developing "
+        "the point. Exclude passing names, topic vocabulary, invented attribution, "
+        "and material present only in adjacent context. Do not infer source use from "
+        "doctrine, affiliation, a topic score, or another source/form dimension."
+    ),
+    evidence_subject="source or material use", missing_evidence="source or material",
+    independence="Judge each source/form independently; multiple dimensions may coexist. Quotation need not imply endorsement.",
+    boundary=(
+        "Adjacent context may resolve the identity of a target pronoun or explicitly "
+        "framed quotation, but cannot supply material absent from the target. "
+        "A quotation may overlap with biblical narrative, testimony, or an explicit "
+        "denominational source. Quoted or rejected material still counts as material "
+        "use if developed in the target; it does not establish endorsement, doctrinal "
+        "agreement, preacher identity, or denominational affiliation. Biblical narrative "
+        "and extra-biblical historical example remain distinct."
+    ),
+)
+
+
 # Extend this registry for subsequent packs; transport/cache machinery stays shared.
 LEAF_PACKS = {spec.version: spec for spec in (
     LISTENER_DIRECTIVES_V1, LISTENER_DIRECTIVES_V2, LISTENER_DIRECTIVE_REFINEMENT_V2,
     LISTENER_DIRECTIVES, LISTENER_DIRECTIVE_REFINEMENT, PUBLIC_LIFE_TREATMENT_V1,
-    PUBLIC_LIFE_TREATMENT, PUBLIC_LIFE_REFINEMENT,
+    PUBLIC_LIFE_TREATMENT, PUBLIC_LIFE_REFINEMENT, SOURCE_MATERIAL,
 )}
 LISTENER_DIRECTIVE_ROUTE_VERSION = "listener-directive-route-eligible-v1-candidate"
 

@@ -1,0 +1,235 @@
+[
+  {
+    "case_id": "biblical-story",
+    "target_text": "When Peter stepped out of the boat he began to sink, and Jesus caught him. That rescue shows why we can depend on Christ.",
+    "expected_positive_leaves": [
+      "biblical_narrative"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "verse-quotation",
+    "target_text": "Paul writes, \"For by grace you have been saved through faith.\" Those words put grace before our boasting.",
+    "expected_positive_leaves": [
+      "quotation"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "biblical-quoted-story",
+    "target_text": "Mark records Jesus saying to the storm, \"Peace, be still.\" The disciples then saw the waves become calm. This story confronts our fear.",
+    "expected_positive_leaves": [
+      "biblical_narrative",
+      "quotation"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "personal-faith",
+    "target_text": "When my daughter was sick I prayed through the night. I experienced God sustaining me even before we had an answer. That is why I speak of trust.",
+    "expected_positive_leaves": [
+      "personal_testimony"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "reported-faith",
+    "target_text": "Maria told us that while she was grieving, prayer renewed her trust in God. Her experience helps explain spiritual hope.",
+    "expected_positive_leaves": [
+      "reported_testimony"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "quoted-reported-faith",
+    "target_text": "Maria testified, \"I prayed in my grief and found that God had not abandoned me.\" Her words show how faith can endure.",
+    "expected_positive_leaves": [
+      "reported_testimony",
+      "quotation"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "history",
+    "target_text": "In 1965 marchers crossed the Edmund Pettus Bridge and faced violent opposition. That episode illustrates the cost of standing for human dignity.",
+    "expected_positive_leaves": [
+      "historical_example"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "denominational-quote",
+    "target_text": "Ellen White writes, \"Prayer is the opening of the heart to God as to a friend.\" This picture helps us understand prayer.",
+    "expected_positive_leaves": [
+      "denominational_source",
+      "quotation"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "denominational-paraphrase",
+    "target_text": "The Adventist Church Manual describes membership responsibilities as shared commitments. Its account helps explain why our promises matter.",
+    "expected_positive_leaves": [
+      "denominational_source"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "rejected-source",
+    "target_text": "Ellen White writes, \"Prayer is the opening of the heart to God as to a friend.\" I disagree with using that sentence to dismiss formal prayers; let us examine the comparison.",
+    "expected_positive_leaves": [
+      "denominational_source",
+      "quotation"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "ordinary-quote",
+    "target_text": "As the poet wrote, \"Hope is the thing with feathers.\" This image helps us describe resilience.",
+    "expected_positive_leaves": [
+      "quotation"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "names-only",
+    "target_text": "Peter, Paul, Ellen White, and Martin Luther King are names many people recognize. Today our subject is patience.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "doctrine-only",
+    "target_text": "Salvation is by grace. God reveals truth through Scripture, and we should pray.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "mundane-autobiography",
+    "target_text": "I parked near the church this morning and found my notebook in the car. Now let us begin.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "hypothetical",
+    "target_text": "Imagine a woman who prays during a storm and learns to trust God. This invented example illustrates our lesson.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "unattributed-familiar",
+    "target_text": "Prayer is the opening of the heart to God as to a friend. We can approach God openly.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "denomination-subject",
+    "target_text": "The Adventist congregation meets on Saturday. That schedule is convenient for its members.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "indirect-report",
+    "target_text": "The poet said that hope persists through difficulty. That idea helps us think about endurance.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    }
+  },
+  {
+    "case_id": "context-only",
+    "target_text": "Our point is that we can be patient with each other.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    },
+    "leading_context": "Ellen White writes, \"Prayer is the opening of the heart to God as to a friend.\" Peter stepped out of the boat."
+  },
+  {
+    "case_id": "resolved-source",
+    "target_text": "She writes, \"We can approach God as a friend.\" Her image helps explain prayer.",
+    "expected_positive_leaves": [
+      "denominational_source",
+      "quotation"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    },
+    "leading_context": "We are reading Ellen White."
+  },
+  {
+    "case_id": "resolved-story",
+    "target_text": "He stepped onto the water, began to sink, and was rescued by Jesus. That story illustrates dependence.",
+    "expected_positive_leaves": [
+      "biblical_narrative"
+    ],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    },
+    "leading_context": "Let us consider Peter in the Gospel account."
+  },
+  {
+    "case_id": "context-source-no-target-material",
+    "target_text": "She was an influential writer. We should all be patient.",
+    "expected_positive_leaves": [],
+    "proposed_label": "target_only_independent_source_and_form",
+    "projection_eligibility": {
+      "eligible": true
+    },
+    "leading_context": "We are reading Ellen White."
+  }
+]
