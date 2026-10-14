@@ -3066,8 +3066,14 @@ def analysis_source_material_stage_gate(
 def analysis_g1_feasibility_review(
     prepare_only: bool = typer.Option(False, "--prepare-only", help="Prepare the fixed source packet without provider calls."),
     check_only: bool = typer.Option(False, "--check-only", help="Check packet integrity without provider calls."),
+    revision: str = typer.Option("v1", "--revision", help="Frozen G1 revision: v1 or the single focused v2 refinement."),
 ) -> None:
-    from pastor_transcript_extractor.sermon_g1_feasibility_review import run
+    if revision == "v1":
+        from pastor_transcript_extractor.sermon_g1_feasibility_review import run
+    elif revision == "v2":
+        from pastor_transcript_extractor.sermon_g1_feasibility_revision import run
+    else:
+        raise typer.BadParameter("--revision must be v1 or v2")
 
     if prepare_only and check_only:
         raise typer.BadParameter("Choose at most one of --prepare-only and --check-only")
