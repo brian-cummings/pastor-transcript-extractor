@@ -71,3 +71,15 @@ conservative differences disclosed in the report. The earlier implementation-hol
 language above records the original design handoff; the later authorization applies
 only to this bounded consumer. All G1/collection/projection/comparison/G4/scoring
 holds remain. This does not activate the final PastorProfile projection layer.
+
+## Bounded consumer accepted and closed — 2026-10-14
+
+Brian explicitly accepted the bounded consumer and the two conservative deviations:
+A12/C05 retains incompatible `conflict:version` as unresolved alongside
+`excluded:content`; A15/C10 credits only `frozen:G2-01`, while `other:topic`
+remains a separate topic observation. See the [accepted decision](../../../evaluation/observed-profile-consumer-v1/acceptance-decision-v1.json).
+The frozen oracle and generated run are unchanged; exact matches remain 15/17.
+The intended useful, honest partial-view property is accepted. This step is closed.
+G1, broader collection, pastor projection/comparison, clustering, G4,
+recurrence/rate estimation and quality scoring remain held. No next validation or
+implementation step is authorized or started by this acceptance.

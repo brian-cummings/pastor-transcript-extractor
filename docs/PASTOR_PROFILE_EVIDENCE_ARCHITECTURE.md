@@ -105,7 +105,7 @@ Following Brian's explicit authorization, `pte analysis observed-profile-review`
 now renders the supplied-passage view and runs all 17 consumer cases. The
 [acceptance report](../evaluation/observed-profile-consumer-v1/REVIEW.md) records
 17 invariant passes and 15 exact frozen state/link matches, with two conservative
-differences retained for review. The view is useful for evidence inspection while
+differences reviewed and accepted by Brian. This bounded step is **accepted and closed**. The view is useful for evidence inspection while
 preserving all 20 field questions, missing inputs and suppression reasons. It is
 not the final PastorProfile projection layer. G1, broader collection, pastor
-projection/comparison, clustering, G4 and scoring remain held.
+projection/comparison, clustering, G4, recurrence/rate estimation and scoring remain held. No next validation or implementation step is authorized by this acceptance.
