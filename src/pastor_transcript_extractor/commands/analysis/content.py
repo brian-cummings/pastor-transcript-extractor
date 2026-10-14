@@ -3104,6 +3104,42 @@ def analysis_profile_evidence_check() -> None:
 
 
 @analysis_app.command(
+    "observed-profile-review",
+    help="Render and check the 17 supplied-passage consumer cases; no inference, collection or pastor projection.",
+)
+def analysis_observed_profile_review(
+    case_id: str = typer.Option("A01", "--case", help="Case to preview in the terminal; all 17 are checked and included in the report."),
+    output_dir: Path | None = typer.Option(None, "--output-dir", help="Directory for the HTML partial views and JSON acceptance results."),
+    check_only: bool = typer.Option(False, "--check-only", help="Check consumer acceptance without writing reports."),
+) -> None:
+    from pastor_transcript_extractor.observed_profile_review import (
+        DEFAULT_OUTPUT, build_review, console_preview, write_review,
+    )
+
+    try:
+        report = build_review()
+        preview = console_preview(report, case_id)
+        console.print(
+            f"Consumer invariants: {report['invariant_passes']}/{report['case_count']}; "
+            f"exact frozen state/link matches: {report['exact_oracle_matches']}/{report['case_count']}; "
+            "provider_requests=0", markup=False,
+        )
+        for case in report["cases"]:
+            outcome = case["acceptance"]
+            if outcome["oracle_differences"]:
+                console.print(f"{case['case_id']}: frozen expectation differences: " + json.dumps(outcome["oracle_differences"]), markup=False)
+        if report["invariant_passes"] != report["case_count"]:
+            raise ValueError("Consumer contract invariants failed; no accepted profile report was written.")
+        if not check_only:
+            json_path, html_path = write_review(report, output_dir or DEFAULT_OUTPUT)
+            console.print(f"Wrote {html_path} and {json_path}", markup=False)
+            console.print(preview, markup=False)
+        console.print("State/link differences remain disclosed for review. Prose usefulness requires human review; all collection/projection/scoring holds remain.", markup=False)
+    except (ValueError, OSError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command(
     "g3-feasibility-review",
     help="Run the fixed bounded G3 address pilot; no collection, projection or scoring.",
 )
