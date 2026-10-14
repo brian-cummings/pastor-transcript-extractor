@@ -1,6 +1,6 @@
 # PastorProfile evidence architecture: next-step proposal
 
-Current implementation status: observed consumer accepted; bounded G1 V2 execution is interrupted, with recovery proposed and semantic acceptance pending. See [current handoff](HANDOFF.md#g1-v2-execution-recovery-proposed--2026-10-14). The design-stage status below is historical.
+Current status: observed consumer accepted; bounded G1 passage-level feasibility **PASS and closed** by Brian. See the [stage gate](../evaluation/g1-binding/feasibility-stage-gate-v2.md) and [current handoff](HANDOFF.md#bounded-g1-feasibility-pass--closed-2026-10-14). No G1 V3/provider requests or downstream collection/projection/scoring are authorized. The design-stage status below is historical.
 
 Status: **design proposal, not implementation or collection authorization**. C01–C20 and D01–D06 remain the product requirements. G2 bounded feasibility is PASS with known recall limitations; G3 bounded feasibility is PASS with conservative positive/context binding limitations. G1 has an approved bounded design and authored structural cases, **not a provider/dataset feasibility PASS**; implementation and expansion remain held. G4 is deferred.
 
@@ -152,3 +152,22 @@ requires Brian’s explicit opt-in to one replacement, taking the cumulative cei
 from 37 to 38 and reusing all 29 saved responses. No provider calls were made during
 repair. Follow the current handoff, interpret the same expectations after completion,
 and stop at the bounded G1 feasibility decision. All broader holds remain in force.
+
+
+## Bounded G1 feasibility accepted — 2026-10-14
+
+Brian closes G1 PASS for passage-level proposition/object binding, relation/polarity,
+voice/adoption, conditions/scope, expressed uncertainty and conservative withholding.
+Direct voice and public attitude versus prescription are resolved; simple negation
+is sufficiently resolved, including differently scoped local claims. A08 remains
+conservatively withheld: preserve reported content and rejection evidence without
+inventing an adopted opposite or resolving the preacher's alternative proposition.
+Other disclosed binding/adoption regressions remain bounded limitations. The
+[separate acceptance decision](../evaluation/g1-binding/feasibility-stage-gate-v2.json)
+retains all 11 residual checks; the frozen oracle and raw V2 results are unchanged.
+
+This closes construct feasibility, not candidate recall, calibration, denominators,
+collection economics, pastor-level projection/comparison, contradiction/coherence,
+recurrence/rates, G4 or quality scoring. Broader/full capability collection and
+clustering also remain held. No V3, further provider requests, automatic integration
+or new validation step follows. CLI: `pte analysis g1-feasibility-review --stage-gate`.

@@ -1,8 +1,28 @@
 # G1 V2: one focused local-proposition refinement
 
-Status: **provider run interrupted; execution repair complete; one lost-response replacement proposed** — 2026-10-14. Brian's V1 interpretation is that the representation establishes enough feasibility to continue, **not acceptance**. One V2 refinement is authorized on the exact existing cases. No natural examples, source windows, candidates, phrase pools, expectations, threshold or composition rules are added or changed.
+Status: **PASS — bounded G1 feasibility accepted and closed by Brian, 2026-10-14.**
+The [human stage gate](../../../evaluation/g1-binding/feasibility-stage-gate-v2.md)
+and [JSON decision](../../../evaluation/g1-binding/feasibility-stage-gate-v2.json)
+supersede preparation/pending-review status. V2 raw results and frozen expectations
+remain unchanged (198/209 exact checks; 11 accepted bounded residual checks).
 
-## G1 V2 execution recovery proposed — 2026-10-14
+Accepted scope: passage-level proposition/object binding, relation/polarity,
+voice/adoption, conditions/scope, expressed uncertainty and conservative withholding.
+Direct voice and public attitude versus prescription are resolved; simple negation
+is sufficiently resolved. A08 preserves reported content, rejection evidence and
+unresolved binding without manufacturing an adopted opposite. Other disclosed
+binding/adoption limitations and regressions remain visible. No field-filling tuning.
+
+**No V3 or additional provider requests for this gate.** Broader collection, recall,
+calibration, denominators/economics, pastor projection/comparison, contradiction/
+coherence, clustering, recurrence/rates, G4 and scoring remain held. No automatic next
+step is authorized. The CLI blocks further provider execution for this closed gate.
+Provider-free record: `pte analysis g1-feasibility-review --stage-gate`.
+
+The remaining proposal and execution-recovery text is historical provenance;
+its commands are not current authorization. Follow the stage gate and current handoff.
+
+## Historical G1 V2 execution recovery proposal — 2026-10-14
 
 Brian's V2 run stopped at **B03:unit-0** with `Malformed Choice answer`.
 There are **30 charged attempts, 29 validated saved responses, eight outstanding

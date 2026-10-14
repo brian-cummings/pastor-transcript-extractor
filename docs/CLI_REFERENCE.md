@@ -3394,6 +3394,7 @@ pte analysis g1-feasibility-review [OPTIONS]
 | `--check-only` | Check packet integrity without provider calls. | no | False |
 | `--revision TEXT` | Frozen G1 revision: v1 or the single focused v2 refinement.  [default: v1] | no | v1 |
 | `--replace-lost-response` | Approve one replacement for the recorded lost V2 response; cumulative ceiling 38, unchanged cases/questions. | no | False |
+| `--stage-gate` | Verify and show the closed human G1 feasibility decision without provider calls. | no | False |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis g2-feasibility-review`

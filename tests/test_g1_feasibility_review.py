@@ -113,7 +113,8 @@ class G1FeasibilityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'ceiling exhausted'):
                 g1.evaluate(self.packet,provider_factory=lambda:(_ for _ in ()).throw(AssertionError('provider constructed')),cache_dir=cache)
 
-    def test_cli_modes_are_native_and_execution_is_never_run_in_tests(self):
+    @patch("pastor_transcript_extractor.sermon_g1_feasibility_stage_gate.is_closed", return_value=False)
+    def test_cli_modes_are_native_and_execution_is_never_run_in_tests(self, _open_gate):
         runner=CliRunner()
         for args,mode in [([], 'evaluate'),(['--check-only'],'check'),(['--prepare-only'],'prepare')]:
             with patch.object(g1,'run') as run:

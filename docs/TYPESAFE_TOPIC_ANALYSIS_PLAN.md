@@ -1,6 +1,6 @@
 # TypeSafe Sermon Topic Analysis Plan
 
-Latest G1 continuation: [V2 execution recovery proposed, not a semantic result](HANDOFF.md#g1-v2-execution-recovery-proposed--2026-10-14).
+Latest G1 status: [bounded feasibility PASS and closed](HANDOFF.md#bounded-g1-feasibility-pass--closed-2026-10-14). No V3 or additional provider requests; broader collection/projection/scoring remain held.
 
 Status: Stage 1 through Stage 4 validation and immutable sermon/profile topic
 projection are implemented. The broad question pack remains
@@ -3204,3 +3204,44 @@ recommend only whether bounded G1 local-proposition feasibility can close, and s
 All previously held collection, projection/comparison, clustering, contradiction/
 coherence/G4, recall, calibration, denominators/economics studies, rates and scoring
 remain held. No V3, corpus expansion or new semantic refinement is authorized.
+
+
+## Bounded G1 feasibility PASS — closed 2026-10-14
+
+**Brian explicitly accepts the V2 source review and closes this gate as PASS.**
+The [stage-gate decision](../evaluation/g1-binding/feasibility-stage-gate-v2.md)
+and [JSON record](../evaluation/g1-binding/feasibility-stage-gate-v2.json) are the
+current authority. Completed V2 raw results are preserved unchanged; their historical
+pending-review status is superseded by this separate human acceptance. Earlier
+preparation, failure and recovery entries below are historical, not next actions.
+
+The accepted scope is only feasibility of **passage-level** proposition/object
+binding, relation/polarity, voice/adoption, conditions/scope, expressed uncertainty
+and conservative withholding on the supplied fixed cases. Direct preacher voice
+and support/opposition versus institutional prescription are resolved. Simple
+negation is sufficiently resolved, including affirmed/denied propositions and
+preservation of differently scoped claims.
+
+A08 is accepted conservative withholding: retain the reported proposition,
+rejection evidence and unresolved binding; never infer an adopted logical opposite
+or manufacture the preacher's alternative proposition from rejection. Disclosed
+A04/A09/P04/P08/P09/B01 withholding, attribution, antecedent/object and adoption
+limitations/regressions remain visible. Frozen expectations are unchanged:
+198/209 exact checks, 31 corrected checks, 11 residual checks including three
+regressions. This is human acceptance with bounded limitations, not calibrated
+accuracy or full-field completeness. Do not tune G1 to fill more fields.
+
+Provider-free CLI tie-in (verifies the decision and accepted result fingerprints):
+
+```sh
+pte analysis g1-feasibility-review --stage-gate
+```
+
+The CLI blocks further provider execution for this closed gate. **No G1 V3, new
+provider requests, automatic next validation/implementation step or consumer
+integration is authorized.** Stop here. G2/G3 and the observed consumer remain closed.
+Candidate-discovery recall, production calibration, opportunity denominators,
+collection economics, broader/full capability collection, pastor-level position
+projection/comparison, contradiction/coherence resolution, clustering, recurrence/
+rates, G4 and all quality/exceptional-pastor scoring remain unestablished and held.
+Any next step requires a separate explicit decision; this PASS does not authorize it.

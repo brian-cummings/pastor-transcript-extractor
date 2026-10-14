@@ -3068,7 +3068,20 @@ def analysis_g1_feasibility_review(
     check_only: bool = typer.Option(False, "--check-only", help="Check packet integrity without provider calls."),
     revision: str = typer.Option("v1", "--revision", help="Frozen G1 revision: v1 or the single focused v2 refinement."),
     replace_lost_response: bool = typer.Option(False, "--replace-lost-response", help="Approve one replacement for the recorded lost V2 response; cumulative ceiling 38, unchanged cases/questions."),
+    stage_gate: bool = typer.Option(False, "--stage-gate", help="Verify and show the closed human G1 feasibility decision without provider calls."),
 ) -> None:
+    from pastor_transcript_extractor import sermon_g1_feasibility_stage_gate as acceptance
+
+    if stage_gate:
+        if prepare_only or check_only or replace_lost_response:
+            raise typer.BadParameter("--stage-gate cannot be combined with execution/preparation flags")
+        try:
+            acceptance.show()
+        except (ValueError, OSError) as error:
+            raise typer.BadParameter(str(error)) from error
+        return
+    if not prepare_only and not check_only and acceptance.is_closed():
+        raise typer.BadParameter("Bounded G1 feasibility is closed PASS. No further provider requests or V3; use --stage-gate for the accepted decision.")
     if replace_lost_response and (revision != "v2" or prepare_only or check_only):
         raise typer.BadParameter("--replace-lost-response requires V2 evaluation")
     if revision == "v1":

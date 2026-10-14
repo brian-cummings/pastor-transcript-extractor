@@ -204,7 +204,8 @@ class G1RevisionTests(unittest.TestCase):
                 self.assertEqual(0, replay['execution']['provider_requests'])
                 self.assertEqual(ledger['attempts'], replay['request_ledger']['attempts'][:30])
 
-    def test_native_cli_revision_default_and_mode_validation(self):
+    @patch("pastor_transcript_extractor.sermon_g1_feasibility_stage_gate.is_closed", return_value=False)
+    def test_native_cli_revision_default_and_mode_validation(self, _open_gate):
         runner=CliRunner()
         for options,mode in (([], 'evaluate'),(['--check-only'],'check'),(['--prepare-only'],'prepare')):
             with patch.object(v2,'run') as run:
