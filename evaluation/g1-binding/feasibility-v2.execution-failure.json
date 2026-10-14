@@ -1,0 +1,7 @@
+{
+  "status": "execution_failed_not_semantic_verdict",
+  "input_fingerprint": "abf9232c1ddb003c7ff2de54d5c4bf9025a06f48efebb845aab173c9685bc02b",
+  "error_type": "ValueError",
+  "successful_caches_retained": true,
+  "production_effect": "none"
+}

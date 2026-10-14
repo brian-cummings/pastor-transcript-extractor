@@ -1,5 +1,7 @@
 # PastorProfile evidence architecture: next-step proposal
 
+Current implementation status: observed consumer accepted; bounded G1 V2 execution is interrupted, with recovery proposed and semantic acceptance pending. See [current handoff](HANDOFF.md#g1-v2-execution-recovery-proposed--2026-10-14). The design-stage status below is historical.
+
 Status: **design proposal, not implementation or collection authorization**. C01–C20 and D01–D06 remain the product requirements. G2 bounded feasibility is PASS with known recall limitations; G3 bounded feasibility is PASS with conservative positive/context binding limitations. G1 has an approved bounded design and authored structural cases, **not a provider/dataset feasibility PASS**; implementation and expansion remain held. G4 is deferred.
 
 The next architectural step is to specify how compatible observations become explainable profile fields while retaining their scope and unknowns. Follow that with a provider-free consumer acceptance packet. Further G2/G3 prompt tuning is closed. No new TypeSafe calls are needed for this design step.
@@ -138,3 +140,15 @@ any disputed expectation before recommending whether to close bounded G1 feasibi
 No V2 result or acceptance exists yet. No further iteration, collection, pastor
 projection/comparison, recall/calibration/denominator/economics work, recurrence/rates,
 G4, contradiction/coherence or quality scoring is authorized.
+
+
+## G1 V2 execution interruption — 2026-10-14
+
+The provider run has 29 valid saved responses from 30 charged attempts. One failed
+response body was lost before caching; no semantic verdict exists. Execution
+validation and response preservation are repaired without changing the frozen
+questions or representation. [Recovery proposal](review-proposals/g1-feasibility-v2/REVIEW.md)
+requires Brian’s explicit opt-in to one replacement, taking the cumulative ceiling
+from 37 to 38 and reusing all 29 saved responses. No provider calls were made during
+repair. Follow the current handoff, interpret the same expectations after completion,
+and stop at the bounded G1 feasibility decision. All broader holds remain in force.

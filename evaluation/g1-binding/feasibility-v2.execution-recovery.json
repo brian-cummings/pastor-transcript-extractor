@@ -1,0 +1,45 @@
+{
+  "status": "incomplete_execution_recovery_proposed_not_authorized",
+  "date": "2026-10-14",
+  "input_fingerprint": "abf9232c1ddb003c7ff2de54d5c4bf9025a06f48efebb845aab173c9685bc02b",
+  "ledger_fingerprint_at_diagnosis": "becf8215eceb3ffd1a623fe4d21716a9f5be31efe1808746c3171d48a370d04b",
+  "original_attempts_prefix_fingerprint": "1a0c8cee0e3d6fb70e8cff7ea440d51e15a887d511c7d989d240a84559111eca",
+  "attempted_requests": 30,
+  "validated_saved_responses": 29,
+  "outstanding_candidates": 8,
+  "original_request_ceiling": 37,
+  "remaining_original_attempts": 7,
+  "lost_response": {
+    "request_key": "3abefcd9336cff66f18e0c936fc878ec60df25cb23f6b499b626fa2247a81cd5",
+    "case_id": "B03",
+    "candidate_id": "B03:unit-0",
+    "status": "response_received",
+    "request_id": "req_01a13b55a014779bafe752b9550f89d5",
+    "usage": {
+      "input_tokens": 2581,
+      "output_tokens": 296
+    },
+    "resolved_model": "jev-1.13.0"
+  },
+  "raw_failed_response_retained": false,
+  "cause": "Unknown: original validator discarded the failed response before persisting it.",
+  "confirmed_validator_defect": "Binary floating point can reject probability mass .99 at the existing .01 tolerance boundary; the lost response cannot establish that this triggered B03.",
+  "repairs": [
+    "Preserve original .01 probability mass tolerance with floating point epsilon; no normalization or missing-option fill.",
+    "Save returned raw response receipts before schema/model validation; detailed field failures.",
+    "Preflight all saved responses and outstanding budget before provider construction."
+  ],
+  "proposed_recovery": {
+    "approval": "Brian explicitly opts in by running the replacement command; not yet executed.",
+    "command": "pte analysis g1-feasibility-review --revision v2 --replace-lost-response",
+    "effective_cumulative_ceiling": 38,
+    "additional_attempts_at_most": 8,
+    "valid_responses_reused": 29,
+    "override_binding": "Exact first 30 historical attempt records; no generic retry allowance."
+  },
+  "provider_calls_during_repair": 0,
+  "semantic_questions_changed": false,
+  "expectations_changed": false,
+  "semantic_verdict": null,
+  "production_effect": "none"
+}

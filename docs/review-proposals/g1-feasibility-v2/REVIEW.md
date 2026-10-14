@@ -1,24 +1,64 @@
 # G1 V2: one focused local-proposition refinement
 
-Status: **authorized, prepared, not yet provider-evaluated** — 2026-10-14. Brian's V1 interpretation is that the representation establishes enough feasibility to continue, **not acceptance**. One V2 refinement is authorized on the exact existing cases. No natural examples, source windows, candidates, phrase pools, expectations, threshold or composition rules are added or changed.
+Status: **provider run interrupted; execution repair complete; one lost-response replacement proposed** — 2026-10-14. Brian's V1 interpretation is that the representation establishes enough feasibility to continue, **not acceptance**. One V2 refinement is authorized on the exact existing cases. No natural examples, source windows, candidates, phrase pools, expectations, threshold or composition rules are added or changed.
 
-## Next command for Brian
+## G1 V2 execution recovery proposed — 2026-10-14
 
-With the venv already active, from the repository:
+Brian's V2 run stopped at **B03:unit-0** with `Malformed Choice answer`.
+There are **30 charged attempts, 29 validated saved responses, eight outstanding
+candidates and seven remaining attempts** under the original 37-request ceiling.
+This is incomplete execution, **not a semantic V2 verdict or acceptance**.
+The original failed response was not persisted; its exact validation failure cannot
+be reconstructed. A confirmed floating point boundary defect can reject mass `.99`
+at the existing `.01` tolerance, but it cannot be identified as B03's cause without
+the lost response. No answer is fabricated or repaired by normalization.
+
+The execution repair is committed as `0d79a6b`: preserve returned raw response receipts
+before validation, report field-specific contract failures, accept floating point
+edges at the existing mass tolerance, and preflight all cached answers and remaining
+budget before constructing the provider. The `.80` decision threshold, four V2
+semantic questions, frozen cases/expectations, V1 sources and composition remain
+unchanged. Invalid receipts stop locally rather than silently triggering new calls.
+Thirteen focused V2 tests, nine frozen V1 tests, 18 CLI contract tests and five CLI
+reference tests pass. Read-only integrity checks validate the actual 29 caches and
+original ledger prefix. No provider calls or live-ledger modifications were made by
+Codex during this repair.
+
+**Proposed, not yet authorized/executed:** one replacement for the lost response.
+Brian can explicitly approve the cumulative ceiling change **37 → 38** by running:
 
 ```sh
-pte analysis g1-feasibility-review --revision v2
+pte analysis g1-feasibility-review --revision v2 --replace-lost-response
 ```
 
-This runs only the V2 question changes and reuses the original answers for every unchanged question. The provider run is reserved for Brian under the project instructions. Codex has performed only provider-free preparation, source review and focused mock tests.
+This requires the exact original first 30 attempt records, reuses the 29 responses
+and sends at most eight additional requests (one replacement plus seven never sent).
+It retains the failed attempt and its token usage. It is not a general retry switch.
+The frozen packet still records its original 37 ceiling; any final result separately
+records the effective 38 ceiling and explicit replacement authorization. Without
+this opt-in the original command stops before spending because the remaining budget
+cannot finish. Do not reset/delete the ledger or caches. A further failure requiring
+more spending must return for review; no automatic allowance is provided.
 
-Integrity-only check:
+The [execution diagnosis](../../../evaluation/g1-binding/feasibility-v2.execution-recovery.md)
+and [JSON snapshot](../../../evaluation/g1-binding/feasibility-v2.execution-recovery.json)
+preserve the incomplete-run facts and proposed recovery separately from semantic
+results. A future agent must check whether Brian has since executed the opt-in and
+read `evaluation/g1-binding/feasibility-v2.results.md` / `.json` if present. Original
+`execution-failure` and `execution-recovery` artifacts are historical snapshots,
+not later result status. Replays after an approved replacement use the same flag.
+After execution, interpret corrected failures, legitimate withholding, remaining
+systematic errors and disputed expectations against the unchanged source/oracle;
+recommend only whether bounded G1 local-proposition feasibility can close, and stop.
+All previously held collection, projection/comparison, clustering, contradiction/
+coherence/G4, recall, calibration, denominators/economics studies, rates and scoring
+remain held. No V3, corpus expansion or new semantic refinement is authorized.
+
+Provider-free packet check (does not authorize a replacement):
 
 ```sh
 pte analysis g1-feasibility-review --revision v2 --check-only
 ```
-
-`--prepare-only` reproduces the fixed V2 packet without inference. The unflagged command still refers to frozen V1; use the explicit `--revision v2` command above. Do not rerun or rewrite V1 to change its outcome.
 
 ## Frozen basis and prepared artifacts
 
@@ -50,7 +90,7 @@ The revised questions run across all existing candidates, including the unchange
 | Existing prepared checks | Same 209 |
 | Questions recomputed | 148: four fields × 37 candidates |
 | V1 raw answers reused exactly | 338 |
-| Cumulative V2 provider ceiling | 37 attempted requests, including failed attempts/resumptions |
+| Cumulative V2 provider ceiling | Frozen packet: 37 attempted requests; proposed explicit lost-response replacement: 38 |
 | Model / SDK retries / timeout | `jev-1.13.0` / 0 / 45 seconds |
 | Withholding policy | Unchanged selected-answer probability ≥0.80; otherwise `unclear` |
 | Production / pastor projection | None |
@@ -68,7 +108,7 @@ evaluation/g1-binding/cache-v2/request-ledger.json
 evaluation/g1-binding/cache-v2/<identity-hash>.json
 ```
 
-V2 uses a separate cache/ledger and never writes V1 input/results/caches. Reused fields retain V1 question/state/model/request identity; changed fields record V2 question identity and request/cache origin. The ledger records attempts before calling and returned model/token usage before validation. Incomplete or wrong-model responses consume budget without valid cache credit. Cache replay sends no new requests. Do not delete/reset a ledger or bypass the ceiling to finish a failed run; ask Codex to interpret the concrete failure.
+V2 uses a separate cache/ledger and never writes V1 input/results/caches. Reused fields retain V1 question/state/model/request identity; changed fields record V2 question identity and request/cache origin. The ledger records attempts before calling. Returned raw response receipts, model and token usage are persisted before validation; valid receipts can recover locally without new inference. Incomplete or wrong-model responses consume budget without valid cache credit. Cache replay sends no new requests. Do not delete/reset a ledger or bypass the ceiling to finish a failed run; ask Codex to interpret the concrete failure.
 
 ## V2 report and close decision
 
@@ -89,6 +129,6 @@ Still held: G1 expansion/full collection, pastor projection/comparison, clusteri
 
 ## Verification and continuation
 
-Nine focused V2 tests pass: unchanged-state/expectation identity, four-question scope, exact reused answers/provenance, separate cache replay, source/model/answer rejection, cumulative budget enforcement, no invented opposite, retained uncertainty/context decisions and native CLI revision dispatch. These are mock/provider-free checks, not V2 model results. The [TypeSafe plan](../../TYPESAFE_TOPIC_ANALYSIS_PLAN.md) and the top of [HANDOFF.md](../../HANDOFF.md) identify this as the current continuation point.
+Thirteen focused V2 tests pass (including rounding boundaries, raw failure retention, receipt recovery and the explicitly bounded replacement): unchanged-state/expectation identity, four-question scope, exact reused answers/provenance, separate cache replay, source/model/answer rejection, cumulative budget enforcement, no invented opposite, retained uncertainty/context decisions and native CLI revision dispatch. These are mock/provider-free checks, not V2 model results. The [TypeSafe plan](../../TYPESAFE_TOPIC_ANALYSIS_PLAN.md) and the top of [HANDOFF.md](../../HANDOFF.md) identify this as the current continuation point.
 
 Question refinements follow the official [TypeSafe Choice guidance](https://docs.typesafe.ai/primitives/choice), [state guidance](https://docs.typesafe.ai/concepts/state) and [Python usage guide](https://docs.typesafe.ai/sdk/python/usage): independent typed questions over the same source state, with code-owned composition and explicit uncertainty. No SDK/transport migration is part of V2.
