@@ -1,18 +1,56 @@
 # Handoff Notes
 
-## Evidence-supply / collection-readiness planning — 2026-10-14
+## Evidence-supply / collection-readiness provider-free preparation — 2026-10-14
 
-Brian requests documentation review and planning for a separate gate; **the gate
-remains unauthorized**, alongside broader collection and downstream projection/scoring.
-The [V1 plan](review-proposals/evidence-supply-readiness-v1/PLAN.md) and
-[JSON plan](review-proposals/evidence-supply-readiness-v1/plan-v1.json) recommend
-provider-free readiness-packet implementation/preparation as the next decision,
-followed by separately authorized bounded natural validation. No implementation,
-dataset inspection, provider execution or activation occurs in this planning step.
-The proposed `pte analysis evidence-supply-review` command is not implemented.
-G1/G2/G3 and the observed consumer remain accepted and closed; their bounded
-results do not establish collection readiness. A readiness PASS would support only
-a separate collection proposal, with all downstream holds retained.
+Brian explicitly authorizes steps 1–4 only, incorporating independent references,
+zero-tolerance integrity failures, separate measurement/discovery errors, capability
+coverage before profile balance, and bounded sample cost accounting. **No provider
+execution, broader collection or downstream projection/scoring is authorized.**
+
+The [V1 review](review-proposals/evidence-supply-readiness-v1/REVIEW.md),
+[reference/candidate cases](review-proposals/evidence-supply-readiness-v1/cases.md),
+[field matrix](review-proposals/evidence-supply-readiness-v1/field-matrix.md) and
+[frozen JSON packet](review-proposals/evidence-supply-readiness-v1/input-v1.json)
+are prepared behind `pte analysis evidence-supply-review`. Six recording windows
+across profiles 117/130 have pinned source, extraction, effective membership and
+single-speaker review snapshots. Codex independently read all 519 normalized
+window units and froze 110 opportunity/control episodes before candidate generation.
+These are not exhaustive gold endpoint pairs or complete-sermon certification.
+
+The new lexical prototype retains 104 candidate targets. It has 52 G2 and 21 G3
+positive reference episodes with no spatial candidate, largely due to its explicit
+eight-target-per-route-per-sermon cap. Spatial hits are not semantic matches or
+recall. Five G1 target windows exceed unchanged pilot input ceilings. The public
+ramp-policy positive is absent. This diagnoses this prototype and its budget, not
+a production collector or a population. No measurement or usable-output counts
+exist. The 124-request/1,468-answer serializable proposal and $3.946 list-price
+reservation are planning quantities, not a complete-run budget, hard billing bound,
+actual spending or authorization. Authorized attempts/spending remain zero.
+
+Exact provider-free checks:
+
+```sh
+pte analysis evidence-supply-review --check-only
+pte analysis evidence-supply-review --check-only --base-dir /Users/briancummings/Documents/PastorSearchData
+pte analysis evidence-supply-review --paid-run-preflight
+```
+
+The last command deliberately exits nonzero with all blockers before provider
+construction. Default invocation checks without writing. `--prepare-only` reproduces
+the frozen packet and refuses to overwrite changed V1 inputs. No paid runtime or
+paid execution command exists; the paid proposal is **BLOCKED**, not ready to approve.
+Read-only live-source verification passes. Thirteen new focused tests, 18 CLI
+contract tests and five CLI reference tests pass; static checks pass.
+
+Recommend no paid run on this prototype. The concrete next development proposal
+is a source-wide bounded candidate budget and source-preserving G1 local slices
+on the same six sources, then exact endpoint/circumstance and full-sermon reference
+review and a verified billing preflight. Codex owns preparation; Brian is not asked
+to annotate/select cases or author JSON. Preserve this V1 diagnostic and references;
+no candidate revision, extra sermons or provider request follows automatically.
+G1/G2/G3 and consumer acceptance remain closed. All broader collection, calibration,
+population recall, operational denominators, production economics, projection,
+comparison, G4/coherence, clustering, recurrence/rates and scoring holds remain.
 
 ## Bounded G1 feasibility PASS — closed 2026-10-14
 

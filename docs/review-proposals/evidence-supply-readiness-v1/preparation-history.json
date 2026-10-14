@@ -1,0 +1,13 @@
+{
+  "status": "precommit_preparation_finalization",
+  "previous_packet_fingerprint": "a1d8974ba475aa158f71da459c15e6be4e87fff78eebabf4183ad001d0a8d4b0",
+  "current_packet_fingerprint": "aa78564f2a29da71284d052dc8ac4141a353e9d433edee2dc3a7b7fe7158d5e6",
+  "changes": [
+    "Explicit preflight blockers for five unrepresentable G1 windows and positive-reference supply omissions",
+    "Separate lexical retrieval totals and budget truncation from semantic discovery",
+    "Stricter transport and usage validation"
+  ],
+  "source_reference_candidate_question_changes": false,
+  "provider_requests": 0,
+  "human_decisions_changed": false
+}

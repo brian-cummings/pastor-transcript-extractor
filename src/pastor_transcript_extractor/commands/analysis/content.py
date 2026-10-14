@@ -3128,6 +3128,51 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-review",
+    help="Prepare/check the fixed provider-free evidence-supply packet; paid execution remains blocked.",
+)
+def analysis_evidence_supply_review(
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Materialize the frozen source/reference packet without inference."),
+    check_only: bool = typer.Option(False, "--check-only", help="Check the frozen packet without writing reports or calling providers."),
+    paid_run_preflight: bool = typer.Option(False, "--paid-run-preflight", help="Show concrete paid-proposal blockers; exits nonzero while execution is held."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Optionally verify freshness of exactly six live sources/membership decisions read-only."),
+    output_dir: Path = typer.Option(Path("docs/review-proposals/evidence-supply-readiness-v1"), "--output-dir", help="Markdown/JSON packet destination."),
+) -> None:
+    from pastor_transcript_extractor.evidence_supply_review import (
+        build_packet, validate_packet, verify_live_sources, write_packet,
+    )
+
+    if sum((prepare_only, check_only, paid_run_preflight)) > 1:
+        raise typer.BadParameter("Choose only one preparation/check/preflight mode")
+    try:
+        path = output_dir / "input-v1.json"
+        if prepare_only:
+            packet = build_packet()
+        else:
+            if not path.is_file():
+                raise ValueError("Prepared packet missing; use --prepare-only")
+            packet = json.loads(path.read_text())
+            validate_packet(packet)
+            if packet != build_packet():
+                raise ValueError("Frozen packet no longer reproduces; preserve V1 and version changes")
+        if base_dir is not None:
+            verify_live_sources(packet, base_dir)
+        if prepare_only:
+            write_packet(packet, output_dir)
+        console.print(f"Evidence supply: {len(packet['sources'])} sources; "
+                      f"{len(packet['references']['rows'])} reference/control episodes; "
+                      f"{len(packet['candidates'])} lexical target candidates; provider_requests=0", markup=False)
+        console.print("Packet integrity PASS; semantic/whole-sermon readiness unestablished; paid execution BLOCKED.", markup=False)
+        if paid_run_preflight:
+            blockers = packet["execution_preflight"]["blockers"]
+            for blocker in blockers:
+                console.print("- " + blocker.replace("_", " "), markup=False)
+            raise ValueError("Paid execution blocked before provider construction; no paid runtime or authorization exists")
+    except (ValueError, OSError, RuntimeError, KeyError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command(
     "profile-evidence-check",
     help="Check the shared evidence/field review packet locally; no provider calls or profile projection.",
 )

@@ -3416,6 +3416,27 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis evidence-supply-review`
+
+Prepare/check the fixed provider-free evidence-supply packet; paid execution remains blocked.
+
+#### Usage
+
+```console
+pte analysis evidence-supply-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--prepare-only` | Materialize the frozen source/reference packet without inference. | no | False |
+| `--check-only` | Check the frozen packet without writing reports or calling providers. | no | False |
+| `--paid-run-preflight` | Show concrete paid-proposal blockers; exits nonzero while execution is held. | no | False |
+| `--base-dir PATH` | Optionally verify freshness of exactly six live sources/membership decisions read-only. | no | — |
+| `--output-dir PATH` | Markdown/JSON packet destination.  [default: docs/review-proposals/evidence-supply-readiness-v1] | no | docs/review-proposals/evidence-supply-readiness-v1 |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis profile-evidence-check`
 
 Check the shared evidence/field review packet locally; no provider calls or profile projection.

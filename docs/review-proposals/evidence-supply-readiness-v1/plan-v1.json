@@ -1,7 +1,7 @@
 {
   "schema_version": "evidence-supply-readiness-plan-v1",
   "prepared_date": "2026-10-14",
-  "status": "provider_free_steps_1_to_4_authorized",
+  "status": "provider_free_packet_prepared_paid_proposal_blocked",
   "authorization": {
     "planning": true,
     "gate_implementation": true,
@@ -12,7 +12,7 @@
     "projection_scoring": false,
     "scope": "steps_1_to_4_provider_free_only"
   },
-  "recommended_next_decision": "Complete authorized provider-free packet; paid execution requires separate explicit decision.",
+  "recommended_next_decision": "Review V1 supply omissions and blockers; do not authorize paid execution on this prototype.",
   "accepted_closed_steps": {
     "g1": "bounded_pass_with_11_residual_checks",
     "g2": "bounded_pass_with_known_recall_limitations",
@@ -122,14 +122,15 @@
       "pte analysis profile-evidence-check",
       "pte analysis observed-profile-review --check-only"
     ],
-    "proposed_commands": [
-      "pte analysis evidence-supply-review --prepare-only",
-      "pte analysis evidence-supply-review --check-only"
-    ],
-    "proposed_commands_implemented": false,
+    "proposed_commands_implemented": true,
     "dataset_validation_command": null,
     "default_provider_free": true,
-    "future_paid_execution_requires_fingerprinted_authorization": true
+    "future_paid_execution_requires_fingerprinted_authorization": true,
+    "implemented_provider_free_commands": [
+      "pte analysis evidence-supply-review --prepare-only",
+      "pte analysis evidence-supply-review --check-only",
+      "pte analysis evidence-supply-review --paid-run-preflight"
+    ]
   },
   "continuing_holds": [
     "g1_expansion_full_capability_collection",
@@ -163,5 +164,7 @@
     "measurement_error",
     "supply_discovery_miss"
   ],
-  "economics_scope": "bounded_sample_actual_accounting_only_no_extrapolation"
+  "economics_scope": "bounded_sample_actual_accounting_only_no_extrapolation",
+  "prepared_packet": "docs/review-proposals/evidence-supply-readiness-v1/input-v1.json",
+  "paid_proposal_status": "blocked"
 }

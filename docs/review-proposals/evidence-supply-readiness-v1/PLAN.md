@@ -166,24 +166,28 @@ pte analysis profile-evidence-check
 pte analysis observed-profile-review --check-only
 ```
 
-Proposed new entry point, **not implemented and not runnable yet**:
+Implemented provider-free entry point:
 
 ```sh
 pte analysis evidence-supply-review --prepare-only
 pte analysis evidence-supply-review --check-only
+pte analysis evidence-supply-review --paid-run-preflight
 ```
 
-`--prepare-only` would build the read-only inventory/packet and require an explicit
-source scope; `--check-only` would validate frozen inputs without inference or
-database mutations. The exact scope arguments and any execution flag must be
-prepared with the authorized implementation. Default behavior must remain
-provider-free; paid execution must require a separately fingerprinted authorization
-and enforce the fixed manifest/caps. No standalone-script workflow is proposed.
+Default invocation checks without writing. `--prepare-only` materializes the fixed
+six-source packet; changed V1 inputs cannot overwrite it. `--check-only` validates
+source hashes, contracts, transport and reproducibility. `--base-dir` optionally
+checks exactly six live extraction/membership snapshots using read-only database
+connections. No mode constructs a provider. The preflight deliberately fails on
+unresolved readiness and authorization blockers.
 
-No dataset-validation command is ready in this planning step. Once a bounded
-implementation and frozen run proposal are prepared and authorized, give Brian
-the exact `pte` command with all inputs/defaults supplied. His role is execution
-and approval/rejection, not selection, JSON authoring or experimental design.
+See [the prepared review](REVIEW.md), [cases](cases.md), [field matrix](field-matrix.md)
+and [frozen packet](input-v1.json). The candidate prototype exposes severe budget
+truncation and unsupported G1 window shapes before spending. Independent references
+cover all supplied windows, but are not exhaustive gold endpoint pairs or certified
+complete-sermon coverage. The paid-run proposal is BLOCKED; no paid command is
+misrepresented as runnable. Brian reviews this concrete result; Codex owns any next
+prepared discovery/boundary/reference proposal. Broader collection stays held.
 
 Continuing holds: G1 expansion/full capability collection; broader collection;
 production calibration, population recall, operational opportunity denominators
