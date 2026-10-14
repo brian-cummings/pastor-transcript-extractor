@@ -3132,12 +3132,54 @@ def analysis_g2_feasibility_review(
     help="Prepare/check the fixed provider-free evidence-supply packet; paid execution remains blocked.",
 )
 def analysis_evidence_supply_review(
+    revision: str = typer.Option("v1", "--revision", help="Frozen supply packet revision: v1 or provider-free prepared v2."),
     prepare_only: bool = typer.Option(False, "--prepare-only", help="Materialize the frozen source/reference packet without inference."),
     check_only: bool = typer.Option(False, "--check-only", help="Check the frozen packet without writing reports or calling providers."),
     paid_run_preflight: bool = typer.Option(False, "--paid-run-preflight", help="Show concrete paid-proposal blockers; exits nonzero while execution is held."),
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Optionally verify freshness of exactly six live sources/membership decisions read-only."),
-    output_dir: Path = typer.Option(Path("docs/review-proposals/evidence-supply-readiness-v1"), "--output-dir", help="Markdown/JSON packet destination."),
+    output_dir: Path | None = typer.Option(None, "--output-dir", help="Markdown/JSON packet destination; defaults to the selected revision."),
+    execute_paid: bool = typer.Option(False, "--execute", help="Reserved for Brian's separately approved fixed V2 run; requires exact packet approval key."),
+    approve_paid_packet: str | None = typer.Option(None, "--approve-paid-packet", help="Explicit approval of this exact V2 diagnostic packet and spending ceiling; not collection activation."),
 ) -> None:
+    if revision not in {"v1", "v2"}:
+        raise typer.BadParameter("--revision must be v1 or v2")
+    if revision == "v2":
+        from pastor_transcript_extractor import evidence_supply_revision as v2
+
+        if sum((prepare_only, check_only, paid_run_preflight, execute_paid)) > 1:
+            raise typer.BadParameter("Choose one preparation/check/preflight/execution mode")
+        if approve_paid_packet is not None and not execute_paid:
+            raise typer.BadParameter("--approve-paid-packet requires --execute")
+        if execute_paid and not approve_paid_packet:
+            raise typer.BadParameter("Paid execution is held; Brian must separately approve the exact packet with --approve-paid-packet")
+        destination = output_dir or v2.HERE
+        try:
+            if prepare_only:
+                packet, requests = v2.build_packet()
+                v2.write_packet(packet, destination)
+            else:
+                packet = json.loads((destination / "input-v2.json").read_text())
+                requests = v2.validate_packet(packet)
+            live_base = base_dir
+            if (paid_run_preflight or execute_paid) and live_base is None:
+                first = json.loads((v2.ROOT / packet["source_snapshot_paths"][0]).read_text())
+                live_base = Path(first["source_path"].split("/pastors/", 1)[0])
+            if live_base is not None:
+                v2.live_check(packet, live_base)
+            console.print(f"V2 supply: 6 sources; {packet['reference_count']} exact focal checks; "
+                          f"{len(packet['candidate_manifest'])} candidates; {len(packet['request_manifest'])} maximum attempts; "
+                          f"list-price ceiling ${packet['budget']['maximum_list_price_usd']}; provider_requests=0 during preparation", markup=False)
+            console.print("No source-level truncation. Exact discovery misses remain disclosed. G1/G2/G3 tuning, collection activation and projection remain held.", markup=False)
+            if paid_run_preflight:
+                console.print("Technical preflight PASS; this makes no provider requests and grants no paid authorization.", markup=False)
+            if execute_paid:
+                report = v2.execute(packet, requests, approval_key=approve_paid_packet)
+                console.print(f"Wrote bounded results to {v2.RESULTS}; status={report['status']}", markup=False)
+        except (ValueError, OSError, RuntimeError, KeyError) as error:
+            raise typer.BadParameter(str(error)) from error
+        return
+    if execute_paid or approve_paid_packet:
+        raise typer.BadParameter("V1 execution remains blocked; only a separately approved V2 packet can execute")
     from pastor_transcript_extractor.evidence_supply_review import (
         build_packet, validate_packet, verify_live_sources, write_packet,
     )
@@ -3145,6 +3187,7 @@ def analysis_evidence_supply_review(
     if sum((prepare_only, check_only, paid_run_preflight)) > 1:
         raise typer.BadParameter("Choose only one preparation/check/preflight mode")
     try:
+        output_dir = output_dir or Path("docs/review-proposals/evidence-supply-readiness-v1")
         path = output_dir / "input-v1.json"
         if prepare_only:
             packet = build_packet()
