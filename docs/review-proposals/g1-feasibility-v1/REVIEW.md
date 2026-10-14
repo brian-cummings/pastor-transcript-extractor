@@ -1,5 +1,10 @@
 # G1 bounded implementation and feasibility handoff V1
 
+**Latest status — 2026-10-14:** Brian has executed V1 and judged it feasible enough
+for one refinement, not accepted. The [V2 handoff](../g1-feasibility-v2/REVIEW.md)
+is now the active next step. V1 input, results and expectations remain frozen;
+implementation-prepared/provider-untested wording below records the original handoff.
+
 Status: **authorized bounded implementation; prepared, empirically untested** — 2026-10-14. Brian explicitly authorized this step after accepting/closing the observed-profile consumer and its two conservative oracle deviations. This supersedes the earlier G1 implementation hold **only for this fixed pilot**. Full G1 expansion/collection and all downstream holds remain.
 
 The purpose is local **measurement feasibility**, not G1 completeness or a theology extraction program. The original [G1 contract](../g1-binding-v1/CONTRACT.md) and its 20 authored cases remain unchanged as the bounded semantic basis. Scope stays at assurance knowability/loss/retention and the synthetic city-ramp requirement; no additional doctrine, public policy taxonomy or pastor position is introduced.

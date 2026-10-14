@@ -3094,3 +3094,58 @@ broader collection, candidate-discovery recall, production calibration, opportun
 denominators, request economics studies, pastor projection/comparison, clustering,
 G4, recurrence/rate estimation and quality scores stay held. The latest agent
 continuation is also summarized at the top of [HANDOFF.md](HANDOFF.md).
+
+
+#### Current continuation: G1 V1 feasible but unaccepted; one V2 prepared — 2026-10-14
+
+Brian executed the fixed G1 V1 pilot: 37 requests, 138,249 recorded input tokens,
+26,573 output tokens. [Raw V1 results](../evaluation/g1-binding/feasibility-v1.results.json)
+remain unchanged: 170/209 prepared checks matched and 39 did not. Brian judges
+the representation viable enough to continue, **not ready for acceptance**.
+Conditions/scope, object/proposition structure, reporting/adoption, uncertainty and
+negative controls can retain useful partial facts without any pastor/G4 judgment.
+
+One [G1 V2 refinement](review-proposals/g1-feasibility-v2/REVIEW.md) is now prepared.
+The [V1 audit](review-proposals/g1-feasibility-v2/audit-v1.md) preserves all failures:
+negated loss splits into loss versus retention; polarity confuses negation with
+negative attitude; support-for-requiring splits into attitude versus institutional
+prescription; direct sermon assertion voice is often withheld without explicit
+self-attribution. Four independent questions change: relation, polarity, proposition
+voice and adoption. There is no code default to preacher and no rejected-opposite
+normalization. Quoted/reported origin, ambiguous discourse, questions and open issues
+retain their safeguards.
+
+All 28 cases, 37 candidates, source windows, phrase pools, 209 expectations, .80
+withholding policy and V1 composition remain fixed. V2 recomputes **148 judgments**
+and reuses **338 V1 answers** exactly, with original question/state/model/request
+provenance. The ceiling is **37 cumulative attempted V2 requests**, zero SDK retries,
+45-second timeout, model `jev-1.13.0`. The three natural examples stay unchanged
+negative controls; natural-positive reliability and automatic recall are untested.
+Nine focused V2 mock tests pass; no V2 provider evaluation has run during preparation.
+
+Brian's next command in the active venv:
+
+```sh
+pte analysis g1-feasibility-review --revision v2
+```
+
+Integrity only: `pte analysis g1-feasibility-review --revision v2 --check-only`.
+The unflagged command remains V1. Results will be
+`evaluation/g1-binding/feasibility-v2.results.md` and `.json`; V2 request accounting
+and identity caches are separate under `cache-v2/`. Do not reset ledgers or retry
+past the ceiling. V1 raw artifacts and expectations are not rewritten.
+
+After execution, Codex interprets corrected focused checks, legitimate source
+withholding, unchanged binding limitations, remaining systematic failures and any
+source-supported expectation dispute. A raw argmax under threshold is still withheld;
+A09/P09 subject misses are unchanged limitations, not reclassified source ambiguity.
+No expectation revision is currently proposed. The only decision is whether G1
+local proposition observations are reliable enough to close bounded feasibility.
+Recommend that decision, record Brian's review separately and **stop**; no V3,
+doctrinal expansion or new validation program follows automatically.
+
+G1 full collection/expansion, broader collection, pastor projection/comparison,
+contradiction/coherence judgments, clustering, G4, candidate recall, production
+calibration, opportunity denominators, request-economics studies, rates/recurrence
+and quality scoring remain held. G2/G3 and the accepted observed consumer stay closed.
+The latest cross-agent continuation is at the top of [HANDOFF.md](HANDOFF.md).

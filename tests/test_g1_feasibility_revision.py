@@ -60,6 +60,13 @@ class G1RevisionTests(unittest.TestCase):
             self.assertEqual(0,replay['execution']['provider_requests']);self.assertEqual(37,replay['execution']['v2_cache_hits'])
             self.assertEqual('v2_cache',replay['rows'][0]['answer_provenance']['relation']['source'])
             self.assertEqual(338,replay['execution']['reused_v1_answers'])
+            rendered=Path(directory)/'mock-results.json'
+            with patch.object(v2,'RESULT',rendered),patch.object(v2,'evaluate',return_value=report),patch('builtins.print'):
+                v2.run('evaluate')
+            markdown=rendered.with_suffix('.md').read_text()
+            for heading in ('Corrected semantic checks','Legitimate source withholding','Remaining failures and regressions','Expectations requiring review'):
+                self.assertIn(heading,markdown)
+            self.assertEqual(report,json.loads(rendered.read_text()))
 
     def test_semantic_changes_do_not_create_opposite_or_change_scope(self):
         case=next(c for c in self.base['cases'] if c['case_id']=='A08');unit=case['candidates'][0]

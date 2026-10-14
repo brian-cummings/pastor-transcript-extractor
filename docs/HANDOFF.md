@@ -1,6 +1,27 @@
 # Handoff Notes
 
-## Current pastor-analysis handoff — 2026-10-14
+## Current pastor-analysis handoff: one G1 V2 refinement — 2026-10-14
+
+**V1 is feasible enough to refine, not accepted. One fixed-case V2 is prepared; Brian owns the provider run.** This is the authoritative continuation point; the V1 preparation snapshot below is historical.
+
+- Brian ran G1 V1: 37 requests; [unchanged raw results](../evaluation/g1-binding/feasibility-v1.results.json). 170/209 prepared checks matched, 39 did not. The [source audit](review-proposals/g1-feasibility-v2/audit-v1.md) preserves all misses, including wrong selected polarities and below-threshold withholdings.
+- Brian authorized only negation identity/polarity, direct-preacher proposition voice, and public support/opposition versus prescription/attribution. Four questions change: `relation`, `polarity`, `voice`, `adoption`. Threshold, composition, all other questions, 28 cases, 37 candidates and 209 expectations remain frozen. No natural examples or corpus are added.
+- [V2 handoff](review-proposals/g1-feasibility-v2/REVIEW.md): 148 new judgments, 338 original answers reused, 37 cumulative V2 attempted-request ceiling, zero SDK retries, pinned `jev-1.13.0`. Nine focused V2 mock tests pass; no V2 provider run exists yet.
+
+Brian's next command in the already-active venv:
+
+```sh
+pte analysis g1-feasibility-review --revision v2
+```
+
+Integrity only: `pte analysis g1-feasibility-review --revision v2 --check-only`. Default without the revision flag remains frozen V1. Do not execute/monitor the provider run on Brian's behalf. Do not reset request ledgers or spend beyond the ceiling. V2 writes `evaluation/g1-binding/feasibility-v2.results.md` and `.json`, with a separate `cache-v2/` ledger/cache.
+
+After Brian provides V2 output, Codex must interpret the raw source-backed rows and unchanged checks, distinguish corrected semantic failures, legitimate withholding, remaining recurring failures/regressions, and any source-supported expectation dispute. A09/P09's unchanged subject-binding misses are not relabeled legitimate ambiguity. No expectation change is currently proposed. Recommend only whether to close G1 bounded local-proposition feasibility, record Brian's decision separately and **stop**. No V3 or new workstream is authorized.
+
+Keep G1 expansion/full collection, broader collection, pastor projection/comparison, contradiction/coherence judgments, clustering, G4, candidate recall, production calibration, opportunity denominators, request-economics studies, recurrence/rates and quality scoring held. G2/G3 and the accepted consumer stay closed. The natural controls are still the same three negatives; no natural-positive or corpus-recall claim is established.
+
+
+## Prior G1 V1 preparation handoff — 2026-10-14
 
 **Active step: bounded G1 implementation is prepared; empirical feasibility is untested. Brian owns the next provider command.** This section is the current continuation point; the older pipeline/experiment milestones below remain historical.
 

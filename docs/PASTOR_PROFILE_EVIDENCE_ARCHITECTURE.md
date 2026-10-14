@@ -123,3 +123,18 @@ feasibility decision before stopping. G1 full collection/expansion and all broad
 collection, coverage/calibration/denominator/economics, projection/comparison,
 clustering, G4, recurrence/rate and quality-score work remain held. This does not
 reopen the accepted observed consumer or G2/G3 construct tuning.
+
+
+## One G1 V2 local-observation refinement — 2026-10-14
+
+Brian's G1 V1 result supports continuing bounded feasibility, not acceptance.
+The [V2 handoff](review-proposals/g1-feasibility-v2/REVIEW.md) prepares only negation,
+proposition voice/adoption and public attitude-versus-prescription question
+clarifications on the same 28 cases/37 candidates. 338 answers are reused unchanged;
+148 judgments are recomputed under a 37-attempt ceiling. V1 expectations and source
+windows remain frozen. Brian runs `pte analysis g1-feasibility-review --revision v2`;
+Codex then interprets corrections, legitimate withholding, remaining failures and
+any disputed expectation before recommending whether to close bounded G1 feasibility.
+No V2 result or acceptance exists yet. No further iteration, collection, pastor
+projection/comparison, recall/calibration/denominator/economics work, recurrence/rates,
+G4, contradiction/coherence or quality scoring is authorized.
