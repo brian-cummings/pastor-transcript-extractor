@@ -60,7 +60,7 @@ def prepare_source_review(database, *, model: str, probe_cache: Path) -> dict[st
         "route_policy_version": SOURCE_ROUTE_VERSION,
         "proposed_decision": "Review six independent source/form questions, target-only attribution, and eligibility-only routing separately. Recommend readiness only after semantic interpretation; preserve overlaps and defer production thresholds.",
         "routing_proposal": "Route all current final projection-eligible blocks. No broad-topic cutoff or cue gates source measurement.",
-        "sampling_limit": "At most twelve natural blocks from three reviewed sermons plus 22 authored probes; not a corpus recall or workload estimate.",
+        "sampling_limit": "At most twelve natural blocks from three reviewed sermons plus 23 authored probes; not a corpus recall or workload estimate.",
         "broader_collection_activated": False,
         "stratum_counts": {name: sum(c["review_stratum"] == name for c in packet["cases"])
                            for name in (*SOURCE_CUES, "no_source_cue", "coverage_fallback")},

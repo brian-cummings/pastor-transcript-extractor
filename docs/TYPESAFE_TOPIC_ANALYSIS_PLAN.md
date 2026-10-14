@@ -11,7 +11,7 @@ Pastor-level inference must retain sampling, period/series, and denominator
 uncertainty; no universal sermon-count sufficiency threshold is established.
 The three unresolved salvation leaves remain excluded. **Listener-directive question-set readiness: PASS; validation is closed.
 Public-life treatment-question readiness: PASS.
-Next: develop the source/material question set**, following the existing enrichment order and
+Next: run the prepared bounded source/material V1 validation**, following the existing enrichment order and
 [handoff below](#next-iteration). Do not continue salvation calibration or send
 additional salvation material through TypeSafe to complete this milestone.
 
@@ -2004,7 +2004,57 @@ not enter answer-pack identity; frozen V2 probabilities and per-leaf provenance
 remain reusable. Do not reopen treatment questions, alter the display cutoff,
 or run a broader collection job to move to source/material.
 
+### Source/material V1 development — 2026-10-13
+
+Implemented the [candidate source/material behavior contract](SOURCE_MATERIAL_BEHAVIOR_CONTRACT.md)
+with six independent leaves: biblical narrative, personal testimony, reported
+testimony, historical example, quotation, and explicitly identified denominational
+source. Quotation is independent of source; reported testimony is distinct from
+the preacher's own lived faith. No endorsement or affiliation follows from source
+use. Target-only evidence allows contextual reference resolution but excludes
+context-only material and familiar unattributed wording. Explicitly fictional or
+dramatized examples do not establish historical events or lived testimony.
+
+The new `source-material-v1-target-evidence` pack reuses the shared registry,
+preparation, adapter, independent answer cache, refinement composition, and
+output-pair writer. Existing frozen question digests are unchanged. Coverage
+routing requires strict current projection eligibility, with no topic or cue
+gate. Routing remains a candidate evaluated separately from question readiness.
+
+Prepared 23 authored positive/negative/overlap/attribution/context/fiction probes
+and deterministic sampling of up to four eligible blocks in each of videos
+1200, 590, and 4430. Preparation successfully inspected cached observations,
+selected twelve natural cases, and preserved five ineligible controls without
+provider inference. Cue strata are sampling labels, not gold source annotations;
+absence of a cue does not imply absence of material. Natural film/dramatization
+cases require careful interpretation before historical or testimony credit.
+
 ### Next iteration
+
+Brian runs from the repository root:
+
+```bash
+.venv/bin/pte analysis source-material-review --prepare-only
+.venv/bin/pte analysis source-material-review
+```
+
+The first command produces the complete proposed packet with zero provider calls;
+the second evaluates at most 35 blocks / 210 source questions, reusing independent
+cached answers. The default output is
+`evaluation/sermon-topics/source-material-review-v1.json` with adjacent Markdown.
+The database is opened read-only without schema initialization. Raw probabilities
+and provenance stay independent of routing, batch composition, and the unchanged
+.70 provisional display cutoff. Repeat evaluation reuses answers; unchanged report
+pairs are reused and broken companions repaired.
+
+Question readiness remains pending actual bounded provider results and their
+interpretation. Codex recommends acceptance or a narrow semantic revision after
+Brian runs the prepared command, using shared per-leaf refinement to preserve
+unchanged evidence if needed. Do not start broader collection or rerun frozen
+salvation, listener-directive, or public-life measurements. Focused development
+tests use a fake provider; they establish cache and transport behavior, not
+semantic accuracy or corpus recall.
+### Source/material development constraints
 
 Move to **source/material**, the next question set in the established enrichment
 order. Brian's direction in this chat advances development to this set. The

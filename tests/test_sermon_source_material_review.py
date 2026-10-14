@@ -23,7 +23,7 @@ from pastor_transcript_extractor.sermon_topics import TOPIC_PACK_VERSION
 class SourceMaterialTests(unittest.TestCase):
     def test_contract_covers_overlap_and_target_attribution_without_changing_frozen_packs(self):
         probes = json.loads(SOURCE_PROBE_PATH.read_text())
-        self.assertEqual(22, len(probes))
+        self.assertEqual(23, len(probes))
         self.assertEqual(set(PACK.definitions), {k for p in probes for k in p['expected_positive_leaves']})
         self.assertTrue(any(len(p['expected_positive_leaves']) > 1 for p in probes))
         self.assertTrue(any(p.get('leading_context') and not p['expected_positive_leaves'] for p in probes))
@@ -71,13 +71,13 @@ class SourceMaterialTests(unittest.TestCase):
     def test_bounded_evaluation_and_output_repair_reuse_only_source_answers(self):
         with tempfile.TemporaryDirectory() as directory:
             packet = self.prepare(directory)
-            self.assertEqual(34, len(packet['cases']))
+            self.assertEqual(35, len(packet['cases']))
             self.assertEqual(3, len(packet['excluded_content_controls']))
             self.assertTrue(all(c['route']['route'] for c in packet['cases'] if c['video_id'] != 'contract-probes'))
             sdk = Sdk()
             first, execution = evaluate_review(packet, pack=PACK, client=adapter(sdk))
             self.assertGreater(execution['provider_requests'], 0)
-            self.assertEqual(204, sum(len(q) for state, q in sdk.requests))
+            self.assertEqual(210, sum(len(q) for state, q in sdk.requests))
             self.assertTrue(all(list(state) == [PACK.state_key] for state, q in sdk.requests))
             repeated, execution = evaluate_review(packet, pack=PACK, client=adapter(sdk))
             self.assertEqual(0, execution['provider_requests'])
@@ -114,13 +114,14 @@ class SourceMaterialTests(unittest.TestCase):
             evaluate_review(packet, pack=PACK, client=adapter(sdk))
             module = 'pastor_transcript_extractor.commands.analysis.content'
             with patch('pastor_transcript_extractor.sermon_source_material_review.prepare_source_review', return_value=packet), \
-                 patch(module + '.get_database'), patch(module + '.TypeSafeSdkAdapter', side_effect=AssertionError('Provider must stay lazy')):
+                 patch(module + '.Database') as database_factory, patch(module + '.TypeSafeSdkAdapter', side_effect=AssertionError('Provider must stay lazy')):
                 output = Path(directory)/'cli.json'
                 for options in (['--prepare-only'], [], []):
                     result = CliRunner().invoke(app, ['analysis', 'source-material-review', '--output', str(output), *options])
                     self.assertEqual(0, result.exit_code, result.output + str(result.exception))
                     self.assertIn('provider_requests=0', result.output)
                 self.assertIn('Reused', result.output)
+                self.assertTrue(database_factory.call_args.kwargs['readonly'])
 
 
 if __name__ == '__main__':

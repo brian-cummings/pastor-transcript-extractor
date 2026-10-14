@@ -23,7 +23,7 @@ a denomination as the subject does not mean using its source material.
 
 Only the target supplies material. Context may resolve who "she" is in a target
 quotation or who "he" is in a target story, but context-only sources do not count.
-The 22 authored probes provide positive, negative, overlap, attribution, rejected
+The 23 authored probes provide positive, negative, overlap, attribution, rejected
 quotation, and context-boundary decisions. These are proposed interpretations,
 not measured provider answers.
 
@@ -54,7 +54,7 @@ Preparation reads cached broad observations and current projection eligibility,
 writing the complete proposed cases without a provider request. Evaluation
 prepares those same bounded inputs and requests only source/material answers
 missing from the independent cache. The pinned default model is `jev-1.13.0`.
-At most 34 blocks and 204 independent questions are included. Outputs default to
+At most 35 blocks and 210 independent questions are included. Outputs default to
 `evaluation/sermon-topics/source-material-review-v1.json` and adjacent Markdown.
 Repeated evaluation reuses answers; an unchanged output pair is reused and a
 broken companion is repaired. Execution counts are printed for each invocation.

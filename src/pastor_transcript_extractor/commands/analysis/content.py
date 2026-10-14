@@ -3024,7 +3024,8 @@ def analysis_source_material_review(
     from pastor_transcript_extractor.sermon_source_material_review import prepare_source_review
 
     try:
-        packet = prepare_source_review(get_database(base_dir), model=model,
+        database = Database(build_paths(base_dir).database, readonly=True)
+        packet = prepare_source_review(database, model=model,
                                        probe_cache=output_path.parent / "source-material-probe-cache")
         execution = {"hits": 0, "misses": 0, "provider_requests": 0}
         if not prepare_only:

@@ -231,5 +231,14 @@
       "eligible": true
     },
     "leading_context": "We are reading Ellen White."
+  },
+  {
+    "case_id": "fictional-film",
+    "target_text": "In the fictional film, Mendoza carries his burden up the mountain as penance, then finds release when it is cut away. This invented character illustrates forgiveness.",
+    "expected_positive_leaves": [],
+    "proposed_label": "fictional_story_is_not_historical_or_lived_testimony",
+    "projection_eligibility": {
+      "eligible": true
+    }
   }
 ]
