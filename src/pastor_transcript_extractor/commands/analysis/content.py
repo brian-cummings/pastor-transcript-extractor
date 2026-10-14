@@ -3060,6 +3060,24 @@ def analysis_source_material_stage_gate(
 
 
 @analysis_app.command(
+    "g1-feasibility-review",
+    help="Run the fixed bounded G1 proposition-binding pilot; no expansion, collection or pastor projection.",
+)
+def analysis_g1_feasibility_review(
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Prepare the fixed source packet without provider calls."),
+    check_only: bool = typer.Option(False, "--check-only", help="Check packet integrity without provider calls."),
+) -> None:
+    from pastor_transcript_extractor.sermon_g1_feasibility_review import run
+
+    if prepare_only and check_only:
+        raise typer.BadParameter("Choose at most one of --prepare-only and --check-only")
+    try:
+        run("prepare" if prepare_only else "check" if check_only else "evaluate")
+    except (ValueError, OSError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command(
     "g2-feasibility-review",
     help="Run the fixed bounded G2 semantic-edge pilot; no broader collection or profile projection.",
 )

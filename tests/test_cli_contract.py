@@ -46,6 +46,7 @@ ROOT_COMMANDS = {
 
 GROUP_COMMANDS = {
     "analysis": {
+        "g1-feasibility-review",
         "g2-feasibility-review",
         "g3-feasibility-review",
         "profile-evidence-check",
