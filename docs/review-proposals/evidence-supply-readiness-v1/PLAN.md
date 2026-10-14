@@ -1,6 +1,6 @@
 # Evidence-supply / collection-readiness gate V1 plan
 
-Status: **planning only — gate implementation and execution unauthorized**.
+Status: **steps 1–4 authorized — provider-free implementation/preparation only**.
 Prepared 2026-10-14 at Brian's request. Broader collection and downstream
 projection/scoring remain unauthorized. [Machine-readable plan](plan-v1.json).
 
@@ -12,12 +12,10 @@ cost, with omissions and unknowns exposed. It is separate from construct
 feasibility and the supplied-evidence consumer acceptance. A PASS would support
 preparing a bounded collection activation proposal; it would not activate collection.
 
-Recommend authorizing **provider-free readiness-packet implementation and
-preparation only** as the next bounded step. It would inventory existing evidence,
-prepare source adapters and fixed review cases, and produce a concrete validation
-and cost proposal. Paid validation requires a later explicit decision on that
-prepared packet. No gate implementation or dataset inspection is performed by this
-planning change.
+Brian explicitly authorizes steps 1–4 with the clarifications below. Prepare the
+read-only inventory, source adapters, fixed references and paid-run proposal.
+Paid execution, broader collection and projection/scoring remain unauthorized.
+Do not add another planning cycle or ask Brian to design the sample.
 
 ## Authoritative starting point
 
@@ -71,7 +69,7 @@ Readiness is recorded per capability, field, source route and claim level. No
 single sample count, average completeness percentage or composite score decides it.
 Technical inventory checks can pass while natural validation remains unestablished.
 
-## Work after separate authorization
+## Authorized provider-free work and later held steps
 
 1. **Prepare a provider-free inventory and contract packet.** Pin accepted decision
    and source artifacts by hash. Inventory existing compatible runs and missing
@@ -85,10 +83,13 @@ Technical inventory checks can pass while natural validation remains unestablish
    Real G1 transport is a new adapter check, not a consumer-acceptance reopening.
 3. **Prepare a fixed natural-sermon validation proposal.** Proposed development
    ceiling: six complete, readable sermons across two effectively reviewed profiles,
-   with three sermons per profile where available. This is a workload ceiling, not
+   with three sermons per profile where available. Capability coverage takes priority
+   over profile balance; Codex selects natural sources deliberately and freezes the
+   rationale before outputs. This is a workload ceiling, not
    a sufficiency or representativeness rule. Codex prepares exact IDs, hashes,
-   selection rationale and full-sermon reference opportunities, including local
-   negatives and counterexamples; Brian reviews concrete results. Include natural
+   selection rationale and full-sermon reference opportunities, including independently identified
+   positive opportunities, negative/control passages, ambiguous/withheld opportunities,
+   and non-candidate reference opportunities; Brian reviews concrete results. Include natural
    positives for each capability being tested and non-candidate passages. If this
    ceiling cannot supply suitable cases, report that capability blocked and propose
    a scope change; do not expand automatically or ask Brian to design the sample.
@@ -108,6 +109,32 @@ Technical inventory checks can pass while natural validation remains unestablish
    with source/result fingerprints, limitations and continuing holds. Any broader
    collection proposal must specify its own population, route, spending and activation;
    it requires another explicit decision.
+
+## Predeclared failure categories and supply funnel
+
+Critical integrity failures have zero tolerance for the tested route: wrong
+speaker/source attribution, fabricated proposition/relation/opposite, context
+promoted into target evidence, incompatible evidence credited, or lost provenance.
+A structural integrity failure prevents provider execution. A semantic integrity
+failure after a future run makes that tested route FAIL; it cannot be averaged
+against good rows or described as conservative omission.
+
+Measurement errors mean a supplied candidate receives a wrong observation under
+its unchanged accepted construct contract. Preserve confident errors separately
+from conservative withholding. Supply/discovery misses mean an independently
+recorded eligible reference opportunity is not supplied, before measurement.
+
+For each reference, preserve the links: reference opportunity → discovered
+candidate → measured observation → usable evidence; also retain not-discovered,
+correctly-withheld and erroneous-observation branches. An episode-level candidate
+hit is not proof that the correct directed endpoints or circumstance were supplied.
+Full-sermon reference completeness and exact endpoint matching must be established
+before a discovery recall claim or paid acceptance proposal is ready.
+
+Economics is bounded sample accounting only: attempts, requests, tokens, dollars,
+candidates, usable evidence, errors and withholding. Cost per usable item is null
+until usable outputs exist, and undefined when none exist. No production economics
+model or corpus extrapolation is part of this authorization.
 
 ## Proposed outcomes and stopping rules
 
