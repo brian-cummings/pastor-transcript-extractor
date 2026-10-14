@@ -1,0 +1,390 @@
+{
+  "version": "g1-bounded-feasibility-stage-gate-v2",
+  "status": "PASS",
+  "closed": true,
+  "decision_date": "2026-10-14",
+  "decision_owner": "Brian",
+  "decision_basis": "Explicit human source review accepts the V2 corrections and disclosed conservative residuals/regressions; this is not an all-expectations-match gate.",
+  "scope": "Feasibility of passage-level G1 local proposition observations on supplied fixed candidate evidence only.",
+  "established": [
+    "passage-level proposition/object binding",
+    "relation and polarity",
+    "voice and adoption",
+    "conditions and scope",
+    "expressed uncertainty",
+    "conservative withholding"
+  ],
+  "targeted_systematic_issues": {
+    "direct_preacher_voice": "resolved",
+    "public_support_opposition_vs_institutional_prescription": "resolved",
+    "simple_negation": "sufficiently_resolved_for_bounded_feasibility_including_direct_affirmed_denied_and_differently_scoped_claims"
+  },
+  "known_limitations": [
+    {
+      "cases": [
+        "A08"
+      ],
+      "meaning": "Accepted conservative withholding of relation/adoption binding. Preserve the reported proposition, source rejection evidence and unresolved binding. Rejecting a report must never manufacture an adopted logical opposite or a pastor alternative proposition."
+    },
+    {
+      "cases": [
+        "A04",
+        "P08",
+        "P09"
+      ],
+      "meaning": "Adoption remains unresolved/withheld on disclosed open, ambiguous or context-bound candidates. These prepared positive expectations remain unmet; acceptance does not relabel every omission as source ambiguity."
+    },
+    {
+      "cases": [
+        "A09",
+        "P09"
+      ],
+      "meaning": "Unchanged subject/antecedent/object binding misses remain disclosed limitations, not revised expectations."
+    },
+    {
+      "cases": [
+        "P04",
+        "B01"
+      ],
+      "meaning": "Accepted conservative regressions in adoption and/or reported relation binding. Preserve attributed source evidence and uncertainty instead of filling the fields."
+    },
+    {
+      "cases": [],
+      "meaning": "Same fixed 28 cases / 37 candidates, including the same three natural negative controls. Natural-positive reliability and corpus discovery/coverage are unestablished; no population or calibrated accuracy claim follows."
+    }
+  ],
+  "accepted_residual_checks": [
+    {
+      "check_index": 32,
+      "case_id": "A04",
+      "field": "adoption",
+      "classification": "remaining_focused_failure",
+      "before": {
+        "case_id": "A04",
+        "claim_id": "A04:claim-1",
+        "field": "adoption",
+        "expected": "undetermined",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "A04",
+        "claim_id": "A04:claim-1",
+        "field": "adoption",
+        "expected": "undetermined",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 66,
+      "case_id": "A08",
+      "field": "relation",
+      "classification": "remaining_focused_failure",
+      "before": {
+        "case_id": "A08",
+        "claim_id": "A08:claim-1",
+        "field": "relation",
+        "expected": "loss_possible",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "A08",
+        "claim_id": "A08:claim-1",
+        "field": "relation",
+        "expected": "loss_possible",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 70,
+      "case_id": "A08",
+      "field": "adoption",
+      "classification": "remaining_focused_failure",
+      "before": {
+        "case_id": "A08",
+        "claim_id": "A08:claim-1",
+        "field": "adoption",
+        "expected": "explicitly_rejected",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "A08",
+        "claim_id": "A08:claim-1",
+        "field": "adoption",
+        "expected": "explicitly_rejected",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 75,
+      "case_id": "A09",
+      "field": "subject_id",
+      "classification": "unchanged_binding_withholding_outside_revision",
+      "before": {
+        "case_id": "A09",
+        "claim_id": "A09:claim-1",
+        "field": "subject_id",
+        "expected": "salvation_acceptance",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "A09",
+        "claim_id": "A09:claim-1",
+        "field": "subject_id",
+        "expected": "salvation_acceptance",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 135,
+      "case_id": "P04",
+      "field": "adoption",
+      "classification": "regression_requires_review",
+      "before": {
+        "case_id": "P04",
+        "claim_id": "P04:claim-1",
+        "field": "adoption",
+        "expected": "explicitly_adopted",
+        "actual": [
+          "explicitly_adopted"
+        ],
+        "status": "matches_proposal"
+      },
+      "after": {
+        "case_id": "P04",
+        "claim_id": "P04:claim-1",
+        "field": "adoption",
+        "expected": "explicitly_adopted",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 163,
+      "case_id": "P08",
+      "field": "adoption",
+      "classification": "remaining_focused_failure",
+      "before": {
+        "case_id": "P08",
+        "claim_id": "P08:claim-1",
+        "field": "adoption",
+        "expected": "own_assertion",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "P08",
+        "claim_id": "P08:claim-1",
+        "field": "adoption",
+        "expected": "own_assertion",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 167,
+      "case_id": "P09",
+      "field": "subject_id",
+      "classification": "unchanged_binding_withholding_outside_revision",
+      "before": {
+        "case_id": "P09",
+        "claim_id": "P09:claim-1",
+        "field": "subject_id",
+        "expected": "city_ramp_requirement",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "P09",
+        "claim_id": "P09:claim-1",
+        "field": "subject_id",
+        "expected": "city_ramp_requirement",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 168,
+      "case_id": "P09",
+      "field": "relation",
+      "classification": "remaining_focused_failure",
+      "before": {
+        "case_id": "P09",
+        "claim_id": "P09:claim-1",
+        "field": "relation",
+        "expected": "public_support",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "P09",
+        "claim_id": "P09:claim-1",
+        "field": "relation",
+        "expected": "public_support",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 172,
+      "case_id": "P09",
+      "field": "adoption",
+      "classification": "remaining_focused_failure",
+      "before": {
+        "case_id": "P09",
+        "claim_id": "P09:claim-1",
+        "field": "adoption",
+        "expected": "undetermined",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      },
+      "after": {
+        "case_id": "P09",
+        "claim_id": "P09:claim-1",
+        "field": "adoption",
+        "expected": "undetermined",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 187,
+      "case_id": "B01",
+      "field": "relation",
+      "classification": "regression_requires_review",
+      "before": {
+        "case_id": "B01",
+        "field": "relation",
+        "expected": "loss_possible",
+        "actual": [
+          "loss_possible"
+        ],
+        "status": "matches_proposal"
+      },
+      "after": {
+        "case_id": "B01",
+        "field": "relation",
+        "expected": "loss_possible",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    },
+    {
+      "check_index": 189,
+      "case_id": "B01",
+      "field": "adoption",
+      "classification": "regression_requires_review",
+      "before": {
+        "case_id": "B01",
+        "field": "adoption",
+        "expected": "reported_not_adopted",
+        "actual": [
+          "reported_not_adopted"
+        ],
+        "status": "matches_proposal"
+      },
+      "after": {
+        "case_id": "B01",
+        "field": "adoption",
+        "expected": "reported_not_adopted",
+        "actual": [
+          "unclear"
+        ],
+        "status": "withheld_or_mismatch"
+      }
+    }
+  ],
+  "expectations_rewritten": false,
+  "oracle_exact_matches": 198,
+  "oracle_check_count": 209,
+  "baseline_oracle_exact_matches": 170,
+  "check_transition_counts": {
+    "retained_match": 167,
+    "corrected_semantic_check_pending_source_review": 31,
+    "remaining_focused_failure": 6,
+    "unchanged_binding_withholding_outside_revision": 2,
+    "regression_requires_review": 3
+  },
+  "cases": 28,
+  "candidates": 37,
+  "input_fingerprint": "abf9232c1ddb003c7ff2de54d5c4bf9025a06f48efebb845aab173c9685bc02b",
+  "baseline_result_fingerprint": "2aa8297d74f54040b9a368b6f6ddb9c092c5769d91a16ccb0dcc88f58de9d35e",
+  "result_fingerprint": "7919c31ecf62b08bde37ebec0c00d0adfa057be3cb6e09fb2bf73d0c3e2cdf34",
+  "result_file": "evaluation/g1-binding/feasibility-v2.results.json",
+  "result_file_sha256": "b612c3d4d3edf74d1701808626ee219449617111d1966a09748c61d0abe6e7c9",
+  "execution": {
+    "provider_requests": 8,
+    "v2_cache_hits": 29,
+    "reused_v1_answers": 338,
+    "new_question_count": 148,
+    "cumulative_attempted_requests": 38,
+    "original_request_ceiling": 37,
+    "effective_request_ceiling": 38,
+    "lost_response_replacement_authorized": true,
+    "lost_request_key": "3abefcd9336cff66f18e0c936fc878ec60df25cb23f6b499b626fa2247a81cd5",
+    "sdk_retries": 0,
+    "known_cumulative_input_tokens": 100319,
+    "known_cumulative_output_tokens": 11268,
+    "requests_with_unknown_usage": 0
+  },
+  "requests_for_this_close": 0,
+  "production_effect": "none",
+  "not_established_or_authorized": [
+    "candidate-discovery recall validation",
+    "production calibration",
+    "opportunity denominators",
+    "collection economics",
+    "broader collection, including full G1/G2/G3 capability collection",
+    "pastor-level position projection and comparison",
+    "contradiction/coherence resolution",
+    "clustering",
+    "recurrence/rate estimation",
+    "G4",
+    "quality and exceptional-pastor scoring"
+  ],
+  "next": "Gate closed. Stop; no G1 V3, additional provider requests, automatic next validation/implementation step or tuning to maximize filled fields. Broader collection and downstream projection/scoring remain held pending separate explicit authorization.",
+  "content_fingerprint": "fb66df9db8340d036d8bc7b524747a1b1558a8572e195b86b7075f4555de9a71"
+}
