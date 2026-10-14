@@ -25,3 +25,5 @@ evaluation/identity-leverage/
 evaluation/migration-manifest*.json
 source_processing_report.json
 source_processing_report.md
+
+evaluation/sermon-topics/source-material-probe-cache/

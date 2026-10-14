@@ -11,8 +11,9 @@ Pastor-level inference must retain sampling, period/series, and denominator
 uncertainty; no universal sermon-count sufficiency threshold is established.
 The three unresolved salvation leaves remain excluded. **Listener-directive question-set readiness: PASS; validation is closed.
 Public-life treatment-question readiness: PASS.
-Next: run the prepared bounded source/material V1 validation**, following the existing enrichment order and
-[handoff below](#next-iteration). Do not continue salvation calibration or send
+Source/material question-set readiness: PASS; V1 validation is closed.**
+All four planned enrichment sets have completed question validation. Next: define
+a concrete downstream collection/projection use under the [handoff below](#next-iteration). Do not continue salvation calibration or send
 additional salvation material through TypeSafe to complete this milestone.
 
 ## Purpose
@@ -2029,31 +2030,50 @@ provider inference. Cue strata are sampling labels, not gold source annotations;
 absence of a cue does not imply absence of material. Natural film/dramatization
 cases require careful interpretation before historical or testimony credit.
 
+### Source/material V1 completion — 2026-10-13
+
+Brian accepts the six source/material questions and eligibility-only routing.
+The [stage-gate PASS](../evaluation/sermon-topics/source-material-stage-gate-v1.md)
+is bound to review fingerprint
+`0cec4f832c1b0488a2d53406887423484d1d23ae6785ab27bee8fca5383c285e`
+and unchanged question digest
+`5fb1d587af3244deca135e0f40a6c930a96936b075c41491b34871b782f81dcd`.
+All 23 authored probes matched; twelve natural cases and five excluded controls
+were reviewed. Freeze V1. No V2, .70 display tuning, overlap suppression, or
+larger validation cohort is required. Original review evidence remains unchanged.
+
+Preserve 4430:36 historical example=.63 as a below-display boundary observation.
+The overlapping personal testimony, reported testimony, and quotation at 4430:57
+are legitimate. Retain 4430:37 film/story ambiguity explicitly: measurements
+describe material presented in the supplied block and do not verify actual lived
+experience. The explicit fictional probe passed; it does not demonstrate fiction
+recognition when target/context supplies no such cue. Source detection establishes
+neither endorsement, factual accuracy, theological agreement, nor affiliation.
+
+Eligibility-only routing is accepted; topic support remains a sampling diagnostic.
+Current final projection eligibility must be reassessed during collection.
+Unmeasured blocks are missing evidence rather than negative observations.
+Broader collection is inactive; production thresholds and pastor-level claims
+are not granted by this bounded PASS. The six question definitions, raw
+probabilities, and provenance remain frozen.
+
 ### Next iteration
 
-Brian runs from the repository root:
+The four planned enrichment sets have completed question validation. Define a
+concrete downstream statement and separate collection/projection contract before
+broader collection. Reuse independent answer caches and existing role/topic
+observations; do not invent another pack merely because more leaves can be named.
+No source validation rerun is needed. Reproduce the completion artifact with:
 
 ```bash
-.venv/bin/pte analysis source-material-review --prepare-only
-.venv/bin/pte analysis source-material-review
+.venv/bin/pte analysis source-material-stage-gate
 ```
 
-The first command produces the complete proposed packet with zero provider calls;
-the second evaluates at most 35 blocks / 210 source questions, reusing independent
-cached answers. The default output is
-`evaluation/sermon-topics/source-material-review-v1.json` with adjacent Markdown.
-The database is opened read-only without schema initialization. Raw probabilities
-and provenance stay independent of routing, batch composition, and the unchanged
-.70 provisional display cutoff. Repeat evaluation reuses answers; unchanged report
-pairs are reused and broken companions repaired.
+This reads saved V1 evidence only, makes zero provider requests, and reuses exact
+JSON/Markdown pairs or repairs a damaged companion. No database, corpus job, or
+new question inference is involved. The [source behavior contract](SOURCE_MATERIAL_BEHAVIOR_CONTRACT.md)
+records accepted interpretation and limitations.
 
-Question readiness remains pending actual bounded provider results and their
-interpretation. Codex recommends acceptance or a narrow semantic revision after
-Brian runs the prepared command, using shared per-leaf refinement to preserve
-unchanged evidence if needed. Do not start broader collection or rerun frozen
-salvation, listener-directive, or public-life measurements. Focused development
-tests use a fake provider; they establish cache and transport behavior, not
-semantic accuracy or corpus recall.
 ### Source/material development constraints
 
 Move to **source/material**, the next question set in the established enrichment
@@ -2135,9 +2155,10 @@ from block co-occurrence, or expand into a universal source/subtopic tree.
   excluded music to the preacher.
 - Keep leaves out of the one-minute broad request. Add them as independently
   cached, second-stage packs over qualifying blocks. The nine approved salvation
-  relationships, listener directives, and public-life treatment questions are
-  complete and frozen; source/material is next. Public-life eligibility-only
-  routing is the evaluated recommendation before broader collection.
+  relationships, listener directives, public-life treatment, and source/material
+  questions are complete and frozen. Source eligibility-only routing
+  is accepted; broader collection requires a separate use/collection contract.
+  Public-life eligibility-only routing remains the evaluated recommendation.
 - Exclude zero-overlap, partial or mixed, sparse, and non-sermon-role blocks from
   read-only projection; preserve their raw observations for inspection.
 - Keep topic inference observation-only until accepted-sermon and reviewed-profile
