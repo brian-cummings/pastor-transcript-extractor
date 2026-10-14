@@ -3393,6 +3393,7 @@ pte analysis g1-feasibility-review [OPTIONS]
 | `--prepare-only` | Prepare the fixed source packet without provider calls. | no | False |
 | `--check-only` | Check packet integrity without provider calls. | no | False |
 | `--revision TEXT` | Frozen G1 revision: v1 or the single focused v2 refinement.  [default: v1] | no | v1 |
+| `--replace-lost-response` | Approve one replacement for the recorded lost V2 response; cumulative ceiling 38, unchanged cases/questions. | no | False |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis g2-feasibility-review`

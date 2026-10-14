@@ -3067,7 +3067,10 @@ def analysis_g1_feasibility_review(
     prepare_only: bool = typer.Option(False, "--prepare-only", help="Prepare the fixed source packet without provider calls."),
     check_only: bool = typer.Option(False, "--check-only", help="Check packet integrity without provider calls."),
     revision: str = typer.Option("v1", "--revision", help="Frozen G1 revision: v1 or the single focused v2 refinement."),
+    replace_lost_response: bool = typer.Option(False, "--replace-lost-response", help="Approve one replacement for the recorded lost V2 response; cumulative ceiling 38, unchanged cases/questions."),
 ) -> None:
+    if replace_lost_response and (revision != "v2" or prepare_only or check_only):
+        raise typer.BadParameter("--replace-lost-response requires V2 evaluation")
     if revision == "v1":
         from pastor_transcript_extractor.sermon_g1_feasibility_review import run
     elif revision == "v2":
@@ -3078,7 +3081,11 @@ def analysis_g1_feasibility_review(
     if prepare_only and check_only:
         raise typer.BadParameter("Choose at most one of --prepare-only and --check-only")
     try:
-        run("prepare" if prepare_only else "check" if check_only else "evaluate")
+        mode = "prepare" if prepare_only else "check" if check_only else "evaluate"
+        if replace_lost_response:
+            run(mode, replace_lost_response=True)
+        else:
+            run(mode)
     except (ValueError, OSError, RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
 

@@ -123,16 +123,100 @@ class G1RevisionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'ceiling exhausted'):
                 v2.evaluate(self.packet,provider_factory=lambda:(_ for _ in ()).throw(AssertionError('provider')),cache_dir=path)
 
+    def test_probability_rounding_boundary_without_normalizing_or_relaxing_schema(self):
+        inventory = {'test': {'criteria': {'yes': '', 'no': ''}}}
+        for probabilities in ({'yes': .99, 'no': 0.0}, {'yes': 1.0, 'no': .01}):
+            raw = {'test': dict(choice='yes', probabilities=probabilities)}
+            frozen = deepcopy(raw)
+            v2.validate_answers(raw, inventory)
+            self.assertEqual(frozen, raw)
+        for probs, message in (({'yes': .98, 'no': 0.0}, 'probability mass'),
+                               ({'yes': 1.0}, 'options mismatch'),
+                               ({'yes': float('nan'), 'no': 0}, 'finite numbers'),
+                               ({'yes': True, 'no': 0}, 'finite numbers')):
+            with self.subTest(probs=probs), self.assertRaisesRegex(ValueError, 'test:.*' + message):
+                v2.validate_answers({'test': dict(choice='yes', probabilities=probs)}, inventory)
+
+    def test_failed_raw_response_is_retained_and_resume_does_not_repeat_it(self):
+        provider = FakeProvider(); method = provider.assess
+        def broken(state, inventory):
+            response = method(state, inventory)
+            response['answers']['relation']['probabilities'].pop('unclear')
+            return response
+        provider.assess = broken
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            with self.assertRaisesRegex(ValueError, 'relation: probability options mismatch'):
+                v2.evaluate(self.packet, provider_factory=lambda: provider, cache_dir=path)
+            receipts = list((path / 'response-receipts').glob('*.json'))
+            self.assertEqual(1, len(receipts))
+            receipt = json.loads(receipts[0].read_text())
+            self.assertNotIn('unclear', receipt['response']['answers']['relation']['probabilities'])
+            ledger = json.loads((path / 'request-ledger.json').read_text())
+            self.assertIn('relation:', ledger['last_failure']['detail'])
+            with self.assertRaisesRegex(ValueError, 'relation: probability options mismatch'):
+                v2.evaluate(self.packet, provider_factory=lambda: self.fail('provider'), cache_dir=path)
+            self.assertEqual(1, len(provider.states))
+
+    def test_saved_receipt_recovers_without_new_inference_and_tampering_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory); provider = FakeProvider()
+            v2.evaluate(self.packet, provider_factory=lambda: provider, cache_dir=path)
+            key = next(v2.request_specs(self.packet))[-1]
+            (path / (key + '.json')).unlink()
+            report = v2.evaluate(self.packet, provider_factory=lambda: self.fail('provider'), cache_dir=path)
+            self.assertEqual(0, report['execution']['provider_requests'])
+            self.assertTrue((path / (key + '.json')).exists())
+            (path / (key + '.json')).unlink()
+            receipt_path = path / 'response-receipts' / (key + '.json')
+            receipt = json.loads(receipt_path.read_text()); receipt['response']['resolved_model'] = 'other'
+            receipt_path.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(ValueError, 'Corrupt V2 cache/receipt'):
+                v2.evaluate(self.packet, provider_factory=lambda: self.fail('provider'), cache_dir=path)
+
+    def test_short_resume_budget_stops_before_spending_and_replacement_is_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            v2.evaluate(self.packet, provider_factory=FakeProvider, cache_dir=path)
+            # Model the historical failure: 29 saved, one lost, seven never sent.
+            specs = list(v2.request_specs(self.packet))
+            for spec in specs[29:]:
+                key = spec[-1]
+                (path / (key + '.json')).unlink()
+                (path / 'response-receipts' / (key + '.json')).unlink()
+            ledger = json.loads((path / 'request-ledger.json').read_text())
+            ledger['attempts'] = ledger['attempts'][:30]; ledger['attempts'][-1]['status'] = 'response_received'
+            ledger['attempted_requests'] = 30; v1._save_ledger(path / 'request-ledger.json', ledger)
+            with self.assertRaisesRegex(ValueError, '8 still needed, 7 attempts remaining'):
+                v2.evaluate(self.packet, provider_factory=lambda: self.fail('provider'), cache_dir=path)
+            with self.assertRaisesRegex(ValueError, 'only to the recorded'):
+                v2.evaluate(self.packet, provider_factory=lambda: self.fail('provider'), cache_dir=path, replace_lost_response=True)
+            # Substitute the exact synthetic prefix only inside this unit test.
+            with patch.object(v2, 'LOST_ATTEMPTS_FP', v1.fp(ledger['attempts'])):
+                provider = FakeProvider()
+                report = v2.evaluate(self.packet, provider_factory=lambda: provider, cache_dir=path, replace_lost_response=True)
+                self.assertEqual(8, len(provider.states))
+                self.assertEqual(38, report['execution']['cumulative_attempted_requests'])
+                self.assertEqual(38, report['execution']['effective_request_ceiling'])
+                self.assertEqual(37, report['execution']['original_request_ceiling'])
+                self.assertTrue(report['execution']['lost_response_replacement_authorized'])
+                replay = v2.evaluate(self.packet, provider_factory=lambda: self.fail('provider'), cache_dir=path, replace_lost_response=True)
+                self.assertEqual(0, replay['execution']['provider_requests'])
+                self.assertEqual(ledger['attempts'], replay['request_ledger']['attempts'][:30])
+
     def test_native_cli_revision_default_and_mode_validation(self):
         runner=CliRunner()
         for options,mode in (([], 'evaluate'),(['--check-only'],'check'),(['--prepare-only'],'prepare')):
             with patch.object(v2,'run') as run:
                 result=runner.invoke(app,['analysis','g1-feasibility-review','--revision','v2',*options])
                 self.assertEqual(0,result.exit_code,result.output);run.assert_called_once_with(mode)
+        with patch.object(v2,'run') as run:
+            result=runner.invoke(app,['analysis','g1-feasibility-review','--revision','v2','--replace-lost-response'])
+            self.assertEqual(0,result.exit_code,result.output);run.assert_called_once_with('evaluate',replace_lost_response=True)
         with patch.object(v1,'run') as run:
             result=runner.invoke(app,['analysis','g1-feasibility-review','--check-only'])
             self.assertEqual(0,result.exit_code);run.assert_called_once_with('check')
-        for options in (['--revision','v3'],['--revision','v2','--check-only','--prepare-only']):
+        for options in (['--revision','v3'],['--revision','v2','--check-only','--prepare-only'],['--replace-lost-response'],['--revision','v2','--check-only','--replace-lost-response']):
             with patch.object(v2,'run') as run:
                 result=runner.invoke(app,['analysis','g1-feasibility-review',*options]);self.assertNotEqual(0,result.exit_code);run.assert_not_called()
 

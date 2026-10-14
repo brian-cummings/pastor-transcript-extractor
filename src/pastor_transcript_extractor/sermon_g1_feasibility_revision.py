@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 import json
+import math
 
 from pastor_transcript_extractor import sermon_g1_feasibility_review as v1
 
@@ -185,66 +186,136 @@ def compare(base,result):
                 expectations_requiring_revision=[],expectation_review_note='None proposed before V2 execution. Source review may identify a disputed expectation, but must record it separately without rewriting the original checks.',automatic_acceptance=False)
 
 
-def evaluate(packet,*,provider_factory=v1.Provider,cache_dir=CACHE):
+
+# This override replaces only the response lost by the pre-receipt implementation.
+LOST_ATTEMPTS_FP = '1a0c8cee0e3d6fb70e8cff7ea440d51e15a887d511c7d989d240a84559111eca'
+LOST_REQUEST_KEY = '3abefcd9336cff66f18e0c936fc878ec60df25cb23f6b499b626fa2247a81cd5'
+
+
+def validate_answers(raw, inventory):
+    """Preserve the existing .01 mass tolerance, including floating point edges.
+
+    Never normalize probabilities, fill omitted options or change the .80 decision
+    threshold. Errors name the exact field and contract failure.
+    """
+    if not isinstance(raw, dict) or set(raw) != set(inventory):
+        raise ValueError('Incomplete answer inventory: expected ' + ', '.join(inventory))
+    for key, value in raw.items():
+        if not isinstance(value, dict) or not isinstance(value.get('probabilities'), dict):
+            raise ValueError(f'{key}: missing Choice probability mapping')
+        probs = value['probabilities']; options = inventory[key]['criteria']
+        if set(probs) != set(options):
+            raise ValueError(f'{key}: probability options mismatch; missing={sorted(set(options)-set(probs))}; extra={sorted(set(probs)-set(options))}')
+        if value.get('choice') not in options:
+            raise ValueError(f'{key}: selected choice is outside criteria')
+        if any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or not 0 <= x <= 1 for x in probs.values()):
+            raise ValueError(f'{key}: probabilities must be finite numbers in [0, 1]')
+        mass = math.fsum(probs.values())
+        if abs(mass - 1) > .010000001:
+            raise ValueError(f'{key}: probability mass {mass!r} outside existing 0.01 tolerance')
+
+
+def request_specs(packet):
+    for case in packet['cases']:
+        full = questions(case['phrase_pools']); changed = {k: full[k] for k in CHANGED}
+        for unit in case['candidates']:
+            state = v1.state_for(case, unit)
+            identity = dict(state=state, questions=changed, model=v1.MODEL, version=VERSION, input_fingerprint=packet['content_fingerprint'])
+            yield case, unit, full, changed, state, identity, v1.fp(identity)
+
+
+def saved_response(path, identity, inventory, ledger):
+    cache = json.loads(path.read_text())
+    if cache.get('identity') != identity or cache.get('fingerprint') != v1.fp({k: v for k, v in cache.items() if k != 'fingerprint'}):
+        raise ValueError(f'Corrupt V2 cache/receipt: {path.name}; do not silently rerun')
+    response = cache['response']
+    validate_answers(response['answers'], inventory)
+    if response['resolved_model'] != v1.MODEL:
+        raise ValueError('V2 cached/receipt model mismatch')
+    attempts = [a for a in ledger['attempts'] if a.get('request_key') == v1.fp(identity)]
+    if not attempts or not any(a.get('request_id', response.get('request_id')) == response.get('request_id') for a in attempts):
+        raise ValueError('V2 saved response lacks matching charged request provenance')
+    return response
+
+
+def evaluate(packet, *, provider_factory=v1.Provider, cache_dir=CACHE, replace_lost_response=False):
     validate(packet)
-    base,baseline,original_rows=load_baseline()
-    # V2 owns a separate request ledger/cache; V1 state and composition stay fixed.
-    cache_dir.mkdir(parents=True,exist_ok=True)
-    ledger_path=cache_dir/'request-ledger.json'
-    ledger=json.loads(ledger_path.read_text()) if ledger_path.exists() else dict(input_fingerprint=packet['content_fingerprint'],attempted_requests=0,attempts=[])
-    if ledger_path.exists() and ledger.get('content_fingerprint')!=v1.fp({k:v for k,v in ledger.items() if k!='content_fingerprint'}):raise ValueError('Corrupt V2 request ledger')
-    if ledger['input_fingerprint']!=packet['content_fingerprint'] or ledger['attempted_requests']!=len(ledger['attempts']):raise ValueError('V2 ledger identity/count mismatch')
-    new=hits=reused=0;provider=None;rows=[]
+    base, baseline, original_rows = load_baseline()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    ledger_path = cache_dir / 'request-ledger.json'
+    ledger = json.loads(ledger_path.read_text()) if ledger_path.exists() else dict(input_fingerprint=packet['content_fingerprint'], attempted_requests=0, attempts=[])
+    if ledger_path.exists() and ledger.get('content_fingerprint') != v1.fp({k:v for k,v in ledger.items() if k!='content_fingerprint'}):
+        raise ValueError('Corrupt V2 request ledger')
+    if ledger['input_fingerprint'] != packet['content_fingerprint'] or ledger['attempted_requests'] != len(ledger['attempts']):
+        raise ValueError('V2 ledger identity/count mismatch')
+    ceiling = packet['budget']['provider_request_ceiling']
+    if replace_lost_response:
+        if v1.fp(ledger['attempts'][:30]) != LOST_ATTEMPTS_FP:
+            raise ValueError('Replacement allowance applies only to the recorded 30-attempt interrupted run')
+        ceiling += 1
+    # Validate every saved response and count all outstanding work before spending.
+    specs = list(request_specs(packet)); saved = {}
+    for spec in specs:
+        identity, key = spec[-2:]; inventory = spec[3]
+        path = cache_dir / (key + '.json')
+        receipt = cache_dir / 'response-receipts' / (key + '.json')
+        if path.exists() or receipt.exists():
+            saved[key] = saved_response(path if path.exists() else receipt, identity, inventory, ledger)
+    needed = len(specs) - len(saved); remaining = ceiling - ledger['attempted_requests']
+    if needed > remaining:
+        raise ValueError(f'Cumulative V2 request ceiling exhausted or insufficient: {len(saved)} saved responses, {needed} still needed, {remaining} attempts remaining under ceiling {ceiling}. No provider called; do not reset the ledger. The recorded lost-response run requires explicit --replace-lost-response approval (ceiling 38).')
+    new = hits = reused = 0; provider = None; rows = []
     try:
-        for case in packet['cases']:
-            full=questions(case['phrase_pools']);changed={k:full[k] for k in CHANGED}
-            for unit in case['candidates']:
-                old=original_rows[unit['candidate_id']]
-                state=v1.state_for(case,unit)
-                identity=dict(state=state,questions=changed,model=v1.MODEL,version=VERSION,input_fingerprint=packet['content_fingerprint'])
-                key=v1.fp(identity);path=cache_dir/(key+'.json')
-                was_cached=path.exists()
-                if was_cached:
-                    cache=json.loads(path.read_text())
-                    if cache['identity']!=identity or cache['fingerprint']!=v1.fp({k:v for k,v in cache.items() if k!='fingerprint'}):raise ValueError('Corrupt V2 cache; do not silently rerun')
-                    response=cache['response'];hits+=1
-                else:
-                    if ledger['attempted_requests']>=packet['budget']['provider_request_ceiling']:raise ValueError('Cumulative V2 request ceiling exhausted')
-                    if provider is None:provider=provider_factory()
-                    attempt=dict(request_key=key,case_id=case['case_id'],candidate_id=unit['candidate_id'],status='attempted')
-                    ledger['attempts'].append(attempt);ledger['attempted_requests']+=1;new+=1;v1._save_ledger(ledger_path,ledger)
-                    response=provider.assess(state,changed)
-                    attempt.update(status='response_received',request_id=response.get('request_id'),usage=response.get('usage',{}),resolved_model=response.get('resolved_model'));v1._save_ledger(ledger_path,ledger)
-                    v1.validate_answers(response['answers'],changed)
-                    if response['resolved_model']!=v1.MODEL:raise ValueError('V2 resolved model mismatch')
-                    attempt['status']='completed';v1._save_ledger(ledger_path,ledger)
-                    cache=dict(identity=identity,response=response);cache['fingerprint']=v1.fp(cache);v1._write(path,cache)
-                v1.validate_answers(response['answers'],changed)
-                if response['resolved_model']!=v1.MODEL:raise ValueError('V2 cached model mismatch')
-                answers=deepcopy(old['raw_answers']);answers.update(deepcopy(response['answers']))
-                v1.validate_answers(answers,full)
-                origin={}
-                for field,answer in answers.items():
-                    is_new=field in CHANGED
-                    if not is_new and full[field]!=v1.questions(case['phrase_pools'])[field]:raise ValueError('Cannot reuse changed question')
-                    origin[field]=dict(source='v2_cache' if is_new and was_cached else 'v2_request' if is_new else 'frozen_v1_result',
-                                       question_digest=v1.fp(full[field]),question_version=VERSION if is_new else v1.VERSION,
-                                       state_fingerprint=v1.fp(state),resolved_model=response['resolved_model'] if is_new else old['resolved_model'],
-                                       cache_key=key if is_new else old['cache_key'],request_id=response.get('request_id') if is_new else old.get('request_id'),
-                                       baseline_result_fingerprint=BASE_RESULT_FP if not is_new else None)
-                    if not is_new:reused+=1
-                d=v1.decisions(answers)
-                rows.append(dict(case_id=case['case_id'],candidate=deepcopy(unit),raw_answers=answers,decisions=d,observation=v1.compose(case,unit,d),cache_key=key,resolved_model=v1.MODEL,request_id=response.get('request_id'),usage=response.get('usage',{}),answer_provenance=origin,baseline_decisions=deepcopy(old['decisions'])))
+        for case, unit, full, changed, state, identity, key in specs:
+            old = original_rows[unit['candidate_id']]; path = cache_dir / (key + '.json')
+            was_cached = key in saved
+            if was_cached:
+                response = saved[key]; hits += 1
+                if not path.exists():
+                    # A valid receipt can recover locally without repeating inference.
+                    attempt = next(a for a in reversed(ledger['attempts']) if a['request_key'] == key)
+                    attempt.update(status='completed', request_id=response.get('request_id'), usage=response.get('usage', {}), resolved_model=response['resolved_model'])
+                    v1._save_ledger(ledger_path, ledger)
+                    cache = dict(identity=identity, response=response); cache['fingerprint'] = v1.fp(cache); v1._write(path, cache)
+            else:
+                if ledger['attempted_requests'] >= ceiling:
+                    raise ValueError('Cumulative V2 request ceiling exhausted')
+                if provider is None: provider = provider_factory()
+                attempt = dict(request_key=key, case_id=case['case_id'], candidate_id=unit['candidate_id'], status='attempted')
+                ledger['attempts'].append(attempt); ledger['attempted_requests'] += 1; new += 1; v1._save_ledger(ledger_path, ledger)
+                response = provider.assess(state, changed)
+                # Persist the untouched response BEFORE contract/model validation.
+                receipt = dict(identity=identity, response=response); receipt['fingerprint'] = v1.fp(receipt)
+                v1._write(cache_dir / 'response-receipts' / (key + '.json'), receipt)
+                attempt.update(status='response_received', request_id=response.get('request_id'), usage=response.get('usage', {}), resolved_model=response.get('resolved_model')); v1._save_ledger(ledger_path, ledger)
+                validate_answers(response['answers'], changed)
+                if response['resolved_model'] != v1.MODEL: raise ValueError('V2 resolved model mismatch')
+                cache = dict(identity=identity, response=response); cache['fingerprint'] = v1.fp(cache); v1._write(path, cache)
+                attempt['status'] = 'completed'; v1._save_ledger(ledger_path, ledger)
+            answers = deepcopy(old['raw_answers']); answers.update(deepcopy(response['answers']))
+            validate_answers(answers, full)
+            origin = {}
+            for field, answer in answers.items():
+                is_new = field in CHANGED
+                if not is_new and full[field] != v1.questions(case['phrase_pools'])[field]: raise ValueError('Cannot reuse changed question')
+                origin[field] = dict(source='v2_cache' if is_new and was_cached else 'v2_request' if is_new else 'frozen_v1_result',
+                                   question_digest=v1.fp(full[field]), question_version=VERSION if is_new else v1.VERSION,
+                                   state_fingerprint=v1.fp(state), resolved_model=response['resolved_model'] if is_new else old['resolved_model'],
+                                   cache_key=key if is_new else old['cache_key'], request_id=response.get('request_id') if is_new else old.get('request_id'),
+                                   baseline_result_fingerprint=BASE_RESULT_FP if not is_new else None)
+                if not is_new: reused += 1
+            d = v1.decisions(answers)
+            rows.append(dict(case_id=case['case_id'], candidate=deepcopy(unit), raw_answers=answers, decisions=d, observation=v1.compose(case, unit, d), cache_key=key, resolved_model=v1.MODEL, request_id=response.get('request_id'), usage=response.get('usage', {}), answer_provenance=origin, baseline_decisions=deepcopy(old['decisions'])))
     except Exception as error:
-        ledger['last_failure']=dict(error_type=type(error).__name__,successful_caches_retained=True);v1._save_ledger(ledger_path,ledger);raise
+        ledger['last_failure'] = dict(error_type=type(error).__name__, detail=str(error), successful_caches_retained=True); v1._save_ledger(ledger_path, ledger); raise
     finally:
-        if provider is not None and hasattr(provider,'close'):provider.close()
+        if provider is not None and hasattr(provider, 'close'): provider.close()
     validate(packet)
-    result=dict(version=VERSION,status='evaluated_pending_interpretation_and_Brian_decision',input_fingerprint=packet['content_fingerprint'],baseline_input_fingerprint=BASE_INPUT_FP,baseline_result_fingerprint=BASE_RESULT_FP,model=v1.MODEL,production_effect='none',
-                execution=dict(provider_requests=new,v2_cache_hits=hits,reused_v1_answers=reused,new_question_count=packet['budget']['new_question_count'],cumulative_attempted_requests=ledger['attempted_requests'],sdk_retries=0,known_cumulative_input_tokens=sum(a.get('usage',{}).get('input_tokens') or 0 for a in ledger['attempts']),known_cumulative_output_tokens=sum(a.get('usage',{}).get('output_tokens') or 0 for a in ledger['attempts']),requests_with_unknown_usage=sum(any(a.get('usage',{}).get(k) is None for k in ('input_tokens','output_tokens')) for a in ledger['attempts'])),
-                request_ledger=deepcopy(ledger),rows=rows,diagnostics=v1.diagnose(base,rows))
-    result['comparison']=compare(baseline,result)
-    result['content_fingerprint']=v1.fp(result)
+    result = dict(version=VERSION, status='evaluated_pending_interpretation_and_Brian_decision', input_fingerprint=packet['content_fingerprint'], baseline_input_fingerprint=BASE_INPUT_FP, baseline_result_fingerprint=BASE_RESULT_FP, model=v1.MODEL, production_effect='none',
+                  execution=dict(provider_requests=new, v2_cache_hits=hits, reused_v1_answers=reused, new_question_count=packet['budget']['new_question_count'], cumulative_attempted_requests=ledger['attempted_requests'], original_request_ceiling=packet['budget']['provider_request_ceiling'], effective_request_ceiling=ceiling, lost_response_replacement_authorized=replace_lost_response, lost_request_key=LOST_REQUEST_KEY if replace_lost_response else None, sdk_retries=0, known_cumulative_input_tokens=sum(a.get('usage', {}).get('input_tokens') or 0 for a in ledger['attempts']), known_cumulative_output_tokens=sum(a.get('usage', {}).get('output_tokens') or 0 for a in ledger['attempts']), requests_with_unknown_usage=sum(any(a.get('usage', {}).get(k) is None for k in ('input_tokens', 'output_tokens')) for a in ledger['attempts'])),
+                  request_ledger=deepcopy(ledger), rows=rows, diagnostics=v1.diagnose(base, rows))
+    result['comparison'] = compare(baseline, result)
+    result['content_fingerprint'] = v1.fp(result)
     return result
 
 
@@ -259,7 +330,9 @@ def render_audit(report):
     return '\n'.join(lines)+'\n'
 
 
-def run(mode='evaluate'):
+def run(mode='evaluate', *, replace_lost_response=False):
+    if replace_lost_response and mode != 'evaluate':
+        raise ValueError('Lost-response replacement is only available for V2 evaluation')
     if mode=='prepare':
         packet=prepare();v1._write(INPUT,packet)
         v1._write(HERE/'questions-v2.json',packet['questions'])
@@ -272,11 +345,11 @@ def run(mode='evaluate'):
         print('PASS: V2 source/state/expectation identity and unchanged-answer reuse integrity; provider_requests=0; semantic refinement untested')
     elif mode=='evaluate':
         packet=json.loads(INPUT.read_text());validate(packet)
-        try:result=evaluate(packet)
+        try:result=evaluate(packet, replace_lost_response=replace_lost_response)
         except Exception as error:
-            failure=dict(status='execution_failed_not_semantic_verdict',input_fingerprint=packet['content_fingerprint'],error_type=type(error).__name__,successful_caches_retained=True,production_effect='none')
+            failure=dict(status='execution_failed_not_semantic_verdict',input_fingerprint=packet['content_fingerprint'],error_type=type(error).__name__,detail=str(error),successful_caches_retained=True,production_effect='none')
             v1._write(RESULT.with_name('feasibility-v2.execution-failure.json'),failure)
-            RESULT.with_name('feasibility-v2.execution-failure.md').write_text('# G1 V2 incomplete execution\n\nNo semantic verdict; successful caches and cumulative request ledger retained. Do not bypass the budget.\n')
+            RESULT.with_name('feasibility-v2.execution-failure.md').write_text('# G1 V2 incomplete execution\n\nNo semantic verdict; successful caches and cumulative request ledger retained. Do not bypass the budget.\n\n'+str(error)+'\n')
             raise
         v1._write(RESULT,result)
         lines=[v1.render(packet,result).replace('# G1 bounded feasibility results V1','# G1 bounded feasibility results V2'), '\n## V1 versus V2\n',json.dumps(result['comparison']['classification_counts'],indent=2), '\nNo automatic acceptance: corrected checks need source review; legitimate withholdings, remaining repeated failures and disputed expectations must be interpreted before closing feasibility.\n']
