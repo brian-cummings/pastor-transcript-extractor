@@ -8,7 +8,6 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import importlib.util
-import json
 from pathlib import Path
 import sys
 from typing import Any

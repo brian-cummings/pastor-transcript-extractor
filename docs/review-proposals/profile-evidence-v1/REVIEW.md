@@ -58,3 +58,16 @@ Brian's review is a concrete accept/reject of these prepared field meanings, vis
 | G4 and quality | G4 separately designed/authorized; no coherence inference from this packet. No quality score is proposed. |
 
 The recommended immediate review is of this contract and its partial-view behavior. Any follow-on implementation proposal should first demonstrate the provider-free supplied-evidence view and its limitations, before seeking broad collection approval. This does not reopen G2/G3 tuning.
+
+## Authorized bounded consumer implementation — 2026-10-14
+
+Brian subsequently authorized the provider-free observed-profile consumer behind
+`pte`. The [consumer acceptance report](../../../evaluation/observed-profile-consumer-v1/REVIEW.md)
+and [rendered views](../../../evaluation/observed-profile-consumer-v1/observed-profiles.html)
+now exercise these same 17 cases with the frozen packet unchanged. Run
+`pte analysis observed-profile-review` to reproduce them. Source/held-output
+invariants pass in 17 cases; exact state/link expectations match in 15, with two
+conservative differences disclosed in the report. The earlier implementation-hold
+language above records the original design handoff; the later authorization applies
+only to this bounded consumer. All G1/collection/projection/comparison/G4/scoring
+holds remain. This does not activate the final PastorProfile projection layer.

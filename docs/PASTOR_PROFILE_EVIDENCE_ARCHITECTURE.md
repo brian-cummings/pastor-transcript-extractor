@@ -98,3 +98,14 @@ marked synthetic designs. Integrity checks are separate from a future consumer
 acceptance run; no production consumer or projection is implemented. All holds
 above remain in effect. The packet proposes useful passage-level partial views
 before any broader collection decision.
+
+## Bounded observed consumer — 2026-10-14
+
+Following Brian's explicit authorization, `pte analysis observed-profile-review`
+now renders the supplied-passage view and runs all 17 consumer cases. The
+[acceptance report](../evaluation/observed-profile-consumer-v1/REVIEW.md) records
+17 invariant passes and 15 exact frozen state/link matches, with two conservative
+differences retained for review. The view is useful for evidence inspection while
+preserving all 20 field questions, missing inputs and suppression reasons. It is
+not the final PastorProfile projection layer. G1, broader collection, pastor
+projection/comparison, clustering, G4 and scoring remain held.
