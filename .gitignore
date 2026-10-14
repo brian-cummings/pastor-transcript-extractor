@@ -27,3 +27,6 @@ source_processing_report.json
 source_processing_report.md
 
 evaluation/sermon-topics/source-material-probe-cache/
+
+# Reproducible provider-response caches produced by feasibility review runs.
+evaluation/*/cache-v*/
