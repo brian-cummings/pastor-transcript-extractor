@@ -1,0 +1,152 @@
+{
+  "version": "g3-independent-address-and-circumstance-choice-v1",
+  "digest": "a297815ba4dd6afe5b2fbd3c4603a0729363da1235d6dc747aec817b83e576a4",
+  "questions": {
+    "acknowledgment": {
+      "instructions": {
+        "task": "Does candidate.utterance express this person-directed address act: Explicit recognition of an addressed person's difficulty or experience; topic mention and self-description do not suffice. Judge act existence independently of preacher adoption and the proposed circumstance binding.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "observed": "This act is explicitly expressed, including reported or rejected address to a person.",
+        "not_observed": "This act is absent from the specified utterance.",
+        "incomplete": "Missing local evidence prevents determining this act.",
+        "unclear": "Multiple reasonable readings remain; withhold."
+      }
+    },
+    "perspective_taking": {
+      "instructions": {
+        "task": "Does candidate.utterance express this person-directed address act: Explicitly voices a possible perspective, constraint or concern of the addressed person; do not imagine their feelings. Judge act existence independently of preacher adoption and the proposed circumstance binding.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "observed": "This act is explicitly expressed, including reported or rejected address to a person.",
+        "not_observed": "This act is absent from the specified utterance.",
+        "incomplete": "Missing local evidence prevents determining this act.",
+        "unclear": "Multiple reasonable readings remain; withhold."
+      }
+    },
+    "reassurance": {
+      "instructions": {
+        "task": "Does candidate.utterance express this person-directed address act: Offers comfort, support or reassuring assurance to a person; no assessment of accuracy or effect. Judge act existence independently of preacher adoption and the proposed circumstance binding.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "observed": "This act is explicitly expressed, including reported or rejected address to a person.",
+        "not_observed": "This act is absent from the specified utterance.",
+        "incomplete": "Missing local evidence prevents determining this act.",
+        "unclear": "Multiple reasonable readings remain; withhold."
+      }
+    },
+    "challenge": {
+      "instructions": {
+        "task": "Does candidate.utterance express this person-directed address act: Calls a person to reconsider or change specified conduct or response. Judge act existence independently of preacher adoption and the proposed circumstance binding.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "observed": "This act is explicitly expressed, including reported or rejected address to a person.",
+        "not_observed": "This act is absent from the specified utterance.",
+        "incomplete": "Missing local evidence prevents determining this act.",
+        "unclear": "Multiple reasonable readings remain; withhold."
+      }
+    },
+    "warning": {
+      "instructions": {
+        "task": "Does candidate.utterance express this person-directed address act: Addresses a stated consequence or risk as reason for attention or action. Judge act existence independently of preacher adoption and the proposed circumstance binding.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "observed": "This act is explicitly expressed, including reported or rejected address to a person.",
+        "not_observed": "This act is absent from the specified utterance.",
+        "incomplete": "Missing local evidence prevents determining this act.",
+        "unclear": "Multiple reasonable readings remain; withhold."
+      }
+    },
+    "invitation": {
+      "instructions": {
+        "task": "Does candidate.utterance express this person-directed address act: Offers a person an opening to respond, seek help or participate; mere activity description does not suffice. Judge act existence independently of preacher adoption and the proposed circumstance binding.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "observed": "This act is explicitly expressed, including reported or rejected address to a person.",
+        "not_observed": "This act is absent from the specified utterance.",
+        "incomplete": "Missing local evidence prevents determining this act.",
+        "unclear": "Multiple reasonable readings remain; withhold."
+      }
+    },
+    "concrete_care": {
+      "instructions": {
+        "task": "Does candidate.utterance express this person-directed address act: Offers or directs a specified act of care; generic service vocabulary and claims to care do not suffice. Delivery is not established. Judge act existence independently of preacher adoption and the proposed circumstance binding.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "observed": "This act is explicitly expressed, including reported or rejected address to a person.",
+        "not_observed": "This act is absent from the specified utterance.",
+        "incomplete": "Missing local evidence prevents determining this act.",
+        "unclear": "Multiple reasonable readings remain; withhold."
+      }
+    },
+    "binding": {
+      "instructions": {
+        "task": "Does the target actually address candidate.circumstance through candidate.utterance? An experience mentioned nearby or advice to another person does not bind. A null circumstance cannot be bound. Context may resolve 'this loss' or an addressee only if the target itself states the connection.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "bound_in_target": "The target identifies the circumstance and demonstrates the utterance's connection to it.",
+        "bound_context_resolved": "Target demonstrates the connection; only circumstance/addressee identity is resolved by context.",
+        "not_bound": "No demonstrated connection to the specified circumstance, including no circumstance candidate.",
+        "incomplete": "The connection requires omitted treatment.",
+        "unclear": "The particular circumstance connection remains ambiguous."
+      }
+    },
+    "addressee": {
+      "instructions": {
+        "task": "Who is addressed by candidate.utterance itself? Do not substitute the sermon audience for a reported speaker's addressee.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "direct_current_listener": "Current listeners, including a conditional subset ('if you are grieving').",
+        "general_hypothetical": "A general or imagined person without present listener application.",
+        "reported_person": "A person in quoted, narrated, historical or retold speech.",
+        "God": "God in prayer.",
+        "no_address": "Description or topic discussion without address.",
+        "unresolved": "Addressee cannot be resolved."
+      }
+    },
+    "voice": {
+      "instructions": {
+        "task": "What is the source voice of candidate.utterance? Source voice is distinct from adoption.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "preacher": "Preacher's own present words, including prayer.",
+        "quoted_or_reported": "Words attributed to another speaker, Scripture, or a retold conversation, including the preacher's past speech.",
+        "mixed": "Specified utterance includes both voices.",
+        "unresolved": "Voice ambiguous."
+      }
+    },
+    "adoption": {
+      "instructions": {
+        "task": "What stance does the preacher take toward the address expressed in candidate.utterance? Retelling one's past conversation is not present listener application; it remains reported unless explicitly adopted now. Do not infer an opposite address from rejection.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "own_or_adopted": "Own present address or explicitly adopted reported address.",
+        "not_adopted_report": "Reported address without explicit present adoption.",
+        "explicitly_rejected": "Target explicitly rejects that address.",
+        "unresolved": "Stance unresolved or no definite address to adopt."
+      }
+    },
+    "boundary": {
+      "instructions": {
+        "task": "Is enough local target treatment supplied to judge this utterance and circumstance connection? Context cannot supply omitted address. This does not certify complete episode boundaries.",
+        "boundary": "Judge only candidate.utterance in target_text, using the surrounding target to interpret it. Other target sentences do not supply an act absent from this utterance. Leading/trailing context may identify a referent but cannot supply an act or circumstance connection. Reported/rejected person-directed acts can exist without preacher adoption. Address to God is not address to a person. No opposite act is synthesized from rejection. Each question is independent; no empathy, outcome, pastor trait or quality judgment. Preserve conditions and limits in the source, not as inferred benefit."
+      },
+      "criteria": {
+        "local_sufficient": "Enough local evidence to decide, including definite absence of address/binding.",
+        "continuation_required": "Required act, connection or referent remains outside target evidence.",
+        "unclear": "Local sufficiency unresolved."
+      }
+    }
+  }
+}

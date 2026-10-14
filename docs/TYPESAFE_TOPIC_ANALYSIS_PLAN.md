@@ -12,9 +12,25 @@ uncertainty; no universal sermon-count sufficiency threshold is established.
 The three unresolved salvation leaves remain excluded. **Listener-directive question-set readiness: PASS; validation is closed.
 Public-life treatment-question readiness: PASS.
 Source/material question-set readiness: PASS; V1 validation is closed.**
-All four planned enrichment sets have completed question validation. Next: define
-a concrete downstream collection/projection use under the [handoff below](#next-iteration). Do not continue salvation calibration or send
-additional salvation material through TypeSafe to complete this milestone.
+All four planned enrichment sets have completed question validation. The proposed
+[downstream pastor understanding contract](#downstream-pastor-understanding-contract--2026-10-13)
+now defines landscape, profile, and per-leaf requirements. The
+[versioned 59-record registry and decision slate](review-proposals/pastor-contracts-v1/REVIEW.md)
+are prepared for review. The [desired-profile gap analysis](PASTOR_PROFILE_GAP_ANALYSIS.md)
+now defines the missing product-side bridge; consumer acceptance work waits for
+the missing-observation contract design. C01–C20 and D01–D06 are approved as
+design direction. The [bounded G1 proof specification](review-proposals/g1-binding-v1/REVIEW.md)
+is approved as design direction, with G1 implementation/expansion on hold.
+[G2/G3 contracts and a joint capability comparison](review-proposals/g2-g3-v1/REVIEW.md)
+are approved as design directions. The [small G2 feasibility proposal](review-proposals/g2-feasibility-v1/REVIEW.md)
+completed under Brian; V2 is now **bounded feasibility PASS WITH KNOWN RECALL LIMITATIONS**.
+G2 tuning is closed. G3 V2 is now **bounded feasibility PASS**; its construct
+iteration is closed with conservative positive/context binding limitations. The
+[next evidence-to-profile architecture proposal](PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md)
+defines the provider-free next step. G1 implementation/expansion, full G2/G3 collection,
+G4, broader collection and pastor projection/scoring remain held.
+Do not continue salvation calibration or send additional salvation material
+through TypeSafe to complete this milestone.
 
 ## Purpose
 
@@ -2059,9 +2075,11 @@ probabilities, and provenance remain frozen.
 
 ### Next iteration
 
-The four planned enrichment sets have completed question validation. Define a
-concrete downstream statement and separate collection/projection contract before
-broader collection. Reuse independent answer caches and existing role/topic
+The four planned enrichment sets have completed question validation. The
+[downstream pastor understanding contract](#downstream-pastor-understanding-contract--2026-10-13)
+defines the proposed product, per-leaf statements, and collection/projection
+boundary. Review its recommendations and complete the versioned leaf contracts
+before broader collection. Reuse independent answer caches and existing role/topic
 observations; do not invent another pack merely because more leaves can be named.
 No source validation rerun is needed. Reproduce the completion artifact with:
 
@@ -2172,3 +2190,854 @@ from block co-occurrence, or expand into a universal source/subtopic tree.
 - [Evidence-backed sermon style analysis](SEMANTIC_STYLE_ANALYSIS.md)
 - [Sermon analysis and profile projection](SERMON_ANALYSIS.md)
 - [Analytical review implementation plan](analytical-review/IMPLEMENTATION-PLAN.md)
+
+## Downstream pastor understanding contract — 2026-10-13
+
+This addition defines the intended product and works backward to the existing
+measurements. It is a **proposed design contract**, not implemented projection,
+comparative readiness, or authorization for broader collection. Earlier milestone
+records retain their historical meaning. The twenty topics and frozen salvation
+V9, listener V3, public-life V2, and source/material V1 questions are unchanged.
+
+The diagnostic question for **every measurement leaf** is:
+
+> If this leaf were measured well across a sufficiently large sermon corpus,
+> what useful and defensible statement could PTE make about the pastor?
+
+A large corpus cannot repair a leaf that measures the wrong thing, an unresolved
+detector, systematic routing omissions, or missing speaker attribution. The
+answer may be a position, emphasis, interpretive tendency, pastoral posture,
+listener-directed behavior, rhetorical/treatment tendency, or an explicit
+non-characterization. These meanings require different projection rules.
+
+### 1. Proposed downstream architecture: Pastor Landscape / Discovery
+
+The product is an evidence-backed map of pastors and their teaching. Its chain is:
+
+```text
+sermon evidence (immutable transcript + reviewed identity + retained boundaries)
+  → collection observations (target blocks, raw answers, evidence, missingness)
+  → leaf projections (sermon summaries → scoped pastor characteristics)
+  → topic characterization (positions, emphasis, treatment, gaps kept distinct)
+  → PastorProfile (one structured representation for prose and analysis)
+  → description / comparison / emergent clusters / noteworthy candidates
+```
+
+The first aggregation unit is the independent sermon, not a minute or upload.
+Duplicate recordings and repeated extracts must not manufacture recurrence.
+Code owns eligibility, evidence linkage, aggregation, comparison, and feature
+selection. Human-readable text must render the same characteristic records used
+by quantitative consumers; it cannot add unsupported interpretation in prose.
+
+**PastorLandscapeRequest** must declare the task, cohort and selection rule,
+profile snapshot IDs, date/series scope, requested characteristic IDs, accepted
+projection versions, feature policy, and evidence requirements. Discovery also
+declares which noteworthy characteristics the user wants to explore. A broad
+request defaults to available approved dimensions and reports excluded ones;
+it does not silently impute values for requested unavailable characteristics.
+
+**PastorLandscapeResult** must return the following task-specific payloads,
+plus an immutable manifest of inputs, versions, cohort, exclusions, and limitations:
+
+| Capability | Required consumer output | Conditions and explanation |
+| --- | --- | --- |
+| Description | Scoped profile text, structured claims, coverage, gaps, representative and counterevidence links | Answers “what does this pastor actually teach?” only to the precision of the available evidence; distinguish a few observed examples from a recurring characteristic. |
+| Comparison | Per-characteristic agreements, differences, emphasis differences, mixed evidence, and `not_comparable` with reasons | Match meaning, estimand, scope, and compatible measurement versions. Separate “both discuss assurance” from “agree about whether salvation can be lost.” Supply both pastors' evidence and uncertainty. |
+| Clustering / landscape discovery | Feature manifest, eligible population, excluded profiles, memberships or soft memberships, cluster summaries, exemplars, separating dimensions, and stability diagnostics | Clusters emerge from independently meaningful characteristics. No imposed conservative/progressive axis; no new leaf justified only by cluster separation. Cluster labels describe measured patterns and remain revisable. |
+| Noteworthy discovery | Candidate cards, separate reasons/metrics, comparator cohort, supporting and adverse evidence, coverage, sensitivity, and human-review status | Explain why each pastor surfaced. A candidate may surface for several reasons; there is no global pastor-quality score. |
+
+Comparison must expose, for each requested characteristic, each side's typed
+value/status, matched scope and denominator, support counts, difference or
+agreement rule, uncertainty, evidence IDs, and excluded inputs. An aggregate
+similarity is optional and must list dimensions used, omitted dimensions, their
+weights, and overlap coverage. If overlapping reliable dimensions are insufficient,
+return `not_comparable`; a high similarity on two dimensions does not imply
+agreement across theology.
+
+Quantitative feature policies specify semantic type, units, transformation,
+normalization, allowed distance, missingness mask, domain weights, and exclusions.
+Nominal positions are not arbitrarily ordinal; mixed positions retain a distribution
+and qualifications. Attention and treatment rates keep their denominators and
+are not degrees of belief. Missing/abstained values are never zero or a neutral
+position. Coverage determines admissibility and uncertainty rather than becoming
+a theological feature. Related leaves must not gain extra influence simply because
+a domain has more questions. Use explicitly declared family weights or select one
+nonredundant feature, retaining all evidence for description.
+
+A cluster result must state the algorithm/configuration and cohort-relative
+normalization, the dimensions contributing to each grouping, within-cluster
+variation, and sensitivity to omitted sermons/series, feature subsets, weights,
+and uncertain values. A cluster can be unavailable or unstable. Outliers may
+remain unassigned. Neither a two-dimensional display nor a single exemplar defines
+the whole cluster. Differences driven by archive availability, transcript quality,
+series selection, or question versions are failure diagnostics, not discoveries.
+
+Noteworthy candidates use separate, inspectable lenses:
+
+| Lens | Defensible candidate reason | Limitation / current measurement gap |
+| --- | --- | --- |
+| Distinctiveness | Unusual measured pattern relative to a named comparable cohort, with contributing dimensions | Rarity in a small or selected archive is not rarity among all pastors. |
+| Coherence | Repeated compatible propositions and their articulated relationships within a specified subject/scope | Presence leaves and low variance cannot establish logical coherence; needs proposition/relationship evidence. |
+| Depth | Repeated developed explanation, argument, distinctions, or engagement with alternatives | Current exposition/argument presence supplies candidate passages, not a validated depth measure. |
+| Breadth | Coverage of independently meaningful subjects across adequately measured sermons | Topic breadth is not theological completeness or depth; control corpus size and series selection. |
+| Consistency | Stability of a particular measured characteristic across independent sermons/series/periods | Keep contradictory and changing positions visible; stability is not correctness. |
+| Scriptural engagement | Recurrent textual explanation corroborated where possible by Scripture evidence | Citation counts, biblical narrative, and Scripture-as-topic are different signals; none alone establishes interpretive fidelity. |
+| Pastoral/application treatment | Repeated concrete application or particular listener appeals | Practical application supports an application tendency; compassion, empathy, or beneficial impact need distinct evidence and human review. |
+| Cluster exemplarity | Close to a cluster's measured pattern over adequately shared dimensions | An exemplar represents that cluster, not superior ministry. |
+| Meaningful outlier behavior | A supported departure on named dimensions that persists under sensitivity checks | Distinguish real departure from sparse evidence, errors, or one unusual series. |
+
+Each **DiscoveryCandidate** contains `profile_snapshot_id`, `reason_id`, scoped
+claim, metric and units (or `qualitative_review_required`), reference cohort,
+contributing characteristic IDs, supporting/counterevidence IDs, eligibility,
+uncertainty, sensitivity, and review status. Unavailable lenses report their
+missing prerequisites rather than produce substitute scores. Ranking within one
+lens may be supported with explicit rules and ties; final qualitative judgment
+remains human. This architecture does not require implementing every lens first.
+
+### 2. PastorProfile contract
+
+`PastorProfile@proposed-v1` must represent the desired characteristics in the
+[product-side specification and gap matrix](PASTOR_PROFILE_GAP_ANALYSIS.md), including
+currently unmeasured ones. The current leaf registry constrains available support;
+it does not define the full desired profile. The profile is an immutable analytical
+snapshot over effective
+reviewed speaker membership. It is separate from the identity registry. A changed
+membership, evidence set, or projection policy creates a new snapshot; previous
+claims remain reproducible.
+
+| Field | Required meaning |
+| --- | --- |
+| `identity` | Canonical profile ID, effective membership snapshot/hash, attribution provenance and unresolved identity limitations. |
+| `scope` | Corpus selection rule, observation date range, known/unknown sermon dates, series, venues/sources, snapshot time, and intended scope of generalization. Do not substitute upload date for sermon date. |
+| `coverage` | Known/selected/measured independent sermons; eligible/analyzed/routed/failed/abstained/excluded block counts and durations by pack; unmeasured sermons; unknown period/series counts; duplicate policy; archival/sampling limitations. Unknown corpus totals stay unknown. |
+| `provenance` | Transcript/content hashes, analysis IDs, requested/resolved models, question versions/digests, evidence/eligibility/routing policies, projection versions, and compatible-version decisions. |
+| `characteristics` | Desired typed characteristic records, including explicit unmeasured/unsupported fields; measured records link to the supporting leaves or other compatible evidence sources. |
+| `topics` | Topic characterizations referencing characteristics and their evidence, not new model assertions. |
+| `evidence_index` | Resolvable sermon IDs, source segment spans/timestamps/text hashes, target/context roles, support/counterexample roles, and review status. |
+| `limitations` | Claim-specific and corpus-wide gaps, measurement failures, scope restrictions, temporal uncertainty, and allowed downstream uses. |
+
+Every **PastorCharacteristic** requires:
+
+```text
+characteristic_id, desired_characteristic_id, contributing_leaf_ids, other_evidence_ids, topic_ids
+measurement_fit: fully | partially | not_measurable
+missing_information, gap_types
+kind: position | emphasis | interpretive_tendency | pastoral_posture |
+      listener_directed_behavior | rhetorical_treatment
+status: supported | observed_only | mixed | period_specific |
+        insufficient_evidence | measurement_unresolved | unavailable
+scope, statement_template, rendered_statement
+value: tagged position/category-set, rate, distribution, or qualitative pattern
+estimand, units, numerator, denominator, aggregation_policy
+support: independent_sermons, episodes, periods, series, evaluated_opportunities
+uncertainty: measurement_limits, sampling_limits, coverage_limits,
+             sensitivity, interval_if_valid, interval_method_if_used
+supporting_evidence_ids, contradictory_evidence_ids, qualifications
+projection_contract_id/version, comparison_eligible, exclusion_reasons
+```
+
+`kind` names what is characterized; uncertainty is an orthogonal status, not an
+extra numerical theological dimension. A supported statement can still have
+substantial sampling uncertainty. `observed_only` means “these sermons contain
+this teaching/treatment,” not “this is the pastor's stable overall view.” Empty
+counterevidence lists mean none found under the stated collection capability;
+they do not mean contradictions were exhaustively searched.
+
+Positions need an explicit proposition, polarity, object, conditions, and speaker
+adoption. Emphasis needs a reference basis (whole-corpus attention, within-topic
+attention, or relative to a named cohort). Interpretive tendencies need observed
+interpretive operations; general exposition presence does not identify a
+hermeneutic. Pastoral posture needs direct relational/address evidence; hopeful
+theology or service appeals do not alone establish empathy. Typed numeric values
+are nullable. A prose-only supported claim may appear in description while
+remaining excluded from clustering until an appropriate comparison encoding exists.
+
+A **TopicCharacterization** contains topic ID, scoped attention measures, position
+claims, interpretive/treatment/posture characteristics where independently linked,
+listener appeals, material-use patterns, mixed/time-specific findings, unsupported
+questions, and coverage. Cross-topic characteristics may be referenced more than
+once but enter a quantitative feature manifest only once unless an explicit
+nonduplicative representation justifies otherwise. Organizational domains remain
+navigation and are not scored.
+
+For example, a salvation topic may say “faith as reception recurs in the measured
+sermons; assurance is treated, but its permanence is not characterized; the
+obedience relationships are measurement-unresolved.” It cannot turn those facts
+into a denominational or systematic-theology label. Topic aggregation preserves
+leaf-level contradictions and gaps; it never takes a majority vote over unlike
+leaves or averages them into “salvation theology.”
+
+### 3. Collection/projection boundary
+
+**TypeSafe / collection observes sermons. Projection characterizes pastors.**
+No collection question asks what the pastor usually believes, whether a teaching
+is characteristic across their career, or how they compare with other pastors.
+No pastor profile or prior corpus interpretation supplies a target block's answer.
+Minimal speaker/reference context may resolve who is speaking; it must not supply
+an absent claim or cue an expected overall position.
+
+Collection keeps each observation attached to one accepted sermon, using the
+existing bounded target blocks and context policy. It preserves raw probabilities
+and existing question semantics, independently of display and projection policy.
+A probability that a relationship is present is neither strength of belief nor a
+pastor-level confidence value. TypeSafe returns independent typed answers; Noul
+is yes-probability, whereas Score is position on specified ordered levels.
+See [TypeSafe primitives](https://docs.typesafe.ai/primitives) and
+[confidence](https://docs.typesafe.ai/confidence). These provider contracts inform
+the boundary; the pastor projection proposed here is PTE's design responsibility.
+
+The proposed collection envelope requires sermon/block IDs, source hash and
+segment/time bounds, exact target/context text references, final membership and
+eligibility provenance, leaf/question identity, model/request provenance, raw
+answer, evidence references, and the following separately represented states:
+
+- `observation_state`: answered, uncertain, unavailable, or detector-unresolved;
+- `execution_state`: measured, not-routed, missing-analysis, failed, or excluded;
+- `treatment_state`: evidenced treatment, evaluated-no-treatment, or unknown.
+
+These are envelope/decision states; they do not add abstention options to frozen
+Noul questions. An uncertain answer retains its probability. No-treatment is a
+negative about the specified sermon observation, never a rejection of the belief.
+Not-routed is unknown outside the evaluated route. Explicit rejection, when a
+leaf actually observes it, is a separate evidential assertion rather than merely
+a low positive probability.
+
+Preserve exact source spans. Current cached block answers establish a target
+block envelope; they do **not necessarily localize a minimal proposition or
+stance span**. Record that granularity honestly. Where a downstream claim needs
+finer evidence, require grounded source-segment selection or prepared human review
+as a separately versioned capability; do not manufacture a quotation from a score.
+Evidence bounds must be checked against the source. Context can resolve references
+but cannot independently support target treatment. Reported speech, adopted
+speech, rejected alternatives, and unknown attribution retain their distinctions
+where observed; unavailable distinctions limit the statement.
+
+Projection first deduplicates and summarizes independent sermon evidence. It
+merges contiguous/repeated block observations of the same episode under a
+versioned rule without erasing distinct claims. It then computes scoped
+characteristics with explicit denominators and sufficient-coverage decisions.
+Repeated minutes in one sermon cannot substitute for recurrence across sermons.
+Compatible evidence can be reused; changed projection logic need not rerun frozen
+questions. Incompatible question meanings must be partitioned or explicitly
+bridged rather than averaged silently.
+
+Sufficiency is **claim- and use-specific**, not a universal sermon count. Each
+projection policy must specify independent support, within-sermon coverage,
+across-series/period opportunities, acceptable measurement limits, sensitivity,
+and the scope it permits. Proposed default: until these rules are approved,
+return observed-only summaries and abstain from stable pastor positions and
+comparative/clustering use. The completed 11/10/12-sermon salvation packet grants
+no universal threshold; leave-one-out ranges are sensitivity, not confidence
+intervals. Unknown dates/series constrain temporal and cross-series claims.
+
+Contradictory claims require comparable proposition, object, conditions, and scope.
+Different public objects receiving support/criticism are not a contradiction.
+Qualifying different circumstances may yield a conditional position. Genuine
+opposition is retained as mixed evidence unless sufficiently dated recurring
+patterns justify period-specific characterization. Do not select the latest
+isolated passage as the current view or average opposed positions into a neutral
+one. If polarity/object details are unavailable, abstain from a conflict-resolution
+claim even when treatment prevalence can be summarized.
+
+Silence may support “no detected treatment in the evaluated material” under
+adequate measurement coverage. It cannot support rejection, ignorance, or an
+unstated belief. All-sermon attention and treatment-conditional attention remain
+separate estimands. A no-route sermon can be an observed zero **under the routing
+policy**, as in the existing salvation summaries, while remaining unknown about
+missed relationships outside that route. Never promote that policy-relative zero
+to evidence of theological absence.
+
+### 4. Required per-leaf contract and current-inventory application
+
+Every current and future leaf must have a versioned record with three separately
+reviewable contracts. Inventory membership or question readiness alone is
+insufficient. The schema below applies also to broad topic and homiletic signals,
+which are not ordinary theological position leaves.
+
+| Contract | Required fields / answers |
+| --- | --- |
+| Downstream statement | Stable leaf ID and characteristic ID(s); signal kind; a concrete permissible pastor statement; scope/qualifications; forbidden overclaims; inadequate-evidence statement; descriptive/comparative/discovery uses. |
+| Collection | Canonical question/version/digest; exact sermon observable, positive/negative boundaries, attribution, target/context rule; raw answer type; evidence granularity; execution/abstention states; treatment vs non-treatment; routing and known omissions; exclusivity rule and its unit. |
+| Projection | Input versions; episode/sermon reduction; estimand and denominators; coverage/recurrence requirements; supporting and contradictory evidence handling; mixed/conditional/temporal behavior; silence and missingness; explicit abstention reasons; numeric encoding and allowed uses. |
+| Diagnostic disposition | `usable_for_named_statement`, `limited_statement`, `measurement_unresolved`, or `no_defensible_statement`; collection/projection conflation, information loss, overlap, and missing prerequisite flags; concrete proposed resolution. |
+
+Each leaf must inherit a named collection and projection family below and declare
+its exceptions. Inheritance reduces repetition; it cannot leave the downstream
+statement blank or hide a missing observation behind a generic template.
+
+**Collection families:** `T` = existing independent topic Score with five-level
+prominence; `S` = explicit salvation relationship Noul under frozen V9 boundaries
+and routing; `L` = endorsed listener appeal Noul under V3; `P` = public-life
+function Noul under V2; `M` = material-use Noul under V1; `H` = homiletic-treatment
+Noul under existing semantic definitions. All retain the boundary and envelope
+above. Canonical definitions remain authoritative; this ledger narrows downstream
+claims rather than rewriting questions.
+
+**Projection families:** `A` = attention, using eligible measured sermon-time
+prominence with equal-sermon aggregation and explicit topic overlap; `R` = recurring
+explicit relationship/treatment, using independent sermons with supported episodes
+and policy-relative prevalence; `D` = requested-action frequency, with all measured
+sermons and separately action/treatment-conditional denominators; `F` = treatment
+or material pattern, with all measured sermons and separately treated-block/episode
+denominators. These are proposed estimands, not newly approved production thresholds.
+All inherit sufficiency, contradiction, temporal, silence, and abstention rules in
+section 3. Hard detections use a named approved decision policy; raw Noul means,
+if shown diagnostically, are expected detector presence rather than attention
+intensity. Do not use target-block duration as exact claim duration.
+
+**Inventory ledger — broad topics.** Each row supports “in the measured corpus,
+this pastor gives [measured amount of] attention to X,” with scope and relative
+basis specified. Collection `T`, projection `A`, kind emphasis, for every row.
+Insufficient evidence returns “attention to X is not yet characterized.” No row
+by itself supports a position about X.
+
+| Existing topic ID | X / defensible subject of attention |
+| --- | --- |
+| `god_character_action` | God's character, will, and action |
+| `jesus_person_work` | Jesus's person and work |
+| `holy_spirit_person_work` | The Spirit's person and work |
+| `scripture_revelation` | Scripture/revelation itself, including authority and interpretation as subjects |
+| `sin_fallenness_human_need` | Sin, fallenness, and spiritual need |
+| `salvation_gospel` | Salvation and the gospel |
+| `discipleship_spiritual_formation` | Christian growth and spiritual formation |
+| `relationships_family_interpersonal` | Family and interpersonal relationships |
+| `church_worship_community` | Corporate worship, church, and community life |
+| `mission_evangelism_witness` | Mission, evangelism, and witness |
+| `compassion_generosity_service` | Compassion, generosity, and service |
+| `suffering_adversity_death` | Suffering, adversity, and death |
+| `ethics_moral_conduct` | Ethics and moral conduct |
+| `vocation_stewardship_daily_life` | Vocation, stewardship, and daily life |
+| `human_nature_identity` | Human nature and identity |
+| `creation_origins_created_order` | Creation, origins, and the created order |
+| `society_public_life` | Society and public life |
+| `eschatology_prophecy` | Eschatology and prophecy |
+| `adventist_doctrine_identity` | Adventist doctrine and identity as subjects, not inferred affiliation |
+| `spiritual_conflict_unseen_realm` | Spiritual conflict and the unseen realm |
+
+**Inventory ledger — salvation.** Collection `S`, projection `R`. Each usable row
+permits “the pastor recurrently explicitly presents X in this corpus,” or only
+“X was observed in these sermons” when recurrence/scope is inadequate. No positives
+returns insufficient positive evidence; it does not assert theological denial.
+The family supports narrow expressed relationships or emphasis, not a complete
+position system. All nine approved detectors remain frozen.
+
+| Leaf ID | X / downstream statement boundary | Disposition |
+| --- | --- | --- |
+| `divine_grace_initiative` | Divine grace/initiative supplies saving benefits; not a comprehensive claim about human agency or predestination | Limited expressed relationship |
+| `atonement_as_basis` | Christ's saving work is connected to saving benefit or sin-bearing; not a specific atonement theory | Limited expressed relationship |
+| `forgiveness_pardon` | Divine forgiveness is presented as a saving benefit; not an account of every condition of forgiveness | Limited expressed relationship |
+| `justification_right_standing` | Right standing/acquittal/credited righteousness is explicitly presented; not a full forensic/imparted-righteousness classification | Limited expressed relationship |
+| `conversion_new_birth` | Entry into saving life is explicitly presented; not a theology of baptism or exact conversion mechanism | Limited expressed relationship |
+| `sanctification_transformation` | Transformation/holiness is connected to saving work; not a causal claim about obtaining salvation | Limited expressed relationship |
+| `assurance_security` | Assurance/security of salvation is treated; cannot identify permanence, loss, or conditions because the leaf includes all | Limited treatment/emphasis |
+| `judgment_final_destiny` | Judgment/final destiny is connected to salvation; cannot identify the precise nature of final destiny | Limited expressed relationship |
+| `faith_as_receiving_response` | Faith/trust is presented as receiving saving benefit; not “faith alone” or denial of other responses | Limited expressed relationship |
+| `repentance_as_receiving_response` | Desired: repentance as entry/restoration response; current detector cannot reliably support it | Measurement-unresolved; abstain |
+| `obedience_as_condition_or_means` | Desired: conduct necessary for obtaining/retaining salvation; current detector cannot reliably support it | Measurement-unresolved; abstain |
+| `obedience_as_consequence_or_evidence` | Desired: saving benefit produces/subsequently evidences conduct; current detector cannot reliably support it | Measurement-unresolved; abstain |
+
+**Inventory ledger — listener directives.** Collection `L`, projection `D`, kind
+listener-directed behavior. Each row permits “the pastor recurrently asks listeners
+to X in the measured sermons.” It does not establish listener compliance, the
+pastor's private behavior, a saving condition, or pastoral effectiveness. Without
+adequate support: “requests to X were [observed/not detected], but the pastor's
+recurring appeal pattern is not characterized.”
+
+| Leaf | X | Important boundary |
+| --- | --- | --- |
+| `trust` | Trust/rely on God or Christ | Not merely assent to a fact |
+| `repent` | Repent/confess/turn from sin | Not repentance as a means of salvation |
+| `change_behavior` | Change specified personal moral conduct | Not an umbrella for the other eight actions |
+| `spiritual_practice` | Undertake personal devotional practice | Not corporate participation alone |
+| `witness` | Share faith/proclaim/invite | Kindness alone is insufficient |
+| `serve` | Help or beneficially impact people in need | Includes spiritual need only when help/impact is explicitly requested |
+| `give` | Donate financial/material resources | Not giving time/heart or direct care alone |
+| `participate` | Join corporate church/worship/ministry activity | Joining does not automatically mean service |
+| `civic_action` | Take concrete civic action | Discussion alone is insufficient |
+
+**Inventory ledger — public life.** Collection `P`, projection `F`, kind
+rhetorical/treatment tendency. Each row permits “when treating public affairs,
+the pastor recurrently X,” alongside whole-corpus occurrence. Without adequate
+public treatment coverage, report observed examples and abstain from a recurring
+pattern. These leaves do not identify party, ideology, or a particular endorsed
+policy. Eligibility-only routing remains a proposal pending acceptance.
+
+| Leaf | X |
+| --- | --- |
+| `descriptive` | Reports/explains public events or others' remarks |
+| `illustrative` | Uses public affairs to illuminate another point |
+| `theological` | Explicitly interprets public affairs theologically |
+| `moral` | Makes moral evaluations of public affairs |
+| `critical` | Expresses negative evaluations of public objects |
+| `supportive` | Expresses approval of public objects |
+| `prescriptive` | States specified public ought-claims/outcomes |
+| `advocative` | Calls listeners to civic support/opposition/action |
+
+**Inventory ledger — source/material and homiletic signals.** Collection `M` or
+`H`, projection `F`, kind rhetorical/treatment tendency. Each permits “the pastor
+recurrently uses X in the measured corpus.” Without coverage/recurrence, report
+only observed examples or insufficient evidence. Source use is not endorsement,
+affiliation, verified historical truth, or quality. Homiletic treatment presence
+is not a measure of depth, fidelity, or topic-specific treatment.
+
+| Family / leaf | X |
+| --- | --- |
+| M / `biblical_narrative` | Developed biblical events/stories as material |
+| M / `personal_testimony` | Claimed personal lived-faith experience |
+| M / `reported_testimony` | Others' reported lived-faith experience |
+| M / `historical_example` | Identifiable extra-biblical episodes presented as historical |
+| M / `quotation` | Attributed or clearly framed quoted words |
+| M / `denominational_source` | Explicitly attributed denominational source material |
+| H / `exegetical_exposition` | Explanation of biblical text |
+| H / `narrative_illustration` | Developed concrete events/stories illuminating a point under the existing homiletic exclusions |
+| H / `doctrinal_argument` | Reasoning in support of Christian doctrinal claims |
+| H / `practical_application` | Concrete listener-directed lived responses |
+
+The ledger covers 20 topics, 12 salvation leaves (9 usable, 3 unresolved), 9
+listener actions, 8 public functions, 6 material signals, and 4 homiletic signals.
+Content-role, density, eligibility, and identity observations are prerequisite
+controls, not teaching characteristics. No current leaf needs to be dropped for
+lack of any defensible statement; several support a narrower one than the intended
+product may need. Interpretation-specific and pastoral-posture dimensions remain
+explicit product gaps rather than inferred from neighboring signals.
+
+#### Worked contracts with different signal types
+
+**`faith_as_receiving_response` — expressed relationship.** Downstream: “Faith as
+reception recurs in the observed salvation teaching,” with evidence and corpus
+scope; cannot say “faith alone.” Collection: target explicitly connects faith to
+receiving a saving benefit; lived trust after conversion alone is negative under
+the frozen question. Projection: count independent sermons/episodes under `R`,
+retain the known route omissions, require recurrent independent support for the
+recurring statement, and show isolated evidence otherwise. A sermon with no
+faith relation does not contradict one with it. Explicit rejection would need
+separate grounded proposition evidence; the current yes/no detector alone cannot
+find all opposing views. Missing that capability forbids “consistently holds with
+no contradiction.” Unknown dates forbid a change narrative.
+
+**`assurance_security` — treatment, not resolved position.** Downstream:
+“Assurance/security receives recurring treatment,” or “not yet characterized.”
+Collection legitimately fires for known, trusted, doubted, lost, or retained
+salvation. Projection summarizes recurrence under `R`; no amount of averaging
+separates permanence from loss. A desired security position needs independently
+observed polarity, conditions, and proposition spans. Until that capability
+exists, its profile position field is unavailable even when treatment is supported.
+
+**`serve` — listener-directed behavior.** Downstream: “Appeals to help people in
+need recur,” not “this pastor is compassionate.” Collection: explicit requested
+help/impact; joining, giving, or witnessing alone does not qualify. Projection
+uses `D`, whole-corpus and appeal-conditional denominators, independent sermons,
+and period/series sensitivity. One service series permits a series-specific
+statement; sparse outside-series evidence requires abstention from generalization.
+Requests to give or participate can coexist when separately evidenced. Neither
+absence nor a low serve probability contradicts a service appeal elsewhere.
+
+**`critical` and `supportive` — public treatment.** Downstream: frequencies and
+examples of criticism and approval, not a bipolar ideology scale. Collection:
+the preacher's adopted evaluation of a public object; reported praise/criticism
+alone does not count. Projection under `F` permits both patterns. “Support X,
+criticize Y” is not mixed belief about X. With no object-binding observation,
+comparison of specific positions and claims of contradiction abstain. A separate
+object/proposition capability, if later justified, must preserve both objects and
+adoption rather than select one dominant block stance.
+
+**`biblical_narrative` and `exegetical_exposition` — material versus treatment.**
+Downstream: use of biblical stories versus explanation of biblical text.
+Collection retains each question's existing exclusions; narration alone cannot
+supply exposition, and a doctrinal verse explanation need not be narrative.
+Projection under `F` produces separate patterns, with corroborating Scripture
+links where available. Block co-occurrence cannot prove that a particular story
+was explained, or that a particular theological topic received exposition.
+Scriptural engagement discovery may surface these passages for review; interpretive
+accuracy or depth remains unavailable without additional evidence.
+
+**`scripture_revelation` — emphasis.** Downstream: attention to Scripture's
+inspiration/authority/interpretation as subjects. Collection `T` excludes mere
+biblical quotation or exposition. Projection `A` uses equal-sermon normalized
+prominence and measured eligible time, retaining overlap. No detected discussion
+of revelation does not mean little Scripture use, a low view of Scripture, or
+an absence of interpretive method. This distinction prevents an erroneous
+Scriptural-engagement ranking.
+
+### 5. Issues discovered in the existing taxonomy
+
+These findings come from the canonical inventories and completed review records,
+not a new corpus evaluation. They diagnose downstream limitations rather than
+reopen accepted question validation.
+
+| Issue / affected measurements | Consequence | Proposed resolution before the affected use |
+| --- | --- | --- |
+| Assurance joins security, doubt, loss, and retention | Strong detection cannot identify the pastor's security position | Keep the treatment leaf; mark position unavailable. Define object/polarity/condition observations only if a specific security claim is required. |
+| Atonement, conversion, justification, judgment and other salvation leaves include several doctrinal forms | Recurrence establishes broad expressed relationships, not detailed doctrinal alternatives | Use narrow ledger statements; prepare proposition-specific contracts before fine theological comparison. |
+| Three unresolved salvation detectors have positive/negative ordering failures | More sermons or lower thresholds cannot justify the desired relationships | Preserve raw values, abstain in profile and feature outputs, retain frozen exclusions. Any redesign is a separate versioned task. |
+| Salvation .55 routing has a known miss; broad topic presence differs from relationship presence | Policy-relative zeros cannot establish complete absence or unbiased all-sermon relationship prevalence | Report routing limits and conditional denominators; require a coverage resolution before an absence-sensitive or prevalence-comparison use. |
+| Public support/criticism lacks object/proposition binding | Cannot distinguish opposed beliefs from evaluations of different things | Preserve independent leaves, forbid ideology/policy inference, require grounded binding for position comparison. Accept/reject the prepared eligibility-only routing proposal separately. |
+| Listener `change_behavior` excludes the other actions; give/participate/serve have reviewed boundaries | An everyday-language “behavior change” total would underdescribe the action inventory | Retain current exclusions. A broader action union is a separately named projection, with overlap deduplication and no change to the collector. |
+| Source quotation can coexist with narrative, testimony or denominational source; use may include rejected material | One exclusive source category loses form/source/attribution information; endorsement is unobserved | Keep the independent axes; describe use, require adoption evidence for belief claims. Retain film/story ambiguity rather than certify truth. |
+| Public `advocative` and listener `civic_action`; practical application and listener actions; narrative illustration and material leaves | Some signals contribute to the same underlying appeal/treatment characteristic | Link contributing leaves to a characteristic, preserve distinct boundaries and denominators, and avoid duplicate feature weight. Co-occurrence alone is not proof of the same episode. |
+| Topic/treatment share blocks without relation binding | Cannot claim a pastor interprets or applies a particular topic in a particular way | Keep marginal patterns and block co-occurrence explicit; require a direct relation/evidence contract for topic-specific treatment. |
+| Exposition/argument/application are presence, not quality rubrics | “Depth,” “coherence,” “empathy,” and interpretive tendency are undermeasured | Enable candidate passage discovery and human review; leave stronger lenses unavailable pending independently useful contracts. |
+| Block evidence envelopes lack guaranteed minimal claim localization | A profile may have reproducible text but no defensible specific proposition citation | Record granularity; require grounded selection/review where a finer claim needs it, without changing frozen detector answers. |
+| Distinct signals are tempting to average as theological positions | Scores would mix attention, action, material, and belief or hide missingness | Enforce tagged kinds, denominators, and family-specific encodings in every contract. |
+
+**Mutual exclusivity diagnosis:** the current inventories use independent judgments;
+there is no whole-block single-choice theological taxonomy to preserve. Preserve
+local semantic exclusions already approved (for example, donation alone is not
+serve; ordinary trust is not faith-as-reception). These exclusions distinguish
+observables, not a rule that only one action or belief may occur in a sermon.
+A future Choice can be exclusive only at a declared unit such as one fully
+specified proposition and occasion, with mixed/unknown alternatives where needed.
+It must not collapse different objects, conditions, voices, or claims in one block.
+Condition and consequence statements can coexist in different qualified relations;
+a single sermon-wide Choice would lose needed evidence. This is an information-loss
+risk in a proposed redesign, not a claim that the existing independent packs
+already suppress those answers.
+
+**Conflation diagnosis:** the frozen collection questions already explicitly avoid
+pastor-level inference. The principal conflation risk is downstream: calling
+relationship prevalence a doctrinal position, material use endorsement, a listener
+appeal posture, or attention stability coherence. The contracts above forbid
+those promotions. No taxonomy redesign is justified merely for uniformity.
+
+### 6. Concrete recommendations before broader collection
+
+1. **Adopt the narrow initial product.** Start with scoped descriptions of observed
+   relationships, attention, appeals, material, and treatment, plus evidence cards
+   and explicit gaps. Keep stable theological comparisons, clustering, and stronger
+   discovery lenses disabled until their characteristic-specific prerequisites pass.
+   Approve this contract as a design proposal; it does not approve collection.
+2. **Complete a versioned leaf-contract registry from this ledger.** The next
+   deliverable should instantiate the three contracts for every inventory ID using
+   canonical question digests, collection/projection families, explicit exceptions,
+   and a coverage/allowed-use disposition. PTE development owns this preparation;
+   Brian reviews concrete records rather than authors them. Block collection for
+   a leaf if its desired statement, denominator, or evidence requirement is blank.
+3. **Resolve the prepared coverage decisions.** Recommend public-life eligibility-only
+   routing using the existing comparison. Preserve accepted listener/source routes.
+   For salvation, choose policy-relative observed summaries as the default initial
+   use; design a separate bounded coverage proposal if all-sermon prevalence or
+   absence is required. Do not silently treat known routing misses as negatives.
+4. **Prepare evidence and projection policies before paying for more observations.**
+   Pin identity/duplicate handling, evidence granularity, episode reduction, versions,
+   estimands and denominators, missingness/abstention states, and claim-specific
+   sufficiency. Use the existing uncertainty packet to demonstrate isolated support,
+   series dependence, denominator differences, and temporal gaps. Leave unsupported
+   stable claims unavailable; do not invent a universal N or retune frozen questions.
+5. **Prioritize only concrete missing downstream claims.** First prepare an assurance
+   polarity/conditions contract if security comparison is desired, or an object-bound
+   public proposition contract if policy comparison is desired. Separately prepare
+   posture/interpretive/depth contracts only when the intended statement and evidence
+   can be specified. These are proposed future tasks, not automatically added packs.
+   The three unresolved salvation leaves remain excluded from the initial product.
+6. **Complete the desired-profile gap analysis and missing-observation contracts
+   before the provider-free consumer acceptance packet.** The
+   [gap analysis](PASTOR_PROFILE_GAP_ANALYSIS.md) now supplies the desired product
+   characteristics and recommends bound proposition/adoption contracts next.
+   Later, development should supply consumer examples of a sparse profile, a
+   recurring relationship, contradictory/qualified propositions, unknown periods,
+   a routing gap, duplicate sermons, and unavailable comparison. Require prose and
+   numeric views to agree, evidence links to resolve, and missing dimensions to
+   remain missing. Synthetic cluster/discovery examples may test output contracts
+   but must not be presented as measured pastor groups or quality findings.
+
+This task adds contracts only. It starts no broader collection, reclassification,
+projection implementation, or clustering experiment. No new dataset-validation
+run is needed to review this design. When a subsequent implementation is ready,
+PTE development must prepare the exact bounded command, default inputs, cases,
+and proposed decision for Brian, then own interpretation of his results.
+
+#### Versioned leaf-contract registry iteration — 2026-10-13
+
+The [V1 review registry](review-proposals/pastor-contracts-v1/REGISTRY.md) now
+instantiates all 59 measurement signals: 20 topics, 12 salvation relationships,
+9 listener actions, 8 public-life functions, 6 material signals and 4 homiletic
+dimensions. [Complete records](review-proposals/pastor-contracts-v1/registry-v1.json)
+pin canonical questions, pack/question digests, frozen salvation thresholds,
+per-leaf downstream statements, collection boundaries, projection estimands and
+denominators, uncertainty/abstention rules, diagnostics and allowed-use gates.
+This is review-only contract data, not a new production inference registry.
+
+The [prepared decision slate](review-proposals/pastor-contracts-v1/REVIEW.md)
+recommends scoped observed-corpus descriptions, acceptance of the already evaluated
+public-life eligibility-only route, policy-relative salvation summaries, raw-only
+unresolved leaves, separate evidence/decision policies for occurrence rates, and
+explicitly unavailable stronger position/quality claims. Listener/source routing
+approvals and all frozen questions are preserved. No route has been activated
+and no provider, database, corpus or projection/clustering work was performed.
+
+The registry proposes independent-sermon-with-evidence fractions; existing salvation
+uncertainty reports also contain equal-sermon means of collected routed-block
+fractions. These are distinct estimands and must keep their own denominators.
+The prepared acceptance cases explicitly prevent relabeling the historical means.
+Claim-specific stable/recurring sufficiency rules remain unapproved, with no invented
+minimum sermon count. Broader collection remains inactive.
+
+Reproduce the inexpensive local contract check:
+
+```bash
+.venv/bin/python docs/review-proposals/pastor-contracts-v1/build_registry.py --check
+```
+
+This reads canonical definitions and saved review artifacts only. Focused rejection
+tests verify omitted/duplicate leaves, semantic/threshold drift, unresolved-to-zero
+projection, premature activation/comparison, missing denominators, invalid shared
+references and fingerprint changes. The originally proposed next consumer packet
+is deferred by Brian's subsequent direction. The desired-profile gap analysis below
+now precedes it; the current registry and its safeguards remain intact.
+
+#### Desired-profile → measurement gap iteration — 2026-10-13
+
+Brian identified that the current registry answers what existing measurements can
+safely support, but does not fully specify what PTE ultimately wants to know about
+a pastor. The [desired-profile specification](PASTOR_PROFILE_GAP_ANALYSIS.md) now
+defines C01–C20 product characteristics independently of the 59 signals, then maps
+each to current support, semantic measurability, missing information, gap type
+and the need for new observations. D01–D06 separately describe comparative and
+discovery constructs rather than new collection questions.
+
+Basic topic attention, finite style/action/material/public-treatment patterns,
+topic breadth and measured-pattern consistency have suitable observable types;
+they mainly need projection, coverage and validation rules. Salvation has substantial
+thematic/relational support but only partial coverage of detailed positions.
+Assurance polarity, named public positions, interpretive operations, observable
+pastoral posture, developed teaching and articulated coherence need additional
+information. Scripture engagement can reuse existing reference/alignment and
+grounded style evidence outside the 59-signal registry, but still needs text/claim
+and treatment binding; Scripture-as-topic attention cannot substitute for it.
+
+The next recommended iteration is **design of G1 bound propositions, adoption and
+qualifications**, using the prepared assurance and public-object cases. G2 defines
+text/argument/application binding and development facets, G3 observable pastoral
+address, and G4 articulated coherence/tension review reusing claim/relationship
+evidence. These are design capabilities, not automatically approved packs. The
+consumer acceptance packet remains deferred until the product and observation
+contracts are settled. No current leaf/question/digest/threshold or registry use
+gate has changed, and no broader collection or runtime implementation is started.
+
+#### Bounded G1 binding-proof design — 2026-10-13
+
+Brian approves the desired C01–C20 catalog and D01–D06 landscape constructs. He
+authorizes G1 first as a **bounded proof of reusable proposition binding**, not
+an exhaustive systematic-theology extraction initiative. **G2 and G3 must be
+designed before G1 expands across theological topics**. Broad expansion remains
+unauthorized even if the bounded proof eventually passes.
+
+The [G1 contract](review-proposals/g1-binding-v1/CONTRACT.md) defines grounded
+subject/relation, voiced polarity, expression, speaker/adoption, qualifications
+and epistemic evidence for two questions: assurance knowability/loss/retention
+and a synthetic city ramp requirement. [Twenty authored proof cases](review-proposals/g1-binding-v1/CASES.md)
+exercise positive/negative/conditional claims, report/adoption/rejection, questions,
+expressed uncertainty, context exclusions, unresolved referents, different objects
+and apparent opposing assertions. Claim spans remain target-grounded while context
+may resolve referents. Rejection is not silently converted to an asserted opposite,
+and denied opposition is not affirmative support.
+
+The packet proposes code-owned candidates and narrow independent TypeSafe judgments
+with explicit unresolved outcomes. The local builder/checker validates authored
+source slices, vocabulary, fingerprints and scope guards only; it implements no
+semantic collector and proves neither model accuracy nor automatic candidate recall.
+No existing question, threshold, digest or registry gate has changed.
+
+```bash
+.venv/bin/python docs/review-proposals/g1-binding-v1/build_cases.py --check
+```
+
+The [handoff](review-proposals/g1-binding-v1/REVIEW.md) distinguishes structural
+checks from a future separately prepared bounded empirical validation, whose exact
+command and natural controls must be supplied for Brian to execute. The consumer
+acceptance packet, broader collection and clustering remain deferred. The next
+product-design capabilities after this bounded exercise are G2 text/argument/application
+binding/development and G3 observable pastoral address.
+
+#### G2/G3 contract designs and joint review — 2026-10-13
+
+Brian approves bounded G1 design and directs **no G1 implementation or expansion
+yet**. G2 and G3 are now prepared at the same contract/design level so that the
+first implementation/validation choice can be made from all three capabilities.
+G4 remains deferred and must reuse G1/G2 claims, qualifications and semantic relations.
+
+[G2](review-proposals/g2-g3-v1/G2_CONTRACT.md) defines source-backed episode nodes,
+text/claim/reason/response links, performed interpretive operations and independent
+development facets for C06/C10/C11/C13. Explanation, reasoning and application
+are observations, not certifications of depth, soundness or interpretive fidelity.
+Partial episodes, missing links, self-described methods and unverified Scripture
+anchors remain explicit. A local teaching statement does not require expanded
+systematic-theology extraction to serve as a G2 endpoint.
+
+[G3](review-proposals/g2-g3-v1/G3_CONTRACT.md) defines adopted address acts bound
+to stated addressees/circumstances for C12. Acknowledgment, perspective-taking,
+reassurance, challenge, warning, invitation and concrete care may overlap. Topic
+mention, service appeal, reported/rejected advice, prayer and story address do
+not automatically establish a present adopted pastoral act. Inner empathy and
+listener effects remain unmeasured.
+
+[Twenty-eight authored contrasts](review-proposals/g2-g3-v1/CASES.md) provide
+source-grounded proposed structures, not model results. The local artifact check
+verifies source slices, endpoint links and explicit holds only:
+
+```bash
+.venv/bin/python docs/review-proposals/g2-g3-v1/build_cases.py --check
+```
+
+The [joint review](review-proposals/g2-g3-v1/REVIEW.md) compares G1 bounded positions,
+G2 developed treatment and G3 circumstance-sensitive address by product contribution,
+risks and reuse. Implementation priority remains undecided pending that review;
+no cost/accuracy claims or validation activation follow from design completeness.
+The frozen registry/questions remain unchanged. No provider, database, corpus,
+collector, projection or clustering work is performed.
+
+#### Small G2 feasibility proposal prepared — 2026-10-13
+
+Brian approves G2/G3 design alongside bounded G1 and selects the first small
+G2 implementation/validation proposal: text/explanation and developed-application
+contrasts, especially semantic links versus proximity. The
+[proposal](review-proposals/g2-feasibility-v1/REVIEW.md) supplies an isolated
+source-clause candidate builder, eight exact versioned Choice questions per pair,
+fixed archived natural controls and authored probes, source/question fingerprints,
+independent per-pair caches, expected outputs, failure modes and proposed
+pass/partial/failure decisions. It is not the full G2 capability.
+
+The prepared packet has 16 cases (eight authored, eight natural), 136 directed
+pairs and 1,088 questions, with at most 42 uncached four-pair requests, no SDK
+retries and a pinned model. Natural focus windows are explicitly curated; the
+experiment does not establish automatic full-sermon candidate recall. All
+specified reviewed endpoint pairs are represented before inference.
+
+Six facets remain independent: explains-text, reason-supports-claim, grounds-response,
+qualifies-claim, specifies-response-step and addresses-response-obstacle. Voice/adoption
+and local evidence sufficiency remain separate. Raw and proposed adopted local
+facets are unreviewed until interpreted; no global depth, interpretation-quality
+or pastor-quality score is emitted. Existing saved source/evidence locators are
+reused; unavailable grounded Scripture/style runs for the selected videos are
+recorded rather than recollected. No frozen pack/threshold has changed.
+
+The exact **provider validation command for Brian** is:
+
+```bash
+pte analysis g2-feasibility-review
+```
+
+Codex has not run it. Only provider-free preparation/integrity checks and focused
+synthetic/fake-provider unit tests were run. Results go to
+`evaluation/g2-binding/feasibility-v1.results.json` and its Markdown companion,
+with status pending PTE interpretation and Brian's decision. All linked candidate
+edges require inspection; numerical matches cannot hide additional false edges.
+The handoff fixes acceptance decisions and does not grant automatic rollout.
+G1 implementation/expansion, G3 implementation, G4, broader collection and full
+G2 development remain held.
+
+#### G2 V1 partial pass and one V2 revision — 2026-10-14
+
+Brian completes V1 with 42 provider requests and zero cache hits, and records
+**PARTIAL PASS**. Specific text/explanation edges and unrelated/reversed controls
+support the representation; application and framing reliability remain insufficient
+for collection. The [manual audit](review-proposals/g2-feasibility-v2/audit-v1.md)
+classifies all ten displayed mismatches into exactly A/B/C (six contract/label/reporting,
+two candidate/boundary, two clear-relation judgment withholding) and separately
+reviews all fifteen linked cells, identifying six further semantic concerns.
+Correct argmax below .80 is withholding, not an invented contrary belief. G2-10
+recognizes reported argument structure and does not grant adopted credit; its
+exclusive adoption field cannot preserve reported origin and explicit rejection together.
+
+The [V2 handoff](review-proposals/g2-feasibility-v2/REVIEW.md) separates endpoint
+voices from source stance, clarifies four relation questions, retains the .80
+threshold, and preserves all 16 frozen targets/context/focus and 136 original
+pairs. Four diagnosed cases gain intact sentence/wrapped-clause repair candidates.
+Only five authored method/qualification/report controls are added; no new natural
+sermons are selected. Text explanation, obstacle mitigation and boundary questions
+remain unchanged, with 408 exact V1 answers and original provenance reused.
+
+The prepared revision contains 21 cases/170 pairs, at most 1,292 new question
+answers and 52 uncached requests with zero SDK retries. This is not a cost-pruning
+or batching optimization; semantic correctness is addressed first. V1 raw artifacts
+remain fingerprint-pinned and unchanged. Fourteen focused synthetic/mocked and
+artifact/CLI tests pass; no provider/dataset rerun has been performed by Codex.
+
+Brian's exact rerun command is:
+
+```bash
+pte analysis g2-feasibility-review --revision v2
+```
+
+Results will remain pending manual interpretation of all linked predictions and
+source/boundary outputs. The handoff defines the one-cycle stopping rule: if clear
+controls work and residual errors are predominantly identified genuine ambiguity,
+recommend bounded G3 rather than indefinite G2 tuning. Systematic semantic-role,
+wrong-object, leakage or adoption failures keep the affected characteristics
+unavailable. No outcome automatically activates collection, quality scoring,
+broad G2/G1 expansion or G4.
+
+
+#### G2 bounded PASS and G3 feasibility handoff — 2026-10-14
+
+Brian accepts G2 V2 as **PASS WITH KNOWN RECALL LIMITATIONS**. The separate
+[fingerprinted decision](../evaluation/g2-binding/feasibility-stage-gate-v2.md)
+preserves raw results and historical V1 interpretation. Residual qualification
+and rationale-chain recall do not warrant another tuning cycle. No production
+collection or depth/comparison claim follows. Candidate/request economics remain
+backlog work after the outstanding feasibility priorities.
+
+The [G3 V1 proposal](review-proposals/g3-feasibility-v1/REVIEW.md) tests observable
+circumstance-sensitive address for C12 using 21 cases / 27 grounded candidate
+pairs, seven independent acts plus binding/addressee/voice/adoption/boundary.
+It deliberately tests a curated candidate catalog, not automatic extraction
+recall. Natural positives and service/prayer/reported contrasts are frozen
+before the run. No provider validation was run during preparation.
+
+From an active venv:
+
+```sh
+pte analysis g3-feasibility-review
+```
+
+PTE will interpret all mismatches and positives using A/B/C failure buckets,
+then recommend a bounded decision for Brian. G1 implementation/expansion, full
+G2/G3, G4, broader collection, projection/comparison and quality scoring remain
+held. G2 tuning is closed.
+
+
+#### G3 V1 partial pass; one binding revision — 2026-10-14
+
+Brian accepts observable-address construct feasibility but withholds bounded
+PASS pending a semantic distinction: circumstance relevance versus address to
+a human recipient in that circumstance. Prayer can concern grief while addressing
+God. Reported person-address can be bound without becoming current-listener
+preacher address. The seven acts and all framing questions remain frozen.
+
+The [V1 audit and V2 proposal](review-proposals/g3-feasibility-v2/REVIEW.md)
+retain the raw results and classify mismatches/extra positive concerns. V2
+selects 12 original candidates; only 24 new judgments are requested, with
+132 source/question/model-verified V1 answers reused. No new cases or boundary
+changes. Maximum 12 requests, zero SDK retries; Brian runs:
+
+```sh
+pte analysis g3-feasibility-review --revision v2
+```
+
+No provider validation was run during preparation. No automatic PASS. The
+revision cannot claim to resolve unchanged act/framing weaknesses. G2 tuning
+is closed; G1 implementation/expansion, full G3, G4, broader collection and
+pastor projection/comparison/scoring remain held.
+
+
+#### G3 bounded PASS; feasibility iteration closed — 2026-10-14
+
+Brian accepts G3 V2 as **bounded feasibility PASS**, with conservative positive
+and context-resolved binding limitations retained for later calibration. The
+[fingerprinted decision](../evaluation/g3-address/feasibility-stage-gate-v2.md)
+records 12 requests / 132 reused answers, 17 direct new relationship matches
+and seven conservative withholdings. Human construct acceptance does not turn
+the original unmet expectations into matches. Prepared-catalog completeness
+does not establish automatic sermon candidate recall, posture, empathy or quality.
+
+G2 and G3 construct iteration is closed; do not spend further TypeSafe calls
+polishing these packs. G1 remains an approved bounded design with authored
+structural evidence, not an empirical feasibility PASS. Its implementation and
+expansion hold remains in force.
+
+The [next architectural proposal](PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md)
+recommends a shared source/provenance envelope, capability-specific observations,
+explicit profile-field estimands and missingness, followed by a provider-free
+consumer acceptance packet. Observation feasibility cannot itself grant rates,
+recurrence, comparison or population coverage. Full G2/G3, G4, broader collection,
+pastor projection/comparison and depth/empathy/quality scoring remain held.

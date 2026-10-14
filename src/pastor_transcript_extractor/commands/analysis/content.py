@@ -3057,3 +3057,51 @@ def analysis_source_material_stage_gate(
         raise typer.BadParameter(str(error)) from error
     console.print(f"{'Reused' if reused else 'Wrote'} source/material PASS: "
                   f"{json_path} and {markdown_path}; provider_requests=0", markup=False)
+
+
+@analysis_app.command(
+    "g2-feasibility-review",
+    help="Run the fixed bounded G2 semantic-edge pilot; no broader collection or profile projection.",
+)
+def analysis_g2_feasibility_review(
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Prepare fixed inputs without provider inference."),
+    check_only: bool = typer.Option(False, "--check-only", help="Check local proposal integrity without provider inference."),
+    revision: str = typer.Option("v1", "--revision", help="Frozen pilot revision: v1 or the single adjudicated v2 cycle."),
+) -> None:
+    if revision == "v1":
+        from pastor_transcript_extractor.sermon_g2_feasibility_review import run
+    elif revision == "v2":
+        from pastor_transcript_extractor.sermon_g2_feasibility_revision import run
+    else:
+        raise typer.BadParameter("--revision must be v1 or v2")
+
+    if prepare_only and check_only:
+        raise typer.BadParameter("Choose at most one of --prepare-only and --check-only")
+    try:
+        run("prepare" if prepare_only else "check" if check_only else "evaluate")
+    except (ValueError, OSError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command(
+    "g3-feasibility-review",
+    help="Run the fixed bounded G3 address pilot; no collection, projection or scoring.",
+)
+def analysis_g3_feasibility_review(
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Prepare fixed inputs without provider inference."),
+    check_only: bool = typer.Option(False, "--check-only", help="Check proposal integrity without provider inference."),
+    revision: str = typer.Option("v1", "--revision", help="Frozen G3 revision: v1 or the narrow binding revision v2."),
+) -> None:
+    if revision == "v1":
+        from pastor_transcript_extractor.sermon_g3_feasibility_review import run
+    elif revision == "v2":
+        from pastor_transcript_extractor.sermon_g3_feasibility_revision import run
+    else:
+        raise typer.BadParameter("--revision must be v1 or v2")
+
+    if prepare_only and check_only:
+        raise typer.BadParameter("Choose at most one of --prepare-only and --check-only")
+    try:
+        run("prepare" if prepare_only else "check" if check_only else "evaluate")
+    except (ValueError, OSError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error

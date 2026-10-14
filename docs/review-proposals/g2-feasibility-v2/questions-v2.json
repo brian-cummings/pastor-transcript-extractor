@@ -1,0 +1,118 @@
+{
+  "p0_explains_text": {
+    "instructions": {
+      "task": "For `pairs[0].left` -> `pairs[0].right`, decide whether this specified facet is actually evidenced: The first endpoint is specific biblical wording/a textual anchor and the second actually explains that very text's meaning, wording, context, argument or implication. Reading, citing or retelling followed by unrelated material is not explanation.",
+      "boundary": "Use only `target_text` for endpoint roles and semantic relation. Leading/trailing context may resolve references but cannot supply a missing explanation, premise, response, guidance, obstacle or qualification. Judge exactly the endpoints and directed relation; topic overlap, temporal adjacency, lexical cues, citation counts and eloquence are not proof. Preserve quoted/reported/rejected reasoning without attributing it to the preacher. These are local sermon observations, never pastor traits or quality judgments. Each question is independent."
+    },
+    "criteria": {
+      "linked": "Both endpoint roles and their specified directed relation are demonstrated in target evidence; keep whether the relation is reported/adopted separate.",
+      "not_linked": "Target evidence supplies no relation of this specified kind/direction between these endpoints, including merely proximal or unrelated material, wrong roles, or a different object/claim.",
+      "incomplete": "A relation of this kind may be intended but a required premise, response, referent or connecting explanation is missing from target evidence; context cannot supply it.",
+      "unclear": "The supplied target supports multiple interpretations or insufficiently resolves the specified endpoint binding; do not invent an edge."
+    }
+  },
+  "p0_reason_supports_claim": {
+    "instructions": {
+      "task": "For `pairs[0].left` -> `pairs[0].right`, decide this exact independent directed facet: The first endpoint states a premise used to support the second endpoint's teaching/normative assertion. A bare condition attached to an imperative does not itself establish this claim-reasoning facet. A rhetorical question may express a normative conclusion only when its intended conclusion/referent is clear in target evidence. Preserve reported arguments without adopting them.",
+      "boundary": "Use only `target_text` for endpoint roles and semantic relation. Leading/trailing context may resolve references but cannot supply a missing explanation, premise, response, guidance, obstacle or qualification. Judge exactly the endpoints and directed relation; topic overlap, temporal adjacency, lexical cues, citation counts and eloquence are not proof. Preserve quoted/reported/rejected reasoning without attributing it to the preacher. These are local sermon observations, never pastor traits or quality judgments. Each question is independent."
+    },
+    "criteria": {
+      "linked": "Both endpoint roles and their specified directed relation are demonstrated in target evidence; keep whether the relation is reported/adopted separate.",
+      "not_linked": "Target evidence supplies no relation of this specified kind/direction between these endpoints, including merely proximal or unrelated material, wrong roles, or a different object/claim.",
+      "incomplete": "A relation of this kind may be intended but a required premise, response, referent or connecting explanation is missing from target evidence; context cannot supply it.",
+      "unclear": "The supplied target supports multiple interpretations or insufficiently resolves the specified endpoint binding; do not invent an edge."
+    }
+  },
+  "p0_grounds_response": {
+    "instructions": {
+      "task": "For `pairs[0].left` -> `pairs[0].right`, decide this exact independent directed facet: The first endpoint states a motivating reason, principle or benefit actually tied to the particular action requested in the second. The reason may FOLLOW the request in transcript order; an explicit anaphor such as that small contact can bind a stated benefit to that call. A pure conditional guard/obstacle is not by itself a stated rationale. The second endpoint must request a response, not merely describe/explain words or narrate a benefit. Preserve quoted requests with separate adoption.",
+      "boundary": "Use only `target_text` for endpoint roles and semantic relation. Leading/trailing context may resolve references but cannot supply a missing explanation, premise, response, guidance, obstacle or qualification. Judge exactly the endpoints and directed relation; topic overlap, temporal adjacency, lexical cues, citation counts and eloquence are not proof. Preserve quoted/reported/rejected reasoning without attributing it to the preacher. These are local sermon observations, never pastor traits or quality judgments. Each question is independent."
+    },
+    "criteria": {
+      "linked": "Both endpoint roles and their specified directed relation are demonstrated in target evidence; keep whether the relation is reported/adopted separate.",
+      "not_linked": "Target evidence supplies no relation of this specified kind/direction between these endpoints, including merely proximal or unrelated material, wrong roles, or a different object/claim.",
+      "incomplete": "A relation of this kind may be intended but a required premise, response, referent or connecting explanation is missing from target evidence; context cannot supply it.",
+      "unclear": "The supplied target supports multiple interpretations or insufficiently resolves the specified endpoint binding; do not invent an edge."
+    }
+  },
+  "p0_qualifies_claim": {
+    "instructions": {
+      "task": "For `pairs[0].left` -> `pairs[0].right`, decide this exact independent directed facet: The first endpoint explicitly restricts applicability, scope, condition or exception of the second endpoint's particular claim/response. A causal explanation of why a claim is made is not automatically an applicability qualifier. A restriction on the speaker's current explanation activity is not automatically a restriction on the explained claim. Both directions must be judged by their distinct roles, not proximity.",
+      "boundary": "Use only `target_text` for endpoint roles and semantic relation. Leading/trailing context may resolve references but cannot supply a missing explanation, premise, response, guidance, obstacle or qualification. Judge exactly the endpoints and directed relation; topic overlap, temporal adjacency, lexical cues, citation counts and eloquence are not proof. Preserve quoted/reported/rejected reasoning without attributing it to the preacher. These are local sermon observations, never pastor traits or quality judgments. Each question is independent."
+    },
+    "criteria": {
+      "linked": "Both endpoint roles and their specified directed relation are demonstrated in target evidence; keep whether the relation is reported/adopted separate.",
+      "not_linked": "Target evidence supplies no relation of this specified kind/direction between these endpoints, including merely proximal or unrelated material, wrong roles, or a different object/claim.",
+      "incomplete": "A relation of this kind may be intended but a required premise, response, referent or connecting explanation is missing from target evidence; context cannot supply it.",
+      "unclear": "The supplied target supports multiple interpretations or insufficiently resolves the specified endpoint binding; do not invent an edge."
+    }
+  },
+  "p0_specifies_response_step": {
+    "instructions": {
+      "task": "For `pairs[0].left` -> `pairs[0].right`, decide this exact independent directed facet: The first endpoint requests an action; the second is a DISTINCT utterance specifying how, when or by what concrete initial step that same action should be performed. Begin with a five-minute call after a request to call is a concrete method/initial step, not mere repetition; multiple procedural steps are not required. A timing fragment split from a single directive is an intrinsic node detail, not a separate guidance assertion or a new relational edge. Guidance for a different action is not linked.",
+      "boundary": "Use only `target_text` for endpoint roles and semantic relation. Leading/trailing context may resolve references but cannot supply a missing explanation, premise, response, guidance, obstacle or qualification. Judge exactly the endpoints and directed relation; topic overlap, temporal adjacency, lexical cues, citation counts and eloquence are not proof. Preserve quoted/reported/rejected reasoning without attributing it to the preacher. These are local sermon observations, never pastor traits or quality judgments. Each question is independent."
+    },
+    "criteria": {
+      "linked": "Both endpoint roles and their specified directed relation are demonstrated in target evidence; keep whether the relation is reported/adopted separate.",
+      "not_linked": "Target evidence supplies no relation of this specified kind/direction between these endpoints, including merely proximal or unrelated material, wrong roles, or a different object/claim.",
+      "incomplete": "A relation of this kind may be intended but a required premise, response, referent or connecting explanation is missing from target evidence; context cannot supply it.",
+      "unclear": "The supplied target supports multiple interpretations or insufficiently resolves the specified endpoint binding; do not invent an edge."
+    }
+  },
+  "p0_addresses_response_obstacle": {
+    "instructions": {
+      "task": "For `pairs[0].left` -> `pairs[0].right`, decide whether this specified facet is actually evidenced: The first endpoint states an obstacle/constraint to a response and the second offers guidance that actually addresses that obstacle for that response. Merely acknowledging an obstacle without a remedy is insufficient.",
+      "boundary": "Use only `target_text` for endpoint roles and semantic relation. Leading/trailing context may resolve references but cannot supply a missing explanation, premise, response, guidance, obstacle or qualification. Judge exactly the endpoints and directed relation; topic overlap, temporal adjacency, lexical cues, citation counts and eloquence are not proof. Preserve quoted/reported/rejected reasoning without attributing it to the preacher. These are local sermon observations, never pastor traits or quality judgments. Each question is independent."
+    },
+    "criteria": {
+      "linked": "Both endpoint roles and their specified directed relation are demonstrated in target evidence; keep whether the relation is reported/adopted separate.",
+      "not_linked": "Target evidence supplies no relation of this specified kind/direction between these endpoints, including merely proximal or unrelated material, wrong roles, or a different object/claim.",
+      "incomplete": "A relation of this kind may be intended but a required premise, response, referent or connecting explanation is missing from target evidence; context cannot supply it.",
+      "unclear": "The supplied target supports multiple interpretations or insufficiently resolves the specified endpoint binding; do not invent an edge."
+    }
+  },
+  "p0_adoption": {
+    "instructions": {
+      "task": "Using target attribution/rejection frames, how does the preacher treat the CONTENT quoted or expressed by the endpoints in `pairs[0]`? Assess source stance independently of whether any tested edge exists. A preacher's own directive remains own speech even if it lacks a second guidance statement. Reported origin and explicit rejection can both be true: origin is recorded separately by endpoint voice. Never synthesize an opposite belief. Context cannot supply absent endorsement/rejection."
+    },
+    "criteria": {
+      "own_or_adopted": "The content is the preacher's own assertion/directive, or is explicitly adopted/applied. For quoted text followed by the preacher's actual explanation, that explanation is their own treatment; this does not assign every quoted claim to them.",
+      "not_adopted_report": "The content is reported without explicit adoption or rejection in target evidence.",
+      "explicitly_rejected": "The target explicitly rejects this reported content/argument. Keep reported voice and the rejection together; do not replace rejection with plain reporting.",
+      "unresolved": "Stance is ambiguous, mixed across endpoints, or insufficiently supported. Do not infer endorsement from topic/form."
+    }
+  },
+  "p0_boundary": {
+    "instructions": {
+      "task": "Does the target contain enough of the local treatment around `pairs[0]` to decide its semantic relations without borrowing omitted material? A complete local pair does not certify a complete episode or sermon.",
+      "boundary": "Use only `target_text` for endpoint roles and semantic relation. Leading/trailing context may resolve references but cannot supply a missing explanation, premise, response, guidance, obstacle or qualification. Judge exactly the endpoints and directed relation; topic overlap, temporal adjacency, lexical cues, citation counts and eloquence are not proof. Preserve quoted/reported/rejected reasoning without attributing it to the preacher. These are local sermon observations, never pastor traits or quality judgments. Each question is independent."
+    },
+    "criteria": {
+      "local_sufficient": "Target contains the required local endpoint meaning/connection, even if outer episode boundaries remain unknown.",
+      "continuation_required": "A needed premise, response, referent or explanation lies outside target evidence or is cut off.",
+      "unclear": "Local sufficiency is not resolved; preserve partial knowledge and do not certify an episode."
+    }
+  },
+  "p0_left_voice": {
+    "instructions": {
+      "task": "Who voices the exact `pairs[0].left` content, using only target attribution and bounded context for referents? Voice origin is independent of endorsement/rejection and independent of edge existence."
+    },
+    "criteria": {
+      "preacher": "Own asserted/directive/explanatory language of the preacher, including a clearly applied present instruction.",
+      "quoted_or_reported": "Words/proposition of Scripture, another speaker, narrated person or reported argument, whether adopted or rejected.",
+      "mixed": "The endpoint contains both an attribution/own statement and substantial quoted/reported content.",
+      "unresolved": "The voice is not adequately resolved."
+    }
+  },
+  "p0_right_voice": {
+    "instructions": {
+      "task": "Who voices the exact `pairs[0].right` content, using only target attribution and bounded context for referents? Voice origin is independent of endorsement/rejection and independent of edge existence."
+    },
+    "criteria": {
+      "preacher": "Own asserted/directive/explanatory language of the preacher, including a clearly applied present instruction.",
+      "quoted_or_reported": "Words/proposition of Scripture, another speaker, narrated person or reported argument, whether adopted or rejected.",
+      "mixed": "The endpoint contains both an attribution/own statement and substantial quoted/reported content.",
+      "unresolved": "The voice is not adequately resolved."
+    }
+  }
+}

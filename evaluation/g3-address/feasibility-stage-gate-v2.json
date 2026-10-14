@@ -1,0 +1,48 @@
+{
+  "automatic_sermon_candidate_recall": "not_tested",
+  "baseline_result_fingerprint": "f5e1a22b6904aca5857b8bd008acfe0f47420643d5cd4401377b25809ff41155",
+  "candidates": 12,
+  "catalog_candidate_omissions": 0,
+  "conclusions": [
+    "circumstance relevance and human-recipient address are distinct observations",
+    "prayer can concern grief without addressing grieving listeners",
+    "proximity/wrong-object and natural prayer transition do not transfer listener relationships",
+    "direct listener challenge/warning can clear all independent gates"
+  ],
+  "content_fingerprint": "ba06bdfc24b5a38e57ffd42175e91855ab2a807662ce219463b6b82afbf753b4",
+  "decision_basis": "Explicit human acceptance of construct feasibility, with remaining positive/context binding recall limits; not an automatic all-expectations-match gate",
+  "decision_date": "2026-10-14",
+  "decision_owner": "Brian",
+  "execution": {
+    "cache_hits": 0,
+    "provider_requests": 12,
+    "v1_answers_reused": 132
+  },
+  "input_fingerprint": "58b4bb353a19e530560ffbe0c93c47fb61c766a1223a40a1456a2385e866a2e9",
+  "known_limitations": [
+    "conservative positive recipient-circumstance binding recall",
+    "context-resolved relevance/binding withholding",
+    "natural positive bindings remain partly unresolved",
+    "unchanged V1 act/framing caveats retained, including narrative reassurance overcall disclosed in audit",
+    "no calibrated corpus discovery, opportunity rate or recurring profile estimate"
+  ],
+  "new_relationship_check_counts": {
+    "direct_match": 17,
+    "withheld_or_missed": 7
+  },
+  "next": "close G3 construct iteration; propose shared evidence/profile-field contract and provider-free consumer acceptance",
+  "not_authorized": [
+    "G1 implementation/expansion",
+    "full G2/G3 collection",
+    "G4",
+    "broader collection",
+    "pastor projection/comparison",
+    "empathy/depth/quality scoring"
+  ],
+  "production_effect": "none",
+  "result_file_sha256": "51cf69c15c7a13447f70f3311fd435e16f83bd3260ad834088b072327090c7f9",
+  "result_fingerprint": "8af9bfca6a2fb8602f68f618e7a3563d7613da955350ac0cf62fa8f6479e4251",
+  "scope": "observable pastoral address on prepared candidate passages",
+  "status": "PASS",
+  "version": "g3-bounded-feasibility-stage-gate-v2"
+}

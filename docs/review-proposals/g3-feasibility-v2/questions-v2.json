@@ -1,0 +1,32 @@
+{
+  "version": "g3-relevance-recipient-binding-choice-v2",
+  "digest": "01675fdf69bd327c38b67bdcdb7b1cdcdd598a69996b7d4b83c63ed8ac3163f0",
+  "questions": {
+    "circumstance_relevance": {
+      "instructions": {
+        "task": "Does candidate.utterance itself semantically concern the specific candidate.circumstance, regardless of whom it addresses? Explicit topic discussion, prayer about people, or speech to a reported person can be relevant. Mere presence elsewhere in the target, proximity, or a different object does not establish relevance. A null circumstance has no demonstrated relevance.",
+        "boundary": "Judge the exact candidate.utterance and candidate.circumstance. The utterance must be in target_text. Context can resolve who you/them is or what this loss refers to only when target evidence itself connects the utterance to that referent; it cannot supply absent address or connection. A circumstance can concern a person who is not the addressee. Judge relation existence independently of act type, source voice, preacher adoption and whether the person is a current listener. Rejected/reported address can still address its reported recipient. No inner empathy, listener effect or pastor quality is inferred."
+      },
+      "criteria": {
+        "relevant_in_target": "The utterance demonstrably concerns this circumstance; its identity is in target evidence. It need not address the person experiencing it.",
+        "relevant_context_resolved": "Target demonstrates the semantic connection; context only resolves the identity of the circumstance/reference.",
+        "not_relevant": "Utterance does not demonstrably concern this specified circumstance, including missing candidate or unrelated nearby subject.",
+        "incomplete": "Required semantic connection is outside the target.",
+        "unclear": "Relevance to this specific circumstance is unresolved."
+      }
+    },
+    "recipient_circumstance_binding": {
+      "instructions": {
+        "task": "Does candidate.utterance address a HUMAN RECIPIENT as someone experiencing candidate.circumstance? The target must connect the addressed person to that circumstance, not merely discuss or request something about a third party. God, comfort those grieving concerns mourners but addresses God, so is not_bound. A counselor told the mourner, You need not face this alone binds the reported mourner, irrespective of preacher adoption. If you need company through this loss, invite a friend binds you to the loss; context may identify which loss. Topic description, wrong recipient and generic continuation do not bind. Do not require a particular act type or current-listener status: those are separate observations.",
+        "boundary": "Judge the exact candidate.utterance and candidate.circumstance. The utterance must be in target_text. Context can resolve who you/them is or what this loss refers to only when target evidence itself connects the utterance to that referent; it cannot supply absent address or connection. A circumstance can concern a person who is not the addressee. Judge relation existence independently of act type, source voice, preacher adoption and whether the person is a current listener. Rejected/reported address can still address its reported recipient. No inner empathy, listener effect or pastor quality is inferred."
+      },
+      "criteria": {
+        "bound_in_target": "Target demonstrates that the human recipient is addressed in their identified circumstance, including reported/historical recipients.",
+        "bound_context_resolved": "Target establishes recipient-to-circumstance address; context resolves only person/circumstance identity.",
+        "not_bound": "No such human-recipient circumstance address; includes address to God, topic-only discussion, wrong person/object, context-only treatment or no circumstance.",
+        "incomplete": "Establishing recipient-to-circumstance address would require omitted target treatment.",
+        "unclear": "Recipient-to-circumstance connection unresolved."
+      }
+    }
+  }
+}

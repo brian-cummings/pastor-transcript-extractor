@@ -1,0 +1,40 @@
+{
+  "candidate_omissions_against_frozen_inventory": 0,
+  "conservative_relation_withholdings": 5,
+  "content_fingerprint": "8c4ee95bc1a46af644049485205a9e5b661cbb8b7ad363f5dd3d38072da294f4",
+  "decision_basis": "Explicit review and authorization in this conversation; not an automatic numeric gate",
+  "decision_date": "2026-10-14",
+  "decision_owner": "Brian",
+  "direct_matches": 23,
+  "economics_backlog": "52 requests despite 408 reused V1 answers; optimize only after semantic feasibility priorities are resolved",
+  "execution": {
+    "V2_cache_hits": 0,
+    "provider_requests": 52,
+    "reused_V1_answers": 408
+  },
+  "input_fingerprint": "04809b7c7c6c811adf6d5d518202ab33e3ec8c47823dcda399b82525a329e30c",
+  "known_limitations": [
+    "qualification binding recall",
+    "loose rhetorical rationale chains",
+    "rationale may attach to response goal rather than every implementation step",
+    "original rejected G2-10 stance remains withheld; separate report-only control returns not_adopted_report",
+    "no automatic candidate/corpus recall claim",
+    "natural contrast-as-reason judgments remain interpretation-sensitive"
+  ],
+  "next": "bounded G3 feasibility; stop G2 tuning",
+  "not_authorized": [
+    "G1 implementation/expansion",
+    "full G2/G3 collection",
+    "G4",
+    "broader collection",
+    "pastor projection/comparison",
+    "depth/quality scoring"
+  ],
+  "production_effect": "none",
+  "result_content_fingerprint": "80b08088738c6597849d6334dcba724271ea8ba065cfc634fd7d7707c7dfcb2a",
+  "result_file_sha256": "2bf3788c321a8fd2e2d0a9eb617d67faa14eb9a506c65fe1ff70a73bf7b6c113",
+  "source_stance_withholdings": 1,
+  "status": "PASS_WITH_KNOWN_RECALL_LIMITATIONS",
+  "targeted_checks": 29,
+  "version": "g2-bounded-feasibility-stage-gate-v2"
+}

@@ -46,6 +46,13 @@ ROOT_COMMANDS = {
 
 GROUP_COMMANDS = {
     "analysis": {
+        "g2-feasibility-review",
+        "g3-feasibility-review",
+        "public-life-routing-review",
+        "source-material-stage-gate",
+        "listener-directives-review",
+        "public-life-treatment-review",
+        "source-material-review",
         "backfill",
         "evaluate-scripture-alignment",
         "evaluate-scripture-detector",
@@ -202,6 +209,47 @@ class CliContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runner = CliRunner()
         self.root = get_command(app)
+
+    def test_g2_feasibility_modes_dispatch_without_running_provider(self) -> None:
+        for options, expected in (([], "evaluate"), (["--check-only"], "check"), (["--prepare-only"], "prepare")):
+            with self.subTest(mode=expected), patch("pastor_transcript_extractor.sermon_g2_feasibility_review.run") as run:
+                result = self.runner.invoke(app, ["analysis", "g2-feasibility-review", *options])
+                self.assertEqual(0, result.exit_code, msg=result.output)
+                run.assert_called_once_with(expected)
+
+    def test_g2_revision_v2_dispatch_and_unknown_revision_is_rejected(self) -> None:
+        with patch("pastor_transcript_extractor.sermon_g2_feasibility_revision.run") as run:
+            result = self.runner.invoke(app, ["analysis", "g2-feasibility-review", "--revision", "v2", "--check-only"])
+            self.assertEqual(0, result.exit_code, msg=result.output)
+            run.assert_called_once_with("check")
+        result = self.runner.invoke(app, ["analysis", "g2-feasibility-review", "--revision", "v3"])
+        self.assertEqual(2, result.exit_code, msg=result.output)
+
+    def test_g2_feasibility_conflicting_modes_do_not_run_provider(self) -> None:
+        with patch("pastor_transcript_extractor.sermon_g2_feasibility_review.run") as run:
+            result = self.runner.invoke(app, ["analysis", "g2-feasibility-review", "--prepare-only", "--check-only"])
+            self.assertEqual(2, result.exit_code, msg=result.output)
+            run.assert_not_called()
+
+    def test_g3_feasibility_modes_dispatch_without_running_provider(self) -> None:
+        for options, expected in (([], "evaluate"), (["--check-only"], "check"), (["--prepare-only"], "prepare")):
+            with self.subTest(mode=expected), patch("pastor_transcript_extractor.sermon_g3_feasibility_review.run") as run:
+                result = self.runner.invoke(app, ["analysis", "g3-feasibility-review", *options])
+                self.assertEqual(0, result.exit_code, msg=result.output)
+                run.assert_called_once_with(expected)
+        with patch("pastor_transcript_extractor.sermon_g3_feasibility_review.run") as run:
+            result = self.runner.invoke(app, ["analysis", "g3-feasibility-review", "--prepare-only", "--check-only"])
+            self.assertEqual(2, result.exit_code, msg=result.output)
+            run.assert_not_called()
+
+    def test_g3_revision_dispatch_and_invalid_revision(self) -> None:
+        for options, expected in (([], "evaluate"), (["--check-only"], "check"), (["--prepare-only"], "prepare")):
+            with patch("pastor_transcript_extractor.sermon_g3_feasibility_revision.run") as run:
+                result = self.runner.invoke(app, ["analysis", "g3-feasibility-review", "--revision", "v2", *options])
+                self.assertEqual(0, result.exit_code, msg=result.output)
+                run.assert_called_once_with(expected)
+        result = self.runner.invoke(app, ["analysis", "g3-feasibility-review", "--revision", "v3"])
+        self.assertEqual(2, result.exit_code, msg=result.output)
 
     def test_root_command_and_group_names_are_stable(self) -> None:
         self.assertEqual(
