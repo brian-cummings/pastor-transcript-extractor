@@ -1,6 +1,6 @@
 from copy import deepcopy
-from html.parser import HTMLParser
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -9,21 +9,7 @@ from typer.testing import CliRunner
 
 from pastor_transcript_extractor.cli import app
 from pastor_transcript_extractor.observed_profile import consume, load_packet
-from pastor_transcript_extractor.observed_profile_review import acceptance, build_review, render_html
-
-
-class Page(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.ids = []
-        self.targets = []
-
-    def handle_starttag(self, tag, attrs):
-        values = dict(attrs)
-        if "id" in values:
-            self.ids.append(values["id"])
-        if tag == "a" and values.get("href", "").startswith("#"):
-            self.targets.append(values["href"][1:])
+from pastor_transcript_extractor.observed_profile_review import acceptance, build_review, render_markdown
 
 
 class ObservedProfileTests(unittest.TestCase):
@@ -126,18 +112,19 @@ class ObservedProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "endpoints must be target"):
             self.view(case)
 
-    def test_html_preserves_unique_evidence_targets_and_escapes_source_text(self):
+    def test_markdown_preserves_navigation_and_literal_source_text(self):
         report = deepcopy(self.review)
-        report["cases"][0]["view"]["evidence"][0]["source"]["target_text"] = '<script>alert("source")</script>'
-        html = render_html(report, Path("/tmp/observed-profile-tests"))
-        self.assertIn("&lt;script&gt;", html)
-        self.assertNotIn('<script>alert("source")</script>', html)
-        page = Page()
-        page.feed(html)
-        self.assertEqual(len(page.ids), len(set(page.ids)))
-        self.assertTrue(set(page.targets) <= set(page.ids))
-        self.assertIn("All 20 desired fields", html)
-        self.assertIn("Still missing or unestablished", html)
+        source = '```\n<script>alert("source")</script>\n[not a report link](https://example.com)'
+        report["cases"][0]["view"]["evidence"][0]["source"]["target_text"] = source
+        markdown = render_markdown(report, Path("/tmp/observed-profile-tests"))
+        self.assertIn("````text\n" + source + "\n````", markdown)
+        headings = re.findall(r"^#{2,3} (A\d\d(?: (?:C\d\d|evidence \d+))?)$", markdown, re.M)
+        anchors = [h.lower().replace(" ", "-") for h in headings]
+        targets = re.findall(r"\]\(#([^)]+)\)", markdown)
+        self.assertEqual(len(anchors), len(set(anchors)))
+        self.assertTrue(set(targets) <= set(anchors))
+        self.assertIn("All 20 desired fields", markdown)
+        self.assertIn("Still missing or unestablished", markdown)
 
     def test_cli_checks_without_writes_and_writes_readable_reports(self):
         runner = CliRunner()
@@ -150,7 +137,8 @@ class ObservedProfileTests(unittest.TestCase):
             result = runner.invoke(app, ["analysis", "observed-profile-review", "--case", "A05", "--output-dir", str(target)])
             self.assertEqual(0, result.exit_code, result.output)
             self.assertIn("recipient binding", result.output.lower())
-            self.assertTrue((target / "observed-profiles.html").is_file())
+            self.assertTrue((target / "observed-profiles.md").is_file())
+            self.assertFalse((target / "observed-profiles.html").exists())
             self.assertTrue((target / "consumer-results.json").is_file())
             invalid = runner.invoke(app, ["analysis", "observed-profile-review", "--case", "unknown", "--output-dir", str(target / "invalid")])
             self.assertNotEqual(0, invalid.exit_code)

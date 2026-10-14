@@ -3426,7 +3426,7 @@ pte analysis observed-profile-review [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--case TEXT` | Case to preview in the terminal; all 17 are checked and included in the report.  [default: A01] | no | A01 |
-| `--output-dir PATH` | Directory for the HTML partial views and JSON acceptance results. | no | — |
+| `--output-dir PATH` | Directory for the Markdown partial views and JSON acceptance results. | no | — |
 | `--check-only` | Check consumer acceptance without writing reports. | no | False |
 | `--help` | Show this message and exit. | no | — |
 

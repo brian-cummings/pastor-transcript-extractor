@@ -4,6 +4,7 @@
 - Do not monitor long-running classification or evaluation progress.
 - While developing, run only focused unit tests and inexpensive static checks.
 - Make frequent commits as coherent, reviewable changes are completed; do not accumulate a large batch of uncommitted work. Keep commits focused and preserve unrelated existing changes.
+- Use Markdown and JSON for review and acceptance reports, following the project's existing report format.
 - When a change is ready for dataset validation, give Brian the exact command and let him run it.
 - Always provide a CLI tie-in for new workflows, checks, and review packets, using the project's `pte` CLI rather than requiring standalone scripts as the user-facing entry point.
 - Assume Brian's virtual environment is already active when providing copy-paste commands. Use `pte` or `python` directly; do not prefix commands with `.venv/bin/` or include venv activation steps.

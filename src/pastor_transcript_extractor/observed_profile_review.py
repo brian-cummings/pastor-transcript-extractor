@@ -1,9 +1,9 @@
 """Fixed provider-free consumer acceptance and self-contained human review output."""
 from __future__ import annotations
 
-from html import escape
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -86,121 +86,104 @@ def build_review(packet: dict[str, Any] | None = None) -> dict[str, Any]:
                 cases=cases)
 
 
-def _list(items: list[str]) -> str:
-    return "<ul>" + "".join("<li>" + escape(s) + "</li>" for s in items) + "</ul>" if items else ""
+def _md(value: str) -> str:
+    return re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", value).replace("\n", " ")
 
 
-def _link(path: str | None, label: str, output_dir: Path) -> str:
-    if not path:
-        return ""
+def _fenced(value: str, language: str = "text") -> str:
+    # Source text is literal evidence, including any Markdown-looking content.
+    fence = "`" * max(3, 1 + max((len(x) for x in re.findall(r"`+", value)), default=0))
+    return fence + language + "\n" + value + "\n" + fence
+
+
+def _source_link(path: str, label: str, output_dir: Path) -> str:
     target = (ROOT / path).resolve()
     if not target.is_relative_to(ROOT):
-        return escape(label) + " (source outside this checkout)"
+        return _md(label) + " (source outside this checkout)"
     href = os.path.relpath(target, output_dir.resolve())
-    return '<a href="' + escape(href, quote=True) + '">' + escape(label) + "</a>"
+    return "[" + _md(label) + "](<" + href + ">)"
 
 
-def _evidence_cards(case: dict[str, Any], output_dir: Path) -> str:
-    view = case["view"]
-    by_id = {e["evidence_id"]: e for e in view["evidence"]}
-    parts = []
-    for number, (group, ids) in enumerate(view["utterance_groups"].items(), 1):
-        e = by_id[ids[0]]
-        parts.append(f'<article class="evidence"><h3>Passage {number}</h3><p class="muted">{len(ids)} source locator(s) · {escape(e["provenance"]["origin"].replace("_", " "))}</p>')
-        parts.append("<blockquote>" + escape(e["source"]["target_text"]) + "</blockquote>")
-        if e["payload"]["kind"] == "address":
-            parts.append("<p><strong>Assessed address utterance:</strong> “" + escape(e["spans"][0]["text"]) + "”</p>")
-        parts.append("<p>" + escape(e["reading_note"]) + "</p>")
-        for eid in ids:
-            entry = by_id[eid]
-            anchor = case["case_id"] + ":" + eid
-            parts.append(f'<details id="{escape(anchor, quote=True)}"><summary>Source and decisions: {escape(eid)}</summary>')
-            # Duplicate aliases can differ; never hide their original target or decisions.
-            if entry["source"]["target_text"] != e["source"]["target_text"]:
-                parts.append("<blockquote>" + escape(entry["source"]["target_text"]) + "</blockquote>")
-            parts.append(_list(entry["visible_facts"]))
-            p = entry["payload"]
-            if p["kind"] == "address":
-                parts.append('<table><caption>Independent act decisions</caption><tr><th>Act</th><th>Supplied decision</th></tr>')
-                parts += ["<tr><td>" + escape(a.replace("_", " ")) + "</td><td>" + escape(state.replace("_", " ")) + "</td></tr>" for a, state in p["acts"].items()]
-                parts.append("</table>")
-            parts.append("<p><strong>Exact evidence spans:</strong></p>" + _list([f"{s['role']} [{s['start']},{s['end']}): {s['text']}" for s in entry["spans"]]))
-            for role in ("leading_context", "trailing_context"):
-                if entry["source"][role]:
-                    parts.append("<p><strong>" + escape(role.replace("_", " ")) + " (reference resolution only)</strong></p><blockquote>" + escape(entry["source"][role]) + "</blockquote>")
-            for key, label, pointer in (("input_path", "Original input and recording/block locator", "input_pointer"), ("result_path", "Frozen result", "result_pointer")):
-                if entry["provenance"][key]:
-                    parts.append("<p>" + _link(entry["provenance"][key], label, output_dir) + " at <code>" + escape(entry["provenance"][pointer] or "") + "</code></p>")
-            parts.append("<p>Raw decisions and reuse provenance: <code>" + escape(entry["provenance"]["raw_output_ref"] or "not applicable: synthetic design") + "</code>; <code>" + escape(entry["provenance"]["answer_provenance_ref"] or "not applicable") + "</code>.</p>")
-            parts.append("<p>Recording: " + escape(entry["source"]["recording_id"]) + "; sermon date: " + escape(entry["source"]["sermon_date"] or "unknown") + "; series: " + escape(entry["source"]["series_id"] or "unknown") + "; repeated material: " + escape(entry["independence"]["repeated_material_group"] or "not supplied") + ".</p>")
-            parts.append("<p>Ownership: " + escape(entry["eligibility"]["membership"]) + "; content: " + escape(entry["eligibility"]["content"]) + "; compatibility: " + escape(entry["provenance"]["compatibility"]) + "; local boundary: " + escape(entry["coverage"]["local_boundary"]) + "; candidate discovery: " + escape(entry["coverage"]["candidate_discovery"]) + ".</p>")
-            parts.append("</details>")
-        parts.append("</article>")
-    return "".join(parts)
-
-
-def _field_card(case_id: str, f: dict[str, Any]) -> str:
-    refs = f["supporting"] + f["counter"] + f["unresolved"] + f["related"]
-    css = "observed" if f["availability"] == "local_examples" else "unknown"
-    content = [f'<details class="field {css}"><summary><span class="field-title">{escape(f["characteristic_id"])} · {escape(f["question"])}</span><span class="badge">{escape(f["status_label"])}</span></summary>']
-    content += ["<p>Desired field: " + escape(f["target_statement"]) + ".</p>"]
-    for assessment in f["assessments"]:
-        eid = assessment["evidence_id"]
-        role_label = {"supporting": "Supports this local observation", "counter": "Counterexample in this unit", "unresolved": STATUS_LABELS[assessment["availability"]], "related": "Related material; richer field not established"}[assessment["role"]]
-        content += ['<p><strong>' + escape(role_label) + ':</strong> <a href="#' + escape(case_id + ":" + eid, quote=True) + '">' + escape(eid) + "</a></p>", _list(assessment["reasons"])]
-    if not refs:
-        content += ["<p>No compatible observation is supplied for this field. No negative characteristic is inferred.</p>"]
-    if f["missing_information"]:
-        content += ["<h4>Still missing or unestablished</h4>", _list(f["missing_information"])]
-    content += ["<h4>Why stronger claims are withheld</h4>", _list(f["suppression_reasons"]), "</details>"]
-    return "".join(content)
-
-
-def render_html(review: dict[str, Any], output_dir: Path) -> str:
-    css = """body{font:16px/1.55 system-ui,sans-serif;margin:0;color:#202c3c;background:#f5f6f8}main{max-width:1080px;margin:auto;padding:30px 24px 80px}h1{font-size:30px;line-height:1.2}h2{font-size:23px}h3{font-size:18px}h4{margin-bottom:4px}.intro,.notice{border-left:4px solid #567094;padding:12px 18px;background:#eaf0f8}.muted{color:#536278;font-size:14px}nav{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0}nav a{padding:6px 10px;border:1px solid #9aaac0;border-radius:6px;color:#244b7b;background:white}a{color:#164e91;overflow-wrap:anywhere}.case{margin:25px 0 45px;border-top:2px solid #8da0b9;padding-top:10px}.evidence{background:white;border:1px solid #cdd5df;border-radius:8px;padding:16px;margin:14px 0}blockquote{margin:12px 0;padding:12px 16px;border-left:3px solid #8da0b9;background:#f6f8fb;white-space:pre-wrap}details{margin:10px 0}summary{cursor:pointer;font-weight:600}details[open]>summary{margin-bottom:12px}.field{background:white;border:1px solid #ccd5df;border-radius:6px;padding:13px 16px}.field summary{display:flex;justify-content:space-between;gap:12px;align-items:center}.field-title{flex:1}.badge{font-size:12px;font-weight:600;border-radius:5px;padding:4px 7px;background:#edf0f4;color:#394b61;max-width:235px}.observed .badge{background:#dceee6;color:#20503d}code{overflow-wrap:anywhere;font-size:13px}table{border-collapse:collapse;width:100%}th,td{text-align:left;border-bottom:1px solid #ddd;padding:7px}caption{text-align:left;font-weight:600}.facts li{margin-bottom:6px}@media(max-width:650px){main{padding:18px 12px}.field summary{display:block}.badge{display:inline-block;margin-top:8px}h1{font-size:25px}}@media print{nav,.chooser{display:none}.case{display:block!important}details:not([open])> *{display:block}details>summary{display:block}}
-"""
-    parts = ['<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Observed passage profiles — bounded consumer review</title><style>', css, '</style><main><h1>Observed passage profiles</h1><p class="intro">These are supplied passage examples, including synthetic designs and frozen pilot outputs. They describe what is observed and what remains unknown. They do not characterize or compare pastors.</p>']
-    parts.append(f'<p class="muted">{review["case_count"]} acceptance cases · {review["invariant_passes"]} invariant passes · {review["exact_oracle_matches"]} exact frozen state/link matches · zero provider requests</p>')
-    parts.append('<label class="chooser" for="case">Choose an example: </label><select class="chooser" id="case"><option value="all">All examples</option>')
-    parts += [f'<option value="{c["case_id"]}" {"selected" if c["case_id"] == "A01" else ""}>{escape(c["case_id"] + " — " + c["purpose"])}</option>' for c in review["cases"]]
-    parts.append('</select><p>Start with A01 for a partial view, A05 for withheld binding, A08 for a supported local address, A11 for duplicate passages, A12 for exclusion, or A15 for separate example panels.</p>')
+def render_markdown(review: dict[str, Any], output_dir: Path) -> str:
+    lines = ["# Observed passage profiles", "",
+             "Supplied passage examples only, including synthetic designs and frozen pilot outputs. These views describe observed evidence and its limits; they do not characterize or compare pastors.", "",
+             f"{review['case_count']} acceptance cases; {review['invariant_passes']} invariant passes; {review['exact_oracle_matches']} exact frozen state/link matches; zero provider requests.", "",
+             "Start with A01 for a partial view, A05 for withheld binding, A08 for supported local address, A11 for duplicates, A12 for exclusions, or A15 for separate examples.", ""]
+    lines += [f"- [{c['case_id']}](#{c['case_id'].lower()}): {_md(c['purpose'])}" for c in review["cases"]]
     for c in review["cases"]:
-        view = c["view"]
-        parts.append(f'<section class="case" id="{c["case_id"]}"><h2>{escape(c["case_id"] + " — " + c["purpose"])}</h2>')
-        parts.append('<p class="notice">' + ("Synthetic design only; no real pastor evidence." if c["origin"] == "synthetic_design" else "Frozen provider output and/or synthetic design. Real pastor ownership/content eligibility is not certified.") + " All displayed claims concern supplied passages.</p>")
-        parts.append("<h3>What the supplied passages show</h3><ul class=\"facts\">")
-        seen = set()
-        for e in view["evidence"]:
-            key = e["independence"]["utterance_group"]
-            if key in seen:
-                continue
-            seen.add(key)
-            # Evidence decisions remain visible even when a richer field is withheld.
-            parts.append("<li><strong>" + escape(e["evidence_id"]) + "</strong> — " + escape(" ".join(e["visible_facts"])) + "</li>")
-        parts.append("</ul><h3>Passages and source decisions</h3>" + _evidence_cards(c, output_dir))
-        parts.append(f'<p class="muted">{len(view["retained_evidence"])} source locators / {view["unique_utterance_groups"]} utterance groups. {escape(view["independence_note"])}</p>')
-        parts.append("<h3>All 20 desired fields</h3><p>Observed means a supplied local example. Missing and withheld fields remain visible. Open a field for its evidence links and the reason stronger claims are unavailable.</p>")
-        parts += [_field_card(c["case_id"], f) for f in view["fields"]]
-        parts.append("<details><summary>Proposed estimands and later constructs</summary>" + _list([e["estimand_id"] + ": " + e["target"] + " — " + e["status"].replace("_", " ") for e in view["estimands"]]) + "<p>D01–D06 remain held. G1, broader collection, pastor projection/comparison, clustering, G4 and quality scoring remain held.</p></details>")
+        cid, view = c["case_id"], c["view"]
+        lines += ["", f"## {cid}", "", _md(c["purpose"]), "",
+                  "**Input origin:** " + _md(c["origin"].replace("_", " ")) + ". Synthetic inputs are design-only; frozen pilot inputs do not certify real pastor ownership/content eligibility.", "",
+                  "### Supplied observations and limits", ""]
+        anchors = {}
+        by_id = {e["evidence_id"]: e for e in view["evidence"]}
+        for number, ids in enumerate(view["utterance_groups"].values(), 1):
+            anchors.update({eid: f"{cid.lower()}-evidence-{number}" for eid in ids})
+        for ids in view["utterance_groups"].values():
+            e = by_id[ids[0]]
+            lines += [f"- [{_md(e['evidence_id'])}](#{anchors[e['evidence_id']]}): " + _md(" ".join(e["visible_facts"]))]
+        lines += ["", "### All 20 desired fields", "",
+                  "Observed means a supplied local example. Missing, unavailable and withheld fields remain visible; no negative characteristic follows from missing evidence.", "",
+                  "| Field | Question | Availability |", "| --- | --- | --- |"]
+        lines += [f"| [{f['characteristic_id']}](#{cid.lower()}-{f['characteristic_id'].lower()}) | {_md(f['question'])} | {_md(f['status_label'])} |" for f in view["fields"]]
+        for f in view["fields"]:
+            lines += ["", f"### {cid} {f['characteristic_id']}", "", f"**{_md(f['question'])}** — {_md(f['status_label'])}", "",
+                      "Desired field: " + _md(f["target_statement"]) + ".", ""]
+            if not f["assessments"]:
+                lines += ["No compatible observation is supplied. No negative characteristic is inferred.", ""]
+            for a in f["assessments"]:
+                label = {"supporting": "Supports this local observation", "counter": "Counterexample in this unit", "unresolved": STATUS_LABELS[a["availability"]], "related": "Related material; richer field not established"}[a["role"]]
+                lines += [f"**{_md(label)}:** [{_md(a['evidence_id'])}](#{anchors[a['evidence_id']]}).", ""]
+                lines += ["- " + _md(reason) for reason in a["reasons"]]
+                lines += [""]
+            if f["missing_information"]:
+                lines += ["**Still missing or unestablished:**", ""]
+                lines += ["- " + _md(item) for item in f["missing_information"]]
+                lines += [""]
+            lines += ["**Why stronger claims are withheld:**", ""]
+            lines += ["- " + _md(reason) for reason in f["suppression_reasons"]]
+        lines += ["", "### Passages and source decisions", ""]
+        for number, ids in enumerate(view["utterance_groups"].values(), 1):
+            lines += [f"### {cid} evidence {number}", "", f"{len(ids)} source locator(s) in this utterance group.", ""]
+            for eid in ids:
+                e = by_id[eid]
+                lines += [f"**{_md(eid)}** — {_md(e['provenance']['origin'].replace('_', ' '))}", "",
+                          _fenced(e["source"]["target_text"]), ""]
+                if e["payload"]["kind"] == "address":
+                    lines += ["**Assessed address utterance:**", "", _fenced(e["spans"][0]["text"]), ""]
+                lines += [_md(e["reading_note"]), ""]
+                lines += ["- " + _md(fact) for fact in e["visible_facts"]]
+                if e["payload"]["kind"] == "address":
+                    lines += ["", "| Independent act | Supplied decision |", "| --- | --- |"]
+                    lines += [f"| {_md(act.replace('_', ' '))} | {_md(state.replace('_', ' '))} |" for act, state in e["payload"]["acts"].items()]
+                lines += ["", "**Exact evidence spans:**", ""]
+                for span in e["spans"]:
+                    lines += [f"{_md(span['role'])} [{span['start']},{span['end']}):", "", _fenced(span["text"]), ""]
+                for role in ("leading_context", "trailing_context"):
+                    if e["source"][role]:
+                        lines += [f"**{_md(role.replace('_', ' '))} — reference resolution only:**", "", _fenced(e["source"][role]), ""]
+                for key, label, pointer in (("input_path", "Original input and recording/block locator", "input_pointer"), ("result_path", "Frozen result", "result_pointer")):
+                    if e["provenance"][key]:
+                        lines += [_source_link(e["provenance"][key], label, output_dir) + " at " + _md(e["provenance"][pointer] or "") + ".", ""]
+                lines += ["Raw decisions and reuse provenance: " + _md(e["provenance"]["raw_output_ref"] or "not applicable: synthetic design") + "; " + _md(e["provenance"]["answer_provenance_ref"] or "not applicable") + ".", "",
+                          "Recording: " + _md(e["source"]["recording_id"]) + "; sermon date: " + _md(e["source"]["sermon_date"] or "unknown") + "; series: " + _md(e["source"]["series_id"] or "unknown") + "; repeated material: " + _md(e["independence"]["repeated_material_group"] or "not supplied") + ".", "",
+                          "Ownership: " + _md(e["eligibility"]["membership"]) + "; content: " + _md(e["eligibility"]["content"]) + "; compatibility: " + _md(e["provenance"]["compatibility"]) + "; local boundary: " + _md(e["coverage"]["local_boundary"]) + "; candidate discovery: " + _md(e["coverage"]["candidate_discovery"]) + ".", ""]
+        lines += [f"{len(view['retained_evidence'])} source locators / {view['unique_utterance_groups']} utterance groups. " + _md(view["independence_note"]), "",
+                  "### Proposed estimands and later constructs", ""]
+        lines += [f"- {e['estimand_id']}: {_md(e['target'])} — {_md(e['status'].replace('_', ' '))}" for e in view["estimands"]]
+        lines += ["", "D01–D06 remain held. G1, broader collection, pastor projection/comparison, clustering, G4 and quality scoring remain held.", ""]
         if c["acceptance"]["oracle_differences"]:
-            parts.append('<details class="notice"><summary>Frozen expectation differs from consumer output</summary><pre>' + escape(json.dumps(c["acceptance"]["oracle_differences"], indent=2)) + "</pre><p>The original packet is unchanged. No additional semantic inference is used to close this difference.</p></details>")
-        parts.append("</section>")
-    parts.append('''<script>
-const chooser=document.querySelector('#case');
-function show(){document.querySelectorAll('.case').forEach(e=>e.hidden=chooser.value!=='all'&&e.id!==chooser.value);}
-chooser.addEventListener('change',show);
-document.addEventListener('click',e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;const target=document.getElementById(a.hash.slice(1));if(target&&target.tagName==='DETAILS')target.open=true;});
-show();
-</script></main></html>''')
-    return "".join(parts)
+            lines += ["**Frozen expectation differs from consumer output:**", "", _fenced(json.dumps(c["acceptance"]["oracle_differences"], indent=2), "json"), "",
+                      "The original packet is unchanged. No additional semantic inference is used to close this difference.", ""]
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def write_review(review: dict[str, Any], output_dir: Path = DEFAULT_OUTPUT) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    json_path, html_path = output_dir / "consumer-results.json", output_dir / "observed-profiles.html"
+    json_path, markdown_path = output_dir / "consumer-results.json", output_dir / "observed-profiles.md"
     json_path.write_text(json.dumps(review, indent=2, ensure_ascii=False) + "\n")
-    html_path.write_text(render_html(review, output_dir))
-    return json_path, html_path
+    markdown_path.write_text(render_markdown(review, output_dir))
+    return json_path, markdown_path
 
 
 def console_preview(review: dict[str, Any], case_id: str) -> str:
@@ -216,5 +199,5 @@ def console_preview(review: dict[str, Any], case_id: str) -> str:
         lines.append(f"  {f['characteristic_id']} {f['question']} — {f['status_label']}")
         if f["assessments"]:
             lines += ["    " + a["evidence_id"] + ": " + a["role"] + "; " + " ".join(a["reasons"]) for a in f["assessments"]]
-    lines += ["", "Rates, recurring pastor traits, comparisons and scores are withheld. Open the HTML for full missing inputs, suppression reasons and source links."]
+    lines += ["", "Rates, recurring pastor traits, comparisons and scores are withheld. Open the Markdown report for full missing inputs, suppression reasons and source links."]
     return "\n".join(lines)

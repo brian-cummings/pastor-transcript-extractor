@@ -63,7 +63,7 @@ The recommended immediate review is of this contract and its partial-view behavi
 
 Brian subsequently authorized the provider-free observed-profile consumer behind
 `pte`. The [consumer acceptance report](../../../evaluation/observed-profile-consumer-v1/REVIEW.md)
-and [rendered views](../../../evaluation/observed-profile-consumer-v1/observed-profiles.html)
+and [rendered views](../../../evaluation/observed-profile-consumer-v1/observed-profiles.md)
 now exercise these same 17 cases with the frozen packet unchanged. Run
 `pte analysis observed-profile-review` to reproduce them. Source/held-output
 invariants pass in 17 cases; exact state/link expectations match in 15, with two
