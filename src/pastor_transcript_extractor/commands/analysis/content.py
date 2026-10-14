@@ -3039,3 +3039,21 @@ def analysis_source_material_review(
                   f"{json_path} and {markdown_path}; cases={len(packet['cases'])}; "
                   f"cache_hits={execution['hits']}; cache_misses={execution['misses']}; "
                   f"provider_requests={execution['provider_requests']}", markup=False)
+
+
+@analysis_app.command(
+    "source-material-stage-gate",
+    help="Record or reuse the accepted source/material V1 PASS from frozen evidence; no inference or database reads.",
+)
+def analysis_source_material_stage_gate(
+    output_path: Path = typer.Option(Path("evaluation/sermon-topics/source-material-stage-gate-v1.json"), "--output"),
+) -> None:
+    from pastor_transcript_extractor.sermon_source_material_review import build_source_completion, write_source_completion
+
+    try:
+        report = build_source_completion()
+        json_path, markdown_path, reused = write_source_completion(output_path, report)
+    except (ValueError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"{'Reused' if reused else 'Wrote'} source/material PASS: "
+                  f"{json_path} and {markdown_path}; provider_requests=0", markup=False)
