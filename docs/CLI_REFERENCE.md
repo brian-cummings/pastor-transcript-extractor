@@ -3376,6 +3376,24 @@ pte analysis source-material-stage-gate [OPTIONS]
 | `--output PATH` | [default: evaluation/sermon-topics/source-material-stage-gate-v1.json] | no | evaluation/sermon-topics/source-material-stage-gate-v1.json |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis g1-feasibility-review`
+
+Run the fixed bounded G1 proposition-binding pilot; no expansion, collection or pastor projection.
+
+#### Usage
+
+```console
+pte analysis g1-feasibility-review [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--prepare-only` | Prepare the fixed source packet without provider calls. | no | False |
+| `--check-only` | Check packet integrity without provider calls. | no | False |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis g2-feasibility-review`
 
 Run the fixed bounded G2 semantic-edge pilot; no broader collection or profile projection.

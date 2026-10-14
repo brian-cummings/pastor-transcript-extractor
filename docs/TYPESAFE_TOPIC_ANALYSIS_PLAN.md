@@ -3041,3 +3041,56 @@ explicit profile-field estimands and missingness, followed by a provider-free
 consumer acceptance packet. Observation feasibility cannot itself grant rates,
 recurrence, comparison or population coverage. Full G2/G3, G4, broader collection,
 pastor projection/comparison and depth/empathy/quality scoring remain held.
+
+
+#### Current continuation: accepted observed consumer; bounded G1 prepared — 2026-10-14
+
+The shared evidence/field contract and provider-free observed consumer are now
+implemented and accepted. C01–C20 and all seven proposed estimands remain explicit;
+the [accepted consumer decision](../evaluation/observed-profile-consumer-v1/acceptance-decision-v1.json)
+closes the 17-case consumer step. A12/C05 retains incompatible `conflict:version`
+as unresolved alongside `excluded:content`; A15/C10 credits only `frozen:G2-01`,
+keeping the topic-only example separate. The frozen oracle and raw consumer run
+remain unchanged: 17 invariant passes, 15 exact matches, two accepted deviations.
+Reports are Markdown/JSON. No consumer follow-on is authorized.
+
+Brian has separately authorized **bounded G1 implementation and feasibility**.
+This supersedes the earlier G1 implementation hold only for the fixed two-subject
+proof; full G1 expansion/collection stays held. The
+[G1 feasibility packet](review-proposals/g1-feasibility-v1/REVIEW.md) now provides
+28 fixed cases and 37 source candidates, with source-selected object, voice/adoption,
+qualification, scope and epistemic evidence. Questions preserve independent
+relation, polarity/expression, attribution/adoption and explicit uncertainty.
+Expected labels are excluded from provider state; code retains source coordinates
+and composes partial local records without generating an opposite or a pastor belief.
+
+Execution is pinned to `jev-1.13.0`: 486 independent questions over 37 one-candidate
+requests; cumulative ceiling **37 attempts including failures/resumptions**;
+zero SDK retries; 45-second timeout. Raw distributions, selected framing spans,
+resolved model, request IDs, tokens, cache hits and unknown usage remain auditable.
+The .80 withholding policy is experimental, not production calibration. Three
+natural negative controls are frozen from archived packets; natural positive
+performance, automatic discovery and opportunity coverage remain untested.
+Nine focused mock tests and provider-free packet checks pass. **No provider or
+dataset validation was run by Codex.**
+
+Brian's next exact command, in the already-active venv:
+
+```sh
+pte analysis g1-feasibility-review
+```
+
+Integrity-only alternative: `pte analysis g1-feasibility-review --check-only`.
+Expected results: `evaluation/g1-binding/feasibility-v1.results.md` and `.json`;
+accounting/caches: `evaluation/g1-binding/cache-v1/`. Do not reset a failed run's
+ledger or spend beyond the request ceiling. Failed execution is not a semantic verdict.
+
+After Brian executes, Codex interprets the source-backed raw results and all
+positive/partial observations, prepares a concrete PASS/PARTIAL/FAIL recommendation,
+gets Brian's feasibility decision, records it separately and **stops**. No automatic
+all-checks-match PASS, question tuning, theological expansion or next workstream
+follows. G2/G3 construct feasibility remains closed. G1 full collection/expansion,
+broader collection, candidate-discovery recall, production calibration, opportunity
+denominators, request economics studies, pastor projection/comparison, clustering,
+G4, recurrence/rate estimation and quality scores stay held. The latest agent
+continuation is also summarized at the top of [HANDOFF.md](HANDOFF.md).

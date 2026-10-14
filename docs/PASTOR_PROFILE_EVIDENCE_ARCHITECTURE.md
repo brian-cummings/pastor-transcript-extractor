@@ -109,3 +109,17 @@ differences reviewed and accepted by Brian. This bounded step is **accepted and 
 preserving all 20 field questions, missing inputs and suppression reasons. It is
 not the final PastorProfile projection layer. G1, broader collection, pastor
 projection/comparison, clustering, G4, recurrence/rate estimation and scoring remain held. No next validation or implementation step is authorized by this acceptance.
+
+
+## Separately authorized bounded G1 pilot — 2026-10-14
+
+After closing the accepted consumer step, Brian explicitly authorized bounded G1
+implementation and measurement feasibility. The [fixed pilot](review-proposals/g1-feasibility-v1/REVIEW.md)
+is prepared behind `pte analysis g1-feasibility-review`: 28 cases, 37 source
+candidates, 486 independent questions, 37 cumulative attempted requests, zero
+SDK retries. No provider run or semantic feasibility verdict exists yet. Brian
+runs the command; Codex then interprets the local records and recommends a bounded
+feasibility decision before stopping. G1 full collection/expansion and all broader
+collection, coverage/calibration/denominator/economics, projection/comparison,
+clustering, G4, recurrence/rate and quality-score work remain held. This does not
+reopen the accepted observed consumer or G2/G3 construct tuning.

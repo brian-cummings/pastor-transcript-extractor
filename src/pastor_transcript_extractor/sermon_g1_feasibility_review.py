@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import runpy
 
 from pastor_transcript_extractor.sermon_g2_feasibility_review import validate_answers
 
@@ -141,6 +142,7 @@ def _case(cid, text, expected, reason, leading='', trailing='', source=None, ori
 def prepare():
     design_path = 'docs/review-proposals/g1-binding-v1/cases-v1.json'
     design = json.loads((ROOT/design_path).read_text())
+    runpy.run_path(str(ROOT/'docs/review-proposals/g1-binding-v1/build_cases.py'))['validate'](design)
     cases = [_case(c['case_id'],c['target_text'],c['expected_claims'],c['reason'],c['leading_context'],c['trailing_context'],{'path':design_path,'case_id':c['case_id']}) for c in design['cases']]
     # Fixed authored additions; expectations are not inputs to the candidate builder/provider.
     for cid,text,expected,reason in [

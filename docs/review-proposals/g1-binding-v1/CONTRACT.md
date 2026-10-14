@@ -1,5 +1,7 @@
 # G1 V1: bounded proposition-binding proof design
 
+**Current update — 2026-10-14:** bounded implementation/feasibility is authorized and [prepared](../g1-feasibility-v1/REVIEW.md); empirical feasibility is untested. The design-stage text below and authored expectations remain historical and intact. This releases only the fixed pilot implementation hold; G1 expansion and production collection/projection remain held.
+
 Status: **bounded design direction approved; implementation/expansion on hold**.
 The [joint G1/G2/G3 design review](../g2-g3-v1/REVIEW.md) now precedes any
 implementation/validation selection. Brian approved

@@ -1,5 +1,7 @@
 # Bounded G1 design handoff
 
+**Current update — 2026-10-14:** Brian has separately authorized the bounded G1 implementation/feasibility pilot. The [prepared pilot handoff](../g1-feasibility-v1/REVIEW.md) supplies the native CLI, fixed controls and request ceiling; empirical feasibility is untested. Earlier holds below are historical design-stage instructions. Expansion, broad collection and all downstream uses remain held.
+
 The desired catalog C01–C20 and landscape constructs D01–D06 are approved as design
 direction. Brian now approves this bounded G1 design direction and explicitly
 holds implementation and expansion. The [G2/G3 joint design handoff](../g2-g3-v1/REVIEW.md)
@@ -34,7 +36,7 @@ it is not approval of a theological taxonomy or evidence that all sermon claims 
 From the repository root:
 
 ```bash
-.venv/bin/python docs/review-proposals/g1-binding-v1/build_cases.py --check
+pte analysis g1-feasibility-review --check-only
 ```
 
 This is a local artifact check, not model or dataset validation. It verifies the 20

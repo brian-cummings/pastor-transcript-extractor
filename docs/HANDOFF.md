@@ -1,5 +1,27 @@
 # Handoff Notes
 
+## Current pastor-analysis handoff — 2026-10-14
+
+**Active step: bounded G1 implementation is prepared; empirical feasibility is untested. Brian owns the next provider command.** This section is the current continuation point; the older pipeline/experiment milestones below remain historical.
+
+- G2 bounded feasibility is PASS with known recall limits; G3 bounded feasibility is PASS with conservative positive/context-binding limits. Their construct iteration is closed.
+- The shared contract has 20 fields, seven estimands and 17 cases. The provider-free observed consumer is **accepted and closed**. Its [human decision](../evaluation/observed-profile-consumer-v1/acceptance-decision-v1.json) accepts A12/C05 and A15/C10 as intentional conservative deviations; the frozen oracle remains unchanged at 15/17 exact matches and 17 invariant passes. Reports use Markdown/JSON.
+- Brian explicitly authorized **bounded G1 implementation + feasibility**, preserving proposition/object, voice/adoption, affirmation/rejection, conditions/scope and explicit uncertainty. Only the earlier bounded-implementation hold is lifted; no G1 expansion or production collection is authorized.
+- The [G1 pilot handoff](review-proposals/g1-feasibility-v1/REVIEW.md) is complete: 28 fixed cases, 37 source candidates, 486 independent questions, a cumulative 37-attempt provider ceiling, pinned `jev-1.13.0`, zero SDK retries, exact source grounding and resumable cache/request accounting. Nine focused mock tests pass; **zero provider calls** were made in preparation.
+
+Brian's prepared command, with the venv already active:
+
+```sh
+pte analysis g1-feasibility-review
+```
+
+Provider-free check: `pte analysis g1-feasibility-review --check-only`. Do not run the provider command on Brian's behalf or monitor its progress. Results will be `evaluation/g1-binding/feasibility-v1.results.md` and `.json`, with `cache-v1/request-ledger.json`. No results currently exist. Another agent should read this handoff and the G1 review packet first; do not restart design, change the fixed cases, or reopen G2/G3 tuning.
+
+After Brian supplies the result, Codex must inspect every positive/partial row and its raw distributions/source, interpret semantic errors, omissions and withholdings, recommend PASS/PARTIAL/FAIL for Brian, record that separate decision, and **stop**. No automatic PASS or revision loop. Natural controls here are negative in the proof vocabulary; natural-positive reliability and automatic recall remain unestablished.
+
+Still held: G1 expansion/full collection, broader collection, candidate-discovery recall, production calibration, opportunity denominators, request economics studies, pastor projection/comparison, clustering, G4, recurrence/rate estimation and quality/exceptional-pastor scoring. Do not activate the accepted consumer with pilot observations or start another workstream from a feasibility result.
+
+
 ## Current State
 
 The sermon-isolation pipeline has a safe production path and a frozen evaluation set.
