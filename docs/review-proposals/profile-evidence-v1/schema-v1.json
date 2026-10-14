@@ -1,0 +1,1338 @@
+{
+  "$defs": {
+    "Address": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "address",
+          "title": "Kind",
+          "type": "string"
+        },
+        "acts": {
+          "additionalProperties": {
+            "enum": [
+              "observed",
+              "not_observed",
+              "unclear",
+              "incomplete"
+            ],
+            "type": "string"
+          },
+          "title": "Acts",
+          "type": "object"
+        },
+        "circumstance_relevance": {
+          "enum": [
+            "relevant_in_target",
+            "relevant_context_resolved",
+            "not_relevant",
+            "unclear",
+            "incomplete"
+          ],
+          "title": "Circumstance Relevance",
+          "type": "string"
+        },
+        "recipient_binding": {
+          "enum": [
+            "bound_in_target",
+            "bound_context_resolved",
+            "not_bound",
+            "unclear",
+            "incomplete"
+          ],
+          "title": "Recipient Binding",
+          "type": "string"
+        },
+        "addressee": {
+          "enum": [
+            "God",
+            "direct_current_listener",
+            "reported_person",
+            "general_hypothetical",
+            "no_address",
+            "unresolved",
+            "unclear"
+          ],
+          "title": "Addressee",
+          "type": "string"
+        },
+        "voice": {
+          "enum": [
+            "preacher",
+            "quoted_or_reported",
+            "mixed",
+            "unresolved",
+            "unclear"
+          ],
+          "title": "Voice",
+          "type": "string"
+        },
+        "adoption": {
+          "enum": [
+            "own_or_adopted",
+            "explicitly_rejected",
+            "not_adopted_report",
+            "unresolved",
+            "unclear"
+          ],
+          "title": "Adoption",
+          "type": "string"
+        },
+        "qualifications": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Qualifications",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "acts",
+        "circumstance_relevance",
+        "recipient_binding",
+        "addressee",
+        "voice",
+        "adoption",
+        "qualifications"
+      ],
+      "title": "Address",
+      "type": "object"
+    },
+    "Case": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "purpose": {
+          "title": "Purpose",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "synthetic_design",
+            "frozen_provider_output",
+            "mixed"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "expected": {
+          "$ref": "#/$defs/ExpectedView"
+        }
+      },
+      "required": [
+        "case_id",
+        "purpose",
+        "origin",
+        "evidence",
+        "expected"
+      ],
+      "title": "Case",
+      "type": "object"
+    },
+    "Claim": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "claim_design_only",
+          "title": "Kind",
+          "type": "string"
+        },
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "relation": {
+          "title": "Relation",
+          "type": "string"
+        },
+        "expression": {
+          "enum": [
+            "affirmed",
+            "rejected",
+            "qualified",
+            "explicitly_uncertain"
+          ],
+          "title": "Expression",
+          "type": "string"
+        },
+        "conditions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Conditions",
+          "type": "array"
+        },
+        "voice": {
+          "title": "Voice",
+          "type": "string"
+        },
+        "adoption": {
+          "title": "Adoption",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "object",
+        "relation",
+        "expression",
+        "conditions",
+        "voice",
+        "adoption"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "Coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "local_boundary": {
+          "enum": [
+            "sufficient",
+            "incomplete",
+            "unknown"
+          ],
+          "title": "Local Boundary",
+          "type": "string"
+        },
+        "episode_boundary": {
+          "enum": [
+            "reviewed_complete",
+            "proposed",
+            "unknown"
+          ],
+          "title": "Episode Boundary",
+          "type": "string"
+        },
+        "candidate_discovery": {
+          "enum": [
+            "unknown",
+            "frozen_catalog_only"
+          ],
+          "title": "Candidate Discovery",
+          "type": "string"
+        },
+        "sermon_assessment": {
+          "enum": [
+            "partial",
+            "not_assessed"
+          ],
+          "title": "Sermon Assessment",
+          "type": "string"
+        },
+        "opportunities": {
+          "enum": [
+            "unknown",
+            "not_defined"
+          ],
+          "title": "Opportunities",
+          "type": "string"
+        }
+      },
+      "required": [
+        "local_boundary",
+        "episode_boundary",
+        "candidate_discovery",
+        "sermon_assessment",
+        "opportunities"
+      ],
+      "title": "Coverage",
+      "type": "object"
+    },
+    "Eligibility": {
+      "additionalProperties": false,
+      "properties": {
+        "membership": {
+          "enum": [
+            "reviewed_member",
+            "conflict",
+            "unknown"
+          ],
+          "title": "Membership",
+          "type": "string"
+        },
+        "content": {
+          "enum": [
+            "eligible",
+            "excluded",
+            "unknown"
+          ],
+          "title": "Content",
+          "type": "string"
+        },
+        "policy_version": {
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "review_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Review Ref"
+        }
+      },
+      "required": [
+        "membership",
+        "content",
+        "policy_version",
+        "review_ref"
+      ],
+      "title": "Eligibility",
+      "type": "object"
+    },
+    "Estimand": {
+      "additionalProperties": false,
+      "properties": {
+        "estimand_id": {
+          "title": "Estimand Id",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "population": {
+          "title": "Population",
+          "type": "string"
+        },
+        "numerator": {
+          "title": "Numerator",
+          "type": "string"
+        },
+        "denominator": {
+          "title": "Denominator",
+          "type": "string"
+        },
+        "weighting": {
+          "title": "Weighting",
+          "type": "string"
+        },
+        "negatives_required": {
+          "title": "Negatives Required",
+          "type": "string"
+        },
+        "missingness": {
+          "title": "Missingness",
+          "type": "string"
+        },
+        "independence": {
+          "title": "Independence",
+          "type": "string"
+        },
+        "activation_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Activation Requirements",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "descriptive_examples_only",
+            "proposed_inactive"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "estimand_id",
+        "target",
+        "population",
+        "numerator",
+        "denominator",
+        "weighting",
+        "negatives_required",
+        "missingness",
+        "independence",
+        "activation_requirements",
+        "status"
+      ],
+      "title": "Estimand",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "capability": {
+          "enum": [
+            "registry",
+            "G1_design",
+            "G2",
+            "G3"
+          ],
+          "title": "Capability",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Source"
+        },
+        "spans": {
+          "items": {
+            "$ref": "#/$defs/Span"
+          },
+          "minItems": 1,
+          "title": "Spans",
+          "type": "array"
+        },
+        "unit_id": {
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "eligibility": {
+          "$ref": "#/$defs/Eligibility"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "independence": {
+          "$ref": "#/$defs/Independence"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "observation_state": {
+          "enum": [
+            "positive_local",
+            "negative_in_unit",
+            "judgment_withheld",
+            "boundary_incomplete"
+          ],
+          "title": "Observation State",
+          "type": "string"
+        },
+        "payload": {
+          "discriminator": {
+            "mapping": {
+              "address": "#/$defs/Address",
+              "claim_design_only": "#/$defs/Claim",
+              "leaf": "#/$defs/Leaf",
+              "relation": "#/$defs/Relation"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Leaf"
+            },
+            {
+              "$ref": "#/$defs/Claim"
+            },
+            {
+              "$ref": "#/$defs/Relation"
+            },
+            {
+              "$ref": "#/$defs/Address"
+            }
+          ],
+          "title": "Payload"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "capability",
+        "source",
+        "spans",
+        "unit_id",
+        "eligibility",
+        "provenance",
+        "independence",
+        "coverage",
+        "observation_state",
+        "payload"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "ExpectedView": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/FieldEvidence"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "retained_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Retained Evidence",
+          "type": "array"
+        },
+        "unique_utterance_groups": {
+          "minimum": 0,
+          "title": "Unique Utterance Groups",
+          "type": "integer"
+        },
+        "independently_eligible_sermons": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Independently Eligible Sermons"
+        },
+        "series_period_note": {
+          "title": "Series Period Note",
+          "type": "string"
+        },
+        "forbidden_wording": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Wording",
+          "type": "array"
+        }
+      },
+      "required": [
+        "fields",
+        "retained_evidence",
+        "unique_utterance_groups",
+        "independently_eligible_sermons",
+        "series_period_note",
+        "forbidden_wording"
+      ],
+      "title": "ExpectedView",
+      "type": "object"
+    },
+    "FieldContract": {
+      "additionalProperties": false,
+      "properties": {
+        "characteristic_id": {
+          "title": "Characteristic Id",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "target_statement": {
+          "title": "Target Statement",
+          "type": "string"
+        },
+        "estimand_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Estimand Ids",
+          "type": "array"
+        },
+        "compatible_inputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Compatible Inputs",
+          "type": "array"
+        },
+        "required_gates": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Gates",
+          "type": "array"
+        },
+        "missing_information": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Information",
+          "type": "array"
+        },
+        "maximum_packet_claim": {
+          "enum": [
+            "local_example",
+            "unavailable"
+          ],
+          "title": "Maximum Packet Claim",
+          "type": "string"
+        },
+        "forbidden_inference": {
+          "title": "Forbidden Inference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "characteristic_id",
+        "question",
+        "target_statement",
+        "estimand_ids",
+        "compatible_inputs",
+        "required_gates",
+        "missing_information",
+        "maximum_packet_claim",
+        "forbidden_inference"
+      ],
+      "title": "FieldContract",
+      "type": "object"
+    },
+    "FieldEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "characteristic_id": {
+          "title": "Characteristic Id",
+          "type": "string"
+        },
+        "subject_scope": {
+          "const": "supplied_passage",
+          "title": "Subject Scope",
+          "type": "string"
+        },
+        "estimand_id": {
+          "title": "Estimand Id",
+          "type": "string"
+        },
+        "interpretation_version": {
+          "title": "Interpretation Version",
+          "type": "string"
+        },
+        "availability": {
+          "enum": [
+            "local_examples",
+            "negative_in_unit",
+            "not_collected",
+            "measurement_unresolved",
+            "incompatible",
+            "excluded",
+            "judgment_withheld",
+            "boundary_incomplete",
+            "downstream_held"
+          ],
+          "title": "Availability",
+          "type": "string"
+        },
+        "claim_level": {
+          "enum": [
+            "local_example",
+            "unavailable"
+          ],
+          "title": "Claim Level",
+          "type": "string"
+        },
+        "supporting": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supporting",
+          "type": "array"
+        },
+        "counter": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Counter",
+          "type": "array"
+        },
+        "unresolved": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved",
+          "type": "array"
+        },
+        "required_missing": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Missing",
+          "type": "array"
+        },
+        "suppression_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Suppression Reasons",
+          "type": "array"
+        },
+        "visible_wording": {
+          "title": "Visible Wording",
+          "type": "string"
+        },
+        "uncertainty_wording": {
+          "title": "Uncertainty Wording",
+          "type": "string"
+        },
+        "population_rate": {
+          "title": "Population Rate",
+          "type": "null"
+        },
+        "recurring_characterization": {
+          "title": "Recurring Characterization",
+          "type": "null"
+        },
+        "comparison": {
+          "title": "Comparison",
+          "type": "null"
+        },
+        "quality_score": {
+          "title": "Quality Score",
+          "type": "null"
+        }
+      },
+      "required": [
+        "characteristic_id",
+        "subject_scope",
+        "estimand_id",
+        "interpretation_version",
+        "availability",
+        "claim_level",
+        "supporting",
+        "counter",
+        "unresolved",
+        "required_missing",
+        "suppression_reasons",
+        "visible_wording",
+        "uncertainty_wording",
+        "population_rate",
+        "recurring_characterization",
+        "comparison",
+        "quality_score"
+      ],
+      "title": "FieldEvidence",
+      "type": "object"
+    },
+    "FrozenArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "FrozenArtifact",
+      "type": "object"
+    },
+    "Independence": {
+      "additionalProperties": false,
+      "properties": {
+        "utterance_group": {
+          "title": "Utterance Group",
+          "type": "string"
+        },
+        "episode_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Group"
+        },
+        "recording_group": {
+          "title": "Recording Group",
+          "type": "string"
+        },
+        "sermon_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sermon Group"
+        },
+        "repeated_material_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Repeated Material Group"
+        },
+        "group_review": {
+          "enum": [
+            "authored",
+            "unreviewed"
+          ],
+          "title": "Group Review",
+          "type": "string"
+        }
+      },
+      "required": [
+        "utterance_group",
+        "episode_group",
+        "recording_group",
+        "sermon_group",
+        "repeated_material_group",
+        "group_review"
+      ],
+      "title": "Independence",
+      "type": "object"
+    },
+    "Leaf": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "leaf",
+          "title": "Kind",
+          "type": "string"
+        },
+        "contract_id": {
+          "title": "Contract Id",
+          "type": "string"
+        },
+        "observed_statement": {
+          "title": "Observed Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "contract_id",
+        "observed_statement"
+      ],
+      "title": "Leaf",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "enum": [
+            "synthetic_design",
+            "frozen_provider_output"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "input_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Path"
+        },
+        "input_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Pointer"
+        },
+        "result_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Path"
+        },
+        "result_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Pointer"
+        },
+        "question_semantics": {
+          "title": "Question Semantics",
+          "type": "string"
+        },
+        "question_version": {
+          "title": "Question Version",
+          "type": "string"
+        },
+        "question_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Question Digest"
+        },
+        "candidate_builder": {
+          "title": "Candidate Builder",
+          "type": "string"
+        },
+        "requested_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Requested Model"
+        },
+        "resolved_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resolved Model"
+        },
+        "model_resolution": {
+          "enum": [
+            "not_applicable",
+            "recorded",
+            "unresolved"
+          ],
+          "title": "Model Resolution",
+          "type": "string"
+        },
+        "decision_policy": {
+          "title": "Decision Policy",
+          "type": "string"
+        },
+        "raw_output_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Raw Output Ref"
+        },
+        "answer_provenance_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Answer Provenance Ref"
+        },
+        "semantic_review": {
+          "enum": [
+            "authored_expectation",
+            "bounded_feasibility_review"
+          ],
+          "title": "Semantic Review",
+          "type": "string"
+        },
+        "compatibility": {
+          "enum": [
+            "compatible",
+            "incompatible",
+            "unresolved"
+          ],
+          "title": "Compatibility",
+          "type": "string"
+        },
+        "reused_from": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reused From",
+          "type": "array"
+        }
+      },
+      "required": [
+        "origin",
+        "input_path",
+        "input_pointer",
+        "result_path",
+        "result_pointer",
+        "question_semantics",
+        "question_version",
+        "question_digest",
+        "candidate_builder",
+        "requested_model",
+        "resolved_model",
+        "model_resolution",
+        "decision_policy",
+        "raw_output_ref",
+        "answer_provenance_ref",
+        "semantic_review",
+        "compatibility",
+        "reused_from"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "Relation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "relation",
+          "title": "Kind",
+          "type": "string"
+        },
+        "relation": {
+          "title": "Relation",
+          "type": "string"
+        },
+        "left_span": {
+          "title": "Left Span",
+          "type": "integer"
+        },
+        "right_span": {
+          "title": "Right Span",
+          "type": "integer"
+        },
+        "decision": {
+          "enum": [
+            "linked",
+            "not_linked",
+            "unclear",
+            "incomplete"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "left_voice": {
+          "title": "Left Voice",
+          "type": "string"
+        },
+        "right_voice": {
+          "title": "Right Voice",
+          "type": "string"
+        },
+        "adoption": {
+          "title": "Adoption",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "relation",
+        "left_span",
+        "right_span",
+        "decision",
+        "left_voice",
+        "right_voice",
+        "adoption"
+      ],
+      "title": "Relation",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "recording_id": {
+          "title": "Recording Id",
+          "type": "string"
+        },
+        "transcript_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Transcript Sha256"
+        },
+        "target_sha256": {
+          "title": "Target Sha256",
+          "type": "string"
+        },
+        "target_text": {
+          "title": "Target Text",
+          "type": "string"
+        },
+        "leading_context": {
+          "title": "Leading Context",
+          "type": "string"
+        },
+        "trailing_context": {
+          "title": "Trailing Context",
+          "type": "string"
+        },
+        "source_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Path"
+        },
+        "source_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Pointer"
+        },
+        "sermon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sermon Id"
+        },
+        "sermon_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sermon Date"
+        },
+        "date_basis": {
+          "enum": [
+            "reviewed_sermon_date",
+            "unknown"
+          ],
+          "title": "Date Basis",
+          "type": "string"
+        },
+        "series_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Series Id"
+        },
+        "period_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Period Id"
+        }
+      },
+      "required": [
+        "recording_id",
+        "transcript_sha256",
+        "target_sha256",
+        "target_text",
+        "leading_context",
+        "trailing_context",
+        "source_path",
+        "source_pointer",
+        "sermon_id",
+        "sermon_date",
+        "date_basis",
+        "series_id",
+        "period_id"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "Span": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "target",
+            "leading_context",
+            "trailing_context"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "exclusiveMinimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "segment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Segment Id"
+        },
+        "start_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start Seconds"
+        },
+        "end_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "End Seconds"
+        }
+      },
+      "required": [
+        "role",
+        "start",
+        "end",
+        "text",
+        "segment_id",
+        "start_seconds",
+        "end_seconds"
+      ],
+      "title": "Span",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "profile-evidence-consumer-v1",
+      "title": "Version",
+      "type": "string"
+    },
+    "status": {
+      "const": "prepared_for_design_review",
+      "title": "Status",
+      "type": "string"
+    },
+    "production_effect": {
+      "const": "none",
+      "title": "Production Effect",
+      "type": "string"
+    },
+    "holds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Holds",
+      "type": "array"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/FrozenArtifact"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "field_contracts": {
+      "items": {
+        "$ref": "#/$defs/FieldContract"
+      },
+      "title": "Field Contracts",
+      "type": "array"
+    },
+    "downstream_holds": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Downstream Holds",
+      "type": "object"
+    },
+    "estimands": {
+      "items": {
+        "$ref": "#/$defs/Estimand"
+      },
+      "title": "Estimands",
+      "type": "array"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/Case"
+      },
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "status",
+    "production_effect",
+    "holds",
+    "sources",
+    "field_contracts",
+    "downstream_holds",
+    "estimands",
+    "cases"
+  ],
+  "title": "Packet",
+  "type": "object"
+}

@@ -3084,6 +3084,26 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "profile-evidence-check",
+    help="Check the shared evidence/field review packet locally; no provider calls or profile projection.",
+)
+def analysis_profile_evidence_check() -> None:
+    import subprocess
+    import sys
+
+    packet_dir = Path(__file__).resolve().parents[4] / "docs/review-proposals/profile-evidence-v1"
+    checker = packet_dir / "check_packet.py"
+    if not checker.is_file():
+        raise typer.BadParameter("The profile evidence review packet requires the repository checkout.")
+    result = subprocess.run(
+        [sys.executable, str(checker)], capture_output=True, text=True, check=False,
+    )
+    if result.returncode:
+        raise typer.BadParameter(result.stderr.strip() or result.stdout.strip() or "Packet integrity check failed.")
+    console.print(result.stdout.strip(), markup=False)
+
+
+@analysis_app.command(
     "g3-feasibility-review",
     help="Run the fixed bounded G3 address pilot; no collection, projection or scoring.",
 )

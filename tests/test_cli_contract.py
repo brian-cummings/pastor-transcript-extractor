@@ -48,6 +48,7 @@ GROUP_COMMANDS = {
     "analysis": {
         "g2-feasibility-review",
         "g3-feasibility-review",
+        "profile-evidence-check",
         "public-life-routing-review",
         "source-material-stage-gate",
         "listener-directives-review",

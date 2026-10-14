@@ -87,3 +87,14 @@ Proceed next with the shared evidence/field contract and provider-free consumer 
 
 G1 remains held pending a separate explicit implementation decision. Candidate-discovery recall, production calibration, opportunity denominators and request economics are named later validation/implementation tasks. G2/G3 construct feasibility is closed; full capability collection, G4, pastor projection/comparison and quality scores are not authorized here.
 
+## Prepared shared contract and consumer packet — 2026-10-14
+
+The [V1 review packet](review-proposals/profile-evidence-v1/REVIEW.md) now supplies
+the shared evidence/field contract, complete C01–C20 field mapping, seven proposed
+estimands and 17 provider-free acceptance cases. Exact schemas, pinned original
+source/result references, visible wording, missingness and suppression reasons are
+prepared. Frozen G2/G3 decisions retain their actual withholdings alongside clearly
+marked synthetic designs. Integrity checks are separate from a future consumer
+acceptance run; no production consumer or projection is implemented. All holds
+above remain in effect. The packet proposes useful passage-level partial views
+before any broader collection decision.
