@@ -1,5 +1,19 @@
 # Handoff Notes
 
+## Evidence-supply / collection-readiness planning — 2026-10-14
+
+Brian requests documentation review and planning for a separate gate; **the gate
+remains unauthorized**, alongside broader collection and downstream projection/scoring.
+The [V1 plan](review-proposals/evidence-supply-readiness-v1/PLAN.md) and
+[JSON plan](review-proposals/evidence-supply-readiness-v1/plan-v1.json) recommend
+provider-free readiness-packet implementation/preparation as the next decision,
+followed by separately authorized bounded natural validation. No implementation,
+dataset inspection, provider execution or activation occurs in this planning step.
+The proposed `pte analysis evidence-supply-review` command is not implemented.
+G1/G2/G3 and the observed consumer remain accepted and closed; their bounded
+results do not establish collection readiness. A readiness PASS would support only
+a separate collection proposal, with all downstream holds retained.
+
 ## Bounded G1 feasibility PASS — closed 2026-10-14
 
 **Brian explicitly accepts the V2 source review and closes this gate as PASS.**

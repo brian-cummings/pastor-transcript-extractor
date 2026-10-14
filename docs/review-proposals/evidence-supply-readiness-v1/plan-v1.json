@@ -1,0 +1,112 @@
+{
+  "schema_version": "evidence-supply-readiness-plan-v1",
+  "prepared_date": "2026-10-14",
+  "status": "planning_only",
+  "authorization": {
+    "planning": true,
+    "gate_implementation": false,
+    "dataset_inspection": false,
+    "gate_execution": false,
+    "provider_requests": false,
+    "broader_collection": false,
+    "projection_scoring": false
+  },
+  "recommended_next_decision": "Authorize provider-free readiness-packet implementation and preparation only; retain a separate paid-validation decision.",
+  "accepted_closed_steps": {
+    "g1": "bounded_pass_with_11_residual_checks",
+    "g2": "bounded_pass_with_known_recall_limitations",
+    "g3": "bounded_pass_with_conservative_binding_limitations",
+    "consumer": {
+      "exact_matches": 15,
+      "cases": 17,
+      "invariant_passes": 17,
+      "accepted_deviations": ["A12/C05", "A15/C10"]
+    }
+  },
+  "scope": {
+    "visible_characteristics": "C01-C20",
+    "claim_ceiling": "source_linked_local_examples",
+    "active_estimand": "E0",
+    "inactive_estimands": ["E1", "E2", "E3", "E4", "E5", "E6"],
+    "g1_subjects": ["assurance_security", "accepted_public_policy_proof_subject"],
+    "new_questions_or_thresholds": false,
+    "closed_pilot_or_consumer_changes": false
+  },
+  "readiness_axes": [
+    "product_fit", "source_eligibility", "compatibility_transport",
+    "discovery_supply", "natural_input_judgment", "units_opportunities",
+    "operations_economics", "useful_evidence_supply"
+  ],
+  "phases": [
+    {"id": "R1", "work": "Read-only inventory, field matrix, pinned source/reuse manifest and review packet", "requires": "separate_provider_free_implementation_authorization"},
+    {"id": "R2", "work": "Transport adapters and focused invariant checks on copied frozen rows and synthetic corruption controls", "requires": "separate_provider_free_implementation_authorization"},
+    {"id": "R3", "work": "Codex prepares fixed natural sermons, full-sermon reference opportunities, positives, negatives and non-candidate controls", "requires": "separate_provider_free_preparation_authorization"},
+    {"id": "R4", "work": "Freeze exact inputs, per-capability criteria, reuse, spending caps and pte command before seeking paid authorization", "requires": "separate_provider_free_preparation_authorization"},
+    {"id": "R5", "work": "Brian executes authorized bounded validation; Codex interprets returned source-backed results", "requires": "separate_paid_validation_authorization"},
+    {"id": "R6", "work": "Record Brian decision separately in Markdown/JSON and stop", "requires": "human_gate_decision"}
+  ],
+  "proposed_natural_validation": {
+    "maximum_sermons": 6,
+    "profiles": 2,
+    "target_sermons_per_profile": 3,
+    "purpose": "bounded_workload_not_sufficiency_or_representativeness",
+    "exact_sources": null,
+    "selection_and_reference_preparation_owner": "Codex",
+    "natural_positives_required_for_each_tested_capability": true,
+    "automatic_expansion": false,
+    "population_recall_claim": false,
+    "production_calibration_claim": false
+  },
+  "spending": {
+    "current_authorized_requests": 0,
+    "future_maximum_attempts": null,
+    "future_maximum_tokens": null,
+    "future_maximum_cost": null,
+    "budget_status": "derive_and_freeze_from_prepared_inputs_before_paid_authorization",
+    "automatic_retries": 0,
+    "unpriced_workflow": "blocked"
+  },
+  "outcomes": {
+    "PASS": "Named local-use scope satisfies frozen criteria, invariants and approved caps; only recommend separate collection proposal",
+    "PARTIAL": "Name supported capability/route/claim scopes and blocked scopes",
+    "FAIL": "Declared use fails source, semantic, transport or accounting requirements",
+    "BLOCKED_UNESTABLISHED": "Required inputs, reviews, policies, validation or price evidence absent"
+  },
+  "cli": {
+    "existing_provider_free_commands": [
+      "pte analysis g1-feasibility-review --stage-gate",
+      "pte analysis profile-evidence-check",
+      "pte analysis observed-profile-review --check-only"
+    ],
+    "proposed_commands": [
+      "pte analysis evidence-supply-review --prepare-only",
+      "pte analysis evidence-supply-review --check-only"
+    ],
+    "proposed_commands_implemented": false,
+    "dataset_validation_command": null,
+    "default_provider_free": true,
+    "future_paid_execution_requires_fingerprinted_authorization": true
+  },
+  "continuing_holds": [
+    "g1_expansion_full_capability_collection", "broader_collection",
+    "production_calibration", "population_candidate_recall",
+    "operational_opportunity_denominators",
+    "collection_economics_studies_outside_separately_approved_scope",
+    "pastor_projection_comparison", "contradiction_coherence_g4",
+    "clustering", "recurrence_rates", "quality_exceptional_pastor_scoring"
+  ],
+  "authorities": [
+    "docs/HANDOFF.md",
+    "evaluation/g1-binding/feasibility-stage-gate-v2.json",
+    "evaluation/g2-binding/feasibility-stage-gate-v2.json",
+    "evaluation/g3-address/feasibility-stage-gate-v2.json",
+    "evaluation/observed-profile-consumer-v1/acceptance-decision-v1.json",
+    "docs/PASTOR_PROFILE_GAP_ANALYSIS.md",
+    "docs/PASTOR_PROFILE_EVIDENCE_ARCHITECTURE.md",
+    "docs/review-proposals/pastor-contracts-v1/registry-v1.json",
+    "docs/review-proposals/profile-evidence-v1/CONTRACT.md",
+    "docs/review-proposals/profile-evidence-v1/FIELD_CATALOG.md",
+    "docs/review-proposals/profile-evidence-v1/ESTIMANDS.md",
+    "docs/analysis-readiness.md"
+  ]
+}
