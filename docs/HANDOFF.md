@@ -1,5 +1,22 @@
 # Handoff Notes
 
+## Evidence-supply V2 bounded paid validation — authorized 2026-10-14
+
+Brian now authorizes the frozen six-source V2 run, at most 4,680 cumulative
+attempts / $12.579840 public-list-price ceiling, zero automatic retries.
+The [paid authorization and exact CLI command](review-proposals/evidence-supply-readiness-v2/PAID_AUTHORIZATION.md)
+and [JSON decision](review-proposals/evidence-supply-readiness-v2/paid-authorization-v2.json)
+supersede the preparation-only paid hold below. No run result has yet been reported.
+Brian executes the command; Codex must not execute or monitor it.
+
+Preserve the frozen packet and criteria. The 16 G2 / 13 G3 positive exact supply
+misses cannot be erased by semantic analysis of other candidates. After results,
+Codex owns the source audit, usable-evidence interpretation and concrete
+PASS/PARTIAL/FAIL recommendation. Brian decides separately. His proposed small
+collection followed by V1 projection is the next planning direction after a
+successful decision; no automatic collection or projection activation is granted.
+G1/G2/G3 and the accepted consumer remain closed.
+
 ## Evidence-supply V2 provider-free revision — prepared 2026-10-14
 
 Brian authorizes the provider-free revision only on the same six recordings.
