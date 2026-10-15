@@ -3138,6 +3138,7 @@ def analysis_evidence_supply_source_audit(
 
     try:
         report = audit.load_review()
+        accepted = audit.accepted_decision(report)
         if write_reports:
             audit.write_reports(report)
     except (ValueError, OSError, KeyError) as error:
@@ -3146,7 +3147,8 @@ def analysis_evidence_supply_source_audit(
     console.print(f"Verified V2 source audit: {report['audited_focal_checks']} focal checks; "
                   f"{report['requested_nonmatching_checks']} non-matching checks classified; "
                   f"{economics['audited_focal_subset_unique_items']} audited-subset positive items.", markup=False)
-    console.print("Recommendation: collection readiness FAIL; supplied local evidence PARTIAL; Brian decision pending. "
+    decision_text = "Brian accepted this FAIL; V2 readiness gate closed." if accepted else "Brian decision pending."
+    console.print("Collection readiness FAIL; supplied local evidence PARTIAL; " + decision_text + " "
                   "Verification success is not a readiness PASS. No provider calls or downstream activation.", markup=False)
     console.print(f"Audit: {audit.AUDIT}; whole-run usable count/unit cost remain unestablished.", markup=False)
 

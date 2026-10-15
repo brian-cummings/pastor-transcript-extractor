@@ -12,6 +12,19 @@ RESULTS = frozen.ROOT / "evaluation/evidence-supply-readiness-v2"
 AUDIT = RESULTS / "source-audit-v2.json"
 
 
+def accepted_decision(report):
+    path = RESULTS / 'acceptance-decision-v2.json'
+    if not path.exists():
+        return None
+    decision = json.loads(path.read_text())
+    if (decision['content_fingerprint'] != frozen.fp({k:v for k,v in decision.items() if k != 'content_fingerprint'})
+            or decision['audit_fingerprint'] != report['content_fingerprint']
+            or decision['audit_file_sha256'] != frozen.v1.file_hash(AUDIT)
+            or decision['status'] != 'FAIL' or decision['closed'] is not True):
+        raise ValueError('Invalid V2 human acceptance decision')
+    return decision
+
+
 def validate_review(report, packet, result, references, sources, ledger):
     """Check the evidence/score/accounting bindings, not automate source judgment."""
     if report['content_fingerprint'] != frozen.fp({k: v for k, v in report.items() if k != 'content_fingerprint'}):
