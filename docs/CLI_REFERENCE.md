@@ -3416,6 +3416,24 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis evidence-supply-collector-design`
+
+Prepare/check the source-only collector geometry revision on the same six frozen sources; no provider execution.
+
+#### Usage
+
+```console
+pte analysis evidence-supply-collector-design [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--prepare-only` | Materialize the authorized provider-free collector design and representation diagnostics. | no | False |
+| `--check-only` | Reproduce and verify the frozen source-only proposal without model inference. | no | False |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis evidence-supply-source-audit`
 
 Verify the authored V2 focal source audit and stage-gate recommendation without provider calls.

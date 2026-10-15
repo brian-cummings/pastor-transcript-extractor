@@ -47,6 +47,7 @@ ROOT_COMMANDS = {
 GROUP_COMMANDS = {
     "analysis": {
         "evidence-supply-review",
+        "evidence-supply-collector-design",
         "evidence-supply-source-audit",
         "g1-feasibility-review",
         "g2-feasibility-review",

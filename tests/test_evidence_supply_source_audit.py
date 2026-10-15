@@ -98,7 +98,7 @@ class SourceAuditTests(unittest.TestCase):
     def test_cli_verifies_without_executing_provider(self):
         report = dict(audited_focal_checks=114, requested_nonmatching_checks=70,
                       usable_evidence={'audited_focal_subset_unique_items': 34})
-        with patch.object(audit, 'load_review', return_value=report), patch.object(audit.frozen, 'execute', side_effect=AssertionError('No execution allowed')):
+        with patch.object(audit, 'load_review', return_value=report), patch.object(audit, 'accepted_decision', return_value=None), patch.object(audit.frozen, 'execute', side_effect=AssertionError('No execution allowed')):
             result = CliRunner().invoke(app, ['analysis', 'evidence-supply-source-audit'])
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn('FAIL', result.output)

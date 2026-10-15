@@ -3128,6 +3128,32 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-collector-design",
+    help="Prepare/check the source-only collector geometry revision on the same six frozen sources; no provider execution.",
+)
+def analysis_evidence_supply_collector_design(
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Materialize the authorized provider-free collector design and representation diagnostics."),
+    check_only: bool = typer.Option(False, "--check-only", help="Reproduce and verify the frozen source-only proposal without model inference."),
+) -> None:
+    from pastor_transcript_extractor import evidence_supply_collector_design as design
+
+    if prepare_only and check_only:
+        raise typer.BadParameter("Choose --prepare-only or --check-only")
+    try:
+        if prepare_only:
+            packet=design.build_packet();design.write_packet(packet)
+        else:
+            packet=json.loads((design.HERE/'design-v3.json').read_text());design.validate_packet(packet)
+    except (ValueError, OSError, KeyError) as error:
+        raise typer.BadParameter(str(error)) from error
+    console.print(f"Collector design V3: {packet['candidate_count']} source-only G2/G3 candidates; "
+                  f"linear bound {packet['bound']}; six unchanged sources; provider_requests=0.", markup=False)
+    console.print("Factory representation is separate from discovery and semantic validation. "
+                  "G1/G2/G3 contracts, provider rerun, collection and projection remain held.", markup=False)
+    console.print(f"Proposal: {design.HERE / 'PROPOSAL.md'}", markup=False)
+
+
+@analysis_app.command(
     "evidence-supply-source-audit",
     help="Verify the authored V2 focal source audit and stage-gate recommendation without provider calls.",
 )
@@ -3178,6 +3204,8 @@ def analysis_evidence_supply_review(
             raise typer.BadParameter("--approve-paid-packet requires --execute")
         if execute_paid and not approve_paid_packet:
             raise typer.BadParameter("Paid execution is held; Brian must separately approve the exact packet with --approve-paid-packet")
+        if execute_paid and (v2.RESULTS / "acceptance-decision-v2.json").exists():
+            raise typer.BadParameter("Evidence Supply V2 readiness is closed FAIL. No provider rerun is authorized; use pte analysis evidence-supply-collector-design --check-only.")
         destination = output_dir or v2.HERE
         try:
             if prepare_only:
