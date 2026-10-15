@@ -1,5 +1,74 @@
 # Handoff Notes
 
+## Evidence-supply V2 provider-free revision — prepared 2026-10-14
+
+Brian authorizes the provider-free revision only on the same six recordings.
+The [V2 review](review-proposals/evidence-supply-readiness-v2/REVIEW.md),
+[complete available source/boundary review](review-proposals/evidence-supply-readiness-v2/SOURCE_REVIEW.md),
+[exact reference cases](review-proposals/evidence-supply-readiness-v2/CASES.md),
+[C01–C20 matrix](review-proposals/evidence-supply-readiness-v2/FIELD_MATRIX.md) and
+[frozen JSON packet](review-proposals/evidence-supply-readiness-v2/input-v2.json)
+are now prepared. [Authorization record](review-proposals/evidence-supply-readiness-v2/authorization-v2.json)
+records zero authorized/actual paid attempts and no projection or collection activation.
+V1 and all closed G1/G2/G3/consumer decisions are preserved unchanged.
+
+Full available main-sermon text and both transitions are independently reviewed.
+Restore 1200's opening and 4050's complete spoken ending in separate V2 source
+snapshots; exclude the separate Scripture reader/hymn at 421. Production extraction
+and identity records are untouched. Boundaries are authored diagnostic inputs,
+not automatic membership expansion. Some 1200/4430 passages overlap earlier pilots;
+this development sample does not establish held-out accuracy or population recall.
+The original 110 episode IDs/labels remain; exact endpoint/circumstance/claim
+checks are separately frozen, refinements documented and R111–R114 added from
+restored transitions. There are 114 focal checks, not an exhaustive universal
+inventory of every possible atomic relation in a pastor's ministry.
+
+V2 retains 28,787 source-wide candidates without the eight-target cap. All 23 G1
+claim inputs fit existing limits; their canonical questions, thresholds, relation
+meanings and composition are unchanged. G2 packs up to eight pairs using only
+its accepted explanation/stance/voice/boundary fields; G3 packs up to three
+candidates with reversible source-pointer substitution. Exact supply hits are
+G1 2/7 focal checks, G2 41/62 and G3 27/45. Importantly, the G1 explicit
+knowledge-of-pardon positive is supplied; 16 G2 and 13 G3 positive checks are still
+unsupplied by the declared four-content-sentence horizon/granularity. These are
+collection misses, not measurement errors. The city-ramp positive remains absent.
+Do not relabel missing controls or exact source-span hits as semantic measurements.
+
+The full run proposal is 4,680 cumulative attempts, zero retries, pinned
+`jev-1.13.0`, and a conservative public-list-price ceiling **$12.579840** at the
+verified $0.042/M input rate (output free), reserving the documented 64k combined
+request limit per attempt with long-context disabled. Attempts, including failures
+and lost replies, retain their reservation; exact raw HTTP bytes are persisted
+before UTF8/JSON/answer validation. Valid saved receipts replay without a provider;
+invalid/missing replies stop for a separate recovery decision. Technical and live
+source/membership preflight pass. Forty-nine focused tests pass (13 V2, 13 V1,
+18 CLI contract, five CLI reference); inexpensive static checks pass. No provider
+calls, corpus classification/evaluation or production mutations were performed.
+
+Provider-free exact commands:
+
+```sh
+pte analysis evidence-supply-review --revision v2 --check-only
+pte analysis evidence-supply-review --revision v2 --paid-run-preflight
+```
+
+The review contains the exact future paid command and fingerprint. It requires
+Brian's separate explicit `--execute --approve-paid-packet FINGERPRINT` opt-in;
+preparation/check/preflight never authorize payment. Results would be under
+`evaluation/evidence-supply-readiness-v2/`, with an immutable receipt cache and
+charged ledger. Codex must not execute or monitor that run for Brian.
+
+Recommend holding the full paid run pending review of the known supply misses;
+under the predeclared criteria it cannot establish complete-reference-slate
+collection PASS. A separately approved run could measure the usefulness of partial
+supplied evidence, while retaining every miss/error/withholding. Do not automatically
+revise the collector, expand the source set, reopen G1 or activate projection. After
+any approved run, Codex owns every positive/mismatch/withholding source audit and
+usable-item/cost interpretation; Brian reviews concrete results and decides.
+All production calibration, population recall, operational denominators/production
+economics, broader collection, pastor projection/comparison, recurrence, G4/coherence,
+clustering and scoring holds remain.
+
 ## Evidence-supply / collection-readiness provider-free preparation — 2026-10-14
 
 Brian explicitly authorizes steps 1–4 only, incorporating independent references,

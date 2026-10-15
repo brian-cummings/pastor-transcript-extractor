@@ -1,0 +1,14 @@
+{
+  "status": "precommit_report_finalization",
+  "previous_packet_fingerprint": "6225a9db1606482fa055dcb3082b01c16fc15a3af6dfb3e51abcdff49b4be622",
+  "current_packet_fingerprint": "42510f580522e3ef3b8d0b6993491887a3b9c13e2433b1c900a66cd750a75f30",
+  "source_reference_candidate_question_budget_changes": false,
+  "changes": [
+    "Expose all C01-C20 fields and known positive supply misses in review",
+    "Retain zero provider calls; paid proposal remains held",
+    "Pin complete available source/boundary review and disclose development-source reuse",
+    "Treat reported-recipient/adoption transfer as critical source attribution flag pending audit",
+    "Retain exact raw HTTP bytes before UTF8/JSON/answer validation"
+  ],
+  "provider_requests": 0
+}

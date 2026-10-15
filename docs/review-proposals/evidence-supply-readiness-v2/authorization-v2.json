@@ -1,0 +1,24 @@
+{
+  "version": "evidence-supply-v2-preparation-authorization",
+  "date": "2026-10-14",
+  "decision_owner": "Brian",
+  "human_instruction": "ok proceed",
+  "scope": "Provider-free V2 preparation on the same six recordings; source-wide candidates, source-preserving G1 slices, independent full available sermon/reference review, fixed spending proposal and pte handoff.",
+  "preparation_authorized": true,
+  "paid_execution_authorized": false,
+  "collection_activation_authorized": false,
+  "projection_scoring_authorized": false,
+  "authorized_provider_attempts": 0,
+  "authorized_usd": "0",
+  "prepared_packet_fingerprint": "42510f580522e3ef3b8d0b6993491887a3b9c13e2433b1c900a66cd750a75f30",
+  "prepared_provider_calls": 0,
+  "technical_preflight": "PASS",
+  "collection_readiness": "unestablished_known_supply_misses",
+  "focused_tests": {
+    "v2_supply": 13,
+    "v1_supply": 13,
+    "cli_contract": 18,
+    "cli_reference": 5
+  },
+  "next_recommendation": "Hold the full paid run pending review of the known 16 G2 and 13 G3 positive supply misses; the prepared command would measure partial supplied evidence and cannot erase those misses."
+}

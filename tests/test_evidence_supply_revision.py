@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import base64
 from decimal import Decimal
 import json
 from pathlib import Path
@@ -156,6 +157,25 @@ class EvidenceSupplyRevisionTests(unittest.TestCase):
         result=CliRunner().invoke(app,['analysis','evidence-supply-review','--revision','v2','--check-only','--approve-paid-packet','x'])
         self.assertNotEqual(0,result.exit_code)
         self.assertIn('requires --execute',result.output)
+
+    def test_reported_address_cannot_be_promoted_to_current_listener(self):
+        packet={'candidate_manifest':[], 'funnel':[dict(check_id='C1',reference_id='R1',capability='G3',opportunity='positive',matching_candidate_ids=['a'],expected={'addressee':['reported_person'],'adoption':['not_adopted_report','unresolved']})], 'content_fingerprint':'test'}
+        def answer(choice):return dict(choice=choice,probabilities={choice:1.0},confidence=1.0)
+        rows=[dict(request_key='r',capability='G3',candidate_ids=['a'],raw_answers={'q0_addressee':answer('direct_current_listener'),'q0_adoption':answer('own_or_adopted')},usage={'input_tokens':1,'output_tokens':1})]
+        check=supply.interpret(packet,rows)['reference_checks'][0]
+        self.assertEqual('critical_integrity_failure',check['status'])
+        self.assertIn('wrong_source_or_speaker',check['evaluations'][0]['critical_types'])
+
+    def test_invalid_utf8_bytes_are_retained_before_decoding(self):
+        packet,requests=small_run()
+        class InvalidBytesProvider(FakeProvider):
+            def assess(self,request):
+                return dict(status_code=200,body_base64=base64.b64encode(b'\xffinvalid').decode('ascii'))
+        with tempfile.TemporaryDirectory() as directory,patch.object(supply,'validate_packet'):
+            with self.assertRaises(UnicodeDecodeError):
+                supply.execute(packet,requests,approval_key=packet['content_fingerprint'],output_dir=directory,provider_factory=InvalidBytesProvider)
+            path=Path(directory)/'receipts'/f"{requests[0]['request_key']}.json"
+            self.assertEqual(b'\xffinvalid',base64.b64decode(json.loads(path.read_text())['response']['body_base64']))
 
 
 if __name__=='__main__':unittest.main()

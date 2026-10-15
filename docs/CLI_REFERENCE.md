@@ -3430,11 +3430,14 @@ pte analysis evidence-supply-review [OPTIONS]
 
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
+| `--revision TEXT` | Frozen supply packet revision: v1 or provider-free prepared v2.  [default: v1] | no | v1 |
 | `--prepare-only` | Materialize the frozen source/reference packet without inference. | no | False |
 | `--check-only` | Check the frozen packet without writing reports or calling providers. | no | False |
 | `--paid-run-preflight` | Show concrete paid-proposal blockers; exits nonzero while execution is held. | no | False |
 | `--base-dir PATH` | Optionally verify freshness of exactly six live sources/membership decisions read-only. | no | — |
-| `--output-dir PATH` | Markdown/JSON packet destination.  [default: docs/review-proposals/evidence-supply-readiness-v1] | no | docs/review-proposals/evidence-supply-readiness-v1 |
+| `--output-dir PATH` | Markdown/JSON packet destination; defaults to the selected revision. | no | — |
+| `--execute` | Reserved for Brian's separately approved fixed V2 run; requires exact packet approval key. | no | False |
+| `--approve-paid-packet TEXT` | Explicit approval of this exact V2 diagnostic packet and spending ceiling; not collection activation. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
 ### `pte analysis profile-evidence-check`

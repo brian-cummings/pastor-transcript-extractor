@@ -6,6 +6,7 @@ only. The original closed feasibility gates and V1 packet are never rewritten.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+import base64
 from copy import deepcopy
 from decimal import Decimal, ROUND_CEILING
 import hashlib
@@ -221,12 +222,19 @@ def build_packet():
     for source in sources:
         cs,ds=discover(source);candidates.extend(cs);diagnostics[str(source['video_id'])]=ds
     requests=request_inputs(candidates)
-    paths=[ROOT/p for p in v1.AUTHORITY_PATHS]+[v1.PACKET_DIR/'input-v1.json',v1.PACKET_DIR/'references-v1.json',HERE/'references-v2.json',Path(__file__),*(HERE/'sources'/f'{v}.json' for v in v1.SOURCE_IDS)]
+    paths=[ROOT/p for p in v1.AUTHORITY_PATHS]+[v1.PACKET_DIR/'input-v1.json',v1.PACKET_DIR/'references-v1.json',HERE/'references-v2.json',HERE/'SOURCE_REVIEW.md',Path(__file__),*(HERE/'sources'/f'{v}.json' for v in v1.SOURCE_IDS)]
+    fields=deepcopy(json.loads((v1.PACKET_DIR/'input-v1.json').read_text())['field_readiness'])
+    for field in fields:
+        field['readiness']='natural_measurement_not_executed'
+        if field['characteristic_id']=='C14':field['readiness']='G4_held'
+        field['claim_ceiling']='E0_source_linked_local_examples_only'
+        field['reason']='Prepared source-wide candidates and exact focal checks do not activate this field; required semantic scope, audited natural measurements, attribution and projection gates remain separate.'
     reserve=CONTEXT_TOKENS*len(requests)
     packet=dict(version=VERSION,model=MODEL,builder=BUILDER,provider_requests=0,production_effect='none',
                 source_files={str(p.relative_to(ROOT)):v1.file_hash(p) for p in paths},
                 source_ids=list(v1.SOURCE_IDS),source_snapshot_paths=[str((HERE/'sources'/f'{v}.json').relative_to(ROOT)) for v in v1.SOURCE_IDS],
                 reference_path=str((HERE/'references-v2.json').relative_to(ROOT)),reference_count=len(references['rows']),
+                field_readiness=fields,
                 candidate_manifest=[{k:v for k,v in c.items() if k not in ('target','leading_context','trailing_context','phrase_pools','local_claim')}|{'target_start':c['target']['start'],'target_end':c['target']['end']} for c in candidates],
                 request_manifest=[dict(request_key=r['request_key'],capability=r['capability'],candidate_ids=r['candidate_ids'],question_count=len(r['questions']),question_version=r['question_version'],state_fingerprint=fp(r['state']),questions_fingerprint=fp(r['questions'])) for r in requests],
                 discovery_diagnostics=diagnostics,funnel=funnel(references,candidates),
@@ -313,10 +321,10 @@ class HTTPProvider:
         try:
             with opener.open(wire,timeout=45) as response:
                 return {'status_code':response.status,'request_id':response.headers.get('x-request-id'),
-                        'body':response.read().decode('utf-8')}
+                        'body_base64':base64.b64encode(response.read()).decode('ascii')}
         except urllib.error.HTTPError as error:
             return {'status_code':error.code,'request_id':error.headers.get('x-request-id'),
-                    'body':error.read().decode('utf-8',errors='replace')}
+                    'body_base64':base64.b64encode(error.read()).decode('ascii')}
 
     def close(self):
         self.key=''
@@ -325,7 +333,8 @@ class HTTPProvider:
 def validate_response(receipt,request):
     from pastor_transcript_extractor.sermon_g1_feasibility_revision import validate_answers
     if receipt['status_code']!=200:raise ValueError('Provider HTTP failure; raw receipt retained; no retry')
-    raw=json.loads(receipt['body'])
+    body=base64.b64decode(receipt['body_base64'],validate=True).decode('utf-8') if 'body_base64' in receipt else receipt['body']
+    raw=json.loads(body)
     if raw.get('model')!=MODEL:raise ValueError('Resolved model drift')
     answers=raw.get('answers',{})
     validate_answers(answers,request['questions'])
@@ -459,7 +468,9 @@ def interpret(packet,rows,*,requests=None):
                 if actual in {'unclear','incomplete'}:withheld.append(field)
                 else:
                     differences.append(dict(field=field,expected=allowed,actual=actual))
-                    if (field in {'voice','left_voice','right_voice'} and actual=='preacher' and allowed==['quoted_or_reported']) or (field=='addressee' and actual=='direct_current_listener' and allowed==['God']):critical.append('wrong_source_or_speaker')
+                    reported={'quoted_or_reported','reported_other','reported_teachers','mayor'}
+                    if (field in {'voice','left_voice','right_voice'} and actual=='preacher' and any(v in reported for v in allowed) and 'preacher' not in allowed) or (field=='addressee' and actual=='direct_current_listener' and any(v in {'God','reported_person'} for v in allowed) and 'direct_current_listener' not in allowed):critical.append('wrong_source_or_speaker')
+                    if field=='adoption' and actual in {'own_or_adopted','own_assertion','explicitly_adopted'} and any(v in {'not_adopted_report','reported_not_adopted','explicitly_rejected'} for v in allowed) and not any(v in {'own_or_adopted','own_assertion','explicitly_adopted'} for v in allowed):critical.append('wrong_source_or_speaker')
                     if field=='explains_text' and actual=='linked' and allowed==['not_linked']:critical.append('fabricated_proposition_relation_or_opposite')
             status='critical_integrity_failure' if critical else 'measurement_error' if differences else 'conservative_measurement_omission' if withheld else 'matches_frozen_fields'
             evaluations.append(dict(candidate_id=cid,status=status,decisions=result['decisions'],differences=differences,withheld_fields=withheld,critical_types=critical))
@@ -484,6 +495,7 @@ def render_results(report):
 def render_review(packet):
     rows=packet['funnel'];counts=Counter(c['capability'] for c in packet['candidate_manifest']);supplied=Counter(r['capability'] for r in rows if r['matching_candidate_ids']);allrefs=Counter(r['capability'] for r in rows)
     lines=['# Evidence-supply readiness V2 prepared review','', '**Provider-free V2 prepared. Paid execution is not authorized. No readiness PASS.**','',
+           'Open [whole source and boundary review](SOURCE_REVIEW.md), [exact source cases](CASES.md), [all C01–C20 fields](FIELD_MATRIX.md), or [the frozen JSON packet](input-v2.json).','',
            f"Six unchanged recording identities; {packet['reference_count']} independent focal reference checks. V1 sources, 110 episodes, candidate prototype and accepted G1/G2/G3/consumer decisions remain unchanged. V2 retains those episode IDs, documents exact-endpoint refinements, and adds R111–R114 from restored transitions.", '',
            '## Source and reference review','',
            'Full available main-sermon text and both transcript transitions are independently reviewed. Authored boundaries are in the separate source snapshots; production extraction and speaker membership are untouched. This is complete review of the available recording text, not a claim of perfect captions, missing-audio recovery or an exhaustive universal inventory of every possible atomic edge. Boundaries and exact expectations are concrete inputs for Brian to approve with this packet. No pastor credit is given outside existing reviewed speaker spans.', '',
@@ -491,6 +503,7 @@ def render_review(packet):
            '| Route | Source-wide candidates | Exact focal checks supplied | All focal checks |','| --- | --- | --- | --- |']
     for cap in ('G1','G2','G3'):lines.append(f'| {cap} | {counts[cap]} | {supplied[cap]} | {allrefs[cap]} |')
     lines+=['', 'There is no sermon-level eight-target cutoff or silent execution truncation. The four-content-sentence neighbor horizon is explicit. Caption newlines are retained as source whitespace; pure discourse fillers remain in targets/context rather than becoming endpoints. Missed long-distance or spanning endpoints remain misses, not measured negatives. Exact source-span supply is distinct from correct semantic observation.', '',
+            f"Known positive-reference supply misses: G2 {sum(r['capability']=='G2' and r['opportunity']=='positive' and not r['matching_candidate_ids'] for r in rows)}, G3 {sum(r['capability']=='G3' and r['opportunity']=='positive' and not r['matching_candidate_ids'] for r in rows)}. G1's one explicit knowledge-of-pardon positive is supplied. These are source-supply findings, not analyzer errors. They preclude complete-reference-slate discovery PASS and remain in any later PARTIAL result; a paid run would assess usable supplied evidence, not erase those misses.", '',
             'G1 local sentence targets retain contiguous framing and bounded context and fit the existing eight-frame/six-phrase ceilings. Source-span retrieval additionally offers literal pardoned/assurance anchors; G1 question factories, relation meanings, thresholds and composition are unchanged. This is a collection change, not G1 V3. The city-ramp natural-positive route remains blocked; unrelated public-policy material never substitutes.', '',
             '## Fixed run proposal and spending ceiling','',
             f"Maximum {packet['budget']['maximum_attempts']:,} cumulative attempts, including failed/lost replies. G2 packs up to eight endpoint pairs per shared source tile and asks only its accepted text-explanation/stance/boundary/voice fields; G3 packs up to three candidates with reversible source-pointer binding. Canonical question meanings/options remain unchanged. Both repack to meet the body bound; G1 remains one exact claim per request. Zero automatic retries; pinned `{MODEL}`; no natural-state answer reuse from unlike pilot contexts.", '',
@@ -517,6 +530,12 @@ def write_packet(packet,output_dir=HERE):
     dump(path,packet)
     (output_dir/'REVIEW.md').write_text(render_review(packet))
     dump(output_dir/'funnel-v2.json',packet['funnel'])
+    matrix=['# C01–C20 evidence supply V2 matrix','',
+            'All product questions remain visible. Local source examples only; no natural measurements have run, and no profile estimand is activated.','',
+            '| Field | Question | Prepared route | Readiness | Required inputs / limits |','| --- | --- | --- | --- | --- |']
+    for field in packet['field_readiness']:
+        matrix.append(f"| {field['characteristic_id']} | {field['question']} | {field['candidate_route'] or 'inventory only'} | {field['readiness']} | {'; '.join(field['required_inputs'])}; {'; '.join(field['missing_information'])} |")
+    (output_dir/'FIELD_MATRIX.md').write_text('\n'.join(matrix)+'\n')
     sources={v:json.loads((HERE/'sources'/f'{v}.json').read_text()) for v in v1.SOURCE_IDS};refs=json.loads((HERE/'references-v2.json').read_text());byid={r['reference_id']:r for r in packet['funnel']}
     lines=['# V2 exact natural reference cases','', 'Independent source checks; no provider outputs. Original V1 episode IDs and labels remain preserved separately.','']
     for row in refs['rows']:

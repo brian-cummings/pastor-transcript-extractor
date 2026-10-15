@@ -30,3 +30,7 @@ evaluation/sermon-topics/source-material-probe-cache/
 
 # Reproducible provider-response caches produced by feasibility review runs.
 evaluation/*/cache-v*/
+
+# Raw V2 supply receipts are reproducible run cache; retain the charged ledger
+# and Markdown/JSON review/decision artifacts separately.
+evaluation/evidence-supply-readiness-v2/receipts/
