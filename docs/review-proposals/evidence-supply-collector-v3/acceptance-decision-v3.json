@@ -1,0 +1,23 @@
+{
+  "version": "collector-v3-representation-boundary-acceptance",
+  "date": "2026-10-15",
+  "decision_owner": "Brian",
+  "status": "ACCEPTED",
+  "scope": "Source representation and boundary design only; not semantic boundary integrity, discovery, collection or projection.",
+  "closed": true,
+  "design_fingerprint": "9cb9d6eb369c450a2b9e4125d66693753d35a90c04c70f909d172985ca67fb23",
+  "design_file_sha256": "4a390c6d7aedef378b8926d4b5f48b53d51cef81735e50425658a58a024b2c48",
+  "human_instruction": "Accept Collector V3 as the source representation/boundary design. Authorize the separately bounded semantic validation proposed in the packet, using the prepared boundary/geometry panel only.",
+  "authorized_next": "Small fixed semantic boundary panel; Brian executes pte command. No ranker optimization or another large collector-design iteration.",
+  "not_authorized": [
+    "G1/G2/G3 contract changes",
+    "retrieval optimization against focal slate",
+    "full-source provider rerun",
+    "broader collection",
+    "pastor projection/comparison/scoring"
+  ],
+  "discovery": "unresolved; sparse prototype provisional",
+  "semantic_boundary_integrity": "unestablished_pending_small_panel",
+  "next_after_boundary_PASS": "Prepare a separate discovery-readiness decision, not another representation redesign.",
+  "content_fingerprint": "eacc8b50b57c0392ce834befc48ba1e70884e7af71e47c7761513bb76fc32e0e"
+}
