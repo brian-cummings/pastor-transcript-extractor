@@ -1,5 +1,63 @@
 # Handoff Notes
 
+## Collector V3 provider-free design — prepared 2026-10-14
+
+Brian **accepts and closes Evidence Supply V2 readiness as FAIL**, retaining PARTIAL
+useful supplied evidence. The [human acceptance](../evaluation/evidence-supply-readiness-v2/acceptance-decision-v2.md)
+and [JSON decision](../evaluation/evidence-supply-readiness-v2/acceptance-decision-v2.json)
+supersede the pending-decision statements in the historical audit/recommendation.
+`pte analysis evidence-supply-source-audit` verifies and displays this accepted FAIL.
+The old V2 paid-execution command is now blocked by the closed decision.
+
+Brian authorizes a provider-free collector/boundary and check-design revision on the
+same six sources. He explicitly does not require recovery of all 37 discovery misses:
+the criterion is representing demonstrated opportunities with bounded growth and
+intact candidate/provenance boundaries. No provider rerun, construct changes,
+collection activation or projection is authorized.
+
+The [concrete proposal](review-proposals/evidence-supply-collector-v3/PROPOSAL.md),
+[forward check design](review-proposals/evidence-supply-collector-v3/CHECK_DESIGN.md),
+[source-only geometry review](review-proposals/evidence-supply-collector-v3/GEOMETRY_REVIEW.md)
+and [frozen prototype packet](review-proposals/evidence-supply-collector-v3/design-v3.json)
+are prepared. Separate [check proposals](review-proposals/evidence-supply-collector-v3/check-design-v3.json)
+do not revise any V2 expectation or result. This is collector V3, not G1/G2/G3 V3.
+
+The source-only prototype emits 16,390 G2/G3 candidates, within its 18,798 linear
+bound and 20,000 aggregate ceiling, versus V2's 28,764 G2/G3 candidates. It keeps
+source episodes/parent sentences/clauses, separate local/same-sentence/long-range
+G2 slots, G3 generic/circumstance slots, exact source roles and explicit deferrals.
+All 107 G2/G3 focal geometries are materializable without a sentence-hop ceiling;
+the seven G1 checks stay on unchanged V2 inputs. Authored materialization is NOT
+discovery recall. The sparse prototype retains 41 V2 exact focal matches, gains ten,
+loses 27 and leaves 29 unsupplied. Current physical exact aliases are 23/62 G2 and
+28/45 G3, including diagnostic/quarantined candidates, not usable observations.
+Do not accept the sparse ranker as a replacement natural collector or infer readiness.
+
+Boundary proposal: retain source-attribution evidence, never infer preacher voice
+from a missing lexical signal, quarantine nonbiblical text-anchor signals, and split
+G3 exact-utterance act/source state from wider circumstance-binding state using the
+unchanged canonical questions. Pure structural guards prohibit the binding phase
+from supplying acts or reusing another utterance; narration-only controls cannot
+export positive acts, but erroneous raw positives remain integrity findings.
+These guards/request shapes have no provider runner. They do not prove model
+accuracy, quotation-scope recovery, narration-veto coverage or absent context leakage.
+
+Verify the frozen provider-free proposal:
+
+```sh
+pte analysis evidence-supply-collector-design --check-only
+```
+
+No paid flag exists. The proposal recommends source-only review of ranking/regression
+and provenance limits before preparing a separate small semantic boundary-validation
+panel. Both CLI checks pass; 58 focused tests pass (14 collector design, eight source
+audit, 13 V2 supply, 18 CLI contract, five CLI reference), with static compilation
+and diff checks passing. No full-source rerun is proposed now. G1/G2/G3 and consumer remain closed;
+790 non-reference V2 positives, whole-run usable economics, population recall,
+recurrence, production denominators, G4/coherence, comparison, clustering and
+projection/scoring remain held/unestablished. Original source snapshots, frozen
+expectations, provider receipts/results and audit fingerprints remain unchanged.
+
 ## Evidence Supply V2 focal source audit — recommendation 2026-10-14
 
 Brian completed the approved run: 4,680 validated requests, 55,847,356 input

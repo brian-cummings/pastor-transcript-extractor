@@ -1,0 +1,369 @@
+{
+  "version": "collector-v3-forward-check-design",
+  "status": "proposal_not_evaluated_not_paid_authorized",
+  "rows": [
+    {
+      "proposed_check_id": "R020-forward-scope-control",
+      "parent_frozen_check_id": "R020-edge",
+      "parent_check_fingerprint": "516154c1bca38c9a3f0c0f8c7bf4f484a2dcba8f7ea6762e65cdbb0090f9a54d",
+      "video_id": 421,
+      "endpoints": {
+        "left": {
+          "start": 37358,
+          "end": 37391,
+          "text": "Honor your father and your mother"
+        },
+        "right": {
+          "start": 37525,
+          "end": 37555,
+          "text": "Honor your fathers and mothers"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "The selected endpoint repeats the command; the subsequent examples are not this endpoint."
+    },
+    {
+      "proposed_check_id": "R021-forward-scope-control",
+      "parent_frozen_check_id": "R021-edge",
+      "parent_check_fingerprint": "67e516158c55a7ead36ac0948b204485d32543c2ab2a757bb1449073d681db58",
+      "video_id": 421,
+      "endpoints": {
+        "left": {
+          "start": 41106,
+          "end": 41123,
+          "text": "Deuteronomy 21:17"
+        },
+        "right": {
+          "start": 41168,
+          "end": 41214,
+          "text": "was supposed to have double of the inheritance"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Verse introduction/reading is not automatically an explains_text relation."
+    },
+    {
+      "proposed_check_id": "R022-forward-scope-control",
+      "parent_frozen_check_id": "R022-edge",
+      "parent_check_fingerprint": "2d4d0d2bed9f63e086671d8b66bc7fc838353c38173a396dddb261de5a49cb30",
+      "video_id": 421,
+      "endpoints": {
+        "left": {
+          "start": 41862,
+          "end": 41903,
+          "text": "I have loved you with an everlasting love"
+        },
+        "right": {
+          "start": 41960,
+          "end": 41993,
+          "text": "the father couldn't reach his son"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "The exact father-cannot-reach endpoint is not an unambiguous explanation of everlasting drawing love."
+    },
+    {
+      "proposed_check_id": "R029-forward-scope-control",
+      "parent_frozen_check_id": "R029-edge",
+      "parent_check_fingerprint": "b50bdeb7fe7e68cae1b71d88482ea96ffb400bc214679bb83b894e78e0ef19cc",
+      "video_id": 421,
+      "endpoints": {
+        "left": {
+          "start": 53169,
+          "end": 53201,
+          "text": "Ready to forgive, abundant mercy"
+        },
+        "right": {
+          "start": 53257,
+          "end": 53296,
+          "text": "It's life-changing if you'll believe it"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Belief/response appeal is not the mercy-wording explanation being checked."
+    },
+    {
+      "proposed_check_id": "R043-forward-scope-control",
+      "parent_frozen_check_id": "R043-edge",
+      "parent_check_fingerprint": "8436d92dc795742f843847dc759bdb7e54fa1c86cb8033bdaad5df1d030f52a5",
+      "video_id": 4050,
+      "endpoints": {
+        "left": {
+          "start": 31778,
+          "end": 31849,
+          "text": "In the cruel treatment of their brother, Simeon had been the instigator"
+        },
+        "right": {
+          "start": 31935,
+          "end": 31975,
+          "text": "Let's see if Simeon likes being shackled"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ],
+        "left_voice": [
+          "quoted_or_reported",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "The selected anchor is attributed to Patriarchs and Prophets, not Bible wording."
+    },
+    {
+      "proposed_check_id": "R067-forward-scope-control",
+      "parent_frozen_check_id": "R067-edge",
+      "parent_check_fingerprint": "451f8bf172a783cb8778cf4cc3d77b226e74332a739f9396dd5c4089ac8a883b",
+      "video_id": 4430,
+      "endpoints": {
+        "left": {
+          "start": 27665,
+          "end": 27685,
+          "text": "the Great Commission"
+        },
+        "right": {
+          "start": 27779,
+          "end": 27825,
+          "text": "It is to work for those who do not know Christ"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Autobiographical understanding of the Great Commission is not the specific quoted biblical-text anchor."
+    },
+    {
+      "proposed_check_id": "R081-forward-scope-control",
+      "parent_frozen_check_id": "R081-edge",
+      "parent_check_fingerprint": "3ec97cadb0d03f503cfc0f4237bfd9d6e3a476db4e44dca4677f24890914b06c",
+      "video_id": 350,
+      "endpoints": {
+        "left": {
+          "start": 16027,
+          "end": 16054,
+          "text": "he freely forgave them both"
+        },
+        "right": {
+          "start": 16158,
+          "end": 16186,
+          "text": "the one whom he forgave more"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Dialogue continuation within the parable does not unambiguously supply an explanatory gloss."
+    },
+    {
+      "proposed_check_id": "R080-forward-scope-control",
+      "parent_frozen_check_id": "R080-edge",
+      "parent_check_fingerprint": "2b8191b9ca9f272e60d87f70624a8885951283903f2950e87edce044a87860aa",
+      "video_id": 350,
+      "endpoints": {
+        "left": {
+          "start": 14099,
+          "end": 14135,
+          "text": "Seven times she had heard his rebuke"
+        },
+        "right": {
+          "start": 14186,
+          "end": 14228,
+          "text": "So this is not one time casting out demons"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "not_linked",
+          "unclear"
+        ],
+        "left_voice": [
+          "quoted_or_reported",
+          "unclear"
+        ],
+        "right_voice": [
+          "preacher",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Preserve the Desire of Ages attribution; extra-biblical explanation is not a G2 Bible-anchor observation."
+    },
+    {
+      "proposed_check_id": "R091-forward-scope-control",
+      "parent_frozen_check_id": "R091-address",
+      "parent_check_fingerprint": "6c6f4548bcb7c5b2f21491f0c528279ce34fd1932b3979512cd1b03a5fd33454",
+      "video_id": 350,
+      "endpoints": {
+        "circumstance": {
+          "start": 22895,
+          "end": 22906,
+          "text": "I am sinful"
+        },
+        "utterance": {
+          "start": 22965,
+          "end": 22988,
+          "text": "the more you need Jesus"
+        }
+      },
+      "proposed_expected": {
+        "reassurance": [
+          "observed"
+        ],
+        "warning": [
+          "not_observed",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Reassurance does not establish a stated consequence/risk in this exact utterance."
+    },
+    {
+      "proposed_check_id": "R111-forward-scope-control",
+      "parent_frozen_check_id": "R111-new",
+      "parent_check_fingerprint": "e36d0d5a38fe753cb3a901f99aa4650833c03693bd948b0513e340b291aa96ff",
+      "video_id": 1200,
+      "endpoints": {
+        "circumstance": null,
+        "utterance": {
+          "start": 793,
+          "end": 827,
+          "text": "Would you like me to pray for you?"
+        }
+      },
+      "proposed_expected": {
+        "invitation": [
+          "observed"
+        ],
+        "voice": [
+          "quoted_or_reported",
+          "unclear"
+        ],
+        "addressee": [
+          "reported_person",
+          "general_hypothetical",
+          "unclear"
+        ],
+        "recipient_circumstance_binding": [
+          "not_bound",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Door-to-door role-play permits an imagined recipient; it is not the preacher offering current-listener care."
+    },
+    {
+      "proposed_check_id": "R078-forward-scope-control",
+      "parent_frozen_check_id": "R078-address",
+      "parent_check_fingerprint": "e574807ec9b3d03570c581c0c0a8435b578d9804ae8550e7dd7e2e48576dd36a",
+      "video_id": 4430,
+      "endpoints": {
+        "circumstance": null,
+        "utterance": {
+          "start": 29969,
+          "end": 30012,
+          "text": "And I encouraged him and we prayed together"
+        }
+      },
+      "proposed_expected": {
+        "acknowledgment": [
+          "not_observed",
+          "unclear"
+        ],
+        "perspective_taking": [
+          "not_observed",
+          "unclear"
+        ],
+        "reassurance": [
+          "not_observed",
+          "unclear"
+        ],
+        "challenge": [
+          "not_observed",
+          "unclear"
+        ],
+        "warning": [
+          "not_observed",
+          "unclear"
+        ],
+        "invitation": [
+          "not_observed",
+          "unclear"
+        ],
+        "concrete_care": [
+          "not_observed",
+          "unclear"
+        ],
+        "addressee": [
+          "no_address",
+          "unresolved",
+          "unclear"
+        ]
+      },
+      "status": "proposed_only_not_applied_to_V2",
+      "rationale": "Narration of encouragement/prayer does not provide actual person-directed speech or permit neighboring act promotion."
+    },
+    {
+      "proposed_check_id": "R058-doubts-anchor-control",
+      "parent_frozen_check_id": "R058-edge",
+      "parent_check_fingerprint": "0aac0bcd0b30e407515281880697bf47233eb8bfc0cbf3f93df611d058b6e0d0",
+      "video_id": 4430,
+      "endpoints": {
+        "left": {
+          "start": 3028,
+          "end": 3065,
+          "text": "And why do doubts rise in your hearts"
+        },
+        "right": {
+          "start": 3089,
+          "end": 3129,
+          "text": "The doubts that what the women have said"
+        }
+      },
+      "proposed_expected": {
+        "explains_text": [
+          "linked"
+        ]
+      },
+      "status": "new_endpoint_proposal_original_R058_unchanged",
+      "rationale": "Use the question whose doubts wording the designated gloss actually explains."
+    }
+  ],
+  "original_frozen_reference_sha256": "ec04ee4bbc1c2844ea44b77f78cf507f788edac2dc65a8c23e1c953cf570f917",
+  "semantic_contract_changes": 0,
+  "provider_requests": 0,
+  "content_fingerprint": "40a1b74f513a03da44d877f4f6855841e1d0139ed1d1d31e65eddd1365c726ba"
+}

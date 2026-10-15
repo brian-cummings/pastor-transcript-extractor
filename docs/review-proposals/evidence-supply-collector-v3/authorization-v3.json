@@ -1,0 +1,23 @@
+{
+  "version": "collector-v3-provider-free-authorization",
+  "date": "2026-10-14",
+  "decision_owner": "Brian",
+  "human_instruction": "provider-free collector/boundary and check-design revision on these same six sources",
+  "source_ids": [
+    1200,
+    421,
+    4050,
+    4430,
+    350,
+    1046
+  ],
+  "accepted_V2_decision_fingerprint": "f5b15d2ca3f3659d1b65b1b64c3d79650782b059f8a7dd0334b389f39cd7e016",
+  "provider_free_revision_authorized": true,
+  "provider_rerun_authorized": false,
+  "construct_contract_changes_authorized": false,
+  "collection_projection_scoring_authorized": false,
+  "criterion": "Represent demonstrated semantic opportunities with bounded candidate growth and preserved candidate/provenance boundaries; do not require recovery of all 37 discovery misses.",
+  "authorized_provider_attempts": 0,
+  "authorized_usd": "0",
+  "content_fingerprint": "5723459f092a097c82682f433049923f29b076cad21181223ca93503ae6ff2e7"
+}
