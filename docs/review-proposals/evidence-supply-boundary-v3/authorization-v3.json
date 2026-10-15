@@ -1,0 +1,25 @@
+{
+  "version": "small-semantic-boundary-v3-authorization",
+  "date": "2026-10-15",
+  "decision_owner": "Brian",
+  "status": "AUTHORIZED_FIXED_SMALL_PANEL_ONLY",
+  "packet_fingerprint": "44a8d902e90fc5183a689c5f8bebcc052d45ff053fecf93f54c6482cbc01565b",
+  "accepted_design_fingerprint": "9cb9d6eb369c450a2b9e4125d66693753d35a90c04c70f909d172985ca67fb23",
+  "cases": 21,
+  "maximum_provider_attempts": 33,
+  "maximum_list_price_usd": "0.088704",
+  "automatic_retries": 0,
+  "execution_owner": "Brian via pte CLI",
+  "provider_requests_during_preparation": 0,
+  "technical_live_source_preflight": "PASS",
+  "authorized_scope": "Prepared small boundary/geometry panel only; Brian executes the fixed pte command.",
+  "not_authorized": [
+    "No G1 requests or G1/G2/G3 contract changes",
+    "No ranker changes or discovery claim",
+    "No whole-source provider rerun",
+    "No collection/projection/comparison/scoring",
+    "No reuse of V2 answers for changed request states"
+  ],
+  "after_boundary_PASS": "Prepare a separate discovery-readiness decision; no representation/ranker redesign or downstream activation.",
+  "content_fingerprint": "27f98ce0a5d952293ff004aac7b27f6436e61d8bd3323aede1190f2238e0ec99"
+}

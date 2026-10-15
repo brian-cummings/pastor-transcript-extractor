@@ -1,5 +1,58 @@
 # Handoff Notes
 
+## V3 design accepted; small semantic boundary panel ready — 2026-10-15
+
+Brian accepts Collector V3 **as the representation/boundary design only** and
+authorizes the small semantic validation next. The [human design acceptance](review-proposals/evidence-supply-collector-v3/acceptance-decision-v3.md)
+and [JSON decision](review-proposals/evidence-supply-collector-v3/acceptance-decision-v3.json)
+are current authority over historical provider-free-only/pending-design statements.
+Do not improve the sparse ranker first or start another large collector-design cycle.
+G1/G2/G3 contracts and the accepted consumer remain closed.
+
+The [small-panel review and exact command](review-proposals/evidence-supply-boundary-v3/REVIEW.md),
+[frozen criteria](review-proposals/evidence-supply-boundary-v3/CRITERIA.md),
+[source-controlled input](review-proposals/evidence-supply-boundary-v3/input-v3.json)
+and [authorization](review-proposals/evidence-supply-boundary-v3/authorization-v3.json)
+are prepared: **21 cases / 33 maximum paid attempts / $0.088704 list-price ceiling**,
+zero automatic retries, pinned `jev-1.13.0`. Cases cover same-sentence and five/six-node
+G2, R005 safe non-evidence/withholding, long-range G3 including the 36-node R092,
+R080/R043 nonbiblical attribution, R078 narration, generic/reported address and
+R076 address to God. No ranker/discovery calls or G1 requests. The original V2
+oracle/results and accepted V3 design are unchanged; forward checks and repaired
+R058 endpoints are explicitly versioned in this new panel.
+
+Technical live-source preflight PASS; provider requests during preparation = zero.
+Fifty focused tests pass (13 new panel, 18 CLI contract, five CLI reference, 14
+collector-design), along with compilation/diff checks. Brian executes:
+
+```sh
+pte analysis evidence-supply-boundary-validation --paid-run-preflight
+pte analysis evidence-supply-boundary-validation --execute \
+  --approve-paid-packet 44a8d902e90fc5183a689c5f8bebcc052d45ff053fecf93f54c6482cbc01565b
+```
+
+Runtime files are under the configured application base directory, currently
+`/Users/briancummings/Documents/PastorSearchData/evaluation/evidence-supply-boundary-v3/`,
+NOT inside the repository. Read `results-v3.md`/`.json`, ledger and receipts there
+after Brian supplies completion/error output. Codex must not run or monitor the
+paid job. The runner prints per-request progress and preserves raw bytes before
+validation. Valid identical-panel receipts replay locally; lost/invalid charged
+replies stop for a separate recovery decision. A process lock prevents concurrent runs.
+
+Codex owns source audit of every positive and every unscored-field failure across
+all 21 cases/both phases. Quarantined wrong answers remain integrity failures.
+Source/recipient/adoption errors, promoted neighboring acts and incompatible binding
+have zero tolerance. Missing reporting introductions are boundary failures, not
+evidence that the model was supplied the full source. Conservative withholding and
+reference disputes remain separate, with no tuning or rescore of V2. No automatic
+PASS; the frozen criteria require source-backed discrimination in each core family.
+
+After a boundary PASS, prepare a separate **discovery-readiness decision**, not a
+representation redesign. Discovery recall, broader collection, operational/corpus
+economics, recurrence, G4/coherence and projection/comparison/scoring remain held.
+The 790 non-reference V2 positives remain semantically unaudited. A failure does
+not authorize contract changes or another provider run.
+
 ## Collector V3 provider-free design — prepared 2026-10-14
 
 Brian **accepts and closes Evidence Supply V2 readiness as FAIL**, retaining PARTIAL
