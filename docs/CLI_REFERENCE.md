@@ -3416,6 +3416,23 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis evidence-supply-source-audit`
+
+Verify the authored V2 focal source audit and stage-gate recommendation without provider calls.
+
+#### Usage
+
+```console
+pte analysis evidence-supply-source-audit [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--write-reports` | Render Markdown and JSON stage-gate reports from the verified authored audit. | no | False |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis evidence-supply-review`
 
 Prepare/check the fixed provider-free evidence-supply packet; paid execution remains blocked.

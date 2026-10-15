@@ -3128,6 +3128,30 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-source-audit",
+    help="Verify the authored V2 focal source audit and stage-gate recommendation without provider calls.",
+)
+def analysis_evidence_supply_source_audit(
+    write_reports: bool = typer.Option(False, "--write-reports", help="Render Markdown and JSON stage-gate reports from the verified authored audit."),
+) -> None:
+    from pastor_transcript_extractor import evidence_supply_source_audit as audit
+
+    try:
+        report = audit.load_review()
+        if write_reports:
+            audit.write_reports(report)
+    except (ValueError, OSError, KeyError) as error:
+        raise typer.BadParameter(str(error)) from error
+    economics = report["usable_evidence"]
+    console.print(f"Verified V2 source audit: {report['audited_focal_checks']} focal checks; "
+                  f"{report['requested_nonmatching_checks']} non-matching checks classified; "
+                  f"{economics['audited_focal_subset_unique_items']} audited-subset positive items.", markup=False)
+    console.print("Recommendation: collection readiness FAIL; supplied local evidence PARTIAL; Brian decision pending. "
+                  "Verification success is not a readiness PASS. No provider calls or downstream activation.", markup=False)
+    console.print(f"Audit: {audit.AUDIT}; whole-run usable count/unit cost remain unestablished.", markup=False)
+
+
+@analysis_app.command(
     "evidence-supply-review",
     help="Prepare/check the fixed provider-free evidence-supply packet; paid execution remains blocked.",
 )
