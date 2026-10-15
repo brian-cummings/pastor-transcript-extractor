@@ -1,5 +1,61 @@
 # Handoff Notes
 
+## Evidence Supply V2 focal source audit — recommendation 2026-10-14
+
+Brian completed the approved run: 4,680 validated requests, 55,847,356 input
+tokens, $2.345588952 actual list-price cost. No rerun or recovery spending occurred
+during this audit. Raw results/ledger/receipts remain unchanged in the local
+`evaluation/evidence-supply-readiness-v2/` directory.
+
+The [source audit](../evaluation/evidence-supply-readiness-v2/source-audit-v2.md)
+and [JSON evidence](../evaluation/evidence-supply-readiness-v2/source-audit-v2.json)
+cover all 114 focal checks, including all 44 not-supplied, 23 omissions and three
+errors. The [stage-gate recommendation](../evaluation/evidence-supply-readiness-v2/stage-gate-v2.md)
+and [JSON summary](../evaluation/evidence-supply-readiness-v2/stage-gate-v2.json)
+recommend **FAIL collection readiness / PARTIAL supplied local evidence**.
+Brian's decision remains pending; this is not a closed human acceptance gate.
+
+Of the 44 unsupplied checks, 37 are discovery failures, two have disputed positive
+explanation expectations, and five are incompatible positive narrow G1 opportunities
+whose diagnostic controls remain missed. All exact texts are available in the
+source: there are zero unavailable-transcript cases. G2 mechanically misses 17
+pairs beyond four sentence nodes and four same-sentence pairs; G3 misses 14
+unseeded circumstances and six beyond-horizon pairs (causes overlap). The five
+G1 diagnostic claims lack a route seed and establish no positive registered predicate.
+Frozen scores/expectations are not changed or rerated. All three original errors
+are source-supported false negatives, and the sole positive G1 relation is withheld.
+
+At least two integrity failures emerge in unscored fields: R078 emits reassurance
+for narration without actual reassuring address; R080 labels a Desire of Ages
+quotation as preacher voice and credits a non-biblical explanation anchor. The
+contracts already prohibit these; no contract tuning/reopening is authorized.
+Do not claim whole-run zero integrity failures from the frozen field scores.
+
+The audited focal subset contains 34 unique usable positive records: 23 G2,
+11 G3, zero G1; ten resolved adopted local records, 21 partial and three report-only.
+Only explicit positive-fact whitelists are accepted; all other fields retain their
+raw uncertainty. All pastor credit remains false. Full experiment cost / 34 is
+$0.06898791035294117647058823529 per certified subset item, not a marginal or
+whole-run unit cost. The 790 non-reference positive candidate outputs (231 G2,
+559 G3) remain semantically unaudited, so total usable items and whole-run unit
+cost are null. No unknown output is filled from manual reference knowledge.
+
+Verify the authored audit locally without provider calls or reclassification:
+
+```sh
+pte analysis evidence-supply-source-audit
+```
+
+`--write-reports` deterministically renders Markdown and the JSON stage-gate
+summary. Verification success is not a readiness PASS. Thirty-one focused tests
+pass (eight source-audit safeguards, 18 CLI contract, five CLI reference), and
+static compilation/diff checks pass. Proposed next decision:
+accept the diagnostic audit, keep collection/projection held, and separately
+consider a provider-free collector/boundary and exact-check proposal on the same
+sources. No such revision is implemented or authorized here. Production calibration,
+population recall, recurrence, operational denominators/corpus economics, G4,
+comparison, clustering and scoring remain held.
+
 ## Evidence-supply V2 bounded paid validation — authorized 2026-10-14
 
 Brian now authorizes the frozen six-source V2 run, at most 4,680 cumulative
