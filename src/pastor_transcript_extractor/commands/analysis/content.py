@@ -3128,6 +3128,51 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "evidence-supply-boundary-validation",
+    help="Prepare/check or explicitly execute the authorized small V3 semantic boundary panel; no discovery/full-source rerun.",
+)
+def analysis_evidence_supply_boundary_validation(
+    prepare_only: bool = typer.Option(False, "--prepare-only", help="Write the source-controlled fixed 21-case input and review packet without inference."),
+    check_only: bool = typer.Option(False, "--check-only", help="Verify frozen source, case, question and spending identities without inference."),
+    paid_run_preflight: bool = typer.Option(False, "--paid-run-preflight", help="Verify live six-source snapshots and the small-panel receipt ledger without provider calls."),
+    execute_paid: bool = typer.Option(False, "--execute", help="Brian executes only the fixed small panel with its exact approval fingerprint."),
+    approve_paid_packet: str | None = typer.Option(None, "--approve-paid-packet", help="Exact small-panel fingerprint; no full-source rerun or downstream authorization."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for runtime results, ledger and receipts, outside the repository."),
+) -> None:
+    from pastor_transcript_extractor import evidence_supply_boundary_validation as panel
+
+    if sum((prepare_only,check_only,paid_run_preflight,execute_paid))>1:
+        raise typer.BadParameter("Choose one preparation/check/preflight/execution mode")
+    if approve_paid_packet and not execute_paid:
+        raise typer.BadParameter("--approve-paid-packet requires --execute")
+    if execute_paid and not approve_paid_packet:
+        raise typer.BadParameter("Execution requires the exact --approve-paid-packet fingerprint")
+    try:
+        if prepare_only:
+            packet=panel.build_packet();panel.write_packet(packet)
+        else:
+            packet=json.loads(panel.INPUT.read_text());panel.validate_packet(packet)
+        directory=panel.output_directory(base_dir)
+        if execute_paid and approve_paid_packet!=packet['content_fingerprint']:
+            raise ValueError("Wrong small-panel approval fingerprint; no provider calls")
+        if paid_run_preflight or execute_paid:
+            original=json.loads((panel.frozen.HERE/'input-v2.json').read_text())
+            panel.frozen.live_check(original,build_paths(base_dir).root)
+            _,reused=panel.read_cache(packet,directory)
+            console.print(f"Technical preflight PASS; valid cached replies={len(reused)}; provider_requests=0 during preflight.",markup=False)
+        console.print(f"Boundary panel: {len(packet['cases'])} cases; {len(packet['requests'])} maximum attempts; list-price ceiling ${packet['budget']['maximum_list_price_usd']}; model={packet['model']}.",markup=False)
+        console.print(f"Runtime directory: {directory}",markup=False)
+        if execute_paid:
+            report=panel.execute(packet,approve_paid_packet,base_dir=base_dir)
+            console.print(f"Completed {report['usage']['attempts']} panel requests; list-price cost ${report['actual_list_price_usd']}. Source audit and Brian decision pending.",markup=False)
+            console.print(f"Results: {directory / 'results-v3.md'} and results-v3.json",markup=False)
+        else:
+            console.print("No provider calls. Semantic boundary integrity is unestablished; discovery, collection and projection remain held.",markup=False)
+    except (ValueError,OSError,KeyError,RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command(
     "evidence-supply-collector-design",
     help="Prepare/check the source-only collector geometry revision on the same six frozen sources; no provider execution.",
 )

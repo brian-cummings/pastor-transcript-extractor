@@ -3416,6 +3416,28 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis evidence-supply-boundary-validation`
+
+Prepare/check or explicitly execute the authorized small V3 semantic boundary panel; no discovery/full-source rerun.
+
+#### Usage
+
+```console
+pte analysis evidence-supply-boundary-validation [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--prepare-only` | Write the source-controlled fixed 21-case input and review packet without inference. | no | False |
+| `--check-only` | Verify frozen source, case, question and spending identities without inference. | no | False |
+| `--paid-run-preflight` | Verify live six-source snapshots and the small-panel receipt ledger without provider calls. | no | False |
+| `--execute` | Brian executes only the fixed small panel with its exact approval fingerprint. | no | False |
+| `--approve-paid-packet TEXT` | Exact small-panel fingerprint; no full-source rerun or downstream authorization. | no | — |
+| `--base-dir PATH` | Application data directory for runtime results, ledger and receipts, outside the repository. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis evidence-supply-collector-design`
 
 Prepare/check the source-only collector geometry revision on the same six frozen sources; no provider execution.
