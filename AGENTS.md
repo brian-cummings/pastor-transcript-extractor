@@ -2,6 +2,7 @@
 
 - Do not run large fixture or corpus reclassification/evaluation jobs.
 - Do not monitor long-running classification or evaluation progress.
+- Write generated results, caches, receipts, and other artifacts that are not intended for source control under the application's configured base directory (the same location supplied to `pte --base-dir`), never inside the repository.
 - While developing, run only focused unit tests and inexpensive static checks.
 - Make frequent commits as coherent, reviewable changes are completed; do not accumulate a large batch of uncommitted work. Keep commits focused and preserve unrelated existing changes.
 - Use Markdown and JSON for review and acceptance reports, following the project's existing report format.
