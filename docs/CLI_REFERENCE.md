@@ -3770,6 +3770,27 @@ pte analysis collector-retrieval [OPTIONS]
 | `--base-dir PATH` | Application data directory for future locked artifacts, checkpoints and results. | no | — |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis collector-retrieval-repair`
+
+Verify the prospective V1.1 repair and bounded rerun packet. Execution requires separate authorization.
+
+#### Usage
+
+```console
+pte analysis collector-retrieval-repair [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--check-only` | Verify V1.1 implementation and unchanged baseline pins; no model loading. | no | False |
+| `--preflight` | Verify source hashes and structural resource bounds only; no candidates or encoder. | no | False |
+| `--run-development` | Execute the exact retired-source V1.1 packet only after separate authorization. | no | False |
+| `--approve-input TEXT` | Exact V1.1 input fingerprint; does not itself grant authorization. | no | — |
+| `--base-dir PATH` | Application data directory for sealed V1.1 outputs; reuses the locked V1 model cache. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis show`
 
 Inspect persisted sermon measurements and Scripture evidence.

@@ -3813,3 +3813,29 @@ def analysis_collector_retrieval(
         console.print(f"Review: {workflow.HERE / 'IMPLEMENTATION-REVIEW.md'}", markup=False)
     except (ValueError,OSError,KeyError,RuntimeError,ImportError) as error:
         raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command("collector-retrieval-repair", help="Verify the prospective V1.1 repair and bounded rerun packet. Execution requires separate authorization.")
+def analysis_collector_retrieval_repair(
+    check_only: bool = typer.Option(False, "--check-only", help="Verify V1.1 implementation and unchanged baseline pins; no model loading."),
+    preflight: bool = typer.Option(False, "--preflight", help="Verify source hashes and structural resource bounds only; no candidates or encoder."),
+    run_development: bool = typer.Option(False, "--run-development", help="Execute the exact retired-source V1.1 packet only after separate authorization."),
+    approve_input: str | None = typer.Option(None, "--approve-input", help="Exact V1.1 input fingerprint; does not itself grant authorization."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for sealed V1.1 outputs; reuses the locked V1 model cache."),
+) -> None:
+    from pastor_transcript_extractor import collector_retrieval_workflow_v1_1 as workflow
+    if sum((check_only,preflight,run_development))>1 or bool(approve_input)!=bool(run_development):
+        raise typer.BadParameter("Choose one mode; execution requires exact input and separate authorization")
+    try:
+        packet=workflow.verify()
+        if preflight:
+            for row in workflow.preflight(packet):
+                console.print(f"Source {row['video_id']}: {row['unit_count']} frozen units; G2/G3 <= {row['G2_G3_max']}; comparisons <= {row['comparisons_max']}; tokens <= {row['encoded_tokens_max']}.",markup=False)
+        elif run_development:
+            result=workflow.run_development(base_dir,approve_input)
+            console.print(f"V1.1 developmental diagnostics: {result['content_fingerprint']}; provider_requests=0. Source audit required.",markup=False)
+        else:
+            console.print(f"V1.1 implementation verified; input={packet['content_fingerprint']}; execution HELD; provider_requests=0.",markup=False)
+        console.print(f"Review: {workflow.HERE / 'IMPLEMENTATION-REVIEW.md'}",markup=False)
+    except (ValueError,OSError,KeyError,RuntimeError,ImportError) as error:
+        raise typer.BadParameter(str(error)) from error
