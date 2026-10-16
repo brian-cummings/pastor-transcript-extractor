@@ -3699,15 +3699,21 @@ def analysis_g3_feasibility_review(
 @analysis_app.command("source-unit-repair", help="Verify or run the bounded provider-free source-unit development repair on retired Fresh V2 sources.")
 def analysis_source_unit_repair(
     check_only: bool = typer.Option(False, "--check-only", help="Verify fingerprints and cheap source-unit size bounds; no candidate evaluation."),
+    verify_review: bool = typer.Option(False, "--verify-review", help="Read-only verification of the authored source audit; no collector replay or source selection."),
     run_development: bool = typer.Option(False, "--run-development", help="Materialize natural candidates and compare unchanged retired Fresh V2 references; no providers."),
     approve_input: str | None = typer.Option(None, "--approve-input", help="Exact prepared input fingerprint required for development execution."),
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory."),
 ) -> None:
     from pastor_transcript_extractor import source_unit_repair as repair
-    if (check_only and run_development) or bool(approve_input)!=run_development:
+    if sum((check_only,run_development,verify_review))>1 or bool(approve_input)!=run_development:
         raise typer.BadParameter("Choose one mode; development requires its exact input fingerprint")
     try:
-        if run_development:
+        if verify_review:
+            from pastor_transcript_extractor import source_unit_repair_audit as audit
+            review=audit.verify_review(base_dir)
+            console.print(f"Source-unit audit verified: {review['content_fingerprint']}; recommendation={review['recommendation']}; no replay or providers.",markup=False)
+            console.print(f"Review: {audit.HERE / 'SOURCE-AUDIT-v1.md'}",markup=False)
+        elif run_development:
             result=repair.run_development(base_dir,approve_input)
             console.print(repair.render(result),markup=False)
             console.print(f"Results: {repair.directory(base_dir) / result['repair_input_fingerprint'] / 'results-v1.json'}",markup=False)

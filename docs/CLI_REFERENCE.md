@@ -3723,6 +3723,7 @@ pte analysis source-unit-repair [OPTIONS]
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
 | `--check-only` | Verify fingerprints and cheap source-unit size bounds; no candidate evaluation. | no | False |
+| `--verify-review` | Read-only verification of the authored source audit; no collector replay or source selection. | no | False |
 | `--run-development` | Materialize natural candidates and compare unchanged retired Fresh V2 references; no providers. | no | False |
 | `--approve-input TEXT` | Exact prepared input fingerprint required for development execution. | no | — |
 | `--base-dir PATH` | Application data directory. | no | — |
