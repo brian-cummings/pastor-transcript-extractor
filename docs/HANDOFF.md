@@ -1,5 +1,60 @@
 # Handoff Notes
 
+## A1 implemented and replay audited: bounded containment PASS recommended — 2026-10-15
+
+Brian explicitly authorized **both** narrow A1 implementation and the provider-free
+policy replay, without another proposal/authorization cycle. The implementation,
+separate claim-witness acceptance, code-bound policy, replay input and trust root are
+source controlled under [A1](review-proposals/g3-atomic-admission-v1/IMPLEMENTATION.md).
+No frozen V4 module, source review, raw result, question, threshold or gate changed.
+
+The authorized replay completed using the existing 24 cases / 37 sealed receipts,
+with **zero provider requests**. [Source audit](review-proposals/g3-atomic-admission-v1/source-audit-a1.md)
+and [JSON evidence](review-proposals/g3-atomic-admission-v1/source-audit-a1.json)
+recommend **bounded A1 atomic-local containment PASS**, pending Brian's decision.
+
+Actual export/deserialization/local consumer admits **four** items: exactly the two
+V4 G2 observations, R018 current-preacher challenge/invitation, and R053 reported-local
+Joseph-to-brothers reassurance/challenge. Twenty cases remain quarantined; zero
+unsupported/unresolved or unexpected admissions; both required G3 families exercised.
+No circumstance claim is exported. All 58 top-level emitted fields and individual
+act/provenance/condition findings were independently source-reviewed. All seven
+critical raw fields across six cases remain errors and their cases stay blocked.
+
+V4 remains **raw semantics FAIL / containment HOLD**; its two admissions and original
+22 quarantines are preserved in historical artifacts and replay records. A1 is a
+prospective, separately versioned admission policy, not a V4 relabeling or a model
+improvement. All 13 original G3 boundary decisions remain withheld. The policy needs
+accepted affirmative claim-specific sufficiency; a definite continuation-required
+boundary still defers. Unknown measured acts/voice/recipient/adoption cannot be filled.
+
+**84 distinct focused tests passed** across A1 guard/replay, V4 guard/audit, proposal
+checker and CLI contract/reference. The frozen packet check and the real source-audit
+verifier passed. Synthetic receipts are only test fixtures; the actual replay reuses
+exact original bytes. Runtime A1 result remains outside the repo at
+`/Users/briancummings/Documents/PastorSearchData/evaluation/g3-atomic-admission-a1/results-a1.json`.
+Its pre-audit state remains immutable; the separate source audit supplies the final
+recommendation. The configured data directory required write escalation; the scoped
+write succeeded. No provider or paid retry occurred.
+
+```sh
+pte analysis g3-atomic-admission-replay --verify-audit
+```
+
+This is read-only verification/replay, not new measurement. Source-controlled trust
+and claim acceptance are delegated local safety-oracle authority under Brian's
+instruction, not a claim he personally inspected those files or accepted the final
+A1 result. No production or automatic provenance authority is implied.
+
+**Next decision:** Brian accepts/rejects bounded A1 containment PASS. Recommend ending
+work on this development panel and preparing a separate discovery/readiness decision
+on fresh evidence. No V5, additional semantic run or tuning is recommended. Automatic
+provenance/sufficiency resolution, reviewer throughput/deferrals, discovery recall,
+opportunity denominators, recurrence/rates, corpus economics and generalization remain
+unestablished. Discovery implementation/ranker changes, broader collection, the 790 V2
+positive audit and pastor projection/comparison/scoring remain held. Preserve the
+unrelated untracked historical V2 outputs.
+
 ## V4 decisions accepted; atomic G3 sufficiency proposal A1 ready — 2026-10-15
 
 Brian accepted **raw semantics FAIL / containment HOLD**. The separate

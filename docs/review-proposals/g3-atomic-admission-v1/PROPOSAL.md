@@ -1,5 +1,7 @@
 # G3 atomic-act sufficiency and admission proposal A1
 
+Authority update, 2026-10-15: Brian subsequently authorized implementation and provider-free replay together. See [implementation](IMPLEMENTATION.md) and [completed source audit](source-audit-a1.md). The proposal and JSON below are preserved as historical design, not current authorization.
+
 **Recommendation: approve a small, prospective admission-policy implementation and a provider-free replay of the existing V4 receipts, after reviewing this proposal. No new model experiment is needed. Neither step is authorized by this document.** This is an admission-policy version, not Collector V5 or a semantic-contract revision.
 
 Brian has accepted **V4 raw semantics FAIL / containment HOLD** in the [separate gate decision](../evidence-supply-boundary-v4/acceptance-decision-v4.json). Preserve all seven critical raw fields across six cases, both supported G2 admissions and all 22 quarantines. The historical audit and delegated source-review acceptance remain unchanged. This proposal cannot produce a retrospective V4 PASS.
