@@ -1,0 +1,18 @@
+{
+  "version": "boundary-v4-implementation-authorization",
+  "date": "2026-10-15",
+  "decision_owner": "Brian",
+  "status": "IMPLEMENTATION_AUTHORIZED",
+  "proposal_fingerprint": "af7d7e01300de14fef2879fad348a6a1b10b97b384296c077e640f47c2d7c070",
+  "proposal_sha256": "4fddef422374b9c8fab8aff3af479dd4a4de69d387fe93989e4cd7233b9ad0e3",
+  "human_instruction": "Authorize implementation of the V4 boundary/admission repair as proposed, including the source-envelope representation, typed central admission boundary, invariant enforcement, fixed-panel materialization, and focused deterministic/unit/integration tests.",
+  "implementation_authorized": true,
+  "prepare_semantic_packet_authorized": true,
+  "provider_calls_authorized": false,
+  "semantic_execution_authorized": false,
+  "automatic_attestation_authorized": false,
+  "discovery_collection_projection_scoring_authorized": false,
+  "witness_scope": "Human/source-controlled safety oracle for establishing boundary integrity; not intended as a permanent production collection architecture.",
+  "maximum_later_semantic_requests": 37,
+  "content_fingerprint": "58d14640d1bead41395590d4cd291ff2f04e955bccafcd2293f54b4c785c3e4b"
+}

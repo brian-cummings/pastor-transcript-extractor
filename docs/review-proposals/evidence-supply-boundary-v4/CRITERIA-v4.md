@@ -1,0 +1,25 @@
+# V4 semantic revalidation criteria — pending execution authorization
+
+Frozen with the V4 input before any provider request. This is a small development-source boundary experiment: 24 case geometries, 37 maximum attempts, zero retries, pinned jev-1.13.0 and unchanged G2/G3 questions and original selected-option probability >= .80 gate. All 21 historical geometries remain; three full-role variants add four requests. Original and six forward comparisons are reported separately. V3 results and scores remain frozen FAIL.
+
+## Two distinct decisions
+
+Report raw semantic preservation as PASS/FAIL/HOLD separately from admission containment. Any confirmed critical raw source, recipient, adoption, fabricated act/relation or binding error is a raw semantic FAIL even if quarantined. Withholding is not a measured negative; weak/clipped historical diagnostics are disclosed, not silently rescored.
+
+Containment PASS requires zero unsupported admitted items across every actual G2/G3 export, serialized import and local consumer path; all seven critical-mechanism deterministic integration controls must pass. It also requires source-audited admitted positive evidence for (1) a G2 explanation (R003 or new explicit R004/R058 gloss), (2) a current human-listener G3 act (R018 or R103), and (3) a reported G3 act (R073, R053 or full R077 promise). All required actual source/recipient/stance/boundary decisions must be compatible, not filled from review. A source-controlled witness may withhold/reject an output but cannot repair it. Rejecting everything cannot PASS. No accepted review exists at preparation time; source-oracle notes are not export authority.
+
+Every positive field, every prepared difference and every unscored failure must be audited against exact supplied state and full frozen source. Retain each raw selected choice, distribution, selected probability, confidence and gated decision. R021 must not admit a reading as explanation. R080 cannot admit a nonbiblical anchor. R078 must not admit narrated care as an addressed act. R053/R111/R114 cannot become current-listener acts from historical/hypothetical provenance. R076 must retain God/historical-prayer identity and no person-directed act. Review compatible reported acts independently of present adoption. Null circumstances cannot acquire binding or relevance credit. Conditions cannot be removed. Unknown or unsupported fields, incomplete reviews, missing receipts, incompatible bound identity or untested routes yield HOLD; any unsupported admitted item yields containment FAIL.
+
+The minimal local-act export makes no circumstance-conditioned claim. Its raw binding decisions remain visible and must still be audited; unsupported positive binding quarantines the whole row. R092 reported-recipient/circumstance discrimination and other conservative omissions remain disclosed independently. Containment PASS cannot assert those semantics recovered merely because incompatible rows were excluded.
+
+## Witness and technical requirements
+
+Receipt-bound source review is prepared by Codex after the run and accepted through a separate explicit Brian review decision. That decision pins the review file, packet fingerprint and exact measurement/receipt identities. Pre-run source notes, candidate metadata and model confidence are never authority. No automatic provenance attestation or permanent human-review collection architecture is accepted here. The safety oracle only establishes whether the implemented boundary honors supplied review authority. Review errors and later review throughput remain limitations for discovery readiness.
+
+Require exact source/snapshot/role/envelope/request/question/model identities; complete sealed receipt inventory; no duplicate, cross-state, cross-phase or stale-review reuse; immutable raw outputs; binding phase without act/source fields. Byte guards and contiguous 6,000-character envelope bounds cannot silently truncate. The 37-attempt ceiling includes failed/lost replies; no automatic replacement or reuse of V3 receipts for new V4 states. Missing/invalid charged receipts require a separate recovery decision.
+
+Proposed cumulative ceiling: 2,368,000 input tokens / $0.099456 model list price at $0.042/M input, free output, long context off. This is a maximum reservation, not an actual-token estimate. Pricing checked 2026-10-15 against https://docs.typesafe.ai/models. A future execution authorization must bind the exact frozen input fingerprint and scope; implementation authorization is not spending authorization. This implementation provides no provider runner or execute CLI option.
+
+## After the audit
+
+Brian decides the scoped raw-semantic and containment recommendations independently. A containment PASS with raw FAIL is not a semantic PASS and cannot overwrite frozen V3. Only an explicit scoped human acceptance can permit preparation of a separate discovery-readiness decision. No discovery tuning, automatic attestation, collection, projection/comparison/scoring, rates, recurrence or corpus-economics claims. The 790 non-reference V2 positives remain unaudited.
