@@ -1,0 +1,11 @@
+{
+  "version": "collector-retrieval-repair-review-packet-v1.1",
+  "input_fingerprint": "1ab0ae15da7adf804a13fc2f6a4b88eb506a0210b1643e1a4f419ee9aa1ea170",
+  "files": {
+    "docs/review-proposals/collector-retrieval-repair-v1.1/IMPLEMENTATION-REVIEW.md": "ed9731b90fb90e8542df5e3dbe5fdf10dc1af308e50aab725d9cca9f636a2c5a",
+    "docs/review-proposals/collector-retrieval-repair-v1.1/implementation-review-v1.1.json": "00c79be6caed25af02cc88917fb05e114489ddd64de2de2c46d86efb99173231",
+    "docs/review-proposals/collector-retrieval-repair-v1.1/development-input-v1.1.json": "b4cf6f765c56da7c130696b805330226975bda7f9d0da85126eea61e3f39beeb",
+    "docs/review-proposals/collector-retrieval-repair-v1.1/implementation-authorization-v1.1.json": "d544e1f8363a9a0a78b26d4709d0c44cfc27e363d09c49108692c6cbd1c28754"
+  },
+  "content_fingerprint": "216b0a831e13edae5a9ed0684fb8cc00cb1040129c77303ff1961b5169066df5"
+}

@@ -1,0 +1,29 @@
+{
+  "version": "collector-retrieval-repair-implementation-authorization-v1.1",
+  "status": "AUTHORIZED_IMPLEMENTATION_ONLY",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-16",
+  "authority_attachment": {
+    "path": "/Users/briancummings/.codex/attachments/23756144-ed18-40ca-83f3-e7d073eb15e0/Pasted text.txt",
+    "sha256": "dcfc5a2e840a9b5315755c920816ee9cdcd58a7cec137307363ea93f624b58cb"
+  },
+  "authority_excerpt": "Authorize bounded V1.1 development repair addressing only the evidenced defects",
+  "accepted": {
+    "retrieval_V1": "FAIL",
+    "G1": "HOLD"
+  },
+  "accepted_audit_fingerprint": "ef1a88218d41b14fa19886e26fe138931c3157ce8052aed94430d4a4961811df",
+  "implementation_authorized": true,
+  "execution_authorized": false,
+  "model_loading_authorized": false,
+  "provider_calls_authorized": false,
+  "fresh_source_selection_authorized": false,
+  "collection_projection_authorized": false,
+  "semantic_admission_threshold_changes_authorized": false,
+  "runtime_model_lock_changes_authorized": false,
+  "G3_ceiling_changes_authorized": false,
+  "historical_results_reseal_authorized": false,
+  "next_decision": "Review implementation/tests and bounded rerun proposal before any execution",
+  "stopping_rule": "Last architecture-debug iteration: if independent G2 and qualification-preserving G3 remain materially worse than V3 on these retired sources, stop layering heuristics and reconsider retrieval architecture.",
+  "content_fingerprint": "ff52eb30dc8ca18c80919c2b552d8d30228f085e4b7feb6abf551586315c1dd6"
+}

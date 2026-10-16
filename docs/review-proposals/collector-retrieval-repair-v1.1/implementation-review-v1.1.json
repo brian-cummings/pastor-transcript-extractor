@@ -1,0 +1,92 @@
+{
+  "version": "collector-retrieval-repair-implementation-review-v1.1",
+  "status": "IMPLEMENTATION_COMPLETE_EXECUTION_HELD",
+  "input_fingerprint": "1ab0ae15da7adf804a13fc2f6a4b88eb506a0210b1643e1a4f419ee9aa1ea170",
+  "implementation_authorization_fingerprint": "ff52eb30dc8ca18c80919c2b552d8d30228f085e4b7feb6abf551586315c1dd6",
+  "accepted": {
+    "retrieval_V1": "FAIL",
+    "G1": "HOLD"
+  },
+  "accepted_audit_fingerprint": "ef1a88218d41b14fa19886e26fe138931c3157ce8052aed94430d4a4961811df",
+  "invariants": {
+    "G2_independent_of_G3_retention": true,
+    "G2_full_source_only_rank_and_composition_trace": true,
+    "G3_detected_qualification_dependency_closure_before_quota": true,
+    "G3_semantic_sufficiency_established": false,
+    "G3_two_per_unit_ceiling_unchanged": true,
+    "JSON_roundtrip_seals": true,
+    "original_V1_artifacts_unchanged": true
+  },
+  "focused_tests": {
+    "total": 90,
+    "retrieval": 37,
+    "source_unit": 16,
+    "atomic_admission": 14,
+    "CLI": 23,
+    "status": "PASS",
+    "real_encoder": false
+  },
+  "execution": {
+    "provider_requests": 0,
+    "model_downloads": 0,
+    "model_loads": 0,
+    "encoder_calls": 0,
+    "retired_source_runs": 0,
+    "fresh_sources_selected": 0
+  },
+  "preflight": [
+    {
+      "video_id": 520,
+      "unit_count": 111,
+      "descriptors_max": 333,
+      "G2_max": 888,
+      "G3_max": 222,
+      "G2_G3_max": 1110,
+      "comparisons_max": 36963,
+      "encoded_tokens_max": 85248
+    },
+    {
+      "video_id": 1094,
+      "unit_count": 526,
+      "descriptors_max": 1578,
+      "G2_max": 4208,
+      "G3_max": 1052,
+      "G2_G3_max": 5260,
+      "comparisons_max": 830028,
+      "encoded_tokens_max": 403968
+    },
+    {
+      "video_id": 951,
+      "unit_count": 973,
+      "descriptors_max": 2919,
+      "G2_max": 7784,
+      "G3_max": 1946,
+      "G2_G3_max": 9730,
+      "comparisons_max": 2840187,
+      "encoded_tokens_max": 747264
+    }
+  ],
+  "resource_upper_bounds": {
+    "G2_G3_candidates": 16100,
+    "descriptors": 4830,
+    "comparisons": 3707178,
+    "encoded_tokens": 1236480
+  },
+  "proposed_command": "pte analysis collector-retrieval-repair --run-development --approve-input 1ab0ae15da7adf804a13fc2f6a4b88eb506a0210b1643e1a4f419ee9aa1ea170",
+  "proposed_execution_authorized": false,
+  "empirical_recall": null,
+  "source_compatible_supply": null,
+  "usable_unique_evidence": null,
+  "unit_cost": null,
+  "limitations": [
+    "Finite structural grammar is not automatic sufficiency or provenance",
+    "Long qualification scopes can create major deferral/regression; unmeasured until execution",
+    "Larger completions may be mixed or nonminimal",
+    "Full trace must fit existing output caps or execution fails closed",
+    "No exhaustive P1 census or P1 recall denominator",
+    "No new semantic/admission evidence, generalization, throughput or economics"
+  ],
+  "stopping_rule": "Last architecture-debug iteration: if independent G2 and qualification-preserving G3 remain materially worse than V3 on these retired sources, stop layering heuristics and reconsider retrieval architecture.",
+  "report_sha256": "ed9731b90fb90e8542df5e3dbe5fdf10dc1af308e50aab725d9cca9f636a2c5a",
+  "content_fingerprint": "38798aadf4d985c09eada41bef89c91c482a688912703434f99327a221d63899"
+}
