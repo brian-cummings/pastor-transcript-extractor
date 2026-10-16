@@ -79,7 +79,7 @@ class AtomicAdmissionProposalTests(unittest.TestCase):
         self.assertEqual(0, result.exit_code, result.output)
         output = ' '.join(result.output.split())
         self.assertIn('prospective controls only', output)
-        self.assertIn('implementation and validation remain unauthorized', output)
+        self.assertIn('Historical proposal only', output)
         self.assertIn('provider_requests=0', output)
         for flag in ('--execute', '--accept-review', '--prepare-only'):
             result = CliRunner().invoke(app, ['analysis', 'g3-atomic-admission-review', flag])

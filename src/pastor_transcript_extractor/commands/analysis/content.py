@@ -3128,6 +3128,42 @@ def analysis_g2_feasibility_review(
 
 
 @analysis_app.command(
+    "g3-atomic-admission-replay",
+    help="Check, replay or verify the authorized provider-free A1 policy panel using existing V4 receipts.",
+)
+def analysis_g3_atomic_admission_replay(
+    check_only: bool = typer.Option(False, "--check-only", help="Verify the fingerprint-bound packet and review authorities without A1 execution or writes."),
+    execute: bool = typer.Option(False, "--execute", help="Replay only the authorized 24 cases / 37 existing receipts; zero providers."),
+    approve_packet: str | None = typer.Option(None, "--approve-packet", help="Exact A1 replay input fingerprint required for execution."),
+    verify_audit: bool = typer.Option(False, "--verify-audit", help="Verify the authored A1 source audit against real export/consumer replay."),
+    base_dir: Path | None = typer.Option(None, "--base-dir", help="Authorized application data directory with existing V4 receipts."),
+) -> None:
+    from pastor_transcript_extractor import g3_atomic_admission_replay as replay
+
+    if sum((check_only, execute, verify_audit)) > 1 or (approve_packet and not execute):
+        raise typer.BadParameter("Choose one mode; --approve-packet requires --execute")
+    try:
+        if verify_audit:
+            report = replay.verify_audit(base_dir)
+            console.print(f"Source audit verified: bounded A1 containment {report['recommendation']} recommended; "
+                          "Brian's decision pending. V4 raw FAIL / containment HOLD unchanged. provider_requests=0.", markup=False)
+        elif execute:
+            if not approve_packet:
+                raise ValueError("--execute requires exact --approve-packet")
+            result = replay.execute(approve_packet, base_dir)
+            console.print(f"A1 replay: {result['admitted']} admitted / {result['quarantined']} quarantined; "
+                          f"{len(result['unsupported_or_unresolved_admissions'])} unsupported/unresolved; "
+                          "provider_requests=0; independent source audit required.", markup=False)
+            console.print(f"Results: {replay.output_directory(base_dir) / 'results-a1.json'}", markup=False)
+        else:
+            packet, _, _, _ = replay.context(base_dir)
+            console.print(f"A1 replay packet verified: 24 cases / 37 existing sealed receipts; provider_requests=0. "
+                          f"Fingerprint: {packet['content_fingerprint']}", markup=False)
+    except (ValueError, OSError, KeyError, RuntimeError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@analysis_app.command(
     "g3-atomic-admission-review",
     help="Verify the provider-free G3 sufficiency proposal against V4 evidence; no new admission policy execution or writes.",
 )
@@ -3142,8 +3178,8 @@ def analysis_g3_atomic_admission_review(
         raise typer.BadParameter(str(error)) from error
     console.print(f"Proposal verified: {len(proposal['records'])} design assessments; "
                   "R018-current / R053-reported are prospective controls only. provider_requests=0.", markup=False)
-    console.print("V4 remains raw FAIL / containment HOLD; all original quarantines preserved. "
-                  "A1 policy implementation and validation remain unauthorized.", markup=False)
+    console.print("Historical proposal only; V4 remains raw FAIL / containment HOLD. "
+                  "See g3-atomic-admission-replay --check-only for the separate current authorization.", markup=False)
     console.print(f"Review: {review.HERE / 'PROPOSAL.md'}", markup=False)
 
 

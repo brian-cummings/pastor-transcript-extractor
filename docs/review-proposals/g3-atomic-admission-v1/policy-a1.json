@@ -1,0 +1,18 @@
+{
+  "version": "g3-atomic-admission-a1",
+  "item_version": "reviewed-atomic-local-evidence-a1",
+  "witness_version": "receipt-bound-atomic-act-sufficiency-a1",
+  "scope": "atomic_act_only",
+  "implementation_sha256": "4f801acb2c69737454122ea6f6d78e4e0bf38abd6dc7ad8298ea6a010c190376",
+  "threshold": 0.8,
+  "allowed_boundary_decisions": [
+    "local_sufficient",
+    "unclear"
+  ],
+  "provider_calls": 0,
+  "circumstance_claim": null,
+  "packet_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+  "source_review_decision_sha256": "d3b47dbdf8d0499ecb6839a9de03b2345dc1aab8185b22ef807cdd8d43d5eaf2",
+  "proposal_fingerprint": "e0165fab14bbd1a952c86f58ed16f27cf3ac111bf0faab4cff716561272337cd",
+  "content_fingerprint": "c3a26eee7ecdc66047fe29059c230221622adebd268e8a3210633c21b12161d9"
+}

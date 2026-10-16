@@ -1,0 +1,8 @@
+{
+  "version": "source-controlled-a1-replay-trust-root",
+  "authorization_sha256": "4c09924833bd0c304f4aaaff8cbb8d55bc2c77cee131d7cd9058c5e51bdbc812",
+  "input_sha256": "70c6a4721e2a55ba82e11b24d5fa5bd7e6dce16bc67056d230312fe7bc0e3812",
+  "runner_sha256": "b8f0d1ef774681339ad9f6286eac71e6cde2fa1308717de61a9b9eac6a79318f",
+  "scope": "accepted_source_controlled_bounded_replay_authority_not_semantic_attestation",
+  "content_fingerprint": "e2098dddd0c15813754894cf0e4d5818aa69d182a033e7d5743e5e7376633c2d"
+}

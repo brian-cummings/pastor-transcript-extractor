@@ -1,0 +1,33 @@
+{
+  "version": "atomic-a1-implementation-replay-authorization",
+  "status": "AUTHORIZED",
+  "decision_owner": "Brian",
+  "date": "2026-10-15",
+  "implementation_authorized": true,
+  "provider_free_replay_authorized": true,
+  "provider_calls_authorized": false,
+  "policy_fingerprint": "c3a26eee7ecdc66047fe29059c230221622adebd268e8a3210633c21b12161d9",
+  "policy_file_sha256": "533b4afedcca45bed5a9d4ce4dcbb3e0802174ed71c8e5fce517ebfa84c220de",
+  "input_fingerprint": "7e8dbe1a65edc1eab2e98ab7edb9bbbe0468629ead2c0d761541bf7938dbca62",
+  "input_sha256": "70c6a4721e2a55ba82e11b24d5fa5bd7e6dce16bc67056d230312fe7bc0e3812",
+  "runner_sha256": "b8f0d1ef774681339ad9f6286eac71e6cde2fa1308717de61a9b9eac6a79318f",
+  "proposal_fingerprint": "e0165fab14bbd1a952c86f58ed16f27cf3ac111bf0faab4cff716561272337cd",
+  "claim_review_acceptance_sha256": "57092b3988e3b41727fbb1c808a3a6b68da02e644597650be1fbd4c1d6438f6a",
+  "cases": 24,
+  "sealed_receipts": 37,
+  "runtime_directory": "/Users/briancummings/Documents/PastorSearchData/evaluation/g3-atomic-admission-a1",
+  "human_instruction": "Approve proposal A1 and authorize implementation of g3-atomic-admission-a1, reviewed-atomic-local-evidence-a1, and receipt-bound-atomic-act-sufficiency-a1 exactly within the proposed scope. After implementation and tests pass, authorize the fingerprint-bound provider-free A1 policy replay.",
+  "focused_core_tests_passed": 30,
+  "final_brian_containment_decision": null,
+  "held": [
+    "Provider requests",
+    "V4 relabeling or measurement/question/threshold changes",
+    "Automatic provenance resolution",
+    "Discovery/ranker tuning",
+    "Broader collection",
+    "790-item V2 audit",
+    "Recurrence/rates",
+    "Pastor projection/comparison/scoring"
+  ],
+  "content_fingerprint": "247c7c7f672c77eb5d55f4f0b44cba7d42c60d089c9f2977675679d8f4d34912"
+}

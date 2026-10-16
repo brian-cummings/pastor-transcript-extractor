@@ -1,0 +1,17 @@
+{
+  "version": "atomic-claim-review-acceptance-a1",
+  "status": "ACCEPTED",
+  "closed": true,
+  "decision_owner": "Brian",
+  "prepared_by": "Codex",
+  "scope": "bounded_atomic_local_replay_only",
+  "review_file_sha256": "745f82352216a96485207def4e787c899d7f42b767fc442bbe017b7e7c046466",
+  "review_fingerprint": "f0be93c7a6346d9b66cacd5b96132a6c21b50b490b8059c671c458be9a09ecfc",
+  "policy_fingerprint": "c3a26eee7ecdc66047fe29059c230221622adebd268e8a3210633c21b12161d9",
+  "acceptance_mode": "delegated_postimplementation_source_review_for_authorized_replay_only",
+  "human_instruction": "Authorize the fingerprint-bound provider-free A1 policy replay using the existing 24 cases / 37 sealed V4 receipts and separately accepted claim-sufficiency witnesses for the proposed controls.",
+  "authorization_basis": "Brian explicitly authorized implementation plus replay and the two exact control namespaces/acts. Codex independently reviewed and accepted the receipt-bound claim witnesses for that bounded replay under this delegated instruction. This does not claim Brian personally inspected these newly authored files or accepted the final A1 result.",
+  "final_brian_containment_decision": null,
+  "production_authorized": false,
+  "content_fingerprint": "a8d920a601ebcbba945eb6141543dc4956faec26a6775d518467cda4b7ba9f0c"
+}

@@ -3416,6 +3416,27 @@ pte analysis g2-feasibility-review [OPTIONS]
 | `--revision TEXT` | Frozen pilot revision: v1 or the single adjudicated v2 cycle.  [default: v1] | no | v1 |
 | `--help` | Show this message and exit. | no | — |
 
+### `pte analysis g3-atomic-admission-replay`
+
+Check, replay or verify the authorized provider-free A1 policy panel using existing V4 receipts.
+
+#### Usage
+
+```console
+pte analysis g3-atomic-admission-replay [OPTIONS]
+```
+
+#### Options
+
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `--check-only` | Verify the fingerprint-bound packet and review authorities without A1 execution or writes. | no | False |
+| `--execute` | Replay only the authorized 24 cases / 37 existing receipts; zero providers. | no | False |
+| `--approve-packet TEXT` | Exact A1 replay input fingerprint required for execution. | no | — |
+| `--verify-audit` | Verify the authored A1 source audit against real export/consumer replay. | no | False |
+| `--base-dir PATH` | Authorized application data directory with existing V4 receipts. | no | — |
+| `--help` | Show this message and exit. | no | — |
+
 ### `pte analysis g3-atomic-admission-review`
 
 Verify the provider-free G3 sufficiency proposal against V4 evidence; no new admission policy execution or writes.

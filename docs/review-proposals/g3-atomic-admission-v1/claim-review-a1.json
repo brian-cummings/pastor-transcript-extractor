@@ -1,0 +1,274 @@
+{
+  "version": "receipt-bound-atomic-act-sufficiency-a1",
+  "policy_fingerprint": "c3a26eee7ecdc66047fe29059c230221622adebd268e8a3210633c21b12161d9",
+  "packet_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+  "reviewer": "Codex",
+  "reviewed_on": "2026-10-15",
+  "scope": "two_control_atomic_act_sufficiency_only",
+  "parent_source_audit_fingerprint": "231be5a6f455d6b339253aefb887e60155af5625c5a6243a6ec4f8dcfd6e69f5",
+  "source_excerpts": {
+    "B4-R053": {
+      "start": 36163,
+      "end": 38840,
+      "text": " we can't do that we cannot leave Benjamin behind it is impossible for us to do this finally Judah pleads for Benjamin you can see him kneeling down before Joseph didn't know who he is right and this is what he said now therefore please let your servant remain instead of the lad so he offers himself self as a slave to Joseph in place of Benjamin. Let the lad go up with his brothers. For how shall I go up to my father Jacob, if the lad is not with me, lest perhaps I see the evil that would come upon my father? Did Judah have a change of heart? Did he show he had a change of heart? He's offering himself as a slave in place of Benjamin. Joseph is convinced that his brothers have had a change of heart. Right?\nRight? This couldn't hold back. He wept aloud. So loud that the Egyptians in the house of Pharaoh heard it.\nit. And the brothers are like, \"What's going on?\" You know what is going on? Then Joseph said to his brothers, \"I am Joseph\nJoseph Bill. I can only imagine the look on their face, you know, jaw hitting the floor, eyeballs popping out, ears perking up. What in the world is going He speaks now in their language, right? Does my father still live? But his brothers could not answer him. They were dismayed in his presence. I can only imagine, right? Joseph said to his brothers, \"Please come near to me.\" So they came near. Then he said, \"I am Joseph, your brother, whom you sold into Egypt.\nEgypt. But now do not therefore be grieved or angry with yourselves.\" Listen to this spirit of forgiveness. Right? Does he have the right to be mad at his brothers? Does he have the right to punish them? Yeah. Doesn't he? Listen to this attitude and spirit of forgiveness.\nforgiveness. Do not therefore be grieved or angry with yourselves because you sold me here. For God sent me before you to preserve life. And God sent me before you to preserve a posterity for you in the earth and to save your lives by a great deliverance. Right?\nRight? So now it was not you who sent me here but God. and he has made me a father to Pharaoh and lord of all his house and a ruler throughout all the land of Egypt. Notice what Ellen White says here, which I think it's a powerful statement. The life of Joseph illustrates the life of Christ.\nChrist. Can you name a sin recorded in the Bible about Joseph?\nabout Joseph? Of course, we've all sinned and fallen short of the glory of God, right? Joseph had too. We just don't know what it was. There's no record of a sin that he committed in the Bible. Notice this comparison, right? Notice this comparison. Mickey, you ready? Here we go.\nwe go. Joseph was a shepherd, right? I'm I got the Bible verses up there in red. I don't wan"
+    },
+    "B4-R018": {
+      "start": 29283,
+      "end": 31294,
+      "text": " beliefs. And what H.P. Hughes said was, \"I'll bring 100 people to bring evidence about what the gospel can do to a changed life. I'll bring 100 people. Uh Charles Bradlaugh, you bring 100 people, too. So, you I'll bring my 100, you bring your 100. Well, you you can't come up with 100? I'll tell you what. I'll bring I'll bring my 100, you only have to bring 50. You can't come up with 50? I'll tell you what. I'll bring my 100, you only have to come up with 20. You only have to come up with 10.\nHe couldn't he come up with one. And so, he withdrew his challenge to have this public debate. Christ makes the difference, doesn't it? Christ makes the difference. And I think it's amazing to me how sometimes we don't allow God to make the difference in our lives because we don't spend time digging for these truths in the word of God. Let's commit to do that. Amen. Let's commit to do that. So,\nSo, this is the call today. Are you willing to surrender all to Christ? Are you willing to commit to searching for treasure by reading the Bible every day?\nday? If you are, then let's stand and sing hymn number 272.\n>> All stand as we sing 272.\n>> Give me the Bible, [singing and music] star of gladness gleaming, to cheer >> [singing and music] music] >> the heart\n>> the heart alone and tempest-tossed. No storm can hide >> [singing]\n>> [singing] >> that peaceful [music] radiance beaming, beaming, since Jesus came to seek and [music] save the lost. Give\nGive me the [singing] Bible, holy message shining, thy\nthy light shall guide me in the [singing and music] narrow way. Precept and promise, law and [music] love combining,\nlove combining, till night [singing] shall vanish in eternal day. >> [music]\n>> [music] >> Give [singing] me the Bible, Bible, when my heart is broken, when sin [singing] and grief have filled my soul with fear. Give [singing] me the precious [music] words my Jesus spoken, hold up his lamp to show my Savior [singing] near.\n[singing] [music]\n[music and singing]\n[music] [singing]\n[sin"
+    }
+  },
+  "rows": [
+    {
+      "version": "receipt-bound-atomic-act-sufficiency-a1",
+      "case_id": "B4-R053",
+      "policy_fingerprint": "c3a26eee7ecdc66047fe29059c230221622adebd268e8a3210633c21b12161d9",
+      "measurement_fingerprint": "d3ac5b75f8e90cab07a08d01af39bc658add160337f2315c46ca749f728f75a2",
+      "binding": {
+        "case_id": "B4-R053",
+        "packet_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+        "receipt_fingerprints": [
+          "78e154ba46855bb52d1dc61471c7be5bcf40505b0c425d74b230682fa0499973",
+          "3f2f6b3d514756d6881a8183e0b98b63f56ad5d6254156f9ff415a55d7bdb5e0"
+        ],
+        "request_keys": [
+          "8831362dbfcf3655d52707a54b40a1b3aa56bbe877acdb073c3dbe9280bb99cf",
+          "113cdb0fb9ad0c1f156defdf1ef66ec695025f9c2f3ba00a87bd8ce8ae7bc27c"
+        ],
+        "roles": {
+          "circumstance": {
+            "end": 37939,
+            "start": 37915,
+            "text": "because you sold me here"
+          },
+          "utterance": {
+            "end": 37643,
+            "start": 37591,
+            "text": "do not therefore be grieved or angry with yourselves"
+          }
+        },
+        "source_envelope": {
+          "end": 37940,
+          "start": 37063,
+          "text": "Then Joseph said to his brothers, \"I am Joseph\nJoseph Bill. I can only imagine the look on their face, you know, jaw hitting the floor, eyeballs popping out, ears perking up. What in the world is going He speaks now in their language, right? Does my father still live? But his brothers could not answer him. They were dismayed in his presence. I can only imagine, right? Joseph said to his brothers, \"Please come near to me.\" So they came near. Then he said, \"I am Joseph, your brother, whom you sold into Egypt.\nEgypt. But now do not therefore be grieved or angry with yourselves.\" Listen to this spirit of forgiveness. Right? Does he have the right to be mad at his brothers? Does he have the right to punish them? Yeah. Doesn't he? Listen to this attitude and spirit of forgiveness.\nforgiveness. Do not therefore be grieved or angry with yourselves because you sold me here."
+        },
+        "source_snapshot_sha256": "80af7108f58f48fb0f0908fface4f76a24a76d2514166e7f3c13bad1e3e0ed2e"
+      },
+      "scope": "atomic_act_only",
+      "namespace": "G3_reported_local_act",
+      "utterance": {
+        "start": 37591,
+        "end": 37643,
+        "text": "do not therefore be grieved or angry with yourselves"
+      },
+      "acts": {
+        "reassurance": {
+          "support": {
+            "start": 37591,
+            "end": 37643,
+            "text": "do not therefore be grieved or angry with yourselves"
+          },
+          "rationale": "The exact forgiving directive reassures the addressed brothers that they need not remain grieved or angry with themselves."
+        },
+        "challenge": {
+          "support": {
+            "start": 37591,
+            "end": 37643,
+            "text": "do not therefore be grieved or angry with yourselves"
+          },
+          "rationale": "The exact directive calls the addressed brothers away from the specified grief/self-anger response."
+        }
+      },
+      "source_voice": {
+        "voice": "quoted_or_reported",
+        "addressee": "reported_person",
+        "adoption": "not_adopted_report"
+      },
+      "conditions_and_limits": {
+        "complete": true,
+        "spans": [
+          {
+            "start": 37591,
+            "end": 37643,
+            "text": "do not therefore be grieved or angry with yourselves"
+          }
+        ],
+        "rationale": "Retain the entire do-not directive and yourselves recipient. No omitted consequent is required for its reassurance/challenge. Do not import the later because-you-sold-me-here relation."
+      },
+      "provenance_support": {
+        "origin": {
+          "value": "reported",
+          "span": {
+            "start": 37063,
+            "end": 37096,
+            "text": "Then Joseph said to his brothers,"
+          },
+          "rationale": "The supplied introduction explicitly identifies Joseph in the retold biblical conversation, rather than current preacher address."
+        },
+        "voice": {
+          "value": "quoted_or_reported",
+          "span": {
+            "start": 37063,
+            "end": 37096,
+            "text": "Then Joseph said to his brothers,"
+          },
+          "rationale": "Joseph said introduces this exact forgiving directive; the preacher is reporting Joseph."
+        },
+        "addressee": {
+          "value": "reported_person",
+          "span": {
+            "start": 37063,
+            "end": 37940,
+            "text": "Then Joseph said to his brothers, \"I am Joseph\nJoseph Bill. I can only imagine the look on their face, you know, jaw hitting the floor, eyeballs popping out, ears perking up. What in the world is going He speaks now in their language, right? Does my father still live? But his brothers could not answer him. They were dismayed in his presence. I can only imagine, right? Joseph said to his brothers, \"Please come near to me.\" So they came near. Then he said, \"I am Joseph, your brother, whom you sold into Egypt.\nEgypt. But now do not therefore be grieved or angry with yourselves.\" Listen to this spirit of forgiveness. Right? Does he have the right to be mad at his brothers? Does he have the right to punish them? Yeah. Doesn't he? Listen to this attitude and spirit of forgiveness.\nforgiveness. Do not therefore be grieved or angry with yourselves because you sold me here."
+          },
+          "rationale": "His brothers are explicitly named as recipients before the exact directive."
+        },
+        "adoption": {
+          "value": "not_adopted_report",
+          "span": {
+            "start": 37063,
+            "end": 37940,
+            "text": "Then Joseph said to his brothers, \"I am Joseph\nJoseph Bill. I can only imagine the look on their face, you know, jaw hitting the floor, eyeballs popping out, ears perking up. What in the world is going He speaks now in their language, right? Does my father still live? But his brothers could not answer him. They were dismayed in his presence. I can only imagine, right? Joseph said to his brothers, \"Please come near to me.\" So they came near. Then he said, \"I am Joseph, your brother, whom you sold into Egypt.\nEgypt. But now do not therefore be grieved or angry with yourselves.\" Listen to this spirit of forgiveness. Right? Does he have the right to be mad at his brothers? Does he have the right to punish them? Yeah. Doesn't he? Listen to this attitude and spirit of forgiveness.\nforgiveness. Do not therefore be grieved or angry with yourselves because you sold me here."
+          },
+          "rationale": "The supplied frame reports Joseph addressing brothers. Commentary on forgiveness does not apply these words to current listeners; the measured not-adopted-report is retained."
+        }
+      },
+      "complete_for_exported_acts": true,
+      "no_omitted_act_or_qualifier_required": true,
+      "context_used_only_for_identity_stance_and_interpretation": true,
+      "excluded_claims": [
+        "circumstance_connection",
+        "pastor_projection",
+        "quality",
+        "outcome"
+      ],
+      "rationale": "The exact forgiving directive itself offers reassurance and calls the brothers away from grief/anger. The supplied envelope explicitly identifies Joseph addressing his brothers. No current congregation application is exported. The later because you sold me here occurrence supports context review but is not inserted into the exact utterance or exported as a measured circumstance connection."
+    },
+    {
+      "version": "receipt-bound-atomic-act-sufficiency-a1",
+      "case_id": "B4-R018",
+      "policy_fingerprint": "c3a26eee7ecdc66047fe29059c230221622adebd268e8a3210633c21b12161d9",
+      "measurement_fingerprint": "699994e8ad9c763d2c6e994bda1751b2a5b05a3ab455720d07332d152d18ac91",
+      "binding": {
+        "case_id": "B4-R018",
+        "packet_fingerprint": "3deba35907971549e9693c170e53ace6c8e3444b447a1715c5fd28501c7a893c",
+        "receipt_fingerprints": [
+          "2a8f138b31fc9a2391b29c1009db0cabf72fe63ef96d77f912f512dca40c8736",
+          "78dc3c3baeedf86356b18d825280104a5a492cbc77c8caa81a44c806a41a3e21"
+        ],
+        "request_keys": [
+          "c7b19a57e36b1dff99b517817f1e4f54ae3ab83faf68f0ff0082a43bc1aa44fa",
+          "78d733b2f8f92dbc351cb392edd46b3da2521c1ca8f31ef9d0a5d760ca8fb47d"
+        ],
+        "roles": {
+          "circumstance": null,
+          "utterance": {
+            "end": 30249,
+            "start": 30207,
+            "text": "Are you willing to surrender all to Christ"
+          }
+        },
+        "source_envelope": {
+          "end": 30394,
+          "start": 30183,
+          "text": "this is the call today. Are you willing to surrender all to Christ? Are you willing to commit to searching for treasure by reading the Bible every day?\nday? If you are, then let's stand and sing hymn number 272."
+        },
+        "source_snapshot_sha256": "93078760180fc5debda1dacd8de24d1bfd89942d9154d3c03adc71f2ad246d0f"
+      },
+      "scope": "atomic_act_only",
+      "namespace": "G3_current_preacher_act",
+      "utterance": {
+        "start": 30207,
+        "end": 30249,
+        "text": "Are you willing to surrender all to Christ"
+      },
+      "acts": {
+        "challenge": {
+          "support": {
+            "start": 30207,
+            "end": 30249,
+            "text": "Are you willing to surrender all to Christ"
+          },
+          "rationale": "The exact question asks a specified response: surrender all to Christ."
+        },
+        "invitation": {
+          "support": {
+            "start": 30207,
+            "end": 30249,
+            "text": "Are you willing to surrender all to Christ"
+          },
+          "rationale": "The exact willingness question opens a response to Christ for the current listeners."
+        }
+      },
+      "source_voice": {
+        "voice": "preacher",
+        "addressee": "direct_current_listener",
+        "adoption": "own_or_adopted"
+      },
+      "conditions_and_limits": {
+        "complete": true,
+        "spans": [
+          {
+            "start": 30207,
+            "end": 30249,
+            "text": "Are you willing to surrender all to Christ"
+          }
+        ],
+        "rationale": "Retain the entire willingness question, including all to Christ. No conditional antecedent or omitted consequent is needed to express these local acts; do not import the following Bible-study appeal or claim conversion."
+      },
+      "provenance_support": {
+        "origin": {
+          "value": "present_preacher",
+          "span": {
+            "start": 30183,
+            "end": 30206,
+            "text": "this is the call today."
+          },
+          "rationale": "The supplied call today introduction and immediate congregational closing appeal identify present preacher address."
+        },
+        "voice": {
+          "value": "preacher",
+          "span": {
+            "start": 30183,
+            "end": 30206,
+            "text": "this is the call today."
+          },
+          "rationale": "The invitation belongs to the current call introduced in the supplied envelope."
+        },
+        "addressee": {
+          "value": "direct_current_listener",
+          "span": {
+            "start": 30183,
+            "end": 30394,
+            "text": "this is the call today. Are you willing to surrender all to Christ? Are you willing to commit to searching for treasure by reading the Bible every day?\nday? If you are, then let's stand and sing hymn number 272."
+          },
+          "rationale": "The second-person willingness appeal is part of the call today followed by the invitation to stand and sing; current congregation is explicit."
+        },
+        "adoption": {
+          "value": "own_or_adopted",
+          "span": {
+            "start": 30183,
+            "end": 30394,
+            "text": "this is the call today. Are you willing to surrender all to Christ? Are you willing to commit to searching for treasure by reading the Bible every day?\nday? If you are, then let's stand and sing hymn number 272."
+          },
+          "rationale": "The preacher makes this present appeal himself; no reporting frame scopes it."
+        }
+      },
+      "complete_for_exported_acts": true,
+      "no_omitted_act_or_qualifier_required": true,
+      "context_used_only_for_identity_stance_and_interpretation": true,
+      "excluded_claims": [
+        "circumstance_connection",
+        "pastor_projection",
+        "quality",
+        "outcome"
+      ],
+      "rationale": "The complete question itself requests surrender to Christ. The supplied introduction this is the call today and following congregational response establish present preacher address, without borrowing the neighboring Bible-study invitation. Export only the exact surrender question and its measured challenge/invitation acts; no asserted life circumstance or response outcome."
+    }
+  ],
+  "limitations": [
+    "Source-controlled safety oracle, not automatic provenance resolution.",
+    "No review-filling of unknown measured acts, voice, recipient, adoption or relationships."
+  ],
+  "content_fingerprint": "f0be93c7a6346d9b66cacd5b96132a6c21b50b490b8059c671c458be9a09ecfc"
+}

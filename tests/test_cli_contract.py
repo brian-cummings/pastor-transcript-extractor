@@ -54,6 +54,7 @@ GROUP_COMMANDS = {
         "evidence-supply-boundary-revalidation",
         "evidence-supply-boundary-v4-audit",
         "g3-atomic-admission-review",
+        "g3-atomic-admission-replay",
         "evidence-supply-source-audit",
         "g1-feasibility-review",
         "g2-feasibility-review",
