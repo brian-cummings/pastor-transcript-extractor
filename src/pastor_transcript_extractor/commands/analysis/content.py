@@ -3129,6 +3129,7 @@ def analysis_g2_feasibility_review(
 
 @analysis_app.command("collector-recall-repair", help="Check or run the bounded provider-free Collector V4 development comparison; no semantic inference.")
 def analysis_collector_recall_repair(
+    revision: str = typer.Option("v4", "--revision", help="Repair packet revision: v4 (historical ceiling failure) or v4.1 (bounded successor)."),
     check_only: bool = typer.Option(False, "--check-only", help="Read-only verification of repair code, authority and frozen diagnostic inputs."),
     run_development: bool = typer.Option(False, "--run-development", help="Run only the three retired Fresh V1 sources as development diagnostics; no providers."),
     approve_input: str | None = typer.Option(None, "--approve-input", help="Exact prepared repair fingerprint required with --run-development."),
@@ -3136,24 +3137,38 @@ def analysis_collector_recall_repair(
     approve_development_result: str | None = typer.Option(None, "--approve-development-result", help="Reviewed development result fingerprint required for fresh source selection."),
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Application data directory for source artifacts and runtime results."),
 ) -> None:
-    from pastor_transcript_extractor import collector_recall_repair as repair
+    if revision == "v4.1":
+        from pastor_transcript_extractor import collector_recall_repair_v4_1 as repair
+    elif revision == "v4":
+        from pastor_transcript_extractor import collector_recall_repair as repair
+    else:
+        raise typer.BadParameter("Revision must be v4 or v4.1")
     if (sum((check_only,run_development,prepare_confirmation))>1
             or bool(approve_input)!=run_development
             or bool(approve_development_result)!=prepare_confirmation):
         raise typer.BadParameter("Choose one mode; execution/selection requires its exact fingerprint")
     try:
         if run_development:
+            if revision == "v4":
+                raise ValueError("Initial V4 stopped at its source ceiling. Use --revision v4.1 and its new prepared fingerprint; the ceiling is unchanged.")
             result=repair.run_development(base_dir,approve_input)
             console.print(repair.render(result),markup=False)
-            console.print(f"Results: {repair.directory(base_dir) / result['repair_input_fingerprint'] / 'results-v4.json'}",markup=False)
+            result_name = "results-v4.1.json" if revision == "v4.1" else "results-v4.json"
+            console.print(f"Results: {repair.directory(base_dir) / result['repair_input_fingerprint'] / result_name}",markup=False)
             console.print(f"Development result fingerprint: {result['content_fingerprint']}",markup=False)
         elif prepare_confirmation:
             manifest=repair.prepare_confirmation(base_dir,approve_development_result)
             console.print(f"Fresh confirmation manifest prepared: {manifest['content_fingerprint']}; no discovery, references or providers.",markup=False)
         else:
-            packet,_=repair.verify(base_dir)
-            console.print(f"Collector V4 repair verified: {packet['content_fingerprint']}; development only, provider_requests=0.",markup=False)
-            console.print(f"Review: {repair.HERE / 'IMPLEMENTATION-REVIEW.md'}",markup=False)
+            packet,review=repair.verify(base_dir)
+            console.print(f"Collector {revision} repair verified: {packet['content_fingerprint']}; development only, provider_requests=0.",markup=False)
+            if revision == "v4.1":
+                sizes=repair.size_preflight(review)
+                for size in sizes:
+                    console.print(f"Source {size['video_id']}: {size['sentence_nodes']} nodes; G2/G3 bound {size['G2_G3_upper_bound']} / 12000.",markup=False)
+                console.print(f"Aggregate G2/G3 bound: {sum(s['G2_G3_upper_bound'] for s in sizes)} / 20000; no candidate generation.",markup=False)
+            review_name = "CEILING-REPAIR-v4.1.md" if revision == "v4.1" else "IMPLEMENTATION-REVIEW.md"
+            console.print(f"Review: {repair.HERE / review_name}",markup=False)
     except (ValueError,OSError,KeyError,RuntimeError) as error:
         raise typer.BadParameter(str(error)) from error
 

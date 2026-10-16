@@ -3430,6 +3430,7 @@ pte analysis collector-recall-repair [OPTIONS]
 
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
+| `--revision TEXT` | Repair packet revision: v4 (historical ceiling failure) or v4.1 (bounded successor).  [default: v4] | no | v4 |
 | `--check-only` | Read-only verification of repair code, authority and frozen diagnostic inputs. | no | False |
 | `--run-development` | Run only the three retired Fresh V1 sources as development diagnostics; no providers. | no | False |
 | `--approve-input TEXT` | Exact prepared repair fingerprint required with --run-development. | no | — |

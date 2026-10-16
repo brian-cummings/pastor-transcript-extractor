@@ -1,5 +1,34 @@
 # Handoff Notes
 
+## V4 source-ceiling failure repaired in V4.1; revised Brian command — 2026-10-16
+
+Brian's initial V4 command stopped with `Source candidate ceiling exceeded; no
+truncation`. No development recall or provider result exists for it. The old packet,
+code and tests remain unchanged; its CLI execution now directs to the new revision.
+See [V4.1 ceiling-repair review](review-proposals/evidence-supply-collector-v4/CEILING-REPAIR-v4.1.md)
+and [JSON](review-proposals/evidence-supply-collector-v4/ceiling-repair-v4.1.json).
+
+Cause: all four 1/2-sentence width combinations in both directions, plus other paths,
+had a 14N bound. The long source has 1,099 nodes and a 15,386 bound. V4.1 keeps narrow
+and maximal available pairs, discloses omitted asymmetric variants, and retains all
+sentence/G3 targets and gloss paths. Bound is now 10N: 1,400 / 2,570 / 10,990 per source,
+14,960 total. All 12,000-source / 20,000-total limits remain unchanged. Geometric
+subsumption is not semantic context equivalence; downstream usable yield remains
+unestablished. No references, questions, admission paths or thresholds changed.
+
+New preflight checks source and total size proofs before any candidate generation.
+Read-only revisioned check passed; no dataset comparison was run by Codex.
+
+```sh
+pte analysis collector-recall-repair --revision v4.1 --run-development --approve-input 8a619033a9319d224d642fc475f1cbd67986919c74d5c0388662ae787a64e54e
+```
+
+Results go to `evaluation/collector-recall-repair-v4.1/<new input fingerprint>/`
+under the configured application base. Brian executes; Codex owns interpretation and
+next fresh confirmation selection. All historical FAIL/HOLD/PASS decisions and holds
+remain unchanged. The earlier V4 handoff below is historical and must not be rerun.
+
+
 ## Collector V4 repair implemented; Brian's development run next — 2026-10-16
 
 Brian [accepted Fresh V1 discovery FAIL / G1 HOLD](review-proposals/fresh-discovery-readiness-v1/acceptance-decision-v1.md)

@@ -1,0 +1,46 @@
+{
+  "version": "collector-v4.1-ceiling-repair-review",
+  "status": "READY_FOR_BRIAN_DEVELOPMENT_COMPARISON",
+  "failure_source": "Brian CLI output: Source candidate ceiling exceeded; no truncation",
+  "initial_input_fingerprint": "f1a75376089cd79153524643d975d435b3598f33082de0026a4753cd22ebe780",
+  "initial_actual_candidate_count": null,
+  "initial_development_recall": null,
+  "initial_provider_requests": 0,
+  "repair_input_fingerprint": "8a619033a9319d224d642fc475f1cbd67986919c74d5c0388662ae787a64e54e",
+  "repair_input_sha256": "e40ff13e746025193da85c6615f9a56c2f73ac7e73664da9f53d32bb726974c9",
+  "hard_ceilings_changed": false,
+  "source_truncation": false,
+  "reference_changes": false,
+  "semantic_admission_changes": false,
+  "provider_requests": 0,
+  "development_dataset_run": false,
+  "read_only_size_preflight": "PASS",
+  "size_proofs": [
+    {
+      "video_id": 1565,
+      "sentence_nodes": 140,
+      "G2_G3_bound": 1400
+    },
+    {
+      "video_id": 1450,
+      "sentence_nodes": 257,
+      "G2_G3_bound": 2570
+    },
+    {
+      "video_id": 1618,
+      "sentence_nodes": 1099,
+      "G2_G3_bound": 10990
+    }
+  ],
+  "aggregate_G2_G3_bound": 14960,
+  "aggregate_G2_G3_ceiling": 20000,
+  "source_G2_G3_ceiling": 12000,
+  "revised_synthetic_tests_passed": 24,
+  "original_collector_harness_tests_passed": 18,
+  "context_equivalence_of_omitted_variants_established": false,
+  "limitation": "Maximal roles cover asymmetric roles geometrically in bounded frames; source voice and semantic usability can still differ. Development recall and candidate burden await Brian run.",
+  "fresh_safeguard_tests_passed": 21,
+  "cli_contract_tests_passed": 18,
+  "total_focused_tests_passed": 81,
+  "content_fingerprint": "8b2ae6044e850416685c6eee554cc08e17aa9aa4a1324aebca4273c74a2e4885"
+}
