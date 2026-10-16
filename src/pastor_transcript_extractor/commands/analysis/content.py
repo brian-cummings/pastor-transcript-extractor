@@ -3135,13 +3135,21 @@ def analysis_fresh_discovery_readiness(
     check_only: bool = typer.Option(False, "--check-only", help="Verify the prepared proposal only; this workflow has no evaluation execution mode."),
     source_preview: bool = typer.Option(False, "--source-preview", help="Prepare the authorized three normalized source snapshots for boundary validation; no discovery or providers."),
     freeze_inventory: bool = typer.Option(False, "--freeze-inventory", help="Freeze source-only candidates/envelopes/queue before any reference census; no providers."),
+    prepare_packet: bool = typer.Option(False, "--prepare-packet", help="Match the frozen census against the sealed natural inventory and materialize exact semantic preflight; no providers."),
     base_dir: Path | None = typer.Option(None, "--base-dir", help="Application directory containing the source metadata database."),
 ) -> None:
     from pastor_transcript_extractor import fresh_discovery_readiness as review
 
     try:
-        if sum((check_only,source_preview,freeze_inventory))>1:
+        if sum((check_only,source_preview,freeze_inventory,prepare_packet))>1:
             raise ValueError("Choose one provider-free mode")
+        if prepare_packet:
+            from pastor_transcript_extractor import fresh_discovery_results as results
+            report=results.prepare(base_dir)
+            console.print(f"Provider-free preparation: {report['verdict']}; {report['queue_units']} queued candidate units / "
+                          f"{report['requests']} exact requests, provider_requests=0. Raw semantic execution remains unauthorized.", markup=False)
+            console.print(f"Semantic input fingerprint: {report['semantic_input_fingerprint']}", markup=False)
+            return
         if source_preview or freeze_inventory:
             from pastor_transcript_extractor import fresh_discovery_preparation as preparation
             value=preparation.preview(base_dir) if source_preview else preparation.freeze(base_dir)
