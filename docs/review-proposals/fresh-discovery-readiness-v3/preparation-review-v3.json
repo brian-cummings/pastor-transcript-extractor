@@ -1,0 +1,119 @@
+{
+  "version": "fresh-v3-preparation-review",
+  "status": "READY_FOR_BRIAN_SOURCE_ONLY_INVENTORY_FREEZE",
+  "manifest_fingerprint": "fb3432bf76d6f6a0a196ec9e037b009d46d0c9725fdddd8220c52e737def8ac2",
+  "authorization_fingerprint": "4885ca77924082b9d4758cea68897788f8925085e2966cdb530bfc5eff3eca6c",
+  "source_validation_fingerprint": "f36f8090fe84ed5f6fa7e68f428a5bb0588b2e3732b742b0c02bc558ca77759b",
+  "accepted_repair_input_fingerprint": "185f20b6a6dbe80aced4f1fcf3283f17f5856fe3e1d27e3a331b1f5a56570e3a",
+  "sources": [
+    {
+      "video_id": 520,
+      "source_id": 61,
+      "main_chars": 37811
+    },
+    {
+      "video_id": 1094,
+      "source_id": 38,
+      "main_chars": 27291
+    },
+    {
+      "video_id": 951,
+      "source_id": 27,
+      "main_chars": 54202
+    }
+  ],
+  "structural_preflight": [
+    {
+      "video_id": 520,
+      "source_chars": 37936,
+      "unit_nodes": 111,
+      "G2_G3_upper_bound": 1110,
+      "G1_nominations": 45,
+      "unit_max_chars": 400
+    },
+    {
+      "video_id": 1094,
+      "source_chars": 28408,
+      "unit_nodes": 526,
+      "G2_G3_upper_bound": 5260,
+      "G1_nominations": 141,
+      "unit_max_chars": 212
+    },
+    {
+      "video_id": 951,
+      "source_chars": 57448,
+      "unit_nodes": 973,
+      "G2_G3_upper_bound": 9730,
+      "G1_nominations": 40,
+      "unit_max_chars": 567
+    }
+  ],
+  "G2_G3_aggregate_upper_bound": 16100,
+  "independent_census_started": false,
+  "reference_counts": null,
+  "natural_candidate_counts": null,
+  "collector_executed": false,
+  "semantic_execution_authorized": false,
+  "provider_requests": 0,
+  "explicit_target_envelope_review_required": true,
+  "review_protocol_sha256": "29593f6d99b46723375a51436eafab783f4ebd4388697dd7870b44a1d7dd0706",
+  "development_G2_prediction": {
+    "G2_development_hits": 19,
+    "G2_development_opportunities": 30,
+    "development_recall_upper_bound": 0.6333333333333333,
+    "risk": "Repeated unseen weakness would support a separate G2 retrieval limitation; no segmentation/cue tuning in this confirmation."
+  },
+  "next_command": "pte analysis fresh-discovery-readiness --revision v3 --freeze-inventory",
+  "next_Codex_work": "After Brian freezes inventory, construct and seal an independent full-source census before inspecting candidates or matches; report raw role/required-span upper bounds separately from explicit source-reviewed target/envelope compatibility. Stop before provider execution.",
+  "validation_summary": {
+    "focused_new_tests": 8,
+    "provider_calls": 0,
+    "dataset_collector_execution": false,
+    "fresh_workflow_tests": 37,
+    "source_unit_tests": 16,
+    "cli_contract_tests": 18,
+    "focused_total": 71,
+    "read_only_preparation_verification": "PASS"
+  },
+  "holds": [
+    "no provider inference",
+    "no collector tuning",
+    "no semantic/admission changes",
+    "no collection",
+    "no production or automatic attestation",
+    "no recurrence/rates",
+    "no projection/comparison/scoring",
+    "no 790-item V2 audit"
+  ],
+  "artifacts": {
+    "authorization": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v3/authorization-v3.1.json",
+      "sha256": "7dbfee37f7437fc9bec23e953a0348aa667afbd773685b6e42071e8d6e3b6c2e"
+    },
+    "manifest": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v3/source-manifest-v3.1.json",
+      "sha256": "982a2b223bd528bb677127d33cb52b69974b5c86aff8ba145e6ea82915683c68"
+    },
+    "original_manifest": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v3/source-manifest-v3.json",
+      "sha256": "e4e71ffb32020de81e61591012592ae9116509f0fc999f371d4cf9cf98d254cd"
+    },
+    "technical_review": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v3/technical-selection-review-v3.json",
+      "sha256": "e6a545626bee91ea232300a79a6b4f4425eb9df2955fc980d5b5c823db490edb"
+    },
+    "source_validation": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v3/source-validation-v3.json",
+      "sha256": "3a531193322bece8cd5292d2cf6b6f823ea11c251356eb2853fb8ec8e9913f99"
+    },
+    "target_review_protocol": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/fresh-discovery-readiness-v3/target-review-protocol-v3.json",
+      "sha256": "29593f6d99b46723375a51436eafab783f4ebd4388697dd7870b44a1d7dd0706"
+    },
+    "accepted_repair": {
+      "path": "/Users/briancummings/code/pastor-transcript-extractor/docs/review-proposals/source-unit-repair-v1/acceptance-v1.json",
+      "sha256": "9f45328a0efaeccad150debe9c329f2455b4796d5cab6f135a5c9e9824d9487b"
+    }
+  },
+  "content_fingerprint": "703cc7f60cea34dcc48117969290bacaebe0f375f05b99c28b3fa42289116d93"
+}

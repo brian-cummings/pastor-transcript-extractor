@@ -1,0 +1,92 @@
+{
+  "version": "fresh-v3-source-only-preparation-authorization",
+  "status": "AUTHORIZED_PROVIDER_FREE_PREPARATION",
+  "decision_owner": "Brian",
+  "decision_date": "2026-10-16",
+  "acceptance_sha256": "9f45328a0efaeccad150debe9c329f2455b4796d5cab6f135a5c9e9824d9487b",
+  "collector_policy": {
+    "version": "bounded-source-units-v1",
+    "source_candidate_ceiling": 12000,
+    "total_candidate_ceiling": 20000,
+    "G1_source_ceiling": 200,
+    "max_frame_chars": 6000,
+    "episode_chars": 4000,
+    "G2_per_sentence_bound": 8,
+    "G2_boundary_width_policy": "narrow_and_maximal_available",
+    "G2_same_sentence_slots": 2,
+    "G2_remote_slots": 2,
+    "G3_per_sentence_bound": 2,
+    "continuation_sentences": 4,
+    "continuation_chars": 1000,
+    "G1_preceding_sentences": 1,
+    "G1_following_sentences": 2,
+    "G1_max_target_chars": 1800,
+    "intact_punctuation_unit_chars": 1000,
+    "fallback_unit_chars": 400,
+    "fallback_caption_min_chars": 200,
+    "fallback_G3_target_chars": 1000
+  },
+  "criteria": {
+    "aggregate_recall": 0.8,
+    "aggregate_sufficient_envelope_recall": 0.8,
+    "per_source_recall": 0.8,
+    "per_source_minimum": 5,
+    "small_cells": "diagnostic",
+    "aggregate_floors": {
+      "G1_assurance": 5,
+      "G2_explanation": 10,
+      "G3_current": 5,
+      "G3_reported": 3
+    },
+    "manual_envelope_repair_max": 0.2,
+    "unresolved_review_deferral_max": 0.2,
+    "median_active_candidate_review_minutes_max": 5,
+    "active_review_budget_minutes": 480
+  },
+  "bounds": {
+    "G2_G3_per_source": 12000,
+    "G2_G3_total": 20000,
+    "G1_per_source": 200,
+    "characters_per_source": 150000,
+    "characters_total": 300000,
+    "semantic_units_per_source": 40,
+    "semantic_units_total": 120,
+    "semantic_requests_max": 240,
+    "retries": 0
+  },
+  "semantic_queue": {
+    "G1": 10,
+    "G2": 15,
+    "G3": 15
+  },
+  "target_envelope_review_required": true,
+  "target_review_protocol_sha256": "29593f6d99b46723375a51436eafab783f4ebd4388697dd7870b44a1d7dd0706",
+  "code_hashes": {
+    "src/pastor_transcript_extractor/fresh_discovery_confirmation_v3.py": "db4d80b7da7d273ccba30e3ca147490380b7228df7bc3c5a2233370976e06047",
+    "tests/test_fresh_discovery_confirmation_v3.py": "ce531e6afa1ac47db813df3545b01ea20e33363be665bc297483e647c468d0be"
+  },
+  "preparation_authorized": true,
+  "source_only_inventory_freeze_prepared_for_Brian": true,
+  "independent_census_before_matching": true,
+  "provider_calls_authorized": false,
+  "tuning_authorized": false,
+  "collection_projection_authorized": false,
+  "semantic_queue_note": "Preparation bounds only. No executable paid packet, provider authorization or automatic follow-on execution.",
+  "disclosed_prediction": {
+    "G2_development_hits": 19,
+    "G2_development_opportunities": 30,
+    "development_recall_upper_bound": 0.6333333333333333,
+    "risk": "Repeated unseen weakness would support a separate G2 retrieval limitation; no segmentation/cue tuning in this confirmation."
+  },
+  "held": [
+    "no provider inference",
+    "no collector tuning",
+    "no semantic/admission changes",
+    "no collection",
+    "no production or automatic attestation",
+    "no recurrence/rates",
+    "no projection/comparison/scoring",
+    "no 790-item V2 audit"
+  ],
+  "content_fingerprint": "657bb43aa080697a8ad0d542f4401da4a09198338a43d47397bdb637efee79bc"
+}

@@ -1,0 +1,132 @@
+{
+  "version": "fresh-discovery-source-manifest-v3",
+  "authorization_fingerprint": "657bb43aa080697a8ad0d542f4401da4a09198338a43d47397bdb637efee79bc",
+  "selected_at_utc": "2026-10-16T15:13:53.403898+00:00",
+  "selection_salt": "fresh-discovery-readiness-v3:",
+  "selection_sql": "select v.id,v.source_id,v.pastor_id,v.youtube_video_id,v.title,v.duration_seconds,p.slug,t.id transcript_id,t.raw_text_path,t.source_kind,e.id extraction_id,e.proposed_json_path,e.proposed_text_path from videos v join pastors p on p.id=v.pastor_id join transcript_artifacts t on t.id=(select max(id) from transcript_artifacts where video_id=v.id and artifact_kind='source') join extraction_results e on e.id=(select max(id) from extraction_results where video_id=v.id) where v.source_id not in (33,44) and v.duration_seconds between 1200 and 4200 and not exists(select 1 from sermon_analysis_runs a where a.video_id=v.id)",
+  "excluded_source_ids": [
+    7,
+    8,
+    32,
+    33,
+    36,
+    44,
+    48,
+    56,
+    60,
+    66
+  ],
+  "excluded_video_ids": [
+    350,
+    421,
+    610,
+    1046,
+    1200,
+    1363,
+    1450,
+    1565,
+    1618,
+    2298,
+    2325,
+    4050,
+    4069,
+    4430
+  ],
+  "sources": [
+    {
+      "source_id": 61,
+      "pastor_id": 56,
+      "youtube_video_id": "AOkuboQ-rhw",
+      "title": "Your Calling Is More Than What You Think Live from Rossville SDA Church",
+      "duration_seconds": 2201,
+      "slug": "churchdb-212",
+      "transcript_id": 674,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-212/videos/AOkuboQ-rhw/raw/whisper.txt",
+      "source_kind": "local_asr",
+      "extraction_id": 563,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-212/videos/AOkuboQ-rhw/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-212/videos/AOkuboQ-rhw/extracted/proposed.md",
+      "video_id": 520,
+      "selection_sha256": "01047d79ddb502f2f35231f8bc0cde619b8bb9a8f88552563f35a619747642cd",
+      "role": "primary",
+      "file_hashes": {
+        "raw_text_path": "187db734a20e4876632c930a5c2879643bbc21ed8c234c186cf92d85c440fde1",
+        "proposed_json_path": "69543d1388ba1d7e1fd69d8586eac32043cd54f00857a2365136fa240e5e79b7",
+        "proposed_text_path": "6581ddbbecc4093a636530d3e69712de754e1b070030020c28f4066dbbae340c"
+      }
+    },
+    {
+      "source_id": 52,
+      "pastor_id": 47,
+      "youtube_video_id": "YhCnpKiZBz4",
+      "title": "Live with Restream, August 15, 2026 Sabbath School",
+      "duration_seconds": 3726,
+      "slug": "churchdb-180",
+      "transcript_id": 1398,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-180/videos/YhCnpKiZBz4/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 1374,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-180/videos/YhCnpKiZBz4/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-180/videos/YhCnpKiZBz4/extracted/proposed.md",
+      "video_id": 1314,
+      "selection_sha256": "01937baaf4921e71e88fae1e9a4acae3ace3ac911cb46f7ad71839bcce2e3e61",
+      "role": "primary",
+      "file_hashes": {
+        "raw_text_path": "56044dcaf7afb4ee7dd8c57d7adbc8064d5eb25778665081f5add14cd1935578",
+        "proposed_json_path": "66882b98ac4ce3bd6acc8d81754a3d3a2465663f65d981f50d5362bd69dafeb2",
+        "proposed_text_path": "530fa74e02f4dc4a979916c5d58b25a2f34328773a423fb862ae5259e6783e19"
+      }
+    },
+    {
+      "source_id": 58,
+      "pastor_id": 53,
+      "youtube_video_id": "7UFoYbBmiNk",
+      "title": "Memorial service for Nelson Thomas 7/18/26 at 3pm EDT",
+      "duration_seconds": 2138,
+      "slug": "churchdb-205",
+      "transcript_id": 639,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-205/videos/7UFoYbBmiNk/raw/whisper.txt",
+      "source_kind": "local_asr",
+      "extraction_id": 544,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-205/videos/7UFoYbBmiNk/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-205/videos/7UFoYbBmiNk/extracted/proposed.md",
+      "video_id": 501,
+      "selection_sha256": "048156222eb6a6f447a4cdddaaf8a72f1b65d514580af44f87708df502ee4639",
+      "role": "primary",
+      "file_hashes": {
+        "raw_text_path": "5b79780411f8797078a09a8dcdd030fae0b7a49a64672cad4c7fbbf487a6dc31",
+        "proposed_json_path": "ba8e90a3389a9a6f029e49f2ed7fc255524ba15746a19c4f03a64357b7705855",
+        "proposed_text_path": "af1065b6c774770de733c25eb75774515aa6e607c5d1cc30000b6c361f29b5b7"
+      }
+    },
+    {
+      "source_id": 38,
+      "pastor_id": 33,
+      "youtube_video_id": "5fwrqGBZDXI",
+      "title": "Salvation | Greater Atlanta SDA Church",
+      "duration_seconds": 2525,
+      "slug": "churchdb-125",
+      "transcript_id": 1232,
+      "raw_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-125/videos/5fwrqGBZDXI/raw/captions.txt",
+      "source_kind": "captions",
+      "extraction_id": 1164,
+      "proposed_json_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-125/videos/5fwrqGBZDXI/extracted/proposed.json",
+      "proposed_text_path": "/Users/briancummings/Documents/PastorSearchData/pastors/churchdb-125/videos/5fwrqGBZDXI/extracted/proposed.md",
+      "video_id": 1094,
+      "selection_sha256": "04cfc329d5395741ebc4eac18acd98467552c899c1cbe5ff2f2eaabb5fa83fa9",
+      "role": "technical_reserve_only",
+      "file_hashes": {
+        "raw_text_path": "53612d5f8158e73e8c1495f08a9473f22320bf78ea34fb254373ca899fbd5375",
+        "proposed_json_path": "7c2142f86352451cf2fc196f542c58542a66e3e3eabc4e7bd83f380be27ba0bf",
+        "proposed_text_path": "98f598e4ecd749a59cae4130ee0037a9ef9ba508b15c8f7c8eb28e0096eb9f2c"
+      }
+    }
+  ],
+  "source_text_inspected_for_selection": false,
+  "collector_or_reference_inputs_to_selection": false,
+  "discovery_executed": false,
+  "references_constructed": false,
+  "provider_requests": 0,
+  "freshness_scope": "Prior named development/primary/reserve channels excluded and selected videos have no local sermon_analysis_runs; no model-training or universal prior-exposure claim.",
+  "content_fingerprint": "49bf30f65f62e1b24455b7642b9654d8578610246d490f39ef0bfc7fd8c40db5"
+}

@@ -1,0 +1,62 @@
+{
+  "version": "fresh-v3-initial-technical-selection-review",
+  "initial_manifest_fingerprint": "49bf30f65f62e1b24455b7642b9654d8578610246d490f39ef0bfc7fd8c40db5",
+  "initial_manifest_sha256": "e4e71ffb32020de81e61591012592ae9116509f0fc999f371d4cf9cf98d254cd",
+  "exclusions": [
+    {
+      "video_id": 1314,
+      "reason": "non_sermon",
+      "rationale": "Interactive Sabbath-school class on the weekly lesson, with a substitute teacher, class responses and closing class prayer; not a sustained sermon.",
+      "preview_path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v3/sources/1314.json",
+      "preview_sha256": "523cb8de7edbcfd3a24d467efadd8d55d47d3e6a8afe6ac5dd37ba22dc9d6115",
+      "source_evidence": [
+        {
+          "start": 1963,
+          "end": 2002,
+          "text": "needing someone to teach Sabbath school"
+        },
+        {
+          "start": 39632,
+          "end": 39664,
+          "text": "Last week we talked about unity."
+        },
+        {
+          "start": 40373,
+          "end": 40418,
+          "text": "Would someone like to have our closing prayer"
+        }
+      ]
+    },
+    {
+      "video_id": 501,
+      "reason": "non_sermon",
+      "rationale": "Memorial scripture reading/music followed by a family biographical life sketch and reception invitation; no sustained sermon in the available source.",
+      "preview_path": "/Users/briancummings/Documents/PastorSearchData/evaluation/fresh-discovery-readiness-v3/sources/501.json",
+      "preview_sha256": "8b6512098f5a5de62305dd8747b23f08d2543b17984fe350c299499c32cc46a1",
+      "source_evidence": [
+        {
+          "start": 3075,
+          "end": 3098,
+          "text": "I'm Nelson's oldest son"
+        },
+        {
+          "start": 11189,
+          "end": 11215,
+          "text": "finish up this life sketch"
+        },
+        {
+          "start": 16987,
+          "end": 17017,
+          "text": "Thank you for listening. As we"
+        }
+      ]
+    }
+  ],
+  "collector_executed": false,
+  "opportunity_census_started": false,
+  "reference_counts_known": false,
+  "provider_requests": 0,
+  "continuation": "One additional technical reserve from unchanged salted metadata-only order, excluding the initial four distinct channels; preserve initial manifest. Three active sources and all candidate/request ceilings remain unchanged.",
+  "authority_scope": "Routine provider-free source eligibility preparation under Brian authorization; no change to the frozen collector or semantic evaluation.",
+  "content_fingerprint": "da41e73df618a0be00de085ee1e63f3157302bd466e87a5e08b8020cadd0df1b"
+}

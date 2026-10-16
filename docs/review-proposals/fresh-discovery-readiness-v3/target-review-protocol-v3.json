@@ -1,0 +1,68 @@
+{
+  "version": "fresh-v3-target-envelope-review-protocol",
+  "scope": "Prospective source-only review; no semantic inference, admission witness or measurement-contract revision",
+  "blind_sequence": [
+    "Metadata-only mechanical source selection",
+    "Technical source/boundary/duplicate validation only; no opportunity census",
+    "Brian freezes natural inventory and queue without displaying candidate/match counts",
+    "Codex independently reads full canonical main sources and freezes census/references without reading inventory/candidates",
+    "Only then match frozen references against sealed inventory",
+    "Review actual matched targets/envelopes and source context; report geometric, required-span and compatible-target counts separately"
+  ],
+  "matching": "Unchanged frozen complete-role/required-source-span matching; declared literal aliases only. No authored geometry rescue or post-match reference changes.",
+  "per_reference_review": {
+    "required_fields": [
+      "reference_id",
+      "candidate_id",
+      "inventory_fingerprint",
+      "source_snapshot_sha256",
+      "exact_target_roles",
+      "automatic_envelope_span",
+      "source_context_spans",
+      "target_status",
+      "envelope_status",
+      "source_voice_scope",
+      "recipient_scope",
+      "adoption_scope",
+      "review_rationale",
+      "reviewer"
+    ],
+    "target_status_options": [
+      "source_supported_compatible_target",
+      "mixed_or_competing_voice_recipient",
+      "clipped_or_incomplete_role",
+      "incompatible_target_kind",
+      "unresolved_target_scope"
+    ],
+    "envelope_status_options": [
+      "sufficient_source_provenance_context",
+      "missing_reporting_identity_or_continuation",
+      "missing_required_evidence",
+      "unresolved_envelope_scope"
+    ],
+    "compatible_hit_requires": "At least one naturally materialized candidate passes BOTH target compatibility and provenance-context review against the frozen reference. G3 whole measured utterance must support a coherent act/source/recipient interpretation; merely containing an embedded act is insufficient. G2 distinct complete roles must permit the claimed explanation to be evaluated without assigning unrelated or incompatible source material to the anchor.",
+    "disallowed": [
+      "Do not narrow a mixed natural target manually and count the authored narrower span as discovery",
+      "Do not transfer reported acts to current-preacher credit",
+      "Do not mark a whole target compatible solely because its envelope names all speakers",
+      "Do not use one geometric window as multiple certified atomic acts with conflicting namespaces",
+      "Do not count unreviewed candidates as compatible",
+      "Do not drop frozen references, composite targets, controls or sparse cells after matching"
+    ]
+  },
+  "denominator_policy": "Preserve all independently frozen definite compatible opportunities. Ambiguous, incompatible and unavailable opportunities are disclosed separately before matching; do not change definitions after seeing recall.",
+  "candidate_queue_review": "Review every frozen future semantic-queue unit against its exact request target/envelope before any later execution decision; mixed or unresolved units stay disclosed/quarantined, never silently replaced with reference-authored positives.",
+  "coverage_review": "Review naturally matched candidates until a compatible target/envelope is evidenced, or disclose that a compatible alternative is unestablished. No unreviewed geometric alternative can establish PASS; exhausted review budget or unresolved coverage yields HOLD rather than inferred success.",
+  "metrics": [
+    "Raw complete-role upper hits",
+    "Required-evidence upper hits",
+    "Source-reviewed compatible target/envelope hits",
+    "Mixed targets and source/recipient transitions",
+    "Candidates, density, frame/envelope distributions, structural deferrals and control contacts",
+    "Active review timing only if actually measured; manual envelope-repair fraction and unresolved review-deferral rate; unknown is not zero"
+  ],
+  "gates": "Existing aggregate floors and .80 recall targets unchanged. Per-source .80 gates apply only to cells with >=5 definite compatible opportunities; smaller cells diagnostic. A decisive raw upper-bound failure stops before providers. Upper-bound success alone is not PASS; unresolved target/envelope sufficiency is HOLD. Preserve existing review-budget/burden criteria; no operational PASS from source-only geometric volume.",
+  "source_review_authority": "Source-only evaluative judgment, not automatic provenance attestation, sealed-receipt admission authority, pastor ownership or production authorization.",
+  "provider_calls_authorized": false,
+  "content_fingerprint": "a2b811dc0b7394deaa3befcf5a338dc1924d34f0bcd23bf14f3e2dbdcb67bd67"
+}
